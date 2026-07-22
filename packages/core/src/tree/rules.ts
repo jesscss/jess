@@ -34,7 +34,7 @@ import {
   type DeclarationFindOptions
 } from './util/lookup-utils.js';
 import { processExtends } from './util/extend-roots.js';
-import { isSpineEligibleRoot, renderRootViaSpine, SPINE_ABORT_TO_EVAL, isSpineFoldableImport, isSpineFoldableImportBody, isSpineFoldableCssImportStatement, assignSpineChildIndices, spineImportDedupeVerdict, withSpineMultipleScope, isSpineEligibleMixinCall, resolveSpineMixinCall, isSpineFoldableStatementCall } from './util/emit-walk.js';
+import { isSpineEligibleRoot, renderRootViaSpine, isSpineFoldableCssImportStatement, isSpineEligibleMixinCall, resolveSpineMixinCall, isSpineFoldableStatementCall } from './util/emit-walk.js';
 import type { SpineMixinCallResolution } from './util/emit-walk.js';
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { Nil } from './nil.js';
@@ -55,7 +55,6 @@ import {
 } from './util/serialize-helper.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
-import type { StyleImport, SpineImportResolution } from './import-style.js';
 import {
   buildScopeFrame,
   copyScopeFrameLiveBindingSlots,
@@ -127,7 +126,6 @@ const mergeProfileCounters = (globalThis as ScopeFrameProfileGlobals)[MERGE_PROF
 const scopeFrameProfileNow = scopeFrameProfileCounters
   ? globalThis.performance?.now.bind(globalThis.performance)
   : undefined;
-type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 type RulesRenderContextSnapshot = {
   rulesContext: Context['rulesContext'];
@@ -229,10 +227,6 @@ function evalSetDefinedAssignedValue(node: Declaration, context?: Context): Node
     }
   }
   return assignedValue;
-}
-
-function isStyleImportRegistrationNode(node: Node): node is StyleImport {
-  return node.type === 'StyleImport';
 }
 
 function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
@@ -703,15 +697,6 @@ function rulesMayContainReferenceImports(rules: Rules): boolean {
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
-    if (node.type === 'StyleImport') {
-      const importOptions = 'importOptions' in node.options
-        ? node.options.importOptions
-        : undefined;
-      if (importOptions?.reference === true || importOptions?._dedupe === true) {
-        return true;
-      }
-      continue;
-    }
     const child = childRulesOf(node);
     if (child && rulesMayContainReferenceImports(child)) {
       return true;
@@ -732,10 +717,6 @@ function sourceRulesOf(rules: Rules): Rules {
   // A canonical body may be any Rules subclass (Mixin/Ruleset) now that the
   // Mixin.sourceNode wrapper is gone — `instanceof Rules` covers all three.
   return rules.sourceNode instanceof Rules ? rules.sourceNode : rules;
-}
-
-function isStyleImportPathResolutionError(error: unknown): boolean {
-  return error instanceof Error && (error as PathResolutionError)._isPathResolutionError === true;
 }
 
 function hasStaticNameMethod(value: unknown): value is { hasStaticName(): boolean } {
@@ -1719,15 +1700,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     );
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
-      if (node.type === 'StyleImport') {
-        const importOptions = 'importOptions' in node.options
-          ? node.options.importOptions
-          : undefined;
-        if (importOptions?.reference === true || importOptions?._dedupe === true) {
-          this._hasReferenceImports = true;
-        }
-        continue;
-      }
       if (isNode(node, N.Rules)) {
         if (
           rulesHasCarriedReferenceImportSurface(node)
@@ -3985,10 +3957,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && (firstRemainderHit.reason === 'child-surface' || firstRemainderHit.reason === 'reference-import')
         ) {
           // Crawl the frame's evaluated surface, not the canonical entry: a
-          // namespace-mixin body evaluated for its reference imports splices the
-          // import wrapper into the derived OUTPUT (frame.rulesNode), leaving the
-          // canonical `[StyleImport]` untouched (invariant: canonical immutable).
-          // The import-wrapper child surface lives only on the output.
+          // reference-mode child surface can exist only on the derived OUTPUT
+          // (`frame.rulesNode`), while the canonical entry remains immutable.
           const uncoveredSurface = isNode(childFrame.rulesNode, N.Rules)
             ? childFrame.rulesNode
             : entryRules;
@@ -4427,7 +4397,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * FALLBACK-FRAME DRAIN for a namespace path (`#library.add-one`). The
    * head-namespace resolvers in `findMixinPath` consult only `this`'s primary
    * scope chain, so a namespace member defined ONLY on an imported fallback frame
-   * (`linkImportFallbackFrame` / `wireSpineImports`) — including a member a
+   * (`linkImportFallbackFrame`) — including a member a
    * same-named LOCAL namespace does not define — is invisible once the primary
    * walk exhausts. Mirrors the string-key `findMixin` fallback drain: re-run the
    * SAME path against each fallback frame's rulesNode AFTER the primary walk
@@ -4749,146 +4719,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
-   * Fold a root-level spine-foldable `@import` (IMPORTS increment 1). Drives
-   * `StyleImport.resolveForSpine` (which queues a CSS-passthrough import to the
-   * top-of-doc emitter, or `getTree`s a Less import's parsed body as an import-site
-   * placement), then:
-   *   - `css` → emit nothing inline (queued),
-   *   - `fold` + spine-simple body → descend each imported child INLINE via the
-   *     enclosing `emitNode`, with `context.rulesContext` pinned to the placement
-   *     frame so an imported leaf resolves up the import chain (§2 frame thread),
-   *   - `fold` + non-simple body → the byte-identical eval fall-back: render the
-   *     import node the eval way (`render` → `evalNode`) and emit its output.
-   */
-  private _emitSpineImportFold(
-    importNode: StyleImport,
-    options: FinalPrintOptions,
-    context: Context,
-    emitNode: (n: Node) => MaybePromise<void>
-  ): MaybePromise<void> {
-    const w = options.writer!;
-    // ISOLATE per-import context, mirroring `wireSpineImportsInBody`'s discipline:
-    // emitting an import (fold descent OR the `evalFallback` → `evalNode`/`finalize`
-    // path) transiently switches `context.treeContext`/`depth` while descending a
-    // nested imported file (e.g. `_mixins` importing `vendor/_rfs`). Without a
-    // snapshot+restore around EACH import emit, a deeply-nested import leaves its
-    // file's `treeContext` in place, so the NEXT sibling import at this level
-    // resolves its RELATIVE path against the wrong directory (bootstrap's
-    // `@import "_reboot"` after `_mixins` pulled in `vendor/_rfs` → resolved from
-    // `less/vendor` → File not found). Restore on every exit path (sync + async).
-    const savedTreeContext = context.treeContext;
-    const savedDepth = context.depth;
-    const restoreImportContext = <T>(value: T): T => {
-      context.treeContext = savedTreeContext;
-      context.depth = savedDepth;
-      return value;
-    };
-    const restoreThenRethrow = (error: unknown): never => {
-      restoreImportContext(undefined);
-      throw error;
-    };
-    const withRestore = (step: MaybePromise<void>): MaybePromise<void> =>
-      isThenable(step)
-        ? step.then(restoreImportContext, restoreThenRethrow)
-        : restoreImportContext(step);
-    const foldBody = (body: Rules, multiple: boolean, reference: boolean): MaybePromise<void> => {
-      assignSpineChildIndices(body);
-      const savedRulesContext = context.rulesContext;
-      context.rulesContext = body;
-      const restore = <T>(value: T): T => {
-        context.rulesContext = savedRulesContext;
-        return value;
-      };
-      // A `(reference)` import descends the placement AS A CHILD `Rules` (increment 5),
-      // NOT by splicing its children: the `isChildRules` emit branch reads the
-      // placement's own `options.referenceMode` (set in `_foldLessImportForSpine`) and
-      // gates output via the container serializer's `renderEnabled` — a plain
-      // ruleset/decl emits nothing, while an EXTEND-reached selector still emits.
-      // Scope registration already ran (wire pass), so consumers resolve regardless.
-      // A non-reference import splices its children directly (ordering + dedup + frame
-      // exactly as increments 1–4).
-      const emitReference = (): MaybePromise<void> => emitNode(body);
-      const children = body.rules;
-      const emitChild = (i: number): MaybePromise<void> => {
-        for (let idx = i; idx < children.length; idx++) {
-          const step = emitNode(children[idx]!);
-          if (isThenable(step)) {
-            return step.then(() => emitChild(idx + 1));
-          }
-        }
-        return undefined;
-      };
-      // A `multiple` import's body descends inside a MULTIPLE scope, so its NESTED
-      // imports also re-emit (no `once` dedup) — mirrors `inMultipleImportScope`.
-      try {
-        const step = withSpineMultipleScope(options, multiple, () => reference ? emitReference() : emitChild(0));
-        return isThenable(step)
-          ? step.then(restore, (error: unknown) => {
-              restore(undefined);
-              throw error;
-            })
-          : restore(step);
-      } catch (error) {
-        restore(undefined);
-        throw error;
-      }
-    };
-    const evalFallback = (): MaybePromise<void> => {
-      // Byte-identical eval terminal for a non-simple imported body: render the
-      // import node the eval way and splice its output text at this position.
-      // ISOLATE its print-state: `importNode.render` → `evalForRender` →
-      // `prepareRenderPrintState` RESETS `context.printState` IN PLACE (fresh writer +
-      // frame arrays); in the single-pass spine render that IS the live emit state, so
-      // an un-isolated fallback swaps the live writer/frames and every LATER sibling
-      // writes into the discarded writer and is LOST (bootstrap: an imported body with
-      // a DETACHED-RULESET-arg mixin call — `a { #hover({…}) }` in `_reboot` — is not
-      // spine-foldable and lands here; its render silently dropped the entire following
-      // `_grid` import). The render returns its own string (spliced into `w` below), so
-      // isolate exactly as the value-leaf / guard resolves do.
-      const position = w.position();
-      const rendered = evalIsolatingSpinePrintState(context, () => importNode.render(context, getPrintOptions(options)));
-      const finishRendered = (text: string): void => {
-        if (w.position() === position && text) {
-          w.add(text, importNode);
-        }
-      };
-      return isThenable(rendered) ? rendered.then(finishRendered) : finishRendered(rendered);
-    };
-    // Reuse the placement the wire pass already resolved + registered + frame-linked
-    // (IMPORTS increment 2/3), so the import is resolved once and its OUTPUT descends
-    // against the SAME scope its consumers see. Every foldable import (root + nested)
-    // is pre-wired, so `cached` is expected; the fresh-resolve below is a defensive
-    // fallback for a lone import the wire pass didn't reach (no dedup — it is its own
-    // only occurrence).
-    const cached = options.spineImportPlacements?.get(importNode);
-    if (cached) {
-      if (cached.kind === 'css') {
-        return undefined;
-      }
-      // DEDUP (increment 4): a `dedupe` re-import's scope is already registered/linked
-      // by the wire pass; emit NO output (Less `once`). Otherwise fold its body.
-      if (cached.dedupe) {
-        return undefined;
-      }
-      return withRestore(isSpineFoldableImportBody(cached.body, options.spineExtendHeaders !== undefined) ? foldBody(cached.body, cached.multiple, cached.reference) : evalFallback());
-    }
-    const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
-      if (resolved.kind === 'css') {
-        return undefined;
-      }
-      // Consult the once-dedup ledger even on the fresh path (a not-pre-wired import,
-      // e.g. one nested INSIDE another imported file): a re-import of an already-emitted
-      // path is scope-only. `multiple`/`once:false` always emits.
-      if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
-        return undefined;
-      }
-      return isSpineFoldableImportBody(resolved.body, options.spineExtendHeaders !== undefined) ? foldBody(resolved.body, resolved.multiple, resolved.reference) : evalFallback();
-    };
-    const resolution = importNode.resolveForSpine(context);
-    return withRestore(isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution));
-  }
-
-  /**
    * Fold a `$for`/`each` (`For`) loop reached by the ROOT / import-splice emitter
    * (`emitNode`) into per-iteration bound-body surfaces — the emitter-side analogue
    * of the CONTAINER descent's `runSpineForExpansion` (`serialize-helper`). Drive
@@ -5098,18 +4928,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         emitLeadingBlockCommentForNode(n);
         return;
       }
-      // Spine import-fold at the ROOT body (cutover IMPORTS increment 1,
-      // UNIFIED-EVAL-EMIT-DESIGN §2/§4.0). A root-level `@import` reaches this leaf
-      // branch (not the container serializer's `runSpineImportExpansion`), so fold
-      // it HERE: resolve, then either drop (CSS-passthrough → queued top-of-doc) or
-      // descend the parsed imported body's children INLINE by re-`emitNode`-ing each
-      // with `context.rulesContext` pointed at the import-site placement frame — the
-      // same shared-body/frame-thread discipline `spineFrame` applies nested. No
-      // `rules.eval()`, no output tree (ratchet: `Rules.derive` = 0). A non-simple
-      // imported body falls through to the eval terminal below (byte-identical).
-      if (mode === 'render' && context && options.spineMode && isSpineFoldableImport(n) && isStyleImportRegistrationNode(n)) {
-        return this._emitSpineImportFold(n, options, context, emitNode);
-      }
       // Bodyless CSS `@import` STATEMENT (`AtRuleStatement`, e.g. `@import "x.css"
       // screen;` or `@import url(...) layer(foo);`). Eval hoists it to the top-of-doc
       // emitter via `prepareRegistration` → `queueTopImport` (see below); the spine
@@ -5131,10 +4949,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         context.currentCharset ??= n;
         return;
       }
-      // LOOP fold at the ROOT / IMPORT-SPLICE emitter (cutover LOOP increment 1,
-      // ROOT parity). A `$for`/`each` (`For`) node reaching THIS emitter — a root-
-      // direct loop, or a loop inside an imported body spliced here via
-      // `_emitSpineImportFold` — must expand into its per-iteration bound surfaces
+      // LOOP fold at the root emitter. A root-direct `$for`/`each` (`For`) node
+      // reaching this emitter must expand into its per-iteration bound surfaces
       // exactly as the CONTAINER descent does (`serializeRulesContainerInternal` →
       // `runSpineForExpansion`). Without this it falls to the `isChildRules` branch
       // below, which emits the loop body ONCE, UNBOUND — a nested ruleset's
@@ -5613,10 +5429,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         serialize(replaced ? { ...state, output: replaced } : state);
       return isThenable(hooked) ? hooked.then(applyHook) : applyHook(hooked);
     };
-    // The eval render path — reached directly when the root is not spine-eligible, OR as the
-    // ABORT-TO-EVAL fall-back when the spine's post-wire re-gate rejects a speculatively-admitted
-    // import+extend tree (import-spec routing). The abort has already reset the render context, so this
-    // re-render produces exactly the byte-identical eval output.
+    // The eval render path is reached directly when the root is not spine-eligible.
     const evalPath = (): MaybePromise<string> => {
       const value = this.evalForRender(context, sourceWasRoot);
       return isThenable(value) ? value.then(afterEval) : afterEval(value);
@@ -5629,14 +5442,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         && bufferOrOptions.kind === 'flat'
         && prepared.writer.writesTo(bufferOrOptions.parts);
       const rendered = renderRootViaSpine(this, context, prepared, shareFlatWriter);
-      // A spine render may ABORT to eval (a resolved sentinel, sync or via the async import chain). On
-      // abort, `evalPath()` owns the WHOLE render including the buffer write (its `serialize` branches
-      // on `isRenderBuffer`), so it must NOT be re-wrapped in `writeRenderTextResult` — that would write
-      // the eval output into the buffer a SECOND time (double-emit). Only genuine spine TEXT is wrapped.
-      const finishSpine = (result: string | typeof SPINE_ABORT_TO_EVAL): MaybePromise<string> => {
-        if (result === SPINE_ABORT_TO_EVAL) {
-          return evalPath();
-        }
+      const finishSpine = (result: string): MaybePromise<string> => {
         // A shared spine writes its prelude and body directly into the compiler-owned
         // flat buffer. Re-wrapping the returned body would duplicate it; the returned
         // string remains the public render result, while the aliased writer owns the
@@ -5759,7 +5565,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const affectsCallableLookup = (
       isCallableLookupNode
       || Boolean(directChildRules && !isNode(node, N.Rules))
-      || isStyleImportRegistrationNode(node)
     );
     const rebuildCallableCache = affectsCallableLookup && (this.callableLookupCache !== undefined || this._scopeFrame !== undefined);
     if (affectsCallableLookup) {
@@ -5787,9 +5592,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         directDeclarationInvalidationIsGlobal = true;
       }
     }
-    if (isStyleImportRegistrationNode(node)) {
-      directDeclarationInvalidationIsGlobal = true;
-    }
     if (directDeclarationInvalidationIsGlobal) {
       if (!directDeclarationGlobalVersionBumped) {
         this.bumpDeclarationLookupVersion();
@@ -5809,21 +5611,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     if (node.type === 'Extend' || node.type === 'ExtendList') {
       this._hasExtends = true;
-    }
-    if (node.type === 'StyleImport') {
-      const importOptions = 'importOptions' in node.options
-        ? node.options.importOptions
-        : undefined;
-      if (importOptions?.reference === true || importOptions?._dedupe === true) {
-        this._hasReferenceImports = true;
-        if (this._scopeFrame) {
-          this._scopeFrame.hasReferenceImports = true;
-          this._scopeFrame.callableMissesCovered = false;
-          this._scopeFrame.callableMissCoverageKnown = false;
-          this._scopeFrame.mixinCallableMissesCovered = false;
-          this._scopeFrame.mixinCallableMissCoverageKnown = false;
-        }
-      }
     }
     if (isNode(node, N.Rules)) {
       // Use options if provided, otherwise use node's settings, otherwise empty
@@ -6560,7 +6347,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * for the normal source-order eval walk.
    */
   private _isRegisterableType(node: Node): boolean {
-    return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset | N.Func) || isStyleImportRegistrationNode(node);
+    return isNode(node, N.VarDeclaration | N.Declaration | N.Mixin | N.Ruleset | N.Func);
   }
 
   private collectStaticDeclarationInvalidationKeys(rules: Rules, keys: Set<string>): boolean {
@@ -6570,9 +6357,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const value = rules.rules;
     for (let i = 0; i < value.length; i++) {
       const node = value[i]!;
-      if (node.type === 'StyleImport') {
-        return false;
-      }
       if ((isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) && !isBindingReassignment(node)) {
         if (!this._hasStaticName(node)) {
           return false;
@@ -6646,10 +6430,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (isNode(node, N.Func)) {
       const name = node.name;
       return name ? this._isStatic(name) : false;
-    }
-    if (isStyleImportRegistrationNode(node)) {
-      const path = node.path;
-      return this._isStatic(path);
     }
     if (isNode(node, N.Ruleset)) {
       const selector = node.selector;
@@ -7025,11 +6805,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   private _evaluateSourceOrder(
     rules: Rules,
-    context: Context,
-    importsOnly = false
+    context: Context
   ): MaybePromise<{ output: Rules; rulesToHoist: boolean }> {
     let rulesToHoist = false;
-    const pendingImports: Array<[number, Node]> = [];
     // §2.7: never mutate the canonical node. Source children are read from
     // `rules`; evaluated results are written to `output`, which stays `rules`
     // until the FIRST child whose result differs — then a fresh derive surface
@@ -7117,43 +6895,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
     };
 
-    const evaluateEntry = (idx: number, rule: Node, allowImportRetry: boolean): MaybePromise<void> => {
+    const evaluateEntry = (idx: number, rule: Node): MaybePromise<void> => {
       if (isNode(rule, N.VarDeclaration)) {
         return;
       }
-      const handleError = (error: unknown): Node | undefined => {
-        if (
-          allowImportRetry
-          && isStyleImportRegistrationNode(rule)
-          && isStyleImportPathResolutionError(error)
-        ) {
-          pendingImports.push([idx, rule]);
-          return;
-        }
-        throw error;
-      };
-      const result = (() => {
-        try {
-          const value = rule.eval(context);
-          return isThenable<Node>(value)
-            ? value.catch(handleError)
-            : value;
-        } catch (error) {
-          return handleError(error);
-        }
-      })();
-      if (isThenable<Node | undefined>(result)) {
-        return result.then((resolved: Node | undefined) => applyResult(idx, rule, resolved));
+      const result = rule.eval(context);
+      if (isThenable<Node>(result)) {
+        return result.then((resolved: Node) => applyResult(idx, rule, resolved));
       }
       applyResult(idx, rule, result);
     };
 
-    // These are the two eval-owned side-effect lanes left after removing the
-    // broad priority table. Imports can provide symbols to the whole file, and
-    // calls can produce declarations that Less property accessors read.
+    // Calls can produce declarations that property accessors read, so they
+    // remain the one eval-owned side-effect lane before the normal body walk.
     const evaluateLane = (
-      shouldEvaluate: (rule: Node) => boolean,
-      allowImportRetry: boolean
+      shouldEvaluate: (rule: Node) => boolean
     ): MaybePromise<void> => {
       const evaluateRest = (start: number): MaybePromise<void> => {
         for (let idx = start; idx < rules.rules.length; idx++) {
@@ -7161,7 +6917,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           if (!shouldEvaluate(rule)) {
             continue;
           }
-          const result = evaluateEntry(idx, rule, allowImportRetry);
+          const result = evaluateEntry(idx, rule);
           if (isThenable(result)) {
             return result.then(() => evaluateRest(idx + 1));
           }
@@ -7169,75 +6925,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       };
       return evaluateRest(0);
     };
-    const drainPendingImports = (allowRetry: boolean): MaybePromise<void> => {
-      if (pendingImports.length === 0) {
-        return;
-      }
-      const imports = pendingImports.splice(0);
-      const drainRest = (start: number): MaybePromise<void> => {
-        for (let i = start; i < imports.length; i++) {
-          const [idx, rule] = imports[i]!;
-          const drained = evaluateEntry(idx, rule, allowRetry);
-          if (isThenable(drained)) {
-            return drained.then(() => drainRest(i + 1));
-          }
-        }
-      };
-      const drained = drainRest(0);
-      if (isThenable<void>(drained) && allowRetry) {
-        return drained.then(() => drainPendingImports(false));
-      }
-      return drained;
-    };
-
-    // A reference-import-only pass (namespace-mixin body eval, §Mixin.evalNode)
-    // resolves ONLY the reference/dedupe StyleImport children into callable
-    // surfaces — it must not run the call/normal body lanes (that is a full
-    // body eval, reserved for a real call). Plain (non-reference) imports also
-    // stay cold: they contribute render output, not callable descendants.
-    const isReferenceImportNode = (rule: Node): boolean => {
-      if (!isStyleImportRegistrationNode(rule)) {
-        return false;
-      }
-      const importOptions = 'importOptions' in rule.options ? rule.options.importOptions : undefined;
-      return importOptions?.reference === true || importOptions?._dedupe === true;
-    };
-    const evaluateImports = evaluateLane(
-      importsOnly ? isReferenceImportNode : isStyleImportRegistrationNode,
-      true
-    );
     const evaluateBody = (): MaybePromise<{ output: Rules; rulesToHoist: boolean }> => {
-      const importDrain = drainPendingImports(false);
-      const afterImports = () => {
-        if (importsOnly) {
-          return { output, rulesToHoist };
+      const normal = evaluateLane((rule) => {
+        if (isNode(rule, N.VarDeclaration) || isNode(rule, N.Call)) {
+          return false;
         }
-        const calls = evaluateLane(rule => isNode(rule, N.Call), false);
-        const afterCalls = () => {
-          const normal = evaluateLane((rule) => {
-            if (isNode(rule, N.VarDeclaration) || isStyleImportRegistrationNode(rule) || isNode(rule, N.Call)) {
-              return false;
-            }
-            return true;
-          }, false);
-          if (isThenable<void>(normal)) {
-            return normal.then(() => ({ output, rulesToHoist }));
-          }
-          return { output, rulesToHoist };
-        };
-        if (isThenable<void>(calls)) {
-          return calls.then(afterCalls);
-        }
-        return afterCalls();
-      };
-      if (isThenable<void>(importDrain)) {
-        return importDrain.then(afterImports);
+        return true;
+      });
+      if (isThenable<void>(normal)) {
+        return normal.then(() => ({ output, rulesToHoist }));
       }
-      return afterImports();
+      return { output, rulesToHoist };
     };
-
-    if (isThenable<void>(evaluateImports)) {
-      return evaluateImports.then(evaluateBody);
+    const calls = evaluateLane(rule => isNode(rule, N.Call));
+    if (isThenable<void>(calls)) {
+      return calls.then(evaluateBody);
     }
     return evaluateBody();
   }
@@ -7709,12 +7411,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    */
   private _evalAfterRegistrationPrep(
     rules: Rules,
-    context: Context,
-    importsOnly = false
+    context: Context
   ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     this._ensureRootExtendStack(rules, context);
     this._assignRootDocumentOrder(rules, context);
-    const evaluated = this._evaluateSourceOrder(rules, context, importsOnly);
+    const evaluated = this._evaluateSourceOrder(rules, context);
     if (isThenable<{ output: Rules; rulesToHoist: boolean }>(evaluated)) {
       return evaluated.then(({ output, rulesToHoist }: { output: Rules; rulesToHoist: boolean }) =>
         this._finishSourceOrderEvaluation(output, rulesToHoist)
@@ -7783,10 +7484,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this._assignDocumentOrderDepthFirst(rules, map, { value: 0 });
   }
 
-  private _prepareForEval(
-    context: Context,
-    importsOnly = false
-  ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
+  private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     // The DYNAMIC enclosing scope, captured before we overwrite rulesContext.
     // A derived eval surface's lexical parent is where it is being PLACED, not
     // its static canonical parent — see _evalPreparedRules.
@@ -7797,17 +7495,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
     if (isThenable<Rules>(rulesAfterPrep)) {
       return rulesAfterPrep.then((rules: Rules) =>
-        this._evalPreparedRules(rules, context, enclosingScope, importsOnly)
+        this._evalPreparedRules(rules, context, enclosingScope)
       );
     }
-    return this._evalPreparedRules(rulesAfterPrep, context, enclosingScope, importsOnly);
+    return this._evalPreparedRules(rulesAfterPrep, context, enclosingScope);
   }
 
   private _evalPreparedRules(
     rules: Rules,
     context: Context,
-    enclosingScope?: Rules,
-    importsOnly = false
+    enclosingScope?: Rules
   ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
     // Fix the parent WALK, don't clone around it. `getScopeFrame` bakes the
     // static canonical `this.parent` as a frame's lexical parent. But a shared
@@ -7889,7 +7586,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (context.rulesEvalStack.length === 1 && !context.spineOwnsRoot) {
       context.root = rules;
     }
-    return this._evalAfterRegistrationPrep(rules, context, importsOnly);
+    return this._evalAfterRegistrationPrep(rules, context);
   }
 
   private _prepareRegistrationForEval(context: Context): MaybePromise<Rules> {
@@ -7982,43 +7679,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       throw error;
     }
     const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules => this._finishEval(rules, context, saved);
-    if (isThenable(result)) {
-      return result.then(
-        finish,
-        (error) => {
-          this._restoreEvalAfterError(context, saved);
-          throw error;
-        }
-      );
-    }
-    return finish(result);
-  }
-
-  /**
-   * Evaluate ONLY this body's reference/dedupe StyleImport children into
-   * callable surfaces, preparing body registration first. Used by a namespace
-   * mixin body (`Mixin.evalNode`), whose lazy self-return never walks the body:
-   * a `reference:true` import inside it would otherwise stay unevaluated, so its
-   * imported mixins never become reachable callable descendants. This runs the
-   * shared eval pipeline's import lane only — no call/normal body lanes — so the
-   * body is not fully evaluated (that is reserved for a real call). No-op when
-   * the body carries no reference imports.
-   */
-  resolveBodyReferenceImports(context: Context): MaybePromise<Rules> {
-    if (!rulesMayContainReferenceImports(this)) {
-      return this;
-    }
-    const saved = this._snapshotContext(context);
-    context.rulesEvalStack.push(sourceRulesOf(this));
-    let result: MaybePromise<{ rules: Rules; rulesToHoist: boolean }>;
-    try {
-      result = this._prepareForEval(context, true);
-    } catch (error) {
-      this._restoreEvalAfterError(context, saved);
-      throw error;
-    }
-    const finish = ({ rules }: { rules: Rules; rulesToHoist: boolean }): Rules =>
-      this._finishEval(rules, context, saved);
     if (isThenable(result)) {
       return result.then(
         finish,

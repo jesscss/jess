@@ -201,18 +201,6 @@ export interface SpineSubject {
 }
 
 /**
- * Import-awareness for `isSpineExtendTopology` (import-spec routing). Exactly one mode is used per call:
- *   - `speculativeImport`: SYNC gate mode — provisionally admit an extend target that maps to no VISIBLE
- *     subject (it may be imported), deferring the authoritative decision to the post-wire re-gate.
- *   - `importedRootSubjects`: RE-GATE mode — the resolved imported root-level subject selector texts,
- *     folded into the root-subject correspondence; the check is then STRICT (abort if still unmapped).
- */
-export interface SpineExtendImportOptions {
-  speculativeImport?: boolean;
-  importedRootSubjects?: Set<string>;
-}
-
-/**
  * Compose each ROOT-LEVEL subject's FINAL Or-branch header from its bucket path + the
  * document-wide gathered `instructions` (each carrying its extender's bucket path). Runs the
  * validated pipeline per subject (`runSubjectProjection`: SOLVE fixpoint decides which
@@ -1436,40 +1424,8 @@ export function treeHasExtendTargetableAppend(root: Rules): boolean {
  */
 export function isSpineExtendTopology(
   root: Rules,
-  collapseNesting: boolean,
-  importOpts?: SpineExtendImportOptions
+  collapseNesting: boolean
 ): boolean {
-  // A tree with IMPORTS can introduce subjects (and extend targets) the static gather never sees, so
-  // the structural inert-nomatch + pseudo-base admissions below are unsound (a target that matches no
-  // VISIBLE subject may match an IMPORTED one at eval time). Disable both when any import is present.
-  // (The other admit clauses only rewrite statically-visible root/nested subjects, so they stay sound.)
-  //
-  // SPECULATIVE-ADMIT / RE-GATE (import-spec routing). `isSpineEligibleRoot` runs this SYNCHRONOUSLY,
-  // before any async import resolution — so an extend TARGET that lives in an imported file is invisible
-  // here. Two modes close that gap:
-  //   - `speculativeImport` (sync gate): a plain simple target that maps to no VISIBLE subject is
-  //     PROVISIONALLY admitted (so the extend-bearing import tree reaches `renderRootViaSpine`), where a
-  //     post-wire RE-GATE re-runs this check over the RESOLVED imported subjects. The re-gate is the
-  //     authority; a provisional admit that the re-gate rejects ABORTS to eval (byte-identical).
-  //   - `importedRootSubjects` (re-gate): the resolved imported ROOT-LEVEL subject selectors, folded
-  //     into the root-subject correspondence so `.x:extend(.a)` (with `.a` in an imported file) is
-  //     addressable. When this is provided the check is STRICT (no speculation) — the caller has the
-  //     resolved bodies, so any target that still maps to nothing is a genuine non-fold → abort.
-  const speculativeImport = importOpts?.speculativeImport === true;
-  const importedRootSubjects = importOpts?.importedRootSubjects;
-  // RE-GATE mode: the caller has resolved the imported bodies and supplied their root-level subject
-  // selectors (`importedRootSubjects`). The full subject universe (local + imported) is now known, so
-  // a target that maps to NOTHING is genuinely inert (a no-op extend) rather than a
-  // maybe-imported unknown — enabling the inert-nomatch admission below even though the tree imports.
-  const reGateResolved = importedRootSubjects !== undefined;
-  const treeHasImport = ((): boolean => {
-    for (const node of root.walk(true)) {
-      if (node.type === 'StyleImport') {
-        return true;
-      }
-    }
-    return false;
-  })();
   const targets = new Set<string>();
   const rootLevelSelectors = new Set<string>();
   // Composed-path strings of EVERY subject (root: local; nested: `.header .header-nav`). A crossing
@@ -1710,14 +1666,8 @@ export function isSpineExtendTopology(
   //    crossing/hoist case) — admitted; the hoist path rewrites it verbatim at collapsed-root.
   // A target that is itself an extender's subject is CHAINING (deferred).
   for (const target of targets) {
-    // A target maps to a ROOT-LEVEL subject either LOCALLY (visible in this file) or, when the re-gate
-    // supplies them, in an IMPORTED file's root body. An imported subject is addressed the SAME way — its
-    // Ruleset node receives a header override at emit (`_emitSpineImportFold` descends it through
-    // `effectiveHeaderSelector`) — so it needs no `anyNestedRulesetMatchesSelector` shadowing check
-    // (imported subjects are, by construction, root-level in their own file).
-    const isImportedRootTarget = importedRootSubjects?.has(target) === true;
-    const isRootTarget = (rootLevelSelectors.has(target) && !anyNestedRulesetMatchesSelector(root, target))
-      || isImportedRootTarget;
+    // A target maps to a root-level subject visible in this tree.
+    const isRootTarget = rootLevelSelectors.has(target) && !anyNestedRulesetMatchesSelector(root, target);
     // A crossing/hoist target (`.header .header-nav`) resolves to a NESTED subject's composed path.
     // Admitted in BOTH modes (#4a): under `collapseNesting:true` the nested block already emits at
     // ROOT (verbatim-override precondition holds trivially); under `collapseNesting:false` the
@@ -1743,8 +1693,7 @@ export function isSpineExtendTopology(
     // TRANSITIVE CHAIN (`.g.h` ← `.i.j` ← `.k`), drained by SOLVE's document-level fixpoint through the
     // SHARED target index (a branch one subject produces routes through the same index a later subject
     // queries — `solve.ts`), so a sub-compound chain target is addressable here (no eval deferral).
-    const isMatchableCompoundTarget = !treeHasImport
-      && !target.includes(' ')
+    const isMatchableCompoundTarget = !target.includes(' ')
       && descendantCompoundTokens(target) !== undefined
       && [...cleanSubjectPaths].some(p => compoundMatchesRootSubjectStrict(target, p, !collapseNesting));
     // COMBINATOR SUBJECT (`.ext6 > .ext5`, `.ext8 + .ext9`). A single plain compound target that
@@ -1771,13 +1720,11 @@ export function isSpineExtendTopology(
       ...[...rootLevelSelectors].filter(s => /\s/.test(s.trim()) && !/[>+~,()&]/.test(s)),
       ...rootDescendantBranches
     ];
-    const isPartialWrapOfDescendantLevel = !treeHasImport
-      && !/[>+~ ,]/.test(target)
+    const isPartialWrapOfDescendantLevel = !/[>+~ ,]/.test(target)
       && descendantCompoundTokens(target)?.length === 1
       && rootDescendantSelectors.some(subjSel =>
         !anyNestedRulesetMatchesSelector(root, subjSel) && targetCouldMatchPath(target, subjSel));
-    const isCombinatorSubjectTarget = !treeHasImport
-      && !/[>+~ ,]/.test(target)
+    const isCombinatorSubjectTarget = !/[>+~ ,]/.test(target)
       && combinatorCompoundTokens(target)?.length === 1
       && [...combinatorSubjectSelectors, ...combinatorBranchSelectors].some((subjSel) => {
         const tokens = combinatorCompoundTokens(subjSel);
@@ -1793,8 +1740,7 @@ export function isSpineExtendTopology(
     // `projectSubject` builds it (`.zap` joins the `.ext8 + .ext9` branch). Shadowed by a nested
     // ruleset of the same composed form is possible, but that case still resolves at root (the branch
     // is a root-level subject); the SOLVE local-apply targets the composed own form.
-    const isExactRootBranchTarget = !treeHasImport
-      && rootLevelBranches.has(normalizeCombinatorSpacing(target));
+    const isExactRootBranchTarget = rootLevelBranches.has(normalizeCombinatorSpacing(target));
     // PARTIAL-WRAP OF A NESTED SUBJECT'S COMPOUND (`.dd` targets the nested `.aa { .dd {} }`, composed
     // path `.aa .dd`). A single-compound target that compound-subset-matches ANY level of a NESTED
     // clean subject path (length > 1 descendant path) is an in-place graft into that nested subject's
@@ -1809,7 +1755,6 @@ export function isSpineExtendTopology(
     // extended → `.ext8 .ext9, .buu`), a relocation the expanded spine path does not reproduce — that
     // shape stays eval-owned (precise residual, IOU: expanded-mode nested-target collapse-relocation).
     const isPartialWrapOfNestedLevel = collapseNesting
-      && !treeHasImport
       && !/[>+~ ,]/.test(target)
       && descendantCompoundTokens(target)?.length === 1
       && [...cleanSubjectPaths].some(p =>
@@ -1821,8 +1766,7 @@ export function isSpineExtendTopology(
     // fires nothing and the base's `:pseudo` child streams unchanged). Requires the base to be a root
     // subject; a pseudo on a NON-subject base is a nomatch handled by the inert clause below.
     const pseudoBase = pseudoCompoundBase(target);
-    const isPseudoCompoundOfRootSubject = !treeHasImport
-      && pseudoBase !== undefined
+    const isPseudoCompoundOfRootSubject = pseudoBase !== undefined
       && rootLevelSelectors.has(pseudoBase)
       && !anyNestedRulesetMatchesSelector(root, pseudoBase);
     // INERT NOMATCH (STRUCTURAL, sound-by-over-rejection): a target that CANNOT possibly match any
@@ -1850,32 +1794,15 @@ export function isSpineExtendTopology(
       && (inertDct.length === 1
         ? !singleCompoundCouldMatchAnyLevel(inertDct[0]!, subjectComposedPathsResolved)
         : ![...cleanSubjectPaths].some(p => targetCouldMatchPath(target, p)));
-    const isInertNomatch = (!treeHasImport || reGateResolved)
-      && !isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
+    const isInertNomatch = !isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget && !isCombinatorSubjectTarget
       && !isPartialWrapOfDescendantLevel && !isExactRootBranchTarget && !isPartialWrapOfNestedLevel
       && inertLocalScan
-      && !rootLevelSelectors.has(target)
-      // In re-gate mode, the target must also be inert against the RESOLVED imported subjects — it is
-      // neither an imported root subject nor a compound-subset of one (a plain reference-body selector
-      // is matched only by exact equality, already handled by `isImportedRootTarget`).
-      && (importedRootSubjects === undefined
-        || (!importedRootSubjects.has(target)
-          && ![...importedRootSubjects].some(p => targetCouldMatchPath(target, p))));
+      && !rootLevelSelectors.has(target);
     if (!isRootTarget && !isNestedComposedTarget && !isLeadingCompoundTarget
       && !isPseudoCompoundOfRootSubject && !isMatchableCompoundTarget
       && !isCombinatorSubjectTarget && !isPartialWrapOfDescendantLevel
       && !isExactRootBranchTarget && !isPartialWrapOfNestedLevel && !isInertNomatch) {
-      // SPECULATIVE ADMIT (sync gate, imports present). A plain SIMPLE target (single compound, no
-      // combinator/descendant/list) that maps to no VISIBLE subject may resolve to an IMPORTED root
-      // subject the sync gather can't see. Provisionally admit it so the tree reaches the post-wire
-      // re-gate (which re-runs this STRICT, with `importedRootSubjects` populated, and aborts to eval
-      // if the resolved shape still maps to nothing). A NON-simple target (descendant/combinator/list/
-      // pseudo) is NOT speculatively admitted — those shapes stay eval-owned exactly as today.
-      if (speculativeImport && treeHasImport && !/[>+~ ,]/.test(target)
-        && descendantCompoundTokens(target)?.length === 1) {
-        continue;
-      }
       return false; // target maps to no addressable subject (root selector or crossing nested path)
     }
     // A target that is itself an EXTENDER's subject (`.b:extend(.a)` where `.b` is `.c`'s target) is a
@@ -1956,15 +1883,11 @@ function anyNestedRulesetMatchesSelector(root: Rules, selector: string): boolean
 export function wireSpineExtends(
   root: Rules,
   context: Context,
-  collapseNesting: boolean,
-  importedBodies?: readonly Rules[],
-  referenceBodies?: ReadonlySet<Rules>
+  collapseNesting: boolean
 ): MaybePromise<{ headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }> {
   const subjects: SpineSubject[] = [];
   const instructions: PipelineInstruction[] = [];
   const frameBaseline = context.rulesetFrames.length;
-  // Set while descending a `@import (reference)` body so gathered subjects are tagged
-  // reference (own-form dropped from the header projection — reference output suppressed).
   let gatheringReference = false;
   // The chain of enclosing conditional at-rule bodies (`@media` blocks), outermost-first, tracked
   // as we descend. A subject/instruction gathered here is tagged with a SNAPSHOT of this chain so
@@ -2291,42 +2214,13 @@ export function wireSpineExtends(
     );
   };
 
-  // EXTEND-THROUGH-IMPORT (import-spec routing). Gather subjects from RESOLVED imported bodies too, so an
-  // imported ROOT-LEVEL subject (`.a` in `lib.less`) becomes an addressable subject: its Ruleset node
-  // gets a header override, applied when `_emitSpineImportFold` descends the placement body through
-  // `effectiveHeaderSelector`. Extenders in the imported body are gathered the same way (an imported
-  // `:extend` contributes its instruction). The resolved bodies are the SAME node instances the emit
-  // fold descends (cached in `spineImportPlacements`), so the override lands on the emitted ruleset.
-  const gatherImportedBodies = (): MaybePromise<void> => {
-    if (!importedBodies) {
-      return undefined;
-    }
-    const stepBody = (start: number): MaybePromise<void> => {
-      for (let i = start; i < importedBodies.length; i++) {
-        const body = importedBodies[i]!;
-        gatheringReference = referenceBodies?.has(body) === true;
-        const gathered = descendChildren(body.rules, []);
-        if (isThenable(gathered)) {
-          const next = i + 1;
-          return gathered.then(() => stepBody(next));
-        }
-      }
-      gatheringReference = false;
-      return undefined;
-    };
-    return stepBody(0);
-  };
   const compose = (): { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> } => {
     gatheringReference = false;
     context.rulesetFrames.length = frameBaseline; // restore (belt-and-suspenders)
     return composeSpineSubjectHeaders(subjects, instructions, collapseNesting);
   };
-  const afterRoot = (): MaybePromise<{ headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }> => {
-    const imported = gatherImportedBodies();
-    return isThenable(imported) ? imported.then(compose) : compose();
-  };
   const rootGather = descendChildren(root.rules, []);
-  return isThenable(rootGather) ? rootGather.then(afterRoot) : afterRoot();
+  return isThenable(rootGather) ? rootGather.then(compose) : compose();
 }
 
 /** Document order of a node = its source span start offset (matches the extend tuple's docOrder). */

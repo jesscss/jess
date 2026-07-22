@@ -2377,3 +2377,78 @@ silently choose one language’s policy.
   ```
 - Verdict: accepted exact contract correction with focused behavior, strict
   type, build, export, and registered runtime evidence; no performance claim.
+
+## Aggressive Cutting Self-Prosecution — legacy tree StyleImport deletion
+
+- Architecture surface: deleted `tree/import-style.ts`, its root export and
+  constructor type, its Rules registration/evaluation/retry machinery, and its
+  spine resolve/register/cache/dedupe/extend-re-gate implementation. Canonical
+  AST-v2 `StyleImport` execution remains in `ast/serialize.ts` and continues to
+  dispatch file loading through `Context` plugins.
+- Separation/duplication: the duplicate legacy tree executor is gone; only the
+  AST serializer owns typed stylesheet-import execution.
+- Cumulative node weight: reduced by the deleted StyleImport class, placement
+  surfaces, import-body evaluation output, caches, and retry state. No runtime
+  object was added.
+- New traversal: none. The pass removes import scans, imported-body scans,
+  deferred retry loops, and fallback-frame wiring from the legacy executor.
+- New node/materialization: none. The deleted executor created placement Rules,
+  cloned/evaluated import bodies, and maintained import resolution state; no
+  replacement tree node or bridge was introduced.
+- Render path: the tree spine no longer resolves or expands stylesheet imports.
+  Terminal CSS `@import` statement emission remains ordinary statement output;
+  typed stylesheet import execution is owned by the AST serializer.
+- Helper/API surface: removed the public tree `style`/`StyleImport` export,
+  `resolveForSpine`, `resolveBodyReferenceImports`, spine import caches and
+  wiring helpers, and the abort-to-eval sentinel. No alias or compatibility shim
+  was added.
+- Metadata mutations: no new mutations. StyleImport-specific Rules flag
+  propagation, deferred resolution queues, placement caches, dedupe ledgers, and
+  imported extend subject state were removed. Generic Rules `referenceMode`
+  placement facts remain.
+- Review-flagged diff tokens: `[array spread/materialization]` and `[side
+  map/set]` are pre-existing extend header projection expressions whose lines
+  changed only because import-only parameters and return unions were deleted;
+  this pass adds neither an array spread nor a Map/Set. No other danger category
+  is introduced.
+- Evidence: the canonical AST import suite passes 27/27, including Context
+  loader dispatch, reference imports, source-order retries, namespace member
+  reads, raw inline imports, CSS-terminal fallthrough, and nested async imports.
+  The focused Rules/safe-parse/extend suites pass 136 tests with 6 existing
+  skips. Core build passes. Performance was not measured, so no speed claim is
+  made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-style-import-executor-removal",
+    "verdict":"accepted",
+    "costDelta":"decrease",
+    "why":"The duplicate legacy StyleImport executor, its Rules/spine consumers, public tree export, retry queues, placement caches, and imported-extend re-gate are deleted. Canonical AST-v2 StyleImport execution and Context/plugin loading remain unchanged, and no replacement bridge or runtime work is added.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-visitor-abi-removal",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"This pass only updates a retained node-base comment while the already-accepted visitor ABI removal remains unchanged; no runtime visitor, dispatch, traversal, allocation, or output policy is restored.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"serializer-lint-only-normalization",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"Deleting the serializer's legacy StyleImport expansion and wiring removes branches and calls; retained serializer expressions preserve their prior execution shape and no traversal, allocation, resolver, or output policy is added.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained Rules, Mixin, and scope-frame behavior keeps generic reference-mode Rules placement while deleting only StyleImport-specific registration, retry, and evaluation branches. No alternate evaluator, compatibility shim, new traversal, output policy, or performance claim is introduced.",
+    "dangerTokensJustification":"The cut adds no allocation, loop, traversal, exception path, lookup, side map, or node construction. Existing extend projection spreads and Map/Set result types remain unchanged in their original lines; the diff removes import-specific scans, queues, caches, and placement construction.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The full core suite passes 3191 tests in 199 files with nine existing skips and two todos; generic reference-mode Rules placement tests remain green.",
+    "buildEvidence":"The core package build and package-export verification pass after deleting the public tree StyleImport surface.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted deletion. It removes a duplicate import executor and its
+  public tree surface while retaining the canonical AST-v2 import contract.

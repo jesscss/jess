@@ -17,7 +17,6 @@ import type { Rules } from './rules.js';
 import type { Stylesheet } from './stylesheet.js';
 import type { ComplexSelector } from './selector-complex.js';
 import type { CompoundSelector } from './selector-compound.js';
-import type { StyleImport } from './import-style.js';
 import type { JsImport } from './import-js.js';
 import type { Nil } from './nil.js';
 import type { SelectorList } from './selector-list.js';
@@ -117,7 +116,6 @@ export type Nodes = {
   Ruleset: typeof Ruleset;
   Rules: typeof Rules;
   Stylesheet: typeof Stylesheet;
-  StyleImport: typeof StyleImport;
   JsImport: typeof JsImport;
   Nil: typeof Nil;
   Collection: typeof Collection;

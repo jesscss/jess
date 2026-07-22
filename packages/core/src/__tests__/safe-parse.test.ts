@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Context } from '../context.js';
-import { createTestContext } from '../tree/__tests__/import-style-test-helpers.js';
+import { createTestContext } from '../tree/__tests__/context-test-helpers.js';
 import { rules, ruleset, sellist, sel, el, decl, spaced, any as anyNode } from '../tree/index.js';
 import { stylesheet } from '../ast/nodes.js';
 import type { ErrorDiagnostic, WarningDiagnostic } from '../jess-error.js';

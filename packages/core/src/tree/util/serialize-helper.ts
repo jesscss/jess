@@ -23,8 +23,7 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
-import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
-import type { SpineImportResolution } from '../import-style.js';
+import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution } from './emit-walk.js';
 import { planBodyMerges, planEntrySequenceMerges, type SpineMergeEntry, type SpineMergePlan } from './spine-merge.js';
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
 import { applyBodySetDefined, type SetDefinedApplyResult } from './spine-setdefined.js';
@@ -942,15 +941,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       return false;
     };
-    const originatesFromReferenceImport = (n: any): boolean => {
-      return sourceChainHas(n, (current) => {
-        if (current?.type !== 'StyleImport') {
-          return false;
-        }
-        const importOptions = current.options?.importOptions;
-        return importOptions?.reference === true || importOptions?._dedupe === true;
-      });
-    };
     const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
     const originatesFromMixin = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Mixin');
     const originatesFromControl = (n: any): boolean => sourceChainHas(n, current =>
@@ -963,7 +953,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       } else if (rulesToRender.length === 1) {
         incrementSerializeProfileCounter('duplicateDeclarationSingletonContainers');
         const singletonNode = rulesToRender[0]!.node;
-        if (singletonNode.type !== 'Call' && singletonNode.type !== 'StyleImport' && singletonNode.type !== 'For') {
+        if (singletonNode.type !== 'Call' && singletonNode.type !== 'For') {
           incrementSerializeProfileCounter('duplicateDeclarationStableSingletonContainers');
         }
       }
@@ -980,7 +970,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const singletonNode = rulesToRender.length === 1 ? rulesToRender[0]!.node : undefined;
     const skipInitialDuplicateDeclarationScan = singletonNode !== undefined
       && singletonNode.type !== 'Call'
-      && singletonNode.type !== 'StyleImport'
       && singletonNode.type !== 'For';
     let declarationCountsByProp: Map<string, number> | undefined;
     let hasRepeatedDeclarationProperty = false;
@@ -1261,102 +1250,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return expandFrom(0);
     };
 
-    // Spine import-fold (cutover IMPORTS increment 1, UNIFIED-EVAL-EMIT-DESIGN
-    // §2/§4.0): resolve each spine-foldable `@import` entry and either drop it
-    // (CSS-passthrough → queued to the top-of-doc emitter, emits nothing inline)
-    // or splice its imported body's children into `rulesToRender` in place, TAGGED
-    // with the import-site placement as their `spineFrame` — so an imported leaf
-    // resolves against the placement's value-frame (lexical parent = the import
-    // site, so a free var resolves up the import chain, §2). The FOLD splices the
-    // parsed body's children (no `rules.eval()`, no output tree — the ratchet's
-    // `Rules.derive` = 0); a NON-simple imported body falls back to the eval
-    // terminal (byte-identical), flattening its resolved output like the mixin
-    // fallback. Off the spine (`!spineMode`) this is a no-op.
-    const runSpineImportExpansion = (): MaybePromise<void> => {
-      const spineContext = options.spineMode ? options.context : undefined;
-      if (!spineContext) {
-        return undefined;
-      }
-      const expandFrom = (start: number): MaybePromise<void> => {
-        for (let i = start; i < rulesToRender.length; i++) {
-          const entryNode = rulesToRender[i]!.node;
-          if (!isSpineFoldableImport(entryNode)) {
-            continue;
-          }
-          const importNode = entryNode;
-          const dropEntry = (): MaybePromise<void> => {
-            // Emit nothing inline — CSS-passthrough (queued top-of-doc) or a `dedupe`
-            // re-import (scope already registered, `once` suppresses output).
-            rulesToRender.splice(i, 1);
-            recomputeDeclCounts();
-            return expandFrom(i);
-          };
-          const foldBody = (body: Rules, reference: boolean): MaybePromise<void> => {
-            frameAwareEntriesOccurred = true;
-            // A `(reference)` import (increment 5) splices the placement AS A SINGLE
-            // `Rules` entry, NOT its children: the body loop's Rules-child path reads
-            // the placement's own `options.referenceMode` and the container serializer
-            // SUPPRESSES its output while scope + extend-reach still register. A
-            // non-reference import splices its children directly (ordering + dedup +
-            // frame exactly as increments 1–4).
-            if (reference) {
-              rulesToRender.splice(i, 1, { node: body });
-              recomputeDeclCounts();
-              return expandFrom(i + 1);
-            }
-            // Fold the parsed body inline when spine-simple, else fall back to the
-            // eval terminal (byte-identical) and flatten it.
-            if (isSpineFoldableImportBody(body, options.spineExtendHeaders !== undefined)) {
-              assignSpineChildIndices(body);
-              const childEntries: RenderRuleEntry[] = body.rules.map(
-                child => ({ node: child, spineFrame: body })
-              );
-              rulesToRender.splice(i, 1, ...childEntries);
-              recomputeDeclCounts();
-              return expandFrom(i + childEntries.length);
-            }
-            const evalOutput = importNode.evalNode(spineContext);
-            const applyEval = (out: Node): MaybePromise<void> => {
-              const childEntries: RenderRuleEntry[] = isNode(out, N.Rules)
-                ? flattenVisibleRulesForRender(out, options, false)
-                : [{ node: out }];
-              rulesToRender.splice(i, 1, ...childEntries);
-              recomputeDeclCounts();
-              return expandFrom(i + childEntries.length);
-            };
-            return isThenable(evalOutput) ? evalOutput.then(applyEval) : applyEval(evalOutput);
-          };
-          // Reuse the wire pass's resolved + registered + linked placement (IMPORTS
-          // increment 2/3/4/5) when present — every foldable import is pre-wired, so the
-          // cache carries the dedup + reference verdict. A `dedupe` re-import emits
-          // nothing (its scope is already linked). The fresh-resolve is a defensive fallback.
-          const cached = options.spineImportPlacements?.get(importNode);
-          if (cached) {
-            if (cached.kind === 'css' || cached.dedupe) {
-              return dropEntry();
-            }
-            return foldBody(cached.body, cached.reference);
-          }
-          const applyFresh = (resolved: SpineImportResolution): MaybePromise<void> => {
-            if (resolved.kind === 'css') {
-              return dropEntry();
-            }
-            // Once-dedup on the fresh path too (a not-pre-wired import, e.g. nested
-            // inside another imported file): a re-import of an already-emitted path is
-            // scope-only (drop). `multiple`/`once:false` always emits.
-            if (spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options)) {
-              return dropEntry();
-            }
-            return foldBody(resolved.body, resolved.reference);
-          };
-          const resolution = importNode.resolveForSpine(spineContext);
-          return isThenable(resolution) ? resolution.then(applyFresh) : applyFresh(resolution);
-        }
-        return undefined;
-      };
-      return expandFrom(0);
-    };
-
     // Spine LOOP-fold (cutover LOOP increment 1): expand each `$for`/`each(...)`
     // (`For`) entry into its per-iteration bound-body surfaces and splice their
     // children in place — the loop-variable-bound analogue of the mixin-call fold.
@@ -1602,9 +1495,6 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             if (options.context && !options.context.currentCharset) {
               options.context.currentCharset = n;
             }
-            return;
-          }
-          if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
             return;
           }
           if (inReferenceMode && !renderEnabled && !isContainer) {
@@ -1973,20 +1863,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       return renderRulesBody();
     };
-    // Expand spine-foldable imports FIRST (their imported body may itself contain
-    // mixin calls the mixin pass then expands), then spine-eligible mixin calls,
-    // both BEFORE dedup + body render so folded decls share the enclosing body's
-    // dedup + statement framing.
+    // Expand loops before mixin calls so a loop body's call participates in the
+    // same post-expansion dedup and statement framing.
     const runExpansions = (): MaybePromise<void> => {
-      const imports = runSpineImportExpansion();
-      // LOOP fold runs BEFORE the mixin pass so a loop body's mixin call is expanded
-      // by the mixin pass over the post-splice sequence (the mixin pass scans the whole
-      // `rulesToRender`, including For-spliced children).
-      const afterImports = (): MaybePromise<void> => {
-        const loops = runSpineForExpansion();
-        return isThenable(loops) ? loops.then(runSpineMixinExpansion) : runSpineMixinExpansion();
-      };
-      return isThenable(imports) ? imports.then(afterImports) : afterImports();
+      const loops = runSpineForExpansion();
+      return isThenable(loops) ? loops.then(runSpineMixinExpansion) : runSpineMixinExpansion();
     };
     const expand = runExpansions();
     // MERGE-ACROSS-MIXIN fold: after mixin-call expansion has spliced surface
@@ -2271,19 +2152,7 @@ function serializeSpineFrameContainerUnguarded(
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
       return isThenable(out) ? out.then(restore) : restore(out);
     });
-    // Nested-scope import registration (IMPORTS increment 3): if this container's
-    // body has a foldable `@import`, REGISTER + LINK its imported scope into THIS
-    // container's frame BEFORE the body descends — so a consumer inside the body
-    // resolves the imported symbol on the container's fallback chain. `rulesContext`
-    // is `node` here, so a nested import's placement parents to this container. A
-    // no-op (sync undefined) when the body has no import (the common case).
-    const wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
-    return isThenable(wired)
-      ? wired.then(renderBody, (error: unknown) => {
-          restore('');
-          throw error;
-        })
-      : renderBody();
+    return renderBody();
   };
   // Resolve the selector against the live frame. A Selector node carries either
   // interpolation (`@{…}` → concrete via `eval`) or ampersand (`&-x` → the
@@ -2386,17 +2255,7 @@ function serializeSpineFrameAtRule(
       const out = serializeRulesContainerInternal(node, options, closeFramesOnExit);
       return isThenable(out) ? out.then(restore) : restore(out);
     });
-    // Nested-scope import registration inside an at-rule body (IMPORTS increment 3):
-    // an `@import` inside `@media`/`@supports`/… links its imported scope into THIS
-    // at-rule's frame before the body descends, so a body consumer resolves it. A
-    // no-op (sync undefined) when the body has no import.
-    const wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
-    return isThenable(wired)
-      ? wired.then(renderBody, (error: unknown) => {
-          restore('');
-          throw error;
-        })
-      : renderBody();
+    return renderBody();
   };
   const rawPrelude = node.prelude;
   try {

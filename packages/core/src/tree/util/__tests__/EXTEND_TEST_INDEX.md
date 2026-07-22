@@ -63,9 +63,6 @@ Located in `src/tree/util/__tests__/`:
 - `src/tree/__tests__/extend-roots.test.ts`
   - Extend root registry / hoisting behavior.
 
-- `src/tree/__tests__/extend-import-style.test.ts`
-  - Extend interaction with import-style logic.
-
 ## What’s missing / where to add new coverage
 
 If you are fixing a fixture like `tests-unit/extend-exact/extend-exact.less`, the most “direct” core place to add a reproduction is:

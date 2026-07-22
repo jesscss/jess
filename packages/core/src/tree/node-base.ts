@@ -738,7 +738,7 @@ export abstract class Node<
   }
 
   /**
-   * Used as a Declaration/Mixin/Func name or a StyleImport path: does this node
+   * Used as a Declaration/Mixin/Func name or an import path: does this node
    * resolve to a fixed identifier at construction (no interpolation to eval)?
    * Answered from the node's OWN structure so registration need not read the
    * bubbled `F_STATIC`. The base default matches the leaf ctors that set no

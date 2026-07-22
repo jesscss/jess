@@ -362,22 +362,12 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
-  override evalNode(context?: Context): MaybePromise<this> {
+  override evalNode(_context?: Context): MaybePromise<this> {
     // A mixin definition is a lazy template — evalNode returns self without
     // walking the body. But callers that DO evaluate a mixin body rely on the
     // narrow §2.7 eval-state signal to distinguish evaluated from cold. Rules.evalNode
     // is bypassed here, so stamp it directly. See rules.ts callable-descendant gate.
     this._bodyEvaluated = true;
-    // A `reference:true` import inside a namespace-mixin body must still become a
-    // reachable callable descendant when the body itself is evaluated directly
-    // (namespace descent) — the lazy self-return above never walks the body, so
-    // resolve just the reference-import lane. No-op unless the body carries one.
-    if (context !== undefined) {
-      const resolved = this.resolveBodyReferenceImports(context);
-      if (isThenable(resolved)) {
-        return (resolved as Promise<Rules>).then(() => this);
-      }
-    }
     return this;
   }
 

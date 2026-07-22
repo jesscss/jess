@@ -426,8 +426,7 @@ export function copyScopeFrameLiveBindingSlots(
  * chain — rather than skipped. The tail walk stops if it would revisit `frame`,
  * `importFrame`, or the chain head, so no cycle is ever formed. Fallbacks are
  * consulted only AFTER the primary scope chain, so an enclosing declaration always
- * wins. Shared by the eval path (`linkInlineImportFallbackFrames`) and the spine
- * import fold (`wireSpineImports`, IMPORTS increment 2).
+ * wins. Used by the retained Rules placement path.
  */
 export function linkImportFallbackFrame(frame: ScopeFrame, importFrame: ScopeFrame): void {
   if (importFrame === frame || importFrame === frame.fallbackFrame) {

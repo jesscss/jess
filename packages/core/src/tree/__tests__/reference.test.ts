@@ -1,5 +1,5 @@
 import { setSourceSpan } from '../util/provenance.js';
-import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, jsarray, jsobj, AssignmentType, F_NON_STATIC, defaultguard, style, type Node, type AnyRole } from '../index.js';
+import { ref, rules, decl, vardecl, spaced, any, quoted, expr, ruleset, mixin, call, compound, el, list, atrule, sel, co, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, Rules as RulesClass, Mixin as MixinClass, Reference, VarDeclaration, Any, List, Sequence, Dimension, dimension, JsArray, JsObject, JsFunction, jsarray, jsobj, AssignmentType, F_NON_STATIC, defaultguard, type Node, type AnyRole } from '../index.js';
 import { Context } from '../../context.js';
 import type { ReferenceOptions } from '../reference.js';
 import { isNode } from '../util/is-node.js';
@@ -3518,30 +3518,6 @@ describe('reference', () => {
         key => key.startsWith('child-color\u001f')
       )).toEqual([]);
       expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.value.valueOf()).toBe('green');
-    });
-
-    it('direct declaration cache resets for unknown child declaration surface writes', async () => {
-      const node = rules([
-        decl({ name: 'color', value: any('blue') })
-      ]);
-
-      await node.eval(context);
-
-      expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
-      expect(findPropertyDeclarationOccurrence(node, 'dynamic-color')).toBeUndefined();
-      const declarationLookupVersion = node.declarationLookupVersion;
-      expect(node.directDeclarationsByName).toBeDefined();
-      expect(node.directDeclarationLookupCache?.size).toBeGreaterThan(0);
-
-      const unknownChild = rules([
-        style({ path: quoted(any('unknown.jess')) }, { type: 'import' })
-      ]);
-
-      node.push(unknownChild);
-
-      expect(node.declarationLookupVersion).toBeGreaterThan(declarationLookupVersion);
-      expect(node.directDeclarationsByName).toBeUndefined();
-      expect(node.directDeclarationLookupCache).toBeUndefined();
     });
 
     it('direct VarDeclaration lookup ignores empty candidate sets', async () => {

@@ -273,6 +273,7 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/tree/extend.ts",
       "packages/core/src/tree/mixin.ts",
       "packages/core/src/tree/rules.ts",
+      "packages/core/src/tree/scope-frame.ts",
       "packages/core/src/tree/ruleset.ts",
       "packages/core/src/tree/selector-list.ts",
       "packages/core/src/tree/util/bitset.ts",
@@ -325,6 +326,30 @@ a blanket optimization exemption or a new active architecture queue.
     },
     "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 80.056, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run"]}
+  },
+  {
+    "id": "legacy-tree-style-import-executor-removal",
+    "kind": "neutral-or-negative",
+    "surface": "legacy tree StyleImport executor and spine integration removal",
+    "files": ["packages/core/src/tree/import-style.ts"],
+    "supportFiles": [
+      "packages/core/src/tree/index.ts",
+      "packages/core/src/tree/mixin.ts",
+      "packages/core/src/tree/node-base.ts",
+      "packages/core/src/tree/rules.ts",
+      "packages/core/src/tree/tree.ts",
+      "packages/core/src/tree/extend/spine-extend.ts",
+      "packages/core/src/tree/util/emit-walk.ts",
+      "packages/core/src/tree/util/print.ts",
+      "packages/core/src/tree/util/serialize-helper.ts"
+    ],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "allowsProsecutedDangerTokens": true,
+      "why": "The deleted legacy StyleImport class and its Rules/spine consumers duplicated the canonical AST-v2 serializer's typed import execution. This cut removes the tree resolver, retry queue, placement construction, import-body scans, registration wiring, caches, dedupe ledger, imported-extend re-gate, public tree export, and abort sentinel. Context/plugin loading and AST StyleImport execution remain unchanged, and no replacement bridge, traversal, allocation, or output policy is introduced.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+    }
   },
   {
     "id": "serializer-lint-only-normalization",

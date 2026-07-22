@@ -76,7 +76,6 @@ export * from './sequence.js';
 export * from './query-condition.js';
 export * from './comment.js';
 export * from './reference.js';
-export * from './import-style.js';
 export * from './import-js.js';
 export * from './interpolated.js';
 export * from './selector-interpolated.js';
