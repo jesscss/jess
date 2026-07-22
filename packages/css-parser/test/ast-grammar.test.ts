@@ -24,6 +24,13 @@ function parseAst(input: string): Stylesheet {
   return result.value;
 }
 
+function valueLayout(value: unknown): ReturnType<typeof valueLayoutOf> {
+  if (typeof value !== 'object' || value === null) {
+    throw new Error('Expected a value object with provenance layout.');
+  }
+  return valueLayoutOf(value);
+}
+
 describe('CSS canonical-AST grammar', () => {
   it('keeps declaration-only permissive component values out of calc and nested-rule headers', () => {
     const document = parseAst('.a { x: (foo); ratio: 1 / 2; filter: alpha(opacity=50); flag: foo|bar; color: red ! IMPORTANT; b: c { color: blue; } }');
@@ -1426,7 +1433,7 @@ describe('CSS canonical-AST grammar', () => {
         const result = run(cssAstGrammar.CssAstDocument, input, { trivia: cssAstGrammar.whitespace });
         expect(result.ok && result.unconsumedFrom === null).toBe(false);
       } catch (error) {
-        throw new Error(`${input}: ${(error as Error).message}`);
+        throw new Error(`${input}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   });
@@ -1594,11 +1601,11 @@ describe('CSS canonical-AST grammar', () => {
     const call = body.body[2]?.type === 'Declaration' ? body.body[2].value : null;
     expect(Array.isArray(adjacent)).toBe(true);
     expect(comma).toMatchObject({ type: 'List' });
-    expect(valueLayoutOf(adjacent as object)).toEqual([' /* keep */\n  ']);
-    expect(valueLayoutOf(comma as object)).toEqual([',\n  ']);
+    expect(valueLayout(adjacent)).toEqual([' /* keep */\n  ']);
+    expect(valueLayout(comma)).toEqual([',\n  ']);
     expect(call).toMatchObject({ type: 'FunctionCall', name: 'foo' });
     if (call && !Array.isArray(call) && call.type === 'FunctionCall') {
-      expect(valueLayoutOf(call.args[0] as object)).toEqual([' /* keep fn */\n  ']);
+      expect(valueLayout(call.args[0])).toEqual([' /* keep fn */\n  ']);
     }
     expect(serialize(document).css).toContain('color: red /* keep */\n    blue;');
     expect(serialize(document).css).toContain('shadow: a,\n    b;');

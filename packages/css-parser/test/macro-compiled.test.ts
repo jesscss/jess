@@ -5,14 +5,18 @@ import { cssAstGrammar } from '../src/ast/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+function isGrammarModule(value: unknown): value is typeof import('../src/ast/grammar.js') {
+  return typeof value === 'object'
+    && value !== null
+    && 'cssAstGrammar' in value;
+}
 test('grammar is macro-compiled (not interpreted) under vitest', () => {
   // compiled rules are plain functions; interpreted ones are Combinator objects
   expect(typeof G.Stylesheet).toBe('function');
   expect(typeof G.Ruleset).toBe('function');
-  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-  expect((G.Stylesheet as any)._def).toBeUndefined();
-  expect((G.Stylesheet as any).parse).toBeUndefined();
-  /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
+  expect('_def' in G.Stylesheet).toBe(false);
+  expect('parse' in G.Stylesheet).toBe(false);
 });
 
 test('canonical AST grammar macro-fuses the recognition artifact with no runtime import', async () => {
@@ -24,7 +28,7 @@ test('canonical AST grammar macro-fuses the recognition artifact with no runtime
   try {
     const transformed = await server.transformRequest('/src/ast/grammar.ts');
     expect(transformed?.code).not.toContain('@jesscss/internal-css-recognition');
-    expect(transformed?.code).not.toContain("from '../grammar.js'");
+    expect(transformed?.code).not.toContain('from \'../grammar.js\'');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
   } finally {
     await server.close();
@@ -39,7 +43,11 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
     server: { middlewareMode: true }
   });
   try {
-    const covered = await server.ssrLoadModule('/packages/css-parser/src/ast/grammar.ts') as typeof import('../src/ast/grammar.js');
+    const loaded = await server.ssrLoadModule('/packages/css-parser/src/ast/grammar.ts');
+    if (!isGrammarModule(loaded)) {
+      throw new Error('Expected coverage module to expose the CSS AST grammar.');
+    }
+    const covered = loaded;
     const definitions = compiledGrammarCoverageDefinitions(covered.cssAstGrammar);
     const collector = createGrammarCoverageCollector(definitions);
     const fixtureRoot = join(import.meta.dirname, 'css');
