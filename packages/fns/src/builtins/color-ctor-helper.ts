@@ -24,12 +24,22 @@ export function normalizeHue(d: Dimension): number {
   const { number, unit } = d;
   let deg: number;
   switch (unit) {
-    case 'turn': deg = number * 360; break;
-    case 'rad': deg = (number * 180) / Math.PI; break;
-    case 'grad': deg = number * 0.9; break;
-    case '%': deg = (number * 360) / 100; break;
+    case 'turn':
+      deg = number * 360;
+      break;
+    case 'rad':
+      deg = (number * 180) / Math.PI;
+      break;
+    case 'grad':
+      deg = number * 0.9;
+      break;
+    case '%':
+      deg = (number * 360) / 100;
+      break;
     case '':
-    case 'deg': deg = number; break;
+    case 'deg':
+      deg = number;
+      break;
     default: return number;
   }
   return ((deg % 360) + 360) % 360;
@@ -62,7 +72,7 @@ export function hsvToRgb(h: number, s: number, v: number): [number, number, numb
     [1, 0, 3],
     [1, 2, 0],
     [3, 1, 0],
-    [0, 1, 2],
+    [0, 1, 2]
   ];
   const p = perm[i]!;
   return [vs[p[0]!]! * 255, vs[p[1]!]! * 255, vs[p[2]!]! * 255];
