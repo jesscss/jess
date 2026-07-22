@@ -2870,3 +2870,73 @@ or Context deletion lanes.
   direct parser bundle is 1,827,807 bytes, SHA-256
   `a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`.
 - Verdict: accepted bounded correctness repair; no performance claim.
+
+## Aggressive Cutting Self-Prosecution — Less strict-unit final validation
+
+- Latest pass: the AST-v2 value domain now defers strict unit singularity until
+  final typed materialization/emission. Compound numerator/denominator facts
+  stay on the existing `Dimension` result while later operations cancel them;
+  no bridge, source reparse, parser host, fallback, or alternate evaluator was
+  introduced.
+- Architecture surface: `packages/core/src/ast/value-operate.ts` and the
+  existing `packages/core/src/ast/serialize.ts` final typed-value emission
+  boundary; no new parser or evaluator host is introduced.
+- Separation/duplication: the validator reuses the existing `Dimension`,
+  `List`, and `Block` value facts and is the sole strict-unit final check; no
+  duplicate unit resolver or source-level reparse exists.
+- Cumulative node weight: zero new AST nodes, frames, maps, side tables, or
+  retained render state; only existing value facts are inspected.
+- **New traversal:** `validateFinalUnits` recursively visits an already-final
+  typed `List`/`Block` only when strict units are enabled. This one final-boundary
+  walk is required to validate nested typed values without rejecting an
+  intermediate operation; no source-tree traversal or rediscovery is added.
+- **New node/materialization:** none. The helper reads existing `Dimension`,
+  `List`, and `Block` values. The temporary one-element unit fallback arrays in
+  the singularity predicate are value-domain checks, not AST/list materialization
+  or retained state.
+- **Render path:** unchanged direct string emission. `evalBytes` validates the
+  final typed value immediately before `emitValue`; intermediate `operate`
+  results are never sent through that boundary.
+- **Helper/API surface:** one exported value-domain validator is used by the
+  existing serializer boundary and focused value-operation tests. It adds no
+  public dialect API, resolver, shim, or compatibility surface.
+- **Metadata mutations:** none. No parents, source spans, frozen flags, maps,
+  or side tables are changed.
+- **Review-flagged diff tokens:** `[loop/traversal]` is the strict-only final
+  List/Block walk described above; `[node construction]` is the exceptional
+  strict diagnostic and is not routine control flow; `[materialized
+  array/object]` is limited to temporary unit-count fallback arrays in the
+  predicate. No clone, node, render-only object, source mutation, or routine
+  error path was added.
+- **Behavior evidence:** core AST suite passes 169/169; the focused
+  `value-operate-units.test.ts` passes 11/11; the public strict Less fixture
+  passes byte-identically (`cancels-to-nothing: 1`, `cancels: 6px`). The
+  no-strict fixture remains a separate, known bare-slash-precedence gap and is
+  intentionally not claimed by this slice.
+- Evidence: the focused core and strict Less fixture commands below are the
+  executable behavior evidence; this bounded semantic repair makes no timing
+  or allocation claim.
+- **Build/type evidence:** core build passes; changed source has no new type
+  diagnostics. The authoritative repository type command still reports the
+  existing four Parseman `FusedRule` diagnostics; this bounded slice adds no
+  new diagnostics.
+- **Ponytail-style manual review:** accepted. The pass is scoped to the final
+  typed-value boundary, retains unit facts on existing values, and adds no
+  parser/evaluator duplicate or source-byte recovery path.
+- **Verdict:** accepted bounded correctness repair; performance remains
+  unclaimed and unmeasured.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "why":"Strict unit singularity is a final-value rule; delaying it preserves existing compound-unit facts so cancellation chains match the Less oracle without adding a second evaluator. This is one focused semantic correction inside the already-owned canonical evaluator/value cutover, not a performance or neutrality claim.",
+    "dangerTokensJustification":"The strict-only final List/Block recursion and temporary unit-count fallback arrays are cold final validation, not source traversal or AST materialization; the exceptional diagnostic is emitted only when a final typed value violates strict-unit rules. No clone, node, render-state, source mutation, or duplicate resolver was added.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
+    "behaviorEvidence":"Core AST suite passes 169/169; focused value-operate-units passes 11/11; the public strict Less fixture renders byte-identically with cancels-to-nothing: 1 and cancels: 6px. The no-strict fixture's unrelated bare-slash precedence gap remains explicitly unclaimed.",
+    "buildEvidence":"pnpm --filter @jesscss/core build passes; changed production source and focused tests are lint-clean.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```

@@ -99,7 +99,7 @@ import {
 import type { Fn, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
-import { calcInner } from './value-operate.js'; // [calc]
+import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeBlock, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { DefaultGuardAmbiguityError, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -2942,7 +2942,12 @@ function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): Ma
 
 /** Fold a value node and return its emitted bytes. */
 function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return mapMaybe(evalValueSlot(node, frame, e), emitValue);
+  return mapMaybe(evalValueSlot(node, frame, e), (value) => {
+    if (!isLiteral(value)) {
+      validateFinalUnits(value, e.modes);
+    }
+    return emitValue(value);
+  });
 }
 
 /**
