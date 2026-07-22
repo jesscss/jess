@@ -1,6 +1,18 @@
-# Queued: group `packages/*` by domain
+# Queued: group `packages/*` by dialect
 
 Status: **QUEUED — do not start while parallel worktrees/agents are in flight.**
+
+## Grouping ≠ merging (the crux)
+
+Co-locate a parser with its plugin in a per-dialect directory
+(`packages/less/less-parser` + `packages/less/jess-plugin-less`) — but keep them
+as **separate npm packages**. Merging them into one package was rejected up front
+and stays rejected: `less-parser` is consumed by `scss-parser`,
+`language-service`, and `jess-plugin-less-compat`, so folding it into
+`jess-plugin-less` would drag the plugin's heavy deps (`core`, `fns`,
+`style-resolver`) into the SCSS grammar and the language server, and invert the
+dependency graph. This doc is about **directory co-location only** — names and
+package boundaries are unchanged.
 
 ## Why queued (blast-radius caveat)
 
@@ -29,31 +41,52 @@ nearly free and the tooling gets more robust either way:
 - `vitest.config.ts` — `resolve(root, 'packages/<pkg>/...')` literals
   (css-parser jess entry, perf-test excludes).
 
-## Recommended organization
+## Recommended organization — by dialect
 
-Group only the cohesive clusters; leave core/fns/jess/plugins flat. Half the
-churn, most of the readability. Package **names stay identical** — only
-directories move, so imports don't change.
+Each dialect gets a directory holding its parser + its plugin(s). Cross-dialect
+infra (core, the shared parser runtime), the app/CLI, capability plugins, and
+tooling stay flat. Package **names stay identical** — only directories move, so
+imports don't change.
 
 ```
 packages/
-  parsers/
+  css/                       # the shared base dialect
     css-parser/
+    jess-plugin-css/
+  less/
     less-parser/
+    jess-plugin-less/
+    jess-plugin-less-compat/
+  scss/
     scss-parser/
+    jess-plugin-scss/
+  dotjess/                   # the .jess dialect — NOT named `jess/` (see collision note)
     jess-parser/
-  language/
-    language-service/
-    language-service-tests/
-    vscode/
-    extension/
-  ...everything else stays flat (core, fns, jess, plugin-*, style-resolver, …)
+    jess-plugin-jess/
+  ...flat: core, fns, config, style-resolver, awaitable-pipe, patch-css,
+     parser, parser-runtime, internal-css-recognition,        # shared parser infra
+     jess (the umbrella CLI), jess-plugin, jess-plugin-js, jess-plugin-node-modules,
+     rollup-plugin-jess, language-service, language-service-tests, vscode, extension
 ```
+
+Two things to know before doing it:
+
+- **`jess/` group name collides with the `jess` CLI package.** `packages/jess/`
+  is already the umbrella CLI. So the `.jess`-dialect group must be named
+  something else (`dotjess/`, `jesslang/`) or its two packages stay flat. Do not
+  create `packages/jess/` as a group.
+- **Dialect groups are not self-contained — and that's fine.** `css-parser`
+  (base) is consumed by both `less-parser` and `scss-parser`; `scss-parser`
+  (in `scss/`) depends on `less-parser` (in `less/`); `language-service` (flat)
+  consumes both parsers. Directory grouping is purely cosmetic, so these
+  cross-group edges are expected and harmless — they are exactly why the packages
+  must stay separate rather than merge (see "Grouping ≠ merging").
 
 ## Tooling to update when landing
 
 - `pnpm-workspace.yaml` — `packages/*` → add nested globs
-  (`packages/parsers/*`, `packages/language/*`) or switch to `packages/**`.
+  (`packages/less/*`, `packages/scss/*`, `packages/css/*`, `packages/dotjess/*`)
+  or switch to `packages/**`.
 - `tsconfig.json` — the `@jess/*` → `./packages/*/src` wildcard becomes
   `./packages/**/src` (or explicit); update the ~8 explicit per-package `paths`
   entries for moved packages.
