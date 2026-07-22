@@ -2983,3 +2983,39 @@ or Context deletion lanes.
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
+
+## Aggressive Cutting Self-Prosecution — shared color-channel Fn conversion
+
+- Latest pass: `shared/color/{red,green,blue,alpha}.ts` now define the public
+  Less/Sass channel callables directly over `@jesscss/core/value`; the previous
+  `@jesscss/core` tree `Color`/`Num`/`Dimension` contract is removed from this
+  shared family. Less and Sass barrels already reached these same files, so the
+  public route is converted in place rather than routed through `builtins/`.
+- Architecture surface: the existing shared function owners and universal
+  value-domain `defineFunction` seam remain the only call path. No builtins
+  relocation, wrapper, alias, bridge, or legacy conversion helper was added.
+- Separation/duplication: the four functions use the existing value-domain
+  `colorRgbRounded`/`makeDimension` semantics and do not import or call the
+  comparison-only `builtins/` implementations.
+- Cumulative node weight: zero AST nodes, tree objects, clones, frames, maps,
+  or side tables; the only returned object is the required value-domain
+  `Dimension` result.
+- New traversal: none. Each function performs only its existing channel read
+  and one typed-value construction.
+- New node/materialization: no AST nodes, tree objects, clones, frames, maps,
+  or side tables. `makeDimension` creates the required canonical value result
+  for the public callable contract.
+- Render path: unchanged. The callables return typed value facts; the existing
+  evaluator/serializer emits their `bytes` without a tree render or conversion.
+- Helper/API surface: no helper or export was added. The existing public shared,
+  Less, and Sass barrels retain their names and now expose canonical callables.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. The diff has no new traversal, node,
+  clone, spread/materialization, side map, metadata mutation, or routine error
+  control machinery.
+- Evidence: fns full suite passes 69 files / 459 tests; the re-export and
+  canonical math focused suite passes 2 files / 11 tests; fns build passes;
+  changed files are ESLint-clean. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.
