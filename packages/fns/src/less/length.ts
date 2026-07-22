@@ -1,4 +1,4 @@
-import { asList, coerceListItems, defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineFunction, groupItems, groupSeparator, makeDimension } from '@jesscss/core/value';
 
 /**
  * Less `length()` — the number of items in a list (or `1` for a single value).
@@ -9,8 +9,9 @@ const length = defineFunction('length', {
   params: [{ kinds: 'any' }],
   variadic: true,
   body: (list) => {
-    const args = asList(list);
-    const items = args.sep === ',' ? coerceListItems(args.value[0]) : args.value;
+    const args = groupItems(list);
+    const target = groupSeparator(list) === ',' ? args[0] : list;
+    const items = groupItems(target);
     return makeDimension(items.length);
   }
 });

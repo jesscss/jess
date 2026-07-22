@@ -15,7 +15,7 @@
  * HARD MODULE BOUNDARY: value domain only — no `../tree`, no legacy nodes.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { EvalModes, List, ValueObj } from '../value-eval.js';
+import type { EvalModes, ValueGroup, ValueObj } from '../value-eval.js';
 
 export type Kind = ValueObj['type'];
 
@@ -27,7 +27,7 @@ export interface ParamSpec {
   /** A missing arg is allowed (no more required params follow). */
   readonly optional?: boolean;
   /** Value-domain default; makes the slot optional. */
-  readonly default?: ValueObj;
+  readonly default?: ValueGroup;
   /** Collect all remaining positional arguments in this final slot. */
   readonly rest?: boolean;
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
@@ -53,7 +53,7 @@ export interface ParamSpec {
  */
 export interface FnCtx {
   readonly modes: EvalModes;
-  readonly stringify: (v: ValueObj) => string;
+  readonly stringify: (v: ValueGroup) => string;
   readonly io?: FnIo;
 }
 
@@ -83,29 +83,29 @@ interface BaseSpec {
 /** A POSITIONAL fn: the dispatcher binds args by kind and spreads them. No ctx. */
 export interface PositionalSpec extends BaseSpec {
   readonly variadic?: false;
-  readonly body: (...args: ValueObj[]) => MaybePromise<ValueObj>;
+  readonly body: (...args: ValueObj[]) => MaybePromise<ValueGroup>;
 }
 
 /**
  * A VARIADIC fn (owner complexity guardrail: a flag, not a rebuilt coercion
  * layer). The dispatcher SKIPS positional bind and hands the body the whole arg
- * `List` (value + separator) — the shape a list / rest fn (`length`/`extract`/
+ * structural value group — the shape a list / rest fn (`length`/`extract`/
  * `min`/`max`) or an overloaded / context-sensitive Tier-B fn (`rgb`/`hsl`/
  * `replace`/`%`) needs to see the real elements, the call's separator (the
  * modern-syntax signal), and the {@link FnCtx}. `params` is documentation-only.
  */
 export interface VariadicSpec extends BaseSpec {
   readonly variadic: true;
-  readonly body: (list: List, ctx: FnCtx) => MaybePromise<ValueObj>;
+  readonly body: (value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>;
 }
 
 export type FnSpec = PositionalSpec | VariadicSpec;
 
 /** A typed lazy argument. The thunk is deliberately the only deferral seam. */
-export type LazyValue<T extends ValueObj = ValueObj> = () => MaybePromise<T>;
+export type LazyValue<T extends ValueGroup = ValueGroup> = () => MaybePromise<T>;
 
 export type ValueForKinds<K extends ParamSpec['kinds']> =
-  K extends 'any' ? ValueObj : Extract<ValueObj, { readonly type: K[number] }>;
+  K extends 'any' ? ValueGroup : Extract<ValueObj, { readonly type: K[number] }>;
 
 export type ParamValue<P extends ParamSpec> = ValueForKinds<P['kinds']>;
 export type ParamInput<P extends ParamSpec> = P['lazy'] extends true
@@ -114,7 +114,7 @@ export type ParamInput<P extends ParamSpec> = P['lazy'] extends true
 type BodyParam<P extends ParamSpec> = P['rest'] extends true
   ? readonly ParamInput<P>[]
   : ParamInput<P>;
-type IsOptional<P extends ParamSpec> = P extends { readonly optional: true } | { readonly default: ValueObj } ? true : false;
+type IsOptional<P extends ParamSpec> = P extends { readonly optional: true } | { readonly default: ValueGroup } ? true : false;
 
 /** Tuple passed to a direct function body, including lazy/rest semantics. */
 export type FunctionBodyArgs<P extends readonly ParamSpec[]> =
@@ -159,10 +159,10 @@ export type PartialFnRecord<P extends readonly ParamSpec[] = readonly ParamSpec[
  * evaluator remains positional-only until its syntax explicitly gains records.
  */
 export type DefinedFunction<P extends readonly ParamSpec[]> = {
-  (...args: FunctionArgs<P>): MaybePromise<ValueObj>;
-  (record: FnRecord<P>): MaybePromise<ValueObj>;
-  (...args: [...FunctionArgs<P>, PartialFnRecord<P>]): MaybePromise<ValueObj>;
-  (list: List, ctx: FnCtx): MaybePromise<ValueObj>;
+  (...args: FunctionArgs<P>): MaybePromise<ValueGroup>;
+  (record: FnRecord<P>): MaybePromise<ValueGroup>;
+  (...args: [...FunctionArgs<P>, PartialFnRecord<P>]): MaybePromise<ValueGroup>;
+  (value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup>;
   readonly name: string;
   readonly params: P;
   readonly variadic?: false;
@@ -172,7 +172,7 @@ export type DefinedFunction<P extends readonly ParamSpec[]> = {
  * The only runtime function contract. A function is its implementation; the
  * registry always calls it with the evaluator's typed argument list and context.
  */
-export type Fn = ((list: List, ctx: FnCtx) => MaybePromise<ValueObj>) & {
+export type Fn = ((value: ValueGroup, ctx: FnCtx) => MaybePromise<ValueGroup>) & {
   readonly name: string;
   readonly params: readonly ParamSpec[];
   readonly variadic?: boolean;

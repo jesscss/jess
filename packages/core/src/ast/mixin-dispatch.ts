@@ -21,7 +21,7 @@
  */
 
 import type { MixinCall, MixinDef, ValueSlot } from './nodes.js';
-import { any, isLiteralNode, isTypedLiteral, list } from './nodes.js';
+import { any, isLiteralNode, isTypedLiteral } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -159,7 +159,7 @@ export function bindArgs(
       // sole authored `a b c` argument consequently remains one nested
       // space-list, while comma/semicolon call groups retain their distinct
       // argument slots for `length()` and `extract()`.
-      bound.set(restParam.name, list(restSlots, ' '));
+      bound.set(restParam.name, restSlots);
       argumentSlots.push(...restSlots);
     } else {
       argumentSlots.push(...restSlots);
@@ -174,7 +174,7 @@ export function bindArgs(
   // variable and contribute nothing; an empty variadic slot contributes nothing.
   // Keep those slots structural so list functions can distinguish a single
   // nested space-list from several ordinary call arguments.
-  bound.set('arguments', list(argumentSlots, ' '));
+  bound.set('arguments', argumentSlots);
 
   return bound;
 }

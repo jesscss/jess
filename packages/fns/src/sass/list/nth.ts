@@ -1,4 +1,4 @@
-import { coerceListItems, defineFunction, listValueAt } from '@jesscss/core/value';
+import { defineFunction, groupItems, listValueAt } from '@jesscss/core/value';
 import { resolveSassListIndex } from './util.js';
 
 const nth = defineFunction('nth', {
@@ -7,10 +7,10 @@ const nth = defineFunction('nth', {
     { name: 'index', kinds: ['Dimension'] }
   ] as const,
   body: (list, index) => {
-    if (!Number.isFinite(index.number)) {
-      throw new TypeError('list.nth() index must be finite');
+    if (!Number.isInteger(index.number)) {
+      throw new TypeError('list.nth() index must be an integer');
     }
-    const zeroBased = resolveSassListIndex(index.number, coerceListItems(list).length);
+    const zeroBased = resolveSassListIndex(index.number, groupItems(list).length);
     return listValueAt(list, zeroBased);
   }
 });

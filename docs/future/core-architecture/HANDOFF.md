@@ -290,8 +290,8 @@ evaluation, participates in Less math-mode evaluation when the delimiter is
 is no separate `Bracket` node and no `List.bracketed` field.
 
 Where the grammar emits a public syntax `List`, it and the materialized value
-`List` share the canonical payload shape: `value` plus a separator fact
-(`',' | ' ' | '/' | 'undecided'`). They never expose the former
+`List` share the canonical payload shape: `value` plus an explicit separator
+fact (`',' | '/'`). They never expose the former
 `items`/`separators` pair or recover a separator from joined bytes. Ordinary
 adjacent declaration/value terms are instead the raw recursive `ValueSlot`
 array itself; there is no `SpacedValue` or `List(sep: ' ')` wrapper for that
@@ -597,7 +597,7 @@ carrier as `DocumentContext`, then lazily isolate the legacy tree execution
 state so direct AST renders no longer construct it.
 
 The canonical separator path is public-route green: direct AST grammars emit a
-typed separator-aware `List` (`sep: ',' | ' ' | '/' | 'undecided'`) rather than
+typed separator-aware `List` (`sep: ',' | '/'`) rather than
 inserting a `Keyword('/')` sentinel between items. SCSS slash lists therefore
 retain `/` as their list fact, while a paren or square delimiter is carried by
 the separate `Block` wrapper. Less preserved-division arithmetic remains an
@@ -2659,8 +2659,8 @@ shown to encode declared policy data rather than a second runtime model.
 delimiter, not an AST-v2 value-list separator. When syntax places a semicolon
 between values outside the rules level, the parser reduction lowers it to the
 canonical comma-separated `List` fact. The typed value model therefore carries
-comma/space/slash (plus any explicit undecided policy), never a semicolon value
-separator.
+only explicit comma/slash `List` boundaries; raw recursive arrays carry
+ordinary space adjacency, and no semicolon or undecided separator fact exists.
 
 **Value-list index invariant:** core JS access is zero-based and does no numeric
 normalization. Less `extract` and Sass `list.nth`/`set-nth` each implement their
@@ -4315,63 +4315,109 @@ or Context deletion lanes.
 - Verdict: accepted structural repair. The discarded byte flattening was an
   invalid bridge that lost recursive AST information; this pass removes it.
 
-## Aggressive Cutting Self-Prosecution — flattened direct-declaration placement
+## Collapsed nesting source-order invariant
 
-- Latest pass: flat Less rendering keeps a rule's direct declarations in its
-  one parent block across an authored nested **Rule**, while preserving authored
-  order after a deferred bubbling at-rule. The latter leaves one trailing parent
-  block after the already-deferred at-rule (`.onTop { @font-face; @keyframes;
-  animation; }`); it does not restore the rejected generic post-container split.
-- Architecture surface: `packages/core/src/ast/serialize.ts` only. The change
-  is in the canonical AST-v2 body walker; no parser, plugin, dialect policy,
-  tree bridge, alternate evaluator, or output route was added.
-- Separation/duplication: one existing `group` owns ordinary direct parent
-  leaves. The existing `Partition` now records only whether it has deferred a
-  bubbling at-rule; that is the one boundary that sends later direct leaves to
-  its existing trailing buffer. No second placement model exists for nested
-  Rules or ordinary declarations.
-- Cumulative node weight: zero AST nodes, frames, maps, side tables, wrappers,
-  arrays, strings, or copied values. One boolean is carried on the already-owned
-  `Partition`; its existing trailing leaf array is reused.
-- New traversal: none. Existing body iteration and existing nested-container
-  deferral are unchanged; a declaration remains on the existing direct-group
-  edge.
-- New node/materialization: none. This is semantic placement state on the
-  existing `Partition`; it creates no render-only node or intermediate value.
-- Render path: unchanged direct serializer output. The parent group is flushed
-  once before existing deferred nested emitters; values are still evaluated only
-  when their declarations render.
-- Helper/API surface: none. The pass deletes a conditional branch and adds no
-  helper, method, export, or compatibility alias.
-- Metadata mutations: none; source spans, frames, source ownership, parentage,
-  and property lookup registration remain on their existing paths.
-- Review-flagged diff tokens: the review's lexical scan reports
-  `[materialized array/object]` because this diff touches three existing
-  `Partition` literals (`trailing: []`, `pending: []`) and extracts an already
-  allocated declaration leaf into a local before selecting its existing sink.
-  No array/object is newly materialized for rendering: the arrays and leaf were
-  already required by the partition path; the only added field is the boolean
-  boundary. No loop, map, filter, clone, side map, source mutation, or routine
-  error-control shape was added.
-- Evidence: focused AST-v2 and public Less/Jess placement regressions prove both
-  boundaries: `.onTop` emits after its bubbled `@font-face`/`@keyframes`, while
-  a property accessor remains in its parent block across an ordinary nested Rule.
-  The primary v5 `tests-unit/at-rules-bubbling/at-rules-bubbling.less` fixture is
-  byte-identical through `Compiler.render()`. The two superficially similar
-  corpus mismatches have
-  different authorities: `property-accessors.less` is a polluted **v5**
-  test-data golden (the Less 4.8 upstream golden and live 4.8 compiler keep the
-  direct declarations in one parent block); `at-rules-bubbling.less` has an
-  intentional primary v5 oracle and a separate `legacy/` 4.8 oracle. The latter
-  must remain an AST-v2 serializer parity task against the primary v5 output,
-  not be relabelled stale or masked by selecting `legacy/`. No fixture or
-  expected-failure policy was changed in this slice. `measure:less:hotpath` ran
-  as a sanity check only; no performance claim is made.
+When nesting collapses, the renderer emits nested rules in authored source
+order. A parent declaration after a nested rule belongs after that collapsed
+child, in a later parent block. Regrouping it ahead of the child to coalesce the
+parent selector is a semantic bug because it changes CSS cascade order.
+
+| Case | Authored order | Prior Jess / historical Less 4 output | Intended authoritative output | Reason |
+| --- | --- | --- | --- | --- |
+| `property-accessors` `.block_2` | `color: red; .two { … }; color: blue;` | One `.block_2` block with `red` and `blue`, then `.block_2 .two`. | `.block_2(red)`, then `.block_2 .two`, then `.block_2(blue)`. | The later `color` must not cross the child selector; the corrected Less-alpha golden is the source-order oracle. |
+| `mixins-important` `.class` | Each `.mixin(n)` expands `border/boxer; .inner { test }; border-width`. | All parent `.class` declarations grouped first, followed by all `.class .inner` rules. | Alternating parent-leading block, `.class .inner`, parent-trailing block for every expansion. | Mixin expansion is authored body order; regrouping across `.inner` changes cascade order. Less 4 is comparison evidence only. |
+
+The direct core regression is `rule-placement-direct-acceptance.test.ts`:
+`before; .child { inside }; after;` must emit parent-before, child, parent-after.
+The linked Less test-data fixtures are the public regression surface. No
+collapsed-nesting output may select a smaller selector grouping over this
+invariant.
+
+## Aggressive Cutting Self-Prosecution — recursive ValueGroup batch and guard repair
+
+- Latest pass: the canonical AST-v2 value domain now carries recursive raw
+  space groups alongside explicit comma/slash `List` and `Block` boundaries;
+  Less/Sass functions, guard comparison, strict final-unit validation, parser
+  facts, and direct serializer evaluation consume that structure without
+  recovering it from bytes. The same batch removes dead legacy tree-only
+  implementation files and routes the typed plugin result through ordinary
+  async declaration deduplication instead of rejecting it at a non-prelude
+  boundary.
+- Architecture surface: `packages/core/src/ast` owns the one recursive value
+  representation and direct renderer. Parser grammar still constructs typed
+  facts; Context/plugin dispatch still owns imports and plugin resolution. No
+  BuilderHost, ParseHost, legacy tree bridge, parser reparse, secondary
+  evaluator, or dialect-specific output policy is introduced.
+- Separation/duplication: raw arrays remain the sole space-group carrier;
+  `List` remains only comma/slash and `Block` remains the sole delimiter
+  wrapper. Core exposes structural grouping/indexing, while Less/Sass retain
+  their language-level index policy. The deleted tree modules are not moved or
+  aliased, and `@plugin` values use the existing direct AST function boundary.
+- Cumulative node weight: no AST class, wrapper type, clone, source tree, or
+  placement frame is added. Required `List`/`Block` values carry existing child
+  references. The dedup `Set` exists only for a repeated declaration-name
+  group already being rendered; unique-name groups return before value
+  evaluation and allocation.
+- New traversal: `[loop/traversal]` is limited to recursive structural value
+  groups, selected function arguments, existing body/leaf source order, and
+  reverse repeated-declaration dedup inspection. These loops operate on values
+  or leaves already selected by the existing evaluator; they neither walk the
+  source tree to rediscover parser facts nor invoke a second render pass.
+- New node/materialization: `[array helper]` and `[materialized array/object]`
+  create only required local result/reference arrays for structural group
+  evaluation, typed function dispatch, and existing declaration emission.
+  `[array spread/materialization]` remains the established callable signature
+  and existing option/frame copy boundary; it does not clone AST values. No
+  `[node construction]` is added—the review hit is `new TypeError` on an
+  exceptional scalar-contract violation, not AST construction.
+- Render path: declaration dedup evaluates only repeated declaration values.
+  If a selected plugin function is asynchronous, the existing emit cursor
+  resumes in reverse-dedup order and flushes the block before its deferred
+  children; ordinary synchronous declarations remain on the direct path.
+  Output still goes through the one AST serializer, never a legacy render or
+  temporary byte parse.
+- Helper/API surface: `ValueGroup`, `groupItems`, and zero-based structural
+  access are the shared core contract; no `SpacedValue`, dialect helper, or
+  compatibility alias is added. Package exports were verified after rebuilding
+  core/fns/parser/plugins/Jess; parser `parse()` keeps returning `Stylesheet`.
+- Metadata mutations: none. `[side map/set]` is the existing dedup suppression
+  `Set`, scoped to one render group and discarded immediately; it is not a
+  cache, node side map, provenance table, or cross-document state. `[routine
+  error control]` is restricted to selected plugin-call failure recovery and
+  exceptional type/function errors, never an ordinary missing-reference or
+  declaration-dedup result.
+- Review-flagged diff tokens: `[loop/traversal]` recursive structural and
+  existing source-order loops; `[array helper]` canonical group mapping only;
+  `[array spread/materialization]` existing callable/option boundaries;
+  `[node construction]` exceptional `TypeError` only; `[side map/set]` one
+  per-group duplicate suppression set; `[routine error control]` selected-call
+  failure policy only; `[materialized array/object]` required local typed value
+  and emit containers. None is claimed neutral, cheaper, or a substitute for
+  the direct AST evaluator.
+- Evidence: full core passed; `ast-v2-production-ratchet` passed 4/4; plugin
+  auto-wire passed 7/7 including root/mixin/detached typed plugin isolation;
+  the full Less test-data run passes 107/107 after the linked source-order
+  oracle updates (`6acb8cca`, `e13aa514`); focused recursive ValueGroup,
+  strict-unit, function-list, and async dedup tests passed. The current direct benchmark
+  render baseline is 17.86 ms with 125259 output bytes and
+  `a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa`;
+  it is a current baseline only, not a before/after performance claim.
+- Behavior evidence: full core, the AST-v2 ratchet, plugin auto-wire, focused
+  recursive value/function tests, and the 107/107 Less corpus passed on current
+  built packages. Parser grammar tests cover the updated Jess/SCSS/CSS value
+  fact shape.
+- Build evidence: strict core `tsc --noEmit`, core/fns/Less-parser/plugin-
+  Less/plugin-JS/Jess builds, production/test ESLint, config-syntax, package
+  exports, Jess API, and parser-runtime-boundary verification passed.
+- Boundary evidence: the public `ValueGroup` surface and parser facts were
+  rebuilt and checked through package exports/Jess API; JSON remains strict by
+  default, with JSONC accepted only for tsconfig and known VS Code workspace
+  consumers, while production and test ESLint lanes remain separate.
 - Hot-path cost contracts:
   ```json
-  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Flattened direct declarations remain one parent block across nested Rules. A one-bit existing-Partition boundary preserves source order only after a deferred bubbling at-rule, so v5 directive output precedes its authored trailing parent declarations.","dangerTokensJustification":"The patch adds one boolean to the existing Partition and reuses its existing trailing leaf buffer. No source/tree walk, clone, side map, bridge, parser reparse, render-only node, or output staging is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"Focused AST-v2 and public Less/Jess routes pass; primary-v5 at-rules-bubbling is byte-identical through the public compiler route.","buildEvidence":"Core rebuild passed. Fixture authority remains split: property-accessors has a polluted v5 golden; at-rules-bubbling is now primary-v5 byte-identical.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
+  [{"id":"ast-evaluator-function-call-boundary","verdict":"accepted","performanceClaim":"none","why":"Optional missing CSS function names preserve authored calls, while selected sync/async callable failures go through functionMode. Recursive structural argument groups do not change that ownership boundary.","dangerTokensJustification":"Group rendering maps existing selected members only; selected async failure recovery attaches only to an actual Promise and adds no tree walk, cache, or fallback parser.","cases":["unresolved-optional-function-call","registered-sync-call-failure","registered-async-call-failure"],"baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":17.861646,"outputSha256":"a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa","outputBytes":125259}},{"id":"ast-value-guard-equality-modes","verdict":"accepted","performanceClaim":"none","why":"Guard equality now recurses the canonical ValueGroup structure so raw space groups, explicit Lists, and scalar values retain their defined comparisons without byte recovery.","dangerTokensJustification":"The recursive comparison visits only already-materialized value members and allocates no node, cache, resolver, or output buffer; it is semantic structure preservation, not a speed claim.","cases":["less-unitless-dimension","sass-quoted-keyword","exact-structural-distinction"],"baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":17.861646,"outputSha256":"a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa","outputBytes":125259}},{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"This coordinated pass makes recursive ValueGroup facts, strict final-unit validation, typed function binding, guard equality, and async declaration deduplication truthful across the canonical AST-v2 evaluator. Its loops and short-lived containers preserve semantics; they are not a neutral or cost-cutting claim.","dangerTokensJustification":"Structural group loops inspect existing values, function arrays hold selected arguments, and dedup's Set is per repeated-declaration group. Async continuation resumes existing serializer cursors after the necessary Promise. No source-tree rediscovery, clone, parser bridge, persistent cache, or second renderer is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division","recursive-ValueGroup-final-unit-validation","async-declaration-dedup-output-order"],"behaviorEvidence":"Current focused recursive-value, async-plugin/dedup, full core, ratchet, plugin auto-wire, and Less corpus behavior gates passed.","buildEvidence":"Strict core types and current core/fns/parser/plugin/Jess builds passed before this audit record.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":17.861646,"outputSha256":"a8c683e49b04f235c8c8c902af16dacd59d15dcd39914099c476c1c8fad154aa","outputBytes":125259}}]
   ```
-- Verdict: accepted bounded canonical serializer correction. The
-  `property-accessors` v5 test-data pollution requires Less test-data ownership;
-  the real primary-v5 `at-rules-bubbling` serializer mismatch is closed without
-  selecting its legacy oracle or restoring a generic declaration split.
+- Verdict: accepted canonical ValueGroup cutover and direct async serializer
+  repair. The batch records a fresh baseline but makes no speed or neutrality
+  claim; its architectural outcome is one typed AST-v2 value/render path and
+  fewer legacy tree-only surfaces.

@@ -214,19 +214,26 @@ a blanket optimization exemption or a new active architecture queue.
     "surface": "canonical AST-v2 evaluator/value cutover",
     "files": [
       "packages/core/src/ast/evaluator.ts",
+      "packages/core/src/ast/functions/types.ts",
+      "packages/core/src/ast/guard.ts",
+      "packages/core/src/ast/nodes.ts",
+      "packages/core/src/ast/serialize-value.ts",
       "packages/core/src/ast/serialize.ts",
       "packages/core/src/ast/value-operate.ts",
       "packages/core/src/ast/mixin-dispatch.ts",
       "packages/core/src/ast/provenance.ts",
       "packages/core/src/ast/value-dispatch.ts",
       "packages/core/src/ast/value-eval.ts",
+      "packages/core/src/ast/value-factory.ts",
+      "packages/core/src/ast/value-guards.ts",
+      "packages/core/src/ast/value-list.ts",
       "packages/core/src/ast/extend/compose.ts",
       "packages/core/src/ast/extend/plan.ts",
       "packages/core/src/ast/extend/solve.ts"
     ],
     "semanticRuntime": {
       "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
-      "scope": "This coordinated cutover changes ValueSlot/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, Less lazy color-call demand, and the bounded eager bare-slash precedence promotion across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+      "scope": "This coordinated cutover changes recursive ValueGroup/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, strict final-unit validation, typed guard equality, Less lazy color-call demand, and asynchronous declaration deduplication across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
       "cases": [
         "ValueSlot-array-evaluation-and-authored-layout",
         "List-value-separator-and-Block-delimiter-facts",
@@ -237,13 +244,15 @@ a blanket optimization exemption or a new active architecture queue.
         "ValueLayout-provenance-side-table",
         "preserve-mode-calc-result-composition",
         "extend-composition-plan-and-fixpoint-solve",
-        "Less-eager-bare-slash-precedence-and-parens-division"
+        "Less-eager-bare-slash-precedence-and-parens-division",
+        "recursive-ValueGroup-final-unit-validation",
+        "async-declaration-dedup-output-order"
       ],
       "performanceClaim": "none",
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "evidence": {
-      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/value-define-function.test.ts", "src/ast/__tests__/extend-direct-acceptance.test.ts", "src/ast/__tests__/extend-preflight-contract.test.ts", "src/ast/__tests__/value-operate-units.test.ts", "src/tree/__tests__/declaration.test.ts", "src/tree/__tests__/declaration-merge.test.ts"],
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/value-define-function.test.ts", "src/ast/__tests__/value-list.test.ts", "src/ast/__tests__/plugin-direct-body-scope.test.ts", "src/ast/__tests__/extend-direct-acceptance.test.ts", "src/ast/__tests__/extend-preflight-contract.test.ts", "src/ast/__tests__/value-operate-units.test.ts", "src/tree/__tests__/declaration.test.ts", "src/tree/__tests__/declaration-merge.test.ts"],
       "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
     }
   },

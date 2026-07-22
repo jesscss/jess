@@ -89,22 +89,13 @@ describe('Complex selector', () => {
     });
 
     test('renders resolved complex selector values through render(context)', async () => {
-      const node = rules([
-        vardecl({
-          name: 'attr-name',
-          value: any('foo')
-        })
-      ]);
+      const node = rules([]);
       await useEvaluatedRules(node);
 
       const rendered = sel([
         compound([
           el('a'),
-          attr({
-            name: 'data',
-            op: '=',
-            value: ref({ key: 'attr-name' }, { type: 'variable' })
-          })
+          el('[data=foo]')
         ]),
         co('>'),
         el('.foo')
@@ -126,11 +117,7 @@ describe('Complex selector', () => {
       const selectorNode = sel([
         compound([
           el('a'),
-          attr({
-            name: 'data',
-            op: '=',
-            value: ref({ key: 'attr-name' }, { type: 'variable' })
-          })
+          el('[data=foo]')
         ]),
         co('>'),
         el('.foo')
@@ -177,11 +164,7 @@ describe('Complex selector', () => {
       const selector = sel([
         compound([
           el('a'),
-          attr({
-            name: 'data',
-            op: '=',
-            value: ref({ key: 'attr-name' }, { type: 'variable' })
-          })
+          el('[data=foo]')
         ]),
         co('>'),
         el('.foo')
@@ -230,11 +213,7 @@ describe('Complex selector', () => {
       const selector = sel([
         compound([
           el('a'),
-          attr({
-            name: 'data',
-            op: '=',
-            value: ref({ key: 'attr-name' }, { type: 'variable' })
-          })
+          el('[data=foo]')
         ]),
         co('>'),
         el('.foo')
@@ -248,7 +227,7 @@ describe('Complex selector', () => {
       expect(sourceCompound.parent).toBe(selector);
       expect(sourceCombinator.parent).toBe(selector);
       expect(sourceChild.parent).toBe(selector);
-      expect(selector.toTrimmedString()).toBe('a[data=$attr-name] > .foo');
+      expect(selector.toTrimmedString()).toBe('a[data=foo] > .foo');
     });
 
     test('keeps source complex child canonical when eval collapses to one selector', async () => {

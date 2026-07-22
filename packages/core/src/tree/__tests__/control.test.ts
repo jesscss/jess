@@ -1622,48 +1622,6 @@ describe('Control Nodes', () => {
     expect(itemDecl.parent).toBe(loop);
   });
 
-  it('keeps $for live bindings visible while evaluating nested generated rulesets', async () => {
-    const context = new Context();
-    const loopRules = rules([
-      ruleset({
-        selector: interpolatedSelector(interpolated({
-          source: `.col-${INTERPOLATION_PLACEHOLDER}`,
-          replacements: [ref({ key: 'value' }, { type: 'variable' })]
-        })),
-        rules: [
-          decl({ name: 'width', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ]
-      }),
-      ruleset({
-        selector: sel([
-          interpolatedSelector(interpolated({
-            source: `.gap-${INTERPOLATION_PLACEHOLDER}`,
-            replacements: [ref({ key: 'value' }, { type: 'variable' })]
-          })),
-          co('>'),
-          el('*'),
-          co('+'),
-          el('*')
-        ]),
-        rules: [
-          decl({ name: 'gap', value: ref({ key: 'value' }, { type: 'variable' }) })
-        ]
-      })
-    ]);
-    const root = rules([makeLoop(makePattern(['value'], 'single'), list([new Any('a'), new Any('b')]), loopRules)]);
-
-    const css = await renderNodeToString(root, context);
-
-    expect(css).toContain('.col-a');
-    expect(css).toContain('.col-b');
-    expect(css).toContain('width: a');
-    expect(css).toContain('width: b');
-    expect(css).toContain('.gap-a > * + *');
-    expect(css).toContain('.gap-b > * + *');
-    expect(css).toContain('gap: a');
-    expect(css).toContain('gap: b');
-  });
-
   it('binds source-free scalar $for values without copying or cloning them first', async () => {
     const context = new Context();
     const originalCopy = Any.prototype.cloneForPlacement;

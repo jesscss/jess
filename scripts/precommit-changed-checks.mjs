@@ -3,7 +3,7 @@ import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
-import { stagedAddedLines, stagedLintableFiles, stagedLintMessages } from './staged-lint.mjs';
+import { stagedTouchedLines, stagedLintableFiles, stagedLintMessages } from './staged-lint.mjs';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
@@ -258,7 +258,7 @@ function runLintForFiles(packageDir, files) {
 }
 
 function stagedHunkLines(file) {
-  return stagedAddedLines(execFileSync('git', ['diff', '--cached', '--unified=0', '--', file], {
+  return stagedTouchedLines(execFileSync('git', ['diff', '--cached', '--unified=0', '--', file], {
     cwd: ROOT,
     encoding: 'utf8'
   }));

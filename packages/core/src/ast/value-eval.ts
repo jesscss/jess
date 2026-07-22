@@ -15,8 +15,9 @@
  *     type-fns, and calc/escaping survive it. Implementation: `evaluator.ts`.
  *
  * REPRESENTATION: an UN-MATERIALIZED value literal is a BARE `string` — its bytes,
- * nothing else (no wrapper, no stored tag, no allocation). The seam is
- * `Value = ValueObj | string`; a literal's type is DERIVED on demand only when
+ * nothing else (no wrapper, no stored tag, no allocation). Adjacent value terms
+ * are the raw recursive array shape, not a space-separator List. The seam is
+ * `Value = ValueGroup | string`; a literal's type is DERIVED on demand only when
  * something forces object behaviour (`materialize`).
  *
  * Sync by default: `operate`/`compare`/`typeCheck`/`materialize` are synchronous;
@@ -27,7 +28,7 @@
 
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import type { EqualityMode, FunctionMode, MathMode, UnitMode } from '../types/modes.js';
-import type { Fn, FnIo } from './functions/types.js';
+import type { Fn, FnCtx, FnIo } from './functions/types.js';
 
 /* --------------------------------------------------------- value domain */
 
@@ -117,32 +118,30 @@ export interface Keyword {
 /**
  * The separator fact carried by a materialized list value.
  *
- * `undecided` is Sass's deferred separator state: it emits as a space until a
- * list operation chooses a concrete separator. Semicolon groups are grammar
- * argument boundaries, not a Sass value-list separator; the SCSS grammar keeps
- * them in its enclosing block/call fact instead of misclassifying them here.
- * These are value facts, not dialect-specific helper options.
+ * A List is only an explicit comma or slash boundary. Adjacent terms are the
+ * raw recursive {@link ValueGroup} array and emit with spaces by default;
+ * semicolon groups lower to comma at the grammar boundary.
  */
-export type ListSeparator = ',' | ' ' | '/' | 'undecided';
+export type ListSeparator = ',' | '/';
 
 /** A list result with an explicit separator fact. Delimiters are `Block` values. */
 export interface List {
   readonly type: 'List';
   /** The one semantic payload of a List. */
-  readonly value: readonly ValueObj[];
+  readonly value: readonly ValueGroup[];
   readonly sep: ListSeparator;
   readonly bytes: string;
 }
 
 /**
  * A delimiter-preserving value wrapper. Square `Block`s are Sass bracketed
- * lists when their value is a List; paren `Block`s preserve ordinary grouping.
+ * lists around any structural value group; paren `Block`s preserve ordinary grouping.
  * Delimiters are intentionally not folded into List, so a list can be reused
  * with or without brackets by a universal list function.
  */
 export interface Block {
   readonly type: 'Block';
-  readonly inner: ValueObj;
+  readonly inner: ValueGroup;
   readonly delimiter: 'paren' | 'square';
   readonly escaped?: boolean;
   readonly bytes: string;
@@ -164,22 +163,37 @@ export interface Nil {
 export type ValueObj = Dimension | Color | Quoted | Keyword | List | Block | Bool | Nil;
 
 /**
+ * The canonical structural value carrier. A raw array is a default
+ * space-separated sequence; explicit comma/slash boundaries use {@link List}.
+ * Arrays may nest only as syntax already permits nested value groups (for
+ * example, rows inside a comma List); no wrapper node is introduced.
+ */
+export type ValueGroup = ValueObj | readonly ValueGroup[];
+
+/** Narrow a structural value group to its raw default-spaced array form. */
+export const isValueGroupArray = (value: ValueGroup): value is readonly ValueGroup[] => Array.isArray(value);
+
+/** Guard untrusted direct-call input without creating a compatibility wrapper. */
+export const isValueGroup = (value: unknown): value is ValueGroup =>
+  Array.isArray(value)
+    ? value.every(isValueGroup)
+    : typeof value === 'object' && value !== null && 'type' in value;
+
+/**
  * A `Value` in the evaluation lane: either a materialized typed object, or a BARE
  * `string` — the un-materialized literal leaf carrying just its bytes (rep "B").
  */
-export type Value = ValueObj | string;
+export type Value = ValueGroup | string;
 
 /** Emit a value's bytes. A bare-string literal is its own bytes. */
-export const emitValue = (v: Value): string => (typeof v === 'string' ? v : v.bytes);
+export const emitValue = (v: Value): string =>
+  typeof v === 'string' ? v : isValueGroupArray(v) ? v.map(emitValue).join(' ') : v.bytes;
 
 /** The whitespace glue joining a list's items for its separator (`,`→`, `, `/`→` / `). */
 export const sepGlue = (sep: ListSeparator): string => {
   switch (sep) {
     case ',': return ', ';
     case '/': return ' / ';
-    case ' ':
-    case 'undecided':
-      return ' ';
   }
 };
 
@@ -254,6 +268,24 @@ export interface PluginRequest {
   readonly options: string | null;
 }
 
+/**
+ * A declaration map projected only for an optional legacy-plugin invocation.
+ * This is a transport fact, not a value-domain node: a detached ruleset remains
+ * an AST statement/binding everywhere else.
+ */
+export interface PluginDetachedRuleset {
+  readonly type: 'DetachedRuleset';
+  readonly rules: readonly PluginDetachedDeclaration[];
+}
+
+export interface PluginDetachedDeclaration {
+  readonly name: string;
+  readonly value: ValueGroup;
+}
+
+/** A raw recursive value-sequence is the legacy `tree.Expression` source. */
+export type PluginRawArgument = ValueObj | PluginDetachedRuleset | readonly ValueGroup[];
+
 export interface PluginHost {
   /**
    * GLOBAL functions contributed by config-injected `install`-style Less plugins
@@ -268,6 +300,17 @@ export interface PluginHost {
    * the dialect adapter converts any legacy plugin ABI to native Fns here.
    */
   loadPlugin?(request: PluginRequest): MaybePromise<readonly Fn[]>;
+  /**
+   * Optional legacy-plugin escape hatch for a function selected from this host
+   * whose argument list contains a detached ruleset. The ordinary `Fn` contract
+   * stays value-domain-only; this method is never consulted for normal calls.
+   * `undefined` declines the call and leaves normal function dispatch intact.
+   */
+  invokeRawFunction?(
+    fn: Fn,
+    args: readonly PluginRawArgument[],
+    ctx: FnCtx
+  ): MaybePromise<ValueGroup | undefined>;
 }
 
 export interface ValueEvaluator {
@@ -290,15 +333,15 @@ export interface ValueEvaluator {
    * with no IO host wired. */
   call(
     name: string,
-    args: List,
+    args: ValueGroup,
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
     /** Called only when a registered function is preserved after it rejects. */
     onUnresolved?: (error: unknown) => void,
-  ): MaybePromise<ValueObj>;
+  ): MaybePromise<ValueGroup>;
   /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
-  compare(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean;
+  compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
-  typeCheck(name: string, args: List, modes: EvalModes): boolean;
+  typeCheck(name: string, args: ValueGroup, modes: EvalModes): boolean;
 }

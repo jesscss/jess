@@ -99,10 +99,22 @@ class Declaration {
   }
 }
 
-// Less-compat detached ruleset / map. Legacy @plugin helpers read these via
-// `arg.ruleset.rules`, iterate Declarations, and call `rule.eval(context)`.
-class DetachedRuleset {
-  type = 'DetachedRuleset';
+class Nil {
+  type = 'Nil';
+  value = '';
+
+  eval() {
+    return this;
+  }
+}
+
+// The legacy-plugin map façade is an anonymous callable Mixin, not a second
+// detached-ruleset value model.  Existing helpers inspect `ruleset.rules` and
+// declaration values; Nil carries the intentionally absent name/args facts.
+class Mixin {
+  type = 'Mixin';
+  name = new Nil();
+  args = new Nil();
   ruleset;
 
   constructor(rules) {
@@ -147,10 +159,11 @@ const lessFacade = {
     Anonymous,
     Color,
     Declaration,
-    DetachedRuleset,
     Dimension,
     Expression,
     Keyword,
+    Mixin,
+    Nil,
     Quoted,
     Value
   },
@@ -195,15 +208,13 @@ const decodeBridgeValue = (value) => {
       return new Color(value.rgb, value.alpha ?? 1);
     case 'quoted':
       return new Quoted(value.quote ?? '"', value.value, value.escaped === true);
-    case 'keyword':
-      return new Keyword(value.value);
     case 'anonymous':
       return new Anonymous(value.value);
     case 'list':
       return new Value((value.items ?? []).map(decodeBridgeValue), value.separator ?? ',');
-    case 'sequence':
+    case 'expression':
       return new Expression((value.items ?? []).map(decodeBridgeValue));
-    case 'detached': {
+    case 'mixin': {
       const rules = (value.rules ?? []).map((decl) => {
         const decoded = decodeBridgeValue(decl.value);
         // Legacy Less @plugin map helpers read the declaration's `.value.value`
@@ -212,7 +223,7 @@ const decodeBridgeValue = (value) => {
         const cssText = decoded?.toCSS ? decoded.toCSS() : String(decoded);
         return new Declaration(decl.name, new Anonymous(cssText));
       });
-      return new DetachedRuleset(rules);
+      return new Mixin(rules);
     }
     default:
       return value;
@@ -259,27 +270,33 @@ const encodeBridgeValue = (value) => {
       escaped: value.escaped
     };
   }
-  if (value instanceof Keyword) {
-    return {
-      __jessBridge: true,
-      kind: 'keyword',
-      value: String(value.value)
-    };
-  }
-  if (value instanceof Anonymous) {
+  if (value instanceof Keyword || value instanceof Anonymous) {
     return {
       __jessBridge: true,
       kind: 'anonymous',
       value: String(value.value)
     };
   }
-  if (value instanceof Value || value instanceof Expression) {
+  if (value instanceof Expression) {
     return {
       __jessBridge: true,
-      kind: value instanceof Expression ? 'sequence' : 'list',
-      items: value.value.map(encodeBridgeChildValue),
-      separator: value instanceof Expression ? undefined : value.separator
+      kind: 'expression',
+      items: value.value.map(encodeBridgeChildValue)
     };
+  }
+  if (value instanceof Value) {
+    return {
+      __jessBridge: true,
+      kind: 'list',
+      items: value.value.map(encodeBridgeChildValue),
+      separator: value.separator === '/' || value.separator === ';' ? value.separator : ','
+    };
+  }
+  if (value instanceof Mixin) {
+    const rules = value.ruleset.rules
+      .filter(rule => rule instanceof Declaration && typeof rule.name === 'string')
+      .map(rule => ({ name: rule.name, value: encodeBridgeChildValue(rule.value) }));
+    return { __jessBridge: true, kind: 'mixin', rules };
   }
   return value;
 };

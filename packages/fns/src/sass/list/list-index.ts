@@ -1,4 +1,4 @@
-import { coerceListItems, defineFunction, makeDimension } from '@jesscss/core/value';
+import { defineFunction, emitValue, groupItems, makeDimension } from '@jesscss/core/value';
 
 const index = defineFunction('index', {
   params: [
@@ -6,8 +6,8 @@ const index = defineFunction('index', {
     { name: 'value', kinds: 'any' }
   ] as const,
   body: (list, value) => {
-    const items = coerceListItems(list);
-    const found = items.findIndex(item => item.bytes === value.bytes);
+    const items = groupItems(list);
+    const found = items.findIndex(item => emitValue(item) === emitValue(value));
     return found < 0 ? { type: 'Nil', bytes: '' } : makeDimension(found + 1);
   }
 });

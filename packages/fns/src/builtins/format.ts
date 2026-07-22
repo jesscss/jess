@@ -1,5 +1,5 @@
-import type { List, Quoted, ValueObj, FnCtx, Fn } from '@jesscss/core/value';
-import { makeKeyword, makeQuoted, defineFunction } from '@jesscss/core/value';
+import type { ValueGroup, ValueObj, FnCtx, Fn } from '@jesscss/core/value';
+import { emitValue, groupItems, isValueGroupArray, makeKeyword, makeQuoted, defineFunction } from '@jesscss/core/value';
 
 /**
  * The value a `%[sda]` token substitutes, byte-faithful to Less 4.x `%`:
@@ -7,8 +7,8 @@ import { makeKeyword, makeQuoted, defineFunction } from '@jesscss/core/value';
  *  - `d`/`a` (+ upper): CSS form — the value's bytes (a Quoted keeps its quotes).
  *  - an UPPER token URL-encodes the result (`encodeURIComponent`).
  */
-function tokenValue(token: string, arg: ValueObj, ctx: FnCtx): string {
-  const value = /s/i.test(token) ? ctx.stringify(arg) : arg.bytes;
+function tokenValue(token: string, arg: ValueGroup, ctx: FnCtx): string {
+  const value = /s/i.test(token) ? ctx.stringify(arg) : emitValue(arg);
   return /[A-Z]$/.test(token) ? encodeURIComponent(value) : value;
 }
 
@@ -18,8 +18,8 @@ function tokenValue(token: string, arg: ValueObj, ctx: FnCtx): string {
  * non-escaped Quoted template re-wraps; else emits bare. Validated against Less 4.x
  * (the adapter mishandles reconstructed Quoted args).
  */
-const formatKernel = (list: List, ctx: FnCtx): ValueObj => {
-  const items = list.value;
+const formatKernel = (list: ValueGroup, ctx: FnCtx): ValueObj => {
+  const items = groupItems(list);
   const template = items[0]!;
   const args = items.slice(1);
   let result = ctx.stringify(template);
@@ -31,8 +31,8 @@ const formatKernel = (list: List, ctx: FnCtx): ValueObj => {
     result = result.slice(0, m.index) + tokenValue(m[0], arg, ctx) + result.slice(m.index + m[0].length);
   }
   result = result.replace(/%%/g, '%');
-  if (template.type === 'Quoted' && !(template as Quoted).escaped) {
-    return makeQuoted(result, (template as Quoted).quote, false);
+  if (!isValueGroupArray(template) && template.type === 'Quoted' && !template.escaped) {
+    return makeQuoted(result, template.quote, false);
   }
   return makeKeyword(result);
 };

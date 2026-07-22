@@ -1,5 +1,5 @@
-import type { Color, List, Fn } from '@jesscss/core/value';
-import { colorHsl, defineFunction, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core/value';
+import type { Color, ValueGroup, Fn } from '@jesscss/core/value';
+import { colorHsl, defineFunction, groupItems, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
 import { requireDimension } from './math-helper.js';
 
@@ -16,9 +16,9 @@ import { requireDimension } from './math-helper.js';
  * grey-canonical `hsl(0, 0%, 50.19607843%)`). A real Less operation
  * (`lighten(hsl(...))`, arithmetic) still rebuilds the color and recomputes.
  */
-export function makeHsl(list: List): Color {
-  const items = list.value;
-  const modernSyntax = isModern(list);
+export function makeHsl(value: ValueGroup): Color {
+  const items = groupItems(value);
+  const modernSyntax = isModern(value);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
     const h = normalizeHue(requireDimension(items[0]));

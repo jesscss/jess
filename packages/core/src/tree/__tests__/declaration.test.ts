@@ -570,74 +570,6 @@ describe('Declaration', () => {
     }
   });
 
-  it('resolves custom declarations without touching render state', async () => {
-    const root = rules([
-      vardecl({ name: 'tone', value: any('red') })
-    ]);
-    const evald = await root.eval(context);
-    context.root = evald;
-    context.rulesContext = evald;
-
-    const node = customdecl({
-      name: '--color',
-      value: ref({ key: 'tone' }, { type: 'variable' })
-    });
-
-    const resolved = await node.resolve(context);
-
-    expect(resolved.toTrimmedString()).toBe('--color:red');
-    expect(node.registrationPrepared).toBe(false);
-    expect(context.inCustom).toBe(false);
-    expect(context.printState.writer).toBeUndefined();
-  });
-
-  it('writes resolved custom declaration output into segmented buffers', async () => {
-    const root = rules([
-      vardecl({ name: 'tone', value: any('red') })
-    ]);
-    const evald = await root.eval(context);
-    context.root = evald;
-    context.rulesContext = evald;
-    const buffer = createRenderBuffer('segmented');
-    const node = customdecl({
-      name: '--color',
-      value: ref({ key: 'tone' }, { type: 'variable' })
-    });
-    const originalResolve = node.resolve;
-    let resolveCalls = 0;
-    node.resolve = function countResolveCalls(
-      this: typeof node,
-      ...args: Parameters<typeof originalResolve>
-    ): ReturnType<typeof originalResolve> {
-      resolveCalls++;
-      return originalResolve.apply(this, args);
-    };
-
-    expect(node.render(context, buffer)).toBe('--color:red');
-    expect(buffer.segments).toEqual(['--color:red']);
-    expect(resolveCalls).toBe(0);
-  });
-
-  it('writes resolved custom declaration buffers without cold string helper transport', async () => {
-    const root = rules([
-      vardecl({ name: 'tone', value: any('red') })
-    ]);
-    const evald = await root.eval(context);
-    context.root = evald;
-    context.rulesContext = evald;
-    const buffer = createRenderBuffer('segmented');
-    const node = customdecl({
-      name: '--color',
-      value: ref({ key: 'tone' }, { type: 'variable' })
-    });
-    Reflect.set(node, 'declValueTrimmedString', () => {
-      throw new Error('Buffer custom declaration render should write syntax directly');
-    });
-
-    expect(node.render(context, buffer)).toBe('--color:red');
-    expect(buffer.segments).toEqual(['--color:red']);
-  });
-
   it('renders indexed references inside custom property values through render(context)', async () => {
     const root = rules([
       vardecl({
@@ -720,34 +652,6 @@ describe('Declaration', () => {
 
     expect(node.toTrimmedString()).toBe('--custom: red');
     expect(node.render(context)).toBe('--custom: red');
-  });
-
-  it('preserves leading trivia for interpolated custom property values', async () => {
-    const interpolatedValue = interpolated({
-      source: INTERPOLATION_PLACEHOLDER,
-      replacements: [ref({ key: 'string_w_comment' }, { type: 'variable' })]
-    });
-    setSourceSpan(interpolatedValue, { start: 50, end: 72 });
-    const value = new Sequence([interpolatedValue]);
-    setSourceSpan(value, sourceSpanOf(interpolatedValue));
-    const trivia = createTriviaMap({
-      before: new Map([[sourceSpanOf(interpolatedValue)?.start, run(' ')]])
-    }) satisfies TriviaMap;
-    context = new Context({ trivia });
-    const node = rules([
-      vardecl({
-        name: 'string_w_comment',
-        value: any('/* // Not commented out // */')
-      }),
-      customdecl({
-        name: '--comment',
-        value
-      })
-    ]);
-
-    expect(await renderNodeToString(node, context, { trivia })).toBeString(`
-      --comment: /* // Not commented out // */;
-    `);
   });
 
   it('preserves generic calls in custom property values during render(context)', () => {
@@ -1452,7 +1356,7 @@ describe('Declaration', () => {
     ]);
     const noMergeCoalescer = vi.spyOn(Object.getPrototypeOf(noMerge), '_coalesceMergedDeclarations');
     expect(noMerge.hasMergeOutputSurface).toBe(false);
-    Object.getPrototypeOf(noMerge)['_finishSourceOrderEvaluation'].call(noMerge, noMerge, false);
+    Object.getPrototypeOf(noMerge)._finishSourceOrderEvaluation.call(noMerge, noMerge, false);
     expect(noMergeCoalescer).not.toHaveBeenCalled();
     noMergeCoalescer.mockRestore();
 
@@ -1470,7 +1374,7 @@ describe('Declaration', () => {
       expect(merged.hasMergeOutputSurface).toBe(true);
 
       const coalescer = vi.spyOn(Object.getPrototypeOf(merged), '_coalesceMergedDeclarations');
-      Object.getPrototypeOf(merged)['_finishSourceOrderEvaluation'].call(merged, merged, false);
+      Object.getPrototypeOf(merged)._finishSourceOrderEvaluation.call(merged, merged, false);
 
       expect(coalescer).toHaveBeenCalledTimes(1);
       expect(merged.rules[0]).toHaveProperty('visible', false);

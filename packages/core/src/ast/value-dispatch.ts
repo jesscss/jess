@@ -11,7 +11,8 @@
  * HARD MODULE BOUNDARY: value domain + built-in fns only.
  */
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import type { List, ValueObj } from './value-eval.js';
+import { isValueGroup, isValueGroupArray, type ValueGroup } from './value-eval.js';
+import { groupItems } from './value-list.js';
 import type {
   DefinedFunction,
   Fn,
@@ -25,22 +26,22 @@ import type {
 } from './functions/types.js';
 
 /**
- * Dispatch a single resolved {@link Fn} spec over the typed arg `List` — the shared
+ * Dispatch a single resolved {@link Fn} spec over the typed argument group — the shared
  * primitive behind both the registry's by-name dispatch and the scope-frame path
  * (`ast/` `@plugin`/`@use` fns arrive as a `Fn` object, not a registry key). A
- * variadic fn receives the whole `List` + {@link FnCtx}; a positional fn binds
- * `list.value` by kind and is spread. This evaluator route never forwards a
+ * variadic fn receives the whole group + {@link FnCtx}; a positional fn binds
+ * its structural items by kind and is spread. This evaluator route never forwards a
  * named-record argument; dialects such as Less therefore stay positional-only.
  */
-export function dispatchFn(fn: Fn, list: List, ctx: FnCtx): MaybePromise<ValueObj> {
-  return fn(list, ctx);
+export function dispatchFn(fn: Fn, value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup> {
+  return fn(value, ctx);
 }
 
 type NamedParam = ParamSpec & { readonly name: string };
-type DirectInput = ValueObj | LazyValue;
+type DirectInput = ValueGroup | LazyValue;
 
 function isRecord(value: unknown): value is FnRecord {
-  return typeof value === 'object' && value !== null && !('type' in value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && !('type' in value);
 }
 
 function positionalFromInputs(params: readonly NamedParam[], inputs: readonly (DirectInput | FnRecord)[]): DirectInput[] {
@@ -57,16 +58,12 @@ function positionalFromInputs(params: readonly NamedParam[], inputs: readonly (D
   return positional;
 }
 
-function isValueObj(value: unknown): value is ValueObj {
-  return typeof value === 'object' && value !== null && 'type' in value;
-}
-
 function isLazyValue(value: unknown): value is LazyValue {
   return typeof value === 'function';
 }
 
-function isValueForKinds<K extends ParamSpec['kinds']>(value: ValueObj, kinds: K): value is ValueForKinds<K> {
-  return kinds === 'any' || kinds.some(kind => kind === value.type);
+function isValueForKinds<K extends ParamSpec['kinds']>(value: ValueGroup, kinds: K): value is ValueForKinds<K> {
+  return kinds === 'any' || (!isValueGroupArray(value) && kinds.some(kind => kind === value.type));
 }
 
 function isFnCtx(value: unknown): value is FnCtx {
@@ -103,19 +100,19 @@ function hasNamedParams(value: FnSpec): value is FnSpec & { readonly params: rea
 }
 
 function toDirectInput(value: unknown): DirectInput | FnRecord {
-  if (isValueObj(value) || isRecord(value) || isLazyValue(value)) {
+  if (isValueGroup(value) || isRecord(value) || isLazyValue(value)) {
     return value;
   }
   throw new TypeError('direct calls require typed ValueObj, named-record, or lazy arguments');
 }
 
 function validateValue<K extends ParamSpec['kinds']>(name: string, index: number, kinds: K, value: unknown): ValueForKinds<K> {
-  if (!isValueObj(value)) {
-    throw new TypeError(`${name}: direct calls require typed ValueObj arguments`);
+  if (!isValueGroup(value)) {
+    throw new TypeError(`${name}: direct calls require structural value arguments`);
   }
   if (!isValueForKinds(value, kinds)) {
     const expected = kinds === 'any' ? 'any' : kinds.join('|');
-    throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${value.type}`);
+    throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${isValueGroupArray(value) ? 'sequence' : value.type}`);
   }
   return value;
 }
@@ -185,7 +182,7 @@ export function defineFunction<const P extends readonly NamedParam[]>(
   name: string,
   spec: {
     readonly params: P;
-    readonly body: (...args: FunctionBodyArgs<P>) => MaybePromise<ValueObj>;
+    readonly body: (...args: FunctionBodyArgs<P>) => MaybePromise<ValueGroup>;
     readonly variadic?: false;
   },
 ): DefinedFunction<P>;
@@ -198,17 +195,23 @@ export function defineFunction(
     throw new TypeError(`${name}: function definition must contain params and a callable body`);
   }
   const definition = spec;
-  const callable = (...args: readonly unknown[]): MaybePromise<ValueObj> => {
+  const callable = (...args: readonly unknown[]): MaybePromise<ValueGroup> => {
     const [first, second] = args;
-    if (isValueObj(first) && first.type === 'List' && isFnCtx(second)) {
-      const list: List = first;
+    if (isValueGroup(first) && isFnCtx(second)) {
+      const value = first;
       const ctx: FnCtx = second;
       if (definition.variadic) {
-        return definition.body(list, ctx);
+        return definition.body(value, ctx);
       }
+      // Keep evaluator invocation intentionally positional and permissive: its
+      // historical contract binds declared slots and lets a callable establish
+      // its own failure policy. A raw nested group is still one argument;
+      // `bindDirect` accepts it only for `kinds: 'any'` and rejects it for a
+      // typed scalar parameter. Flattening would destroy ordinary adjacency.
+      const items = groupItems(value);
       const positional = definition.params.map((param, index) => param.lazy
-        ? () => list.value[index]!
-        : list.value[index]);
+        ? () => items[index]!
+        : items[index]);
       return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
     }
     const inputs = args.map(toDirectInput);
@@ -241,13 +244,13 @@ export interface FnRegistry {
   /** Whether a built-in implementation exists for `name`. */
   has(name: string): boolean;
   /**
-   * Dispatch a call by name over the typed arg `List`. A VARIADIC fn receives the
-   * whole `List` (value + separator/bracket metadata) plus the minimal {@link FnCtx} (modes + the
+   * Dispatch a call by name over the typed argument group. A VARIADIC fn receives the
+   * whole group plus the minimal {@link FnCtx} (modes + the
    * value→string host hook) so a list / rest fn can recover the real elements and a
    * context-sensitive Tier-B fn can serialize / read the separator; a positional fn
-   * binds `list.value` by kind and needs no context.
+   * binds structural items by kind and needs no context.
    */
-  dispatch(name: string, list: List, ctx: FnCtx): MaybePromise<ValueObj>;
+  dispatch(name: string, value: ValueGroup, ctx: FnCtx): MaybePromise<ValueGroup>;
 }
 
 /** Create an empty {@link FnRegistry}; the caller populates it via `registerAll`. */
@@ -266,12 +269,12 @@ export function createFnRegistry(): FnRegistry {
     has(name) {
       return table.has(name.toLowerCase());
     },
-    dispatch(name, list, ctx) {
+    dispatch(name, value, ctx) {
       const spec = table.get(name.toLowerCase());
       if (!spec) {
         throw new Error(`no fn: ${name}`);
       }
-      return dispatchFn(spec, list, ctx);
+      return dispatchFn(spec, value, ctx);
     }
   };
 }

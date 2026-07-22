@@ -19,7 +19,8 @@
  */
 
 import type { ValueSlot } from './nodes.js';
-import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
+import { emitValue, type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
+import { makeList } from './value-factory.js';
 
 /** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
 export type GuardNode =
@@ -35,7 +36,7 @@ export type GuardNode =
 export type ValueResolver = (v: ValueSlot) => string;
 
 /** Resolve a value node to a materialized TYPED value object. */
-export type TypedResolver = (v: ValueSlot) => ValueObj;
+export type TypedResolver = (v: ValueSlot) => ValueGroup;
 
 export interface GuardEvalDeps {
   /** Typed resolver (comparison / type-fn leaves compare typed values). */
@@ -68,7 +69,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
       return !evalGuard(node.inner, deps);
     case 'truth':
       // Less: a bare-value guard is true only if it evaluates to `true`.
-      return deps.resolveTyped(node.value).bytes.trim() === 'true';
+      return emitValue(deps.resolveTyped(node.value)).trim() === 'true';
     case 'cmp': {
       if (!deps.ev) {
         return false;
@@ -82,8 +83,7 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
         return false;
       }
       const items = node.args.map(a => deps.resolveTyped(a));
-      const list: ValueList = { type: 'List', value: items, sep: ',', bytes: '' };
-      return deps.ev.typeCheck(node.name, list, deps.modes);
+      return deps.ev.typeCheck(node.name, makeList(items, ','), deps.modes);
     }
     case 'default':
       return deps.isDefault();

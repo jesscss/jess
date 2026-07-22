@@ -1,71 +1,57 @@
-import { defineFunction, Node, Quoted, Url } from '@jesscss/core';
-import { serializeNodeValue } from '../util/serialize-node.js';
-import { lookupMime, readAsset } from '../util/file-resolution.js';
-
-async function toFallbackUrl(node: Node, context: any): Promise<Url> {
-  const raw = await serializeNodeValue(node, context);
-  return new Url(new Quoted(raw, { quote: '"' }));
-}
+import { groupItems, makeKeyword, defineFunction } from '@jesscss/core/value';
+import type { Fn, ValueObj } from '@jesscss/core/value';
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
+import { lookupMime } from '../util/mime.js';
 
 /**
  * Less `data-uri()` — inline a file as a `data:` URL. The MIME type may be given
  * explicitly or guessed from the extension; text is percent-encoded and binary is
- * base64-encoded. If the file cannot be read, falls back to a plain `url()` of the
- * path (any `#fragment` is preserved).
- * @param mimetype MIME type, or the file path when called with a single argument
- * @param filePath optional file path (when `mimetype` is given)
- * @returns a `Url` node
+ * base64-encoded. If the injected IO capability cannot read the file, it returns
+ * the authored `url()` call as a value-domain keyword.
  */
-const dataUri = defineFunction(
-  'data-uri',
-  async function(this: any, mimetypeNode: Node, filePathNode?: Node) {
-    let mimeNode = filePathNode ? mimetypeNode : undefined;
-    let pathNode = filePathNode ?? mimetypeNode;
-    const rawPath = await serializeNodeValue(pathNode, this.context);
+const dataUri: Fn = defineFunction('data-uri', {
+  params: [{ kinds: 'any' }, { kinds: 'any', optional: true }],
+  variadic: true,
+  body: (value, ctx): MaybePromise<ValueObj> => {
+    const items = groupItems(value);
+    if (items.length === 0) {
+      throw new TypeError('data-uri() requires a path');
+    }
+    const hasMime = items.length >= 2;
+    const rawPath = ctx.stringify(hasMime ? items[1]! : items[0]!);
+    const explicitMime = hasMime ? ctx.stringify(items[0]!) : undefined;
 
     let fragment = '';
     let filePath = rawPath;
-    const fragmentStart = rawPath.indexOf('#');
-    if (fragmentStart !== -1) {
-      fragment = rawPath.slice(fragmentStart);
-      filePath = rawPath.slice(0, fragmentStart);
+    const hash = rawPath.indexOf('#');
+    if (hash !== -1) {
+      fragment = rawPath.slice(hash);
+      filePath = rawPath.slice(0, hash);
     }
 
-    let mimeType = mimeNode ? await serializeNodeValue(mimeNode, this.context) : undefined;
-    let useBase64 = false;
-
-    if (!mimeType) {
-      const guessed = lookupMime(filePath);
-      mimeType = guessed.type;
-      useBase64 = !guessed.ascii;
+    let mimetype = explicitMime;
+    let useBase64: boolean;
+    if (mimetype === undefined) {
+      const guess = lookupMime(filePath);
+      mimetype = guess.type;
+      useBase64 = !guess.ascii;
       if (useBase64) {
-        mimeType += ';base64';
+        mimetype += ';base64';
       }
     } else {
-      useBase64 = /;base64$/i.test(mimeType);
+      useBase64 = /;base64$/i.test(mimetype);
     }
 
-    try {
-      const { contents } = await readAsset(this.context, filePath);
-      const encoded = useBase64
-        ? contents.toString('base64')
-        : encodeURIComponent(contents.toString('utf8'));
-      const uri = `data:${mimeType},${encoded}${fragment}`;
-      return new Url(new Quoted(uri, { quote: '"' }));
-    } catch {
-      return await toFallbackUrl(pathNode, this.context);
-    }
-  },
-  {
-    params: [{
-      name: 'mimetype',
-      type: Node
-    }, {
-      name: 'filePath',
-      type: Node,
-      optional: true
-    }]
+    const finish = (bytes: Uint8Array | null): ValueObj => {
+      if (!bytes) {
+        return makeKeyword(`url("${rawPath}")`);
+      }
+      const encoded = useBase64 ? Buffer.from(bytes).toString('base64') : encodeURIComponent(Buffer.from(bytes).toString());
+      return makeKeyword(`url("data:${mimetype},${encoded}${fragment}")`);
+    };
+    const bytes = ctx.io?.readFile(filePath);
+    return bytes && isThenable(bytes) ? bytes.then(finish) : finish(bytes ?? null);
   }
-);
+});
 
 export default dataUri;

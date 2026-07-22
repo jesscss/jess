@@ -1,107 +1,78 @@
-import { Any, Bool, Color, defineFunction, Dimension, Node, Quoted, Url } from '@jesscss/core';
+import { makeBool, defineFunction, isValueGroupArray } from '@jesscss/core/value';
+import type { Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
 
-/** Less `iscolor()` — true when the value is a `Color`. */
-const iscolor = defineFunction(
-  'iscolor',
-  function(value: Node) {
-    return new Bool(value instanceof Color);
-  },
-  {
-    params: [{ name: 'value', type: Node }]
+// `isurl()` deliberately has no AST-v2 value-domain export. `Url` is syntax,
+// not a materialized ValueObj tag; once evaluated its rendered `url(...)` form is
+// intentionally opaque. Recreating the legacy predicate would require sniffing
+// output bytes, which this function layer must not do.
+
+/** Less `iscolor()` — true for an already-materialized colour value. */
+const iscolor: Fn = defineFunction('iscolor', {
+  params: [{ kinds: 'any' }],
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Color')
+});
+
+/** Less `isnumber()` — true for an already-materialized dimension. */
+const isnumber: Fn = defineFunction('isnumber', {
+  params: [{ kinds: 'any' }],
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Dimension')
+});
+
+/** Less `isstring()` — true for a quoted value. */
+const isstring: Fn = defineFunction('isstring', {
+  params: [{ kinds: 'any' }],
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Quoted')
+});
+
+/** Less `iskeyword()` — true for a materialized bare keyword. */
+const iskeyword: Fn = defineFunction('iskeyword', {
+  params: [{ kinds: 'any' }],
+  body: value => makeBool(!isValueGroupArray(value) && value.type === 'Keyword')
+});
+
+/** Less `isunit()` — true for a dimension with a case-insensitive matching unit. */
+const isunit: Fn = defineFunction('isunit', {
+  params: [{ kinds: 'any' }, { kinds: 'any' }],
+  body: (value, unit) => makeBool(
+    !isValueGroupArray(value)
+    && value.type === 'Dimension'
+    && value.unit.toLowerCase() === unitText(unit).toLowerCase()
+  )
+});
+
+/** Less `ispixel()` — `isunit(value, px)`. */
+const ispixel: Fn = defineFunction('ispixel', {
+  params: [{ kinds: 'any' }],
+  body: value => makeBool(isDimUnit(value, 'px'))
+});
+
+/** Less `ispercentage()` — `isunit(value, %)`. */
+const ispercentage: Fn = defineFunction('ispercentage', {
+  params: [{ kinds: 'any' }],
+  body: value => makeBool(isDimUnit(value, '%'))
+});
+
+/** Less `isem()` — `isunit(value, em)`. */
+const isem: Fn = defineFunction('isem', {
+  params: [{ kinds: 'any' }],
+  body: value => makeBool(isDimUnit(value, 'em'))
+});
+
+function unitText(value: ValueGroup): string {
+  if (isValueGroupArray(value)) {
+    return '';
   }
-);
-
-/** Less `isnumber()` — true when the value is a numeric `Dimension`. */
-const isnumber = defineFunction(
-  'isnumber',
-  function(value: Node) {
-    return new Bool(value instanceof Dimension);
-  },
-  {
-    params: [{ name: 'value', type: Node }]
+  if (value.type === 'Keyword') {
+    return value.text;
   }
-);
-
-/** Less `isstring()` — true when the value is a `Quoted` string. */
-const isstring = defineFunction(
-  'isstring',
-  function(value: Node) {
-    return new Bool(value instanceof Quoted);
-  },
-  {
-    params: [{ name: 'value', type: Node }]
+  if (value.type === 'Quoted') {
+    return value.value;
   }
-);
+  return value.bytes;
+}
 
-/** Less `iskeyword()` — true when the value is an unquoted keyword/identifier. */
-const iskeyword = defineFunction(
-  'iskeyword',
-  function(value: Node) {
-    return new Bool(value instanceof Any && (value.role === 'keyword' || value.role === 'ident'));
-  },
-  {
-    params: [{ name: 'value', type: Node }]
-  }
-);
+function isDimUnit(value: ValueObj, unit: string): boolean {
+  return value.type === 'Dimension' && value.unit.toLowerCase() === unit;
+}
 
-/** Less `isurl()` — true when the value is a `url(…)` value. */
-const isurl = defineFunction(
-  'isurl',
-  function(value: Node) {
-    return new Bool(value instanceof Url);
-  },
-  {
-    params: [{ name: 'value', type: Node }]
-  }
-);
-
-/** Less `isunit()` — true when `value` is a `Dimension` whose unit equals `unit` (case-insensitive). */
-const isunit = defineFunction(
-  'isunit',
-  function(value: Node, unit: Node) {
-    if (!(value instanceof Dimension)) {
-      return new Bool(false);
-    }
-    const expected = String(unit.valueOf?.() ?? '').toLowerCase();
-    const current = (value.unit ?? '').toLowerCase();
-    return new Bool(current === expected);
-  },
-  {
-    params: [{ name: 'value', type: Node }, { name: 'unit', type: Node }]
-  }
-);
-
-/** Less `ispixel()` — true when the value is a `Dimension` in `px`. */
-const ispixel = defineFunction(
-  'ispixel',
-  function(value: Node) {
-    return new Bool(value instanceof Dimension && (value.unit ?? '').toLowerCase() === 'px');
-  },
-  {
-    params: [{ name: 'value', type: Node }]
-  }
-);
-
-/** Less `ispercentage()` — true when the value is a `Dimension` in `%`. */
-const ispercentage = defineFunction(
-  'ispercentage',
-  function(value: Node) {
-    return new Bool(value instanceof Dimension && (value.unit ?? '').toLowerCase() === '%');
-  },
-  {
-    params: [{ name: 'value', type: Node }]
-  }
-);
-
-/** Less `isem()` — true when the value is a `Dimension` in `em`. */
-const isem = defineFunction(
-  'isem',
-  function(value: Node) {
-    return new Bool(value instanceof Dimension && (value.unit ?? '').toLowerCase() === 'em');
-  },
-  {
-    params: [{ name: 'value', type: Node }]
-  }
-);
-
-export { iscolor, isnumber, isstring, iskeyword, isurl, ispixel, ispercentage, isem, isunit };
+export { iscolor, isnumber, isstring, iskeyword, ispixel, ispercentage, isem, isunit };

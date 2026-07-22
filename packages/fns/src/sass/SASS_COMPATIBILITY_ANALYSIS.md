@@ -12,12 +12,14 @@
 ### Jess AST Structure
 - **Color**: Supports RGB, HSL, HEX formats. Stores `rgb`, `hsl`, `alpha`, and `format` in `value`.
 - **Dimension**: Stores `number` and `unit` (single string) in `value`.
-- **List**: AST-v2 `List { value: ValueSlot[], sep: ',' | ' ' | '/' | 'undecided' }`.
-- **Block**: AST-v2 delimiter wrapper, `Block { inner: ValueSlot,
+- **List**: AST-v2 `List { value: ValueGroup[], sep: ',' | '/' }`; it is
+  only an explicit comma or slash boundary.
+- **Block**: AST-v2 delimiter wrapper, `Block { inner: ValueGroup,
   delimiter: 'paren' | 'square', escaped?: boolean }`. Square blocks are the
   Sass bracketed-list fact; this is intentionally not a `List.bracketed` flag.
-- **ValueSlot arrays**: Adjacent value slots are represented recursively as
-  arrays (space grouping by default). Authored whitespace/newline runs are
+- **ValueGroup arrays**: Adjacent value groups are represented recursively as
+  raw arrays (space grouping by default). A scalar is a one-item space group.
+  Authored whitespace/newline runs are
   retained in side metadata, so serialization does not re-split source text or
   invent a second public value model.
 - **Quoted**: A typed quoted value with its authored quote information.
@@ -25,7 +27,8 @@
 ### Sass AST Structure
 - **SassColor**: Supports RGB, HSL, HWB, Lab, LCH, OKLab, OKLCH spaces. Stores channels, alpha, space, missing channels, legacy flag.
 - **SassNumber**: Stores value with `numeratorUnits` and `denominatorUnits` arrays (e.g., `px*rem/s`).
-- **SassList**: Stores items with separator type (`comma`, `space`, `slash`, `undecided`) and `hasBrackets` flag.
+- **SassList**: Stores items with separator type (`comma`, `space`, `slash`,
+  `undecided`) and `hasBrackets` flag.
 - **SassString**: Stores text with `hasQuotes` flag.
 - **SassMap**: Key-value pairs.
 
@@ -229,26 +232,28 @@ get numeratorUnits(): string[] {
 
 ### 3. List separators and Sass bracketedness
 
-There is no AST-v2 representation gap here. Sass's four separator states are
-the canonical List separator facts (`','`, `' '`, `'/'`, and `'undecided'`), and
-Sass bracketedness is represented by a surrounding `Block` whose delimiter is
+There is no AST-v2 representation gap here. An explicit `List` carries only a
+comma or slash boundary (`','` or `'/'`). A raw recursive `ValueGroup[]` is the
+canonical space-separated sequence, and a scalar is its one-item form. Sass
+bracketedness is represented by a surrounding `Block` whose delimiter is
 `'square'`. A parenthesized value is the same `Block` shape with delimiter
 `'paren'`; no dialect-specific `hasBrackets` or `bracketed` field is added.
 
 The distinction matters at two levels:
 
-1. `List.sep` is the semantic separator used by typed evaluation and Sass list
-   functions (`separator()`, `join()`, `append()`, etc.).
+1. `List.sep` is the semantic separator only for explicit comma and slash
+   lists. Raw arrays and scalars are space-separated for typed evaluation and
+   Sass list functions (`separator()`, `join()`, `append()`, etc.).
 2. A parser-owned layout side table may retain the exact authored separator
    runs (spaces, newlines, comments, and indentation) for byte-faithful
    serialization. Those runs are provenance, not a second public List shape.
 
 SCSS slash lists therefore lower to `List { sep: '/' }`, and a source such as
-`[1 2, 3]` lowers to `Block(delimiter: 'square', inner: List(sep: ','))`
-with the nested space group retained in the List's `ValueSlot` payload. The
-parser, evaluator, and Sass list functions must all consume these canonical
-facts; there is no approved fallback to joined strings, `Keyword('/')`
-sentinels, or legacy `Paren`/`Sequence` nodes.
+`[1 2, 3]` lowers to `Block(delimiter: 'square', inner: List(sep: ','))` whose
+first member is the raw space group `[1, 2]`. The parser, evaluator, and Sass
+list functions must all consume these canonical facts; there is no approved
+fallback to joined strings, `Keyword('/')` sentinels, or legacy `Paren`/
+`Sequence` nodes.
 
 ### 4. String Quotes
 
@@ -362,8 +367,9 @@ defineFunction('abs', fn, {
 
 ### High Priority
 
-1. **Use the AST-v2 List/Block facts**
-   - Consume `List.sep` (`',' | ' ' | '/' | 'undecided'`) directly.
+1. **Use the AST-v2 ValueGroup/List/Block facts**
+   - Consume `List.sep` (`',' | '/'`) only for explicit separators; consume
+     raw arrays and scalars as default space groups.
    - Read Sass bracketedness from `Block.delimiter === 'square'`.
    - Do not add `hasBrackets`, `bracketed`, `separator` aliases, or a second
      Sass-specific value container.
@@ -421,21 +427,23 @@ defineFunction('abs', fn, {
 - Ensure backward compatibility with Less
 - Test metadata preservation through conversions
 - Verify performance impact of metadata
-- Test edge cases (missing channels, undecided separators, etc.)
+- Test edge cases (missing channels, scalar/space groups, etc.)
 
 ## Conclusion
 
 The most impactful remaining changes are:
-1. **Consume the existing AST-v2 List/Block facts** in Sass list functions.
+1. **Consume the existing AST-v2 ValueGroup/List/Block facts** in Sass list
+   functions.
 2. **Use Quoted nodes for strings** - Ensure conversion uses `Quoted` nodes
    instead of primitives.
 3. **Store multiple channel formats in Color** - Store RGB and HSL (trivial),
    optionally HWB (simple), Lab/LCH/OKLab/OKLCH (complex).
 
 **Key Findings:**
-- **List separators/brackets**: Fully represented by AST-v2 `List.sep` and the
-  surrounding `Block.delimiter` (`'square'` for Sass bracketedness); no
-  `hasBrackets` flag is needed
+- **List separators/brackets**: Explicit comma/slash separators live on
+  AST-v2 `List.sep`; raw arrays/scalars are space groups, and surrounding
+  `Block.delimiter` (`'square'`) carries Sass bracketedness. No `hasBrackets`
+  flag is needed.
 - **String quotes**: Already supported via `Quoted` node - just need to use it in conversion
 - **Color original statement**: Already preserved via `Color.node` - no changes needed
 - **Color channels**: Should be normalized float values (not units). Storing RGB+HSL is trivial and useful

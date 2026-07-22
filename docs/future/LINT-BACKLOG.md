@@ -11,4 +11,8 @@ files, and package performance fixtures. Test-lane diagnostics are tracked as
 cleanup work and must not be “fixed” by weakening ESLint rules or by adding
 global ignore patterns. The scope test in
 `scripts/__tests__/lint-scope.test.mjs` proves both that worktree fixtures are
-ignored and that package-test fixtures remain directly lintable.
+ignored and that package-test fixtures remain directly lintable. The blocking
+staged guard lints every changed executable file from the index and rejects
+errors on added/replaced lines, global diagnostics, and either retained boundary
+of a deletion-only hunk. That keeps new test debt out without requiring the
+historical full-test backlog to be zero.

@@ -107,11 +107,11 @@ import { escape } from './escape.js';
 // --- type-introspection predicates (is*) ---
 import {
   iscolor, isnumber, isstring, iskeyword, isunit, ispixel, ispercentage, isem
-} from './type-predicates.js';
+} from '../less/types.js';
 // --- url producers (Tier-C — self-contained; no file IO) ---
-import { svgGradient } from './svg-gradient.js';
+import svgGradient from '../less/svg-gradient.js';
 // --- IO producers (Tier-C — read a referenced file via the injected `FnCtx.io`) ---
-import { dataUri } from './data-uri.js';
+import dataUri from '../less/data-uri.js';
 import { imageSize } from './image-size.js';
 import { imageWidth } from './image-width.js';
 import { imageHeight } from './image-height.js';

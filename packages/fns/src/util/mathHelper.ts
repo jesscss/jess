@@ -31,7 +31,7 @@ export const mathHelper = (
     const preservedUnit = val instanceof Dimension ? val.unit : undefined;
     return new Dimension({ number: numberResult, unit: preservedUnit });
   }
-  const normalizedInput = input.map((v) => {
+  const normalizedInput: number[] = input.map((v): number => {
     if (!(v instanceof Dimension)) {
       return v;
     }
@@ -49,7 +49,7 @@ export const mathHelper = (
   });
   unit ??= val instanceof Dimension ? val.unit : '';
   if (unit === undefined || unit === null) {
-    return new Num(fn(...(normalizedInput as number[])));
+    return new Num(fn(...normalizedInput));
   }
-  return new Dimension({ number: fn(...(normalizedInput as number[])), unit });
+  return new Dimension({ number: fn(...normalizedInput), unit });
 };

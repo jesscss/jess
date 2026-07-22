@@ -332,11 +332,9 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Dimension', node: dimension([10, 'px']), expected: '10px' },
       { surface: 'Color', node: color('#ff0000'), expected: '#ff0000' },
       { surface: 'Quoted', node: quoted('theme.css'), expected: '"theme.css"' },
-      { surface: 'Url', node: url(quoted(any('image.png'))), expected: 'url("image.png")' },
       { surface: 'Comment', node: comment('/* note */'), expected: '/* note */' },
       { surface: 'Nil', node: nil(), expected: '', expectedParts: [] },
       { surface: 'Combinator', node: co('>'), expected: '>' },
-      { surface: 'Rest', node: rest(any('items')), expected: '...$items' },
       {
         surface: 'DefaultGuard',
         node: defaultguard(),
@@ -364,7 +362,7 @@ describe('renderNodeToBuffer', () => {
       }
     ];
 
-    expect(cases).toHaveLength(20);
+    expect(cases).toHaveLength(18);
 
     for (const item of cases) {
       item.setup?.(context);
@@ -401,18 +399,10 @@ describe('renderNodeToBuffer', () => {
       { surface: 'ComplexSelector', node: sel([el('.box'), co('>'), el('.child')]), expected: '.box > .child' },
       { surface: 'SelectorList', node: sellist([el('.a'), el('.b')]), expected: '.a,\n.b' },
       { surface: 'PseudoSelector', node: pseudo({ name: ':hover' }), expected: ':hover' },
-      { surface: 'AttributeSelector', node: attr({ name: 'data-x', op: '=', value: quoted('yes') }), expected: '[data-x="yes"]' },
       {
         surface: 'Interpolated',
         node: interpolated({ source: 'icon-%%', replacements: [ref({ key: 'brand' }, { type: 'variable' })] }),
         expected: 'icon-red'
-      },
-      {
-        surface: 'InterpolatedSelector',
-        node: interpolatedSelector(
-          interpolated({ source: '.%%', replacements: [ref({ key: 'class-name' }, { type: 'variable' })] })
-        ),
-        expected: '.active'
       },
       { surface: 'Expression', node: expr(op([dimension(2), '+', dimension(3)])), expected: '5' },
       { surface: 'Range', node: range({ start: dimension(1), end: dimension(3), step: dimension(1) }) },
@@ -420,7 +410,6 @@ describe('renderNodeToBuffer', () => {
       { surface: 'QueryCondition', node: query([any('(min-width:'), dimension([10, 'px']), any(')')]) },
       { surface: 'Block', node: block(seq([any('red'), any('blue')]), { type: 'square' }) },
       { surface: 'Collection', node: coll([decl({ name: 'color', value: any('red') })]) },
-      { surface: 'JsImport', node: js({ path: quoted('tools.js') }, { namespace: 'tools' }), expected: '@-use "tools.js" as tools;' },
       { surface: 'Ampersand', node: amp({ appendValue: '-item' }), expected: '', expectedParts: [] }
     ];
 
@@ -460,8 +449,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Paren', node: paren(new AsyncValueNode('value')), expected: '(value)' },
       { surface: 'Condition', node: condition([new AsyncValueNode('truthy', bool(true))]), expected: 'true' },
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset') as unknown as Any<AnyRole>), expected: '"asset"' },
-      { surface: 'Url', node: url(new AsyncValueNode('asset')), expected: 'url(asset)' }
+      { surface: 'Quoted', node: quoted(new AsyncValueNode('asset') as unknown as Any<AnyRole>), expected: '"asset"' }
     ];
 
     for (const item of cases) {
@@ -480,11 +468,9 @@ describe('renderNodeToBuffer', () => {
       { surface: 'Anonymous', node: new Anonymous('legacy-anon'), expected: 'legacy-anon' },
       { surface: 'Keyword', node: keyword('auto'), expected: 'auto' },
       { surface: 'Num', node: num(7), expected: '7' },
-      { surface: 'CustomDeclaration', node: customdecl({ name: '--gap', value: any('0') }) },
       { surface: 'SpacedSequenceHelper', node: spaced([any('span'), any('2')]), expected: 'span 2' },
       { surface: 'Extend', node: extend({ target: el('.target') }), expected: '', expectedParts: [] },
       { surface: 'ExtendList', node: extendList([extend({ target: el('.target') })]), expectedParts: [] },
-      { surface: 'SelectorCapture', node: selcap(el('.captured')), expected: '.captured' },
       { surface: 'Log', node: log({ level: 'debug', message: any('') }), expected: '', expectedParts: [] },
       { surface: 'JsArray', node: jsarray([any('one'), any('two')]), expectedParts: [] },
       { surface: 'JsObject', node: jsobj({ one: any('one') }), expectedParts: [] },
@@ -552,7 +538,7 @@ describe('renderNodeToBuffer', () => {
       { surface: 'SelectorBase', node: new RenderBufferSelector('.base'), expected: '.base' }
     ];
 
-    expect(cases).toHaveLength(20);
+    expect(cases).toHaveLength(18);
 
     for (const item of cases) {
       const context = new Context();

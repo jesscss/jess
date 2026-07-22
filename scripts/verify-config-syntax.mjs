@@ -4,7 +4,16 @@ import { readFileSync } from 'node:fs';
 import ts from '@typescript/typescript6';
 
 function configSyntaxKind(path) {
-  return /(^|\/)tsconfig(?:\.[^/]+)?\.json$/u.test(path) ? 'jsonc' : 'json';
+  if (/(^|\/)tsconfig(?:\.[^/]+)?\.json$/u.test(path)) {
+    return 'jsonc';
+  }
+  // VS Code reads workspace settings, launch, and task files as JSON with
+  // comments. Keep this narrow: extension manifests and grammar data remain
+  // strict JSON because their consumers require strict JSON.
+  if (/(^|\/)\.vscode\/(?:launch|settings|tasks)\.json$/u.test(path)) {
+    return 'jsonc';
+  }
+  return 'json';
 }
 
 function validateConfigText(path, text) {
@@ -57,7 +66,7 @@ function run() {
     process.exitCode = 1;
     return;
   }
-  console.log(`Configuration syntax passed (${files.length} ${staged ? 'staged' : 'tracked'} JSON file(s); tsconfig files parsed as JSONC).`);
+  console.log(`Configuration syntax passed (${files.length} ${staged ? 'staged' : 'tracked'} JSON file(s); known JSONC consumers parsed as JSONC).`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

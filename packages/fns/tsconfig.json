@@ -12,6 +12,7 @@
   "include": [
     "src/**/*",
     "test/**/*",
+    "tsdown.config.ts",
     "vite.config.ts",
     "vitest.config.ts",
     "../../vitest.d.ts"

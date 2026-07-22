@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { operate, validateFinalUnits } from '../value-operate.js';
-import { makeDimension } from '../value-factory.js';
+import { makeBlock, makeDimension, makeList } from '../value-factory.js';
 import type { EvalModes, ValueObj } from '../value-eval.js';
 
 const PRESERVE: EvalModes = { unitMode: 'preserve' };
@@ -82,6 +82,16 @@ describe('cross-unit arithmetic — vs less@4.6.7 (parens-division)', () => {
     const unitless = operate('/', dim(1, 'px'), dim(1, 'px'), STRICT);
     expect(unitless.bytes).toBe('1');
     expect(() => validateFinalUnits(unitless, STRICT)).not.toThrow();
+  });
+
+  it('validates every nested structural value group at the final boundary', () => {
+    const compound = operate('*', dim(2, 'px'), dim(3, 's'), STRICT);
+    const nested = makeBlock([
+      makeDimension(1, 'px'),
+      makeList([makeDimension(2, 'px'), compound], ',')
+    ], 'square');
+
+    expect(() => validateFinalUnits(nested, STRICT)).toThrow(/Multiple units/);
   });
 
   it('strict still rejects incompatible additive units immediately', () => {

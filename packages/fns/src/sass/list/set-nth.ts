@@ -9,12 +9,11 @@ const setNth = defineFunction('set-nth', {
   ] as const,
   body: (list, index, value) => {
     const info = getSassListInfo(list);
-    const normalized = Math.floor(index.number);
-    if (!Number.isFinite(normalized)) {
-      throw new RangeError(`List index ${normalized} is out of bounds`);
+    if (!Number.isInteger(index.number)) {
+      throw new TypeError('list.set-nth() index must be an integer');
     }
     const zeroBased = resolveSassListIndex(index.number, info.values.length);
-    // Core owns zero-based access/bounds; Sass owns the one-based floor policy.
+    // Core owns zero-based access/bounds; Sass owns one-based index policy.
     listValueAt(list, zeroBased);
     const values = [...info.values];
     values[zeroBased] = value;

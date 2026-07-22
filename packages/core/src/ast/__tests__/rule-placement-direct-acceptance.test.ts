@@ -6,7 +6,7 @@ import { decl, keyword, rule, stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 describe('canonical flattened rule placement', () => {
-  it('emits direct declarations as one parent block across a nested rule', () => {
+  it('preserves parent/child/parent authored order across a collapsed nested rule', () => {
     const document = stylesheet([
       rule('.parent', [
         decl('before', keyword('one')),
@@ -21,10 +21,12 @@ describe('canonical flattened rule placement', () => {
     }).css).toBe(
       '.parent {\n'
       + '  before: one;\n'
-      + '  after: three;\n'
       + '}\n'
       + '.parent .child {\n'
       + '  inside: two;\n'
+      + '}\n'
+      + '.parent {\n'
+      + '  after: three;\n'
       + '}\n'
     );
   });

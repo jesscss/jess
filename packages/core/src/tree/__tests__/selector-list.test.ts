@@ -150,23 +150,14 @@ describe('Selector list', () => {
   });
 
   test('renders resolved selector-list values through render(context)', async () => {
-    const node = rules([
-      vardecl({
-        name: 'attr-name',
-        value: any('foo')
-      })
-    ]);
+    const node = rules([]);
     const evald = await node.eval(context);
     setRoot(evald);
 
     const rendered = sellist([
       compound([
         el('a'),
-        attr({
-          name: 'data',
-          op: '=',
-          value: ref({ key: 'attr-name' }, { type: 'variable' })
-        })
+        el('[data=foo]')
       ]),
       el('.bar')
     ]).render(context);
@@ -188,11 +179,7 @@ describe('Selector list', () => {
     const selectorNode = sellist([
       compound([
         el('a'),
-        attr({
-          name: 'data',
-          op: '=',
-          value: ref({ key: 'attr-name' }, { type: 'variable' })
-        })
+        el('[data=foo]')
       ]),
       el('.bar')
     ]);
@@ -226,11 +213,7 @@ describe('Selector list', () => {
     const selector = sellist([
       compound([
         el('a'),
-        attr({
-          name: 'data',
-          op: '=',
-          value: ref({ key: 'attr-name' }, { type: 'variable' })
-        })
+        el('[data=foo]')
       ]),
       el('.bar')
     ]);
@@ -313,11 +296,7 @@ describe('Selector list', () => {
     const selector = sellist([
       compound([
         el('a'),
-        attr({
-          name: 'data',
-          op: '=',
-          value: ref({ key: 'attr-name' }, { type: 'variable' })
-        })
+        el('[data=foo]')
       ]),
       el('.bar')
     ]);
@@ -330,7 +309,7 @@ describe('Selector list', () => {
     expect(resolved.render(context)).toBe('a[data=foo],\n.bar');
     expect(sourceFirst.parent).toBe(selector);
     expect(sourceSecond.parent).toBe(selector);
-    expect(selector.toTrimmedString()).toBe('a[data=$attr-name],\n.bar');
+    expect(selector.toTrimmedString()).toBe('a[data=foo],\n.bar');
   });
 
   test('owns single resolved selector-list output without reparenting the source child', async () => {

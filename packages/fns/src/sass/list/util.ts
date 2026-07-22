@@ -1,45 +1,36 @@
-import type { List, ValueObj } from '@jesscss/core/value';
+import type { ValueGroup } from '@jesscss/core/value';
 import {
-  coerceListItems,
+  groupItems,
+  groupSeparator,
   isBracketedList,
+  isValueGroupArray,
   makeBlock,
   makeList
 } from '@jesscss/core/value';
 
 /** Sass's public separator names mapped onto the core value facts. */
-export type SassListSep = ',' | ' ' | '/' | 'undecided';
+export type SassListSep = ',' | ' ' | '/';
 
-function listValue(value: ValueObj): List | undefined {
-  if (value.type === 'List') {
-    return value;
-  }
-  if (value.type === 'Block' && value.inner.type === 'List') {
-    return value.inner;
-  }
-  return undefined;
-}
-
-export function getSassListInfo(value: ValueObj): {
-  values: readonly ValueObj[];
+export function getSassListInfo(value: ValueGroup): {
+  values: readonly ValueGroup[];
   sep: SassListSep;
   bracketed: boolean;
 } {
-  const list = listValue(value);
   return {
-    values: coerceListItems(value),
-    sep: list?.sep ?? ' ',
+    values: groupItems(value),
+    sep: groupSeparator(value),
     bracketed: isBracketedList(value)
   };
 }
 
 export function resolveSassSeparator(
-  separator: ValueObj | undefined,
+  separator: ValueGroup | undefined,
   fallback: SassListSep
 ): SassListSep {
   if (separator === undefined) {
     return fallback;
   }
-  if (separator.type !== 'Quoted' && separator.type !== 'Keyword') {
+  if (isValueGroupArray(separator) || (separator.type !== 'Quoted' && separator.type !== 'Keyword')) {
     throw new TypeError('$separator must be a quoted separator name');
   }
   const value = separator.type === 'Quoted' ? separator.value : separator.text;
@@ -53,16 +44,16 @@ export function resolveSassSeparator(
 }
 
 export function resolveSassBracketed(
-  bracketed: ValueObj | undefined,
+  bracketed: ValueGroup | undefined,
   fallback: boolean
 ): boolean {
   if (bracketed === undefined) {
     return fallback;
   }
-  if (bracketed.type === 'Bool') {
+  if (!isValueGroupArray(bracketed) && bracketed.type === 'Bool') {
     return bracketed.value;
   }
-  if (bracketed.type !== 'Quoted' && bracketed.type !== 'Keyword') {
+  if (isValueGroupArray(bracketed) || (bracketed.type !== 'Quoted' && bracketed.type !== 'Keyword')) {
     throw new TypeError('$bracketed must be true, false, or auto');
   }
   const value = bracketed.type === 'Quoted' ? bracketed.value : bracketed.text;
@@ -79,12 +70,14 @@ export function resolveSassBracketed(
 }
 
 export function createSassListResult(
-  values: readonly ValueObj[],
+  values: readonly ValueGroup[],
   sep: SassListSep,
   bracketed: boolean
-): ValueObj {
-  const list = makeList(values, sep);
-  return bracketed ? makeBlock(list, 'square') : list;
+): ValueGroup {
+  const group = sep === ' '
+    ? values.length === 1 ? values[0]! : values
+    : makeList(values, sep);
+  return bracketed ? makeBlock(group, 'square') : group;
 }
 
 /**
@@ -92,13 +85,12 @@ export function createSassListResult(
  * to the strict zero-based index accepted by the core value helpers.
  */
 export function resolveSassListIndex(index: number, length: number): number {
-  const normalized = Math.floor(index);
-  if (!Number.isFinite(normalized)) {
-    throw new TypeError('list index must be finite');
+  if (!Number.isInteger(index)) {
+    throw new TypeError('list index must be an integer');
   }
-  const zeroBased = normalized < 0 ? length + normalized : normalized - 1;
+  const zeroBased = index < 0 ? length + index : index - 1;
   if (zeroBased < 0 || zeroBased >= length) {
-    throw new RangeError(`List index ${normalized} is out of bounds`);
+    throw new RangeError(`List index ${index} is out of bounds`);
   }
   return zeroBased;
 }

@@ -13,10 +13,9 @@
  */
 import { describe, it, expect } from 'vitest';
 import { bindArgs } from '../mixin-dispatch.js';
-import { isNode } from '../node.js';
 import {
   mixinDef, mixinCall, any, isLiteralNode, keyword,
-  type List, type MixinCall, type MixinDef, type Param, type ValueSlot
+  type MixinCall, type MixinDef, type Param, type ValueSlot
 } from '../nodes.js';
 
 // Caller-frame resolver for byte-literal args: our test args/defaults are plain
@@ -24,12 +23,12 @@ import {
 const resolve = (v: ValueSlot): string =>
   'type' in v ? (isLiteralNode(v) ? v.src : '') : v.map(resolve).join(' ');
 
-const argumentsOf = (def: MixinDef, call: MixinCall): List => {
+const argumentsOf = (def: MixinDef, call: MixinCall): ValueSlot => {
   const bound = bindArgs(def, call, resolve);
   expect(bound).not.toBeNull();
   const a = bound!.get('arguments');
-  if (!isNode(a) || a.type !== 'List') {
-    throw new TypeError('Expected @arguments to retain a structural List.');
+  if (a === undefined) {
+    throw new TypeError('Expected @arguments to retain a structural value group.');
   }
   return a;
 };
@@ -138,9 +137,7 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
     const authored = [keyword('a'), keyword('b'), keyword('c')] as const;
     const bound = bindArgs(restDef, mixinCall('.mixin', [{ value: authored }]), resolve);
 
-    expect(bound?.get('values')).toEqual({ type: 'List', sep: ' ', value: [authored] });
-    expect(argumentsOf(restDef, mixinCall('.mixin', [{ value: authored }]))).toEqual({
-      type: 'List', sep: ' ', value: [authored]
-    });
+    expect(bound?.get('values')).toEqual([authored]);
+    expect(argumentsOf(restDef, mixinCall('.mixin', [{ value: authored }]))).toEqual([authored]);
   });
 });

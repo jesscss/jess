@@ -8,6 +8,7 @@
 // --- value-domain types (erased) ---
 export type {
   ValueObj,
+  ValueGroup,
   Value,
   Dimension,
   Color,
@@ -19,8 +20,13 @@ export type {
   ListSeparator,
   Block,
   EvalModes,
-  PluginHost
+  PluginHost,
+  PluginRawArgument,
+  PluginDetachedRuleset,
+  PluginDetachedDeclaration
 } from './ast/value-eval.js';
+
+export { emitValue, isValueGroup, isValueGroupArray } from './ast/value-eval.js';
 
 // --- value constructors + accessors ---
 export {
@@ -42,8 +48,8 @@ export {
 
 // --- shared typed-list capabilities ---
 export {
-  asList,
-  coerceListItems,
+  groupItems,
+  groupSeparator,
   listValueAt,
   isBracketedList
 } from './ast/value-list.js';

@@ -213,8 +213,8 @@ describe('direct canonical value access', () => {
   });
 
   it('uses a mixin-spliced declaration as the final enclosing property value', () => {
-    // The property lookup sees the mixin-spliced value, while flattened output
-    // still groups every direct enclosing declaration before the nested rule.
+    // The property lookup sees the mixin-spliced value, while the nested child
+    // remains a cascade boundary in the authored enclosing declaration order.
     const setLateColor = {
       type: 'MixinDef' as const,
       name: '.set-late-color',
@@ -234,11 +234,13 @@ describe('direct canonical value access', () => {
     expect(render(document)).toBe(
       '.block {\n'
       + '  color: red;\n'
-      + '  color: blue;\n'
-      + '  color: yellow;\n'
       + '}\n'
       + '.block .child {\n'
       + '  background: yellow;\n'
+      + '}\n'
+      + '.block {\n'
+      + '  color: blue;\n'
+      + '  color: yellow;\n'
       + '}\n'
     );
   });

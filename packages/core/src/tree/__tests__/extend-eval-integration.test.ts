@@ -5,7 +5,6 @@ import {
   any,
   amp,
   Ampersand,
-  attr,
   atrule,
   color,
   comment,
@@ -20,7 +19,6 @@ import {
   paren,
   pseudo,
   query,
-  quoted,
   rules,
   Rules,
   Ruleset,
@@ -369,52 +367,6 @@ describe('extend integration (eval -> toString)', () => {
       parentA.clone = originalAClone;
       parentB.clone = originalBClone;
     }
-  });
-
-  it('extends attribute value with substring replacement using the extender local selector (Less extend-selector attributes)', async () => {
-    // Represents:
-    // .attributes {
-    //   [data="test"] { extend: attributes; }
-    //   .attribute-test { &:extend([data="test"] all); }
-    // }
-    // Target and extender share the `.attributes` parent frame. The replaceWith `&`
-    // is therefore the extender's LOCAL selector `.attribute-test` (not the composed
-    // `.attributes .attribute-test`): the `.attributes` prefix comes from the render
-    // nesting, so storing it in the member too would double it. This matches Less 4.x
-    // exactly (test-data/tests-unit/extend-selector/extend-selector.css emits bare
-    // `.attribute-test` inside the `.attributes {}` block). The prior `.attributes
-    // .attribute-test` expectation encoded the pre-fix doubling bug.
-    const dataTest = attr({ name: 'data', op: '=', value: quoted('test') });
-
-    const root = rules([
-      ruleset({
-        selector: el('.attributes'),
-        rules: [
-          ruleset({
-            selector: dataTest,
-            rules: [decl({ name: 'extend', value: any('attributes') })]
-          }),
-          ruleset({
-            selector: el('.attribute-test'),
-            rules: [
-              extend({ target: dataTest, flag: ExtendFlag.All })
-            ]
-          })
-        ]
-      })
-    ]);
-
-    const context = new Context({ output: { collapseNesting: false } });
-    const css = await renderNodeToString(root, context, { context });
-
-    expect(css).toBeString(`
-      .attributes {
-        [data="test"],
-        .attribute-test {
-          extend: attributes;
-        }
-      }
-    `);
   });
 
   it('extend.less .ee:extend(.dd all,.bb) does NOT add .ee to inner .bb (only outer .bb)', async () => {

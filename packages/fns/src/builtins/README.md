@@ -13,10 +13,11 @@ against that adapter (the reference) in
   tree-shakes: a stylesheet that never calls `pow` must not ship `pow`.
 - **`math-helper.ts`** — the shared `mathHelper` kernel (`applyMath` + the
   `unaryMath` spec builder) most number/unit math fns reduce to a one-liner over.
-- **Core list capability** — list recovery (`coerceListItems`) and indexed access
-  (`listValueAt`) belong to `@jesscss/core/value`; Less's `min-max.ts` owns only
-  Less unit-grouping policy. A variadic callable receives one typed `List` whose
-  universal payload is `value`.
+- **Core list capability** — structural group access (`groupItems`,
+  `groupSeparator`, and `listValueAt`) belongs to `@jesscss/core/value`; Less's
+  `min-max.ts` owns only Less unit-grouping policy. A variadic callable receives
+  one typed `ValueGroup`: raw arrays are the default spaced form, while explicit
+  `List` values carry only comma/slash boundaries.
 - **`color-helper.ts`** — the shared color kernels (`mixColors`, `colorBlend`,
   `getLuma`, `toHsv`) the color mixers/blend-modes/readers reduce to. Each
   Photoshop-style blend fn (`multiply`/`screen`/`overlay`/…) is a one-liner over

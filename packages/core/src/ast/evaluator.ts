@@ -11,9 +11,10 @@
  * HARD MODULE BOUNDARY: imports only the engine value modules.
  */
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
-import type { EvalModes, FnScope, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
+import { emitValue, isValueGroupArray, type EvalModes, type FnScope, type ValueEvaluator, type ValueGroup, type ValueObj } from './value-eval.js';
 import type { FnIo } from './functions/types.js';
 import { sepGlue } from './value-eval.js';
+import { groupItems, groupSeparator } from './value-list.js';
 import { operate } from './value-operate.js';
 import { compare as compareValues, typeCheck as typeCheckValues } from './value-guards.js';
 import { sniffLiteral } from './literal-tag.js';
@@ -22,12 +23,13 @@ import { dispatchFn } from './value-dispatch.js';
 import { makeKeyword } from './value-factory.js';
 
 /** Join an unknown-fn's arg bytes verbatim (per separator). */
-function verbatimArgs(args: ValueList): string {
-  return args.value.map(a => a.bytes).join(sepGlue(args.sep));
+function verbatimArgs(args: ValueGroup): string {
+  const separator = groupSeparator(args);
+  return groupItems(args).map(emitValue).join(separator === ' ' ? ' ' : sepGlue(separator));
 }
 
 /** Preserve an optional CSS call after name resolution or invocation failed. */
-function fallbackCall(name: string, args: ValueList): ValueObj {
+function fallbackCall(name: string, args: ValueGroup): ValueObj {
   return makeKeyword(`${name}(${verbatimArgs(args)})`);
 }
 
@@ -39,7 +41,7 @@ function fallbackCall(name: string, args: ValueList): ValueObj {
 function recoverCallFailure(
   error: unknown,
   name: string,
-  args: ValueList,
+  args: ValueGroup,
   modes: EvalModes,
   onUnresolved: ((error: unknown) => void) | undefined
 ): ValueObj {
@@ -52,12 +54,12 @@ function recoverCallFailure(
 
 /** Keep the ordinary synchronous path allocation-free; attach recovery only to an async result. */
 function recoverAsyncCall(
-  result: MaybePromise<ValueObj>,
+  result: MaybePromise<ValueGroup>,
   name: string,
-  args: ValueList,
+  args: ValueGroup,
   modes: EvalModes,
   onUnresolved: ((error: unknown) => void) | undefined
-): MaybePromise<ValueObj> {
+): MaybePromise<ValueGroup> {
   if (!isThenable(result)) {
     return result;
   }
@@ -70,7 +72,8 @@ function recoverAsyncCall(
  * arrives as a `Keyword` whose bytes ARE the inner text), any other value its
  * canonical emitted bytes. Boundary-clean (operates on the value domain only).
  */
-const stringify = (v: ValueObj): string => (v.type === 'Quoted' ? v.value : v.bytes);
+const stringify = (v: ValueGroup): string =>
+  !isValueGroupArray(v) && v.type === 'Quoted' ? v.value : emitValue(v);
 
 /**
  * Build the typed `ValueEvaluator`. No pre-pass: values are computed
@@ -84,12 +87,12 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
 
   const call = (
     name: string,
-    args: ValueList,
+    args: ValueGroup,
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
     onUnresolved?: (error: unknown) => void
-  ): MaybePromise<ValueObj> => {
+  ): MaybePromise<ValueGroup> => {
     // [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
     // FIRST — but ONLY when `scope` is non-null, which the caller passes solely
     // when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
@@ -124,11 +127,19 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     return fallbackCall(name, args);
   };
 
-  const compare = (op: string, left: ValueObj, right: ValueObj, modes: EvalModes): boolean =>
+  const compare = (op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean =>
     compareValues(op, left, right, modes.equalityMode ?? 'less');
 
-  const typeCheck = (name: string, args: ValueList, _modes: EvalModes): boolean =>
-    typeCheckValues(name, args.value);
+  const typeCheck = (name: string, args: ValueGroup, _modes: EvalModes): boolean => {
+    const values: ValueObj[] = [];
+    for (const value of groupItems(args)) {
+      if (isValueGroupArray(value)) {
+        return false;
+      }
+      values.push(value);
+    }
+    return typeCheckValues(name, values);
+  };
 
   return { materialize, operate, call, compare, typeCheck };
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  asList,
-  coerceListItems,
+  emitValue,
+  groupItems,
+  groupSeparator,
   isBracketedList,
   listValueAt,
   makeBlock,
@@ -11,37 +12,39 @@ import {
 } from '../../value.js';
 
 describe('core typed value lists', () => {
-  it('retains every value-domain separator fact without dialect helpers', () => {
+  it('uses raw arrays for ordinary adjacency and List only for comma/slash facts', () => {
     const values = [makeKeyword('a'), makeKeyword('b')];
+    expect(serializeValue(values)).toBe('a b');
     expect(serializeValue(makeList(values, ','))).toBe('a, b');
-    expect(serializeValue(makeList(values, ' '))).toBe('a b');
     expect(serializeValue(makeList(values, '/'))).toBe('a / b');
-    expect(serializeValue(makeList(values, 'undecided'))).toBe('a b');
-    expect(asList(makeList(values, ',')).value).toHaveLength(2);
+    expect(groupSeparator(values)).toBe(' ');
+    expect(groupSeparator(makeList(values, ','))).toBe(',');
+    expect(groupItems(makeList(values, ',')).map(emitValue)).toEqual(['a', 'b']);
   });
 
-  it('keeps square and paren delimiters as Block facts around a List', () => {
-    const list = makeList([makeKeyword('a'), makeKeyword('b')], ',');
-    const square = makeBlock(list, 'square');
-    const paren = makeBlock(list, 'paren');
+  it('keeps square and paren delimiters as Block facts around any structural group', () => {
+    const values = [makeKeyword('a'), makeKeyword('b')];
+    const square = makeBlock(values, 'square');
+    const paren = makeBlock(values, 'paren');
 
-    expect(serializeValue(square)).toBe('[a, b]');
-    expect(serializeValue(paren)).toBe('(a, b)');
+    expect(serializeValue(square)).toBe('[a b]');
+    expect(serializeValue(paren)).toBe('(a b)');
     expect(isBracketedList(square)).toBe(true);
     expect(isBracketedList(paren)).toBe(false);
-    expect(asList(square)).toBe(list);
+    expect(groupItems(square).map(emitValue)).toEqual(['a', 'b']);
   });
 
-  it('recovers nested and quoted flattened values without splitting their interiors', () => {
-    const items = coerceListItems(makeKeyword('one fn(a, b) "two three"'));
-    expect(items.map(item => item.bytes)).toEqual(['one', 'fn(a, b)', '"two three"']);
+  it('never recovers sequence structure from flattened bytes', () => {
+    const authored = makeKeyword('one fn(a, b) "two three"');
+    expect(groupItems(authored)).toEqual([authored]);
+    expect(serializeValue([makeKeyword('one'), authored])).toBe('one one fn(a, b) "two three"');
   });
 
   it('keeps index policy outside core and enforces zero-based bounds', () => {
-    const list = makeList([makeKeyword('one'), makeKeyword('two')], ' ');
-    expect(listValueAt(list, 1).bytes).toBe('two');
-    expect(() => listValueAt(list, -1)).toThrow(RangeError);
-    expect(() => listValueAt(list, 2)).toThrow(RangeError);
-    expect(() => listValueAt(list, 1.5)).toThrow(RangeError);
+    const values = [makeKeyword('one'), makeKeyword('two')];
+    expect(emitValue(listValueAt(values, 1))).toBe('two');
+    expect(() => listValueAt(values, -1)).toThrow(RangeError);
+    expect(() => listValueAt(values, 2)).toThrow(RangeError);
+    expect(() => listValueAt(values, 1.5)).toThrow(RangeError);
   });
 });

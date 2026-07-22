@@ -127,7 +127,7 @@ export interface SpacedValue {
 }
 
 /**
- * A separator-aware value list, e.g. `Arial, sans-serif`, `1 2`, or `1 / 2`.
+ * An explicit separator-aware value list, e.g. `Arial, sans-serif` or `1 / 2`.
  * The parser owns the boundaries and stores the typed entries directly in
  * `value`; a consumer never re-splits joined source bytes. `sep` is the one
  * canonical separator fact. Delimiters are represented by the separate `Block`
@@ -136,7 +136,7 @@ export interface SpacedValue {
 export interface List {
   readonly type: 'List';
   readonly value: ValueSlot[];
-  readonly sep: ',' | ' ' | '/' | 'undecided';
+  readonly sep: ',' | '/';
 }
 
 /** The binding store a variable operation addresses. */

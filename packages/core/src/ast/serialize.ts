@@ -86,22 +86,25 @@ import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plu
 import {
   DEFAULT_MODES,
   emitValue,
+  isValueGroupArray,
   isLiteral,
   literal,
   type EvalModes,
   type FnScope,
   type PluginHost,
-  type List as ValueList,
+  type PluginRawArgument,
   type Value,
   type ValueEvaluator,
+  type ValueGroup,
   type ValueObj
 } from './value-eval.js';
-import type { Fn, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
+import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeBlock, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
+import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
@@ -1718,7 +1721,7 @@ interface EvalCtx {
 
 /** Force a computed `Value` to a typed object. A computed STRING carries no parse
  * tag → the evaluator sniffs (untagged fallback); a materialized object passes through. */
-function force(e: EvalCtx, v: Value): ValueObj {
+function force(e: EvalCtx, v: Value): ValueGroup {
   if (!isLiteral(v)) {
     return v;
   }
@@ -1726,6 +1729,13 @@ function force(e: EvalCtx, v: Value): ValueObj {
     return { type: 'Keyword', text: v, bytes: v };
   }
   return e.ev.materialize(v);
+}
+
+function requireValueObject(value: ValueGroup, reason: string): ValueObj {
+  if (isValueGroupArray(value)) {
+    throw new TypeError(`${reason} requires a scalar value`);
+  }
+  return value;
 }
 
 /**
@@ -1932,7 +1942,7 @@ function promoteBareSlashValue(slot: readonly ValueSlot[], e: EvalCtx): ValueNod
     : null;
 }
 
-function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
+function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<ValueGroup> {
   if (!isValueSlotArray(slot)) {
     return evalTyped(slot, frame, e);
   }
@@ -1943,10 +1953,20 @@ function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
     }
   }
   const values = slot.map(value => evalTypedSlot(value, frame, e));
-  return combineAll(values, resolved => makeList(resolved, ' '));
+  return combineAll(values, resolved => resolved);
 }
 
-function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
+function validateValueGroupUnits(value: ValueGroup, modes: EvalModes): void {
+  if (isValueGroupArray(value)) {
+    for (const item of value) {
+      validateValueGroupUnits(item, modes);
+    }
+    return;
+  }
+  validateFinalUnits(value, modes);
+}
+
+function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<ValueGroup> {
   switch (node.type) {
     case 'Keyword':
     case 'Color':
@@ -1995,7 +2015,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       return mapMaybe(
         evalTypedSlot(node.inner, frame, { ...e, parenDepth: (e.parenDepth ?? 0) + 1 }),
-        value => value.type === 'Keyword' && calcInner(value.bytes) !== null
+        value => !isValueGroupArray(value) && value.type === 'Keyword' && calcInner(value.bytes) !== null
           ? makeKeyword(`(${calcInner(value.bytes)})`)
           : value
       );
@@ -2019,7 +2039,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // 3). Fall through to the joined-bytes path for it.
       if (!isSlashGroup(node)) {
         const parts = node.parts.map(p => evalTyped(p, frame, e));
-        return combineAll(parts, vals => makeList(vals, ' '));
+        return combineAll(parts, vals => vals);
       }
       return mapMaybe(evalValue(node, frame, e), v => force(e, v));
     }
@@ -2314,7 +2334,12 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const r = evalTyped(node.right, frame, e);
       // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
       const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
-      return combineAll([l, r], values => ev.operate(node.operator, values[0]!, values[1]!, m));
+      return combineAll([l, r], values => ev.operate(
+        node.operator,
+        requireValueObject(values[0]!, `operator ${node.operator}`),
+        requireValueObject(values[1]!, `operator ${node.operator}`),
+        m
+      ));
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
@@ -2870,7 +2895,7 @@ function isIntegerString(s: string): boolean {
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
   return mapMaybe(evalTypedSlot(node.args[0]!, frame, ce), (v) => {
-    if (v.type === 'Keyword') {
+    if (!isValueGroupArray(v) && v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
     }
     return v;
@@ -2966,6 +2991,70 @@ function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: E
   }
 }
 
+/**
+ * Project one detached ruleset only for an opted-in legacy plugin call.  The
+ * normal value evaluator deliberately keeps detached rulesets out of ValueObj;
+ * this is the one cold compatibility boundary that needs their declaration map.
+ */
+function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<PluginRawArgument> {
+  if (isValueSlotArray(slot)) {
+    return combineAll(slot.map(part => evalTypedSlot(part, frame, e)), values => values);
+  }
+  let binding: Binding = slot;
+  let bindingFrame = frame;
+  if (!isValueSlotArray(slot) && slot.type === 'VariableReference') {
+    const hit = resolveVarRef(frame, slot.name, slot.lookup, e);
+    if (hit) {
+      binding = hit.value;
+      bindingFrame = hit.frame;
+    }
+  }
+  const detached = resolveDetachedRuleset(binding, bindingFrame, e);
+  if (!detached) {
+    return evalTypedSlot(slot, frame, e);
+  }
+  const closure = detachedBinding(bindingFrame, detached);
+  const definitionFrame = closure?.lexicalFrame ?? bindingFrame;
+  const declarations: { declaration: Declaration; name: string }[] = [];
+  for (const statement of detached.body) {
+    if (statement.type === 'Declaration' && typeof statement.name === 'string') {
+      declarations.push({ declaration: statement, name: statement.name });
+    }
+  }
+  const values = declarations.map(({ declaration }) => evalTypedSlot(declaration.value, definitionFrame, e));
+  return combineAll(values, resolved => ({
+    type: 'DetachedRuleset' as const,
+    rules: declarations.map(({ name }, index) => ({ name, value: resolved[index]! }))
+  }));
+}
+
+const pluginFnContext = (e: EvalCtx): FnCtx => ({
+  modes: e.modes,
+  stringify: value => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value),
+  ...(e.io === undefined ? {} : { io: e.io })
+});
+
+function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null, e: EvalCtx): boolean {
+  for (const arg of args) {
+    if (isValueSlotArray(arg)) {
+      return true;
+    }
+    let binding: Binding = arg;
+    let bindingFrame = frame;
+    if (arg.type === 'VariableReference') {
+      const hit = resolveVarRef(frame, arg.name, arg.lookup, e);
+      if (hit) {
+        binding = hit.value;
+        bindingFrame = hit.frame;
+      }
+    }
+    if (resolveDetachedRuleset(binding, bindingFrame, e)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function evalCall(
   node: FunctionCall,
   frame: Frame | null,
@@ -3026,12 +3115,27 @@ function evalCall(
   // scoped fn somewhere; otherwise pass null so `ev.call` takes its pre-P1 global
   // path unchanged. `anyScopedFns` is false for every real document today.
   const scope = e.anyScopedFns ? makeFnScope(frame) : null;
+  const selected = scope?.lookup(node.name);
+  const rawInvoker = e.pluginHost?.invokeRawFunction;
+  if (selected && rawInvoker && needsPluginRawArguments(node.args, frame, e)) {
+    const raw = node.args.map(arg => pluginRawArgument(arg, frame, e));
+    return combineAll(raw, (args) => {
+      try {
+        const result = rawInvoker(selected, args, pluginFnContext(e));
+        return mapMaybe(result, value => value === undefined
+          ? evalCall(node, frame, { ...e, pluginHost: undefined }, demanded)
+          : value);
+      } catch (error) {
+        return invalidFunctionCall(node, error, e);
+      }
+    });
+  }
   // Args are materialized TYPED (each arg's tag sourced from its parse node).
   const typed = node.args.map(a => evalTypedSlot(a, frame, e));
   return combineAll(typed, (vals) => {
-    const list: ValueList = { type: 'List', value: vals, sep, bytes: '' };
+    const args: ValueGroup = sep === ',' ? makeList(vals, ',') : vals;
     try {
-      const result = ev.call(node.name, list, e.modes, scope, e.io, (error) => {
+      const result = ev.call(node.name, args, e.modes, scope, e.io, (error) => {
         const reason = error instanceof Error ? error.message : String(error);
         const file = e.context?.sourceContext?.file;
         const source = file?.source;
@@ -3106,7 +3210,7 @@ function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): Ma
 function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   return mapMaybe(evalValueSlot(node, frame, e), (value) => {
     if (!isLiteral(value)) {
-      validateFinalUnits(value, e.modes);
+      validateValueGroupUnits(value, e.modes);
     }
     return emitValue(value);
   });
@@ -4246,53 +4350,49 @@ function emitDocumentStatements(
         break;
       case 'MixinCall': {
         const group: Leaf[] = [];
-        const flush = (): void => {
+        const flush = (): MaybePromise<void> => {
           if (group.length) {
-            flushBlock([], group, e);
+            return mapMaybe(flushBlock([], group, e), () => {
+              group.length = 0;
+            });
           }
-          group.length = 0;
         };
-        return mapMaybe(expandCall(child, null, null, frame, group, flush, null, e), () => {
-          flush();
-        });
+        return mapMaybe(expandCall(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'Apply': {
         const group: Leaf[] = [];
-        const flush = (): void => {
+        const flush = (): MaybePromise<void> => {
           if (group.length) {
-            flushBlock([], group, e);
+            return mapMaybe(flushBlock([], group, e), () => {
+              group.length = 0;
+            });
           }
-          group.length = 0;
         };
-        return mapMaybe(expandApply(child, null, null, frame, group, flush, null, e), () => {
-          flush();
-        });
+        return mapMaybe(expandApply(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'Reference': {
         // A final call step can splice a detached ruleset at document level.
         const group: Leaf[] = [];
-        const flush = (): void => {
+        const flush = (): MaybePromise<void> => {
           if (group.length) {
-            flushBlock([], group, e);
+            return mapMaybe(flushBlock([], group, e), () => {
+              group.length = 0;
+            });
           }
-          group.length = 0;
         };
-        return mapMaybe(expandReferenceCall(child, null, null, frame, group, flush, null, e), () => {
-          flush();
-        });
+        return mapMaybe(expandReferenceCall(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'For': {
         // a top-level `each(...)` loop — its body emits at the document level.
         const group: Leaf[] = [];
-        const flush = (): void => {
+        const flush = (): MaybePromise<void> => {
           if (group.length) {
-            flushBlock([], group, e);
+            return mapMaybe(flushBlock([], group, e), () => {
+              group.length = 0;
+            });
           }
-          group.length = 0;
         };
-        return mapMaybe(expandFor(child, null, null, frame, group, flush, null, e), () => {
-          flush();
-        });
+        return mapMaybe(expandFor(child, null, null, frame, group, flush, null, e), flush);
       }
       case 'If': {
         const body = selectIfBodyForRender(child, frame, e);
@@ -4300,15 +4400,14 @@ function emitDocumentStatements(
           break;
         }
         const group: Leaf[] = [];
-        const flush = (): void => {
+        const flush = (): MaybePromise<void> => {
           if (group.length) {
-            flushBlock([], group, e);
+            return mapMaybe(flushBlock([], group, e), () => {
+              group.length = 0;
+            });
           }
-          group.length = 0;
         };
-        walkBody(body, null, null, frame, group, flush, null, e);
-        flush();
-        break;
+        return mapMaybe(walkBody(body, null, null, frame, group, flush, null, e), flush);
       }
       case 'Declaration':
       case 'Comment':
@@ -4628,23 +4727,23 @@ function flattenWithHeader(
   // child frame and become visible to a later namespace descent through Rule.
   (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   const group: Leaf[] = [];
-  const flush = (): void => {
+  const flush = (): MaybePromise<void> => {
     if (group.length) {
       // [adjacent-merge] `parent` (the parent expansion this rule was composed
       // against) keys sibling merges: two nested rulesets with the same parent ref
       // and header merge; top-level rules (`parent === null`) never do.
-      flushBlock(header, group, e, rule.selector, parent);
-      group.length = 0;
+      return mapMaybe(flushBlock(header, group, e, rule.selector, parent), () => {
+        group.length = 0;
+      });
     }
   };
-  // [partition] `group` owns ordinary direct parent declarations, including ones
-  // separated by a nested Rule. Deferred containers retain their output order in
-  // `trailing`; only a deferred bubbling at-rule makes later direct declarations a
-  // trailing same-selector run. `emitBlock` reuses the header + adjacent-merge key
-  // for that existing trailing buffer.
-  const emitBlock = (leaves: Leaf[]): void => {
+  // [partition] A collapsed child is a cascade boundary: direct parent leaves on
+  // either side must remain separate blocks in authored order. `trailing` holds
+  // that ordered stream; it must never regroup a later parent declaration ahead
+  // of an emitted child merely to make the selector output smaller.
+  const emitBlock = (leaves: Leaf[]): MaybePromise<void> => {
     if (leaves.length) {
-      flushBlock(header, leaves, e, rule.selector, parent);
+      return flushBlock(header, leaves, e, rule.selector, parent);
     }
   };
   const partition: Partition = {
@@ -4655,8 +4754,6 @@ function flattenWithHeader(
     emitBlock
   };
   const finish = (): MaybePromise<void> => {
-    flush();
-    flushPending(partition);
     const runTrailing = (index: number): MaybePromise<void> => {
       for (let i = index; i < partition.trailing.length; i++) {
         const emitted = partition.trailing[i]!();
@@ -4665,6 +4762,11 @@ function flattenWithHeader(
         }
       }
     };
+    if (!partition.encounteredContainer) {
+      return flush();
+    }
+    queueLeadingGroup(group, partition);
+    flushPending(partition);
     return runTrailing(0);
   };
   const executeBody = () => mapMaybe(
@@ -4678,7 +4780,15 @@ function flattenWithHeader(
   return mapMaybe(withSourceOwner(e, childFrame.sourceOwner, executeBody), finish);
 }
 
-/** [partition] Move any buffered trailing-leaf run into `trailing` as one block. */
+/** [partition] Queue the direct leaves preceding a collapsed child as one parent block. */
+function queueLeadingGroup(group: Leaf[], p: Partition): void {
+  if (group.length) {
+    const batch = group.splice(0, group.length);
+    p.trailing.push(() => p.emitBlock(batch));
+  }
+}
+
+/** [partition] Move any buffered post-child leaf run into `trailing` as one block. */
 function flushPending(p: Partition): void {
   if (p.pending.length) {
     const batch = p.pending;
@@ -4687,10 +4797,9 @@ function flushPending(p: Partition): void {
   }
 }
 
-/** [partition] Buffer generic ordered leaves after an existing deferred container.
- * Direct declarations use the narrower bubbling-at-rule boundary in `walkBody`. */
-function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, forceLeading: boolean): void {
-  if (partition && partition.encounteredContainer && !forceLeading) {
+/** [partition] Buffer every ordinary leaf after an emitted collapsed child. */
+function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, _forceLeading: boolean): void {
+  if (partition && partition.encounteredContainer) {
     partition.pending.push(leaf);
   } else {
     group.push(leaf);
@@ -4699,32 +4808,28 @@ function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, forceLe
 
 /**
  * [partition] Deferred-container ordering for a flattened Rule. Ordinary direct
- * declarations remain in the header `group` across nested Rules. A deferred
- * bubbling at-rule sets `afterBubbledAtRule`, so only later direct declarations
- * enter `pending` and emit after that at-rule. Generic ordered leaves continue to
- * use `encounteredContainer`; `forceLeading` retains its existing parametric-mixin
- * placement behavior. Passing `null` (top level, at-rule bodies) keeps every rule
- * inline in source order.
+ * leaves after any collapsed child enter `pending` and emit in a later parent
+ * block. This preserves CSS cascade order: no declaration may cross a collapsed
+ * nested rule to coalesce selector output. Passing `null` (top level, at-rule
+ * bodies) keeps every rule inline in source order.
  */
 interface Partition {
   encounteredContainer: boolean;
-  /** A deferred bubbling at-rule makes later direct leaves a trailing parent run. */
+  /** Retained only for existing at-rule-specific placement callers. */
   afterBubbledAtRule: boolean;
   /** Ordered deferred containers plus existing trailing-leaf blocks. */
   trailing: Array<() => MaybePromise<void>>;
   /** Buffered trailing declarations awaiting the next boundary (a run → one block). */
   pending: Leaf[];
   /** Emit a run of leaves as ONE block reusing this ruleset's header + merge key. */
-  emitBlock: (leaves: Leaf[]) => void;
+  emitBlock: (leaves: Leaf[]) => MaybePromise<void>;
 }
 
 /**
  * Walk a body, expanding mixin calls inline against the shared canonical body.
- * `forceLeading` HOISTS this body's declarations into the leading block even past a
- * nested rule — set when expanding a PARAMETRIC mixin (its body is a bare-`&`
- * transparent wrapper in less@4, whose leaves force-lead; a plain ruleset-mixin
- * does NOT hoist, so its declarations split at container boundaries like authored
- * ones).
+ * `forceLeading` remains threaded for call expansion compatibility, but it never
+ * overrides a collapsed-child boundary: authored declaration order determines CSS
+ * cascade order for every direct or expanded body.
  */
 function walkBody(
   statements: Statement[],
@@ -4732,11 +4837,11 @@ function walkBody(
   ancestor: string | null, // [nesting] opaque accumulated ancestor for `&`-less child joins
   frame: Frame,
   group: Leaf[],
-  flush: () => void,
+  flush: () => MaybePromise<void>,
   partition: Partition | null,
   e: Emit,
   imp = false, // call-level !important override
-  forceLeading = false, // [partition] hoist this body's decls into the leading block
+  forceLeading = false,
   propertyScope: Frame = frame, // Less `$property` visibility owner
   applyExpansion = false
 ): MaybePromise<void> {
@@ -4748,18 +4853,15 @@ function walkBody(
         // them into the enclosing ruleset. A mixin body retains its call frame for
         // value evaluation but publishes this declaration into `propertyScope`.
         recordPropertyDeclaration(propertyScope, node, frame);
-        // An ordinary nested Rule does not split this parent declaration block.
-        // A deferred bubbling at-rule does: authored direct leaves after it must
-        // emit after that at-rule, in a trailing parent block. The partition
-        // carries that one placement fact; no AST rewrite or second body walk is
-        // needed.
+        // Every collapsed child is a source-order/cascade boundary. A declaration
+        // following it belongs to a later parent block, never the leading block.
         const leaf: Leaf = {
           node,
           frame,
           ...(imp ? { important: true } : {}),
           ...(applyExpansion ? { fromApply: true } : {})
         };
-        if (partition?.afterBubbledAtRule === true && !forceLeading) {
+        if (partition?.encounteredContainer === true) {
           partition.pending.push(leaf);
         } else {
           group.push(leaf);
@@ -4795,19 +4897,35 @@ function walkBody(
               declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
               statements: rule.body
             };
-            walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            const emitted = walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            if (isThenable(emitted)) {
+              return emitted.then(() => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              ));
+            }
           }
           break;
         }
-        // [partition] A nested Rule defers to `trailing`, but does not split the
-        // parent's direct declaration group. Without a partition (top level /
-        // at-rule body) it flushes and emits inline in source order.
+        // [partition] Queue the leading parent block before this collapsed child.
+        // Without a partition (top level / at-rule body) it flushes and emits
+        // inline in source order.
         if (partition) {
+          queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
           partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp));
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => mapMaybe(
+              flatten(rule, rComposed, rAncestor, rFrame, e, imp),
+              () => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              )
+            ));
+          }
           const emitted = flatten(rule, rComposed, rAncestor, rFrame, e, imp);
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
@@ -4863,7 +4981,13 @@ function walkBody(
       case 'If': {
         const body = selectIfBodyForRender(node, frame, e);
         if (body) {
-          walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+          const emitted = walkBody(body, composed, ancestor, frame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+          if (isThenable(emitted)) {
+            return emitted.then(() => walkBody(
+              statements.slice(index + 1), composed, ancestor, frame, group, flush,
+              partition, e, imp, forceLeading, propertyScope, applyExpansion
+            ));
+          }
         }
         break;
       }
@@ -4886,12 +5010,22 @@ function walkBody(
         const atFrame = frame;
         const atComposed = composed;
         if (partition) {
+          queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
           partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitAtRuleBlock(atNode, atFrame, e, atComposed));
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => mapMaybe(
+              emitAtRuleBlock(node, frame, e, composed),
+              () => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope
+              )
+            ));
+          }
           const emitted = emitAtRuleBlock(node, frame, e, composed);
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
@@ -4909,12 +5043,22 @@ function walkBody(
         }
         const atNode = node;
         if (partition) {
+          queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
           partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitAtRuleStatement(atNode, frame, e));
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              emitAtRuleStatement(node, frame, e);
+              return walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              );
+            });
+          }
           emitAtRuleStatement(node, frame, e);
         }
         break;
@@ -4941,7 +5085,16 @@ function walkBody(
           // placement. Its continuation must complete before a later sibling
           // statement dispatches (notably `#Namespace > .mixin()`); keeping it
           // as a buffered leaf discarded that MaybePromise.
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => mapMaybe(
+              emitImportAtRule(node, frame, e, e.importDocument),
+              () => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group,
+                flush, partition, e, imp, forceLeading, propertyScope
+              )
+            ));
+          }
           const imported = emitImportAtRule(node, frame, e, e.importDocument);
           if (isThenable(imported)) {
             return imported.then(() => walkBody(
@@ -4952,7 +5105,16 @@ function walkBody(
         } else if (partition !== null && composed !== null) {
           addLeaf(group, partition, { node, frame }, forceLeading);
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => mapMaybe(
+              emitImportAtRule(node, frame, e, e.importDocument),
+              () => walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group,
+                flush, partition, e, imp, forceLeading, propertyScope
+              )
+            ));
+          }
           // `(inline)` is intentionally not a document parse, but it is still
           // asynchronous Context IO. Keep this body cursor alive so a deferred
           // callable's document scope survives the raw-byte read.
@@ -4969,11 +5131,21 @@ function walkBody(
       case 'StyleImport': {
         const importNode = node;
         if (partition) {
+          queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
           partition.trailing.push(() => emitStyleImport(importNode, frame, e));
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              emitStyleImport(node, frame, e);
+              return walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              );
+            });
+          }
           emitStyleImport(node, frame, e);
         }
         break;
@@ -4981,11 +5153,21 @@ function walkBody(
       case 'ModuleImport': {
         const importNode = node;
         if (partition) {
+          queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
           partition.trailing.push(() => emitModuleImport(importNode, frame, e));
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              emitModuleImport(node, frame, e);
+              return walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              );
+            });
+          }
           emitModuleImport(node, frame, e);
         }
         break;
@@ -4993,12 +5175,22 @@ function walkBody(
       case 'OpaqueAtRuleBlock': {
         const opaqueNode = node;
         if (partition) {
+          queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
           partition.afterBubbledAtRule = true;
           partition.trailing.push(() => emitOpaqueAtRuleBlock(opaqueNode, e));
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              emitOpaqueAtRuleBlock(node, e);
+              return walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              );
+            });
+          }
           emitOpaqueAtRuleBlock(node, e);
         }
         break;
@@ -5007,11 +5199,21 @@ function walkBody(
       case 'RawInline': {
         const riNode = node;
         if (partition) {
+          queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
           partition.trailing.push(() => emitRawInline(riNode, e));
         } else {
-          flush();
+          const flushed = flush();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              emitRawInline(node, e);
+              return walkBody(
+                statements.slice(index + 1), composed, ancestor, frame, group, flush,
+                partition, e, imp, forceLeading, propertyScope, applyExpansion
+              );
+            });
+          }
           emitRawInline(node, e);
         }
         break;
@@ -5059,7 +5261,7 @@ function expandCall(
   ancestor: string | null,
   frame: Frame,
   group: Leaf[],
-  flush: () => void,
+  flush: () => MaybePromise<void>,
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   imp = false,
@@ -5230,7 +5432,7 @@ function expandApply(
   ancestor: string | null,
   frame: Frame,
   group: Leaf[],
-  flush: () => void,
+  flush: () => MaybePromise<void>,
   partition: Partition | null,
   e: Emit,
   imp = false,
@@ -5563,7 +5765,7 @@ function expandReferenceCall(
   ancestor: string | null,
   frame: Frame,
   group: Leaf[],
-  flush: () => void,
+  flush: () => MaybePromise<void>,
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   forceLeading = false, // [partition] inherited leading-hoist context
@@ -5858,10 +6060,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Fo
   if (isThenable(v)) {
     throw new Error('async value in an each() iterable is unsupported');
   }
-  if (v.type === 'List') {
-    return v.value.map(it => ({ value: any(it.bytes), key: null }));
-  }
-  return [{ value: any(v.bytes), key: null }];
+  return groupItems(v).map(item => ({ value: any(emitValue(item)), key: null }));
 }
 
 function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
@@ -5871,7 +6070,8 @@ function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
   if (isThenable(start) || isThenable(end) || isThenable(step)) {
     throw new Error('async value in a $for range is unsupported');
   }
-  if (start.type !== 'Dimension' || end.type !== 'Dimension' || (step !== null && step.type !== 'Dimension')) {
+  if (isValueGroupArray(start) || isValueGroupArray(end) || (step !== null && isValueGroupArray(step))
+    || start.type !== 'Dimension' || end.type !== 'Dimension' || (step !== null && step.type !== 'Dimension')) {
     throw new Error('$for range bounds and step must be dimensions');
   }
   const delta = step?.number ?? (start.number <= end.number ? 1 : -1);
@@ -5939,7 +6139,7 @@ function expandFor(
   ancestor: string | null,
   frame: Frame,
   group: Leaf[],
-  flush: () => void,
+  flush: () => MaybePromise<void>,
   partition: Partition | null, // [partition] nested-ruleset sink (see walkBody)
   e: Emit,
   imp = false,
@@ -6106,7 +6306,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
   return changed ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important } : call;
 }
 
-function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null): void {
+function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null): MaybePromise<void> {
   // A root-level mixin/detached-ruleset call has no selector header. Its ordinary
   // declarations are invalid Less output; custom properties remain legal at root.
   if (sel.length === 0) {
@@ -6120,49 +6320,52 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
       }
     }
   }
-  // [atrule] indent by the current block depth (0 at top level == prior behavior).
-  const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-  const header = idt ? sel.join(',\n' + idt) : sel.join(',\n');
-  // [adjacent-merge] v5 merges consecutive same-selector SIBLING rulesets nested
-  // under a common parent (see `Emit.lastBlock`): a non-null parent-expansion key
-  // matching the prior block's, same header+depth, and strict adjacency (nothing
-  // emitted since it closed) reopen the prior block rather than starting a new one.
-  const pk = parentKey ?? null;
-  const lb = e.lastBlock;
-  const reopen = pk !== null && lb.parentKey === pk
-    && lb.depth === e.depth && lb.header === header && lb.endChunks === e.chunks.length;
-  if (reopen) {
-    popClose(e, idt); // remove the prior block's trailing `}` (and its indent)
-  } else {
+  const emit = (kept: Leaf[], merged = false): void => {
+    // [atrule] indent by the current block depth (0 at top level == prior behavior).
+    const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+    const header = idt ? sel.join(',\n' + idt) : sel.join(',\n');
+    // [adjacent-merge] v5 merges consecutive same-selector SIBLING rulesets nested
+    // under a common parent (see `Emit.lastBlock`): a non-null parent-expansion key
+    // matching the prior block's, same header+depth, and strict adjacency (nothing
+    // emitted since it closed) reopen the prior block rather than starting a new one.
+    const pk = parentKey ?? null;
+    const lb = e.lastBlock;
+    const reopen = pk !== null && lb.parentKey === pk
+      && lb.depth === e.depth && lb.header === header && lb.endChunks === e.chunks.length;
+    if (reopen) {
+      popClose(e, idt); // remove the prior block's trailing `}` (and its indent)
+    } else {
+      if (idt) {
+        put(e, idt);
+      }
+      const selStart = e.off;
+      put(e, header);
+      if (e.positions && selNode) {
+        e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off });
+      }
+      put(e, ' {\n');
+    }
+    if (merged) {
+      mergeFold(kept, e, INDENT.repeat(e.depth + 1));
+    } else {
+      for (const leaf of kept) {
+        emitLeaf(leaf, e);
+      }
+    }
     if (idt) {
       put(e, idt);
     }
-    const selStart = e.off;
-    put(e, header);
-    if (e.positions && selNode) {
-      e.positions.push({ node: selNode, type: selNode.type, start: selStart, end: e.off });
-    }
-    put(e, ' {\n');
-  }
-  // a leaf group with any `+`/`+_` merge folds; otherwise the byte-identical
-  // per-leaf path (zero-cost gate), after collapsing duplicate declarations.
+    put(e, '}\n');
+    // [adjacent-merge] update the single record in place (no per-block allocation).
+    lb.parentKey = pk;
+    lb.header = header;
+    lb.depth = e.depth;
+    lb.endChunks = e.chunks.length;
+  };
   if (groupHasMerge(group)) {
-    mergeFold(group, e, INDENT.repeat(e.depth + 1));
-  } else {
-    const kept = dedupGroup(group, e);
-    for (const leaf of kept) {
-      emitLeaf(leaf, e);
-    }
+    return emit(group, true);
   }
-  if (idt) {
-    put(e, idt);
-  }
-  put(e, '}\n');
-  // [adjacent-merge] update the single record in place (no per-block allocation).
-  lb.parentKey = pk;
-  lb.header = header;
-  lb.depth = e.depth;
-  lb.endChunks = e.chunks.length;
+  return mapMaybe(dedupGroup(group, e), emit);
 }
 
 /** [adjacent-merge] Rewind the trailing block-close chunks emitted by `flushBlock`
@@ -6190,7 +6393,7 @@ function popClose(e: Emit, idt: string): void {
  * value bytes (perf-neutral common path). Merge (`+`/`+_`) groups take the fold
  * path and never reach here.
  */
-function dedupGroup(group: Leaf[], e: Emit): Leaf[] {
+function dedupGroup(group: Leaf[], e: Emit): MaybePromise<Leaf[]> {
   if (group.length < 2) {
     return group;
   }
@@ -6219,35 +6422,50 @@ function dedupGroup(group: Leaf[], e: Emit): Leaf[] {
   // (earlier) occurrence.
   const seen = new Set<string>();
   let suppressed: Set<number> | null = null;
-  for (let i = group.length - 1; i >= 0; i--) {
-    const leaf = group[i]!;
-    const n = leaf.node;
-    if (n.type !== 'Declaration') {
-      continue;
+  const finish = (): Leaf[] => {
+    if (!suppressed) {
+      return group;
     }
-    const nm = names[i]!;
-    if ((nameCounts.get(nm) ?? 0) < 2) {
-      continue;
-    } // unique name → nothing to collapse
-    const val = evalBytesSync(n.value, leaf.frame, e);
-    const important = n.important || leaf.important === true;
-    const key = `${nm}\x00${val}\x00${important ? '!' : ''}`;
-    if (seen.has(key) && leaf.fromApply !== true) {
-      (suppressed ??= new Set<number>()).add(i);
-    } else {
-      seen.add(key);
+    const out: Leaf[] = [];
+    for (let i = 0; i < group.length; i++) {
+      if (!suppressed.has(i)) {
+        out.push(group[i]!);
+      }
     }
-  }
-  if (!suppressed) {
-    return group;
-  }
-  const out: Leaf[] = [];
-  for (let i = 0; i < group.length; i++) {
-    if (!suppressed.has(i)) {
-      out.push(group[i]!);
+    return out;
+  };
+  const inspect = (index: number): MaybePromise<Leaf[]> => {
+    for (let i = index; i >= 0; i--) {
+      const leaf = group[i]!;
+      const n = leaf.node;
+      if (n.type !== 'Declaration') {
+        continue;
+      }
+      const nm = names[i]!;
+      if ((nameCounts.get(nm) ?? 0) < 2) {
+        continue;
+      } // unique name → nothing to collapse
+      const record = (val: string): void => {
+        const important = n.important || leaf.important === true;
+        const key = `${nm}\x00${val}\x00${important ? '!' : ''}`;
+        if (seen.has(key) && leaf.fromApply !== true) {
+          (suppressed ??= new Set<number>()).add(i);
+        } else {
+          seen.add(key);
+        }
+      };
+      const val = evalBytes(n.value, leaf.frame, e);
+      if (isThenable(val)) {
+        return val.then((value) => {
+          record(value);
+          return inspect(i - 1);
+        });
+      }
+      record(val);
     }
-  }
-  return out;
+    return finish();
+  };
+  return inspect(group.length - 1);
 }
 
 /* --------------------------------------------------------------- merge */
@@ -6882,7 +7100,7 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
   // of leaking a color token into the root output.
   if (precomputed === undefined && e.ev) {
     const value = evalValue(node, frame, e);
-    if (!isThenable(value) && typeof value !== 'string' && value.type === 'Color') {
+    if (!isThenable(value) && typeof value !== 'string' && !isValueGroupArray(value) && value.type === 'Color') {
       throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
     }
   }
@@ -7440,14 +7658,26 @@ function emitBubbleBody(
     || statement.type === 'AtRuleStatement'
   );
   const deferredChildren: Array<() => MaybePromise<void>> | null = deferStaticChildren ? [] : null;
-  const flushDirect = (): void => {
+  const flushDirect = (): MaybePromise<void> => {
     if (group.length === 0) {
       return;
     }
     if (ctx !== null) {
       // Wrap the direct declarations in the propagated selector context.
       e.depth++;
-      flushBlock(ctx, group, e);
+      const emitted = flushBlock(ctx, group, e);
+      if (isThenable(emitted)) {
+        return emitted.then(
+          () => {
+            e.depth--;
+            group.length = 0;
+          },
+          (error) => {
+            e.depth--;
+            throw error;
+          }
+        );
+      }
       e.depth--;
     } else if (groupHasMerge(group)) {
       mergeFold(group, e, INDENT.repeat(e.depth + 1));
@@ -7487,7 +7717,27 @@ function emitBubbleBody(
               e.depth--;
             });
           } else {
-            flushDirect();
+            const flushed = flushDirect();
+            if (isThenable(flushed)) {
+              return flushed.then(() => {
+                e.depth++;
+                const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+                if (isThenable(emitted)) {
+                  return emitted.then(
+                    () => {
+                      e.depth--;
+                      return run(index + 1);
+                    },
+                    (error) => {
+                      e.depth--;
+                      throw error;
+                    }
+                  );
+                }
+                e.depth--;
+                return run(index + 1);
+              });
+            }
             e.depth++;
             {
               const emitted = flatten(node, ctx, ctxAncestor, frame, e);
@@ -7523,7 +7773,27 @@ function emitBubbleBody(
               e.depth--;
             });
           } else {
-            flushDirect();
+            const flushed = flushDirect();
+            if (isThenable(flushed)) {
+              return flushed.then(() => {
+                e.depth++;
+                const nested = emitAtRuleBlock(node, frame, e, ctx);
+                if (isThenable(nested)) {
+                  return nested.then(
+                    () => {
+                      e.depth--;
+                      return run(index + 1);
+                    },
+                    (error) => {
+                      e.depth--;
+                      throw error;
+                    }
+                  );
+                }
+                e.depth--;
+                return run(index + 1);
+              });
+            }
             e.depth++;
             const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
             if (isThenable(nested)) {
@@ -7549,14 +7819,61 @@ function emitBubbleBody(
               e.depth--;
             });
           } else {
-            flushDirect();
+            const flushed = flushDirect();
+            if (isThenable(flushed)) {
+              return flushed.then(() => {
+                e.depth++;
+                emitAtRuleStatement(node, frame, e);
+                e.depth--;
+                return run(index + 1);
+              });
+            }
             e.depth++;
             emitAtRuleStatement(node, frame, e);
             e.depth--;
           }
           break;
-        case 'ImportAtRule':
-          flushDirect();
+        case 'ImportAtRule': {
+          const flushed = flushDirect();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              e.depth++;
+              const imported = emitImportAtRule(
+                node,
+                frame,
+                e,
+                e.importDocument,
+                (document, importFrame) => {
+                  e.depth -= 2;
+                  const emitted = emitBubbleBody(document.children, ctx, importFrame, e);
+                  if (isThenable(emitted)) {
+                    return emitted.then(() => {
+                      e.depth += 2;
+                    }, (error) => {
+                      e.depth += 2;
+                      throw error;
+                    });
+                  }
+                  e.depth += 2;
+                  return emitted;
+                }
+              );
+              if (isThenable(imported)) {
+                return imported.then(
+                  () => {
+                    e.depth--;
+                    return run(index + 1);
+                  },
+                  (error) => {
+                    e.depth--;
+                    throw error;
+                  }
+                );
+              }
+              e.depth--;
+              return run(index + 1);
+            });
+          }
           e.depth++;
           const imported = emitImportAtRule(
             node,
@@ -7603,24 +7920,52 @@ function emitBubbleBody(
           }
           e.depth--;
           break;
-        case 'StyleImport':
-          flushDirect();
+        }
+        case 'StyleImport': {
+          const flushed = flushDirect();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              e.depth++;
+              emitStyleImport(node, frame, e);
+              e.depth--;
+              return run(index + 1);
+            });
+          }
           e.depth++;
           emitStyleImport(node, frame, e);
           e.depth--;
           break;
-        case 'ModuleImport':
-          flushDirect();
+        }
+        case 'ModuleImport': {
+          const flushed = flushDirect();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              e.depth++;
+              emitModuleImport(node, frame, e);
+              e.depth--;
+              return run(index + 1);
+            });
+          }
           e.depth++;
           emitModuleImport(node, frame, e);
           e.depth--;
           break;
-        case 'OpaqueAtRuleBlock':
-          flushDirect();
+        }
+        case 'OpaqueAtRuleBlock': {
+          const flushed = flushDirect();
+          if (isThenable(flushed)) {
+            return flushed.then(() => {
+              e.depth++;
+              emitOpaqueAtRuleBlock(node, e);
+              e.depth--;
+              return run(index + 1);
+            });
+          }
           e.depth++;
           emitOpaqueAtRuleBlock(node, e);
           e.depth--;
           break;
+        }
         case 'MixinCall':
           {
             const expanded = expandCall(node, ctx, ctxAncestor, frame, group, flushDirect, null, e);
@@ -7670,9 +8015,9 @@ function emitBubbleBody(
           break;
       }
     }
-    flushDirect();
+    const flushed = flushDirect();
     if (deferredChildren === null) {
-      return;
+      return flushed;
     }
     const runDeferred = (childIndex: number): MaybePromise<void> => {
       for (let i = childIndex; i < deferredChildren.length; i++) {
@@ -7682,7 +8027,7 @@ function emitBubbleBody(
         }
       }
     };
-    return runDeferred(0);
+    return mapMaybe(flushed, () => runDeferred(0));
   };
   return run(0);
 }
@@ -8169,19 +8514,25 @@ function emitNestedRule(
     }
     // [extend] split-out exact extenders (target has surviving nested children):
     // sibling rules carrying only the target's DIRECT declarations (empty → drop).
+    const direct: Leaf[] = [];
     if (plan && plan.splits.length > 0) {
-      const direct: Leaf[] = [];
       for (const st of rule.body) {
         if (st.type === 'Declaration' || st.type === 'Comment') {
           direct.push({ node: st, frame: childFrame });
         }
       }
-      if (direct.length > 0) {
-        for (const header of plan.splits) {
-          flushBlock(header, direct, e);
+    }
+    const emitSplits = (index: number): MaybePromise<void> => {
+      if (!plan || direct.length === 0) {
+        return;
+      }
+      for (let splitIndex = index; splitIndex < plan.splits.length; splitIndex++) {
+        const emitted = flushBlock(plan.splits[splitIndex]!, direct, e);
+        if (isThenable(emitted)) {
+          return emitted.then(() => emitSplits(splitIndex + 1));
         }
       }
-    }
+    };
     // [extend] hoisted (flattened) children at this rule's depth: a `renest` child
     // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
     // emits FLAT.
@@ -8196,7 +8547,7 @@ function emitNestedRule(
         }
       }
     };
-    return runHoist(0);
+    return mapMaybe(emitSplits(0), () => runHoist(0));
   };
   return mapMaybe(emitNestedBody(rule.body, childFrame, e, hoist, imp, childSource), finish);
 }

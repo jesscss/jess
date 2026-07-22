@@ -183,4 +183,57 @@ describe('@jesscss/plugin-js optional auto-wiring', () => {
       ''
     ].join('\n'));
   });
+
+  it('bridges raw sequences, explicit lists, and detached maps through a real Less @plugin call', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-direct-plugin-values-'));
+    tempDirs.push(directory);
+    const entry = path.join(directory, 'main.less');
+    const module = path.join(directory, 'values-plugin.js');
+    fs.writeFileSync(module, [
+      'registerPlugin({',
+      '  install: function(_less, _manager, functions) {',
+      '    functions.add("scalar", function(value) {',
+      '      return value instanceof tree.Dimension ? new tree.Dimension(value.value + 1, value.unit) : new tree.Anonymous("bad-scalar");',
+      '    });',
+      '    functions.add("sequence", function(value) {',
+      '      return new tree.Anonymous(value instanceof tree.Expression ? "expression" : "bad-sequence");',
+      '    });',
+      '    functions.add("list", function(value) {',
+      '      return new tree.Anonymous(value instanceof tree.Value && value.separator === "," ? "value" : "bad-list");',
+      '    });',
+      '    functions.add("map-size", function(value) {',
+      '      var valid = value instanceof tree.Mixin && value.name instanceof tree.Nil && value.args instanceof tree.Nil;',
+      '      return new tree.Dimension(valid ? value.ruleset.rules.length : 0, "px");',
+      '    });',
+      '    functions.add("slash", function() { return less.value([new tree.Dimension(1, "px"), new tree.Dimension(2, "px")], "/"); });',
+      '    functions.add("semicolon", function() { return less.value([new tree.Dimension(3, "px"), new tree.Dimension(4, "px")], ";"); });',
+      '  }',
+      '});'
+    ].join('\n'));
+    fs.writeFileSync(entry, [
+      '@plugin "./values-plugin.js";',
+      '@comma: red, blue;',
+      '@map: { one: 1px; two: 2px; };',
+      '.entry {',
+      '  scalar: scalar(4px);',
+      '  sequence: sequence(red blue);',
+      '  list: list(@comma);',
+      '  map: map-size(@map);',
+      '  slash: slash();',
+      '  semicolon: semicolon();',
+      '}'
+    ].join('\n'));
+
+    await expect(makeDirectCompiler().render(entry)).resolves.toBe([
+      '.entry {',
+      '  scalar: 5px;',
+      '  sequence: expression;',
+      '  list: value;',
+      '  map: 2px;',
+      '  slash: 1px / 2px;',
+      '  semicolon: 3px, 4px;',
+      '}',
+      ''
+    ].join('\n'));
+  });
 });

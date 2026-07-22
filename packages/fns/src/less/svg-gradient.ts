@@ -1,175 +1,85 @@
-import { Color, defineFunction, Dimension, List, Node, Paren, Quoted, Sequence, Url } from '@jesscss/core';
-
-type GradientStop = { color: Color; position?: Dimension };
-
-function flattenSingle(node: Node): Node {
-  while (node instanceof Paren) {
-    node = node.value!;
-  }
-  while (
-    (node instanceof Sequence && node.value.length === 1)
-    || (node instanceof List && node.value.length === 1)
-  ) {
-    node = node instanceof List ? node.value[0]! : node.value[0]!;
-    while (node instanceof Paren) {
-      node = node.value!;
-    }
-  }
-  return node;
-}
-
-function maybeGradientStop(node: Node): GradientStop | undefined {
-  node = flattenSingle(node);
-  if (node instanceof Color) {
-    return { color: node };
-  }
-  if (node instanceof List && node.value.length === 2) {
-    const first = flattenSingle(node.value[0]!);
-    const second = flattenSingle(node.value[1]!);
-    if (first instanceof Color && second instanceof Dimension) {
-      return { color: first, position: second };
-    }
-  }
-  if (node instanceof Sequence && node.value.length === 2) {
-    const first = flattenSingle(node.value[0]!);
-    const second = flattenSingle(node.value[1]!);
-    if (first instanceof Color && second instanceof Dimension) {
-      return { color: first, position: second };
-    }
-  }
-  return undefined;
-}
-
-function collectStops(nodes: Node[], out: GradientStop[]): void {
-  for (let node of nodes) {
-    node = flattenSingle(node);
-    const stop = maybeGradientStop(node);
-    if (stop) {
-      out.push(stop);
-      continue;
-    }
-    if (node instanceof List) {
-      collectStops(node.value, out);
-      continue;
-    }
-    if (node instanceof Sequence) {
-      collectStops(node.value, out);
-      continue;
-    }
-    throw new Error('svg-gradient expects direction, start_color [start_position], [color position,]..., end_color [end_position] or direction, color list');
-  }
-}
-
-function colorToHex(color: Color): string {
-  const [r, g, b] = color.rgb;
-  return '#' + [r, g, b]
-    .map(channel => channel.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-const DIRECTION_TO_SVG = new Map<string, { type: 'linear' | 'radial'; direction: string; rect: string }>([
-  ['to bottom', {
-    type: 'linear',
-    direction: 'x1="0%" y1="0%" x2="0%" y2="100%"',
-    rect: 'x="0" y="0" width="1" height="1"'
-  }],
-  ['to right', {
-    type: 'linear',
-    direction: 'x1="0%" y1="0%" x2="100%" y2="0%"',
-    rect: 'x="0" y="0" width="1" height="1"'
-  }],
-  ['to bottom right', {
-    type: 'linear',
-    direction: 'x1="0%" y1="0%" x2="100%" y2="100%"',
-    rect: 'x="0" y="0" width="1" height="1"'
-  }],
-  ['to top right', {
-    type: 'linear',
-    direction: 'x1="0%" y1="100%" x2="100%" y2="0%"',
-    rect: 'x="0" y="0" width="1" height="1"'
-  }],
-  ['ellipse', {
-    type: 'radial',
-    direction: 'cx="50%" cy="50%" r="75%"',
-    rect: 'x="-50" y="-50" width="101" height="101"'
-  }],
-  ['ellipse at center', {
-    type: 'radial',
-    direction: 'cx="50%" cy="50%" r="75%"',
-    rect: 'x="-50" y="-50" width="101" height="101"'
-  }]
-]);
+import { colorRgbRounded, defineFunction, groupItems, isValueGroupArray, makeKeyword } from '@jesscss/core/value';
+import type { Color, Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
 
 /**
- * Less `svg-gradient()` — build an inline SVG gradient `data:` URL from a direction
- * and two or more color stops. `direction` is one of `to bottom`, `to right`,
- * `to bottom right`, `to top right`, `ellipse` or `ellipse at center`; each stop is
- * a `Color` with an optional position.
- * @param direction the gradient direction keyword
- * @param stops the color stops (`Color [position]`, …)
- * @returns a `Url` node wrapping the SVG `data:` URI
- * @throws if the direction is unrecognized or fewer than two stops are given
+ * Less `svg-gradient()` — build an inline SVG gradient data URI. Stops are
+ * structural value groups (`Color [Dimension]`), never recovered from rendered
+ * bytes. A malformed call throws so the shared call boundary owns preservation.
  */
-const svgGradient = defineFunction(
-  'svg-gradient',
-  async function(this: any, direction: Node, ...rest: Node[]) {
-    const normalizeNode = async (node: Node): Promise<Node> => {
-      let normalized = await node.eval(this.context);
-      while (normalized instanceof Paren) {
-        normalized = await normalized.value!.eval(this.context);
-      }
-      if (normalized instanceof Sequence) {
-        const items = await Promise.all(normalized.value.map(item => normalizeNode(item)));
-        return new Sequence(items, normalized.options).inherit(normalized);
-      }
-      if (normalized instanceof List) {
-        const items = await Promise.all(normalized.value.map(item => normalizeNode(item)));
-        return new List(items, normalized.options).inherit(normalized);
-      }
-      return normalized;
-    };
+const svgGradient: Fn = defineFunction('svg-gradient', {
+  params: [{ kinds: 'any' }],
+  variadic: true,
+  body: (value, ctx): ValueObj => {
+    const items = groupItems(value);
+    if (items.length < 2) {
+      throw new TypeError(STOPS_ERROR);
+    }
+    const direction = ctx.stringify(items[0]!);
 
-    direction = await normalizeNode(direction);
-    rest = await Promise.all(rest.map(stop => normalizeNode(stop)));
-
-    const directionValue = direction.toString().trim();
-    const svgDirection = DIRECTION_TO_SVG.get(directionValue);
-    if (!svgDirection) {
-      throw new Error('svg-gradient direction must be \'to bottom\', \'to right\', \'to bottom right\', \'to top right\' or \'ellipse at center\'');
+    let stops: readonly ValueGroup[];
+    if (items.length === 2) {
+      stops = groupItems(items[1]);
+      if (stops.length < 2) {
+        throw new TypeError(STOPS_ERROR);
+      }
+    } else {
+      stops = items.slice(1);
     }
 
-    const stops: GradientStop[] = [];
-    collectStops(rest, stops);
-    if (stops.length < 2) {
-      throw new Error('svg-gradient expects direction, start_color [start_position], [color position,]..., end_color [end_position] or direction, color list');
+    const shape = DIRECTIONS.get(direction);
+    if (!shape) {
+      throw new TypeError(DIRECTION_ERROR);
     }
 
-    let markup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><${svgDirection.type}Gradient id="g" ${svgDirection.direction}>`;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><${shape.type}Gradient id="g" ${shape.direction}>`;
     for (let i = 0; i < stops.length; i++) {
-      const stop = stops[i]!;
-      const position = stop.position
-        ? stop.position.toString().trim()
-        : i === 0
-          ? '0%'
-          : '100%';
-      const opacity = stop.color.alpha < 1 ? ` stop-opacity="${stop.color.alpha}"` : '';
-      markup += `<stop offset="${position}" stop-color="${colorToHex(stop.color)}"${opacity}/>`;
+      const stop = stops[i];
+      if (stop === undefined) {
+        throw new TypeError(STOPS_ERROR);
+      }
+      const parts = groupItems(stop);
+      const color = parts[0];
+      const position = parts[1];
+      const isEnd = i === 0 || i + 1 === stops.length;
+      if (color === undefined || isValueGroupArray(color) || color.type !== 'Color') {
+        throw new TypeError(STOPS_ERROR);
+      }
+      if (position === undefined) {
+        if (!isEnd) {
+          throw new TypeError(STOPS_ERROR);
+        }
+      } else if (isValueGroupArray(position) || position.type !== 'Dimension') {
+        throw new TypeError(STOPS_ERROR);
+      }
+      const offset = position?.bytes ?? (i === 0 ? '0%' : '100%');
+      const opacity = color.alpha < 1 ? ` stop-opacity="${color.alpha}"` : '';
+      svg += `<stop offset="${offset}" stop-color="${colorHex(color)}"${opacity}/>`;
     }
-    markup += `</${svgDirection.type}Gradient><rect ${svgDirection.rect} fill="url(#g)" /></svg>`;
-
-    const uri = `data:image/svg+xml,${encodeURIComponent(markup)}`;
-    return new Url(new Quoted(uri, { quote: '\'' }));
-  },
-  {
-    params: [{
-      name: 'direction',
-      type: Node
-    }, {
-      name: 'stops',
-      type: Node,
-      rest: true
-    }]
+    svg += `</${shape.type}Gradient><rect ${shape.rect} fill="url(#g)" /></svg>`;
+    return makeKeyword(`url('data:image/svg+xml,${encodeURIComponent(svg)}')`);
   }
-);
+});
+
+function colorHex(color: Color): string {
+  const [red, green, blue] = colorRgbRounded(color);
+  return `#${hex(red)}${hex(green)}${hex(blue)}`;
+}
+
+function hex(value: number): string {
+  const encoded = value.toString(16);
+  return encoded.length === 1 ? `0${encoded}` : encoded;
+}
+
+const DIRECTIONS = new Map<string, { readonly type: 'linear' | 'radial'; readonly direction: string; readonly rect: string }>([
+  ['to bottom', { type: 'linear', direction: 'x1="0%" y1="0%" x2="0%" y2="100%"', rect: 'x="0" y="0" width="1" height="1"' }],
+  ['to right', { type: 'linear', direction: 'x1="0%" y1="0%" x2="100%" y2="0%"', rect: 'x="0" y="0" width="1" height="1"' }],
+  ['to bottom right', { type: 'linear', direction: 'x1="0%" y1="0%" x2="100%" y2="100%"', rect: 'x="0" y="0" width="1" height="1"' }],
+  ['to top right', { type: 'linear', direction: 'x1="0%" y1="100%" x2="100%" y2="0%"', rect: 'x="0" y="0" width="1" height="1"' }],
+  ['ellipse', { type: 'radial', direction: 'cx="50%" cy="50%" r="75%"', rect: 'x="-50" y="-50" width="101" height="101"' }],
+  ['ellipse at center', { type: 'radial', direction: 'cx="50%" cy="50%" r="75%"', rect: 'x="-50" y="-50" width="101" height="101"' }]
+]);
+
+const DIRECTION_ERROR = 'svg-gradient direction must be \'to bottom\', \'to right\', \'to bottom right\', \'to top right\' or \'ellipse at center\'';
+const STOPS_ERROR = 'svg-gradient expects direction, start_color [start_position], [color position,]..., end_color [end_position] or direction, color list';
 
 export default svgGradient;

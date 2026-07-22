@@ -1,5 +1,5 @@
 import type { ValueObj, Fn } from '@jesscss/core/value';
-import { makeDimension, makeList, defineFunction } from '@jesscss/core/value';
+import { makeDimension, defineFunction } from '@jesscss/core/value';
 import { requireDimension } from './math-helper.js';
 
 /**
@@ -7,7 +7,7 @@ import { requireDimension } from './math-helper.js';
  * space-separated numeric list. `range(n)` counts `1..n`; with `end`, counts
  * `start..end`; `step` (default 1, non-zero) sets the increment. Items carry the
  * `end` bound's unit (byte-faithful to legacy `less/range`, which returns a
- * `Sequence`; here a space `List`).
+ * `Sequence`; here a raw default-spaced value group).
  */
 export const range: Fn = defineFunction('range', {
   params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'], optional: true }, { kinds: ['Dimension'], optional: true }],
@@ -22,6 +22,6 @@ export const range: Fn = defineFunction('range', {
     for (let i = from; i <= to.number; i += stepValue) {
       items.push(makeDimension(i, to.unit));
     }
-    return makeList(items, ' ');
+    return items;
   }
 });
