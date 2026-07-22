@@ -54,7 +54,7 @@ type ScssAstRules = {
   DirectScssMathTopSum: Combinator<ValueNode>;
   DirectScssValueTerm: Combinator<ValueSlot>;
   DirectScssValuePair: Combinator<ScssValuePair>;
-  DirectScssValue: Combinator<ValueNode>;
+  DirectScssValue: Combinator<ValueSlot>;
   DirectScssImportant: Combinator<true>;
   DirectScssInterpolatedProperty: Combinator<Interpolation>;
   DirectScssDeclaration: Combinator<Declaration>;
@@ -356,10 +356,14 @@ function valueSlot(value: ValueNode): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
-  if (value.type === 'Block' && value.inner.type === 'SpacedValue') {
+  if (value.type === 'Block' && isSpacedValue(value.inner)) {
     return { ...value, inner: value.inner.parts };
   }
   return value;
+}
+
+function isSpacedValue(value: ValueSlot): value is Extract<ValueNode, { type: 'SpacedValue' }> {
+  return isValue(value) && value.type === 'SpacedValue';
 }
 
 function isValueSlotValue(value: unknown): value is ValueSlot {
@@ -459,6 +463,17 @@ function isScssValuePair(value: unknown): value is ScssValuePair {
     && typeof value.separator === 'string'
     && 'value' in value
     && isValueSlotValue(value.value);
+}
+
+function isScssValueTail(value: unknown): value is ScssValueTail {
+  return typeof value === 'object'
+    && value !== null
+    && 'kind' in value
+    && (value.kind === 'space' || value.kind === 'slash')
+    && 'value' in value
+    && isValue(value.value)
+    && 'separator' in value
+    && typeof value.separator === 'string';
 }
 
 function isVarDeclaration(value: unknown): value is VariableDeclaration {
@@ -872,8 +887,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       const groups: ValueNode[][] = [[requireValue(children[0])]];
       const groupSeparators: string[][] = [[]];
       for (const child of children.slice(1)) {
-        if (typeof child !== 'object' || child === null || !('kind' in child) || !('value' in child)
-          || (child.kind !== 'space' && child.kind !== 'slash') || !isValue(child.value)) {
+        if (!isScssValueTail(child)) {
           throw new TypeError('Direct SCSS AST value term produced an invalid list boundary.');
         }
         if (child.kind === 'slash') {
@@ -935,7 +949,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       optional(choice(literal('!default'), literal('!global'))), optional(literal(';'))
     ),
     (children) => {
-      const modifier = children.find(child => typeof child === 'object' && child !== null && 'value' in child
+      const modifier = children.find((child): child is { readonly value: string } =>
+        typeof child === 'object' && child !== null && 'value' in child
+        && typeof child.value === 'string'
         && (child.value === '!default' || child.value === '!global'));
       const write = modifier?.value === '!default'
         ? { mode: 'if-absent' as const, lookup: 'scoped' as const }
@@ -1086,9 +1102,8 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticImportLayer = node<ValueNode>(
     'DirectScssStaticImportLayer',
     choice(
-      noTrivia(sequence(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('), g.DirectScssKeyword, literal(')')),
-        regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i)
-      )
+      noTrivia(sequence(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('), g.DirectScssKeyword, literal(')'))),
+      noTrivia(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i))
     ),
     children => children.length === 1
       ? keyword(requireToken(children[0]).value)
@@ -1489,7 +1504,8 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         // Every tail begins with @else. An else-if has its literal `if`, guard,
         // and body; a bare else contributes just its body.
         index += 1;
-        if (isToken(children[index]) && children[index].value.toLowerCase() === 'if') {
+        const child = children[index];
+        if (isToken(child) && child.value.toLowerCase() === 'if') {
           branches.push({ guard: children[index + 1] as GuardNode, body: children[index + 2] as Statement[] });
           index += 3;
         } else {
