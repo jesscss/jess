@@ -3991,7 +3991,12 @@ function planImportedExtends(
       // itself is the admission fact: it includes static Rule extends and the
       // possible `$for`/`each()` loop bodies whose concrete placements the
       // planner must still preflight.
-      if (bodyMayPlanExtend(loaded.document.children)) {
+      // A reference import contributes hidden Rule subjects even when the imported
+      // document contains no own `:extend()`: a visible extender in the importing
+      // document may still target one of those rules. Ordinary imports retain the
+      // feature-bearing admission gate and avoid planner work when no extend facts
+      // can participate.
+      if (bodyMayPlanExtend(loaded.document.children) || importHasOption(options, 'reference')) {
         recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
         const referenceBoundary = importHasOption(options, 'reference') ? {} : null;
         const placed = collectPlacedExtendFacts(loaded.document.children, childFrame, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary);

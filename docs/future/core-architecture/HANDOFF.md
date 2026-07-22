@@ -1986,6 +1986,35 @@ Independent current evidence:
   build is the required next measurement for choice/backtracking; it must remain
   outside normal parser and benchmark routes.
 
+### Matched optional Parseman instrumentation-guard isolation (2026-07-22; diagnostic, no speed claim)
+
+The optional Parseman profile and CST-output guards were isolated in a temporary
+copy of the current built Less parser. Side A was the committed
+`packages/less-parser/lib/index.js` (1,827,807 bytes, SHA-256
+`a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`). Side B
+was generated from that exact file with only the normal-path reads of
+`_ctx._pmProfile` replaced by an undefined diagnostic binding and
+`_ctx.build?._parsemanCstOutput` replaced by `false`; the temporary copy was
+not a public or benchmark artifact. B was 1,812,467 bytes, SHA-256
+`05703701303497689f1e3ffe85ad7ba8de139cf99c434f852b145d1241886767`.
+
+The fixture was `packages/jess/benchmark/benchmark.less` (106,802 bytes,
+SHA-256 `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`)
+on Node `v24.11.1` arm64. Both sides received 20 warmups and three 45-pair
+rounds; each pair alternated A/B order. Every parse returned a 677-child
+`Stylesheet`; stable JSON was 946,987 bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3` on both
+sides. Round medians (A/B) were 59.470/59.458, 60.039/59.696, and
+59.892/59.692 ms. Aggregate medians were A 59.918 ms and B 59.649 ms; the
+paired B−A delta median was +0.139 ms and mean +0.307 ms, with B faster in
+62/135 pairs and slower in 73/135 pairs.
+
+This matched isolation detects no material normal-path cost from these
+optional profile/CST guards and does not justify a production optimization or
+a parser-speed claim. The guards remain required for opt-in Parseman profiling,
+CST diagnostics, and future trace/coverage work; ordinary parse and benchmark
+routes remain uninstrumented.
+
 **Diagnostic result (2026-07-21):** the same-source coverage-enabled Less
 transform completed `benchmark.less` and exposed 14,330 failed
 `DirectLessStaticNthPseudo` entries plus 10,878 failed
@@ -3945,3 +3974,137 @@ or Context deletion lanes.
   [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Static bubbled conditional bodies must match Less declaration-before-child ordering while dynamic streaming remains unchanged; this is semantic runtime work, not a neutral or speed claim.","dangerTokensJustification":"[loop/traversal] is one bounded statement classification plus one callback pass; [materialized array/object] is a static-only callback queue; no source walk, clone, bridge, or parser reparse.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"at-rule-bubbling-bugs.test.ts 8/8 with both @media and @container Less-oracle cases.","buildEvidence":"core build and focused jess suite pass.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
   ```
 - Verdict: accepted bounded AST-v2 emitter correction; no legacy route retained.
+
+## Aggressive Cutting Self-Prosecution — matched parser instrumentation-guard isolation (diagnostic)
+
+- Latest pass: a temporary generated Less-parser copy removed only normal-path
+  reads of optional Parseman profile/CST-output state. This was a read-only
+  diagnostic experiment; no production or generated artifact was changed.
+- Architecture surface: the existing direct Parseman `run(entry, input,
+  { trivia })` boundary and canonical AST-v2 `Stylesheet` result. No parser
+  host, bridge, source reparse, scanner, compatibility path, or shim was added.
+- Separation/duplication: none. The diagnostic copy exercised the same generated
+  grammar and parser-local reductions as the committed artifact.
+- Cumulative node weight: none. The experiment changed no node factory,
+  evaluator, renderer, frame, map, or retained AST shape.
+- New traversal: none. The benchmark loop existed in the temporary measurement
+  harness only; it is not production code or a parser path.
+- New node/materialization: none. Both sides returned the same 677-child
+  `Stylesheet` and byte-identical 946,987-byte stable JSON.
+- Render path: not applicable; this is direct parse-only timing. No values or
+  nodes were resolved merely to stringify.
+- Helper/API surface: none. The temporary substitution is deleted after the
+  measurement and is not a package export or runtime helper.
+- Metadata mutations: none. No source, parent, location, profile, cache, or
+  Context state was mutated.
+- Review-flagged diff tokens: `[array helper]` appears only in the historical
+  aggregate inventory line already present in the integration diff; this docs
+  entry adds no runtime danger-token code. Other danger categories are absent
+  from the pass.
+- Evidence: Node v24.11.1 arm64; `benchmark.less` 106,802 bytes, SHA-256
+  `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`; A
+  artifact 1,827,807 bytes/SHA-256
+  `a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`; B
+  artifact 1,812,467 bytes/SHA-256
+  `05703701303497689f1e3ffe85ad7ba8de139cf99c434f852b145d1241886767`;
+  20 warmups and three 45-pair alternating rounds. A/B round medians were
+  59.470/59.458, 60.039/59.696, and 59.892/59.692 ms; aggregate A 59.918 ms,
+  B 59.649 ms; paired B−A median +0.139 ms, mean +0.307 ms, B faster in 62/135
+  pairs and slower in 73/135. Stable output JSON SHA-256 was
+  `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3` on
+  both sides. This is behavior and matched-isolation evidence only; it does
+  not support a production speed claim or optimization.
+- Verdict: reject an optional-guard optimization on this evidence; retain the
+  guards for opt-in Parseman profiling/CST diagnostics and continue the
+  reducer/choice/backtracking investigation separately.
+
+## Aggressive Cutting Self-Prosecution — reference-import extend admission
+
+- Latest pass: a reference-imported stylesheet is now admitted to the existing
+  typed extend preflight even when that imported document contains no own
+  `:extend()`. A visible extender in the importing document can therefore fold
+  into a hidden imported target's direct declarations. Ordinary imports keep the
+  existing `bodyMayPlanExtend()` admission gate.
+- Architecture surface: this remains the existing Context/plugin-loaded
+  `Stylesheet` import fact and the canonical AST-v2 extend planner. No parser
+  host, bridge, source reparse, resolver, scanner, or compatibility route was
+  added.
+- Separation/duplication: none. The change reuses
+  `collectPlacedExtendFacts()` and the existing `referenceBoundary` provenance;
+  it adds no alternate import walk or resolver.
+- Cumulative node weight: none. Existing planner subjects reference canonical
+  `Rule` nodes; this admission does not copy or materialize nodes.
+- New traversal: the existing cold reference-import preflight now visits the
+  imported rule subjects when `reference` is set. This is required because the
+  importer may extend a target that has no local extend instruction; carrying the
+  subject through the already-owned planner state is cheaper and more truthful
+  than rediscovering it during render.
+- New node/materialization: none. Canonical `Rule` nodes are reused; no copies,
+  wrappers, maps, or metadata mutations were introduced.
+- Render path: no new render traversal or string materialization. The planner's
+  existing hidden/visible branch mask controls whether the imported target emits
+  under the visible extender selector.
+- Helper/API surface: none; one admission predicate now includes the existing
+  typed `reference` option.
+- Metadata mutations: none beyond the pre-existing reference-boundary fact passed
+  to the planner.
+- Review-flagged diff tokens: none in the runtime hunk; the added condition does
+  not introduce a loop, allocation, side map, copy, or routine error path.
+- Evidence: `pnpm --filter @jesscss/core test -- --run` passed 199 files,
+  3194 passed, 9 skipped, and 2 intentionally marked tests; `pnpm --filter @jesscss/core test -- --run
+  src/ast/__tests__/import-at-rule.test.ts` passed 27/27; `pnpm --filter jess
+  test -- reference-import-namespace.test.ts extend-cross-import.test.ts --run
+  --globals` passed 4/4; the red `extend-cross-import.test.ts` reference-import
+  oracle now passes byte-identically; config fixtures pass 29/29 with existing
+  expected-failure markers. This is behavior evidence only; no performance claim
+  was made.
+- Ponytail-style manual review: no `delete`, `stdlib`, `native`, `yagni`, or
+  `shrink` finding; `Lean already. Ship.`
+- Hot-path cost contracts:
+  ```json
+  [
+    {
+      "id": "ast-extend-import-preflight",
+      "verdict": "accepted",
+      "performanceClaim": "none",
+      "why": "Reference-import extend visibility is a semantic correction in the existing cold preflight: a hidden imported target with no local extend must still be available to a visible importer extender, while ordinary imports retain the existing feature-bearing admission gate. This is not a speed or neutrality claim.",
+      "dangerTokensJustification": "The existing typed preflight collector is reused only for reference imports; no new parser walk, renderer traversal, node materialization, side map, copy, source mutation, or routine error path is added. Ordinary imports retain the prior zero-feature admission behavior.",
+      "falsePath": {
+        "fixture": "extend-preflight-contract:no-extend",
+        "counters": {"calls": 1, "collectorCalls": 0, "overlaySubjects": 0, "overlayInstructions": 0, "loopPlacements": 0}
+      },
+      "featurePath": {
+        "fixture": "extend-preflight-contract:imported-loop",
+        "counters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}
+      },
+      "baseline": {
+        "fixture": "benchmark.less",
+        "phase": "parse-render",
+        "currentMedianMs": 81.0,
+        "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+        "outputBytes": 122390
+      },
+      "behaviorEvidence": "extend-preflight-contract.test.ts proves false and feature paths; extend-cross-import.test.ts reference-import oracle passes byte-identically; core import-at-rule passes 27/27; full core passes 3194 tests.",
+      "buildEvidence": "pnpm --filter @jesscss/core build and focused Jess suites pass."
+    },
+    {
+      "id": "ast-semantic-runtime-cutover",
+      "verdict": "accepted",
+      "performanceClaim": "none",
+      "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+      "why": "This coordinated AST-v2 runtime surface includes the extend planner's reference-import admission correction. It is semantic architecture work with existing traversal and placement state; no single admission counter, byte-identical A/B, or speed claim would describe it truthfully.",
+      "dangerTokensJustification": "The existing cold preflight collector is reused for reference imports and the canonical Rule subjects remain shared. No parser walk, renderer traversal, node materialization, side map, copy, source mutation, or routine error path is added by the admission correction.",
+      "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division"],
+      "behaviorEvidence": "Full core suite passes 199 files / 3194 tests; import-at-rule passes 27/27; reference-import and extend-cross-import output oracles pass 4/4.",
+      "buildEvidence": "pnpm --filter @jesscss/core build and focused Jess suites pass.",
+      "baseline": {
+        "fixture": "benchmark.less",
+        "phase": "render",
+        "currentMedianMs": 79.823,
+        "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+        "outputBytes": 122390
+      }
+    }
+  ]
+  ```
+- Verdict: accepted bounded semantic correction; no legacy route retained.
