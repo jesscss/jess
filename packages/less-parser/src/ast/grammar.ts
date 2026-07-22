@@ -2994,7 +2994,10 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     g.DirectLessValue,
     (children) => {
       const value = requireValueSlot(children[0]);
-      return Array.isArray(value) ? spaced(requireValueNodeArray(value)) : value;
+      if (isValueNode(value)) {
+        return value;
+      }
+      return spaced(value.map(requireValueNode));
     }
   );
   const DirectLessSupportsFeature = node<ValueNode>(
