@@ -93,6 +93,50 @@ Only after the consumer/test search is empty may `tree/call.ts`,
 `define-function.ts`, and their old conversion exports be removed; no adapter,
 alias, or tree-to-AST bridge is allowed as an intermediate state.
 
+### Alpha packaging blocker: generated legacy declarations
+
+The alpha tarball audit found a packaging surface issue, not a reason to
+delete declaration files blindly. `@jesscss/core` exposes only `.`, `./value`,
+and `./ast` in its package `exports`, but `src/index.ts` still does
+`export * from './tree/index.js'`; therefore the legacy tree classes and the
+explicit tree utility exports are genuinely public through the root entry.
+`tsconfig.build.json` separately emits declarations and maps for every
+`src/**/*.ts`, so unexported `lib/tree/**` helpers are generated artifacts but
+must remain until no reachable declaration refers to them.
+
+`@jesscss/fns` is broader and currently inconsistent: its `./*` export map
+claims every generated `lib/*.d.ts/js/cjs` subpath, while `tsdown.config.ts`
+only emits the `index` and `builtins` runtime entries. Legacy Less/Sass/shared/
+util declaration subpaths are therefore published (and advertised by the
+README/docs) even when their matching runtime file is absent. Replace the
+wildcard only after either generating the documented subpaths or explicitly
+withdrawing and testing them; `plugin-js` currently treats all
+`@jesscss/fns/*` paths as trusted.
+
+The minimal cut sequence is:
+
+**A.** Finish the remaining legacy `@jesscss/fns` Less/Sass function and test
+migrations to `@jesscss/core/value`; rewrite or intentionally retire the
+production `packages/jess-plugin-js/src/bridge.ts`, which still transports
+legacy `Any`/`Color`/`Dimension`/`List`/`Rules` values.
+
+**B.** Delete `define-function.ts`, `conversions.ts`, and their root exports
+after the consumer search is empty.
+
+**C.** Migrate `Context` and `jess`/plugins off `TreeContext`, legacy
+`Node`/`Rules` state, spine/visitor fields, and tree-only utilities while
+retaining the AST-v2 `DocumentContext`, plugin host, and import dispatch.
+
+**D.** Remove `export * from './tree/index.js'` and explicit legacy utility
+exports from `core/src/index.ts`; expose only the stable Context/plugin/error,
+`ast`, and `value` seams.
+
+**E.** Remove the now-unreachable tree runtime and legacy tests/visitor ABI.
+
+**F.** Tighten declaration builds to the public entry closure and replace the
+`fns` wildcard with explicit, runtime-backed subpath exports. Verify packed
+install imports and type resolution before alpha publication.
+
 ## Active orchestrator goal
 
 Drive the public AST-v2 cutover, Less alpha readiness, Parseman release,
