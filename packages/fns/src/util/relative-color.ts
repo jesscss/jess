@@ -168,10 +168,16 @@ function substituteChannelVariables(
 
   // If it's an Operation, recursively substitute in its operands
   if (node instanceof Operation) {
+    const left = typeof node.left === 'string'
+      ? node.left
+      : substituteChannelVariables(node.left, channelValues, format);
+    const right = typeof node.right === 'string'
+      ? node.right
+      : substituteChannelVariables(node.right, channelValues, format);
     return new Operation([
-      substituteChannelVariables(node.left, channelValues, format),
+      left,
       node.operator,
-      substituteChannelVariables(node.right, channelValues, format)
+      right
     ], node.options, nodeLocation(node)).inherit(node);
   }
 

@@ -8,6 +8,16 @@ import {
 import { percentOf, toNumber } from '@jesscss/core';
 import { getLuma } from '../util/get-luma.js';
 
+/**
+ * Less `contrast()` — pick whichever of two colors (`dark`/`light`, defaulting to
+ * black/white) contrasts more with `color`, based on its luma versus `threshold`.
+ * The `dark`/`light` pair is auto-ordered by luma.
+ * @param color the color to contrast against
+ * @param dark optional dark option (default black)
+ * @param light optional light option (default white)
+ * @param threshold optional luma threshold `Dimension` (default `0.43`)
+ * @returns `dark` or `light`
+ */
 const contrast = defineFunction(
   'contrast',
   function(this: Context, color: Color, dark?: Color, light?: Color, threshold?: number) {

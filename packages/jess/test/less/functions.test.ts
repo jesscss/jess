@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import { Context } from '@jesscss/core';
+import { defineFunction, makeDimension, makeKeyword, type Fn } from '@jesscss/core/value';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
@@ -48,6 +49,26 @@ const lessHarnessFunctionsPlugin = {
   }
 };
 
+// The compatibility package accepts native AST-v2 functions.  Keep this
+// equivalent to the legacy Less registry fixture above without making the
+// public compiler route depend on a Less tree/plugin bridge.
+const lessHarnessFunctions: readonly Fn[] = [
+  defineFunction('add', {
+    params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }] as const,
+    body: (a, b) => makeDimension(a.number + b.number, a.unit || b.unit)
+  }),
+  defineFunction('increment', {
+    params: [{ kinds: ['Dimension'] }] as const,
+    body: a => makeDimension(a.number + 1, a.unit)
+  }),
+  defineFunction('_color', {
+    params: [{ kinds: 'any' }] as const,
+    body: value => value.type === 'Quoted' && value.value === 'evil red'
+      ? makeKeyword('#660000')
+      : value
+  })
+];
+
 const tempDirs: string[] = [];
 
 const makeTmpDir = () => {
@@ -70,13 +91,49 @@ describe('Functions', () => {
   });
 
   describe('Built-in Color Functions', () => {
-    it('should support Less harness custom functions through less-compat registry setup', async () => {
+    it('registers configured native Less plugin functions once per public AST render', async () => {
+      let installs = 0;
+      const nativePlugin = {
+        install(less: any) {
+          installs++;
+          lessHarnessFunctionsPlugin.install(less);
+        }
+      };
+      const compilerWithNativeFunctions = new Compiler({
+        compile: { plugins: [lessPlugin({ plugins: [nativePlugin] })] }
+      });
+      const root = makeTmpDir();
+      const lessPath = path.join(root, 'native-functions.less');
+      fs.writeFileSync(lessPath, '.first { width: increment(4px); } .second { color: _color("evil red"); width: add(2, 3); }', 'utf8');
+
+      expect(await compilerWithNativeFunctions.render(lessPath)).toBe(
+        '.first {\n  width: 5;\n}\n.second {\n  color: #660000;\n  width: 5;\n}\n'
+      );
+      expect(await compilerWithNativeFunctions.render(lessPath)).toBe(
+        '.first {\n  width: 5;\n}\n.second {\n  color: #660000;\n  width: 5;\n}\n'
+      );
+      expect(installs).toBe(2);
+    });
+
+    it('keeps configured native function hooks out of an empty Less adapter', async () => {
+      const configuredCompiler = new Compiler({
+        compile: { plugins: [lessPlugin({ plugins: [lessHarnessFunctionsPlugin] })] }
+      });
+      const defaultCompiler = new Compiler({ compile: { plugins: [lessPlugin()] } });
+
+      expect(await configuredCompiler.renderString('.x { width: increment(4); }', { language: 'less' }))
+        .toContain('width: 5');
+      expect(await defaultCompiler.renderString('.x { width: increment(4); }', { language: 'less' }))
+        .toContain('width: increment(4)');
+    });
+
+    it('should support native AST-v2 functions through less-compat setup', async () => {
       const compilerWithCompatFunctions = new Compiler({
         compile: {
           plugins: [
             lessPlugin(),
             lessCompatPlugin({
-              plugins: [lessHarnessFunctionsPlugin]
+              functions: lessHarnessFunctions
             })
           ]
         }
@@ -100,9 +157,9 @@ describe('Functions', () => {
       expect(css).toContain('border-width: 5');
     });
 
-    it('should keep Less harness custom functions working when a less-compat plugin instance is reused across compilers', async () => {
+    it('should keep native less-compat functions working when the plugin instance is reused across compilers', async () => {
       const sharedCompatPlugin = lessCompatPlugin({
-        plugins: [lessHarnessFunctionsPlugin]
+        functions: lessHarnessFunctions
       });
 
       const firstRoot = makeTmpDir();

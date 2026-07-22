@@ -10,7 +10,7 @@ import { WARN } from '../jess-error.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
-import { Rules } from './rules.js';
+import { hasCarriedMergeOutputSurface, Rules } from './rules.js';
 import { callableRulesEntry, type MixinEntry } from './util/callable-entry.js';
 import { MixinCollection } from './util/callable-collection.js';
 import { evaluateCallableCollection } from './util/callable-eval.js';
@@ -858,7 +858,7 @@ export class Call extends Node<CallValue, CallOptions> {
         return this.runAsCaller(context, async () => {
           try {
             const result = state.args
-              ? await callWithContext(context, fn, ...state.args.value)
+              ? await callWithContext(context, fn, state.args)
               : await callWithContext(context, fn);
             return this.finalizeCallResult(context, result, { ownOutput });
           } catch (error) {
@@ -932,7 +932,7 @@ export class Call extends Node<CallValue, CallOptions> {
 
     return this.runInCallFrame(context, { caller: true }, async () => {
       const result = state.args
-        ? await callWithContext(context, fn, ...state.args.value)
+        ? await callWithContext(context, fn, state.args)
         : await callWithContext(context, fn);
       return this.finalizeCallResult(context, result, { ownOutput });
     });
@@ -1422,11 +1422,7 @@ export class Call extends Node<CallValue, CallOptions> {
               let result: unknown;
               try {
                 result = state.args
-                  ? (
-                      isMetadataFunction
-                        ? await callWithContext(context, fn, state.args)
-                        : await callWithContext(context, fn, ...state.args.value)
-                    )
+                  ? await callWithContext(context, fn, state.args)
                   : await callWithContext(context, fn);
               } catch (error) {
                 if (
@@ -1764,15 +1760,30 @@ export class Call extends Node<CallValue, CallOptions> {
         const replacement = rule.deriveWithParts({ important });
         rules.adopt(replacement);
         rules.rules[index] = replacement;
+        if (hasCarriedMergeOutputSurface(replacement)) {
+          rules.hasMergeOutputSurface = true;
+        }
       } else if (isNode(rule, N.Rules)) {
-        rules.rules[index] = this.makeImportantCopy(rules, rule);
+        const replacement = this.makeImportantCopy(rules, rule);
+        rules.rules[index] = replacement;
+        if (hasCarriedMergeOutputSurface(replacement)) {
+          rules.hasMergeOutputSurface = true;
+        }
       } else if (isNode(rule, N.AtRule) && rule instanceof Rules) {
         if (rule.rules.length) {
-          rules.rules[index] = this.makeImportantCopy(rules, rule);
+          const replacement = this.makeImportantCopy(rules, rule);
+          rules.rules[index] = replacement;
+          if (hasCarriedMergeOutputSurface(replacement)) {
+            rules.hasMergeOutputSurface = true;
+          }
         }
       } else if (isNode(rule, N.Ruleset)) {
         if (rule.rules.length) {
-          rules.rules[index] = this.makeImportantCopy(rules, rule);
+          const replacement = this.makeImportantCopy(rules, rule);
+          rules.rules[index] = replacement;
+          if (hasCarriedMergeOutputSurface(replacement)) {
+            rules.hasMergeOutputSurface = true;
+          }
         }
       }
     }
@@ -1932,15 +1943,10 @@ export class Call extends Node<CallValue, CallOptions> {
       const callable = fn;
       return this.runAsCaller(context, async () => {
         try {
-          const shouldPassListArgs = Boolean(callable._internal || callable.options?.params);
-          let callArgs = args;
+          const callArgs = args;
           const result = await (
             callArgs
-              ? (
-                  shouldPassListArgs
-                    ? callWithContext(context, callable, callArgs)
-                    : callWithContext(context, callable, ...callArgs.value)
-                )
+              ? callWithContext(context, callable, callArgs)
               : callWithContext(context, callable)
           );
           return this.finalizeCallResult(context, result, {

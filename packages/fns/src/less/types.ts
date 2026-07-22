@@ -1,5 +1,6 @@
 import { Any, Bool, Color, defineFunction, Dimension, Node, Quoted, Url } from '@jesscss/core';
 
+/** Less `iscolor()` — true when the value is a `Color`. */
 const iscolor = defineFunction(
   'iscolor',
   function(value: Node) {
@@ -10,6 +11,7 @@ const iscolor = defineFunction(
   }
 );
 
+/** Less `isnumber()` — true when the value is a numeric `Dimension`. */
 const isnumber = defineFunction(
   'isnumber',
   function(value: Node) {
@@ -20,6 +22,7 @@ const isnumber = defineFunction(
   }
 );
 
+/** Less `isstring()` — true when the value is a `Quoted` string. */
 const isstring = defineFunction(
   'isstring',
   function(value: Node) {
@@ -30,6 +33,7 @@ const isstring = defineFunction(
   }
 );
 
+/** Less `iskeyword()` — true when the value is an unquoted keyword/identifier. */
 const iskeyword = defineFunction(
   'iskeyword',
   function(value: Node) {
@@ -40,6 +44,7 @@ const iskeyword = defineFunction(
   }
 );
 
+/** Less `isurl()` — true when the value is a `url(…)` value. */
 const isurl = defineFunction(
   'isurl',
   function(value: Node) {
@@ -50,6 +55,7 @@ const isurl = defineFunction(
   }
 );
 
+/** Less `isunit()` — true when `value` is a `Dimension` whose unit equals `unit` (case-insensitive). */
 const isunit = defineFunction(
   'isunit',
   function(value: Node, unit: Node) {
@@ -65,6 +71,7 @@ const isunit = defineFunction(
   }
 );
 
+/** Less `ispixel()` — true when the value is a `Dimension` in `px`. */
 const ispixel = defineFunction(
   'ispixel',
   function(value: Node) {
@@ -75,6 +82,7 @@ const ispixel = defineFunction(
   }
 );
 
+/** Less `ispercentage()` — true when the value is a `Dimension` in `%`. */
 const ispercentage = defineFunction(
   'ispercentage',
   function(value: Node) {
@@ -85,6 +93,7 @@ const ispercentage = defineFunction(
   }
 );
 
+/** Less `isem()` — true when the value is a `Dimension` in `em`. */
 const isem = defineFunction(
   'isem',
   function(value: Node) {

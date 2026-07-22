@@ -7,6 +7,13 @@ import {
 } from '@jesscss/core';
 import mix from './mix.js';
 
+/**
+ * Less `tint()` — mix a color with white by `amount`; shorthand for
+ * `mix(#fff, color, amount)`.
+ * @param color the input `Color`
+ * @param amount white mix weight as a `Dimension` percentage
+ * @returns the tinted `Color`
+ */
 const tint = defineFunction(
   'tint',
   function(this: Context, color: Color, amount: Dimension) {

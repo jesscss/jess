@@ -75,7 +75,7 @@ import {
   isRenderBuffer,
   prepareBufferPrintState,
   type RenderBuffer,
-  writeRenderText,
+  writePreparedRenderTextResult,
   writeRenderTextResult
 } from './util/render-buffer.js';
 import type { JsFunction } from './js-function.js';
@@ -97,8 +97,36 @@ import {
 } from './util/direct-rules-lookup.js';
 import { checkValidNodes } from './util/check-valid-nodes.js';
 const { isArray } = Array;
+const EMPTY_CALLABLE_BUCKET: CallableLookupEntry[] = [];
 const NESTABLE_AT_RULE_NAMES = new Set(['@media', '@supports', '@layer', '@container', '@scope']);
 const MAX_DECLARATION_NAME_REGISTRATION_RETRIES = 5;
+const SCOPE_FRAME_PROFILE_COUNTERS_KEY = '__JESS_SCOPE_FRAME_PROFILE_COUNTERS__';
+const MERGE_PROFILE_COUNTERS_KEY = '__JESS_MERGE_PROFILE_COUNTERS__';
+type ScopeFrameProfileGlobals = typeof globalThis & {
+  [SCOPE_FRAME_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+  [MERGE_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+  ['__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__']?: Record<string, number>;
+};
+const scopeFrameProfileCounters = (globalThis as ScopeFrameProfileGlobals)[SCOPE_FRAME_PROFILE_COUNTERS_KEY];
+// Cost-neutral profiling hook for the uncovered-callable descent. When the
+// counters global is absent (the production default) this is `undefined`, so the
+// `recordUncoveredCallable?.(key)` call site compiles to a zero-cost optional
+// call. It is the measured witness for the callable-fallback off-benchmark
+// contract: it counts every findMixinsFastForUncoveredCallable entry per key so
+// a retirement (callsAfter === 0 for an imported guarded mixin) is provable.
+const uncoveredCallableProfileCounters =
+  (globalThis as ScopeFrameProfileGlobals)['__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__'];
+const recordUncoveredCallable = uncoveredCallableProfileCounters
+  ? (key: string): void => {
+      const counters = uncoveredCallableProfileCounters;
+      counters.total = (counters.total ?? 0) + 1;
+      counters[`key.${key}`] = (counters[`key.${key}`] ?? 0) + 1;
+    }
+  : undefined;
+const mergeProfileCounters = (globalThis as ScopeFrameProfileGlobals)[MERGE_PROFILE_COUNTERS_KEY];
+const scopeFrameProfileNow = scopeFrameProfileCounters
+  ? globalThis.performance?.now.bind(globalThis.performance)
+  : undefined;
 type PathResolutionError = Error & { _isPathResolutionError?: boolean };
 type PendingPrepHandler = (resolvedNode: Node, node: Node, stillUnresolved: Node[]) => boolean;
 type RulesRenderContextSnapshot = {
@@ -121,6 +149,33 @@ type RulesResolveState = {
   output: Rules;
   kind: 'public-resolve';
 };
+
+const recordScopeFrameProfile = scopeFrameProfileCounters
+  ? (event: 'cacheHit' | 'create', rules: Rules, frame: ScopeFrame, startedAt: number | undefined): void => {
+      const counters = scopeFrameProfileCounters;
+      const placement = rules.sourceNode instanceof Rules && rules.sourceNode !== rules;
+      const placementKey = placement ? 'placement' : 'canonical';
+      let depth = 0;
+      let cursor: ScopeFrame | undefined = frame;
+      while (cursor) {
+        depth++;
+        cursor = cursor.parent;
+      }
+      counters[`getScopeFrame.${event}`] = (counters[`getScopeFrame.${event}`] ?? 0) + 1;
+      counters[`getScopeFrame.${event}.${placementKey}`] = (counters[`getScopeFrame.${event}.${placementKey}`] ?? 0) + 1;
+      counters[`getScopeFrame.${event}.depth.${depth}`] = (counters[`getScopeFrame.${event}.depth.${depth}`] ?? 0) + 1;
+      if (startedAt !== undefined) {
+        counters[`getScopeFrame.${event}.ms`] = (counters[`getScopeFrame.${event}.ms`] ?? 0)
+          + scopeFrameProfileNow!() - startedAt;
+      }
+    }
+  : undefined;
+
+const recordMergeProfile = mergeProfileCounters
+  ? (event: 'admissionCalls' | 'admissionItemsVisited' | 'admittedCalls' | 'calls' | 'featureBearingContainers'): void => {
+      mergeProfileCounters[event] = (mergeProfileCounters[event] ?? 0) + 1;
+    }
+  : undefined;
 
 type ExactCallableFindOptions = {
   hasTarget?: boolean;
@@ -178,6 +233,10 @@ function evalSetDefinedAssignedValue(node: Declaration, context?: Context): Node
 
 function isStyleImportRegistrationNode(node: Node): node is StyleImport {
   return node.type === 'StyleImport';
+}
+
+function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
+  return node.type === 'AtRuleStatement';
 }
 
 function isImportAtRule(node: Node): node is AtRule {
@@ -390,7 +449,8 @@ function writeRulesRenderOutput(
   options: PrintOptions | undefined,
   directSourceRender: boolean
 ): MaybePromise<string> {
-  const prepared = prepareBufferPrintState(context, options);
+  const prepared = prepareBufferPrintState(context, options, buffer);
+  const mark = prepared.writer.mark();
   const text = node instanceof Rules && !directSourceRender
     ? (
         node === context.root || source === context.root
@@ -398,9 +458,7 @@ function writeRulesRenderOutput(
           : node.toString(prepared)
       )
     : renderRulesToPreparedString(source, node, context, prepared, directSourceRender);
-  return isThenable(text)
-    ? text.then(resolved => writeRenderText(buffer, resolved))
-    : writeRenderText(buffer, text);
+  return writePreparedRenderTextResult(buffer, prepared, mark, text);
 }
 
 function writeRulesStateRenderOutput(
@@ -487,7 +545,10 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  if ((isNode(node, N.Ruleset) || isNode(node, N.AtRule) || isNode(node, N.Mixin)) && node instanceof Rules) {
+  // Real Jess rule containers are all `Rules` instances. Keep the bitmask
+  // fallback below for foreign/duck-typed node values, but do not make every
+  // ordinary container pay three protocol checks before the instance check.
+  if (node instanceof Rules) {
     return node;
   }
   if (isNode(node, N.Rules)) {
@@ -518,6 +579,9 @@ function rulesMayContainExactCallableSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainExactMixinSurface(rules: Rules): boolean {
+  if (rules.hasExactMixinChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -533,6 +597,9 @@ function rulesMayContainExactMixinSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
+  if (rules.hasExactRulesetChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -548,6 +615,9 @@ function rulesMayContainExactRulesetSurface(rules: Rules): boolean {
 }
 
 function rulesMayContainDeclarationSurface(rules: Rules): boolean {
+  if (rules.hasDeclarationChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -562,7 +632,38 @@ function rulesMayContainDeclarationSurface(rules: Rules): boolean {
   return false;
 }
 
+export function hasCarriedMergeOutputSurface(node: Node): boolean {
+  if (isNode(node, N.Declaration)) {
+    const assign = node.options.normalizedFromAssign;
+    return assign === '+:' || assign === '&,:' || assign === '&_:';
+  }
+  if (!(node instanceof Rules)) {
+    return false;
+  }
+  // Mixin and Ruleset bodies are definition boundaries. Their own bit is used
+  // when that body is evaluated, but it must not make a source-scope admission
+  // look through the definition and coalesce declarations that have not been
+  // emitted into this surface. Callable output is represented by a plain Rules
+  // placement surface (or an If/For/While output surface), whose bit is carried.
+  if (node.type === 'Mixin' || node.type === 'Ruleset' || node.type === 'AtRule') {
+    return false;
+  }
+  return node.hasMergeOutputSurface;
+}
+
+function hasMergeOutputSurface(rules: Rules): boolean {
+  recordMergeProfile?.('admissionCalls');
+  if (rules.hasMergeOutputSurface) {
+    recordMergeProfile?.('featureBearingContainers');
+    return true;
+  }
+  return false;
+}
+
 function rulesMayContainVarDeclarationSurface(rules: Rules): boolean {
+  if (rules.hasVarDeclarationChildSurface) {
+    return true;
+  }
   const value = rules.rules;
   for (let i = 0; i < value.length; i++) {
     const node = value[i]!;
@@ -964,6 +1065,7 @@ const R_HAS_REFERENCE_IMPORT_CHILD_SURFACE = 1 << 3;
 const R_HAS_EXACT_CALLABLE_CHILD_SURFACE = 1 << 4;
 const R_HAS_EXACT_MIXIN_CHILD_SURFACE = 1 << 5;
 const R_HAS_EXACT_RULESET_CHILD_SURFACE = 1 << 6;
+const R_HAS_MERGE_OUTPUT_SURFACE = 1 << 12;
 const R_BODY_EVALUATED = 1 << 7;
 const R_HAS_EXTENDS = 1 << 8;
 const R_HAS_REFERENCE_IMPORTS = 1 << 9;
@@ -978,6 +1080,7 @@ const R_DERIVED_STATE_MASK =
   | R_HAS_EXACT_CALLABLE_CHILD_SURFACE
   | R_HAS_EXACT_MIXIN_CHILD_SURFACE
   | R_HAS_EXACT_RULESET_CHILD_SURFACE
+  | R_HAS_MERGE_OUTPUT_SURFACE
   | R_HAS_EXTENDS
   | R_HAS_REFERENCE_IMPORTS;
 
@@ -1088,7 +1191,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   /**
-   * Rules-only packed boolean state (11 formerly-per-instance booleans). One int
+   * Rules-only packed boolean state (12 formerly-per-instance booleans). One int
    * slot instead of eleven `false`/`false`… fields keeps the Rules shape narrow
    * (~12k instances). Backed by the `R_*` bits above; each boolean keeps its
    * original name via a get/set pair so all call sites are unchanged.
@@ -1176,6 +1279,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this.rulesFlags |= R_HAS_EXACT_RULESET_CHILD_SURFACE;
     } else {
       this.rulesFlags &= ~R_HAS_EXACT_RULESET_CHILD_SURFACE;
+    }
+  }
+
+  get hasMergeOutputSurface(): boolean {
+    return (this.rulesFlags & R_HAS_MERGE_OUTPUT_SURFACE) !== 0;
+  }
+
+  set hasMergeOutputSurface(value: boolean) {
+    if (value) {
+      this.rulesFlags |= R_HAS_MERGE_OUTPUT_SURFACE;
+    } else {
+      this.rulesFlags &= ~R_HAS_MERGE_OUTPUT_SURFACE;
     }
   }
 
@@ -1435,11 +1550,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     // to canonical (used for declaration lookup). See LIVE_BINDING_ARCHITECTURE.md.
     const derived = this._deriveShell(sourceLocation);
     derived.sourceNode = this.sourceNode ?? this;
-    for (let i = 0; i < value.length; i++) {
-      derived.rules.push(value[i]!);
-    }
     derived.inherit(this);
     derived.resetDerivedState(this);
+    for (let i = 0; i < value.length; i++) {
+      const child = value[i]!;
+      derived.rules.push(child);
+      if (hasCarriedMergeOutputSurface(child)) {
+        derived.hasMergeOutputSurface = true;
+      }
+    }
 
     return derived;
   }
@@ -1520,6 +1639,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   getScopeFrame(parent?: ScopeFrame, prepareCallableCoverage = true): ScopeFrame {
+    const startedAt = scopeFrameProfileNow?.();
     if (!this._scopeFrame) {
       const rulesBody = this.rules;
       let pendingDeclarationNames: VarDeclaration[] | undefined;
@@ -1554,6 +1674,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       );
       this.prepareScopeFrameAssignmentBindings(this._scopeFrame, rulesBody);
       this.linkInlineImportFallbackFrames(this._scopeFrame, rulesBody);
+      recordScopeFrameProfile?.('create', this, this._scopeFrame, startedAt);
+    } else {
+      recordScopeFrameProfile?.('cacheHit', this, this._scopeFrame, startedAt);
     }
     return this._scopeFrame;
   }
@@ -1926,6 +2049,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     options: CallableFindOptions,
     rulesetsOnly = false
   ): UncoveredCallableResult {
+    recordUncoveredCallable?.(key);
     if (reason !== 'child-surface' && reason !== 'reference-import') {
       return UNCOVERED_CALLABLE_UNSUPPORTED;
     }
@@ -2186,7 +2310,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): CallableLookupEntry[] {
     const entries = this.callableLookupCache;
     if (entries?.has(lookupKey)) {
-      return entries.get(lookupKey) ?? [];
+      return entries.get(lookupKey) ?? EMPTY_CALLABLE_BUCKET;
     }
 
     let bucket = this.ensureCallableIndex().get(lookupKey);
@@ -2210,7 +2334,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.mixinCallableMissCoverageKnown = true;
       }
     }
-    return bucket ?? [];
+    return bucket ?? EMPTY_CALLABLE_BUCKET;
   }
 
   private prepareCallableLookupFrame(frame: ScopeFrame, key: string, includeRulesets: boolean): void {
@@ -2296,6 +2420,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
       const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
       const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
+      const hasAssignmentSurface = hasVarDeclarationSurface || hasReferenceImportSurface;
       this.hasDeclarationChildSurface ||= hasDeclarationSurface;
       this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
       this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
@@ -2306,9 +2431,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         hasDeclarationSurface,
         hasVarDeclarationSurface,
         hasReferenceImportSurface,
-        hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
+        hasUncoveredAssignmentTargetSurface: false
       };
-      child.collectPublicVariableAssignmentBindingsInto(Boolean(child.options.readonly), entry);
+      if (hasAssignmentSurface) {
+        entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+        child.collectPublicVariableAssignmentBindingsInto(Boolean(child.options.readonly), entry);
+      }
       (out ??= []).push(entry);
     }
     this.directDeclarationChildEntries = out ?? null;
@@ -2328,6 +2456,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const hasDeclarationSurface = rulesMayContainDeclarationSurface(child);
     const hasVarDeclarationSurface = rulesMayContainVarDeclarationSurface(child);
     const hasReferenceImportSurface = rulesMayContainReferenceImports(child);
+    const hasAssignmentSurface = hasVarDeclarationSurface || hasReferenceImportSurface;
     this.hasDeclarationChildSurface ||= hasDeclarationSurface;
     this.hasVarDeclarationChildSurface ||= hasVarDeclarationSurface;
     this.hasReferenceImportChildSurface ||= hasReferenceImportSurface;
@@ -2343,9 +2472,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       hasDeclarationSurface,
       hasVarDeclarationSurface,
       hasReferenceImportSurface,
-      hasUncoveredAssignmentTargetSurface: child.getHasUncoveredAssignmentTargetEntrySurface()
+      hasUncoveredAssignmentTargetSurface: false
     };
-    child.collectPublicVariableAssignmentBindingsInto(readonly, entry);
+    if (hasAssignmentSurface) {
+      entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+      child.collectPublicVariableAssignmentBindingsInto(readonly, entry);
+    }
     entries.push(entry);
   }
 
@@ -2423,8 +2555,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       entry.hasReferenceImportSurface = rulesMayContainReferenceImports(child);
       entry.assignmentBindingsByName = undefined;
       entry.assignmentReadonlyByName = undefined;
-      child.collectPublicVariableAssignmentBindingsInto(Boolean(entry.readonly), entry);
-      entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+      if (entry.hasVarDeclarationSurface || entry.hasReferenceImportSurface) {
+        child.collectPublicVariableAssignmentBindingsInto(Boolean(entry.readonly), entry);
+        entry.hasUncoveredAssignmentTargetSurface = child.getHasUncoveredAssignmentTargetEntrySurface();
+      } else {
+        entry.hasUncoveredAssignmentTargetSurface = false;
+      }
     }
     if (changedVariable && patched) {
       return;
@@ -2721,7 +2857,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         scope.prepareCallableLookupFrame(scope._scopeFrame, segment, includeRulesets);
         const frameHit = lookupScopeFrameCallable(scope._scopeFrame, segment, {
           includeRulesets,
-          searchParents
+          searchParents,
+          prepareFrame: (fr, incR) => {
+            if (isNode(fr.rulesNode, N.Rules)) {
+              fr.rulesNode.prepareCallableLookupFrame(fr, segment, incR);
+            }
+          }
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
@@ -3913,7 +4054,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this.prepareCallableLookupFrame(callableFrame, keys, includeRulesets);
         const frameHit = lookupScopeFrameCallable(callableFrame, keys, {
           includeRulesets,
-          searchParents: false
+          searchParents: false,
+          prepareFrame: (fr, incR) => {
+            if (isNode(fr.rulesNode, N.Rules)) {
+              fr.rulesNode.prepareCallableLookupFrame(fr, keys, incR);
+            }
+          }
         });
         let frameMissCovered = false;
         if (frameHit.kind === 'hit') {
@@ -3969,17 +4115,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             queuedFallback = queuedFallback.fallbackFrame;
           }
           let drainingFallbacks = false;
+          const retryPrepareFrame = (fr: ScopeFrame, incR: boolean) => {
+            if (isNode(fr.rulesNode, N.Rules)) {
+              fr.rulesNode.prepareCallableLookupFrame(fr, keys, incR);
+            }
+          };
           while (retryFrame) {
             let retryHit = lookupScopeFrameCallable(retryFrame, keys, {
               includeRulesets,
-              searchParents: false
+              searchParents: false,
+              prepareFrame: retryPrepareFrame
             });
             if (retryHit.kind === 'uncovered' && (retryHit.reason === 'frame' || retryHit.reason === 'key')) {
               if (isNode(retryFrame.rulesNode, N.Rules)) {
                 this.prepareCallableLookupFrame(retryFrame, keys, includeRulesets);
                 retryHit = lookupScopeFrameCallable(retryFrame, keys, {
                   includeRulesets,
-                  searchParents: false
+                  searchParents: false,
+                  prepareFrame: retryPrepareFrame
                 });
               }
             }
@@ -4527,9 +4680,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     this.rules = value ?? [];
     this._sourceRoot = this;
     this._treeContext = treeContext;
+    for (let i = 0; i < this.rules.length; i++) {
+      if (hasCarriedMergeOutputSurface(this.rules[i]!)) {
+        this.hasMergeOutputSurface = true;
+        break;
+      }
+    }
     // Rules and every container subclass (Ruleset, AtRule, Mixin, If/For/While,
     // Stylesheet, Collection) are valid statements in a rules body.
     this.addFlag(F_ALLOW_ROOT);
+  }
+
+  /**
+   * Rebuild the carried merge fact after a caller replaces or removes entries
+   * in the body array. Ordinary append/derive paths carry the bit as they add
+   * children; this bounded repair is only for destructive array rewrites.
+   */
+  refreshMergeOutputSurface(): void {
+    this.hasMergeOutputSurface = false;
+    for (let i = 0; i < this.rules.length; i++) {
+      if (hasCarriedMergeOutputSurface(this.rules[i]!)) {
+        this.hasMergeOutputSurface = true;
+        break;
+      }
+    }
   }
 
   /**
@@ -4649,7 +4823,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       try {
         const step = withSpineMultipleScope(options, multiple, () => reference ? emitReference() : emitChild(0));
         return isThenable(step)
-          ? step.then(restore, (error: unknown) => { restore(undefined); throw error; })
+          ? step.then(restore, (error: unknown) => {
+              restore(undefined);
+              throw error;
+            })
           : restore(step);
       } catch (error) {
         restore(undefined);
@@ -4824,13 +5001,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let lastEmittedType: string | undefined;
     let lastEmittedWasInlineSourceRules = false;
     const emitBoundaryIfNeeded = (n: Node) => {
-      if (emittedCount === 0) {
+      if (emittedCount === 0 && !w.lastEmitWasInlineSource) {
         return;
       }
       const needsInlineBoundarySpacing = (
         (lastEmittedType === 'Any' && n.type !== 'Any')
         || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
+        // The inline-source predecessor may have been emitted by a DEEPER closure
+        // (an `(inline)` `@import` spliced through a nested import-fold): its
+        // per-closure inline-source state never reaches THIS body's `emitNode`, so
+        // the writer carries a document-global flag set whenever inline-source text
+        // was the last thing emitted. A following non-inline block gets the same
+        // post-inline blank-line separator eval emits. Cleared once consumed below.
+        || (w.lastEmitWasInlineSource && n.type !== 'Any')
       );
+      // Consume the document-global inline-source flag: the boundary decision for
+      // THIS node is the only place it matters; leaving it set would inject a
+      // spurious blank before the node AFTER this one.
+      w.lastEmitWasInlineSource = false;
       if (!w.endsWith('\n') || needsInlineBoundarySpacing) {
         w.addSpacer('\n');
       }
@@ -4847,6 +5035,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       emittedCount++;
       lastEmittedType = n.type;
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
+      // Document-global inline-source flag (survives import-fold closure nesting):
+      // set true only when the just-emitted node is inline-import RAW source (an
+      // `Any` role-`any` leaf), false otherwise. A wrapper/container must not set
+      // this bit: a postlude `@media` can itself have a single raw child, but its
+      // closing boundary is already the inline source's own boundary.
+      // following top-level block reads it in `emitBoundaryIfNeeded` and inserts
+      // the post-inline blank line even when the inline text came from a deeper closure.
+      w.lastEmitWasInlineSource = isNode(n, N.Any) && n.role === 'any';
     };
     const emitCaptured = (text: string, n: Node, prefix?: string) => {
       emitBoundaryIfNeeded(n);
@@ -4911,8 +5107,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // same shared-body/frame-thread discipline `spineFrame` applies nested. No
       // `rules.eval()`, no output tree (ratchet: `Rules.derive` = 0). A non-simple
       // imported body falls through to the eval terminal below (byte-identical).
-      if (mode === 'render' && context && options.spineMode && isSpineFoldableImport(n)) {
-        return this._emitSpineImportFold(n as unknown as StyleImport, options, context, emitNode);
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableImport(n) && isStyleImportRegistrationNode(n)) {
+        return this._emitSpineImportFold(n, options, context, emitNode);
       }
       // Bodyless CSS `@import` STATEMENT (`AtRuleStatement`, e.g. `@import "x.css"
       // screen;` or `@import url(...) layer(foo);`). Eval hoists it to the top-of-doc
@@ -4921,8 +5117,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       // its authored source position (which may follow a `@media`/`@layer` block).
       // `renderRootViaSpine` flushes `context.topImports` ahead of the body. Only a
       // static prelude reaches here (`isSpineFoldableCssImportStatement`).
-      if (mode === 'render' && context && options.spineMode && isSpineFoldableCssImportStatement(n)) {
-        queueTopImport(context, n as unknown as AtRuleStatement);
+      if (mode === 'render' && context && options.spineMode && isSpineFoldableCssImportStatement(n) && isAtRuleStatementNode(n)) {
+        queueTopImport(context, n);
         return;
       }
       // A root `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top on
@@ -5174,7 +5370,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           markEmitted(n);
         };
         return isThenable(output)
-          ? output.then(finishOutput, (error: unknown) => { restoreRootCallEmit(); throw error; })
+          ? output.then(finishOutput, (error: unknown) => {
+              restoreRootCallEmit();
+              throw error;
+            })
           : finishOutput(output);
       };
       if (marksRootCallEmit) {
@@ -5423,8 +5622,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       return isThenable(value) ? value.then(afterEval) : afterEval(value);
     };
     if (sourceWasRoot && !preSerializeRoot && isSpineEligibleRoot(this, context, printOptions?.collapseNesting)) {
-      const prepared = prepareRenderPrintState(context, printOptions);
-      const rendered = renderRootViaSpine(this, context, prepared);
+      const prepared = isRenderBuffer(bufferOrOptions)
+        ? prepareBufferPrintState(context, printOptions, bufferOrOptions)
+        : prepareRenderPrintState(context, printOptions);
+      const shareFlatWriter = isRenderBuffer(bufferOrOptions)
+        && bufferOrOptions.kind === 'flat'
+        && prepared.writer.writesTo(bufferOrOptions.parts);
+      const rendered = renderRootViaSpine(this, context, prepared, shareFlatWriter);
       // A spine render may ABORT to eval (a resolved sentinel, sync or via the async import chain). On
       // abort, `evalPath()` owns the WHOLE render including the buffer write (its `serialize` branches
       // on `isRenderBuffer`), so it must NOT be re-wrapped in `writeRenderTextResult` — that would write
@@ -5433,7 +5637,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         if (result === SPINE_ABORT_TO_EVAL) {
           return evalPath();
         }
-        return isRenderBuffer(bufferOrOptions) ? writeRenderTextResult(bufferOrOptions, result) : result;
+        // A shared spine writes its prelude and body directly into the compiler-owned
+        // flat buffer. Re-wrapping the returned body would duplicate it; the returned
+        // string remains the public render result, while the aliased writer owns the
+        // buffer bytes already.
+        if (shareFlatWriter) {
+          return result;
+        }
+        return isRenderBuffer(bufferOrOptions)
+          ? writeRenderTextResult(bufferOrOptions, result)
+          : result;
       };
       return isThenable(rendered) ? rendered.then(finishSpine) : finishSpine(rendered);
     }
@@ -5814,6 +6027,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           // If not found in array, add at the beginning
           foundRules.rules.unshift(newDeclaration);
         }
+        if (hasCarriedMergeOutputSurface(newDeclaration)) {
+          foundRules.hasMergeOutputSurface = true;
+        }
 
         // Re-run child bookkeeping for the inserted declaration. We skip
         // setDefined processing since we already removed the flag.
@@ -6057,6 +6273,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     for (let node of nodes) {
       this.adopt(node);
       this.rules.push(node);
+      if (hasCarriedMergeOutputSurface(node)) {
+        this.hasMergeOutputSurface = true;
+      }
       this.registerNode(node);
     }
   }
@@ -6270,7 +6489,9 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._restoreRegistrationContext(context, saved);
       return this;
     }
-    const declarationResult = this._finishDeclarationNameRegistrationPrep(rules, context, prepState.declarationNames);
+    const declarationResult = prepState.declarationNames
+      ? this._finishDeclarationNameRegistrationPrep(rules, context, prepState.declarationNames)
+      : undefined;
     const finishAfterDeclarations = () => {
       return this._finishOrderedIdentityRegistrationPrep(rules, context, saved, prepState);
     };
@@ -6384,7 +6605,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): void {
     const sourceRules = sourceRulesOf(rules);
     const reusesSourceChild = sourceRules !== rules && node.parent === sourceRules;
+    const replacedMergeSurface = hasCarriedMergeOutputSurface(rules.rules[index]!);
     rules.rules[index] = node;
+    if (hasCarriedMergeOutputSurface(node)) {
+      rules.hasMergeOutputSurface = true;
+    } else if (replacedMergeSurface) {
+      rules.refreshMergeOutputSurface();
+    }
     node.index = nodeIndex;
     if (!reusesSourceChild) {
       rules.adopt(node);
@@ -6513,12 +6740,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       );
     };
 
-    const orderedIdentities = prepState.orderedIdentity.nodes;
-    const orderedResult = orderedIdentities.length === 0
+    const orderedIdentities = prepState.orderedIdentity?.nodes;
+    const orderedResult = !orderedIdentities || orderedIdentities.length === 0
       ? undefined
       : this._prepareOrderedIdentitiesInSourceOrder(context, orderedIdentities, handleResolvedNode);
     const finish = () => {
-      this._applyResolvedRegistrationNodes(rules, prepState.orderedIdentity.resolvedNodes);
+      if (prepState.orderedIdentity) {
+        this._applyResolvedRegistrationNodes(rules, prepState.orderedIdentity.resolvedNodes);
+      }
       this._restoreRegistrationContext(context, saved);
       return this;
     };
@@ -6561,7 +6790,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const node = rules.rules[i]!;
       const resolvedNode = resolvedByIndex.get(node.index);
       if (resolvedNode && resolvedNode !== node) {
+        const replacedMergeSurface = hasCarriedMergeOutputSurface(node);
         rules.rules[i] = resolvedNode;
+        if (hasCarriedMergeOutputSurface(resolvedNode)) {
+          rules.hasMergeOutputSurface = true;
+        } else if (replacedMergeSurface) {
+          rules.refreshMergeOutputSurface();
+        }
         rules.adopt(resolvedNode);
         if (isNode(node, N.VarDeclaration) && isNode(resolvedNode, N.VarDeclaration)) {
           this._replacePendingDeclarationNameNode(rules, node, resolvedNode);
@@ -6591,14 +6826,23 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   private _addPendingPrep(prepState: RegistrationPrepState, node: Node): void {
     if (isNode(node, N.VarDeclaration | N.Declaration)) {
-      prepState.declarationNames.nodes.push(node);
+      const declarationNames = prepState.declarationNames ??= {
+        nodes: [],
+        resolvedNodes: []
+      };
+      declarationNames.nodes.push(node);
       return;
     }
-    prepState.orderedIdentity.nodes.push(node);
+    const orderedIdentity = prepState.orderedIdentity ??= {
+      nodes: [],
+      resolvedNodes: []
+    };
+    orderedIdentity.nodes.push(node);
   }
 
   private _hasPendingPrep(prepState: RegistrationPrepState): boolean {
-    return prepState.declarationNames.nodes.length > 0 || prepState.orderedIdentity.nodes.length > 0;
+    return (prepState.declarationNames?.nodes.length ?? 0) > 0
+      || (prepState.orderedIdentity?.nodes.length ?? 0) > 0;
   }
 
   private _retryPendingDeclarationNamePrep(
@@ -6840,7 +7084,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       if (result !== rule) {
         const out = writableOutput();
+        const replacedMergeSurface = hasCarriedMergeOutputSurface(out.rules[idx]!);
         out.rules[idx] = result;
+        if (hasCarriedMergeOutputSurface(result)) {
+          out.hasMergeOutputSurface = true;
+        } else if (replacedMergeSurface) {
+          out.refreshMergeOutputSurface();
+        }
         if (isNode(result, N.Rules)) {
           result.index = idx;
           out.adopt(result);
@@ -7427,6 +7677,25 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
   }
 
+  private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
+    // Only a direct Rules child can carry callDeclarationOutput. Registration
+    // records that producer fact for both authored callable containers and
+    // generated call results, so declaration-only surfaces cannot need this
+    // source-order scan.
+    if (rules.hasDirectChildRuleSurface) {
+      this._normalizeCallDeclarationRulesOrder(rules);
+    }
+    if (hasMergeOutputSurface(rules)) {
+      recordMergeProfile?.('admittedCalls');
+      this._coalesceMergedDeclarations(rules);
+      recordMergeProfile?.('calls');
+    }
+    return {
+      rules,
+      rulesToHoist
+    };
+  }
+
   /**
    * After registration prep: ensure root on extend stack, then evaluate
    * children in source order.
@@ -7446,15 +7715,6 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     const { output, rulesToHoist } = evaluated;
     return this._finishSourceOrderEvaluation(output, rulesToHoist);
-  }
-
-  private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
-    this._normalizeCallDeclarationRulesOrder(rules);
-    this._coalesceMergedDeclarations(rules);
-    return {
-      rules,
-      rulesToHoist
-    };
   }
 
   private _checkReadonlyImportShadows(rules: Rules): void {
@@ -7639,14 +7899,8 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   private _createRegistrationPrepState(): RegistrationPrepState {
     return {
-      declarationNames: {
-        nodes: [],
-        resolvedNodes: []
-      },
-      orderedIdentity: {
-        nodes: [],
-        resolvedNodes: []
-      }
+      declarationNames: undefined,
+      orderedIdentity: undefined
     };
   }
 
@@ -7825,8 +8079,8 @@ export function resolveRulesetBySelector(
 // fixed-point state because one declaration name can unblock another; every
 // other unresolved identity stays in one source-ordered lane for now.
 type RegistrationPrepState = {
-  declarationNames: PendingDeclarationNamePrepState;
-  orderedIdentity: PendingOrderedIdentityPrepState;
+  declarationNames?: PendingDeclarationNamePrepState;
+  orderedIdentity?: PendingOrderedIdentityPrepState;
 };
 
 type PendingDeclarationNamePrepState = {

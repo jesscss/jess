@@ -3,7 +3,7 @@
 **Status:** DESIGN PASS (design-first, no folds landed yet). Base `fa525e055`, branch
 `work/p4-terminal-rework`.
 **Governs:** `UNIFIED-EVAL-EMIT-DESIGN.md` §2 (frame-threading spine) + §3 (no-canonical-mutation /
-body reuse). Companion to `CUTOVER-CHECKLIST.md` P3-precursor (MIXINS) + P3 (EXTEND) progress logs.
+body reuse). Companion to the historical `CUTOVER-CHECKLIST-2026-07-18.md` P3-precursor (MIXINS) + P3 (EXTEND) progress logs.
 
 ## 0. Baselines (recorded BEFORE any change)
 - **Core suite:** `cd packages/core && pnpm test` → **3249 passed / 0 failed / 15 skipped / 2 todo**
@@ -13,7 +13,7 @@ body reuse). Companion to `CUTOVER-CHECKLIST.md` P3-precursor (MIXINS) + P3 (EXT
 - **all-less corpus:** `packages/jess` → `TEST=true npx vitest run test/less/all-less.test.ts` →
   **91 passed / 2 failed (93)**. The 2 failures are PRE-EXISTING, unrelated to this rework:
   `extend-selector` (a `:is(...)` whitespace/formatting quirk — string-equal-but-`Object.is`-false) and
-  `import-remote` (network fetch, empty output offline). This is the byte-identity oracle; equal-or-better
+  `import-remote` (network fetch, empty output offline). This is the byte-identity reference; equal-or-better
   after every fold.
 
 ## 1. Why these three converge on ONE thing — the CALLABLE TERMINAL

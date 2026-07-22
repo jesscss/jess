@@ -12,6 +12,12 @@ export async function isdefinedImplementation(value: Lazy<Node>) {
   }
 }
 
+/**
+ * Less `isdefined()` — true when the lazily-evaluated argument resolves without a
+ * `ReferenceError` (i.e. the reference exists). Other errors propagate.
+ * @param value a lazily-evaluated expression
+ * @returns a `Bool`
+ */
 const isdefined = defineFunction(
   'isdefined',
   isdefinedImplementation,

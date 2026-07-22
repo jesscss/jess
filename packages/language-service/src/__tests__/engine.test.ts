@@ -444,6 +444,226 @@ describe('JessLanguageServiceEngine', () => {
     });
   });
 
+  describe('lint rules (MS css-languageservice parity)', () => {
+    const codesOf = (engine: ReturnType<typeof createEngine>, uri: string): string[] =>
+      engine.getDiagnostics(uri).map(d => String(d.code));
+
+    // Build a `configure()` severity payload with a computed key, so the
+    // slash-bearing lint codes are not written as object-literal property names.
+    const sevCfg = (code: string, severity: string): unknown =>
+      ({ diagnostics: { severity: { [code]: severity } } });
+
+    describe('emptyRules (lint/empty-rules)', () => {
+      it('fires on an empty ruleset', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a {}');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/empty-rules');
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+      });
+
+      it('fires on a whitespace-only body and a nested empty ruleset', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '.a {   \n  .b {}\n}');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        // `.a` is NOT empty (contains `.b`); only `.b` is flagged.
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/empty-rules');
+        expect(diags).toHaveLength(1);
+      });
+
+      it('does not fire on a non-empty ruleset', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/empty-rules');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/empty-rules', 'ignore'));
+        const doc = createDocument('css', '.a {}');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/empty-rules');
+      });
+    });
+
+    describe('unknownProperties (lint/unknown-property)', () => {
+      it('fires on an unknown property name', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { colr: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/unknown-property');
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+        // Range covers just the property name.
+        const slice = doc.getText().slice(doc.offsetAt(diag!.range.start), doc.offsetAt(diag!.range.end));
+        expect(slice).toBe('colr');
+      });
+
+      it('does not fire on a known property, custom prop, or vendor prefix', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: red; --my-var: 1; -webkit-mask: none; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-property');
+      });
+
+      it('does not fire on SCSS/Less variable declarations or interpolated names', () => {
+        const scss = createEngine();
+        const sdoc = createDocument('scss', '$brand: red;\n.a { #{$prop}: red; }');
+        scss.open(sdoc.uri, sdoc.languageId, sdoc.version, sdoc.getText());
+        expect(codesOf(scss, sdoc.uri)).not.toContain('lint/unknown-property');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-property', 'ignore'));
+        const doc = createDocument('css', '.a { colr: red; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-property');
+      });
+    });
+
+    describe('unknownAtRules (lint/unknown-at-rule)', () => {
+      it('fires on an unknown at-rule', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@foobar x { }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/unknown-at-rule');
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(2); // Warning
+      });
+
+      it('does not fire on known CSS at-rules', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '@media screen { .a { color: red; } }\n@font-face { font-family: x; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-at-rule');
+      });
+
+      it('does not false-flag SCSS dialect at-rules', () => {
+        const engine = createEngine();
+        const doc = createDocument('scss', '@mixin foo { color: red; }\n@include foo;\n@if true { .a { color: red; } }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-at-rule');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/unknown-at-rule', 'ignore'));
+        const doc = createDocument('css', '@foobar x { }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/unknown-at-rule');
+      });
+    });
+
+    describe('duplicateProperties (lint/duplicate-property)', () => {
+      it('fires when a property is declared twice in one block', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: red; color: blue; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/duplicate-property');
+        expect(diags).toHaveLength(1);
+        expect(diags[0]?.severity).toBe(2); // Warning
+      });
+
+      it('does not fire when the same property appears in different blocks', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: red; }\n.b { color: blue; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/duplicate-property');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/duplicate-property', 'ignore'));
+        const doc = createDocument('css', '.a { color: red; color: blue; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/duplicate-property');
+      });
+    });
+
+    describe('hexColorLength (lint/hex-color-length)', () => {
+      it('fires on a hex color without 3/4/6/8 digits (as an error)', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: #12345; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/hex-color-length');
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(1); // Error
+      });
+
+      it('does not fire on valid 3/6-digit hex colors', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { color: #fff; background: #ff0000; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/hex-color-length');
+      });
+
+      it('does not fire on a hex-like sequence inside a string', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { content: "#ff"; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/hex-color-length');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/hex-color-length', 'ignore'));
+        const doc = createDocument('css', '.a { color: #12345; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/hex-color-length');
+      });
+
+      it('is configurable to a different severity', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/hex-color-length', 'warning'));
+        const doc = createDocument('css', '.a { color: #12345; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/hex-color-length');
+        expect(diag?.severity).toBe(2); // Warning
+      });
+    });
+
+    describe('zeroUnits (lint/zero-units)', () => {
+      it('fires on a zero value with a length unit (as a hint)', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { margin: 0px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        const diag = engine.getDiagnostics(doc.uri).find(d => d.code === 'lint/zero-units');
+        expect(diag).toBeDefined();
+        expect(diag?.severity).toBe(4); // Hint
+      });
+
+      it('does not fire on bare 0, or on non-length units (0%, 0s)', () => {
+        const engine = createEngine();
+        const doc = createDocument('css', '.a { padding: 0; opacity: 0; width: 0%; transition-delay: 0s; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/zero-units');
+      });
+
+      it('respects configure() disable', () => {
+        const engine = createEngine();
+        engine.configure(sevCfg('lint/zero-units', 'ignore'));
+        const doc = createDocument('css', '.a { margin: 0px; }');
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        expect(codesOf(engine, doc.uri)).not.toContain('lint/zero-units');
+      });
+    });
+
+    it('lint rules stay tolerant: they fire despite a syntax error elsewhere', () => {
+      const engine = createEngine();
+      // The trailing `.bad { color: ) ;` region is malformed, but the earlier
+      // empty ruleset and unknown property are still flagged off the tolerant
+      // CST (the AST-based semantic path would yield nothing on invalid input).
+      const doc = createDocument('css', '.empty {}\n.a { color: red; colr: red; }\n.bad { color: ) ;');
+      engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+      const codes = codesOf(engine, doc.uri);
+      expect(codes).toContain('lint/empty-rules');
+      expect(codes).toContain('lint/unknown-property');
+    });
+  });
+
   describe('semantic tokens', () => {
     // Helper to decode semantic tokens data array
     // Format: [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]

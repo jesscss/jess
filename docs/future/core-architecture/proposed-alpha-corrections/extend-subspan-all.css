@@ -1,0 +1,11 @@
+.a.b > .c.d,
+.x {
+  color: red;
+}
+div + :is(.e.f > .g.h, .y) ~ .child {
+  color: blue;
+}
+.m > .n,
+.z {
+  color: green;
+}

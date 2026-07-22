@@ -3,8 +3,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Less.js compatibility layer for Jess - enables Less plugins and visitors to work with Jess AST",
-  "version": "2.0.0-alpha.8",
+  "description": "AST-v2 native function contribution plugin for Jess",
+  "version": "2.0.0-alpha.9",
   "type": "module",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
@@ -13,16 +13,6 @@
       "types": "./lib/index.d.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
-    },
-    "./transform": {
-      "types": "./lib/transform/index.d.ts",
-      "import": "./lib/transform/index.js",
-      "require": "./lib/transform/index.cjs"
-    },
-    "./less-compat-structures": {
-      "types": "./lib/less-compat-structures.d.ts",
-      "import": "./lib/less-compat-structures.js",
-      "require": "./lib/less-compat-structures.cjs"
     },
     "./package.json": "./package.json"
   },

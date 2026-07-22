@@ -1,17 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { Any, List, Sequence } from '@jesscss/core';
+import { makeKeyword, makeList } from '@jesscss/core/value';
 import length from '../length.js';
 
 describe('length()', () => {
-  it('counts values from list-with-sequence, sequence, and single nodes', () => {
-    const listWithSingleSequence = new List([
-      new Sequence([new Any('a'), new Any('b'), new Any('c')])
-    ]);
-    const sequence = new Sequence([new Any('x'), new Any('y')]);
-    const single = new Any('z');
+  it('counts recovered typed list values and scalar values', () => {
+    const list = (value: ReturnType<typeof makeKeyword>) => length(makeList([value], ','), {
+      modes: { unitMode: 'preserve' }, stringify: item => item.bytes
+    });
 
-    expect(length(listWithSingleSequence).number).toBe(3);
-    expect(length(sequence).number).toBe(2);
-    expect(length(single).number).toBe(1);
+    expect(list(makeKeyword('a b c')).number).toBe(3);
+    expect(list(makeKeyword('x y')).number).toBe(2);
+    expect(list(makeKeyword('z')).number).toBe(1);
   });
 });

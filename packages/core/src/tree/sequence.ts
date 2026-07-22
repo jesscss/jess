@@ -53,6 +53,16 @@ function isIdentifierChar(value: string | undefined): boolean {
   return Boolean(value && /[A-Za-z_-]/u.test(value));
 }
 
+/**
+ * A bare comma token carried as its own Sequence member (e.g. an unknown
+ * at-rule prelude token stream, `@vendor foo, bar {}`). CSS canonical spacing
+ * glues the comma to the preceding token (`foo,`), so the generic value spacer
+ * must NOT insert a space before it — matching `List`'s `emitListSeparator`.
+ */
+function isLeadingCommaToken(node: Node): boolean {
+  return node.type === 'Any' && node.valueOf() === ',';
+}
+
 function hasNonWhitespaceTrivia(run: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
   return Boolean(run?.hasComment);
 }
@@ -320,6 +330,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
     if (
       !prevEndsWithSpace
+      && !isLeadingCommaToken(node)
       && (!noSep || needsMergeGuard)
     ) {
       w.queueSpacer(' ', needsMergeGuard

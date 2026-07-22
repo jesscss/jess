@@ -1,6 +1,16 @@
 import { Any, Node, Quoted, defineFunction } from '@jesscss/core';
 import { serializeNodeValue } from '../util/serialize-node.js';
 
+/**
+ * Less `replace()` — replace text in a string using a JavaScript `RegExp`. The
+ * result keeps the input's quoting when it is a non-escaped `Quoted`; otherwise it
+ * is returned as an unquoted keyword value.
+ * @param input the string to search (serialized to text)
+ * @param pattern the regular-expression source
+ * @param replacement the replacement string (supports `$1` group refs)
+ * @param flags optional regex flags (e.g. `g`, `i`)
+ * @returns the transformed string
+ */
 const replace = defineFunction(
   'replace',
   async function(this: any, input: Node, pattern: Node, replacement: Node, flags?: Node) {

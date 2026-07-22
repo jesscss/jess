@@ -78,7 +78,9 @@ pass, then promote real modules to `@-compose`.
 
 ### Variable declarations
 
-Less-style variable declarations will be converted to Jess-style variable declarations, which resemble Sass-style variable declarations.
+Both Jess `$name: value` and `$$name: value` create or update both live and
+scoped bindings. The reference sigil, rather than the declaration, selects
+lookup behavior.
 
 <Tabs>
   <TabItem value="Less">
@@ -110,7 +112,7 @@ Less-style variable declarations will be converted to Jess-style variable declar
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $color;
+  value: $$color;
   ```
   </div>
 </div>
@@ -119,9 +121,8 @@ Less-style variable declarations will be converted to Jess-style variable declar
 
 :::info
 
-The `$!` live-binding sigil in Jess reads the latest (live) value of a variable
-rather than its value at that point in the scope. That matches how Sass variable
-lookups behave.
+Jess `$color` is the live/current reference form. `$$color` is the scoped/final
+lookup. `$!` is retired.
 
 :::
 
@@ -133,7 +134,7 @@ lookups behave.
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $!color;
+  value: $color;
   ```
   </div>
 </div>
@@ -160,8 +161,8 @@ Use:
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $($width + 1);
-  value: $($width / 2);
+  value: $($$width + 1);
+  value: $($$width / 2);
   ```
   </div>
 </div>
@@ -177,8 +178,8 @@ Use:
   </div>
   <div style={{ flex: 1 }}>
   ```less
-  value: $($!width + 1);
-  value: $($!width / 2);
+  value: $($width + 1);
+  value: $($width / 2);
   ```
   </div>
 </div>

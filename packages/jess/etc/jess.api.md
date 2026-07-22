@@ -8,20 +8,17 @@ import { Context } from '@jesscss/core';
 import { Deprecation } from '@jesscss/core';
 import { ErrorDiagnostic } from '@jesscss/core';
 import { ErrorsConfigInput } from '@jesscss/core';
-import { Rules } from '@jesscss/core';
-import { RulesOptions } from '@jesscss/core';
 import { StylesConfig } from 'styles-config';
+import type { Stylesheet } from '@jesscss/core/ast';
 import { WarningDiagnostic } from '@jesscss/core';
 import { WarningsConfigInput } from '@jesscss/core';
 
 // @public (undocumented)
 export class Compiler {
     constructor(opts?: ConfigOptions);
-    // @internal (undocumented)
+    // @internal
     compile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-        tree: Rules<never, RulesOptions & Record<string, any> & {
-            semi?: boolean;
-        }>;
+        document: Stylesheet;
         context: Context;
     }>;
     // @internal
@@ -57,7 +54,7 @@ export class Compiler {
     }>;
     // @internal (undocumented)
     safeCompile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-        tree: Rules | null;
+        document: Stylesheet | null;
         context: Context;
         errors: ErrorDiagnostic[];
         warnings: WarningDiagnostic[];

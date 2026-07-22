@@ -39,7 +39,7 @@ import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, 
 import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
-import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership } from './util/cloning.js';
+import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership, reuseLeaf } from './util/cloning.js';
 import { callableGuardContainsDefault } from './util/callable-entry.js';
 
 export type RulesetValue = {
@@ -85,6 +85,32 @@ function isRulesetSelectorMetadata(value: unknown): value is Selector {
   return value instanceof Selector;
 }
 
+/**
+ * A placeholder selector uses the escaped-backslash sigil `\\name` — a literal `\`
+ * in the selector text (what the SCSS parser lowers `%name` to, and what `.jess`
+ * writes directly, since `%` is modulo/percent in Jess). Detected from the text.
+ */
+function selectorTextIsPlaceholder(sel: unknown): boolean {
+  if (typeof sel === 'string') {
+    return sel.startsWith('\\\\');
+  }
+  if (sel instanceof Selector) {
+    const v = sel.valueOf();
+    return typeof v === 'string' && v.startsWith('\\\\');
+  }
+  return false;
+}
+
+/** A ruleset is a placeholder when EVERY one of its selectors is a `\\name`
+ * placeholder — it then emits no output of its own and is realized only via
+ * extend. (A mixed list like `\\foo, .bar` is NOT a whole-ruleset placeholder.) */
+function rulesetSelectorIsPlaceholder(selector: SelectorLike | Nil | undefined): boolean {
+  if (Array.isArray(selector)) {
+    return selector.length > 0 && selector.every(selectorTextIsPlaceholder);
+  }
+  return selectorTextIsPlaceholder(selector);
+}
+
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
@@ -108,9 +134,17 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   // Ruleset owns registration prep and marks `registrationPrepared` directly.
   /** Stored as delivered: string, node, or plain array (an array IS a selector list). */
   selector: SelectorLike | Nil | undefined;
+  /**
+   * True when every selector was a `\\name` placeholder AT PARSE — the ruleset
+   * emits no output of its own and is only realized through `@extend` / `$extend`.
+   * STORED (not derived) so it survives selector resolution during eval, where a
+   * placeholder stays invisible even after being extended. Output-suppression
+   * itself is applied downstream in eval (still an open TODO there).
+   */
+  isPlaceholder = false;
   declare readonly rules: Node[];
-  guard: RulesetValue['guard'];
-  selectorBeforeExtend: RulesetValue['selectorBeforeExtend'];
+  declare guard?: RulesetValue['guard'];
+  declare selectorBeforeExtend?: RulesetValue['selectorBeforeExtend'];
   /** Canonical selector-cache owner for derived registration-prep wrappers. */
   declare _selectorCacheOwner?: Ruleset;
 
@@ -135,8 +169,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     } else {
       this.selector = value.selector;
     }
-    this.guard = 'guard' in value ? value.guard : undefined;
-    this.selectorBeforeExtend = 'selectorBeforeExtend' in value ? value.selectorBeforeExtend : undefined;
+    this.isPlaceholder = rulesetSelectorIsPlaceholder(this.selector);
+    if (value.guard !== undefined) {
+      this.guard = value.guard;
+    }
+    if (value.selectorBeforeExtend !== undefined) {
+      this.selectorBeforeExtend = value.selectorBeforeExtend;
+    }
     // R2 SINGLE-FRAME: the Ruleset IS its own canonical body. Body children are
     // parented to the Ruleset by the `ruleset()` factory's parentChildren
     // (childKeys includes 'rules'); the Ruleset's own scope frame is the single
@@ -161,8 +200,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this.sourceRoot?._treeContext
     );
     shell.selector = this.selector;
-    shell.guard = this.guard;
-    shell.selectorBeforeExtend = this.selectorBeforeExtend;
+    shell.isPlaceholder = this.isPlaceholder;
+    if (this.guard !== undefined) {
+      shell.guard = this.guard;
+    }
+    if (this.selectorBeforeExtend !== undefined) {
+      shell.selectorBeforeExtend = this.selectorBeforeExtend;
+    }
     return shell;
   }
 
@@ -404,6 +448,26 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     // Flatten it into the parent's component stream so compose stays flat.
     if (isNode(component, N.ComplexSelector)) {
       return component.value.flatMap(inner => Ruleset._ownForCompose(inner));
+    }
+    // Overlay-only selector sharing: composition is an EMIT-time projection that
+    // runs after `processExtends` (eval-end), so no per-placement extend rewrite
+    // can corrupt a shared component here. The composed ComplexSelector adopts
+    // these components via `inherit`/`adopt`, and the frozen bit makes that adopt
+    // skip the `.parent` re-point — so the canonical component is shared, not
+    // cloned, and needs no private parent. Composition reads structure + an
+    // explicit parent parameter (`composedSelectorStack`), never the component's
+    // own `.parent`.
+    if (
+      component instanceof SimpleSelector
+      || isNode(component, N.CompoundSelector)
+      || isCombinator(component)
+      || isNode(component, N.Ampersand)
+    ) {
+      // `reuseLeaf` freezes the canonical node and returns it as a shared inert
+      // placement — the same primitive the leaf-reuse path already uses. Freezing
+      // is what makes the composed ComplexSelector's `adopt` skip the `.parent`
+      // re-point, so the shared component is not mutated.
+      return [reuseLeaf(component)];
     }
     const owned = copyOwnedWithReusableLeaves(component);
     if (
@@ -1670,8 +1734,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       return false;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    let renderSelector: Selector | Nil | SelectorListItem[] = withoutComments ? this.ownSelector(selector) as Selector | Nil : selector;
+    // Overlay-only selector sharing: the comparable-header (`withoutComments`)
+    // path is EMIT-time, after `processExtends` (eval-end), so the shared source
+    // selector cannot be extend-rewritten here. Comment trivia is already stripped
+    // for this path via the empty `createTriviaMap()` installed below (and again in
+    // the array branch), so no comment-stripping placement clone is needed — the
+    // canonical selector is shared, not cloned.
+    let renderSelector: SelectorLike | Nil = selector;
     // An array is a selector-list surface (a valid parser/extend selector form); it
     // carries no node flags, so skip the node-only reference-filter/compose logic and
     // emit it directly below (mirroring the string surface branch above).
@@ -1846,6 +1915,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
   override prepareRegistration(context: Context): MaybePromise<this> {
     if (!this.registrationPrepared) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return this._prepareRulesetRegistration(context) as MaybePromise<this>;
     }
     return this;
@@ -2083,6 +2153,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
           for (let i = 0; i < shell.rules.length; i++) {
             shell.adopt(shell.rules[i]!);
           }
+          shell.refreshMergeOutputSurface();
           shell.sourceNode = this;
           shell.hoistToRoot = this.hoistToRoot;
           if (!shell.hasVisibleRules()) {
@@ -2095,6 +2166,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         for (let i = 0; i < this.rules.length; i++) {
           this.adopt(this.rules[i]!);
         }
+        this.refreshMergeOutputSurface();
       }
 
       if (!this.hasVisibleRules()) {
@@ -2176,11 +2248,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
         return undefined;
       };
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       return (isThenable(guardResult)
         ? guardResult.then(result => evalBodyAfterGuard(finishGuard(result)))
         : evalBodyAfterGuard(finishGuard(guardResult))) as MaybePromise<Rules>;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return evalBodyAfterGuard(undefined) as MaybePromise<Rules>;
   }
 }

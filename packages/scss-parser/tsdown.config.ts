@@ -6,7 +6,8 @@ export default defineConfig({
     index: './src/index.ts',
     cst: './src/cst.ts',
     grammar: './src/grammar.ts',
-    jess: './src/jess.ts'
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    'ast/grammar': './src/ast/grammar.ts'
   },
   format: ['esm', 'cjs'],
   dts: true,

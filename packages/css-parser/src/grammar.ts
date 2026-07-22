@@ -1,19 +1,17 @@
 /**
- * Functional CSS grammar — the macro-compiled counterpart to the class-based
- * CssParser. Combinators are imported `with { type: 'macro' }`, so the parseman
+ * CSS grammar. Combinators are imported `with { type: 'macro' }`, so the parseman
  * plugin compiles the whole grammar (CST capture + node construction) to flat JS
  * at build time; without the plugin the interpreter runs the identical tree.
  *
  * This file is JUST the grammar — terminals + the `cssGrammar` rule map. Every
- * capital rule is a structural `node(parser)`: parseman infers the rule key, then captures the rule's
- * terminals + trivia and builds the AST via the injected `ctx.build` host. The
- * host, the parse driver, and `parseCssFn` live in ./functional-parser.ts and
- * ./functional-driver.ts. Less/Scss extend this grammar via `compose([cssGrammar,
- * …])` — no source needed (the pieces travel on the value).
+ * capital rule is a structural `node(parser)`: parseman infers the rule key and
+ * captures its terminals plus trivia. CSS exposes this grammar and its CST entry
+ * only; dialect parsers compose it through their own direct construction paths
+ * via `compose([cssGrammar, …])`.
  */
 import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, trivia, rules, expect, field, label
+  not, noTrivia, scanTo, balanced, trivia, rules, expect, field, label
 } from 'parseman' with { type: 'macro' };
 
 // ---------------------------------------------------------------------------
@@ -33,12 +31,16 @@ const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment'
 /**
  * CSS identifier. Starts with an ident-start code point (letter, non-ASCII, `_`),
  * optionally preceded by `-`; subsequent chars add digits and `-`.
- * Includes CSS escapes (\\hex / \\char).
+ * Includes CSS escapes (\\hex / \\char). The escape tail is `[^\n\r\f]` (not
+ * `[^\n]`): per §4.3.7 a `\` followed by a newline is NOT a valid escape, and a
+ * newline is any of LF / CR / FF — so `\<CR>` and `\<FF>` are excluded too, same
+ * as `\<LF>`. Shared verbatim by `basicSel` and `propName` below.
  * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
  * @see https://www.w3.org/TR/css-syntax-3/#ident-code-point
+ * @see https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point
  */
-const ident = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
-const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
+const ident = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
 const pseudoColon = regex(/::?/);
 const attrOp = regex(/[*~|^$]?=/);
@@ -55,17 +57,40 @@ const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
 const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
 const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const numPart = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
+// A dimension unit or `%`, collapsed to one regex (read as a single leaf). A `-`
+// inside the unit must NOT be followed by a digit: `17px-1px` is `17px` minus
+// `1px` (arithmetic), NOT a `17` with unit `px-1px`. Without the `-(?![0-9])`
+// guard the unit ident greedily swallows `-1px`, hiding the subtraction (Less
+// 4.x tokenizes the `-` as an operator here -> `16px`). A `-` before a LETTER
+// stays in the unit.
+const unitRegex = regex(/-?[_a-zA-Z-￿](?:[_a-zA-Z0-9-￿]|-(?![0-9]))*|%/);
 const urlOpen = regex(/url\(/i);
-const urlInner = regex(/[^)"'\s]+/);
+/**
+ * The unquoted `<url-token>` body — `( url-code-point | escape )+` per
+ * consume-a-url-token. A url code point is any code point EXCEPT `"` `'` `(` `)`,
+ * whitespace (tab U+0009, newline U+000A, form-feed U+000C, CR U+000D, space
+ * U+0020), a non-printable (U+0000–08, U+000B, U+000E–1F, U+007F), and `\`; a `\`
+ * begins an escaped code point (§4.3.7): `\` + 1–6 hex digits with one optional
+ * trailing whitespace terminator (`\41 ` → `A`), OR `\` + any single non-newline
+ * code point. The hex form's trailing-whitespace terminator is consumed as part
+ * of the escape, so `url(a\41 b)` stays ONE token (the space after `\41` is the
+ * escape terminator, not a token break) — the same escape idiom `ident` uses.
+ * Note this deliberately EXCLUDES `(` (a `(` inside the body is a bad-url-token)
+ * and non-printables, while INCLUDING Unicode spaces such as U+00A0 (which are
+ * valid url code points — `\s` would wrongly strip them).
+ * @see https://www.w3.org/TR/css-syntax-3/#consume-url-token
+ * @see https://www.w3.org/TR/css-syntax-3/#consume-escaped-code-point
+ */
+const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 // ---------------------------------------------------------------------------
-// Grammar — mirrors the class CssParser rules (node() → AST node, plain
+// Grammar — direct Parseman rules (node() → AST node, plain
 // combinator → its terminals bubble into the nearest enclosing node()).
 // ---------------------------------------------------------------------------
 
 export const cssGrammar = rules({ trivia: rw }, (g: any) => {
-  // ── Root ──────────────────────────────────────────────────────────────────
+  // ── Stylesheet ────────────────────────────────────────────────────────────
   // Two structural FRAMES model the CSS "two starting points" (CSS Syntax):
   //   • Frame 1 — `stylesheetBody`: a run of qualified rules + at-rules, NO bare
   //     declarations. Used by the root Stylesheet, `@layer`, and the
@@ -204,7 +229,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    * @see https://www.w3.org/TR/css-syntax-3/#would-start-an-identifier
    * @see https://www.w3.org/TR/css-syntax-3/#ident-start-code-point
    */
-  const propName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+  const propName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   const Declaration = node(
     // A value immediately followed by `{` is not a declaration but a nested
     // ruleset whose selector looks declaration-like (`a:hover { … }`) — CSS
@@ -239,7 +264,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    * A single value component.
    * @see https://www.w3.org/TR/css-values-4/#component-types
    */
-  const value = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue);
+  const value = choice(g.numeric, g.Color, g.Url, g.Call, g.Paren, g.Quoted, g.anyValue);
   // ── Math expressions ───────────────────────────────────────────────────────
   // CSS does arithmetic ONLY inside `calc()` (and the parens nested in it), so these
   // rules are reached only via `CalcCall` and the calc-nested `calcParen`, never the
@@ -256,7 +281,17 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // general permissive `Paren`. Everything else matches the ordinary value set.
   /** A math-context parenthesized sub-expression (folds). @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const calcParen = node('Paren', sequence(literal('('), g.mathSum, expect(literal(')'))));
-  const calcValue = choice(g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, calcParen, g.Quoted, g.anyValue);
+  // A calc-scoped catch-all value token. Unlike the general `anyValue` (which
+  // matches an operator-run — `[+\-*/=<>|~^]+` — as its FIRST alternative), a calc
+  // value must not be a bare operator run: in `calc(...)` those characters are
+  // ONLY operators (handled by `sumOp`/`prodOp`), never operands, so a lone `+` /
+  // `*` is not a <calc-value> (css-values-4 §10). Excluding the operator chars
+  // from the leaf keeps `calc(+)` / `calc(*)` from matching an operator as a value
+  // (they now fail the required <calc-value> and error). Non-operator keyword
+  // operands (`pi`, `e`, `infinity`) still match, so valid calc is unchanged; the
+  // global `anyValue` used by ordinary values is untouched.
+  const calcAnyTok = regex(/[^\s;{}[\]()'",!+\-*\/=<>|~^]+/);
+  const calcValue = choice(g.numeric, g.Color, g.Url, g.Call, calcParen, g.Quoted, calcAnyTok);
   /** A `* / %` product level (left-assoc), folded into an Operation. @see https://www.w3.org/TR/css-values-4/#calc-syntax */
   const mathProduct = node('Operation',
     sequence(calcValue, many(sequence(prodOp, calcValue))), undefined, { collapse: true });
@@ -266,15 +301,35 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
 
   /**
    * A dimension — a number immediately followed by a unit or `%` (`10px`, `50%`).
+   * `noTrivia` forbids whitespace between number and unit, so `1 px` / `1 %` stay a
+   * bare number plus a separate token rather than gluing into a Dimension.
    * @see https://www.w3.org/TR/css-values-4/#dimensions
    */
-  const Dimension = node(sequence(numPart, regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|%/)));
+  const Dimension = node(noTrivia(sequence(numPart, unitRegex)));
+  /**
+   * Unified numeric leaf: parse the number ONCE, then continue into the unit only
+   * if it is present — no Dimension→Num backtrack. The build host turns a
+   * unit-present match into a `Dimension` and a unit-absent match into a `Num`, so
+   * downstream node types/fields are identical to the split `Dimension`/`Num` rules.
+   */
+  const numeric = node('Numeric', noTrivia(sequence(numPart, optional(unitRegex))));
   /**
    * A `url()` value with an optional quoted or unquoted body.
+   *
+   * `url(` COMMITS: once the token opens, the closing `)` is `expect`ed rather
+   * than a plain `literal`, so the rule can no longer fail-and-backtrack into the
+   * generic `Call` arm. That matters for the unquoted (url-token) body: a
+   * `<url-token>` may not contain interior whitespace (css-syntax-3 §4.3.6 —
+   * `url(foo bar)` is a `<bad-url-token>`), so after the body run the next char
+   * must be `)`; `url(foo bar)` now reports a hard error at `bar` instead of the
+   * `Call` arm silently swallowing `foo bar`. The quoted body (`url("a b")`) is
+   * the function form, where the string may hold whitespace; leading/trailing
+   * whitespace (`url( foo )`) and the empty `url()` stay valid (ambient trivia).
+   * @see https://www.w3.org/TR/css-syntax-3/#consume-url-token
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/url_function
    */
   const Url = node(
-    sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), literal(')')));
+    sequence(urlOpen, optional(choice(singleStr, doubleStr, urlInner)), expect(literal(')'), ')')));
   /**
    * A function-call argument list — a PERMISSIVE value list (`rgb(255 0 0)`,
    * `min(1px, 2px)` are space / comma lists, not math expressions).
@@ -282,18 +337,35 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const parenBody = sequence(optional(g.valueList), literal(')'));
   /**
-   * A function call OR a bare ident, parsing the ident exactly once: the call-args
-   * tail is taken only when `(` follows. `_buildCall` returns a Call node when args
-   * are present, otherwise the bare ident string.
+   * `calc(…)` OR a generic function call OR a bare ident, as ONE node so a generic
+   * call/ident no longer pays a separate `calc(` node frame ahead of it. The calc
+   * arm (its body is ONE math expression — the only place plain CSS folds operators)
+   * is tried first so `calc(` routes to math; everything else parses the ident once
+   * and takes the call-args tail only when `(` follows. `_buildCall` returns a Call
+   * node when args are present, otherwise the bare ident string — identical for both
+   * arms (calc built exactly as the old `CalcCall` did).
    * @see https://www.w3.org/TR/css-values-4/#functional-notation
+   * @see https://developer.mozilla.org/en-US/docs/Web/CSS/calc
    */
-  const Call = node(sequence(ident, optional(sequence(literal('('), g.parenBody))));
+  const Call = node(choice(
+    sequence(regex(/calc(?=\()/i), literal('('), g.calcBody),
+    sequence(ident, optional(sequence(literal('('), g.parenBody)))
+  ));
   /**
    * `calc(…)` body — ONE math expression (the only place plain CSS folds
    * operators). Matched before the generic `Call` so `calc(` routes here.
+   *
+   * The `<calc-sum>` is REQUIRED (css-values-4 §10 — a `<calc-sum>` needs ≥1
+   * `<calc-value>`), so it is `expect`ed: an empty `calc()` or a lone-operator
+   * `calc(+)` produces no `<calc-value>`, and rather than the calc arm failing and
+   * backtracking into the generic `Call` arm (which would silently accept
+   * `calc()` / `calc(+)` as an ordinary function call), `expect` commits the
+   * `calc(` open and reports the missing value in place. Well-formed calc is
+   * unchanged — `mathSum` matches and `expect` passes straight through.
+   * @see https://www.w3.org/TR/css-values-4/#calc-func
    * @see https://developer.mozilla.org/en-US/docs/Web/CSS/calc
    */
-  const calcBody = sequence(g.mathSum, expect(literal(')')));
+  const calcBody = sequence(expect(g.mathSum, 'calc value'), expect(literal(')')));
   // `CalcCall` (calc(…)) and the general value-position `Paren` come from the shared
   // `parenRules` fragment (spread below) — they defer to g.calcBody / g.parenBody here.
   // `Quoted` likewise comes from the `stringRules` fragment.
@@ -332,16 +404,60 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
 
   // ── At-rules ───────────────────────────────────────────────────────────────
   /**
-   * An at-rule is `@name <prelude>` ended by either a `{}` block or a `;`. The
-   * prelude is scanned up to the `{`/`;`, skipping balanced ()/[] and strings.
+   * A generic at-rule prelude is a grammar-owned token stream, never a later
+   * whitespace split of one opaque scan. A token is a maximal top-level run;
+   * balanced groups and strings remain one segment, while top-level commas stay
+   * explicit. This keeps every segment spanned and lets the AST retain quoted,
+   * nested, and future interpolation-bearing syntax without recognizing it again
+   * in a builder.
+   *
+   * The `comment` stop makes a trailing comment ambient trivia rather than a
+   * prelude byte. Parseman records it against the adjacent typed segment.
    * @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
    */
-  // Stop the scan at the START of any trailing trivia run before the `{`/`;`,
-  // not at the delimiter itself — otherwise a trailing comment (`… hover /* x */
-  // {`) is swallowed into the prelude leaf instead of staying trivia. The
-  // grammar's ambient trivia then consumes that run for real and logs
-  // it, so `prelude.valueOf()` is the bare prelude and the comment is recoverable
-  // via the trivia map (matches the reference's token-based prelude).
+  const atPreludeStop = choice(ws, comment, literal(','), literal('{'), literal(';'));
+  const atPreludeToken = node('AtPreludeToken', sequence(
+    not(atPreludeStop),
+    scanTo(atPreludeStop, { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] })
+  ));
+  const atPreludeTokens = many(choice(node('AtPreludeToken', literal(',')), atPreludeToken));
+
+  /**
+   * Lossless at-rule-prelude segments for canonical AST reduction. `atPreludeTokens`
+   * remains the CST production; the public AST parser must use these segments
+   * directly rather than scan or split source text again.
+   *
+   * The outer `noTrivia` is essential.  Header whitespace and comments are
+   * syntax here, not ambient filler, so every byte before `{`/`;` has exactly
+   * one segment owner.  Balanced groups and quoted strings stay atomic; an
+   * escaped delimiter stays in a text segment rather than opening a new one.
+   * This is static CSS structure only: Less/SCSS interpolation must supply its
+   * own typed alternatives before any text/group arm and must not attach this
+   * primitive as a generic dialect prelude transport.
+   */
+  const AtPreludeWhitespace = node('AtPreludeWhitespace', noTrivia(ws));
+  const AtPreludeComment = node('AtPreludeComment', noTrivia(comment));
+  const AtPreludeComma = node('AtPreludeComma', noTrivia(literal(',')));
+  const AtPreludeGroup = node('AtPreludeGroup', noTrivia(choice(
+    balanced('(', ')', { skip: [singleStr, doubleStr, comment] }),
+    balanced('[', ']', { skip: [singleStr, doubleStr, comment] })
+  )));
+  const AtPreludeQuoted = node('AtPreludeQuoted', noTrivia(choice(singleStr, doubleStr)));
+  const atPreludeText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/);
+  const AtPreludeText = node('AtPreludeText', noTrivia(atPreludeText));
+  const AtRulePreludeSegments = node('AtRulePreludeSegments', noTrivia(many(choice(
+    AtPreludeWhitespace,
+    AtPreludeComment,
+    AtPreludeComma,
+    AtPreludeGroup,
+    AtPreludeQuoted,
+    AtPreludeText
+  ))));
+  // Statement at-rules retain their compact string-backed contract for now. They
+  // do not split that scan in a builder; block at-rules below use the structured
+  // token stream because their former builder did exactly that. Keep this seam
+  // explicit so the remaining statement representation can be migrated without
+  // silently changing its public AST shape.
   const atTailTrivia = many(choice(ws, comment));
   const atPreludeScan = scanTo(sequence(atTailTrivia, choice(literal('{'), literal(';'))), {
     skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr]
@@ -354,8 +470,40 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // rather than the rule failing and the at-rule falling through to the opaque
   // UnknownAtRuleBlock (which would silently accept the empty prelude).
   const notDelim = not(choice(literal('{'), literal(';')));
-  const reqQueryPrelude = expect(sequence(notDelim, atPreludeScan), 'query');
+  const reqQueryPrelude = expect(sequence(notDelim, atPreludeTokens), 'query');
   const reqImportPrelude = expect(sequence(notDelim, atPreludeScan), 'import path');
+  // `@supports` is stricter than `@media`/`@container`: its prelude is a
+  // `<supports-condition>` (css-conditional-3 §2), which — unlike a media/container
+  // query — has NO bare form. It must OPEN with `(`, the `not` keyword, or a
+  // `<function-token>` (an ident glued to `(`, e.g. `selector(…)` /
+  // `<general-enclosed>`). A bare `@supports color { … }` is invalid. The
+  // well-formed parenthesized/not/function preludes are already taken by the
+  // structured `QueryAtRuleBlock`; this required-condition fallback exists so the
+  // leftovers that reach it (a bare ident, or an empty prelude) report the missing
+  // condition rather than being swallowed by the permissive query fallback (or the
+  // opaque UnknownAtRuleBlock). A zero-width lookahead asserts the opener without
+  // consuming, so the shared token stream still owns the prelude; on failure
+  // `expect` recovers in place and the block still parses.
+  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
+  const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), atPreludeTokens);
+  // An UNKNOWN at-rule prelude as a REAL token stream — distinct, properly-spanned
+  // VERBATIM tokens, NOT one opaque leaf. Typed/semantic value nodes are reserved
+  // for KNOWN at-rules (later increments); here every top-level token is kept
+  // verbatim as one `Any` so glued runs (`a=b`, `foo(1)`, `[x]`, `foo!bar`) round-
+  // trip byte-for-byte. One token is a maximal run that stops at a TOP-LEVEL
+  // whitespace / `,` / `{` / `;`, skipping balanced ()/[] and strings so an inner
+  // comma/space/paren never splits it; a top-level comma is its own token. The
+  // `not(atRunStop)` guard forbids entering on a stop char, so `atToken` can never
+  // match empty (no infinite `many` loop). Ambient trivia (`rw`) skips whitespace
+  // between iterations; a trailing comment before `{` stays trivia (recoverable
+  // via the trivia map) — same guarantee as the old atPreludeScan sentinel.
+  // @see https://www.w3.org/TR/css-syntax-3/#consume-at-rule
+  const atRunStop = choice(ws, comment, literal(','), literal('{'), literal(';'));
+  const atToken = node('Any', sequence(
+    not(atRunStop),
+    scanTo(atRunStop, { skip: [balanced('(', ')'), balanced('[', ']'), singleStr, doubleStr] })
+  ));
+  const atTokenStream = many(choice(node('Any', literal(',')), atToken));
   // Known block at-rules are dispatched to a SHAPE-appropriate body per spec
   // (rather than one grab-bag): conditional-group + `@layer` + `@starting-style`
   // are transparent (ambient frame); the descriptor family is declarations-only;
@@ -369,7 +517,10 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   // rather than the structured QueryAtRuleBlock. These still REQUIRE a query — an
   // empty query (`@media {}`) is a real error — so they take a `reqQueryPrelude`
   // arm. Their body is the ambient frame (transparent), like QueryAtRuleBlock.
-  const queryFallbackAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  // `@supports` is EXCLUDED here (it has no bare query form) and dispatched via
+  // its own `supportsFallbackAtKeyword`/`reqSupportsPrelude` arm below.
+  const queryFallbackAtKeyword = regex(/@(?:media|container)(?![-\w])/i);
+  const supportsFallbackAtKeyword = regex(/@supports(?![-\w])/i);
   // `@starting-style` is transparent (no prelude), like the conditional group.
   const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
   // `@layer <name> { }` block form (the `@layer a, b;` statement form is an
@@ -484,16 +635,16 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
   const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
 
   // Shared known-block arms whose body is frame-INDEPENDENT (same nested vs top).
-  const descriptorBlock = sequence(descriptorAtKeyword, atPrelude, literal('{'), g.descriptorBody, expect(literal('}'), '}'));
-  const scopeBlock = sequence(scopeAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}'));
+  const descriptorBlock = sequence(descriptorAtKeyword, atPreludeTokens, literal('{'), g.descriptorBody, expect(literal('}'), '}'));
+  const scopeBlock = sequence(scopeAtKeyword, atPreludeTokens, literal('{'), g.declarationList, expect(literal('}'), '}'));
   // Spec-specific bodies (Phase 2). Each is frame-INDEPENDENT (its own fixed
   // content model, identical top-level or nested): keyframe blocks / page +
   // margin at-rules / feature-value blocks / (for `@document`) a frame-1
   // stylesheet body.
-  const keyframesBlock = sequence(keyframesAtKeyword, atPrelude, literal('{'), g.keyframesBody, expect(literal('}'), '}'));
-  const pageBlock = sequence(pageAtKeyword, atPrelude, literal('{'), g.pageBody, expect(literal('}'), '}'));
-  const fontFeatureValuesBlock = sequence(fontFeatureValuesAtKeyword, atPrelude, literal('{'), g.fontFeatureValuesBody, expect(literal('}'), '}'));
-  const documentBlock = sequence(documentAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}'));
+  const keyframesBlock = sequence(keyframesAtKeyword, atPreludeTokens, literal('{'), g.keyframesBody, expect(literal('}'), '}'));
+  const pageBlock = sequence(pageAtKeyword, atPreludeTokens, literal('{'), g.pageBody, expect(literal('}'), '}'));
+  const fontFeatureValuesBlock = sequence(fontFeatureValuesAtKeyword, atPreludeTokens, literal('{'), g.fontFeatureValuesBody, expect(literal('}'), '}'));
+  const documentBlock = sequence(documentAtKeyword, atPreludeTokens, literal('{'), g.stylesheetBody, expect(literal('}'), '}'));
   const sharedKnownArms = choice(descriptorBlock, scopeBlock, keyframesBlock, pageBlock, fontFeatureValuesBlock, documentBlock);
 
   /**
@@ -505,8 +656,9 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const AtRuleBlock = node(choice(
     sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
-    sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
-    sequence(layerAtKeyword, atPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(supportsFallbackAtKeyword, reqSupportsPrelude, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(startingStyleAtKeyword, atPreludeTokens, literal('{'), g.declarationList, expect(literal('}'), '}')),
+    sequence(layerAtKeyword, atPreludeTokens, literal('{'), g.declarationList, expect(literal('}'), '}')),
     sharedKnownArms));
   /**
    * A known block at-rule reached from frame 1 (top level). Identical to
@@ -517,8 +669,9 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const AtRuleBlockTop = node('AtRuleBlock', choice(
     sequence(queryFallbackAtKeyword, reqQueryPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
-    sequence(startingStyleAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
-    sequence(layerAtKeyword, atPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(supportsFallbackAtKeyword, reqSupportsPrelude, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(startingStyleAtKeyword, atPreludeTokens, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
+    sequence(layerAtKeyword, atPreludeTokens, literal('{'), g.stylesheetBody, expect(literal('}'), '}')),
     sharedKnownArms));
   /**
    * An UNKNOWN at-rule block — one of only two lenient/opaque spots: the UA owns
@@ -527,7 +680,7 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
    */
   const opaqueAtBody = scanTo(literal('}'), { skip: [balanced('{', '}'), singleStr, doubleStr, comment] });
   const UnknownAtRuleBlock = node(
-    sequence(atKeyword, atPrelude, literal('{'), opaqueAtBody, literal('}')));
+    sequence(atKeyword, g.atTokenStream, literal('{'), opaqueAtBody, literal('}')));
   /**
    * A statement at-rule — `@name <prelude> ;` with no block (`@charset`,
    * `@namespace`, `@layer a, b;` …).
@@ -630,9 +783,10 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
     keyframeSelector, KeyframeSelectorList, KeyframeBlock, keyframesBody,
     MarginAtRule, pageBody, FeatureValueBlock, fontFeatureValuesBody,
     valueList, valueSequence, value, parenBody, mathProduct, mathSum, calcBody,
-    Dimension, Url, Call, anyValue,
+    Dimension, numeric, Url, Call, anyValue,
     AtRuleBlock, AtRuleBlockTop, AtRuleStatement, ImportStatement,
-    QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock
+    QueryAtRuleBlock, QueryAtRuleBlockTop, UnknownAtRuleBlock, atTokenStream,
+    AtRulePreludeSegments
   };
 });
 
@@ -641,5 +795,6 @@ export const cssGrammar = rules({ trivia: rw }, (g: any) => {
 export const {
   Stylesheet, Ruleset, SelectorList, ComplexSelector, CompoundSelector,
   BasicSelector, AttributeSelector, PseudoSelector, Declaration, CustomDeclaration,
-  Dimension, Num, Color, Url, Call, Paren, Quoted, AtRuleBlock, AtRuleStatement
+  Dimension, Num, Color, Url, Call, Paren, Quoted, AtRuleBlock, AtRuleStatement,
+  AtRulePreludeSegments
 } = cssGrammar;

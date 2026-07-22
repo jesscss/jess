@@ -3,6 +3,11 @@ import { readAsset } from '../util/file-resolution.js';
 import { getImageDimensions } from '../util/image-dimensions.js';
 import { serializeNodeValue } from '../util/serialize-node.js';
 
+/**
+ * Less `image-height()` — the intrinsic height of an image file, in pixels.
+ * @param filePathNode path to the image
+ * @returns the height as a `px` `Dimension`
+ */
 const imageHeight = defineFunction(
   'image-height',
   async function(this: any, filePathNode: Node) {

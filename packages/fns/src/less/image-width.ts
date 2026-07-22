@@ -3,6 +3,11 @@ import { readAsset } from '../util/file-resolution.js';
 import { getImageDimensions } from '../util/image-dimensions.js';
 import { serializeNodeValue } from '../util/serialize-node.js';
 
+/**
+ * Less `image-width()` — the intrinsic width of an image file, in pixels.
+ * @param filePathNode path to the image
+ * @returns the width as a `px` `Dimension`
+ */
 const imageWidth = defineFunction(
   'image-width',
   async function(this: any, filePathNode: Node) {

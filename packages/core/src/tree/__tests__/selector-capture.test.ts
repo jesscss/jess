@@ -25,6 +25,24 @@ describe('SelectorCapture', () => {
     expect(selcap(el('.foo')).toTrimmedString()).toBe('*[.foo]');
   });
 
+  it('keeps selector-node captures free of eager lazy-lift slots', async () => {
+    const nodeCapture = selcap(el('.foo'));
+    expect(Object.getOwnPropertyNames(nodeCapture)).not.toContain('_selectorNode');
+
+    expect(await nodeCapture.resolve(context)).toBe(nodeCapture.selector);
+    expect(Object.getOwnPropertyNames(nodeCapture)).not.toContain('_selectorNode');
+
+    const stringCapture = selcap('.foo');
+    expect(Object.getOwnPropertyNames(stringCapture)).not.toContain('_selectorNode');
+    await stringCapture.resolve(context);
+    expect(Object.getOwnPropertyNames(stringCapture)).toContain('_selectorNode');
+
+    const arrayCapture = selcap(['.foo', '.bar']);
+    expect(Object.getOwnPropertyNames(arrayCapture)).not.toContain('_selectorNode');
+    await arrayCapture.resolve(context);
+    expect(Object.getOwnPropertyNames(arrayCapture)).toContain('_selectorNode');
+  });
+
   it('renders resolved selector values through render(context)', async () => {
     const node = rules([
       vardecl({

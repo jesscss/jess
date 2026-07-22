@@ -2,17 +2,21 @@ import type {
   AtRule,
   Ruleset,
   Rules,
-  ImportOptions,
   Node,
   Any,
   AtRuleStatement,
   Selector,
   Nil
 } from './tree/index.js';
+import type { ImportOptions } from './import-options.js';
 import { ExtendRootRegistry } from './tree/util/extend-roots.js';
 import { type Operator } from './tree/util/calculate.js';
-import type { PluginInterface } from './plugin.js';
+import type { ISafeParseResult, ParsedDocument, PluginInterface, UrlTransformRequest } from './plugin.js';
+import type { Stylesheet } from './ast/nodes.js';
 import type { StylesConfig } from './types.js';
+import type { TriviaMap } from './types/index.js';
+import type { ExtendSelectorKind } from './types/config.js';
+import type { PluginHost, ValueEvaluator } from './ast/value-eval.js';
 import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js';
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -34,7 +38,6 @@ import {
 } from './warnings.js';
 import type { Call } from './tree/call.js';
 import { CallMap } from './tree/util/recursion-helper.js';
-import { createRequire } from 'node:module';
 import { BitSetLibrary } from './tree/util/bitset.js';
 import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector-analysis.js';
 import type { PrintOptions } from './tree/util/print.js';
@@ -57,6 +60,7 @@ export interface SpineVisitor {
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
+const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
 
 async function importJsonModule(absoluteFilePath: string): Promise<Record<string, unknown>> {
   const parsed = JSON.parse(await readFile(absoluteFilePath, 'utf8')) as unknown;
@@ -166,6 +170,19 @@ export interface ContextOptions {
    * plugin-free parse/eval paths.
    */
   loadPluginForExtension?(extension: string): Promise<PluginInterface | undefined> | PluginInterface | undefined;
+
+  /**
+   * Per-tree transient serialization data threaded from the parser (source-anchored
+   * comment/whitespace runs). Seeded onto the render {@link Context} (and per-tree
+   * {@link TreeContext}) and read back at emit time.
+   */
+  trivia?: TriviaMap;
+
+  /**
+   * Source `[start, end)` ranges of comments lifted to standalone `Comment` nodes;
+   * the render-time trivia view hides these so they aren't double-emitted.
+   */
+  liftedCommentRanges?: ReadonlyArray<readonly [number, number]>;
 }
 
 /**
@@ -200,7 +217,7 @@ const OPTION_DEFAULTS: ResolvedOptions = {
 
 /**
  * Resolve the option set with a SINGLE precedence: an explicit compile-level
- * option wins, else the tree context's (plugin/language/file) value, else the
+ * option wins, else the source document's input configuration, else the
  * hard default. This is the one place the precedence is defined — it replaces the
  * three divergent `??` orders that used to live scattered across the read-sites
  * (`compile ?? tree` in conditions, `tree`-only in lists, `tree ?? compile` for
@@ -220,11 +237,7 @@ export function resolveOptions(
   };
 }
 
-export interface TreeContextOptions extends ContextOptions {
-  inlineJavaScript?: boolean;
-
-  scope?: Rules;
-
+export interface DocumentContextOptions extends ContextOptions {
   isModule?: boolean;
 
   file?: {
@@ -239,12 +252,58 @@ export interface TreeContextOptions extends ContextOptions {
 
     /** Full file contents (recommended for code-frames) */
     source?: string;
-
-    /** Lazy cache of line-start offsets (built on demand) */
-    lines?: Uint32Array;
   };
 
-  [k: string]: any;
+  /**
+   * The plugin that parsed this document; it gets first dibs at resolving imports.
+   */
+  plugin?: PluginInterface;
+}
+
+/**
+ * Source identity carried by canonical AST documents for one Context session.
+ * It intentionally has no legacy node scope, selector cache, or placement state.
+ */
+export class DocumentContext {
+  options: ResolvedOptions;
+  isModule: boolean | undefined;
+  file?: DocumentContextOptions['file'];
+  plugin?: PluginInterface;
+
+  constructor(opts: DocumentContextOptions = {}) {
+    this.options = resolveOptions(undefined, opts);
+    this.isModule = opts.isModule;
+    this.file = opts.file;
+    this.plugin = opts.plugin;
+  }
+}
+
+/** The source facts shared by canonical documents and retained legacy trees. */
+export type SourceContext = Pick<DocumentContext, 'options' | 'file' | 'plugin'>;
+
+function isAsyncDocumentWork<T>(value: T | Promise<T>): value is Promise<T> {
+  return value instanceof Promise;
+}
+
+export interface TreeContextOptions extends DocumentContextOptions {
+  inlineJavaScript?: boolean;
+
+  scope?: Rules;
+
+  /**
+   * Transient per-tree flag: emit a value-level source map for this tree (scalar
+   * POC). Set by the plugin when output maps are requested.
+   */
+  sourceMap?: boolean;
+
+  /** Per-tree selector key-set library shared by selectors of this tree. */
+  selectorBits?: BitSetLibrary<string>;
+
+  /** Plugin-supplied output policy carried on the tree (read via print/emit options). */
+  collapseNesting?: boolean;
+
+  /** Plugin-supplied allow-list of extend selector kinds. */
+  allowExtendSelectors?: ExtendSelectorKind[];
 }
 
 const idChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
@@ -275,39 +334,19 @@ export const generateId = (length = 8) => {
  * Additionally, it sets options that may be
  * unique to the tree, such as the math mode.
  */
-export class TreeContext {
+export class TreeContext extends DocumentContext {
   /** Non-option, per-tree transient data (trivia, lifted-comment ranges, …). */
-  opts: Record<string, any>;
-
-  /**
-   * The single resolved option set for this tree. Built once at construction
-   * from the file/plugin/language values; when the tree is made active on an
-   * eval {@link Context}, that context folds its compile-level options over this
-   * and shares the resulting object (see Context's `treeContext` setter), so
-   * `context.options` and `treeContext.options` are the SAME object — one place
-   * to read, no per-read merge.
-   */
-  options: ResolvedOptions;
-
-  /** @todo - Change how extend works based on this value */
-  isModule: boolean | undefined;
-
-  file?: TreeContextOptions['file'];
-  /**
-   * The plugin that created this tree. It will have first dibs
-   * to resolve any imports.
-   */
-  plugin?: PluginInterface;
+  opts: Omit<TreeContextOptions, 'isModule' | 'file' | 'plugin'>;
 
   constructor(opts: TreeContextOptions = {}) {
     // Resolve the file-level options once (no compile context yet — the eval
     // Context folds that in on attach). Structural identity stays on the
     // instance; every other unknown key is transient `opts` data.
-    this.options = resolveOptions(undefined, opts);
+    super(opts);
     const { isModule, file, plugin, ...rest } = opts;
-    this.isModule = isModule;
-    this.file = file;
-    this.plugin = plugin;
+    void isModule;
+    void file;
+    void plugin;
     delete rest.mathMode;
     delete rest.unitMode;
     delete rest.functionMode;
@@ -317,18 +356,6 @@ export class TreeContext {
     this.opts = rest;
   }
 }
-
-/**
- * .a.b.c
- * simple = 0b1
- * compound = 0b10
- * complex = 0b100
- * a = 0b1000
- * b = 0b10000
- * c = 0b100000
- *
- * .a.b.c.c = 0b111010
- */
 
 /**
  * This is the context object used for evaluation.
@@ -341,7 +368,8 @@ export class Context {
   readonly plugins: PluginInterface[];
   readonly opts: ContextOptions;
 
-  private _treeContext!: TreeContext;
+  private _treeContext: TreeContext | undefined;
+  private _documentContext: DocumentContext | undefined;
 
   /**
    * Flat, fully-resolved options for the currently-active tree context — the one
@@ -353,26 +381,54 @@ export class Context {
   options: ResolvedOptions;
 
   /**
+   * Canonical AST-v2 value evaluator for this render session. Its concrete
+   * registry is assembled by the application layer (`@jesscss/fns`), while
+   * Context owns the per-render execution state and lifetime.
+   */
+  valueEvaluator?: ValueEvaluator;
+
+  /** Dialect-owned function capability for canonical AST rendering. */
+  pluginHost?: PluginHost;
+
+  /**
    * The active file's tree context. Assigning it (at import entry/exit and
    * ruleset scope changes) recomputes `options` once and shares the resulting
    * object with the tree context, so the fast-path reads that follow are plain
    * field accesses.
    */
-  get treeContext(): TreeContext {
+  get treeContext(): TreeContext | undefined {
     return this._treeContext;
   }
 
-  set treeContext(tc: TreeContext) {
+  set treeContext(tc: TreeContext | undefined) {
     this._treeContext = tc;
     // Fold the compile-level options over the tree's own, once, and SHARE the
     // result: `context.options` and `tc.options` become the same object, so eval
     // (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
     // hit one resolved set with nothing left to merge. Idempotent on re-entry
     // (compile ?? already-folded === already-folded).
-    this.options = resolveOptions(this.opts, tc?.options);
+    this.options = resolveOptions(this.opts, this._documentContext?.options ?? tc?.options);
     if (tc) {
       tc.options = this.options;
     }
+  }
+
+  /** Active canonical AST source identity, independent of legacy tree state. */
+  get documentContext(): DocumentContext | undefined {
+    return this._documentContext;
+  }
+
+  private setDocumentContext(dc: DocumentContext | undefined): void {
+    this._documentContext = dc;
+    this.options = resolveOptions(this.opts, dc?.options ?? this._treeContext?.options);
+    if (dc) {
+      dc.options = this.options;
+    }
+  }
+
+  /** Active source facts for resolver, diagnostics, and file-reading consumers. */
+  get sourceContext(): SourceContext | undefined {
+    return this._documentContext ?? this._treeContext;
   }
 
   /**
@@ -383,7 +439,7 @@ export class Context {
    */
   setOption<K extends keyof ResolvedOptions>(key: K, value: ResolvedOptions[K]): void {
     this.opts[key] = value;
-    this.options = resolveOptions(this.opts, this._treeContext?.options);
+    this.options = resolveOptions(this.opts, this._documentContext?.options ?? this._treeContext?.options);
   }
 
   /**
@@ -545,6 +601,22 @@ export class Context {
   rulesContext?: Rules;
   /** Entire context root (ultimate root) */
   root!: Rules;
+  /** Canonical parsed document for the AST-v2 execution route. */
+  document?: Stylesheet;
+  /**
+   * Per-session source identity for canonical AST documents. AST nodes stay
+   * plain source facts; the render session carries the file/plugin context
+   * required by the retained Context resolver when an import enters a child
+   * document.
+   */
+  private readonly documentContexts = new WeakMap<Stylesheet, DocumentContext>();
+  /**
+   * Deferred executable bodies retain the source document that introduced
+   * them into this session. This is session provenance, not AST metadata: the
+   * same canonical body can be placed in more than one render frame without a
+   * node mutation, parser walk, or secondary source tree.
+   */
+  private readonly documentBodyContexts = new WeakMap<object, DocumentContext>();
   /** Set so that we can do ruleset selector lookup for extend */
   treeRoot!: Rules;
   allRoots: Rules[] = [];
@@ -848,21 +920,152 @@ export class Context {
     }
   }
 
-  /** Full resolved path -> tree */
-  sourceTrees = new Map<string, Rules>();
+  /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
+  sourceTrees = new Map<string, ParsedDocument>();
   evaldTrees = new Map<string, Rules>();
+
+  /** Record the parser/source identity once, when an AST document enters this session. */
+  private rememberDocumentContext(
+    document: Stylesheet,
+    filePath: string,
+    source: string | undefined,
+    plugin: PluginInterface,
+  ): void {
+    this.documentContexts.set(document, new DocumentContext({
+      file: {
+        name: path.basename(filePath),
+        path: path.dirname(filePath),
+        fullPath: filePath,
+        ...(source === undefined ? {} : { source }),
+      },
+      plugin,
+    }));
+  }
+
+  /**
+   * Run work with the source identity of a canonical AST document active.
+   * This is the AST-v2 equivalent of entering a legacy tree's TreeContext:
+   * the Context resolver, option cache, diagnostics and plugin priority all
+   * remain one session-owned path.
+   */
+  withDocument<T>(document: Stylesheet, run: () => T | Promise<T>): T | Promise<T> {
+    const next = this.documentContexts.get(document);
+    if (!next) return run();
+    const previous = this._documentContext;
+    this.setDocumentContext(next);
+    try {
+      const result = run();
+      if (isAsyncDocumentWork(result)) {
+        return result.finally(() => {
+          this.setDocumentContext(previous);
+        });
+      }
+      this.setDocumentContext(previous);
+      return result;
+    } catch (error) {
+      this.setDocumentContext(previous);
+      throw error;
+    }
+  }
+
+  /**
+   * Dispatch a rendered URL target to the plugin that parsed the active
+   * document. The entry/source paths are provenance facts already retained by
+   * this Context; this does not perform resolution, loading, or parsing.
+   */
+  transformUrl(value: string, quoted: boolean): string {
+    const document = this.sourceContext;
+    const transform = document?.plugin?.transformUrl;
+    if (!transform) return value;
+    const entry = this.document ? this.documentContexts.get(this.document) : undefined;
+    const request: UrlTransformRequest = {
+      value,
+      quoted,
+      ...(document?.file?.fullPath === undefined ? {} : { fromFilePath: document.file.fullPath }),
+      ...(entry?.file?.fullPath === undefined ? {} : { entryFilePath: entry.file.fullPath }),
+    };
+    return transform.call(document.plugin, request) ?? value;
+  }
+
+  /**
+   * Associate one deferred callable body with an already-known document.
+   * Import execution supplies the document identity explicitly because the
+   * lexical splice publishes its callable facts before entering that document's
+   * active Context scope.
+   */
+  rememberDocumentBody(document: Stylesheet, body: object): void {
+    const owner = this.documentContexts.get(document);
+    if (owner) this.documentBodyContexts.set(body, owner);
+  }
+
+  /**
+   * Execute a deferred callable body in the source scope that introduced it.
+   * The promise branch deliberately retains the scope until that body has
+   * completed its own async imports or IO, then restores the caller scope.
+   */
+  withDocumentBody<T>(body: object, run: () => T | Promise<T>): T | Promise<T> {
+    const next = this.documentBodyContexts.get(body);
+    if (!next) return run();
+    const previous = this._documentContext;
+    this.setDocumentContext(next);
+    try {
+      const result = run();
+      if (isAsyncDocumentWork(result)) {
+        return result.finally(() => {
+          this.setDocumentContext(previous);
+        });
+      }
+      this.setDocumentContext(previous);
+      return result;
+    } catch (error) {
+      this.setDocumentContext(previous);
+      throw error;
+    }
+  }
+
+  /** Opaque source identity carried by render-local frames/bindings. */
+  currentSourceOwner(): object | null {
+    return this._documentContext ?? null;
+  }
+
+  /** Run a deferred render activation in its recorded source identity. */
+  withSourceOwner<T>(owner: object | null | undefined, run: () => T | Promise<T>): T | Promise<T> {
+    if (!(owner instanceof DocumentContext)) {
+      return run();
+    }
+    const previous = this._documentContext;
+    this.setDocumentContext(owner);
+    try {
+      const result = run();
+      if (isAsyncDocumentWork(result)) {
+        return result.finally(() => {
+          this.setDocumentContext(previous);
+        });
+      }
+      this.setDocumentContext(previous);
+      return result;
+    } catch (error) {
+      this.setDocumentContext(previous);
+      throw error;
+    }
+  }
+
+  /** The source owner that authored a callable body, if one is known. */
+  sourceOwnerForBody(body: object): object | null {
+    return this.documentBodyContexts.get(body) ?? this._documentContext ?? null;
+  }
 
   /**
    * @param importPath - The bare import path e.g. `@import "foo";` in a .less file.
    */
   private async _getPath(importPath: string) {
-    const currentTree = this.treeContext;
-    const currentDirectory = currentTree?.file?.path ?? process.cwd();
+    const currentDocument = this.sourceContext;
+    const currentDirectory = currentDocument?.file?.path ?? process.cwd();
     const { searchPaths = [] } = this.opts;
 
     const plugins = this.plugins;
     let finalPath: string | undefined;
-    let currentPlugin = this.treeContext?.plugin;
+    let currentPlugin = currentDocument?.plugin;
 
     /** First, expand imports */
     let paths = currentPlugin?.expandImport?.(importPath, currentDirectory) ?? [importPath];
@@ -905,41 +1108,6 @@ export class Context {
     }
 
     if (!finalPath) {
-      // Fallback for bare module specifiers (e.g. "@scope/pkg/path").
-      const looksBareSpecifier = (p: string) =>
-        !path.isAbsolute(p)
-        && !p.startsWith('./')
-        && !p.startsWith('../')
-        && !p.startsWith('/')
-        && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(p);
-      const tryResolveModule = (request: string, basedir: string): string | undefined => {
-        try {
-          const req = createRequire(path.join(basedir, '__jess_resolve__.js'));
-          return req.resolve(request);
-        } catch {
-          return undefined;
-        }
-      };
-      const moduleBaseDirs = [currentDirectory, ...searchPaths, process.cwd()];
-      for (const candidate of paths) {
-        if (!looksBareSpecifier(candidate)) {
-          continue;
-        }
-        for (const baseDir of moduleBaseDirs) {
-          const base = path.isAbsolute(baseDir) ? baseDir : path.resolve(currentDirectory, baseDir);
-          const resolved = tryResolveModule(candidate, base) ?? tryResolveModule(`${candidate}.less`, base);
-          if (resolved) {
-            finalPath = resolved;
-            break;
-          }
-        }
-        if (finalPath) {
-          break;
-        }
-      }
-    }
-
-    if (!finalPath) {
       /** @todo - Add messaging around tried paths */
       throw new Error(`File not found: ${importPath} (from: ${currentDirectory})`);
     }
@@ -970,14 +1138,14 @@ export class Context {
       if (!plugin) {
         throw new Error(`Plugin "${type}" not found`);
       }
-      if (!plugin.parse) {
+      if (!plugin.safeParse) {
         throw new Error(`Plugin "${type}" does not support parsing`);
       }
       return plugin;
     }
 
     if (extension) {
-      const plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(extension) && (plugin.parse || plugin.safeParse));
+      const plugin = plugins.find(plugin => plugin.supportedExtensions?.includes(extension) && plugin.safeParse);
       if (!plugin) {
         throw new Error(`No plugin found for extension "${extension}"`);
       }
@@ -985,6 +1153,21 @@ export class Context {
     }
 
     throw new Error('No plugin type or extension specified');
+  }
+
+  /**
+   * Normalize parser plugins through the retained Context dispatcher. A plugin
+   * returns one canonical Stylesheet result; callers never select a second
+   * parser/load route themselves.
+   */
+  private parseSource(
+    plugin: PluginInterface,
+    filePath: string,
+    source: string,
+    options?: Parameters<NonNullable<PluginInterface['safeParse']>>[2],
+  ): ISafeParseResult {
+    if (!plugin.safeParse) throw new Error(`Plugin "${plugin.name}" does not support parsing`);
+    return plugin.safeParse(filePath, source, options);
   }
 
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
@@ -1012,7 +1195,10 @@ export class Context {
     const ext = path.extname(resolvedPath);
     const plugin = this.findParserPlugin(type, ext);
     const source = await sourceGetter.getSource!(resolvedPath);
-    const parseResult = plugin.safeParse!(resolvedPath, source, { importOptions });
+    const parseResult = this.parseSource(plugin, resolvedPath, source, {
+      importOptions,
+      compilerOptions: this.opts
+    });
 
     // Collect normalized errors and warnings from plugin
     this.errors.push(...parseResult.errors);
@@ -1025,16 +1211,14 @@ export class Context {
       throw makeJessErrorFromDiagnostic(firstError);
     }
 
-    if (parseResult.tree) {
-      // Set context.root so early visitors can check if this is the root.
-      // parseResult.tree should be a Rules node (the root of the parsed tree)
-      if (!this.root && isNode(parseResult.tree, N.Rules)) {
-        this.root = parseResult.tree;
-      }
+    const document = parseResult.document;
+    if (document) {
+      if (!this.document) this.document = document;
+      this.rememberDocumentContext(document, resolvedPath, source, plugin);
 
-      this.sourceTrees.set(resolvedPath, parseResult.tree);
+      this.sourceTrees.set(resolvedPath, document);
       return {
-        node: parseResult.tree,
+        node: document,
         triedPaths,
         resolvedPath
       };
@@ -1061,6 +1245,30 @@ export class Context {
       triedPaths,
       resolvedPath
     };
+  }
+
+  /**
+   * Load a stylesheet import through the existing plugin dispatcher. External
+   * identifiers are deliberately opt-in: without a plugin that claims one,
+   * they stay CSS terminals and Context never attempts a network read. A
+   * claiming plugin still uses the ordinary resolve/locate/source/parse path.
+   */
+  async loadImport(importPath: string, importOptions: ImportOptions = {}) {
+    if (EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
+      const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
+      const { searchPaths = [] } = this.opts;
+      let claimed = false;
+      for (const plugin of this.plugins) {
+        if (await plugin.canResolveImport?.(importPath, currentDirectory, searchPaths)) {
+          claimed = true;
+          break;
+        }
+      }
+      if (!claimed) {
+        return undefined;
+      }
+    }
+    return this.getTree(importPath, importOptions);
   }
 
   /**
@@ -1098,14 +1306,23 @@ export class Context {
     const ext = extension || path.extname(virtualPath);
 
     const plugin = this.findParserPlugin(type, ext);
-    const tree = await plugin.parse!(virtualPath, content);
-
-    if (!tree) {
+    const result = this.parseSource(plugin, virtualPath, content, {
+      compilerOptions: this.opts
+    });
+    this.errors.push(...result.errors);
+    this.warnings.push(...result.warnings);
+    if (result.errors.length > 0 && this.opts.breakOnError !== false) {
+      throw makeJessErrorFromDiagnostic(result.errors[0]!);
+    }
+    const document = result.document;
+    if (!document) {
       throw new Error('Failed to parse content');
     }
+    if (!this.document) this.document = document;
+    this.rememberDocumentContext(document, virtualPath, content, plugin);
 
     return {
-      node: tree,
+      node: document,
       resolvedPath: virtualPath
     };
   }
@@ -1174,6 +1391,33 @@ export class Context {
 
     return {
       module,
+      triedPaths,
+      resolvedPath
+    };
+  }
+
+  /**
+   * Load an executable Plugin module through the same Context-owned path and
+   * extension dispatch used by ordinary modules. The active dialect adapter
+   * interprets the returned module; Context does not know a dialect ABI.
+   */
+  async getPluginModule(importPath: string, options: string | null = null) {
+    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const ext = path.extname(resolvedPath);
+    let plugin = this.plugins.find(candidate =>
+      candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);
+    if (!plugin) {
+      plugin = await this.opts.loadPluginForExtension?.(ext);
+      if (plugin && !this.plugins.includes(plugin)) this.plugins.push(plugin);
+      if (plugin && (!plugin.supportedExtensions?.includes(ext) || !plugin.importPlugin)) {
+        plugin = undefined;
+      }
+    }
+    if (!plugin?.importPlugin) {
+      throw new Error(`File "${friendlyPath}" is not supported as an executable plugin module.`);
+    }
+    return {
+      module: await plugin.importPlugin(resolvedPath, options),
       triedPaths,
       resolvedPath
     };

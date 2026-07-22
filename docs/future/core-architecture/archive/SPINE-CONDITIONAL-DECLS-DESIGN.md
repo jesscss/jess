@@ -172,7 +172,7 @@ eval implements it as a nearest-enclosing-scope write, it slots into mechanism (
 write path with `searchParents: true, includeLive: true` and the first hit past the
 current frame. Until then, leave it EXCLUDED (do not silently no-op a shape whose eval
 semantics are undefined) — this is the one shape neither mechanism "cleanly covers"
-because the ORACLE is undefined.
+because the REFERENCE is undefined.
 
 ## Why not a shared read-time side-table (pure A)
 
@@ -181,7 +181,7 @@ native shapes (`?:` / `:=` are near-zero in the Less corpus). Even gated, it is 
 machinery than (A′)+(B), and it models a WRITE (`setDefined`) as a read overlay — an
 impedance mismatch that would drift from eval semantics. The prior speculative attempt
 (carry the CondAssign fallback-ref's `index` into a shared-eval read gate) was tried and
-REVERTED (`CUTOVER-CHECKLIST.md:142`); the binding cell resolves too late in that shape.
+REVERTED (`CUTOVER-CHECKLIST-2026-07-18.md:142`); the binding cell resolves too late in that shape.
 (A′) sidesteps that by building the reference in the BODY PLAN with the correct `index`
 already set, exactly as `_normalizeAssignmentValue` does — not by mutating shared eval.
 
@@ -215,8 +215,8 @@ already set, exactly as `_normalizeAssignmentValue` does — not by mutating sha
   `lookupScopeFrameVariable`'s signature/behavior on a non-conditional tree is unchanged
   (no new options consulted on the hot path) — locks the "no hot-path tax" decision so a
   future change can't smuggle mechanism (A) in.
-- Correctness oracle for both: the eval path on the SAME source (the working all-less
-  oracle), asserting identical bytes — not a golden `.css`.
+- Correctness reference for both: the eval path on the SAME source (the working all-less
+  reference), asserting identical bytes — not an expected `.css`.
 
 ## Open question for the owner
 
@@ -226,22 +226,22 @@ rebind. Two paths:
       usage) — this design does that.
   (ii) Define its semantics (nearest-enclosing-scope non-shadowing rebind) and implement
       it in BOTH eval and the spine mechanism-(B) write path in one go.
-Recommend (i) now — do not spend the spine increment on a shape whose oracle is
+Recommend (i) now — do not spend the spine increment on a shape whose reference is
 undefined; revisit only if a real `:=` case appears. Owner decides whether `:=` is a
 committed language feature or a parser-accepted no-op.
 
 ---
 
-# ADDENDUM — `nearestOuter` (`:=`) eval oracle NOW EXISTS; spine-fold analysis
+# ADDENDUM — `nearestOuter` (`:=`) eval reference NOW EXISTS; spine-fold analysis
 
 Status: EVAL IMPLEMENTED (branch `work/nearest-outer`, base `587d56140`). Commits
 `05050e06b` (eval) + `289deb624` (binding-surface skip + tests). The Open Question
 above is RESOLVED in favor of path (ii): `:=` is a committed feature with defined
-semantics and a working eval oracle. This addendum specs the mechanism-(B) fold. **No
+semantics and a working eval reference. This addendum specs the mechanism-(B) fold. **No
 `emit-walk.ts` change is made here** (that file is owned by the extend-#4a agent; the
 orchestrator sequences the actual gate-lift). This is DESIGN ONLY.
 
-## What the eval oracle now does (the shape to match byte-for-byte)
+## What the eval reference now does (the shape to match byte-for-byte)
 
 `Rules.registerNode`, `rules.ts` (the `isNode(node, N.Declaration)` branch, immediately
 BEFORE the `setDefined` block). Fires only on a `nearestOuter` VarDeclaration:
@@ -305,7 +305,7 @@ extend-#4a; do NOT apply from this branch):
 1. **`isSimpleSpineLeaf` (`emit-walk.ts:1077`)** — replace the unconditional
    `if (options?.nearestOuter) return false;` bail with the `setDefined`-shaped admit:
    `if (options?.nearestOuter) return isNode(node, N.VarDeclaration);`. Update the stale
-   comment at 1075-1076 ("no eval implementation, no oracle") — the oracle now exists.
+   comment at 1075-1076 ("no eval implementation, no reference") — the reference now exists.
 
 2. **`isSpineEligibleBody` (`emit-walk.ts:930`)** — extend the same-scope gate to cover
    `nearestOuter`: change the guard to fire for `isBindingReassignment(child)` (i.e.
@@ -336,8 +336,8 @@ needs NO nearestOuter-specific branch; only the eligibility gates (edits 1-3) ch
   (`emit-walk-ratchet.test.ts:666`): a SAME-scope `:=` (`@x:red; @x:=blue`) becomes
   spine-eligible and byte-identical to eval; a CROSS-scope `:=` (nested, no same-body
   prior) STAYS excluded (`isSpineEligibleRoot === false`).
-- Correctness oracle = the eval path on the same source (the eval impl on this branch),
-  asserting identical bytes — NOT a golden `.css`.
+- Correctness reference = the eval path on the same source (the eval impl on this branch),
+  asserting identical bytes — NOT an expected `.css`.
 - The negative ratchet on the pure read-time side-table (no hot-path tax) is UNCHANGED —
   mechanism (B) touches only the `:=` node, never the variable-read path.
 

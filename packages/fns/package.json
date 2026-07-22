@@ -4,7 +4,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.9",
   "description": "Jess functions module",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
@@ -13,6 +13,11 @@
       "types": "./lib/index.d.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
+    },
+    "./builtins": {
+      "types": "./lib/builtins.d.ts",
+      "import": "./lib/builtins.js",
+      "require": "./lib/builtins.cjs"
     },
     "./*": {
       "types": "./lib/*.d.ts",
@@ -28,7 +33,7 @@
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "npm run build",
     "build": "pnpm compile",
-    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "cross-env TEST=true vitest",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"

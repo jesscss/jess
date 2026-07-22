@@ -104,7 +104,7 @@ The global flow subsumes it. `extendSelector`'s single-call contract exists toda
 the IR and EMIT is the sole materializer, there is no in-flow caller for a node→node per-call extend.
 **Proposal: `extendSelector` becomes internal to the IR rewrite (the (C) black box) and is no longer
 a public node→node API.** The only external need for "extend one selector by one rule" is differential
-TESTING (the oracle), which can keep a thin test-only wrapper. This is a structural divergence from
+TESTING (the reference), which can keep a thin test-only wrapper. This is a structural divergence from
 today and invalidates the internal tests in §6.2 — acceptable per the mandate.
 
 ---
@@ -261,7 +261,7 @@ consistent with "(A) is settled precompute, (B) is the design's real work."
   shapes as parsed" — asserts `ComplexSelector`-wrap vs flat `CompoundSelector`. Non-binding.
 - **`extendSelector`/`tryExtendSelector` return-shape + per-call unit tests** (`extend-unit.test.ts`,
   the `tryExtendSelector`/`createProcessedSelector` direct-call tests) — if the per-call API is
-  eliminated/internalized (§1.1), these move to the test-only oracle wrapper or are discarded.
+  eliminated/internalized (§1.1), these move to the test-only reference wrapper or are discarded.
 - **Flag-set-on-node assertions** (`innerRuleset.hoistToRoot === true`) — replace with a render-level
   assertion of the hoisted output.
 - **Call-count / memo / `beginExtendMatchPass` internals** — the fixpoint replaces the memo; these go.
@@ -398,7 +398,7 @@ already owns. The bare own fragment `.dd` is not a target at all (C1). **Target-
 Here the nested ruleset is the *extender*. Rendered from the real Less test-data fixtures
 `tests-unit/extend-selector` and `tests-unit/extend-nest` through the Jess corpus harness
 (`all-less.test.ts`, `LESS_TEST_DATA_ROOT` = the Less.js checkout). **Both fixtures currently FAIL in
-Jess**, and every failure line is this axis. The `- Expected` lines are the Less-4.x golden; the
+Jess**, and every failure line is this axis. The `- Expected` lines are the Less-4.x expected output; the
 `+ Received` lines are what Jess emits today.
 
 **C5 — nested extender must contribute its COMPOSED form (extend-selector).**
@@ -549,7 +549,7 @@ claim that separating (A)/(B)/(C) collapses today's classify passes.
 
 ### 9.6 Needs owner confirmation of intended output
 
-The `.css` files under the Less.js checkout are **Less-4.x goldens**, NOT the user-maintained Jess v5
+The `.css` files under the Less.js checkout are the **Less-4.x expected `.css`**, NOT the user-maintained Jess v5
 alpha expected outputs. The C5–C8 diffs above are Jess-vs-Less-4.x. Two points need an owner ruling
 before treating them as the correctness target:
 1. **Is the composed-contribution form (`:is(.a,.b) .c`, `.footer .footer-nav`, `.type1 .sidebar3`) the
@@ -557,11 +557,11 @@ before treating them as the correctness target:
    specific fixtures are not on the jess pass-list yet (extend-nest and extend-selector currently FAIL),
    so the v5 expected `.css` for them has not been ratified by the owner.
 2. **Adjacent (non-OQ-5) divergences in the same fixtures, flagged so they are not conflated with OQ-5:**
-   - `extend-nest`: `:is(.button, .submit):hover` (golden) vs `.button:hover, .submit:hover` (Jess) — an
+   - `extend-nest`: `:is(.button, .submit):hover` (expected `.css`) vs `.button:hover, .submit:hover` (Jess) — an
      `:is()`-grouping/format question (B4-adjacent), independent of own-vs-composed.
    - `extend-nest`: the `.amp-test-*` block renders malformed in Jess (leaked `&`, runaway `:is()`
      nesting) — a `&`-substitution recursion bug, independent of OQ-5.
-   - `extend-selector`: `[data=@{attr-data}]` unresolved (golden resolves to `[data="test3"]`) — an
+   - `extend-selector`: `[data=@{attr-data}]` unresolved (expected `.css` resolves to `[data="test3"]`) — an
      interpolation-eval issue, independent of OQ-5.
    These do not affect the (a)-vs-(b) ruling but WILL block making the fixtures green; they belong to
    other axes and should be tracked separately.

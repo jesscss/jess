@@ -8,6 +8,7 @@ For repo-wide rules, read `AGENTS.md`. For the active architecture roadmap, use:
 - `docs/future/core-architecture/HANDOFF.md`
 - `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`
 - `docs/future/core-architecture/PERFORMANCE-HANDOFF.md`
+- docs/future/parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md (parser dialect re-base + error-coverage program)
 
 ## Package Build Shape
 

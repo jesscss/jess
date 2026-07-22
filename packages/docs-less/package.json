@@ -8,7 +8,7 @@
     "predev": "pnpm run build:facings",
     "dev": "docusaurus start",
     "prebuild": "pnpm run build:facings",
-    "build": "docusaurus build",
+    "build": "pnpm run build:facings && docusaurus build",
     "version:4x": "node ./scripts/refresh-4x-version.mjs",
     "version:4x:refresh": "node ./scripts/refresh-4x-version.mjs",
     "swizzle": "docusaurus swizzle",

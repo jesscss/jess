@@ -35,6 +35,16 @@ function stats(tree: CstNode) {
   return { leaves, grammarTypes, types };
 }
 
+function leafText(node: CstNode | CstNode['children'][number]): string {
+  if (node._tag === 'leaf') {
+    return node.value;
+  }
+  if (node._tag === 'error') {
+    return node.children.map(leafText).join('');
+  }
+  return node.children.map(leafText).join('');
+}
+
 describe('@jesscss/scss-parser/cst', () => {
   it('parses SCSS through the public core-free CST entry', () => {
     const result = parseScssCst('$color: red; .x { color: $color; }');
@@ -43,6 +53,24 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
     expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+  });
+
+  it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
+    const result = parseScssCst('.card { color: blue !IMPORTANT; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+  });
+
+  it('preserves import-item CST facts while a structural interpolation skips a modifier', () => {
+    const source = '@import "base.css" supports(#{"(display: grid)"}), "print.css" print;';
+    const result = parseScssCst(source);
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('ScssImportAtRule')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('ScssImportItem')).toBe(2);
+    expect(leafText(result.tree)).toContain('#{"(display: grid)"}');
   });
 
   it('collapses transparent CST wrappers without dropping leaves', () => {

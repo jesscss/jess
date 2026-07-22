@@ -1,5 +1,8 @@
-/** Math functions - shared with Sass */
-export { abs, ceil, floor, round } from '../shared/index.js';
+/** Math functions */
+export { abs } from './abs.js';
+export { ceil } from './ceil.js';
+export { floor } from './floor.js';
+export { round } from './round.js';
 
 /** Math functions - Less specific */
 export { default as acos } from './acos.js';

@@ -1,5 +1,11 @@
 # Parser AST Gap Baseline
 
+> **Superseded staging language:** this baseline may compare parser shapes, but
+> it must not be read as authorization for a private/direct-AST proof or a
+> later public cutover. The required architecture is public dialect
+> `parse() -> Stylesheet` through direct Parseman reductions; CST is retained only
+> for explicit document/language-service consumers.
+
 ## Purpose
 
 This document captures the parser-only AST baselines we should use while restoring the CSS and Less parsers.
@@ -99,7 +105,7 @@ High-value Less contracts from the historical AST baseline:
 - nested namespaced reference shape is preserved
   - example: `@ref: #ns.breakpoint(.valToGet[])[@max];`
   - expected shape: `Reference(target: Call(name: Reference[role=name], args: List(...)), key: 'max')`
-- mixin definitions preserve parameter-as-`VarDeclaration` shape
+- mixin definitions preserve parameter-as-`VariableDeclaration` shape
   - example: `.mixin(@color) { color: @color; }`
 - `default()` guard semantics preserve `hasDefault`
 - rest parameters and rest arguments preserve `Rest` node usage

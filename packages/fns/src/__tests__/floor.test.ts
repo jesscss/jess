@@ -1,39 +1,19 @@
 import { describe, test, expect, beforeEach } from 'vitest';
-import { Context, Dimension, Num } from '@jesscss/core';
+import { makeDimension } from '@jesscss/core/value';
 import floor from '../less/floor.js';
 
-describe('floor function isolated test', () => {
-  let context: Context;
-
-  beforeEach(() => {
-    context = new Context();
+describe('floor function typed value contract', () => {
+  test('floors a canonical Dimension and preserves its unit', () => {
+    const result = floor(makeDimension(1.7, 'px'));
+    expect(result).toMatchObject({ type: 'Dimension', number: 1, unit: 'px', bytes: '1px' });
   });
 
-  test('floor with number', () => {
-    const result = floor(1.7);
-    expect(result).toBeDefined();
+  test('rejects untyped direct inputs at the callable boundary', () => {
+    expect(() => (floor as unknown as (...args: unknown[]) => unknown)(1.7)).toThrow('typed ValueObj');
+    expect(() => (floor as unknown as (...args: unknown[]) => unknown)({ value: 1.7 })).toThrow('typed ValueObj');
   });
 
-  test('floor with number (object)', () => {
-    const result = floor({ value: 1.7 });
-    expect(result).toBeDefined();
-  });
-
-  test('floor with Dimension', () => {
-    const dim = new Dimension({ number: 1.7, unit: 'px' });
-    const result = floor(dim);
-    expect(result).toBeDefined();
-  });
-
-  test('floor with Dimension (object)', () => {
-    const dim = new Dimension({ number: 1.7, unit: 'px' });
-    const result = floor({ value: dim });
-    expect(result).toBeDefined();
-  });
-
-  test('floor with Num', () => {
-    const num = new Num(1.7);
-    const result = floor(num);
-    expect(result).toBeDefined();
+  test('rejects legacy tree numeric values', () => {
+    expect(() => (floor as unknown as (...args: unknown[]) => unknown)({ type: 'Num', value: 1.7 })).toThrow('expected Dimension');
   });
 });

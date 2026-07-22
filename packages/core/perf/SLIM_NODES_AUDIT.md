@@ -5,6 +5,54 @@ standing rule (lean shapes for good V8 hidden classes; prefer type-specializatio
 + shared util fns over fat nodes; rare data on a subtype, never a WeakMap
 side-table; performance is the driver).
 
+> **Current-state correction (2026-07-13, `dev` `9bfec19be`).** This document is
+> historical audit evidence, not the live queue. Do not reopen its ranked items
+> without checking [CORE-CLEANUP.md](../../../docs/future/core-architecture/CORE-CLEANUP.md)
+> and the current [Rules field budget](./RULES_FIELD_BUDGET.md). In particular,
+> `Rules` is currently at five class-unique fields (`rules`, `_lookup`,
+> `rulesFlags`, `_scopeFrame`, `_treeContext`); `lookupVersion`, `varsByName`,
+> and `pendingExtends` are historical rows already folded or deleted. The
+> selector marker and `Node.frozen` eager slot are also historical: selector
+> identity is derived and frozen state is packed into `Node.flags`. Per-node
+> source spans are inline on `Node`; per-slot value/field spans remain a separate
+> parser/trivia design question. The live tracker is the authority for what is
+> still unclaimed.
+
+## Current live census (2026-07-13)
+
+The old collapse-bench table below is retained as historical evidence. A fresh
+run of `node --expose-gc packages/core/perf/heap/dyn-census.mjs` on the current
+bundled `dev` build uses the stable `Node._tag`/`node.type` discriminant rather
+than minifiable constructor names. It walked **50,059 live nodes** in the
+mixin/reference/extend workload and measured current own enumerable shape width
+(not a byte or class-unique-field claim):
+
+| type | count | avg own keys |
+|---|---:|---:|
+| Declaration | 10,007 | 11.0 |
+| Ruleset | 8,405 | 17.3 |
+| Reference | 7,211 | 10.0 |
+| Dimension | 5,204 | 10.0 |
+| Color | 3,604 | 12.0 |
+| List | 2,403 | 11.0 |
+| Call | 2,402 | 12.0 |
+| Num | 2,401 | 10.0 |
+| Nil | 1,602 | 9.0 |
+| BasicSelector | 1,602 | 11.0 |
+| Extend | 1,600 | 12.0 |
+| Paren | 1,204 | 9.0 |
+| Operation | 1,203 | 11.0 |
+| Rules | 1,201 | 13.0 |
+| VarDeclaration | 5 | 11.0 |
+| SelectorList | 2 | 10.0 |
+| Mixin | 1 | 17.0 |
+| Interpolated | 1 | 11.0 |
+| Condition | 1 | 12.0 |
+
+Use `RULES_FIELD_BUDGET.md` and `NODE_FIELD_BUDGET.md` for class-unique field
+counts; this table is a current frequency/shape guide for selecting the next
+bounded audit, not permission to split a hot node on key count alone.
+
 ## Method / grounding
 
 - **Live-instance census (frequency):** captured a V8 heap snapshot of the LIVE

@@ -8,6 +8,14 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `lighten()` — increase a color's HSL lightness by `amount` (a percentage).
+ * With `method: relative`, the increase is relative to the current lightness.
+ * @param color the input `Color`
+ * @param amount lightness increase as a `Dimension` percentage
+ * @param method optional `relative` keyword
+ * @returns the lightened `Color`, preserving the input's output format
+ */
 export default defineFunction(
   'lighten',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {

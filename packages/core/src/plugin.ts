@@ -1,22 +1,16 @@
-import type { Rules } from './tree/rules.js';
-import type { ImportOptions } from './tree/import-style.js';
-import type { Context } from './context.js';
+import type { Stylesheet } from './ast/nodes.js';
+import type { ImportOptions } from './import-options.js';
+export type { ImportOptions } from './import-options.js';
+import type { Context, ContextOptions } from './context.js';
 import { join, isAbsolute, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import type { Visitor } from './visitor/index.js';
-import type { Node } from './tree/node.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
-
-export type PluginVisitor = Partial<Omit<Visitor, 'visit'>> & {
-  visit?: (node: Node) => unknown;
-};
+import { type ErrorDiagnostic, type WarningDiagnostic } from './jess-error.js';
+import type { ExtendSelectorKind } from './types/config.js';
 
 export type ISafeParseResult = {
-  /**
-   * The parsed tree, if parsing succeeded
-   */
-  tree?: Rules;
+  /** Canonical parser document on successful parsing. */
+  document?: Stylesheet;
   /**
    * Normalized errors from parsing.
    * This should include ALL errors from lexing, parsing, and any plugin-level issues.
@@ -33,10 +27,37 @@ export type ISafeParseResult = {
   warnings: WarningDiagnostic[];
 };
 
+/** The single parser-result contract carried by Context during the cutover. */
+export type ParsedDocument = Stylesheet;
+
 export type SafeParseOptions = {
-  compilerOptions?: Record<string, unknown>;
+  /**
+   * The compile-level option bag threaded to a plugin's `safeParse` (the caller
+   * passes the render {@link Context}'s `opts`). Includes `allowExtendSelectors`,
+   * which lives on the per-tree {@link TreeContextOptions} rather than the base.
+   */
+  compilerOptions?: ContextOptions & {
+    /** Extend-selector kinds a plugin permits; consumed when building the TreeContext. */
+    allowExtendSelectors?: ExtendSelectorKind[];
+  };
   importOptions?: ImportOptions;
 };
+
+/**
+ * A rendered URL target together with the source identities needed by a
+ * dialect-owned transform. Context supplies these facts from the active
+ * document; plugins must not resolve or re-read either file to rewrite a URL.
+ */
+export interface UrlTransformRequest {
+  /** The unquoted URL target after value evaluation. */
+  value: string;
+  /** Whether the target was authored as a quoted URL token. */
+  quoted: boolean;
+  /** The document that authored this URL. */
+  fromFilePath?: string;
+  /** The entry document currently being rendered. */
+  entryFilePath?: string;
+}
 
 export interface PluginInterface {
   /**
@@ -76,6 +97,15 @@ export interface PluginInterface {
   resolve?(path: string | string[], currentDir: string, searchPaths: string[]): null | string[] | Promise<null | string[]>;
 
   /**
+   * Explicit opt-in for an external import identifier (a URL or
+   * protocol-relative specifier). Context asks this before it enters the normal
+   * resolve → locate → source → parse pipeline. A positive result does not
+   * fetch: this plugin must still resolve and locate the source through those
+   * ordinary capabilities. Absent means external imports remain CSS terminals.
+   */
+  canResolveImport?(specifier: string, currentDir: string, searchPaths: string[]): boolean | Promise<boolean>;
+
+  /**
    * Pick the first one that exists. Return null to let another plugin handle the path.
    */
   locate?(pathCandidates: string[], currentDir: string): null | string | Promise<string | null>;
@@ -85,36 +115,26 @@ export interface PluginInterface {
    */
   getSource?(absoluteFilePath: string): Promise<string>;
 
-  /**
-   * If we have the extension in `supportedExtensions`, and this method exists,
-   * then this plugin is assumed to be able to parse the file.
-   */
-  parse?(filePath: string, source: string): Rules;
-
-  /** No errors thrown; instead will return errors in the result */
+  /** No errors thrown; successful parser plugins return `document: Stylesheet`. */
   safeParse?(filePath: string, source: string, options?: SafeParseOptions): ISafeParseResult;
+
+  /**
+   * Optionally transform a rendered URL target owned by this plugin's active
+   * document. This is intentionally not import resolution: Context already
+   * owns source identity and imports have been parsed before rendering.
+   */
+  transformUrl?(request: UrlTransformRequest): string | undefined;
 
   /** If this method exists, then the plugin can return a JS module / object */
   import?(absoluteFilePath: string): Promise<Record<string, any>>;
 
-  /** Post-parse or post-eval visitor(s) */
-  visitor?: PluginVisitor | PluginVisitor[];
-  /** Early visitor(s), called before eval for compatibility with Less-style plugins. */
-  beforeEvalVisitor?: PluginVisitor | PluginVisitor[];
   /**
-   * Optional tree-aware early visitor hook. Use this when a compatibility layer
-   * can cheaply prove that a parsed tree needs no early traversal.
+   * Optional executable-plugin loader. Context selects this capability by file
+   * extension just like ordinary module import; the dialect adapter owns the
+   * returned module ABI. Kept distinct from `import()` because a legacy plugin
+   * runtime may require a constrained execution environment.
    */
-  beforeEvalVisitorForTree?(tree: Rules, filePath?: string): PluginVisitor | PluginVisitor[] | undefined;
-  /**
-   * Visitors that run after eval and immediately before render serialization.
-   */
-  preRenderVisitor?: PluginVisitor | PluginVisitor[];
-  /**
-   * Compatibility hook name for visitors that run after eval and immediately
-   * before render serialization.
-   */
-  postEvalVisitor?: PluginVisitor | PluginVisitor[];
+  importPlugin?(absoluteFilePath: string, options?: string | null): Promise<unknown>;
 
   /** Optional lifecycle hooks used by lazy plugin loading. */
   prewarm?(): void | Promise<void>;
@@ -131,8 +151,6 @@ const { isArray } = Array;
 
 export abstract class AbstractPlugin implements PluginInterface {
   abstract name: string;
-
-  declare safeParse: PluginInterface['safeParse'];
 
   /**
    * Does a basic path resolution. Node resolution is in other plugins.
@@ -171,22 +189,6 @@ export abstract class AbstractPlugin implements PluginInterface {
     return null;
   }
 
-  parse(filePath: string, source: string): Rules {
-    const safeParse = this.safeParse;
-    if (!safeParse) {
-      throw new Error(`Plugin "${this.name}" does not support parsing`);
-    }
-    const { tree, errors } = safeParse.call(this, filePath, source);
-    if (errors.length > 0) {
-      const firstError = errors[0]!;
-      throw makeJessErrorFromDiagnostic(firstError);
-    }
-    if (!tree) {
-      throw new Error(`Plugin "${this.name}" failed to parse "${filePath}"`);
-    }
-    return tree;
-  }
-
   /** Implement using the JS plugin w/ Deno */
   // import(absoluteFilePath: string): Promise<Record<string, any>> {
   //   return import(absoluteFilePath);
@@ -194,110 +196,3 @@ export abstract class AbstractPlugin implements PluginInterface {
 }
 
 export type Plugin = <T extends Record<string, any>>(opts?: T) => PluginInterface;
-
-// export abstract class FileManager<O extends Record<string, any> = Record<string, any>> {
-//   abstract supportedExtensions?: string[];
-
-//   constructor(
-//     public opts: Partial<O> = {}
-//   ) {}
-
-//   /**
-//    * Turns relative paths into absolute paths.
-//    * e.g.
-//    *   `./foo` -> `/Users/foo/bar/foo`
-//    *   `@/alias` -> `/Users/foo/bar/src/alias`
-//    *   `one/two` -> `/Users/foo/node_modules/one/two`
-//    *
-//    * Does not attempt to check if the path exists.
-//    * Note: paths may already be absolute.
-//    */
-//   abstract resolver?(paths: Set<string>, currentDir: string): Set<string>;
-
-//   /**
-//    * e.g.
-//    *   Less file manager: `@import 'foo'` -> `['./foo.less']`
-//    *   Sass file manager: `@import 'foo'` -> `['./foo.scss', './_foo.scss']`
-//    */
-//   abstract getPathsToTry?(filePath: string, currentDir: string, paths: string[], options: PathOptions): Set<string>;
-
-//   /**
-//    * Get the final resolved path.
-//    *
-//    * @param filePath Will be a partial path
-//    * @param paths The paths to search. This should always contain
-//    * the directory context where the file was imported. Can be
-//    * a fully-qualified path or a glob. Relative paths
-//    * will be resolved relative to process.cwd(). Plugins
-//    * may alter the paths array and return false to let another
-//    * plugin handle the path resolution.
-//    * @param options Determined by the file manager
-//    */
-//   resolvePath(
-//     filePath: string,
-//     currentDir: string,
-//     paths: string[],
-//     options: PathOptions
-//   ): string | string[] {
-//     filePath = this.opts.resolver(filePath);
-//     const pathsTried: string[] = [];
-//     if (isAbsolute(filePath)) {
-//       pathsTried.push(filePath);
-//       if (existsSync(filePath)) {
-//         return filePath;
-//       }
-//     }
-//     let isRelative = filePath.startsWith('.');
-//     let tryPath: string | undefined;
-//     if (options.allowBareRelative || isRelative) {
-//       tryPath = join(currentDir, filePath);
-//       pathsTried.push(tryPath);
-//       if (existsSync(tryPath)) {
-//         return tryPath;
-//       }
-//     }
-
-//     if (!isRelative) {
-//       try {
-//         tryPath = require.resolve(filePath);
-//         if (existsSync(tryPath)) {
-//           return tryPath;
-//         }
-//       } catch (err) {
-//         // ignore
-//       }
-//     }
-
-//     for (let i = 0; i < paths.length; i++) {
-//       tryPath = join(paths[i]!, filePath);
-//       pathsTried.push(tryPath);
-//       if (existsSync(tryPath)) {
-//         return tryPath;
-//       }
-//     }
-//     return pathsTried;
-//   }
-
-//   async loadFile(fullPath: string) {
-//     return await readFile(fullPath, 'utf8');
-//   }
-
-//   /**
-//    * Can override this instead of `getTree` if we want
-//    * to preserve extension-checking logic.
-//    */
-//   protected async _getTree(fullPath: string, options?: Record<string, any>): Promise<Rules | false> {
-//     return false;
-//   }
-
-//   /**
-//    * @param fullPath The fully resolved path
-//    */
-//   async getTree(fullPath: string, options?: Record<string, any>): Promise<Rules | false> {
-//     const supported = this.supportedExtensions;
-//     if (supported && !supported.includes(extname(fullPath))) {
-//       return false;
-//     }
-//     return await this._getTree(fullPath, options);
-//   }
-// }

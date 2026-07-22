@@ -15,13 +15,12 @@
  * (Composed CSS rules keep their own baked CSS `rw`, so a `//` inside a construct
  * that stays entirely in a CSS rule is still not skipped — unchanged by this.)
  *
- * The build host + parse entry live in ./functional-parser.ts; the shared driver
- * in @jesscss/css-parser.
+ * This module owns recognition only; consumers use the public CST helpers.
  */
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, noTrivia, trivia,
-  many, oneOrMore, expect, label, not
+  many, oneOrMore, expect, label, not, withCtx
 } from 'parseman' with { type: 'macro' };
 import { cssGrammar } from '@jesscss/css-parser/grammar';
 
@@ -53,7 +52,13 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   //   $foo?             optional (undefined → nil)
   // The builder folds `.name` / `[key]` accessors left-associatively into nested
   // Reference nodes. (Reference-CALL `$foo.bar(…)` lands with the call feature.)
-  const dollarVar = regex(/\$!?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  // The `$` sigil is its OWN leaf so the name is captured without it \u2014 jess treats
+  // `$` as a real operator (it also heads `$\u2026{}`/`${}`/`:=`), and this lets the CST
+  // carry the sigil and the name as distinct nodes (e.g. for two-color highlighting)
+  // instead of a fused `$foo` token. `!` (live-binding) stays on the name leaf, where
+  // the builder already strips it.
+  const dollarName = regex(/!?-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const dollarVar = sequence(literal('$'), dollarName);
   // Bracket key as ONE leaf: `$var` (dynamic) | quoted string | number | keyword.
   const refIndexKey = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|[+-]?\d+(?:\.\d+)?|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const refDot = sequence(literal('.'), ident);
@@ -75,11 +80,10 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // in selectors. Tried before `basicSel` so a run containing `$[…]` is claimed
   // whole; a plain selector (no `$[…]`) fails this and falls back to `basicSel`.
   const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
-  const dollarInterpTok = regex(/\$\[[^\]]*\]/);
   const selTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
   const InterpolatedSelector = node(
-    noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), dollarInterpTok, many(choice(dollarInterpTok, selTextRun)))));
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
+    noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), g.DollarInterp, many(choice(g.DollarInterp, selTextRun)))));
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, { gate: (s: any) => !!(s && s.inner), combinator: literal('&') }, g.InterpolatedSelector, basicSel);
 
   // ── Variable declarations ───────────────────────────────────────────────────
   // `$name: value;` — the variable's name is `name` (no `$`). Assignment ops:
@@ -134,6 +138,48 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     noTrivia(sequence(g.exprSum, optional(sequence(compareOp, g.exprSum)))), undefined, { collapse: true });
   const Expression = node(
     sequence(literal('$('), g.exprCompare, expect(literal(')'), ')')));
+
+  // ── Quoted with `$[…]` / `$(…)` interpolation (mirrors Less §3.3) ─────────────
+  // Jess is the sole source of string-interpolation STRUCTURE: the shared CSS
+  // `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows any interior
+  // `$[…]`/`$(…)`; this override structures both interpolation forms as isolated
+  // child nodes interleaved with literal string-content leaves (the builder folds
+  // them into an `Interpolated` value — never a byte re-scan).
+  //
+  // `dqContents`/`sqContents` = the "string contents" primitive: a run up to the
+  // closing quote, an escape, or the next interp opener. The `\$(?![\[(])`
+  // negative-lookahead is the EXACT complement of the two interp openers (`$[`,
+  // `$(`), so a `$` only ends a chunk when it opens interpolation — a lone `$` or
+  // a `$x` (property-ish false start) stays INSIDE the chunk as literal text.
+  const dqContents = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))+/);
+  const sqContents = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))+/);
+  // FAST PATH: a COMPLETE quoted string (quotes included) with no `$[`/`$(` interp
+  // opener matches as a SINGLE flat leaf in one regex — plain strings dominate, so
+  // the common case skips CST-array allocation + builder dispatch. The
+  // `\$(?![\[(])` complement is IDENTICAL to `dqContents`, so the flat arm fails
+  // precisely when an opener is present and backtracks to the interp `sequence`
+  // arm (a single failed regex). The flat arm yields a single-leaf `Quoted` (no
+  // interp child) → the builder's no-interp fallback reconstructs the byte-
+  // identical bare-string value (`${…}` Less-style handling stays in that fallback).
+  const dqFlat = regex(/"(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))*"/);
+  const sqFlat = regex(/'(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))*'/);
+  // The two `.jess` interpolation forms (owner-confirmed):
+  //   `$[key]` = KEY interpolation (DollarInterp; body stays a lookup key)
+  //   `$(expr)` = FULL-EXPRESSION interpolation (the `$(…)` Expression form)
+  // Interp tried FIRST in the arm so a `$[`/`$(` opener wins over a contents chunk.
+  const strInterpJess = choice(g.DollarInterp, g.Expression);
+  // `noTrivia` on each arm: string spaces are literal content, NOT trivia — the
+  // ambient `rw` must not skip them between the quote / contents / interp elements.
+  // A referenced interp node (`g.Expression`) re-establishes the ambient trivia
+  // inside its own scope, so spaced operators in `$(1 + 2)` still parse.
+  // A string with NO interpolation matches only contents/quote leaves (no child
+  // node); the builder reconstructs it BYTE-IDENTICALLY via the flat CSS builder.
+  const Quoted = node('Quoted', choice(
+    noTrivia(dqFlat),
+    noTrivia(sqFlat),
+    noTrivia(sequence(literal('"'), many(choice(strInterpJess, dqContents)), literal('"'))),
+    noTrivia(sequence(literal('\''), many(choice(strInterpJess, sqContents)), literal('\'')))
+  ));
 
   // ── Unwrapped leading-`$var` arithmetic (value position) ─────────────────────
   // A targeted relaxation of the double-`$` rule: in value position, arithmetic
@@ -480,7 +526,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     g.Dimension, g.Num, g.Color, g.Url, g.CalcCall, g.Call, g.Paren, g.Quoted, g.anyValue
   );
 
-  // ── Root + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─────
+  // ── Stylesheet + rule bodies (re-declared so Jess `rw`/`//` + `$` items apply) ─
   const Stylesheet = node(
     many(choice(
       g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
@@ -491,17 +537,18 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const Ruleset = node(
     sequence(g.SelectorList, literal('{'), g.declarationList, expect(literal('}'), '}')));
 
-  const declarationList = many(choice(
+  const declarationList = withCtx({ inner: true }, many(choice(
     g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
     g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.VariableMixinCall, g.MixinCall, g.Mixin,
     g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
-  ));
+  )));
 
   return {
     rw,
     Reference, DollarInterp, VarDeclaration, value,
     InterpolatedSelector, simpleSelector,
+    Quoted,
     Expression, exprProduct, exprSum, exprCompare, JessKeyword,
     unwrapProductLead, unwrapProductRest, UnwrapArith,
     CollectionEntry, JessCollection,

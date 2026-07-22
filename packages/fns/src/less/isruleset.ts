@@ -26,6 +26,12 @@ export async function isrulesetImplementation(value: Lazy<Node>) {
   }
 }
 
+/**
+ * Less `isruleset()` — true when the lazily-evaluated argument is a detached
+ * ruleset / mixin / collection. A `ReferenceError` yields `false`.
+ * @param value a lazily-evaluated expression
+ * @returns a `Bool`
+ */
 const isruleset = defineFunction(
   'isruleset',
   isrulesetImplementation,

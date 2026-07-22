@@ -49,6 +49,17 @@ class ScriptImportPlugin extends AbstractPlugin {
 }
 
 describe('Context.getModule', () => {
+  it('does not resolve a bare module without a resolver plugin', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-core-no-module-fallback-'));
+    const moduleDir = path.join(tmpDir, 'node_modules', 'bare-module');
+    fs.mkdirSync(moduleDir, { recursive: true });
+    fs.writeFileSync(path.join(moduleDir, 'index.js'), 'export const ok = true;', 'utf8');
+
+    const context = new Context({ searchPaths: [tmpDir] });
+
+    await expect(context.getModule('bare-module')).rejects.toThrow('File not found: bare-module');
+  });
+
   it('allows @jesscss/fns imports without plugin-js', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-core-fns-'));
     const fnsFile = path.join(tmpDir, 'fns.js');

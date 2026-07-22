@@ -33,6 +33,23 @@ describe('source map segments', () => {
     expect(segs[0]?.origColumn).toBe(0);
   });
 
+  it('preserves declaration mappings with sourceMap enabled', () => {
+    const writer = new OutputWriter();
+    const treeContext = new TreeContext({
+      file: { name: 'mapped.jess', path: '.', fullPath: '/abs/mapped.jess', source: 'color: red;' }
+    });
+    const root = rules([decl({ name: 'color', value: any('red') })], undefined, undefined, treeContext);
+    setSourceSpan(root.rules[0]!, spanOf(0, 11));
+
+    expect(root.toString(getPrintOptions({ writer, sourceMap: true }))).toBe('color: red;\n');
+    expect(buildSourceMap(writer, { file: 'out.css' })).toMatchObject({
+      version: 3,
+      file: 'out.css',
+      sources: ['/abs/mapped.jess'],
+      mappings: 'AAAA,AAAA,UAAA'
+    });
+  });
+
   it('maps nested rules content lines', () => {
     const w = new OutputWriter();
     const treeContext = new TreeContext({

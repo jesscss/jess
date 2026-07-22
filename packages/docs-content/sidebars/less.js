@@ -67,6 +67,25 @@ export default {
     },
     {
       type: 'category',
+      label: 'Advanced',
+      items: [
+        'advanced/overview',
+        'advanced/output-model',
+        'advanced/selector-compaction',
+        'advanced/extend-is-wrapping',
+        'advanced/extend-semantics',
+        'advanced/merge-anchoring',
+        'advanced/verbatim-values',
+        'advanced/value-formatting',
+        'advanced/number-precision',
+        'advanced/color-output',
+        'advanced/string-format',
+        'advanced/inline-javascript',
+        'advanced/output-and-eval-cheatsheet'
+      ]
+    },
+    {
+      type: 'category',
       label: 'Usage and Tooling',
       items: [
         'usage/using-less',

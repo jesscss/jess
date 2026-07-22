@@ -1,0 +1,33 @@
+// PROPOSED NEW less.js `alpha` test-data fixture — v5 extend-`all` sub-span
+// `:is()` wrapping (task #30).
+//
+// `:extend(TARGET all)` matches TARGET by COMPOUND-SUBSET against every existing
+// selector (each TARGET compound must be a subset of the aligned selector
+// compound, combinators aligned — so `.a > .c` matches `.a.b > .c.d`) and unions
+// the extending selector with the matched span:
+//   - WHOLE-selector match  -> plain comma-append (no `:is()`).
+//   - MID-complex sub-span   -> `:is(<matched-span>, <extender>)` IN PLACE, with
+//     the surrounding combinator context preserved verbatim on BOTH sides.
+//
+// This is a NEW behavior for `alpha`: 4.x/alpha refuses a complex-selector
+// subset match outright (`WARNING: extend '.a > .c' has no matches`) and only
+// comma-appends a WHOLE-EXACT combinator match (case 3 below). See the README
+// section "extend-subspan-all" for alpha's current output.
+
+// (1) whole-selector compound-subset match -> comma-append (no `:is()`).
+.a.b > .c.d {
+  color: red;
+}
+.x:extend(.a > .c all) {}
+
+// (2) mid-complex sub-span -> `:is(<span>, ext)` in place, both-sides context kept.
+div + .e.f > .g.h ~ .child {
+  color: blue;
+}
+.y:extend(.e > .g all) {}
+
+// (3) whole-selector EXACT combinator match -> comma-append (already alpha-correct).
+.m > .n {
+  color: green;
+}
+.z:extend(.m > .n all) {}

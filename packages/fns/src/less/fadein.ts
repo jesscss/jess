@@ -7,7 +7,16 @@ import {
   defineFunction,
   ColorFormat
 } from '@jesscss/core';
+import { preserveHexUnderAlpha } from '../util/preserve-hex.js';
 
+/**
+ * Less `fadein()` — increase a color's opacity by `amount` (a percentage). With
+ * `method: relative`, the increase is relative to the current alpha.
+ * @param color the input `Color`
+ * @param amount opacity increase as a `Dimension` percentage
+ * @param method optional `relative` keyword
+ * @returns the more-opaque `Color`
+ */
 const fadein = defineFunction(
   'fadein',
   function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {
@@ -20,10 +29,7 @@ const fadein = defineFunction(
     const newAlpha = color._alpha + adjustAmount;
     const outputAlpha = Math.round(newAlpha * 1e12) / 1e12;
     const inputNode = typeof color.node === 'string' ? color.node : undefined;
-    const preserveHexFormat = color.options.format === ColorFormat.HEX
-      && !!inputNode
-      && inputNode.startsWith('#');
-    const outputFormat = preserveHexFormat ? ColorFormat.HEX : ColorFormat.RGB;
+    const outputFormat = preserveHexUnderAlpha(color, inputNode) ? ColorFormat.HEX : ColorFormat.RGB;
 
     // Create new color with adjusted alpha, preserving original format
     return new Color({

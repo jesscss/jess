@@ -7,24 +7,61 @@ before that runbook should be used. Features **deliberately deferred past this
 alpha** (config-lane URL/import handling, source maps, …) are sequenced in
 [`less-v5-release-plan.md`](./less-v5-release-plan.md).
 
-Performance baseline (measured 2026-07-11 under the controlled protocol — same
-worktree, rebuild-per-commit, warmup + N-median, correctness-verified output): on
-`origin/dev`, `benchmark.less` renders in **~213 ms** producing the full
-130,940-byte stylesheet — about **5.4× Less 4.5.1** (~39.85 ms, same machine).
-That is a ~39× improvement over the June 2026 full render (~8.3 s), landed by the
-single-eval-emit cutover. Performance is therefore **not** settled: the standing
-goal is Less-4.x parity, and closing the ~5.4× flat gap (parser + allocation +
-node weight) is open work — see the core-architecture perf handoff.
+## Recorded direct-Less benchmark (superseded pending clean rerun; 2026-07-21)
 
-> ⚠️ **Corrected 2026-07-11.** A prior version of this line claimed an
-> "owner-reported ~133 ms June baseline, good enough for alpha." That figure was
-> **never owner-reported and never a real full render** — the June full render was
-> ~8.3 s. The 133 ms almost certainly came from a run where parsing/eval never
-> fully completed (a partial/errored render — the same "fast fake" seen throughout
-> the June commits), which was then written up as a settled baseline with the
-> "nothing actually finished rendering" caveat lost, and mis-attributed as
-> owner-reported. It had wrongly closed the performance question and redirected
-> readiness away from perf. Do not resurrect it.
+These measurements are retained as reproducibility evidence, but are not the
+current release baseline. They were captured before the present migration
+worktree was clean and must be superseded by one matched, clean build before
+they can be used as an alpha gate. The public route is a built direct parser on
+Parseman `0.28.0`; older 20–30 ms source-driver and legacy-tree numbers measured
+different work and are not an A/B.
+
+| Phase | Protocol and identity | Result |
+| --- | --- | --- |
+| Direct parse | `packages/less-parser/lib/index.js`: SHA-256 `52d88a95557a821815d9f15f2d6ab05bbb5c64a55f0189fb97a050d7aea50285`, 1,797,831 bytes; `benchmark.less`, 106,802 bytes; Node v24.11.1 arm64; 20 warmups + 3×45 samples | 63.321 ms median (p25 61.776, p75 64.487); `Stylesheet` JSON SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd` (957,390 bytes). |
+| Public compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; built Jess/Less-plugin chain | 77.492 ms round-median across 135 samples (usable 0.78% round RSD); CSS SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` (122,390 bytes). |
+
+Normal public parse/compile provides neither Parseman coverage nor trace
+instrumentation. Diagnostic coverage/trace uses a separate macro transform and
+must never be used for this timing protocol. The rejected namespace gate did
+not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
+74.022 ms versus 73.772 ms (noise), so no production change remains. The next
+choice investigation is the opt-in stable choice-arm trace design in
+[`parseman-diagnostic-trace-design.md`](./future/parseman-diagnostic-trace-design.md).
+
+## External Less `5.0.0-alpha.1` package audit (2026-07-21)
+
+The sibling Less repository is on its `alpha` branch at `805c89e`, with the
+working tree carrying the intended v5 wrapper, CLI, publish-script, and test
+changes. Its package manifests are exactly `5.0.0-alpha.1`; the branch is not
+yet synchronized with `upstream/master` (`54` commits ahead, `32` behind), and
+the attempted merge has real conflicts in the v5/legacy build and test-data
+surfaces. Do not merge that upstream history blindly or discard the dirty
+alpha changes.
+
+The built `lessc` smoke suite passes, as do the five publish-version/dependency
+rewrite tests and the package typecheck. The full Less node suite exits with six
+known v5 divergences (plugin-global/visitor behavior, advanced parser fixtures,
+URL/process-import behavior, and source-map artifacts); these remain classified
+known limitations rather than hidden or deleted failures.
+
+The first packed Less tarball exposed a release blocker: its local Jess
+dependencies were published as `link:` URLs, and a clean npm consumer fails
+with `EUNSUPPORTEDPROTOCOL`. The Less alpha publish script now requires an
+explicit `JESS_VERSION` (for example `2.0.0-alpha.9`), temporarily rewrites the
+four Jess runtime dependencies to that exact registry version for `npm publish`,
+and restores the local workspace-linked manifest afterward. Publication order
+is therefore: publish and clean-consumer-verify Jess `2.0.0-alpha.9` first,
+then publish Less with `JESS_VERSION=2.0.0-alpha.9`. The helper has a packed
+manifest proof; a real clean Less consumer remains pending the Jess alpha.9
+registry artifacts.
+
+With no Deno/plugin execution on `benchmark.less`, three repeated 8-run/3-warmup
+rounds measured Less alpha render medians of `99.44`, `98.56`, and `92.80` ms
+(round mean `96.9` ms), versus the historical Less 4.5.1 `47.4` ms average.
+The earlier `205.12` ms one-run result was a cold-start outlier; these numbers
+are still not a comparable Less-4 A/B until the exact fixture/options and build
+identity are recorded, but they establish the current warm-path signal.
 
 ## Status Key
 
@@ -33,28 +70,68 @@ node weight) is open work — see the core-architecture perf handoff.
 - `[?]` needs owner decision before implementation should proceed
 - `[x]` complete with evidence linked in this file
 
-## Release Gates
+## Alpha Release Gates
 
-- `[~]` **Performance — HARD gate for GA, explicitly NOT a blocker for the alpha**
-  (owner decision 2026-07-11). The alpha ships on the functional gates (tests +
-  `lessc` parity, below) at its current speed; ~5.4× Less 4.x is accepted for an
-  alpha. Perf-parity with Less 4.x remains a **hard gate for the stable/GA
-  release** — the numeric GA bar (strict parity or a bounded multiple) is an open
-  owner decision. A prior LLM edit had wrongly erased perf as a gate ENTIRELY (tied
-  to a fabricated "133 ms good enough" baseline) — never authorized; restored here
-  as the GA gate.
-  - Current measured state, `origin/dev` (working, eval-backstopped head): ~213 ms
-    vs Less 4.5.1 ~39.85 ms — **~5.4×** on `benchmark.less`.
-  - The D-EVAL-flip branch (PR #24) **cannot render `benchmark.less`**
-    (`SPINE_ONLY_UNSUPPORTED`) — UNMEASURED. Never quote a bare "jess" perf number
-    without naming the head.
-- `[~]` **`lessc` CLI parity with Less 4.x** (alpha gate). The `lessc` binary and
-  its flags must behave as a drop-in for Less 4.x (functional/behavioral parity,
-  not speed). Command-by-command parity is being assessed; divergences from 4.x
-  block the alpha.
+The first alpha is **not** a promise of complete Less 4.x corpus parity. It is
+allowed to ship with the classified known limitations below, provided they stay
+discoverable in the release notes and each has a concrete symptom, scope, and
+follow-up. The runnable corpus remains a regression signal; expected failures
+must never be hidden, deleted, or described as passing behavior.
+
+The alpha blocks only on these advertised correctness and release-safety gates:
+
+- the public direct `parse()` → canonical `Stylesheet` → one-engine compiler
+  route, with no bridge/host/reparse fallback;
+- core safety and correctness on the advertised route: no known crash, hang,
+  duplicate evaluation engine, or silent output corruption in a supported use;
+- the documented `jess` package API, package exports, builds, and clean
+  consumer-install proof;
+- the advertised `lessc` commands and options, including built-artifact CLI
+  smoke/compatibility tests; and
+- a release-note known-limitations section that links the complete inventory and
+  states the unsupported or divergent behavior honestly.
+- `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
+  CSS-shaped `rgb()`/`rgba()`/`hsl()`/`hsla()` calls with three or more argument
+  slots remain authored, verbatim CSS calls even under `functionMode: 'error'`;
+  they do not eagerly invoke a native function. Modern space/slash and relative
+  forms arrive as one structured slot and use the same three-slot rule. Less's
+  one- and two-slot color overloads (including `rgba(#5F59)` and
+  `rgba(#5F59, .5)`) dispatch normally, so recognized Less forms are evaluated
+  and malformed numeric arities are rejected by the call-level `functionMode`
+  policy rather than leaking authored invalid output. An un-operated relative-
+  color call remains authored; only a consumer that demands its value may reach
+  an implementation rejection. Evidence:
+  `pnpm --filter jess test -- function-error-public-semantics.test.ts --run
+  --globals` (17/17 passing, including zero dispatches for installed native
+  three-/four-slot CSS color functions); settled semantics:
+  `DESIGN-DECISIONS.md` F5. The runnable Less unit corpus now has two F5
+  expected-failure markers (`operations.less` and `functions/functions.less`),
+  while `color-functions/rgba.less` is green because its one-/two-slot Less
+  overloads are evaluated. These are intentional alpha semantics, not hidden
+  failures.
+
+Full upstream parity, unadvertised Less 4.x CLI parity, browser compilation,
+source-map artifacts, and performance parity remain follow-up work unless they
+are expressly advertised for a later alpha.
+
+- `[~]` **Performance — baseline required for alpha; numeric gate for GA remains
+  an owner decision.** The alpha has no measured timing threshold and must not
+  cite incomparable historical numbers. The alpha review record captures the
+  built artifact, direct-parse AST hash, compiler CSS hash, and disabled normal
+  instrumentation with the protocol above; no release command currently
+  enforces a timing threshold. Any claimed improvement/regression needs a
+  matched rebuilt-artifact A/B with identical output. Less-4.x speed parity (or
+  a bounded multiple) remains a future stable/GA gate once the owner sets the
+  numeric bar.
+- `[~]` **Advertised `lessc` CLI behavior** (alpha gate). The built Less v5
+  alpha binary must run safely and correctly for its documented command/options
+  set. Unsupported Less 4.x flags or divergent advanced behavior are alpha
+  limitations only when listed in the release notes with a follow-up; they do
+  not create an implied drop-in-parity promise.
 - `[~]` Stabilize the public `jess` package API before the first Less alpha.
-- `[~]` Expand package-level Less tests to cover all non-browser Less API
-  fixtures and the `find`/path-resolution surface.
+- `[~]` Maintain package-level Less coverage and the `find`/path-resolution
+  surface. The complete upstream corpus remains a classified compatibility
+  signal, not an implied all-fixtures-must-pass alpha gate.
 - `[x]` Add Less v5 alpha CI guards that run the stable readiness tests after
   the API and fixture lanes are addressed. `.github/workflows/less-alpha-readiness.yml`
   runs `pnpm run verify:less-alpha` on pull requests, pushes to `main` and
@@ -81,9 +158,10 @@ Initial public candidate set:
 - `[x]` `Compiler`
 - `[x]` `ConfigOptions`
 - `[x]` `Compiler.compile(...)` decision: hide from first alpha public types.
-  It is a legacy tree-returning path, Jess does not have a public two-stage
-  compile model today, and it should not be treated as an internal production
-  path either.
+  Its internal result is `{ document: Stylesheet, context }`, produced through
+  the same Context-selected parser-plugin dispatcher as render; it is not a
+  legacy-tree return. Jess does not have a public two-stage compile model today,
+  and exposing the raw session Context would promise implementation detail.
 - `[x]` `Compiler.render(...)` decision: public method shape.
 - `[x]` `Compiler.renderString(...)` decision: public method shape.
 - `[x]` `Compiler.renderToResult(...)` decision: public method shape. Keep the
@@ -91,8 +169,8 @@ Initial public candidate set:
   implementation before or during alpha. Public contract: never reject for
   Jess/Less render failures; return structured diagnostics instead.
 - `[x]` `Compiler.safeCompile(...)` decision: hide from first alpha public
-  types because it exposes the same legacy tree/context surface as
-  `compile(...)`.
+  types because it exposes the same internal document/session-Context surface
+  as `compile(...)`.
 - `[x]` `Compiler.safeRender(...)` decision: hide from first alpha public types;
   a separate "safe" render name does not currently describe a distinct public
   value clearly enough.
@@ -106,8 +184,8 @@ Initial public candidate set:
 Initial likely-internal or quarantine candidates:
 
 - `[?]` Public constructor field `Compiler.opts`
-- `[?]` Direct tree-returning `compile(...)` as stable API, versus retaining it
-  as compatibility-only while recommending render APIs
+- `[?]` Direct `{ document: Stylesheet, context }` `compile(...)` result as a
+  stable API, versus retaining it as internal while recommending render APIs
 - `[?]` `createContext(...)`, because it exposes core runtime details
 - `[?]` Re-exported core diagnostic/value types that appear in public result
   shapes only because implementation currently imports them
@@ -182,8 +260,9 @@ Known gaps to add or close:
   and `renderString(...)` filePath-based import resolution.
 - `[x]` Add or validate tests for Less public API entrypoints that are not
   covered by file render fixtures. `packages/jess/test/public-api-contract.test.ts`
-  now covers the alpha public method shapes for `render(...)`,
-  `renderString(...)`, `renderToResult(...)`, and `dispose()`.
+  covers the alpha public method shapes for `render(...)`,
+  `renderString(...)`, `renderToResult(...)`, and `dispose()`; the current rerun
+  is 8/8 green.
 - `[~]` Convert fixture skips from broad comments into categorized expected
   failures with reasons and owners.
   The active harness now has expected-failure reasons for runnable mismatches
@@ -197,17 +276,30 @@ Known gaps to add or close:
 - `[ ]` Add focused core tests when a Less fixture exposes a parser/runtime
   invariant gap, then use the package-level fixture as the compatibility proof.
 
-Current expected-failure backlog:
+## Known limitations: runnable upstream corpus inventory
 
-- Unit output mismatches: reference import filtering, advanced math/color
-  behavior, default guard resolution, property accessor precedence, scope
-  leakage, and `@starting-style` shorthand expansion.
-- Config output mismatches: namespacing/detached map lookup, `processImports:
-  false`, `rewriteUrls`, `rootpath`, `relativeUrls: false`, `urlArgs`, and
-  source-map annotation/artifact output.
-- Skipped known hangs include `extend-exact`, advanced variables/merge/selectors
-  and older async-deadlock fixtures. These remain alpha compatibility blockers
-  unless explicitly staged after alpha.
+The runnable corpus has **30** explicit expected-failure markers in
+`packages/jess/test/less/all-less.test.ts`. They are test instrumentation,
+not passing compatibility evidence: each marker makes a mismatching render pass
+the harness while preserving the observed failure. This is the complete first
+alpha known-limitations inventory. A marker may be removed only with
+byte-identical fixture proof; otherwise its release-note classification must
+remain explicit and be updated when its symptom or scope changes.
+
+| Class | Current fixtures | Symptom and alpha scope | Follow-up / evidence |
+| --- | --- | --- | --- |
+| Callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Advanced Less callable, detached-ruleset, `each()`, namespace, and live/scoped lookup results can diverge. Missing mixins are still errors; ordinary unregistered `foo()` remains an optional CSS-function fallback, not a missing-mixin success. | Typed callable/reference lookup and binding semantics in core; graduate only with focused core proof plus byte-identical fixture output. |
+| Imports and conditional at-rules | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Some reference/remote/interpolated imports, process-import filtering, and media-query merging diverge. `@plugin` script execution itself is separately proved; its fixture mismatch shares the import/media rendering gap. | Context/plugin-owned import execution and typed media wrapping; no dialect-local resolver or source reparse. |
+| Parser/evaluator edge syntax | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Specific selector interpolation/pseudo, property interpolation, slashed-combinator, and permissive at-rule-prelude forms are rejected or render differently. | Extend the direct Parseman grammar and canonical AST only where the syntax has an agreed semantic shape; retain migration-policy questions as documented decisions. |
+| F5 lazy CSS color calls | `color-functions/operations`, `functions/functions` (the `color-functions/rgba` overload cases are green) | CSS-shaped un-operated rgb-family calls with three or more slots remain authored and byte-faithful; Less 4's goldens expect eager clamping or canonicalization for the two remaining boundary fixtures. Less one-/two-slot overloads are dispatched and tested. | Preserve the call-level demand boundary; only a consumer that needs a typed color may invoke the implementation. The focused F5 contract is 17/17. |
+| URL-option behavior | `static-urls`, `url-args` | Some configured static-URL/query-argument behavior differs from Less. The four rewrite/rootpath fixtures are byte-identical public-route passes, not limitations. | One Context/plugin-owned URL transform contract, with public compiler fixture proof; do not add a dialect-local resolver. |
+| Source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | Source-map annotations and emitted artifacts are not alpha-supported behavior. | Dedicated artifact harness and documented public source-map contract, rather than render-string assertions. |
+
+The grouped paths above deliberately name every marker; do not summarize the
+list as broad “advanced math/color” or “known-hang” buckets. Existing
+non-runnable skips (helper files, no-CSS fixtures, compression/debug fixtures,
+and plugin API scope decisions) are a separate inventory and are not evidence
+that a runnable expected failure is non-blocking.
 
 Do not use the older `describe.todo` Less files as release evidence until each
 test is revalidated against upstream Less behavior, Jess behavior docs, or a

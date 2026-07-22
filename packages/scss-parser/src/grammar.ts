@@ -1,17 +1,13 @@
 /**
- * Functional SCSS grammar — the macro-compiled counterpart to the class-based
- * ScssGrammar. This file is JUST the grammar: `scssGrammar = compose([lessGrammar,
- * <SCSS delta>])`. Most returned rules are structural `node(parser)` entries that build via
- * the injected `ctx.build` host. The host + parse entry (`parseScssFn`,
- * `ScssParser`) live in ./functional-parser.ts; the shared driver in
- * @jesscss/css-parser.
+ * SCSS grammar: `scssGrammar = compose([lessGrammar, <SCSS delta>])`.
  */
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, trivia,
-  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not
+  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not, withCtx
 } from 'parseman' with { type: 'macro' };
 import { lessGrammar } from '@jesscss/less-parser/grammar';
+import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 
 // ---------------------------------------------------------------------------
 // Grammar — SCSS = Less + the SCSS delta. `compose` fuses the imported compiled
@@ -31,7 +27,7 @@ const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
 
-export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) => {
+export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules({ trivia: rw }, (g: any) => {
   // SCSS `$variable` token — first char may be a letter or `-` after `$`.
   const scssVar = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const plainIdent = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -68,17 +64,92 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // ── Interpolation (#{…}) ───────────────────────────────────────────────────
   // SCSS uses `#{expr}` (not Less `@{var}`). Override the Less interpolation
   // hooks: bare `#{…}` values, interpolated idents in names/selectors/strings.
-  const scssInterpKey = regex(/(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|-)?#\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}(?:#\{-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*\}|[-_a-zA-Z0-9\u0080-\uffff])*/);
-  const scssCustomPropInterp = regex(/--(?:[-_a-zA-Z0-9\u0080-\uffff]|#\{[^}]*\})+/);
   const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
-  const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|#\{[^}]*\})(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n])|#\{[^}]*\})*/);
-  const important = sequence(literal('!'), literal('important'));
+  // Declaration property name \u2014 WITHOUT the `#\{\u2026\}` alternative. A name that
+  // carries interpolation is structured by `ScssInterpDeclName` (below), which the
+  // Declaration rules try FIRST; this flat token owns only interpolation-free names.
+  const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+  const important = sequence(literal('!'), g.CssAstSyntaxImportant);
 
   const ScssInterpBare = node(
     sequence(literal('#'), literal('{'), g.valueSequence, expect(literal('}'), '}')));
 
-  const InterpValue = node(
-    scssInterpKey);
+  // ── Quoted (structure `#{…}` interpolation inside a string via combinators) ──
+  // The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
+  // any interior `#{…}`. SCSS OVERRIDES it so the PARSER is the sole source of the
+  // interpolation structure (P0 KEYSTONE): a string is one `many(choice(…))` whose
+  // arms are the `#{ <expression> }` interp atom (`ScssInterpBare`, a FULL SCSS
+  // expression — unlike Less's single-ident `@{name}`) and the STRING-CONTENTS
+  // combinator primitive. The interp atom is tried FIRST so a `#{` opens
+  // interpolation before the contents run can gobble it. The value/name hosts
+  // consume the interleaved leaves + `ScssInterpBare` children with the SAME seam
+  // the bare-`#{…}` / name / selector paths use — never a byte re-scan.
+  //
+  // A contents chunk is any run up to a `"`/`'`, an escape, or a `#{` interp
+  // opener; the `#(?!\{)` negative-lookahead is the exact complement of the
+  // interp opener, so a `#` only ends a chunk when it opens `#{` — a hex color
+  // (`#fff`) or id (`#foo`) stays INSIDE the chunk as literal text. A string that
+  // carries no `#{…}` yields only content/quote leaves (no `ScssInterpBare`
+  // child); the builder then falls back to the flat css `Quoted` leaf value
+  // (byte-identical fast path, no `Interpolated` wrapper materialized).
+  const dqContents = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/);
+  const sqContents = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/);
+  // FAST PATH: a COMPLETE quoted string (quotes included) that carries no `#{`
+  // interp opener matches as a SINGLE flat leaf in one regex — the common case
+  // (plain strings dominate real CSS) skips CST-array allocation + builder
+  // dispatch entirely. The `#(?!\{)` complement is IDENTICAL to `dqContents`, so
+  // the flat arm fails precisely when an opener is present and backtracks to the
+  // interp `sequence` arm (a `#{` can't be consumed → single failed regex). The
+  // flat arm builds a single-leaf `Quoted` (no `ScssInterpBare` child) → the
+  // builder's existing no-interp fallback yields the byte-identical flat value.
+  const dqFlat = regex(/"(?:[^"\\#]|\\[\s\S]|#(?!\{))*"/);
+  const sqFlat = regex(/'(?:[^'\\#]|\\[\s\S]|#(?!\{))*'/);
+  const Quoted = node('Quoted', choice(
+    dqFlat,
+    sqFlat,
+    sequence(literal('"'), many(choice(ScssInterpBare, dqContents)), literal('"')),
+    sequence(literal('\''), many(choice(ScssInterpBare, sqContents)), literal('\''))
+  ));
+
+  // ── Welded-ident interpolation (value + name positions) ────────────────────
+  // Each production below interleaves literal chunk leaves with `#{ … }` interp
+  // atoms (`ScssInterpBare`, a FULL SCSS expression) and REQUIRES at least one
+  // atom, so an interpolation-free run never matches here and flows through the
+  // plain token path (byte-identical). The builders fold the leaves + atoms into
+  // one `Interpolated` with the SAME seam the selector/name paths use — never a
+  // byte re-scan (this is what let interp.ts's nested-parser bootstrap be deleted).
+  //
+  // Value position (`foo-#{$bar}-baz`). The leading chunk must start like an ident
+  // (letter or `-`) so a digit-led value (`123#{…}`) still routes through
+  // Dimension/Num, matching the old flat token which required an ident start.
+  const interpValueLead = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*|-/);
+  const interpValueChunk = regex(/[-_a-zA-Z0-9-￿]+/);
+  const InterpValue = node(sequence(
+    optional(interpValueLead),
+    ScssInterpBare,
+    many(choice(interpValueChunk, ScssInterpBare))
+  ));
+
+  // Interpolated declaration NAME (`#{$p}-x`, `margin-#{$side}`). `*` covers the
+  // IE star-hack prefix; the chunk char class matches `scssDeclPropName` (escapes
+  // included) minus the interp opener.
+  const declNameChunk = regex(/(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+  const ScssInterpDeclName = node(sequence(
+    optional(literal('*')),
+    many(declNameChunk),
+    ScssInterpBare,
+    many(choice(declNameChunk, ScssInterpBare))
+  ));
+
+  // Interpolated custom-property NAME (`--x-#{$y}`). The `--` prefix + chunk leaves
+  // fold into the same `Interpolated` (role property) as the declaration name.
+  const customPropChunk = regex(/[-_a-zA-Z0-9-￿]+/);
+  const ScssInterpCustomProp = node(sequence(
+    literal('--'),
+    many(customPropChunk),
+    ScssInterpBare,
+    many(choice(customPropChunk, ScssInterpBare))
+  ));
 
   // ── Sass map literals + module-qualified idents ────────────────────────────
   const dotName = regex(/\.-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -136,7 +207,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     )),
     literal(')')
   );
-  const fnIdent = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*/);
+  const fnIdent = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   const Call = node(
     sequence(fnIdent, literal('('), functionCallArgs));
 
@@ -159,7 +230,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
 
   const CustomDeclaration = node(
     sequence(
-      choice(scssCustomPropInterp, customProp),
+      choice(ScssInterpCustomProp, customProp),
       literal(':'),
       choice(g.customCurlyBlock, g.customValue, g.cpValue),
       optional(literal(';'))
@@ -170,7 +241,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // Declaration nodes. The rule's own name stays local (`many(ScssNestedDecl)`).
   const ScssNestedDecl = node('Declaration',
     sequence(
-      scssDeclPropName,
+      choice(ScssInterpDeclName, scssDeclPropName),
       literal(':'),
       g.valueList,
       optional(literal(';'))
@@ -193,7 +264,7 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
 
   const Declaration = node(
     sequence(
-      scssDeclPropName,
+      choice(ScssInterpDeclName, scssDeclPropName),
       optional(choice(literal('+_'), literal('+'))),
       literal(':'),
       choice(
@@ -494,11 +565,11 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // positive lookahead. The modifier scan skips balanced groups, strings, and
   // comments, and terminates at `;`, `}`, EOF, or such a new-import comma.
   const importPathStart = choice(g.Url, g.Quoted);
-  // `#{ … }` interpolation hole (handles `#{$a}` and `#{"(a: b)"}` with a string
-  // that may itself carry braces). Kept ahead of the generic brace skip so the
-  // leading `#` is consumed together with the group.
-  const scssInterpHole = regex(/#\{(?:[^{}'"]|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")*\}/);
-  const importSkip = [scssInterpHole, bParen, bSquare, bCurly, singleStr, doubleStr, comment, lineComment];
+  // Import modifiers skip interpolation as the same structural `#{ expression }`
+  // production used everywhere else in SCSS. Keeping it ahead of the generic
+  // brace skip means the opener is consumed as interpolation, never mistaken for
+  // an at-rule block; there is no opaque interpolation-shaped scanner token.
+  const importSkip = [ScssInterpBare, bParen, bSquare, bCurly, singleStr, doubleStr, comment, lineComment];
   const newImportComma = sequence(literal(','), not(not(importPathStart)));
   const importModifier = scanTo(
     choice(literal(';'), literal('}'), newImportComma),
@@ -552,20 +623,76 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
   // ── SCSS at-rule prelude interpolation (segments) ────────────────────────
   const scssPreludeText = regex(/(?:[^{#]|#(?!\{))+/);
   const scssPreludeSegment = choice(ScssInterpBare, scssPreludeText);
+  // Fully permissive raw-text + `#{…}`-interpolation prelude. Feeds `@media` /
+  // `@container` (which have bare forms) AND — via the dedicated, opener-gated
+  // `SupportsAtRuleBlock` below — `@supports`, whose `<supports-condition>` prelude
+  // is validated for a legal opener before this scan consumes it.
   const scssPermissivePrelude = oneOrMore(scssPreludeSegment);
+  // A query at-rule prelude that carries at least one `#{ … }` interpolation.
+  // Anchored on a REQUIRED `ScssInterpBare` so a non-interpolated prelude
+  // (`(color: red)`, `screen`, `name (width > 0)`) never matches here and falls
+  // through to the base structured query grammar, staying byte-identical. The
+  // presence of interpolation IS the gate — no opener lookahead is needed.
+  const scssInterpPrelude = sequence(
+    many(scssPreludeText),
+    ScssInterpBare,
+    many(scssPreludeSegment)
+  );
+
+  // ── Strict generic at-rule prelude (Sass+) ──────────────────────────────────
+  // Mirror of the Less strict `atPrelude`, but for SCSS. Sass+ rejects invalid CSS:
+  // a TOP-LEVEL (paren-depth 0) bare `$variable` in a non-value at-rule
+  // prelude/name/identifier position is a HARD parse error, while `#{…}`
+  // interpolation is accepted (the migration target), a bare ident/name stays
+  // valid, and a `$var` INSIDE `(…)`/`[…]` — a declaration value — stays valid +
+  // resolving (even inside an unknown/custom at-rule). The atom set: balanced
+  // `(…)`/`[…]` + strings (opaque — a `$var` inside is a declaration value), a
+  // `#{…}` interpolation atom (`ScssInterpBare`), and runs of ordinary prelude
+  // chars. The run stops at `$`, so a top-level bare `$var` is never consumed and
+  // the sequence stops there; the run's `#(?!\{)` keeps a bare `#` (colors/ids)
+  // literal while a `#{` is taken by the interpolation atom. Generalizes the
+  // `@supports` precedent (b799d9a49) to every SCSS at-rule position.
+  const scssStrictRun = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
+  const scssStrictAtom = choice(bParen, bSquare, singleStr, doubleStr, ScssInterpBare, scssStrictRun);
+  const scssStrictPrelude = many(scssStrictAtom);
 
   // Generic unknown at-rule statement (`@charset "x";`, or a bare `@c` used as a
   // content placeholder in the sass-spec corpus). Overrides Less's
-  // `AtRuleStatement`, whose `;` is mandatory and whose prelude scan stops only
-  // at `{`/`;`: Sass allows omitting the terminator before `}`/EOF, so the
-  // prelude also stops at `}`/EOF and the trailing `;` is optional.
+  // `AtRuleStatement`. Sass allows omitting the `;` before `}`/EOF, so the prelude
+  // scan stops at `{`/`;`/`}`/EOF AND at a top-level `$` (so a bare `$var` is not
+  // swallowed), and the tail REQUIRES a real terminator (`;`, or a zero-width `}` /
+  // EOF): a prelude that stopped at a top-level bare `$var` therefore does NOT match
+  // here and falls to the committed `AtRuleMalformed` fallback below.
   const scssAtKeyword = regex(/@-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
   const scssAtPrelude = optional(scanTo(
-    choice(literal('{'), literal(';'), literal('}')),
+    choice(literal('{'), literal(';'), literal('}'), literal('$')),
     { skip: scanSkip, orEOF: true }
   ));
+  const scssStmtEnd = choice(literal(';'), regex(/(?=\})/), not(regex(/[\s\S]/)));
   const AtRuleStatement = node('AtRuleStatement',
-    sequence(scssAtKeyword, scssAtPrelude, optional(literal(';'))));
+    sequence(scssAtKeyword, scssAtPrelude, scssStmtEnd));
+
+  // Generic block at-rule (`@keyframes`, `@counter-style`, `@font-face`, unknown
+  // `@foo … { … }`). Overrides Less's `AtRuleBlock` so the strict prelude excludes a
+  // top-level `$var` and understands SCSS `#{…}` interpolation (Less's atom set only
+  // knows `@{…}`, and its run would mis-read `#{`'s brace as the block opener).
+  const AtRuleBlock = node('AtRuleBlock',
+    sequence(scssAtKeyword, scssStrictPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
+
+  // Committed fallback: a generic at-rule whose strict prelude stopped before a
+  // top-level bare `$var` that neither the block `{` nor the statement terminator
+  // can consume (`@keyframes $v {}`, `@layer $v {}`, unknown `@foo $v {}`). Ordered
+  // after AtRuleBlock / AtRuleStatement, it reports ONE legible error AT that
+  // position and recovers, consuming to the real tail so `many` resumes cleanly —
+  // the SCSS mirror of Less's `AtRuleMalformed`.
+  const scssAtTailAhead = regex(/(?=[{;}]|$)/);
+  const AtRuleMalformed = node('AtRuleBlock',
+    sequence(
+      scssAtKeyword, scssStrictPrelude,
+      expect(scssAtTailAhead, 'at-rule block or ;'),
+      optional(scanTo(choice(literal('{'), literal(';'), literal('}')), { skip: scanSkip, orEOF: true })),
+      optional(choice(sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}')), literal(';')))
+    ));
 
   // ── Statement injection ─────────────────────────────────────────────────
   // Override Less's containers to try the SCSS control statements first, then
@@ -584,10 +711,25 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ScssDiagnostic,
     ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain
   );
-  const declarationList = many(choice(
-    scssStatement, g.ScssExtend, g.ScssPlaceholderRuleset, Declaration, CustomDeclaration, g.blockItem
-  ));
-  const atRuleBody = many(choice(scssStatement, g.ScssPlaceholderRuleset, g.blockItem));
+  // SCSS parent selector `&` is valid only inside a rule block (nested), never at
+  // top level — dart-sass rejects a bare top-level `&`. Mirror of the jess gate:
+  // re-derive Less's `simpleSelector` (Less's `SelectorList`/`CompoundSelector`
+  // resolve `g.simpleSelector` late, so this override applies to inherited rules
+  // too) with the `&` (LessAmpersand) arm gated on the dynamic `inner` flag, which
+  // `declarationList` sets true for any rule body at any depth. `g.basicSel` /
+  // `g.extendAhead` are Less's own token regexes (exposed on its namespace) so
+  // this stays byte-identical to Less apart from the gate. O(1) gated dispatch.
+  const simpleSelector = choice(
+    g.AttributeSelector,
+    g.PseudoSelector,
+    { gate: (s: any) => !!(s && s.inner), combinator: g.LessAmpersand },
+    g.InterpolatedSelector,
+    g.basicSel
+  );
+  const declarationList = withCtx({ inner: true }, many(choice(
+    scssStatement, g.ScssExtend, g.ScssPlaceholderRuleset, g.ScssQueryInterpBlock, Declaration, CustomDeclaration, g.blockItem
+  )));
+  const atRuleBody = many(choice(scssStatement, g.ScssPlaceholderRuleset, g.ScssQueryInterpBlock, g.blockItem));
 
   const ScssPlaceholderRuleset = node(
     sequence(
@@ -597,11 +739,60 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
       declarationList,
       expect(literal('}'))
     ));
-  const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  // `@media` / `@container` keep their bare forms (`screen`, `name (width > 0)`) via
+  // the strict prelude, which — unlike the old permissive scan — rejects a top-level
+  // bare `$var` (`@media $v`): the run stops at `$`, so the committed `expect('{')`
+  // fails ON the `$var` and reports the missing block there (a hard error). A
+  // `#{…}`-interpolated prelude is taken earlier by `ScssQueryInterpBlock`; a `$var`
+  // inside `(…)` stays a valid declaration value; a missing block still errors.
+  const queryAtKeyword = regex(/@(?:media|container)(?![-\w])/i);
   const QueryAtRuleBlock = node(
     sequence(
       queryAtKeyword,
+      scssStrictPrelude,
+      expect(literal('{'), '{'),
+      atRuleBody,
+      expect(literal('}'))
+    ));
+
+  // ── Strict `@supports` prelude (Sass+) ───────────────────────────────────────
+  // `@supports`'s prelude is a `<supports-condition>` (css-conditional-3 §2) — no
+  // bare form. Valid openers: `(`, the `not` keyword, a `<function-token>` (ident
+  // glued to `(`, e.g. `selector(…)`), OR — the SCSS interpolation form — `#{…}`.
+  // A bare CSS ident (`@supports color {}`) or a bare `$variable`
+  // (`@supports $cond {}`) is INVALID (a hard parse error — Sass+ rejects invalid
+  // CSS). `@media`/`@container` keep their bare forms (handled by the permissive
+  // `QueryAtRuleBlock` above, from which `@supports` is now excluded). Built as a
+  // `QueryAtRuleBlock` node so the SCSS `_buildQueryAtRuleBlock` builder assembles
+  // the identical AtRule from the same prelude nodes — the zero-width opener
+  // lookahead adds no child, so only the acceptance set changes. @see
+  // https://www.w3.org/TR/css-conditional-3/#at-supports
+  const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|#\{|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
+  const SupportsAtRuleBlock = node('QueryAtRuleBlock',
+    sequence(
+      supportsAtKeyword,
+      expect(supportsCondAhead, 'supports condition'),
       scssPermissivePrelude,
+      expect(literal('{')),
+      atRuleBody,
+      expect(literal('}'))
+    ));
+  // ── SCSS-interpolated query at-rule preludes ─────────────────────────────────
+  // `@media` / `@container` / `@supports` whose prelude carries a `#{ … }`
+  // interpolation. The base CSS/Less query grammar (structured `<query>` /
+  // `<supports-condition>`) cannot parse an interpolation, so without this rule
+  // the prelude falls through to Less's generic `AtRuleBlock`, which mis-reads
+  // `#{$cond}` as a mixin-ruleset lookup and serializes garbage
+  // (`$($ > *#{$cond})`). Gated on `scssInterpPrelude` (a required interpolation),
+  // so non-interpolated preludes keep flowing through the structured base grammar
+  // untouched. Its own builder lowers each `#{ … }` to canonical interpolation
+  // syntax (`$[cond]` for a single bare variable, `$( … )` otherwise).
+  const scssQueryInterpKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const ScssQueryInterpBlock = node(
+    sequence(
+      scssQueryInterpKeyword,
+      scssInterpPrelude,
       expect(literal('{')),
       atRuleBody,
       expect(literal('}'))
@@ -626,12 +817,13 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ));
   const Stylesheet = node(
     many(choice(
-      scssStatement, ScssPlaceholderRuleset, ScssScopeBlock, ScssLayerBlock, g.stylesheetItem
+      scssStatement, ScssPlaceholderRuleset, ScssQueryInterpBlock, ScssScopeBlock, ScssLayerBlock, g.stylesheetItem
     )));
 
   return {
     VarDeclaration, Reference, NsVarDeclaration, AtRuleStatement,
-    ScssInterpBare, InterpValue, value, valueList, functionCallArgs, Call,
+    ScssInterpBare, Quoted, InterpValue, ScssInterpDeclName, ScssInterpCustomProp,
+    value, valueList, functionCallArgs, Call,
     ScssMapLiteral, ScssIdentValue,
     ScssInterpolatedName, InterpolatedSelector,
     Declaration, CustomDeclaration,
@@ -645,7 +837,8 @@ export const scssGrammar = compose([lessGrammar, rules({ trivia: rw }, (g: any) 
     ScssImportItem, ImportAtRuleStatement,
     ScssNestedProps,
     ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
-    QueryAtRuleBlock, ScssScopeBlock, ScssLayerBlock,
-    Stylesheet, declarationList, atRuleBody
+    QueryAtRuleBlock, SupportsAtRuleBlock, ScssQueryInterpBlock, ScssScopeBlock, ScssLayerBlock,
+    AtRuleBlock, AtRuleMalformed,
+    Stylesheet, simpleSelector, declarationList, atRuleBody
   };
 })]);

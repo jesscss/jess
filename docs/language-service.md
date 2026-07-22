@@ -21,7 +21,7 @@ We will still use Microsoft’s `vscode-css-languageservice` as a **reference im
 - `packages/extension/`
   - VS Code / Cursor extension that launches the server.
 - `packages/language-service-tests/`
-  - Golden/parity-style tests against the engine (using `vscode-css-languageservice` as an oracle where useful).
+  - Expected-output/parity-style tests against the engine (using `vscode-css-languageservice` as a reference where useful).
 
 ## Principles
 

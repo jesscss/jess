@@ -140,4 +140,96 @@ suite('Jess extension E2E', () => {
     );
     assert.ok(Array.isArray(actions) && actions.length > 0, 'expected at least one code action');
   });
+
+  test('folding ranges round-trip (multi-line rulesets)', async () => {
+    const doc = await openFixture('main.less');
+    const folds = await waitFor(
+      () => vscode.commands.executeCommand<vscode.FoldingRange[]>('vscode.executeFoldingRangeProvider', doc.uri),
+      f => Array.isArray(f) && f.length > 0
+    );
+    assert.ok(Array.isArray(folds) && folds.length > 0, 'expected folding ranges for the multi-line rulesets');
+  });
+
+  test('selection ranges round-trip (nested chain)', async () => {
+    const doc = await openFixture('main.less');
+    const text = doc.getText();
+    const at = text.indexOf('@primary', text.indexOf('.button'));
+    const position = offsetToPosition(doc, at + 2);
+    const ranges = await waitFor(
+      () => vscode.commands.executeCommand<vscode.SelectionRange[]>('vscode.executeSelectionRangeProvider', doc.uri, [position]),
+      r => Array.isArray(r) && r.length > 0 && !!r[0]?.parent
+    );
+    assert.ok(Array.isArray(ranges) && ranges.length > 0, 'expected a selection range');
+    // The cursor sits inside `@primary` → Declaration → Ruleset, so the chain widens.
+    assert.ok(ranges[0]!.parent, 'selection range should nest to a parent (widening chain)');
+  });
+
+  test('document links round-trip (@import target)', async () => {
+    const doc = await openFixture('main.less');
+    const links = await waitFor(
+      () => vscode.commands.executeCommand<vscode.DocumentLink[]>('vscode.executeLinkProvider', doc.uri),
+      l => Array.isArray(l) && l.length > 0
+    );
+    assert.ok(Array.isArray(links) && links.length > 0, 'expected a document link for `@import "vars"`');
+  });
+
+  test('value completions round-trip (restriction-driven: color functions + CSS-wide keywords)', async () => {
+    const doc = await openFixture('values.css');
+    const text = doc.getText();
+    // Caret right after `color: ` on line 2.
+    const at = text.indexOf('color: ') + 'color: '.length;
+    const position = offsetToPosition(doc, at);
+    const list = await waitFor(
+      () => vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', doc.uri, position),
+      l => !!l && l.items.some(i => String(typeof i.label === 'string' ? i.label : i.label.label) === 'inherit')
+    );
+    const labels = (list?.items ?? []).map(i => (typeof i.label === 'string' ? i.label : i.label.label));
+    assert.ok(labels.includes('inherit'), `expected CSS-wide keyword 'inherit', got: ${labels.slice(0, 25).join(', ')}`);
+    assert.ok(labels.includes('rgb()'), 'expected color-restriction function `rgb()` for `color:`');
+    assert.ok(labels.includes('var()'), 'expected `var()` in a value context');
+  });
+
+  test('references round-trip (@primary used in two rules)', async () => {
+    const doc = await openFixture('main.less');
+    const text = doc.getText();
+    const at = text.indexOf('@primary', text.indexOf('.button'));
+    const position = offsetToPosition(doc, at + 2);
+    const refs = await waitFor(
+      () => vscode.commands.executeCommand<vscode.Location[]>('vscode.executeReferenceProvider', doc.uri, position),
+      r => Array.isArray(r) && r.length >= 2
+    );
+    assert.ok(Array.isArray(refs) && refs.length >= 2, `expected >=2 references to @primary, got ${Array.isArray(refs) ? refs.length : 'none'}`);
+  });
+
+  test('document highlights round-trip (@primary occurrences)', async () => {
+    const doc = await openFixture('main.less');
+    const text = doc.getText();
+    const at = text.indexOf('@primary', text.indexOf('.button'));
+    const position = offsetToPosition(doc, at + 2);
+    const highlights = await waitFor(
+      () => vscode.commands.executeCommand<vscode.DocumentHighlight[]>('vscode.executeDocumentHighlights', doc.uri, position),
+      h => Array.isArray(h) && h.length >= 2
+    );
+    assert.ok(Array.isArray(highlights) && highlights.length >= 2, `expected >=2 highlights of @primary, got ${Array.isArray(highlights) ? highlights.length : 'none'}`);
+  });
+
+  test('range formatting round-trip (formats only the selected rule)', async () => {
+    const doc = await openFixture('unformatted.css');
+    const text = doc.getText();
+    // Select just the first rule `.a{color:red}` (line 0).
+    const range = new vscode.Range(doc.positionAt(0), doc.positionAt(text.indexOf('\n')));
+    const edits = await waitFor(
+      () => vscode.commands.executeCommand<vscode.TextEdit[]>('vscode.executeFormatRangeProvider', doc.uri, range, { insertSpaces: true, tabSize: 2 }),
+      e => Array.isArray(e) && e.length > 0
+    );
+    assert.ok(Array.isArray(edits) && edits.length > 0, 'expected range-format edits');
+    // VS Code returns minimal diffs — apply them to check the formatted result.
+    const sorted = [...edits].sort((a, b) => doc.offsetAt(b.range.start) - doc.offsetAt(a.range.start));
+    let out = text;
+    for (const e of sorted) {
+      out = out.slice(0, doc.offsetAt(e.range.start)) + e.newText + out.slice(doc.offsetAt(e.range.end));
+    }
+    assert.ok(out.startsWith('.a {\n  color: red;\n}'), `selected rule should reformat, got: ${JSON.stringify(out)}`);
+    assert.ok(out.includes('.b{color:blue}'), `the unselected rule must stay untouched, got: ${JSON.stringify(out)}`);
+  });
 });

@@ -34,6 +34,13 @@ import { Condition } from '../condition.js';
 type TriviaSide = 'before' | 'after';
 type SerializeProfileCounter =
   | 'duplicateDeclarationComparisonContainers'
+  | 'duplicateDeclarationRulesVisited'
+  | 'duplicateDeclarationRepeatedPropertyContainers'
+  | 'duplicateDeclarationZeroChildContainers'
+  | 'duplicateDeclarationSingletonContainers'
+  | 'duplicateDeclarationStableSingletonContainers'
+  | 'duplicateDeclarationCountMapAllocations'
+  | 'duplicateDeclarationSeenMapAllocations'
   | 'duplicateDeclarationPrerenderedDeclarations'
   | 'emissionRenderNodeTextPreviewCalls'
   | 'emissionRenderNodeTextRulesPreviewCalls'
@@ -403,7 +410,7 @@ function renderNodeText(
     }
   }
   if (reason === 'declaration-fallback') {
-    const writer = new OutputWriter();
+    const writer = new OutputWriter(options.sourceMap === true);
     node.writeSyntax(getPrintOptions({
       ...options,
       writer
@@ -411,14 +418,14 @@ function renderNodeText(
     return writer.toString();
   }
   if (reason === 'rules-preview') {
-    const writer = new OutputWriter();
+    const writer = new OutputWriter(options.sourceMap === true);
     node.writeSyntax(getPrintOptions({
       ...options,
       writer
     }));
     return writer.toString();
   }
-  const writer = new OutputWriter();
+  const writer = new OutputWriter(options.sourceMap === true);
   node.writeSyntax(getPrintOptions({
     ...options,
     writer
@@ -906,12 +913,19 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.collapseNesting === true
       && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
-    const skippedDuplicateDeclarations = new Set<number>();
-    const seenDeclarationsByProp = new Map<string, Set<string>>();
+    // Most containers do not have repeated declaration properties. Keep the
+    // duplicate-output state absent until the post-expansion count proves it is
+    // needed; imports, loops, and mixin folds can introduce repeats later.
+    let skippedDuplicateDeclarations: Set<number> | undefined;
+    let seenDeclarationsByProp: Map<string, Set<string>> | undefined;
     // MERGE-ACROSS-MIXIN fold: set when a mixin-call expansion splices surface
     // children into `rulesToRender`. Gates the post-expansion merge re-plan so a
     // body with no expansion pays nothing (the pre-expansion plan stays valid).
     let mixinExpansionOccurred = false;
+    // Track whether any expansion inserts entries that need a live frame switch during
+    // emission. This is separate from the merge re-plan gate because imported
+    // folded children are frame-bearing without being mixin expansions.
+    let frameAwareEntriesOccurred = false;
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
       const seen = new Set<any>();
       const queue: any[] = [start];
@@ -943,6 +957,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       current?.type === 'For' || current?.type === 'While' || current?.type === 'If'
     );
     const keepsDuplicateGeneratedOutput = (n: any): boolean => keepsDuplicateMixinOutputDeclaration(n);
+    if (serializeProfileCounters) {
+      if (rulesToRender.length === 0) {
+        incrementSerializeProfileCounter('duplicateDeclarationZeroChildContainers');
+      } else if (rulesToRender.length === 1) {
+        incrementSerializeProfileCounter('duplicateDeclarationSingletonContainers');
+        const singletonNode = rulesToRender[0]!.node;
+        if (singletonNode.type !== 'Call' && singletonNode.type !== 'StyleImport' && singletonNode.type !== 'For') {
+          incrementSerializeProfileCounter('duplicateDeclarationStableSingletonContainers');
+        }
+      }
+    }
     if (rulesToRender.length === 0) {
       return '';
     }
@@ -952,19 +977,45 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (serializeProfileCounters) {
       incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
     }
-    const declarationCountsByProp = new Map<string, number>();
+    const singletonNode = rulesToRender.length === 1 ? rulesToRender[0]!.node : undefined;
+    const skipInitialDuplicateDeclarationScan = singletonNode !== undefined
+      && singletonNode.type !== 'Call'
+      && singletonNode.type !== 'StyleImport'
+      && singletonNode.type !== 'For';
+    let declarationCountsByProp: Map<string, number> | undefined;
+    let hasRepeatedDeclarationProperty = false;
+    let repeatedPropertyProfileRecorded = false;
     const recomputeDeclCounts = (): void => {
-      declarationCountsByProp.clear();
+      let counts = declarationCountsByProp;
+      if (!counts) {
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationCountMapAllocations');
+        }
+        counts = declarationCountsByProp = new Map<string, number>();
+      }
+      counts.clear();
+      hasRepeatedDeclarationProperty = false;
       for (let i = 0; i < rulesToRender.length; i++) {
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationRulesVisited');
+        }
         const node = rulesToRender[i]!.node;
         if (!isNode(node, N.Declaration) || isNode(node, N.VarDeclaration)) {
           continue;
         }
         const declProp = node.name.valueOf();
-        declarationCountsByProp.set(declProp, (declarationCountsByProp.get(declProp) ?? 0) + 1);
+        const count = (counts.get(declProp) ?? 0) + 1;
+        counts.set(declProp, count);
+        hasRepeatedDeclarationProperty ||= count > 1;
+      }
+      if (serializeProfileCounters && hasRepeatedDeclarationProperty && !repeatedPropertyProfileRecorded) {
+        incrementSerializeProfileCounter('duplicateDeclarationRepeatedPropertyContainers');
+        repeatedPropertyProfileRecorded = true;
       }
     };
-    recomputeDeclCounts();
+    if (!skipInitialDuplicateDeclarationScan) {
+      recomputeDeclCounts();
+    }
     // Per-declaration dedup KEY. Eval path: the static `writeSyntax` of the
     // already-resolved node IS its final bytes. Spine path: the value is still
     // UNRESOLVED at this point, so `writeSyntax` emits opaque `$??(…)` placeholders
@@ -1036,10 +1087,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return `${declOut}${node.requiredSemi ? ';' : ''}`;
     };
     const recordDeclKey = (i: number, declProp: string, declKey: string): void => {
-      let seenValues = seenDeclarationsByProp.get(declProp);
+      let seenByProp = seenDeclarationsByProp;
+      if (!seenByProp) {
+        if (serializeProfileCounters) {
+          incrementSerializeProfileCounter('duplicateDeclarationSeenMapAllocations');
+        }
+        seenByProp = seenDeclarationsByProp = new Map<string, Set<string>>();
+      }
+      let seenValues = seenByProp.get(declProp);
       if (!seenValues) {
         seenValues = new Set<string>();
-        seenDeclarationsByProp.set(declProp, seenValues);
+        seenByProp.set(declProp, seenValues);
       }
       const node = rulesToRender[i]!.node;
       if (
@@ -1049,7 +1107,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         && !originatesFromControl(node)
         && !keepsDuplicateGeneratedOutput(node)
       ) {
-        skippedDuplicateDeclarations.add(i);
+        (skippedDuplicateDeclarations ??= new Set<number>()).add(i);
       } else {
         seenValues.add(declKey);
       }
@@ -1134,6 +1192,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             () => resolveSpineMixinCall(entryNode, spineContext)
           );
           const apply = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
+            frameAwareEntriesOccurred = true;
             restoreFrame(undefined);
             // FOLD: splice each bound surface's children, TAGGED with the surface
             // as their `spineFrame` — so a body reference resolves against the
@@ -1227,6 +1286,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             return expandFrom(i);
           };
           const foldBody = (body: Rules, reference: boolean): MaybePromise<void> => {
+            frameAwareEntriesOccurred = true;
             // A `(reference)` import (increment 5) splices the placement AS A SINGLE
             // `Rules` entry, NOT its children: the body loop's Rules-child path reads
             // the placement's own `options.referenceMode` and the container serializer
@@ -1335,6 +1395,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             () => forNode.spineIterationSurfaces(spineContext)
           );
           const apply = (surfaces: Rules[]): MaybePromise<void> => {
+            frameAwareEntriesOccurred = true;
             restoreFrame(undefined);
             const childEntries: RenderRuleEntry[] = surfaces.flatMap(surface =>
               surface.rules.map(child => ({ node: child, spineFrame: surface, mergeOwner: entryNode })));
@@ -1356,6 +1417,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     };
 
     const runDedupPass = (): MaybePromise<void> => {
+      // Count after every expansion splice. A unique final property sequence
+      // cannot call computeDeclKey or suppress an entry, so it needs no dedup
+      // maps, output previews, or reverse walk.
+      const counts = declarationCountsByProp;
+      if (!hasRepeatedDeclarationProperty || !counts) {
+        return undefined;
+      }
       const stepFrom = (i: number): MaybePromise<void> => {
         for (let idx = i; idx >= 0; idx--) {
           const node = rulesToRender[idx]!.node;
@@ -1363,7 +1431,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             continue;
           }
           const declProp = node.name.valueOf();
-          if ((declarationCountsByProp.get(declProp) ?? 0) < 2) {
+          if ((counts.get(declProp) ?? 0) < 2) {
             continue;
           }
           const key = computeDeclKey(node, rulesToRender[idx]!.spineFrame);
@@ -1536,7 +1604,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         if (inReferenceMode && !renderEnabled && !isContainer) {
           return;
         }
-        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations.has(idx)) {
+        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations?.has(idx)) {
           return;
         }
 
@@ -1568,7 +1636,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const childOutResult = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
           const finishChild = (childOut: string): void => {
-            if (!childOut && !hasPrintableTrivia(n, options)) {
+            if (!childOut && !w.hasContentSince(childPositionBaseline) && !hasPrintableTrivia(n, options)) {
               w.restore(childPositionBaseline);
               restoreArrayState(lastRenderedFrames, childFrameSnapshot);
               restoreArrayState(frameHeaders, childHeaderSnapshot);
@@ -1817,12 +1885,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           throw error;
         }
       };
+      // Expansion is complete before the body driver starts. When no frame-bearing
+      // expansion occurred, every entry is authored in this container and cannot
+      // carry a frame; select the direct processor once instead of rechecking that
+      // fact for every entry. Expanded bodies retain the frame-aware wrapper.
+      const processEntry = frameAwareEntriesOccurred ? processNode : processNodeInner;
       // Drive the per-node processor in source order, threading a promise only if
       // a node resolved async (spine-mode `calc()`/function leaf or nested async
       // container). The common all-sync case never allocates a promise.
       const processFrom = (idx: number): MaybePromise<void> => {
         for (let i = idx; i < rulesToRender.length; i++) {
-          const step = processNode(i);
+          const step = processEntry(i);
           if (isThenable(step)) {
             return step.then(() => processFrom(i + 1));
           }

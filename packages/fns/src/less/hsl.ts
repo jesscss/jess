@@ -259,6 +259,14 @@ export const hslOptions = {
   preprocessParams: [splitSequence()]
 } satisfies DefineFunctionOptions;
 
+/**
+ * CSS/Less `hsl()` — construct a `Color` from hue (degrees), saturation and
+ * lightness (each `0–100%`) with optional alpha. Also accepts a single `Color`
+ * (re-emitted in `hsl()` form) and CSS relative-color syntax
+ * `hsl(from <color> h s l [/ a])`.
+ * @returns the resulting `Color`
+ * @see https://developer.mozilla.org/docs/Web/CSS/color_value/hsl
+ */
 const hsl = defineFunction(
   'hsl',
   hslImplementation,

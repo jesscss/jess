@@ -224,7 +224,8 @@ describe('@jesscss/plugin-js security', () => {
     const mod = await plugin.import(modulePath);
     const dimensionResult = await mod.bumpDimension(new Dimension({ number: 4, unit: 'px' }));
     expect(dimensionResult).toBeInstanceOf(Dimension);
-    expect(dimensionResult.value).toEqual({ number: 5, unit: 'px' });
+    expect(dimensionResult.number).toBe(5);
+    expect(dimensionResult.unit).toBe('px');
 
     const colorResult = await mod.fade(new Color({ rgb: [10, 20, 30], alpha: 0.75 }));
     expect(colorResult).toBeInstanceOf(Color);
@@ -247,7 +248,8 @@ describe('@jesscss/plugin-js security', () => {
     if (!(listFirst instanceof Dimension)) {
       throw new Error('Expected first list result item to be a Dimension');
     }
-    expect(listFirst.value).toEqual({ number: 3, unit: 'em' });
+    expect(listFirst.number).toBe(3);
+    expect(listFirst.unit).toBe('em');
 
     const sequenceResult = await mod.expressionLength(new Sequence([
       new Any('a'),
@@ -259,11 +261,12 @@ describe('@jesscss/plugin-js security', () => {
     if (!(sequenceFirst instanceof Dimension)) {
       throw new Error('Expected first sequence result item to be a Dimension');
     }
-    expect(sequenceFirst.value.number).toBe(2);
+    expect(sequenceFirst.number).toBe(2);
 
     const helperDimensionResult = await mod.helperDimension();
     expect(helperDimensionResult).toBeInstanceOf(Dimension);
-    expect(helperDimensionResult.value).toEqual({ number: 9, unit: 'rem' });
+    expect(helperDimensionResult.number).toBe(9);
+    expect(helperDimensionResult.unit).toBe('rem');
 
     const helperValueResult = await mod.helperValue(new List([
       new Dimension({ number: 6, unit: 'vw' })
@@ -275,7 +278,8 @@ describe('@jesscss/plugin-js security', () => {
     if (!(helperValueFirst instanceof Dimension)) {
       throw new Error('Expected first helper value result item to be a Dimension');
     }
-    expect(helperValueFirst.value).toEqual({ number: 6, unit: 'vw' });
+    expect(helperValueFirst.number).toBe(6);
+    expect(helperValueFirst.unit).toBe('vw');
 
     const helperValueWithPrimitivesResult = await mod.helperValueWithPrimitives();
     expect(helperValueWithPrimitivesResult).toBeInstanceOf(List);
@@ -312,8 +316,34 @@ describe('@jesscss/plugin-js security', () => {
 
     const dimensionResult = await loaded.functions.triple(new Dimension({ number: 2, unit: 'px' }));
     expect(dimensionResult).toBeInstanceOf(Dimension);
-    expect(dimensionResult.value).toEqual({ number: 6, unit: 'px' });
+    expect(dimensionResult.number).toBe(6);
+    expect(dimensionResult.unit).toBe('px');
     await expect(loaded.functions.probeprocess()).resolves.toBe('DENIED');
+  });
+
+  it('keeps executable Plugin options instance-local in the Deno runtime', async () => {
+    const root = makeTmpDir('jess-js-root-');
+    const modulePath = path.join(root, 'options-plugin.js');
+    fs.writeFileSync(
+      modulePath,
+      [
+        'registerPlugin({',
+        '  setOptions: function(value) { this.value = value; },',
+        '  install: function(_less, _manager, functions) {',
+        '    var self = this;',
+        '    functions.add("plugin-option", function() { return self.value || "none"; });',
+        '  }',
+        '});'
+      ].join('\n'),
+      'utf8'
+    );
+    const runtime = jsPlugin({ jsReadRoot: root, runtimeApi: 'less' }) as JsPlugin;
+    plugins.push(runtime);
+
+    const first = await runtime.importPlugin(modulePath, 'first=value');
+    const second = await runtime.importPlugin(modulePath, 'second=value');
+    await expect(first.functions['plugin-option']()).resolves.toBe('first=value');
+    await expect(second.functions['plugin-option']()).resolves.toBe('second=value');
   });
 
   it('does not treat arbitrary "#less/#sass" filesystem paths as pass-through', async () => {

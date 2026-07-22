@@ -132,4 +132,6 @@ is realized by the deferred producer flip, for which the core consumers are alre
 - `pnpm --filter @jesscss/core build`; `cd packages/core && pnpm test`
   (baseline 3258/0 on this base; `extend-selector` all-less fails on this base — extend-#4a
   not integrated — NOT ours).
-- jess `spine-production-ratchet` 56/56. Byte-identical output.
+- jess `ast-v2-production-ratchet` green. Canonical Stylesheet/context and
+  public Compiler-route output remain covered; byte-identical output is checked
+  by the Less corpus.

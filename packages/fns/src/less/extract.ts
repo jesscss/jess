@@ -1,36 +1,41 @@
-import { defineFunction, Node, List, Dimension, toNumber, coerceListItems } from '@jesscss/core';
+import { asList, defineFunction, listValueAt } from '@jesscss/core/value';
 
-const extract = defineFunction(
-  'extract',
-  function(this: { rawArgs?: List } | undefined, value: Node, index: number): Node {
-    const items = coerceListItems(value);
-    const raw = Math.trunc(index);
-    if (!Number.isFinite(raw)) {
-      if (items.length === 1) {
-        return items[0]!;
+/**
+ * Less `extract()` — the item at a 1-based `index` in a list. AST-v2 values
+ * are immutable canonical facts, so the selected value is intentionally shared;
+ * no legacy clone/materialization is needed or permitted.
+ * @param value a list or single value
+ * @param index 1-based position
+ * @returns the extracted item
+ * @throws `RangeError` if `index` is out of range
+ */
+const extract = defineFunction('extract', {
+  params: [{ kinds: 'any' }, { kinds: ['Dimension'] }],
+  variadic: true,
+  body: (list) => {
+    const args = asList(list);
+    if (args.value.length !== 2) {
+      throw new TypeError('extract() requires exactly two arguments');
+    }
+    const index = args.value[1]!;
+    if (index.type !== 'Dimension') {
+      throw new TypeError('extract() index must be numeric');
+    }
+    const normalized = Math.trunc(index.number);
+    const target = args.value[0];
+    const itemCount = target?.type === 'List' ? target.value.length : 1;
+    if (!Number.isFinite(normalized)) {
+      if (itemCount === 1) {
+        return listValueAt(target, 0);
       }
+      throw new TypeError('extract() index must be finite');
     }
-
-    const normalized = raw;
-    if (normalized < 1 || normalized > items.length) {
-      throw new RangeError(`extract() index ${raw} out of range for length ${items.length}`);
+    try {
+      return listValueAt(target, normalized - 1);
+    } catch {
+      throw new RangeError(`extract() index ${normalized} out of range for length ${itemCount}`);
     }
-    const out = items[normalized - 1]!;
-    // extract() returns a caller-owned value: own the container surface (a shared
-    // source container by identity would alias caller-mutable state) while still
-    // reusing the inert source-free leaves inside it.
-    return out.cloneForPlacement({ owned: true }).detachTrivia(true);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: Node
-    }, {
-      name: 'index',
-      type: Dimension,
-      convert: [toNumber()]
-    }]
   }
-);
+});
 
 export default extract;

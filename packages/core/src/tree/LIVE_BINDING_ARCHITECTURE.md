@@ -221,7 +221,194 @@ instead of any per-subsystem reparent/copy.
   resolution time — must be specified; today it is fragmented across the
   reference resolver (cached-handle / binding / declaration paths).⟧
 
-## 5. Forbidden patterns (reject in review)
+## 5. Static scope shapes and placement slots (Q-40)
+
+### 5.1 Why this exists
+
+The canonical tree already separates source declaration layout from placement
+state, but a static reference can still fall through to a generic rules-surface
+search. That is wrong for the admitted lexical case: it turns one stable source
+fact into repeated child-surface walks at every placement.
+
+The target is the narrow, V8-friendly operation that Jess 1.x generated
+JavaScript received from lexical bindings: a fixed local/parent slot read. It
+is **not** a return to whole-program JavaScript generation, a second lookup
+registry, or a claim that Less has ordinary JavaScript scope.
+
+### 5.2 Representation and ownership
+
+Each canonical `Rules` may own an immutable `ScopeShape`:
+
+```text
+ScopeShape (canonical Rules-owned, immutable)
+  staticVariableSlots: @name -> ordinal and declaration facts
+  parentEligibility: lexical depth admitted by the source shape
+  disqualifiers: pending/dynamic names, import fallback, child surfaces,
+                 source-position requirement, live mutation
+
+ScopeFrame (placement-owned, mutable)
+  cells[ordinal]: BindingCell for this placement
+  parent: call-site lexical frame
+  fallbackFrame: import/reference chain (never flattened into ScopeShape)
+```
+
+The shape belongs only to canonical `Rules`; it must never retain a placement
+frame, a resolved parent, a cell, or evaluated output. A placement owns the
+corresponding `BindingCell[]` and can reuse the shape without sharing mutable
+state with any other call/import/loop placement.
+
+`Reference` may cache a plan `(lexicalDepth, slot, source-shape/version)` only
+beside its existing typed source-static handle. The plan is invalid when the
+shape/version or the relevant cell identity/current-binding version changes.
+
+### 5.3 Admission matrix
+
+| Reference form | Slot result | Reason / boundary |
+| --- | --- | --- |
+| Static local `@x`, ordinary current read | Admit first | Last declaration is known by the canonical shape; read this placement's cell. |
+| Static parent lexical `@x` | Admit after local proof | Fixed lexical depth is valid only when the parent is the actual call-site frame. |
+| Static mixin parameter/rest | Existing live-slot lane | These remain invocation-local live cells; do not merge them with shared declaration slots. |
+| Static local property accessor | Future, separate family | Property and variable semantics differ; admit only a closed local declaration surface. |
+| Literal callable name/path | Existing candidate buckets | A bucket can be direct, but guard/default/overload execution stays dynamic. |
+| Interpolated/variable names or selectors | Dynamic fallback | Names can promote only after evaluation. |
+| Snapshot/source-position reads | Dynamic bucket selection | A current slot cannot answer `start`-gated prior-declaration semantics. |
+| Imports, reference imports, configured imports | Dynamic fallback | Fallback-frame ordering and visibility are semantic and placement-specific. |
+| Guards, `default()`, `@arguments`, callable overloads | Dynamic execution | A slot can never preselect a callable result. |
+| Property lookup through child/mixin/reference output | Dynamic fallback | Visibility and output surfaces must be traversed. |
+| `setDefined`, `:=`, leaky writes | Dynamic mutation lane | These modify/inject cells according to outer/source-order rules. |
+
+Any uncertain case must use today's lookup. An admission failure is a normal
+fast-path miss, never an error and never a reason to materialize a new output
+tree.
+
+### 5.4 First executable slice
+
+Implement **only** a static local variable-read fast path:
+
+1. Build a source-owned layout when every candidate declaration name is static
+   and the `Rules` body has no pending dynamic name, import fallback,
+   child-declaration surface, or live mutation disqualifier.
+2. Allow a variable `Reference` with no source-position/snapshot constraint to
+   cache the local slot plan after the existing lookup proves it safe.
+3. Resolve the plan through the current placement frame's `BindingCell`, then
+   perform the normal lazy cell-value evaluation. Do not cache the evaluated
+   node/value on the canonical reference.
+4. Keep every non-admitted reference on the current frame/direct-lookup path.
+
+This slice deliberately excludes parent-depth slots, properties, imports, and
+callables. Its goal is a proofable reduction in repeated lookup calls, not a
+generic scope compiler.
+
+### 5.5 Required proof
+
+Before widening admission, prove all of the following:
+
+- byte identity for the Less corpus and the canonical benchmark output;
+- declaration order and shadowing, nested call-site lexical scope, live mixin
+  params/rest, `@arguments`, `setDefined`, and dynamic-name fallback;
+- no AST node stores placement state and no new persistent side map/registry is
+  introduced;
+- an instrumented counter shows admitted reads use slots while disqualified
+  reads still take the existing path;
+- same-checkout public `benchmark.less` before/after timing plus the split
+  parse/load and render-only measurements.
+
+Only a stable speed result and the full core/spine/all-Less gates justify
+retaining or widening the optimization.
+
+### 5.6 Placement dependency summaries: imports and mixins are one problem
+
+Every canonical body may be placed repeatedly: an `@import (multiple)`, a mixin
+call, a loop body, a detached ruleset call, and a nested ruleset surface all
+share the same question:
+
+> Which output/evaluation facts depend on this placement's incoming
+> environment, and which are closed over canonical state?
+
+Repeating CSS at a placement must not imply deriving and evaluating the entire
+canonical body again. A placement may need a thin frame and output position, but
+an import-local or mixin-local closed subtree should retain its canonical result
+or direct render plan. The dependency model is therefore **placement-generic**;
+separate import and mixin result caches are rejected as duplicate machinery.
+
+A future source-owned `PlacementDependencySummary` may contain only immutable
+facts, for example:
+
+```text
+closed: subtree has no placement-dependent reads/calls/mutations
+lexicalReads: static names that must bind through the placement frame
+callableReads: literal candidate buckets that require call-site execution
+dynamicBoundary: interpolation, dynamic name, source-position, or unresolved name
+mutationBoundary: setDefined, :=, leak, control-flow mutation
+importBoundary: configured/reference/inline import visibility or fallback chain
+outputBoundary: extend/merge/trivia/provenance feature requiring placement output
+```
+
+For the first real graph, make the facts precise rather than treating `F_STATIC`
+as a reuse promise:
+
+```text
+freeReads: names/slots read outside the subtree's own definitions
+localDefinitions: source declarations owned by the subtree
+writes: assignments, leak/setDefined effects, or registration effects
+structural: selector/at-rule ancestry and output-placement requirements
+global: extend, hoist, merge, or source-order registration effects
+dynamic: interpolation, guards/default(), unresolved names, or position-sensitive reads
+```
+
+Only a subtree with no `writes`, `global`, or `dynamic` facts is even a
+candidate for reuse. Its candidate key is deliberately narrow:
+
+```text
+sourceSubtreeId + sourceRevision + structuralPlacementSignature
+  + fingerprint(the specific live BindingCells named by freeReads)
+```
+
+The structural signature must include selector and at-rule ancestry, reference
+and visibility mode, import boundary, extend root/source order, and output
+mode. It is not a hash of a whole scope frame. A fully closed child has no
+binding-cell fingerprint; it can share an evaluated/direct-render plan while
+still emitting at each required structural placement. A child with a free read
+must key only the named live cells, and remains ineligible whenever one of the
+other boundaries is present.
+
+The first proof is a staircase, not a graph conversion:
+
+1. Instrument the source summary and placement boundaries without changing
+   output; verify its classification against a small fixture and the canonical
+   benchmark.
+2. Reuse one closed imported child across two and then three `(multiple)`
+   placements, but emit it at every placement. Pair it with an `@w`-dependent
+   sibling that must still evaluate separately.
+3. Reject the same fixture when it gains a reference/visibility boundary or an
+   extend/source-order effect. Do not proceed to mixins or free-read memoization
+   until the closed-child case is byte-identical and gives an unambiguous
+   same-checkout median improvement at 1x/2x/3x.
+
+The summary may prove a subtree closed and directly reusable. It must not use a
+coarse hash of the whole environment, retain a placement reference on a node, or
+promise memoization where Less's lazy scope/guards make it invalid. For a
+partially dependent body, the first design preference is to reuse closed child
+segments and place only the dependency boundary, not to cache a whole rendered
+module/mixin string.
+
+The same graph is also the prerequisite for a tree-shaken runtime build. An
+exported variable is a graph root; its static dependency closure can be emitted
+as a small JavaScript module that updates the corresponding CSS custom property.
+That build must include only the declarations/functions needed by the root,
+retain dynamic boundaries as explicit runtime requirements or reject them, and
+never compile the entire stylesheet just because one export is requested. This
+is a second consumer of the **same source-owned graph**, not a separate
+tree-shaking analysis and not a placement memo keyed by an environment object.
+
+The first graph experiment must map, for the canonical benchmark and one
+multiple-import/mixin fixture: closed children, static lexical read edges,
+dynamic/mutation boundaries, and the exact placements that force re-evaluation.
+It must then prove one closed child is rendered/evaluated once across two
+placements without changing byte output. No broad memoization lands before that
+proof.
+
+## 6. Forbidden patterns (reject in review)
 
 - `clone(deep)`, recursive `cloneFn`, `*WithReusableLeaves`, deep
   `cloneForPlacement`.
@@ -231,7 +418,7 @@ instead of any per-subsystem reparent/copy.
 - Two parallel "create a surface" or "resolve a variable" code paths where one
   parametrized primitive would do.
 
-## 6. Owner decisions (locked 2026-06-29)
+## 7. Owner decisions (locked 2026-06-29)
 
 1. **Copies are a rare, proven exception** — see invariant (8). Small selector
    copies for extend are the canonical example, but each must out-prove the
@@ -246,7 +433,7 @@ instead of any per-subsystem reparent/copy.
 4. **Closure capture chokepoint**: implementer's discretion — pick the single
    point that makes sense (the resolver must not keep N divergent paths).
 
-## 7. References
+## 8. References
 
 - `feedback-setdefined-cell-not-node` — cells, not nodes.
 - `parseman-wrapper-is-scope-identity` — wrapper = scope identity.

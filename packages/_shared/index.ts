@@ -118,5 +118,13 @@ export const invalidLess: string[] = [
    * instead). Both files use `./` in a math context.
    */
   'tests-config/math-parens-division/new-division.less',
-  'tests-config/math-always/no-sm-operations.less'
+  'tests-config/math-always/no-sm-operations.less',
+
+  /**
+   * v5 STRICT at-rule preludes: a top-level bare `@variable` in a non-value
+   * at-rule prelude/name/identifier position is a HARD parse error (4.x only
+   * warned). This fixture uses `@media @breakpoint, print`. The migration target
+   * is `@{breakpoint}` interpolation; a `@var` inside `(...)` stays valid.
+   */
+  'tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less'
 ];

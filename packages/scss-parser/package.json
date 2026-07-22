@@ -4,60 +4,49 @@
     "access": "public"
   },
   "description": "",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-alpha.9",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
-      "source": "./src/index.ts",
       "import": "./lib/index.js",
       "require": "./lib/index.cjs"
     },
     "./cst": {
       "types": "./lib/cst.d.ts",
-      "source": "./src/cst.ts",
       "import": "./lib/cst.js",
       "require": "./lib/cst.cjs"
     },
     "./grammar": {
       "types": "./lib/grammar.d.ts",
-      "source": "./src/grammar.ts",
       "import": "./lib/grammar.js",
       "require": "./lib/grammar.cjs"
-    },
-    "./jess": {
-      "types": "./lib/jess.d.ts",
-      "source": "./src/jess.ts",
-      "import": "./lib/jess.js",
-      "require": "./lib/jess.cjs"
     },
     "./package.json": "./package.json"
   },
   "files": [
-    "lib",
-    "src"
+    "lib"
   ],
   "scripts": {
     "postinstall": "node ./scripts/materialize-sass-spec-cache.cjs",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
-    "build": "pnpm compile",
+    "build": "pnpm --filter @jesscss/internal-css-recognition build && pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && ../../node_modules/.bin/tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "sass-spec:cache": "node ./scripts/materialize-sass-spec-cache.cjs",
     "test": "vitest --run --passWithNoTests",
-    "test:parse": "vitest --run --passWithNoTests test/parse-only.test.ts test/sass-spec.smoke.test.ts",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
-    "@jesscss/less-parser": "workspace:*",
-    "chevrotain": "^12.0.0"
+    "@jesscss/less-parser": "workspace:*"
   },
   "peerDependencies": {
-    "@jesscss/core": "workspace:*"
+    "@jesscss/core": "workspace:*",
+    "parseman": "^0.28.0"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -66,7 +55,8 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "link:/Users/matthew/git/oss/parser-thing",
+    "@jesscss/internal-css-recognition": "workspace:*",
+    "parseman": "0.28.0",
     "sass-spec": "github:sass/sass-spec"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

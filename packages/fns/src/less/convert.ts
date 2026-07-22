@@ -1,50 +1,22 @@
-import { Any, Dimension, Quoted, defineFunction } from '@jesscss/core';
+import { defineFunction, groupOf, makeDimension, textOf, unitFactor } from '@jesscss/core/value';
 
-const unitConversions: Record<string, Record<string, number>> = {
-  length: {
-    m: 1,
-    cm: 0.01,
-    mm: 0.001,
-    in: 0.0254,
-    px: 0.0254 / 96,
-    pt: 0.0254 / 72,
-    pc: 0.0254 / 72 * 12
-  },
-  duration: {
-    s: 1,
-    ms: 0.001
-  },
-  angle: {
-    rad: 1 / (2 * Math.PI),
-    deg: 1 / 360,
-    grad: 1 / 400,
-    turn: 1
+/**
+ * Less `convert()` — convert a `Dimension` to another unit within the same family
+ * (length, duration or angle). Incompatible or unknown units are returned unchanged.
+ * @param value the input `Dimension`
+ * @param unit the target unit keyword/string
+ * @returns the converted `Dimension`
+ */
+const convert = defineFunction('convert', {
+  params: [{ name: 'value', kinds: ['Dimension'] }, { name: 'unit', kinds: ['Keyword', 'Quoted'] }] as const,
+  body: (value, targetValue) => {
+    const target = textOf(targetValue);
+    if (!value.unit || !target || value.unit === target || groupOf(value.unit) !== groupOf(target)) {
+      return makeDimension(value.number, value.unit);
+    }
+    return makeDimension(value.number * (unitFactor(value.unit)! / unitFactor(target)!), target);
   }
-};
+});
 
-export default defineFunction(
-  'convert',
-  function(value: Dimension, unit: Any<'keyword'> | Quoted) {
-    const { number, unit: from } = value;
-    const target = unit.valueOf();
-    if (!from || !target || from === target) {
-      return value;
-    }
-    for (const group of Object.values(unitConversions)) {
-      if (group[from] !== undefined && group[target] !== undefined) {
-        const converted = number * (group[from] / group[target]);
-        return new Dimension({ number: converted, unit: target });
-      }
-    }
-    return value;
-  },
-  {
-    params: [{
-      name: 'value',
-      type: Dimension
-    }, {
-      name: 'unit',
-      type: [Any, Quoted]
-    }]
-  }
-);
+export { convert };
+export default convert;

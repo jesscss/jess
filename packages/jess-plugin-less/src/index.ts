@@ -1,26 +1,99 @@
 import {
   type Plugin,
   AbstractPlugin,
-  TreeContext,
-  JessError,
-  JsFunction,
-  Rules,
-  getErrorFromParser,
-  toDiagnostic,
+  type Context,
+  type UrlTransformRequest,
   extractRelevantLines,
   type ISafeParseResult,
   type SafeParseOptions,
-  type ErrorDiagnostic,
-  type WarningDiagnostic
+  type ErrorDiagnostic
 } from '@jesscss/core';
+import { defineFunction, makeDimension, makeKeyword, makeQuoted, type Fn, type PluginHost, type ValueObj } from '@jesscss/core/value';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
-import * as lessFunctions from '@jesscss/fns';
-import { Parser } from '@jesscss/less-parser/jess';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
+import { parse as parseLess } from '@jesscss/less-parser';
 
 export type LessPluginOptions = LessOptions;
+
+type NativeLessFunction = (...args: unknown[]) => unknown;
+type NativeLessPlugin = { install?: (less: NativeLessApi, manager: undefined, functions: NativeLessFunctionRegistry) => void };
+type NativeLessFunctionRegistry = {
+  add(name: string, fn: NativeLessFunction): void;
+  addMultiple(functions: Record<string, NativeLessFunction>): void;
+};
+type NativeLessApi = {
+  functions: { functionRegistry: NativeLessFunctionRegistry };
+  /** Return-value constructors exposed by Less's public plugin API. These are
+   * plain structural values; core owns their conversion back to typed Values. */
+  tree: {
+    Dimension: new (value: number, unit?: string) => { type: 'Dimension'; value: number; unit: string };
+    Quoted: new (quote: string, value: string, escaped?: boolean) => { type: 'Quoted'; quote: string; value: string; escaped: boolean };
+  };
+};
+
+function toNativeLessValue(value: ValueObj): unknown {
+  switch (value.type) {
+    case 'Dimension': return { type: 'Dimension', value: value.number, unit: value.unit, valueOf: () => value.number };
+    case 'Quoted': return { type: 'Quoted', value: value.value, quote: value.quote, escaped: value.escaped, valueOf: () => value.bytes };
+    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, valueOf: () => value.bytes };
+    case 'List': return { type: 'Expression', value: value.value.map(toNativeLessValue), valueOf: () => value.bytes };
+    default: return { type: 'Anonymous', value: value.bytes, valueOf: () => value.bytes };
+  }
+}
+
+function fromNativeLessValue(value: unknown): ValueObj {
+  if (typeof value === 'number') {
+    return makeDimension(value);
+  }
+  if (typeof value === 'string') {
+    return makeKeyword(value);
+  }
+  if (value && typeof value === 'object') {
+    const candidate = value as { type?: unknown; value?: unknown; unit?: unknown; quote?: unknown; escaped?: unknown; valueOf?: () => unknown };
+    if ((candidate.type === 'Dimension' || candidate.type === 'Num') && typeof candidate.value === 'number') {
+      return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
+    }
+    if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
+      return makeQuoted(candidate.value, candidate.quote === '\'' ? '\'' : '"', candidate.escaped === true);
+    }
+    if (typeof candidate.value === 'string') {
+      return makeKeyword(candidate.value);
+    }
+    if (typeof candidate.valueOf === 'function') {
+      return makeKeyword(String(candidate.valueOf()));
+    }
+  }
+  return makeKeyword(value == null ? '' : String(value));
+}
+
+function nativeLessFn(name: string, fn: NativeLessFunction): Fn {
+  return defineFunction(name.toLowerCase(), {
+    variadic: true,
+    params: [],
+    body: (list) => {
+      const result = fn(...list.value.map(toNativeLessValue));
+      return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
+        ? Promise.resolve(result).then(fromNativeLessValue)
+        : fromNativeLessValue(result);
+    }
+  });
+}
+
+type LoadedPluginModule = {
+  readonly functions?: Record<string, NativeLessFunction>;
+};
+
+function parseErrorLocation(source: string, error: unknown): { line: number; column: number } {
+  const offset = typeof error === 'object' && error !== null && 'offset' in error && typeof error.offset === 'number'
+    ? Math.max(0, Math.min(source.length, error.offset))
+    : 0;
+  const before = source.slice(0, offset);
+  const line = before.split('\n').length;
+  const column = offset - (before.lastIndexOf('\n') + 1) + 1;
+  return { line, column };
+}
 
 /**
  * The Less plugin's default option values — the single source of truth for the
@@ -38,16 +111,81 @@ export const lessPluginDefaults = {
   collapseNesting: false
 } as const;
 
+/** Match Less's URL normalization without treating URL text as an import path. */
+function normalizeUrlPath(url: string): string {
+  const segments = url.split('/');
+  const normalized: string[] = [];
+  for (const segment of segments) {
+    if (segment === '.') {
+      continue;
+    }
+    if (segment === '..') {
+      if (normalized.length === 0 || normalized[normalized.length - 1] === '..') {
+        normalized.push(segment);
+      } else {
+        normalized.pop();
+      }
+      continue;
+    }
+    normalized.push(segment);
+  }
+  return normalized.join('/');
+}
+
+function isUrlRelative(url: string): boolean {
+  if (url.startsWith('/') || url.startsWith('#')) {
+    return false;
+  }
+  const colon = url.indexOf(':');
+  if (colon < 0) {
+    return true;
+  }
+  for (let index = 0; index < colon; index++) {
+    const code = url.charCodeAt(index);
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    if (!isLetter && url[index] !== '-') {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rewriteUrlPath(url: string, rootpath: string): string {
+  const rewritten = normalizeUrlPath(rootpath + url);
+  return url.startsWith('.') && isUrlRelative(rootpath) && !rewritten.startsWith('.')
+    ? `./${rewritten}`
+    : rewritten;
+}
+
+function escapeUnquotedUrlPath(pathValue: string): string {
+  let escaped = '';
+  for (const char of pathValue) {
+    escaped += char === '(' || char === ')' || char === '\'' || char === '"' || ' \t\n\r\f'.includes(char)
+      ? `\\${char}`
+      : char;
+  }
+  return escaped;
+}
+
+function jsDelivrPackageSpecifier(candidate: string): string | null {
+  const absolute = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
+  if (absolute?.[1]) {
+    return absolute[1];
+  }
+  const relative = candidate.match(/^\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
+  return relative?.[1] ?? null;
+}
+
 export class LessPlugin extends AbstractPlugin {
   name = 'less';
   supportedExtensions = ['.less'];
-  parser: Parser;
   mathMode: MathMode;
   unitMode: UnitMode;
   equalityMode: EqualityMode;
   leakyScope: boolean;
   bubbleRootAtRules: boolean;
   collapseNesting: boolean;
+  private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
   constructor(public opts: LessPluginOptions = {}) {
     super();
@@ -87,47 +225,98 @@ export class LessPlugin extends AbstractPlugin {
     this.leakyScope = opts.leakyScope ?? lessPluginDefaults.leakyScope;
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules;
     this.collapseNesting = opts.collapseNesting ?? lessPluginDefaults.collapseNesting;
-
-    // mathMode (and every other option) reaches the parser via the per-file
-    // TreeContext threaded into parse() — no constructor config needed.
-    this.parser = new Parser();
   }
 
-  private createTreeContext(filePath: string, source: string): TreeContext {
-    return new TreeContext({
-      file: {
-        name: path.basename(filePath),
-        path: path.dirname(filePath),
-        fullPath: filePath,
-        source: source
-      },
-      mathMode: this.mathMode,
-      unitMode: this.unitMode,
-      equalityMode: this.equalityMode,
-      plugin: this,
-      allowExtendSelectors: (this.opts as LessOptions & { allowExtendSelectors?: string[] }).allowExtendSelectors,
-      collapseNesting: this.collapseNesting,
-      leakyScope: this.leakyScope,
-      bubbleRootAtRules: this.bubbleRootAtRules
-    });
-  }
-
-  private _registerFunctions(tree: Rules) {
-    const registeredNames: string[] = [];
-    for (const [key, value] of Object.entries(lessFunctions)) {
-      if (typeof value !== 'function') {
-        continue;
+  transformUrl({ value, quoted, fromFilePath, entryFilePath }: UrlTransformRequest): string {
+    let transformed: string;
+    if (isUrlRelative(value)) {
+      const rewriteUrls = this.opts.rewriteUrls;
+      const local = value.startsWith('.');
+      // `rootpath` applies to every relative URL by default, but the explicit
+      // Less `local` mode narrows that to authored ./ and ../ paths.
+      if (rewriteUrls !== 'local' || local) {
+        const rebasesImportedUrl = rewriteUrls === true || rewriteUrls === 'all' || (rewriteUrls === 'local' && local);
+        let rootpath = this.opts.rootpath ?? '';
+        if (!quoted) {
+          rootpath = escapeUnquotedUrlPath(rootpath);
+        }
+        if (rebasesImportedUrl && fromFilePath && entryFilePath) {
+          const relativeDirectory = path.relative(path.dirname(entryFilePath), path.dirname(fromFilePath));
+          if (relativeDirectory) {
+            rootpath += `${relativeDirectory.split(path.sep).join('/')}/`;
+          }
+        }
+        transformed = rewriteUrlPath(value, rootpath);
+      } else {
+        transformed = normalizeUrlPath(value);
       }
-      const runtimeName = value.name || key;
-      tree.setFunctionBinding(runtimeName, new JsFunction({ name: runtimeName, fn: value }));
-      registeredNames.push(runtimeName);
+    } else {
+      transformed = normalizeUrlPath(value);
     }
+    if (this.opts.urlArgs && !value.trimStart().toLowerCase().startsWith('data:')) {
+      const args = `${transformed.includes('?') ? '&' : '?'}${this.opts.urlArgs}`;
+      const fragment = transformed.indexOf('#');
+      transformed = fragment < 0
+        ? transformed + args
+        : transformed.slice(0, fragment) + args + transformed.slice(fragment);
+    }
+    return transformed;
   }
 
   expandImport(importPath: string, currentDir: string) {
     void currentDir;
     // Keep import expansion in sync with the language service.
     return expandLessImportCandidates(importPath);
+  }
+
+  setContext(context: Context): void {
+    let host = this.pluginHosts.get(context);
+    if (!host) {
+      const fns: Fn[] = [];
+      const registry: NativeLessFunctionRegistry = {
+        add: (name, fn) => {
+          fns.push(nativeLessFn(name, fn));
+        },
+        addMultiple: (functions) => {
+          for (const [name, fn] of Object.entries(functions)) {
+            registry.add(name, fn);
+          }
+        }
+      };
+      const less: NativeLessApi = {
+        functions: { functionRegistry: registry },
+        tree: {
+          Dimension: class {
+            type = 'Dimension' as const;
+            constructor(readonly value: number, readonly unit = '') {}
+          },
+          Quoted: class {
+            type = 'Quoted' as const;
+            constructor(readonly quote: string, readonly value: string, readonly escaped = false) {}
+          }
+        }
+      };
+      const configured = (this.opts as LessPluginOptions & { plugins?: NativeLessPlugin[] }).plugins ?? [];
+      for (const plugin of configured) {
+        plugin.install?.(less, undefined, registry);
+      }
+      host = {
+        ...(fns.length === 0 ? {} : { globalFns: fns }),
+        loadPlugin: async ({ specifier, options }) => {
+          const loaded = await context.getPluginModule(specifier, options);
+          const module = loaded.module as LoadedPluginModule;
+          const functions = module && typeof module === 'object' && module.functions && typeof module.functions === 'object'
+            ? module.functions
+            : undefined;
+          if (!functions) {
+            return [];
+          }
+          return Object.entries(functions).map(([name, fn]) => nativeLessFn(name, fn));
+        }
+      };
+      this.pluginHosts.set(context, host);
+    }
+    context.pluginHost = host;
   }
 
   override resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
@@ -142,15 +331,7 @@ export class LessPlugin extends AbstractPlugin {
           return path.join(packagesRoot, 'test-import-module', after);
         }
       }
-      const m = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-      if (m?.[1]) {
-        return m[1];
-      }
-      const mProtocolRelative = candidate.match(/^\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-      if (mProtocolRelative?.[1]) {
-        return mProtocolRelative[1];
-      }
-      return candidate;
+      return jsDelivrPackageSpecifier(candidate) ?? candidate;
     });
 
     const resolved = super.resolve(mapped, currentDir, searchPaths);
@@ -193,120 +374,36 @@ export class LessPlugin extends AbstractPlugin {
     return out;
   }
 
-  safeParse(filePath: string, source: string, _parseOptions?: SafeParseOptions): ISafeParseResult {
-    const context = this.createTreeContext(filePath, source);
+  canResolveImport(specifier: string): boolean {
+    return jsDelivrPackageSpecifier(specifier) !== null;
+  }
 
-    const errors: ErrorDiagnostic[] = [];
-    const warnings: WarningDiagnostic[] = [];
-    let tree: Rules | undefined;
-
+  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
+    void parseOptions;
     try {
-      // Thread the file-bearing TreeContext through the parse and read it back
-      // out. Today it round-trips unchanged; it's the seam a future
-      // `@compose`/`@use` rule uses to set `context.opts.strict` during parse.
-      const parseResult = this.parser.parse(source, 'Stylesheet', { context });
-      tree = parseResult.tree;
-      const parsedContext = parseResult.context ?? context;
-
-      // The functional Less parser does not attach the TreeContext to nodes, so
-      // the root Rules has no `_treeContext` and import base-dir resolution falls
-      // back to `process.cwd()`. Attach the (threaded) context to the root so
-      // relative `@import` paths resolve against the importing file's directory
-      // (`context.ts` `currentDirectory`).
-      if (tree) {
-        tree._treeContext = parsedContext;
-      }
-
-      // Thread the parser's whitespace/comment trivia into the render context so
-      // the serializer can round-trip authored value whitespace (multi-line
-      // lists, custom-property value spacing) AND inline comments. Standalone
-      // comments already round-trip as `Comment` nodes; their source ranges are
-      // reported so the render-time trivia view hides them (no double-emit). The
-      // functional CSS parser forwards trivia the same way (cssParser.ts).
-      context.opts.trivia = parseResult.trivia;
-      context.opts.liftedCommentRanges = parseResult.liftedCommentRanges;
-
-      // Convert parser deprecation warnings to diagnostics
-      if ('warnings' in parseResult && parseResult.warnings) {
-        for (const warning of parseResult.warnings) {
-          const line = warning.token?.startLine ?? 1;
-          const column = warning.token?.startColumn ?? 1;
-          warnings.push({
-            code: 'parse/deprecated',
-            phase: 'parse',
-            message: warning.message,
-            reason: warning.message,
-            fix: 'Update your code to use the recommended syntax.',
-            file: context.file,
-            filePath: filePath,
-            line,
-            column,
-            lines: extractRelevantLines(source, line)
-          });
-        }
-      }
-
-      // Convert parser errors to normalized diagnostics. The functional parser
-      // has no separate lexer phase, so there are no lexer errors to convert.
-      if (parseResult.errors.length) {
-        for (const error of parseResult.errors) {
-          const line = error.token?.startLine ?? 1;
-          const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
-          const diagnostic = toDiagnostic(jessError);
-          // Ensure lines are extracted
-          if (!diagnostic.lines) {
-            diagnostic.lines = extractRelevantLines(source, line);
-          }
-          if ('errors' in diagnostic) {
-            errors.push(diagnostic);
-          } else {
-            warnings.push(diagnostic);
-          }
-        }
-      }
-    } catch (error: unknown) {
-      // Convert caught error to diagnostic
-      if (error instanceof JessError) {
-        const diagnostic = toDiagnostic(error);
-        if ('errors' in diagnostic) {
-          errors.push(diagnostic);
-        } else {
-          warnings.push(diagnostic);
-        }
-      } else {
-        const message = error instanceof Error ? error.message : 'Unknown parsing error';
-        errors.push({
-          code: 'internal/unknown',
+      return { document: parseLess(source), errors: [], warnings: [] };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const location = parseErrorLocation(source, error);
+      return {
+        errors: [{
+          code: 'parse/syntax-error',
           phase: 'parse',
           message,
-          reason: message || 'An unexpected error occurred during parsing.',
-          fix: 'Check the file syntax and ensure it is valid.',
-          file: context.file,
-          filePath: filePath,
-          line: 1,
-          column: 1,
-          lines: extractRelevantLines(source, 1)
-        });
-      }
-      // Return with errors/warnings only (no tree)
-      return { errors, warnings };
+          reason: message,
+          fix: 'Check the Less source against the supported grammar.',
+          filePath,
+          line: location.line,
+          column: location.column,
+          lines: extractRelevantLines(source, location.line)
+        } satisfies ErrorDiagnostic],
+        warnings: []
+      };
     }
-
-    // Only register functions if parsing succeeded without errors
-    if (tree && errors.length === 0) {
-      this._registerFunctions(tree);
-    }
-
-    return {
-      tree,
-      errors,
-      warnings
-    };
   }
 }
 
 export type { LessOptions } from 'styles-config';
-
 const lessPlugin = ((opts?: LessPluginOptions) => {
   return new LessPlugin(opts);
 }) satisfies Plugin;

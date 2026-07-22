@@ -2,7 +2,6 @@ import {
   type Context
 } from '../context.js';
 import type { TriviaMap } from '../types/index.js';
-import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { AbstractClass, Tagged } from 'type-fest';
 import {
@@ -24,7 +23,7 @@ import {
 } from './util/render-buffer.js';
 import {
   setSourceSpan,
-  sourceSpanOf,
+  copySpanFields,
   spanStartOf,
   isSourceFree,
   stampEvalErrorLocation,
@@ -61,9 +60,6 @@ type AllNodeOptions = {
 export type Primitive = undefined | boolean | string | number;
 export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
 
-export const ABORT: unique symbol = Symbol('ABORT');
-export const REMOVE: unique symbol = Symbol('REMOVE');
-export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
 export type RegistrationOptions = {
   reuseCanonical?: boolean;
@@ -159,47 +155,6 @@ function sourceRootOf(node: Node): Rules | undefined {
     current = current.parent;
   }
   return undefined;
-}
-
-type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
-type VisitMethod = (node: Node) => Node;
-type TypeVisitMethod = (node: Node) => NodeVisitReturn;
-
-function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
-  if (typeof visitor !== 'object' || visitor === null) {
-    return undefined;
-  }
-  const method = (visitor as { _visit?: unknown })._visit;
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return typeof method === 'function' ? method as TreeVisitMethod : undefined;
-}
-
-function hasVisitedNodeSet(visitor: unknown): boolean {
-  return typeof visitor === 'object'
-    && visitor !== null
-    && (visitor as { visitedNodes?: unknown }).visitedNodes instanceof Set;
-}
-
-function getVisitMethod(visitor: unknown): VisitMethod | undefined {
-  if (typeof visitor !== 'object' || visitor === null) {
-    return undefined;
-  }
-  const method = (visitor as { visit?: unknown }).visit;
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return typeof method === 'function' ? method as VisitMethod : undefined;
-}
-
-function isStringKeyRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMethod | undefined {
-  if (!isStringKeyRecord(visitor)) {
-    return undefined;
-  }
-  const method = visitor[methodName];
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return typeof method === 'function' ? method as TypeVisitMethod : undefined;
 }
 
 export const defineType = <
@@ -1140,58 +1095,6 @@ export abstract class Node<
     return out;
   }
 
-  /**
-   * Accept a visitor (classic visitor pattern).
-   *
-   * Visits the node itself first, then recursively visits children.
-   * This matches the Less.js visitor pattern and allows nodes to control
-   * their own traversal if needed by overriding this method.
-   *
-   * @param visitor - The visitor to accept
-   * @returns The result from visiting this node (may be a replacement node)
-   */
-  accept(visitor: Visitor): Node {
-    // Visit self first (like Less.js pattern).
-    // Support both Visitor class instances (visit()) and plain visitor objects.
-    let result: Node | NodeVisitReturn = this;
-    const treeVisitMethod = getTreeVisitMethod(visitor);
-    const visitMethod = getVisitMethod(visitor);
-    if (treeVisitMethod && hasVisitedNodeSet(visitor)) {
-      result = treeVisitMethod.call(visitor, this, {});
-    } else if (visitMethod) {
-      result = visitMethod.call(visitor, this);
-    } else {
-      const maybeAbort = visitor.enter?.(this);
-      if (maybeAbort === ABORT) {
-        return this;
-      }
-      const methodName = this.type.charAt(0).toLowerCase() + this.type.slice(1);
-      const typeMethod = getTypeVisitMethod(visitor, methodName);
-      if (typeMethod) {
-        const visited = typeMethod.call(visitor, this);
-        if (visited) {
-          result = visited;
-        }
-      }
-      result = visitor.exit?.(result) ?? result;
-    }
-
-    // Visit children recursively (Less.js pattern)
-    // Note: If TreeVisitor is using accept(), it will skip auto-visiting children
-    // to avoid double-visiting. See TreeVisitor._visit() implementation.
-    for (const child of this.walk()) {
-      if (child.accept) {
-        child.accept(visitor);
-      } else {
-        // Fallback: if child doesn't have accept, visit directly
-        visitor.visit(child);
-      }
-    }
-
-    // Return the result (may be a replacement node)
-    return result instanceof Node ? result : this;
-  }
-
   cloneValue(value: unknown): unknown {
     if (isArray(value)) {
       return [...value];
@@ -1268,7 +1171,7 @@ export abstract class Node<
     const newNode = new Ctor(
       cloned,
       this._options ? { ...this._options } : undefined,
-      sourceSpanOf(this)
+      undefined
     );
     newNode.inherit(this);
     // Faithful copy: a clone shares/maps the SAME children as its source, so it
@@ -1541,7 +1444,11 @@ export abstract class Node<
     } else {
       setParent(this, this.parent ?? node.parent);
     }
-    setSourceSpan(this, sourceSpanOf(node));
+    if (!isSourceFree(node)) {
+      copySpanFields(this, node);
+    } else if (!isSourceFree(this)) {
+      setSourceSpan(this, undefined);
+    }
     // Per-slot spans are sparse (only source multi-member nodes carry them); the
     // flag check keeps eval nodes free. Carry them across derivation so a derived
     // selector-list / value surface can still place inter-member comment trivia.

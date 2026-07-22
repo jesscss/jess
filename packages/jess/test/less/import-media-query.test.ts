@@ -36,4 +36,17 @@ describe('@import with a media query wraps in a single @media block', () => {
       ].join('\n')
     );
   });
+
+  it('parses and renders an imported Less file whose media header has interpolated terms', async () => {
+    const result = await mkCompiler().renderToResult(path.join(fixtures, 'interpolated-main.less'));
+    expect(result.css.trim()).toBe(
+      [
+        '@media all and (tv) {',
+        '  .all-and-tv-variables {',
+        '    value: passed;',
+        '  }',
+        '}'
+      ].join('\n')
+    );
+  });
 });

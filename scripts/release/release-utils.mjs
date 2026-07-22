@@ -127,6 +127,65 @@ export function parseAlphaVersion(version) {
 }
 
 /**
+ * Compute the MINIMUM alpha dist-tag version across a set of packages -- i.e.
+ * the laggard, the package whose published `alpha` tag is furthest behind.
+ *
+ * `getTagged(pkgName)` reads the version the npm `alpha` dist-tag points at for
+ * one package (e.g. `getTaggedVersion(pkgName, 'alpha')`). Packages with NO
+ * alpha tag yet (unpublished / fresh) return null/undefined and DO NOT
+ * constrain the minimum -- they are effectively -infinity and are skipped, so a
+ * fresh package alongside published ones never drags the laggard down. Returns
+ * null when NO package has a well-formed `X.Y.Z-alpha.N` alpha tag. Ordering
+ * uses `compareSemver`, so alpha numbers compare numerically (alpha.9 < alpha.10).
+ *
+ * The MINIMUM (not the max) is what makes the clobber guard resume-safe: a
+ * partially-completed publish leaves the still-lagging package as the min, and a
+ * resume publishing at the manifest version stays strictly ABOVE that laggard.
+ */
+export function computeMinAlphaTag(pkgNames, getTagged) {
+  let min = null;
+  for (const pkgName of pkgNames) {
+    const tagged = getTagged(pkgName);
+    if (!tagged) continue;
+    if (!parseAlphaVersion(tagged)) continue;
+    if (min === null || compareSemver(tagged, min) < 0) {
+      min = tagged;
+    }
+  }
+  return min;
+}
+
+/**
+ * Detect a "clobbered" alpha branch manifest: the version we are about to
+ * publish is at or below the laggard `alpha` dist-tag already live on npm, on
+ * the SAME `X.Y.Z` base. This is the fingerprint of a dev→alpha squash that
+ * reset the branch manifest back to dev's placeholder without re-running the
+ * alpha bump, silently landing the release manifest at/below what is published.
+ *
+ * Nuances (do not "simplify" these away):
+ *   - Compares against `minTag`, the MINIMUM alpha tag across the publish set
+ *     (the laggard). This is what makes a partial-publish RESUME safe: with tags
+ *     {alpha.8, alpha.8, alpha.7} and manifest alpha.8, minTag is alpha.7 and
+ *     alpha.8 <= alpha.7 is false -> the resume is ALLOWED.
+ *   - Uses `<=`, refusing an EQUAL version too. If the alpha tag already points
+ *     AT the manifest version, that version is already released; a refresh
+ *     carrying new code MUST bump above it, else the per-package
+ *     "already published -> skip" path would silently drop the new code.
+ *   - Only compares when the `X.Y.Z` BASE matches. A real minor/major bump, or a
+ *     prerelease of a brand-new base, is legitimate and must never be blocked.
+ *   - If there is no min alpha tag (fresh package set), it is never a clobber.
+ *   - Non-alpha / unparseable inputs (e.g. a stable `X.Y.Z`) never flag.
+ */
+export function isAlphaClobber({ manifestVersion, minTag }) {
+  if (!manifestVersion || !minTag) return false;
+  const manifest = parseAlphaVersion(manifestVersion);
+  const laggard = parseAlphaVersion(minTag);
+  if (!manifest || !laggard) return false;
+  if (manifest.base !== laggard.base) return false;
+  return manifest.num <= laggard.num;
+}
+
+/**
  * True for repo-relative paths that the release BUILD regenerates and that must
  * never block the clean-tree gate:
  *   - `.cursor/**`             : transient debugging state

@@ -402,7 +402,9 @@ function setAtRuleBodyEvalPrelude(
   if (record.writeEvaluatedPrelude) {
     record.evalFrame.adopt(prelude);
     record.evalFrame.prelude = prelude;
-    record.evalFrame._valueOf = undefined;
+    if (record.evalFrame._valueOf !== undefined) {
+      record.evalFrame._valueOf = undefined;
+    }
   }
 }
 
@@ -575,13 +577,16 @@ function applyAtRuleBodyPublicResultState(
   if (record.evaluatedPrelude && record.evaluatedPrelude !== node.prelude) {
     node.adopt(record.evaluatedPrelude);
     node.prelude = record.evaluatedPrelude;
-    node._valueOf = undefined;
+    if (node._valueOf !== undefined) {
+      node._valueOf = undefined;
+    }
   }
   if (evaluatedBody && evaluatedBody.rules !== node.rules) {
     (node as { rules: Node[] }).rules = evaluatedBody.rules;
     for (let i = 0; i < node.rules.length; i++) {
       node.adopt(node.rules[i]!);
     }
+    node.refreshMergeOutputSurface();
   }
   if (record.visible === false) {
     node.removeFlag(F_VISIBLE);
@@ -635,7 +640,7 @@ export type AtRuleOptions = NodeOptions;
 export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   static override childKeys = ['name', 'prelude', 'rules'] as const;
 
-  _valueOf: string | undefined;
+  declare _valueOf: string | undefined;
   name: AtRuleParts['name'];
   prelude: AtRuleParts['prelude'];
   declare readonly rules: Node[];
@@ -916,7 +921,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     return {
       source: this,
       evalFrame,
-      ...(bodyRules ? { bodyRules } : undefined),
+      bodyRules,
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
       ...createAtRuleBodyEvalRecordState(context, {
@@ -1090,7 +1095,9 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     });
     const finish = (key: Node): AtRule => {
       node.name = String(key.valueOf());
-      node._valueOf = undefined;
+      if (node._valueOf !== undefined) {
+        node._valueOf = undefined;
+      }
       node.registrationPrepared = true;
       return node;
     };
@@ -1176,6 +1183,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
             if (resolvedRules !== rules) {
               node = ensureDerived();
               (node as { rules: Node[] }).rules = resolvedRules.rules;
+              node.refreshMergeOutputSurface();
               node.registrationPrepared = true;
             }
             this.restoreBodyParentage(node);
@@ -1194,6 +1202,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       if (preparedRules !== rules) {
         node = ensureDerived();
         (node as { rules: Node[] }).rules = preparedRules.rules;
+        node.refreshMergeOutputSurface();
         node.registrationPrepared = true;
       }
       this.restoreBodyParentage(node);

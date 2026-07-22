@@ -1,19 +1,38 @@
-export * from './lessTokens.js';
+import { run } from 'parseman';
+import type { Stylesheet } from '@jesscss/core/ast';
+import { lessAstGrammar } from './ast/grammar.js';
 
-// The legacy Chevrotain parser (lessRecursiveParser / lessParser / productions) is
-// no longer exported — the functional macro parser (LessParser / lessGrammar below)
-// IS the parser now. Dropping these re-exports lets the bundler tree-shake ~130 KB
-// of the old parser out of the shipped library. (The source files can be deleted
-// as a follow-up.)
+export class LessParseError extends SyntaxError {
+  readonly offset: number;
+  readonly expected: readonly string[];
 
-export { LessGrammar } from './builders.js';
+  constructor(message: string, offset: number, expected: readonly string[]) {
+    super(message);
+    this.name = 'LessParseError';
+    this.offset = offset;
+    this.expected = expected;
+  }
+}
 
-import { LessParser } from './functional-parser.js';
-export { LessParser };
-export { lessGrammar } from './grammar.js';
-export { parseLessFn, type LessFnParseResult } from './functional-parser.js';
-export { parseLessCst, parseLessDoc } from './cst.js';
-export type {
-  LessCstChild, LessCstError, LessCstLeaf, LessCstNode, LessCstParseResult, LessCstType
-} from './cst.js';
-export const Parser = LessParser;
+function isStylesheet(value: unknown): value is Stylesheet {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Stylesheet'
+    && 'children' in value
+    && Array.isArray(value.children);
+}
+
+/** Parse Less directly into the canonical AST v2 document. */
+export function parse(input: string): Stylesheet {
+  const result = run(lessAstGrammar.LessAstDocument, input, { trivia: lessAstGrammar.whitespace });
+  if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
+    const offset = result.ok
+      ? result.unconsumedFrom ?? result.span.end
+      : result.span.start;
+    const expected = result.expected;
+    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
+    throw new LessParseError(`Less parse did not produce a complete Stylesheet document at offset ${offset}.${detail}`, offset, expected);
+  }
+  return result.value;
+}

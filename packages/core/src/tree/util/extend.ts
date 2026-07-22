@@ -149,6 +149,17 @@ import { copySelectorForPlacement as copySelectorForExtend } from './selector-ut
 
 const { isArray } = Array;
 
+const EXTEND_PROFILE_COUNTERS_KEY = '__JESS_EXTEND_PROFILE_COUNTERS__';
+type ExtendProfileGlobals = typeof globalThis & {
+  [EXTEND_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+};
+const extendProfileCounters = (globalThis as ExtendProfileGlobals)[EXTEND_PROFILE_COUNTERS_KEY];
+const recordExtendProfile = extendProfileCounters
+  ? (event: string, amount = 1): void => {
+      extendProfileCounters[event] = (extendProfileCounters[event] ?? 0) + amount;
+    }
+  : undefined;
+
 /** Selector surface accepted by the extend matcher (node or parser-delivered list array). */
 type ExtendSelectorSurface = Selector | SelectorListItem[];
 
@@ -345,20 +356,48 @@ export function applyExtendsToSelector(
   };
   let selector = initialSelector;
   const originalSelector = initialSelector;
-  const originalSelectorValues = collectSelectorSubtreeValues(originalSelector);
-  const expandedAllExtends = expandExactSelectorListTargets(allExtends);
+  recordExtendProfile?.('defer.admissionCalls');
   const instructions = expandExactSelectorListTargets(extendsList);
-  const allExtendTuples = expandedAllExtends.map(inst => [
-    inst.target,
-    inst.extendWith,
-    inst.partial,
-    inst.extendRoot,
-    inst.extendNode
-  ] as [Selector, Selector, boolean, Rules | undefined, Node | undefined]);
-  // Index `allExtends` by simple-target value once per pass so chained-extend
-  // discovery visits only extends whose target can appear in a candidate,
-  // instead of re-scanning the whole list per applied extend (O(I²)→~O(I·k)).
-  const extendTargetIndex = buildExtendTargetIndex(allExtendTuples);
+  // Chained-extend discovery machinery (originalSelectorValues / expandedAllExtends /
+  // allExtendTuples / extendTargetIndex) is ONLY consulted AFTER an applied extend
+  // actually CHANGES the selector. On the overwhelmingly common no-match path (this
+  // function is called ~38k×/benchmark render, of which <0.2% change anything) building
+  // it is pure waste: a full subtree-value walk + list expansion + tuple map + index
+  // Map. Defer all of it behind a single memoized initializer so the no-change path
+  // pays nothing. Byte-identical: same values, computed on first use.
+  let chainMemo: {
+    originalSelectorValues: Set<string>;
+    expandedAllExtends: ExtendInstruction[];
+    allExtendTuples: Array<[Selector, Selector, boolean, Rules | undefined, Node | undefined]>;
+    extendTargetIndex: ReturnType<typeof buildExtendTargetIndex>;
+  } | undefined;
+  const chain = () => {
+    recordExtendProfile?.('defer.admissionItemsVisited');
+    if (!chainMemo) {
+      recordExtendProfile?.('defer.admittedCalls');
+      recordExtendProfile?.('defer.calls');
+      recordExtendProfile?.('defer.featureBearingContainers');
+      const expandedAllExtends = expandExactSelectorListTargets(allExtends);
+      const allExtendTuples = expandedAllExtends.map(inst => [
+        inst.target,
+        inst.extendWith,
+        inst.partial,
+        inst.extendRoot,
+        inst.extendNode
+      ] as [Selector, Selector, boolean, Rules | undefined, Node | undefined]);
+      chainMemo = {
+        originalSelectorValues: collectSelectorSubtreeValues(originalSelector),
+        expandedAllExtends,
+        allExtendTuples,
+        // Index `allExtends` by simple-target value once per pass so chained-extend
+        // discovery visits only extends whose target can appear in a candidate,
+        // instead of re-scanning the whole list per applied extend (O(I²)→~O(I·k)).
+        extendTargetIndex: buildExtendTargetIndex(allExtendTuples)
+      };
+      recordExtendProfile?.('defer.itemsVisited', chainMemo.originalSelectorValues.size);
+    }
+    return chainMemo;
+  };
   const queuedKeys = new Set(
     instructions.map(inst => `${inst.partial ? 1 : 0}|${inst.target.valueOf()}|${inst.extendWith.valueOf()}`)
   );
@@ -397,20 +436,21 @@ export function applyExtendsToSelector(
             const skipKeys = new Set(
               batchExtendWiths.map(batchExtendWith => `${target.valueOf()}|${batchExtendWith.valueOf()}`)
             );
+            const c = chain();
             const chained = findChainedExtendsWithSkips(
               selector,
-              allExtendTuples,
+              c.allExtendTuples,
               skipKeys,
               originalSelector,
-              originalSelectorValues,
-              extendTargetIndex
+              c.originalSelectorValues,
+              c.extendTargetIndex
             );
             for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
               const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
               if (queuedKeys.has(chainedKey)) {
                 continue;
               }
-              const matchingInstruction = expandedAllExtends.find(inst =>
+              const matchingInstruction = c.expandedAllExtends.find(inst =>
                 inst.partial === chainedPartial
                 && inst.target.valueOf() === chainedTarget.valueOf()
                 && inst.extendWith.valueOf() === chainedExtendWith.valueOf()
@@ -436,21 +476,22 @@ export function applyExtendsToSelector(
         if (afterValue !== beforeValue) {
           selector = result.value;
           instructions.splice(i, 1);
+          const c = chain();
           const chained = findChainedExtends(
             selector,
-            allExtendTuples,
+            c.allExtendTuples,
             target,
             extendWith,
             originalSelector,
-            originalSelectorValues,
-            extendTargetIndex
+            c.originalSelectorValues,
+            c.extendTargetIndex
           );
           for (const [chainedTarget, chainedExtendWith, chainedPartial] of chained) {
             const chainedKey = `${chainedPartial ? 1 : 0}|${chainedTarget.valueOf()}|${chainedExtendWith.valueOf()}`;
             if (queuedKeys.has(chainedKey)) {
               continue;
             }
-            const matchingInstruction = expandedAllExtends.find(inst =>
+            const matchingInstruction = c.expandedAllExtends.find(inst =>
               inst.partial === chainedPartial
               && inst.target.valueOf() === chainedTarget.valueOf()
               && inst.extendWith.valueOf() === chainedExtendWith.valueOf()

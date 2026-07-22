@@ -143,11 +143,12 @@ export interface LessOptions {
   functionMode?: FunctionMode;
 
   /**
-   * Guard-comparison dialect (verified vs Less 4.6.3 + Dart Sass):
+   * Guard-comparison compatibility rule for the shared evaluator (verified vs
+   * Less 4.6.3 + Dart Sass):
    * - 'less': Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
    * - 'sass': Dart Sass equality (unit-strict; quote-insensitive strings)
    * - 'exact': no coercion — same node type required
-   * @default 'less' (Less plugin) / 'sass' (SCSS plugin)
+   * @default 'less' when no compile/input configuration specifies a mode
    */
   equalityMode?: EqualityMode;
 

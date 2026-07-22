@@ -16,6 +16,8 @@ import {
 import { PseudoSelector } from '../selector-pseudo.js';
 import { applyExtendsToSelector, type ExtendInstruction } from './extend.js';
 import { findExtendableLocations } from './extend-helpers.js';
+import { isDisjoint, isSubsetOf } from './bitset.js';
+import { keySetOf, requiredKeySetOf, visibleKeySetOf } from './selector-analysis.js';
 import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
 import { N } from '../node-type.js';
@@ -29,6 +31,20 @@ type RootExtendInstruction = ExtendInstruction & {
   extendingRuleset?: Ruleset;
   fromReferenceScope: boolean;
 };
+
+const EXTEND_PROFILE_COUNTERS_KEY = '__JESS_EXTEND_PROFILE_COUNTERS__';
+type ExtendProfileGlobals = typeof globalThis & {
+  [EXTEND_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+};
+const extendProfileCounters = (globalThis as ExtendProfileGlobals)[EXTEND_PROFILE_COUNTERS_KEY];
+const recordExtendProfile = extendProfileCounters
+  ? (event: string, amount = 1): void => {
+      extendProfileCounters[event] = (extendProfileCounters[event] ?? 0) + amount;
+    }
+  : undefined;
+const extendProfileNow = extendProfileCounters
+  ? globalThis.performance?.now.bind(globalThis.performance)
+  : undefined;
 
 function isSelectorValue(value: unknown): value is Selector {
   return isNode(value, N.Selector);
@@ -356,32 +372,117 @@ function wouldInstructionChangeSel(
   return !!classifyInstructionMatch(selector, instruction, parentSelector);
 }
 
+/**
+ * Cheap, conservative keyset pre-reject. Mirrors the guaranteed-false gate the
+ * match core already trusts (`tryExtendSelector`: required keys of the extend
+ * target must be a subset of the candidate's keys), but hoisted ahead of the
+ * whole speculative `classifyExtendMatch` / `applyExtendsToSelector` machinery so
+ * the overwhelming majority of (selector × extend) probes that can never match
+ * skip that setup entirely.
+ *
+ * The "available" key-space is the candidate selector's own keys UNIONED with its
+ * parent's keys — the only sources a match (including `&`-resolved nested matches)
+ * can draw simple selectors from. A required SIMPLE-SELECTOR key absent from that
+ * union means the target cannot appear in the effective selector, so no match is
+ * possible.
+ *
+ * Combinator keys (` `, `>`, `+`, `~`, `|`) are deliberately excluded from the
+ * "needed" set: nesting composition INTRODUCES a descendant/child combinator
+ * between parent and child at compose-time, so a target like `.a.a .a` legitimately
+ * matches a `.a` child under a `.a.a` parent even though neither selector carries
+ * the ` ` combinator as one of its own keys. `requiredKeySet ∩ visibleKeySet` drops
+ * exactly those combinator bits (visibleKeySet never includes combinators) while
+ * keeping the mandatory simple selectors, and it also collapses to empty for
+ * `:is(...)`-style OR targets (requiredKeySet is already empty there), so the gate
+ * stays conservative — it can only reject when a required simple can never appear.
+ * Returns `true` when a match remains possible (or when operands lack a shared
+ * key-set library and no cheap decision can be made).
+ */
+function targetCanPossiblyMatch(
+  selector: Selector,
+  target: Selector,
+  partial: boolean,
+  parentSelector?: Selector
+): boolean {
+  recordExtendProfile?.('filter.admissionCalls');
+  const library = target.keySetLibrary;
+  if (!library || selector.keySetLibrary !== library) {
+    // No shared key-set library: the gate cannot cheaply decide, so it admits
+    // (conservative). No bitset allocated on this branch.
+    recordExtendProfile?.('filter.admittedCalls');
+    return true;
+  }
+  const usableParent = parentSelector
+    && !(parentSelector instanceof Nil)
+    && parentSelector.keySetLibrary === library
+    ? parentSelector
+    : undefined;
+  let available = keySetOf(selector);
+  // Bounded per-probe key-set work; each `.or`/`.and` allocates one bitset.
+  recordExtendProfile?.('filter.admissionItemsVisited');
+  let allocations = 0;
+  if (usableParent) {
+    available = available.or(keySetOf(usableParent));
+    allocations += 1;
+  }
+  let admitted: boolean;
+  if (partial) {
+    admitted = !isDisjoint(visibleKeySetOf(target), available);
+  } else {
+    const neededSimples = requiredKeySetOf(target).and(visibleKeySetOf(target));
+    allocations += 1;
+    admitted = isSubsetOf(neededSimples, available);
+  }
+  if (admitted) {
+    recordExtendProfile?.('filter.admittedCalls');
+  } else {
+    // Rejected probe: it bears no feature, yet the conservative gate still paid
+    // for its bitset allocations. This is the no-feature allocation the precise
+    // zero-alloc model forbids and the conservative-filter contract admits.
+    recordExtendProfile?.('filter.noFeatureMisses');
+    recordExtendProfile?.('filter.noFeatureAllocations', allocations);
+  }
+  return admitted;
+}
+
 function classifyInstructionMatch(
   selector: Selector,
   instruction: ExtendInstruction,
   parentSelector?: Selector
 ): MatchResult {
   const { target, extendWith, partial } = instruction;
-  if (canUseWalkAndConsume(selector, target, !!parentSelector)) {
-    const classified = classifyExtendMatch(selector, target, extendWith, partial, parentSelector);
-    if (classified) {
-      return classified;
+  // Conservative keyset gate encloses the whole speculative classify/apply body,
+  // so the expensive fallback and walk run ONLY for probes the gate admits.
+  if (targetCanPossiblyMatch(selector, target, partial, parentSelector)) {
+    recordExtendProfile?.('filter.calls');
+    if (canUseWalkAndConsume(selector, target, !!parentSelector)) {
+      const classified = classifyExtendMatch(selector, target, extendWith, partial, parentSelector);
+      if (classified) {
+        recordExtendProfile?.('filter.featureBearingCalls');
+        return classified;
+      }
+      if (
+        parentSelector
+        && !partial
+        && selector.hoistToRoot !== true
+        && selector.valueOf() === target.valueOf()
+      ) {
+        // Exact nested matches like `.dd` under `.aa` must not fall back to the
+        // parentless matcher, which would incorrectly treat the local fragment
+        // as the full selector.
+        return false;
+      }
     }
-    if (
-      parentSelector
-      && !partial
-      && selector.hoistToRoot !== true
-      && selector.valueOf() === target.valueOf()
-    ) {
-      // Exact nested matches like `.dd` under `.aa` must not fall back to the
-      // parentless matcher, which would incorrectly treat the local fragment
-      // as the full selector.
-      return false;
+    // Fallback for value that do not need parent-context matching.
+    const after = applyExtendsToSelector(selector, [instruction]);
+    const localMatch = after.valueOf() !== selector.valueOf();
+    if (localMatch) {
+      recordExtendProfile?.('filter.featureBearingCalls');
+      return 'local';
     }
+    return false;
   }
-  // Fallback for value that do not need parent-context matching.
-  const after = applyExtendsToSelector(selector, [instruction]);
-  return after.valueOf() !== selector.valueOf() ? 'local' : false;
+  return false;
 }
 
 interface NonPartialAnalysis {
@@ -436,6 +537,9 @@ export class ExtendRootRegistry {
   private layerName = new WeakMap<Rules, string>();
   private isProtected = new WeakMap<Rules, boolean>();
   private isCompose = new WeakMap<Rules, boolean>();
+  // TODO(dev): consume a namespace as a one-boundary filter during extend
+  // lookup. `library|.box` selects library, then `.box` searches its reachable
+  // mutable descendants; nested aliases stay local to the nested module.
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
   private allRoots = new Set<Rules>();
@@ -637,6 +741,7 @@ function isInstructionVisibleForRoot(
 }
 
 export function processExtends(context: Context): void {
+  const extendPassStart = extendProfileNow ? extendProfileNow() : 0;
   // Ruleset registration only happens during a root's registration prep, which
   // runs on its FIRST eval. A re-eval of an already-prepared root (render's
   // evalForRender path) registers nothing, so the per-root set is empty. Without
@@ -1172,5 +1277,9 @@ export function processExtends(context: Context): void {
   } finally {
     endExtendMatchPass();
     rulesetsByRoot.clear();
+    if (extendProfileNow) {
+      recordExtendProfile?.('processExtends.calls');
+      recordExtendProfile?.('processExtends.ms', extendProfileNow() - extendPassStart);
+    }
   }
 }

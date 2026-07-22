@@ -3,6 +3,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
+import { stagedAddedLines, stagedLintMessages } from './staged-lint.mjs';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
@@ -16,6 +17,7 @@ const BASELINE_PACKAGES = new Set([
   'packages/less-parser',
   'packages/css-parser',
   'packages/jess',
+  'packages/jess-plugin-less',
   'packages/jess-plugin-less-compat'
 ]);
 
@@ -25,6 +27,23 @@ const NON_SOURCE_PATH_PATTERNS = [
   /\/dist\//,
   /\/coverage\//
 ];
+
+function currentBranchName() {
+  try {
+    return execSync('git branch --show-current', {
+      cwd: ROOT,
+      encoding: 'utf8'
+    }).trim();
+  } catch {
+    return '';
+  }
+}
+
+function aggressiveReviewMode() {
+  return MODE === 'staged' && currentBranchName() === 'alpha'
+    ? 'release'
+    : MODE;
+}
 
 function run(command, args, packageDir, options = {}) {
   const { required = SHOULD_BLOCK } = options;
@@ -230,6 +249,56 @@ function runLintForFiles(packageDir, files) {
   run('pnpm', ['exec', 'eslint', ...files], packageDir);
 }
 
+function stagedHunkLines(file) {
+  return stagedAddedLines(execSync(`git diff --cached --unified=0 -- ${JSON.stringify(file)}`, {
+    cwd: ROOT,
+    encoding: 'utf8'
+  }));
+}
+
+function runStagedLintForFiles(packageDir, files) {
+  if (files.length === 0) {
+    console.log(`- skip lint for ${packageDir} (no staged JS/TS files)`);
+    return;
+  }
+  const rendered = `pnpm exec eslint --format json ${files.join(' ')}`;
+  console.log(`\n$ ${rendered}`);
+  const result = spawnSync('pnpm', ['exec', 'eslint', '--format', 'json', ...files], {
+    cwd: ROOT,
+    encoding: 'utf8'
+  });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  if (result.status === 0) {
+    return;
+  }
+  let reports;
+  try {
+    reports = JSON.parse(stdout);
+  } catch {
+    // A broken ESLint invocation/config must still block; only normal JSON
+    // diagnostics are eligible for staged-line filtering.
+    failures.push({ packageDir, command: rendered, status: result.status ?? 1, output: [stdout, stderr].filter(Boolean).join('\n').trim() });
+    process.exit(result.status ?? 1);
+  }
+  const actionable = reports.flatMap(report => {
+    const relative = path.relative(ROOT, report.filePath).split(path.sep).join('/');
+    return stagedLintMessages(report.messages ?? [], stagedHunkLines(relative)).map(message => ({
+      filePath: relative,
+      ...message
+    }));
+  });
+  if (actionable.length === 0) {
+    console.log('- no lint violations on staged added/modified lines');
+    return;
+  }
+  for (const message of actionable) {
+    console.error(`${message.filePath}:${message.line}:${message.column} ${message.message}${message.ruleId ? ` (${message.ruleId})` : ''}`);
+  }
+  failures.push({ packageDir, command: rendered, status: result.status ?? 1, output: JSON.stringify(actionable) });
+  process.exit(result.status ?? 1);
+}
+
 function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyRun) {
   if (packageDir !== 'packages/core') {
     return;
@@ -254,6 +323,15 @@ function runVerifyBaseline() {
   run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
 }
 
+function runAggressiveCuttingReview({ mode, skipExecutableEvidence = false } = {}) {
+  console.log('\n==> Running verify:aggressive-cutting-review (hot-path cost/admission contracts)');
+  const args = ['run', 'verify:aggressive-cutting-review', '--', `--mode=${mode}`];
+  if (skipExecutableEvidence) {
+    args.push('--skip-executable-evidence');
+  }
+  run('pnpm', args, undefined, { required: true });
+}
+
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
 const files = filterRelevantFiles(rawFiles);
 if (files.length === 0) {
@@ -273,6 +351,15 @@ if (MODE === 'upstream') {
     baselineRan = true;
   }
 }
+
+// Staged pre-commit checks intentionally avoid live profile evidence because
+// generated package output may still belong to the previous source revision.
+// The upstream/pre-push path runs the baseline build above before collecting
+// executable evidence.
+runAggressiveCuttingReview({
+  mode: aggressiveReviewMode(),
+  skipExecutableEvidence: MODE !== 'upstream'
+});
 
 if (changedPackages.length === 0) {
   console.log(MODE === 'upstream'
@@ -305,12 +392,7 @@ for (const packageDir of changedPackages) {
     runBuildForPackage(packageDir, scripts);
     runLintForFiles(packageDir, lintableFiles);
   } else {
-    const filesForPackage = stagedLintableFiles(files, packageDir);
-    if (filesForPackage.length === 0) {
-      console.log(`- skip lint for ${packageDir} (no staged JS/TS files)`);
-      continue;
-    }
-    run('pnpm', ['exec', 'eslint', ...filesForPackage], packageDir);
+    runStagedLintForFiles(packageDir, stagedLintableFiles(files, packageDir));
   }
 }
 

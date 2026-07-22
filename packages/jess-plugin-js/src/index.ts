@@ -9,6 +9,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { decodeBridgeValue, encodeBridgeArgs } from './bridge.js';
 
+/**
+ * Child-process stdio streams are typed as bare `Writable`/`Readable`, which do
+ * not declare `unref`, but the underlying pipe sockets expose it at runtime.
+ * The optional structural member lets any stream be passed without an unsafe
+ * cast; the runtime `?.` guard covers streams that genuinely lack the method.
+ */
+const unrefStream = (stream: unknown): void => {
+  if (
+    typeof stream === 'object'
+    && stream !== null
+    && 'unref' in stream
+    && typeof stream.unref === 'function'
+  ) {
+    stream.unref();
+  }
+};
+
 export type JavaScriptSandboxConfig = {
   allowHttp?: boolean;
   allowNetHosts?: string[];
@@ -407,9 +424,9 @@ export class JsPlugin extends AbstractPlugin {
     );
     this.worker = child;
     child.unref();
-    child.stdin.unref?.();
-    child.stdout.unref?.();
-    child.stderr.unref?.();
+    unrefStream(child.stdin);
+    unrefStream(child.stdout);
+    unrefStream(child.stderr);
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
     child.stdout.on('data', chunk => this.onWorkerStdout(chunk));
@@ -650,7 +667,7 @@ export class JsPlugin extends AbstractPlugin {
    * @deprecated Less `@plugin` is deprecated. Prefer `@-from` for
    * ESM-style script imports or `@-use` for Sass-module-style namespace imports.
    */
-  async importLessPlugin(absoluteFilePath: string): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
+  async importLessPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
     const ext = path.extname(absoluteFilePath);
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import Less plugin "${absoluteFilePath}"`);
@@ -658,7 +675,7 @@ export class JsPlugin extends AbstractPlugin {
     this.assertAllowedPath(absoluteFilePath);
     await this.ensureRuntime();
     const modulePath = path.resolve(absoluteFilePath);
-    const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath });
+    const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath, options });
     if (!loadResult.ok) {
       throw new Error(loadResult.error);
     }
@@ -668,6 +685,7 @@ export class JsPlugin extends AbstractPlugin {
         const invokeResult = await this.callWorker({
           type: 'invokeLessPluginFunction',
           modulePath,
+          options,
           functionName,
           args: encodeBridgeArgs(args)
         });
@@ -678,6 +696,11 @@ export class JsPlugin extends AbstractPlugin {
       };
     }
     return { functions };
+  }
+
+  /** Context-facing executable-plugin capability used by the direct AST path. */
+  async importPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
+    return this.importLessPlugin(absoluteFilePath, options);
   }
 }
 

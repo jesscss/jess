@@ -1,6 +1,6 @@
 # `@jesscss/language-service-tests`
 
-Golden/parity-style tests for the Jess language service engine.
+Expected-output/parity-style tests for the Jess language service engine.
 
 ## Goal
 

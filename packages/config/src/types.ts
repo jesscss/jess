@@ -9,15 +9,17 @@ export type MathMode = 'always' | 'parens-division' | 'parens' | 'strict';
 export type UnitMode = 'loose' | 'preserve' | 'strict';
 
 /**
- * Function-call resolution modes — mirrors {@link UnitMode}. Governs an optional
- * (global) function call that matched a registered function but couldn't be
- * evaluated: `preserve` renders it as-is (+ warning), `error` throws.
+ * Function-call resolution modes — compiler input to the shared evaluator.
+ * Governs an optional (global) function call that matched a registered function
+ * but couldn't be evaluated: `preserve` renders it as-is (+ warning), `error`
+ * throws.
  */
 export type FunctionMode = 'preserve' | 'error';
 
 /**
- * Equality dialects for guard comparisons — named by dialect (Less 4.x and Sass
- * diverge in opposite directions), not by strictness:
+ * Equality compatibility modes for the shared guard evaluator. The names retain
+ * their source-compatibility meaning (Less 4.x and Sass diverge in opposite
+ * directions), not separate runtime semantics:
  * - `less`: Less 4.x equality (numeric coercion; quoted vs unquoted distinct)
  * - `sass`: Dart Sass equality (unit-strict; quote-insensitive strings)
  * - `exact`: no coercion — operands must be the same node type

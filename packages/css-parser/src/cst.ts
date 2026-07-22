@@ -76,14 +76,11 @@ const COLLAPSIBLE_GRAMMAR_TYPES = new Set([
   'InterpolatedSelector'
 ]);
 
-function pascalCaseRuleName(type: string): string {
-  return type
-    .replace(/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g, (_, _sep: string, char: string) => char.toUpperCase())
-    .replace(/[^a-zA-Z0-9]/g, '');
-}
-
 function publicTypeName(grammarType: string): CssCstType {
-  return TYPE_NAMES[grammarType] ?? pascalCaseRuleName(grammarType);
+  // Grammar node names are already public PascalCase identifiers. Exceptional
+  // names live in the explicit contract table above; do not run a second
+  // handwritten recognizer over a grammar name at CST construction time.
+  return TYPE_NAMES[grammarType] ?? grammarType;
 }
 
 function isRunnable(value: unknown): value is Runnable {
@@ -115,14 +112,22 @@ export const cssCstBuildHost: BuildHost = (
   rawChildren: ReadonlyArray<unknown>,
   _triviaLog: readonly number[],
   state: unknown
-): CssCstNode => ({
-  _tag: 'node',
-  type: publicTypeName(grammarType),
-  grammarType,
-  span: { start: span.start, end: span.end },
-  state: state ?? null,
-  children: rawChildren.filter(isCssCstChild)
-});
+): CssCstNode => {
+  // The unified `numeric` rule (noTrivia numPart + optional unit) surfaces in the
+  // CST-public shape as the split rules did: a Dimension when the unit leaf is
+  // present (2 leaves), otherwise a bare Num. Keeps CST type/grammarType stable.
+  const type = grammarType === 'Numeric'
+    ? (rawChildren.length > 1 ? 'Dimension' : 'Num')
+    : grammarType;
+  return {
+    _tag: 'node',
+    type: publicTypeName(type),
+    grammarType: type,
+    span: { start: span.start, end: span.end },
+    state: state ?? null,
+    children: rawChildren.filter(isCssCstChild)
+  };
+};
 
 function emptyStyleSheet(): CssCstNode {
   return {

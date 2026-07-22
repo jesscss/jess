@@ -1,230 +1,1995 @@
-> ⚠️ **The active cleanup queue is now [`CORE-CLEANUP.md`](./CORE-CLEANUP.md).** The
-> per-focus trackers this doc references (SINGLE_FRAME_PLAN, NODE-REWRITE-TRACKER,
-> PERFORMANCE-HANDOFF, BINDING-LOOKUP-REMAINING) were consolidated there; their history
-> lives in git history. This doc is kept for its routing/guardrail context.
-
 # Core Architecture Handoff
 
-This is the stable router for Jess core architecture work. Keep it short: it
-tells the next agent where to choose a focus, how to complete a pass, and where
-progress is tracked. Do not rewrite this file just to switch focus; set the
-chat/Guildhall goal from `archive/FOCII.md` instead.
+> **Architecture correction — supersedes every prior “private direct-AST grammar”,
+> “development-only AST seam”, or “wire it later” claim in this document and
+> linked future plans. Those claims were wrong/hallucinated migration staging,
+> not an approved architecture. AST v2 and the deletion work are the public
+> architecture: each dialect package's primary `parse()` operation must run
+> Parseman reductions directly to canonical `Stylesheet`. CST APIs remain only for
+> explicit language-service/document use; no CST-to-AST bridge, host, or
+> compatibility route is an acceptable interim production design.
 
-## Focus Router
+## Current target
 
-Choose exactly one active focus before editing. If the user names a focus,
-follow that. If the request is ambiguous, infer from the branch and latest user
-instruction, then record the chosen focus in the final response instead of
-changing this router. Use `archive/FOCII.md` for the goal prompt, boundaries, stop rule,
-and required docs.
+Keep AST v2 as the canonical public representation. Parseman grammar reductions
+create exact `Stylesheet` data directly through each dialect's public `parse()`
+operation; core has no parser construction host, action registry, bridge,
+source reparse, or compatibility path.
 
-- **Binding / lookup:** use `CORE-CLEANUP.md` for the active queue,
-  remaining scope, progress notes, and completion gates. This stream owns registryless
-  lookup, direct crawl/frame lookup, reference handles, live/current binding,
-  fallback bridge deletion, and lookup profiles.
-- **Serialization / `writeSyntax`:** use `CORE-CLEANUP.md` for the
-  active node-family queue, historical row status, serialization contracts, and
-  completion gates. This stream owns direct syntax/render emission, cold public
-  string wrappers, render readback removal, and node-family row closure.
-- **Performance evidence:** use `CORE-CLEANUP.md` for benchmark
-  protocol, profile history, rejected experiments, and speed claims.
-- **Patch-shape review:** use `AGGRESSIVE-CUTTING-REVIEW.md` before changing
-  AST, eval/render, lookup, traversal, copying, inheritance, output writer,
-  source/root metadata, or this router.
+### Aggressive-cutting note — typed Less import query tail
 
-## Shared Direction
+`@import url("…") (min-width: @var)` now carries the existing typed
+`Block(Operation(':', …), delimiter: 'paren')` tail from the Less grammar. The serializer reuses
+its existing query-prelude byte emitter at the three import-tail boundaries
+(planner request, loader request, and CSS-terminal output), so it preserves
+query delimiters while evaluating the variable. No node, array, traversal,
+resolver, Context capability, or public API is added; ordinary opaque/import
+interpolation tails retain their existing byte path. This is behavior evidence,
+not a performance claim; parser/public-render tests cover the new fact.
 
-The fastest credible runtime path remains:
+### Active delivery order
 
-- one canonical source tree;
-- direct eval/render-to-string for normal output;
-- live lookup/binding/placement state instead of routine copied eval trees;
-- cold materialization only for public APIs or real semantic ownership
-  boundaries;
-- fewer hot-path objects, arrays, recursive walks, helper calls, branch ladders,
-  promise/generator states, and metadata mutations.
+The immediate delivery target is a feature-complete **Less alpha** on that
+public architecture. Do not spend the active implementation capacity on new
+SCSS or Jess syntax/evaluator slices while the public Less route still lacks
+required execution semantics. The other direct parsers remain canonical work,
+but Less import execution, evaluator wiring, retained Context/plugin dispatch,
+and corpus parity come first; resume the remaining dialect integration only
+after those Less-alpha gates are genuinely green.
 
-Less is the optimizing path. Preserve SCSS-enabling seams only when they are
-concrete and cheap or isolated behind cold extension boundaries.
+### Less corpus truthfulness gate
 
-Do not preserve an unreleased or self-invented public-looking method for
-compatibility alone. If repo usage does not need it and the user has not
-approved it as API, delete or reshape it.
+`packages/jess/test/less/all-less.test.ts` currently contains 30 runnable
+expected-failure markers. They remain complete, visible compatibility evidence:
+the harness passes when a named fixture fails, so none is passing-parity proof.
+The owner decision for the first alpha is to classify—not drain or hide—them.
+The maintained symptom/scope/follow-up inventory and alpha safety gates are in
+[`../../less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md), and the
+release notes must link it. The six groups are callable/reference and scope
+semantics (9); imports/conditional at-rule execution (6); direct
+parser/evaluator correctness (7); F5 lazy color calls (2); URL options (2);
+and source-map artifacts (4). These add to 30. In particular, a missing mixin remains an error; only an
+ordinary function call with an optional function reference may fall back to a
+CSS `Call` when lookup misses.
 
-## Completion Rules
+## Active orchestrator goal
 
-When the user says `continue`, `do all queue items`, `complete the queue`, or
-`full queue pass`, run an autonomous focus pass:
+Drive the public AST-v2 cutover, Less alpha readiness, Parseman release,
+performance recovery, and Jess alpha preparation to verified completion. This
+section is the authoritative full-scope companion to the compact task goal.
 
-1. Snapshot `git status --short --branch`.
-2. Read this router, `archive/FOCII.md`, and the chosen focus tracker.
-3. State one hypothesis before editing.
-4. Work through the active queue as a swath, not one micro-edit.
-5. Keep moving until the queue is drained, the next item has materially
-   different semantics, the next step needs user/product judgment, evidence
-   rejects the approach, or a failing test/debugging thread needs focused
-   investigation.
-6. Use focused tests while iterating; run full gates at the coherent batch
-   boundary.
-7. Update the chosen focus tracker with only facts that change the next
-   worker's decisions.
-8. Update `Aggressive Cutting Self-Prosecution` below for the latest pass.
-9. Commit and push the batch with `--no-verify` when the pass is complete.
+- All public CSS, Less, SCSS, and Jess `parse()` routes must reduce Parseman
+  grammar directly to canonical AST-v2 `Stylesheet`; `Reference` is the typed,
+  recursive public reference chain. No bridge, builder/parse host, action
+  registry, source reparse, scanner/regex recognizer, compatibility parser, or
+  fallback/shim may return.
+- Less is the immediate feature-completeness priority. Close real parser,
+  evaluator, import, plugin, and corpus gaps through the public route; prove
+  the first external prerelease as exactly `less@5.0.0-alpha.1`, including
+  built-artifact `lessc` and clean packed-install tests.
+- Context remains the one render/session/cache/diagnostic/plugin/import
+  coordinator. Retain its plugin-based source, parser, module, path, and
+  import dispatch topology while changing carried documents to `Stylesheet`;
+  do not replace it with a second loader or resolver.
+- Finish public Jess syntax integration through `jess-parser` and
+  `plugin-jess`. CSS is a Context-parsed/inlined document route, not a Jess CSS
+  compiler merely because a CSS plugin exists. Delete only machinery proven
+  unreachable after direct-route coverage; do not manufacture deletion work.
+- Prepare and release compatible Parseman `0.28` from its release branch only
+  after review, tests, public docs/changelog, and coverage/trace API proof.
+  Normal compiler/plugin/CLI parses never enable coverage or trace. Replace
+  local Parseman links only with that published version and prove clean install.
+- Treat current direct-Less parsing performance as a release concern. Establish
+  reproducible generated-bundle/hash baselines and investigate AST allocation,
+  grammar choice/backtracking, metadata/trivia/provenance, emitted
+  `composeLeaf()` shape, and historical feature equivalence independently.
+  Optimize only with semantic/output proof and matched parse plus end-to-end
+  measurements; never restore legacy architecture for speed.
+- Prepare `jess@2.0.0-alpha.9`: identify its actual publishable runtime closure
+  (including the correct CSS and Jess plugin roles), remove runtime `link:` and
+  unnecessary internal dependencies, build and pack the candidate, and run
+  parser/plugin/Compiler/rollup, Less-alpha, package/API, cutting-review,
+  `lessc`, and clean-consumer gates. Validate final `dev`, prepare
+  owner-reviewed release notes, then squash-merge it onto `alpha` for the
+  release cut; do not ordinary-merge/rebase shared alpha history or publish
+  before every gate passes.
 
-A queue item must be a whole task with its own proof surface. It may contain
-several sub-tasks, helper deletions, rejected cuts, and tests. Do not create or
-mark complete one-line queue items. If an active queue item remains unfinished
-at wrap-up, record in the focus tracker and final response which item remains,
-what blocked immediate continuation, and why stopping was necessary.
+## Router
 
-Each active focus tracker should keep at least 15 unchecked sizable tasks
-available unless that focus is genuinely within 15 tasks of completion.
-Reseeding the next queue is closeout work, not a queue item. Completed history
-belongs in git or `CORE-CLEANUP.md`, not in this router.
+| Work | Read first |
+| --- | --- |
+| Direct parser AST construction and legacy-builder deletion | [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) |
+| Parser recognition, interpolation, and scanner cleanup | [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) |
+| Feature/eval closure | [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) |
+| Eval/render allocation, lookup, and traversal cuts | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) |
+| Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
+| Owner semantic/architecture questions and rulings | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) — the canonical OPEN/SETTLED decision ledger |
 
-Use sub-agents when available for disjoint evidence or implementation slices.
-Good assignments include one node-family row, one lookup family, focused test
-surface discovery, profile/call-stack audits, or review against the aggressive
-cutting rules. Workers must not make overlapping edits, revert unrelated work,
-commit independently, or change the selected focus. The main agent owns
-integration, verification, docs, commit, push, and continuation.
+The detailed future plans remain active for their grammar, feature/eval,
+scanner-cleanup, and performance content. Their former bridge/host sections are
+historical evidence only.
 
-## Gate Rules
+## Non-negotiable rules
 
-Always run the smallest relevant test first. Before commit, run:
+- Grammar owns recognition and construction. Do not add a parser host, action
+  registry, bridge, compatibility alias, source reparse, or fallback path.
+- Parser recognition uses Parseman grammar combinators only. Imports and
+  interpolation are typed first-parse facts.
+- Preserve one canonical tree; do not normalize cloning, materialization,
+  rediscovery, or error allocation in hot paths.
+- Public operations use stable names such as `parse`, `build`, and `render`.
 
-```sh
-git diff --check
-pnpm run verify:aggressive-cutting-review
-```
+## Settled delimiter-container model
 
-Then run the chosen focus gates from `CORE-CLEANUP.md`. Use its benchmark
-protocol before making any speed claim. Use
-`pnpm run verify:baseline -- --changed` when the touched area needs a broader
-fixture gate. The current hook path has previously looped, so commit and push
-with `--no-verify` after the explicit gates pass.
+AST-v2 uses one `Block` value wrapper for delimiter-bearing values. `Block`
+stores `inner`, `delimiter: 'paren' | 'square'`, and the existing optional
+`escaped` fact for Less `~(...)`. It is deliberately transparent to typed
+evaluation, participates in Less math-mode evaluation when the delimiter is
+`paren`, and renders square-delimited values as authored bracketed lists. There
+is no separate `Bracket` node and no `List.bracketed` field.
 
-## Current State — the single-eval-emit cutover
+Where the grammar emits a public syntax `List`, it and the materialized value
+`List` share the canonical payload shape: `value` plus a separator fact
+(`',' | ' ' | '/' | 'undecided'`). They never expose the former
+`items`/`separators` pair or recover a separator from joined bytes. Ordinary
+adjacent declaration/value terms are instead the raw recursive `ValueSlot`
+array itself; there is no `SpacedValue` or `List(sep: ' ')` wrapper for that
+case. Parsers may attach the exact authored boundary runs—spaces, comments,
+line breaks, and indentation—to that array in the out-of-band provenance table,
+so the semantic array stays plain while serialization remains trivia-aware:
+comments and authored line breaks survive, while the renderer may normalize
+continuation indentation to the surrounding output depth.
+`SpacedValue` remains only where a non-value/prelude compatibility shape still
+has an independent semantic reason to exist.
 
-The core-architecture work is mid **single-eval-emit cutover**: collapse
-eval→output-tree→visitor→serialize into one downward spine (`emit-walk.ts`),
-folding each node shape off the eval path until the monolith can be deleted.
+The legacy tree proves the same delimiter fact: its `Paren` carries
+`delimiter: 'paren' | 'square'`, and Sass list functions preserve/read it for
+`is-bracketed`, `append`, `join`, and `set-nth`. AST-v2 now carries that fact in
+the canonical `Block` wrapper under `@jesscss/core/ast`; the root package does
+not re-export it under the colliding legacy-tree name. Curly statement/ruleset
+bodies remain outside this `ValueNode` design.
 
-Live boards (kept current — read these first, not this router, for what's landed
-and what's in flight):
+## Completion gates
 
-- **`CUTOVER-STATUS.md`** — compact at-a-glance board: what's landed on the spine
-  (extend modes, mixin surface-sink, `@layer`/`@scope`, conditional/scope-mutating
-  decls, root-level calls, …), what's in flight, what's gated.
-- **`CUTOVER-CHECKLIST.md`** — the executable phased plan (P0–P5) + the HARD RULES
-  every cutover agent works under (drive to the target, no permanent eval fallback).
-- **`UNIFIED-EVAL-EMIT-DESIGN.md`** — the settled architecture spec both boards
-  point to (one pass, live-frame threading, extend PLAN/SOLVE/EMIT, flag-walk
-  endgame). This is the SPEC; the current eval code is what's being torn out.
+Run focused parser/core tests first. Run the parser-runtime boundary verifier
+when recognition changes. For eval/render/lookup/traversal/copying changes, run
+`pnpm run verify:aggressive-cutting-review` before commit. Final integration
+requires fresh builds, core tests, the Jess AST-v2 production-route ratchet,
+and the Less corpus.
 
-Other active docs in this dir:
+### Current Less-alpha gate status (2026-07-21; public route and F5 gate green)
 
-- **`CORE-CLEANUP.md`** — the single live @jesscss/core cleanup queue (binding/lookup,
-  serialization, node field budgets, perf evidence). Focus router above points here.
-- **`AGGRESSIVE-CUTTING-REVIEW.md`** — the patch-shape refusal checklist; run before
-  committing changes to AST/eval/render/lookup/traversal/copy/output/metadata.
-- **`STRINGS-OVER-NODES.md`** — active reference (producer flips still pending).
-- **`ASSIGNABLE-CONTROL-NODES-PLAN.md`** — queued future feature track.
+The public Less route reaches canonical AST-v2 evaluation and serialization for
+direct and imported documents: the Less plugin calls the public direct parser,
+Context carries its `Stylesheet`, parser/source identity, typed builtin
+evaluator, and resolved dialect options, and Jess serializes that document
+without a tree bridge or copied execution-option bag. `pnpm run verify:less-alpha`
+passes the current release-shaped checks: package exports, public API (8/8),
+path-resolution (13/13), Less unit corpus (77 runnable, including two
+intentionally marked F5 semantic boundaries), and Less config corpus (29/29
+harness-green). The focused F5 test
+(`pnpm --filter jess test -- function-error-public-semantics.test.ts --run
+--globals`) is 17/17: CSS-shaped three-/four-slot Less `rgb`/`rgba`/`hsl`/`hsla`
+calls remain byte-faithful and do not dispatch installed native functions, while
+Less one-/two-slot overloads dispatch normally and malformed arities use the
+evaluator's `functionMode` boundary. The corpus's marked expected-failure cases
+remain known Less-parity limitations, not release-gate failures. The Less test
+harness loads the macro-compiled public parser artifact, not Parseman grammar
+source, and the Less-alpha command builds that parser/plugin pair before
+running integration tests.
+
+The old `spine-production-ratchet.test.ts` was removed from the gate because it
+asserted occupancy of the deleted public path's legacy tree counter; 121 of its
+139 cases failed solely because AST-v2 rendering correctly never entered that
+counter. `ast-v2-production-ratchet.test.ts` is the replacement production
+gate: it proves canonical `Stylesheet` ownership, direct Less evaluation,
+Context/plugin import loading, and absence of legacy output-tree materialization.
+
+Built-artifact public-route instrumentation is also decisive: a direct Less
+`Compiler.renderToResult(...)` reads or writes none of Context's legacy
+`root`, `treeRoot`, `rulesContext`, or `evaldTrees` fields, and invokes neither
+the constructed legacy extend registry nor selector-bit library. AST
+serialization reads only the active document source identity for diagnostics;
+there is no tree conversion or tree evaluation. Keep Context's parser/import
+dispatcher intact. The next removal sequence is to extract that source/options
+carrier as `DocumentContext`, then lazily isolate the legacy tree execution
+state so direct AST renders no longer construct it.
+
+The canonical separator path is public-route green: direct AST grammars emit a
+typed separator-aware `List` (`sep: ',' | ' ' | '/' | 'undecided'`) rather than
+inserting a `Keyword('/')` sentinel between items. SCSS slash lists therefore
+retain `/` as their list fact, while a paren or square delimiter is carried by
+the separate `Block` wrapper. Less preserved-division arithmetic remains an
+operation/grouping fact and is evaluated in its configured math mode, not by
+re-splitting a joined string or synthesizing a `calc(...)`.
+
+Direct media-query comments now parse as typed output-bearing query values rather
+than being swallowed as document trivia or rejected. The focused parser proof is
+green. Static root CSS-terminal imports now also use the canonical renderer's
+bounded document-prelude rule: first identical import wins and emits ahead of
+ordinary rules; Context-loaded stylesheet imports remain source-ordered. The
+upstream `at-rules-keyword-comments` fixture is green.
+
+The CSS-grid fixture now passes through the public direct grammar and AST
+renderer, including bracketed grid-line atoms and multiline values. Raw
+`ValueSlot` arrays retain grammar-owned boundary runs—including comments,
+line breaks, and indentation—in provenance; an array with no authored trivia
+serializes with ordinary spaces. Existing `Declaration.valueOnNewLine` records
+the colon-to-value layout. This is a general value shape, not a grid-specific
+raw-value fallback. The upstream `whitespace` fixture passes through the same
+shape.
+
+The generic direct at-rule grammar represents `@namespace foo
+url(http://...)` as `AtRuleStatement(SpacedValue(Keyword, Url))`, a parenthesized
+generic-header group as `Block(delimiter: 'paren')`, and Less's historical
+`url-prefix(""github.com"")` spelling as an opaque, grammar-owned generic
+function argument. None uses a raw-prelude fallback. The
+public CSS-3 fixture is byte-identical through the macro-compiled Less parser,
+plugin, Context, and AST renderer.
+
+The first root-only import slice now routes typed Less `ImportAtRule` facts
+directly through the active Context. Context registers parser/source identity
+when each `Stylesheet` enters the session, restores that document's existing
+plugin/file scope while it emits, and uses its retained `getTree` dispatcher for
+every loaded document. It proves relative/include-path dispatch, recursive
+source identity, and that a loaded AST declaration joins the existing frame's
+scoped and live lookup state.
+`path-resolution.test.ts` is green. This is not the import end state: nested
+import placement, CSS/remote/option behavior, once/multiple/reference/optional/
+inline semantics, and media-tail wrapping remain real Less-alpha work. Do not
+restore the legacy tree importer or pre-load/splice documents outside ordered
+render execution.
+
+The immediate Less-alpha task remains the import portion of step 2: retain the
+Context-to-plugin result/cache dispatcher while completing its canonical
+`Stylesheet` contract and AST import execution. It must not restore the legacy
+parser, bridge AST into a tree, or introduce a second resolver/parser path.
+Only then may corpus feature failures be ranked.
+
+## Context and plugin dispatch invariant
+
+`Context` remains the canonical per-render coordination and state object. It
+keeps options, diagnostics, caches, per-file state, eval/render frames, and the
+installed plugin chain. Its import and parse methods are not duplicate
+resolvers: `_getPath` dispatches active-plugin `expandImport`/`resolve`, then
+resolver and locator plugins; `getTree` dispatches plugin `getSource` and
+`safeParse`; `parseString` dispatches the selected parser plugin; `getModule`
+dispatches the selected/lazily loaded module plugin.
+
+AST cutover changes the document type carried through those same calls from
+legacy `Rules` to canonical AST `Stylesheet` (or an explicit canonical document
+result). It preserves Context diagnostics, cache, session, plugin ordering, and
+visitor/lifecycle coordination. It does not introduce a separate loader,
+resolver callback, or replacement dispatch topology.
+
+Normalize the retained parser-plugin contract while doing so: today
+`findParserPlugin` accepts either `parse` or `safeParse`, while `getTree`
+requires `safeParse` and `parseString` requires `parse`. The AST result contract
+must make that distinction explicit or adapt one form to the other through the
+same Context dispatcher; it must not add a second parse path.
+
+Candidates for removal are only:
+
+- `Rules`-specific result types, caches, root assignment, and legacy-tree
+  adaptation inside the retained Context methods;
+- `StyleImport`/legacy `Rules` placement and evaluation behavior after a
+  canonical AST consumer preserves its tested semantics through Context;
+- a path proven to bypass the Context-to-plugin chain, such as the independent
+  filesystem fallback in `packages/fns/src/util/file-resolution.ts`.
+
+`Context.readBinary` and JSON decoding in `getModule` are current explicit
+core byte/module capabilities after plugin resolution, not evidence that
+`_getPath`, `getTree`, `resolveImportPath`, `parseString`, or `getModule` should
+be deleted. Decide their long-term capability ownership deliberately.
+
+### Reachability audit (2026-07-21)
+
+The direct-production call graph was audited before any bridge/tree deletion.
+`packages/jess/src/index.ts` enters through `Context.parseString` or
+`Context.getTree`, and AST serialization uses the retained Context methods
+`loadImport`, `readBinary`, `withDocument`, `withSourceOwner`, and
+`rememberDocumentBody`. These are the plugin/session/source-identity topology;
+they are not parser or filesystem bridges and remain required.
+
+No production `BuilderHost`, `ParseHost`, action registry, or parser-host
+dispatch symbol remains in the parser packages or core. Parseman `BuildHost`
+references are confined to the explicit CSS CST/document-language-service
+builder API. Do not invent a replacement host to remove that name.
+
+The old core `Visitor`/`Node.accept()` ABI is also no longer reachable: a
+workspace search found no production or test consumer after the
+`jess-plugin-less-compat` bridge cutover. Core no longer exports
+`visitor/index.ts`, and `tree/Node` no longer carries the Less-style
+`accept()`/`ABORT`/`REMOVE` machinery. This is distinct from the retained
+Context-owned `SpineVisitor` hook, which is a separate render lifecycle seam
+and does not expose legacy per-node visitor dispatch. The separate
+`packages/jess/src/visitor/index.ts` identity wrapper was likewise unimported,
+unexported, and deleted; it was not a second valid visitor implementation.
+
+The AST serializer's `withSourceOwner` seam no longer carries its dead
+`legacyBody` fallback into `Context.withDocumentBody`. The public AST route
+always supplies the real `Context.withSourceOwner` capability; the fallback
+accepted a context-shaped object that could not implement the typed source-owner
+operation and was not reachable from the public compiler/plugin route. The
+Context `withDocumentBody` method remains valid for its direct document-body
+provenance tests and is not removed or repurposed by this cleanup.
+
+The public core barrel still exports the legacy tree corpus, and the root
+`@jesscss/fns` barrel still exposes `packages/fns/src/less/*`; Context, the
+legacy function barrel, compat type declarations, and visitor/language-service
+consumers still import those classes. Root-tree export removal therefore has
+concrete prerequisites: migrate or quarantine those consumers and isolate the
+legacy Context execution state. The direct AST renderer itself does not read
+`Context.root`, `treeRoot`, `rulesContext`, or `evaldTrees`.
+
+The internal source formerly under
+`packages/jess-plugin-less-compat/src/transform/` and `src/nodes/` was proven
+unreachable from the package's only public entry point: the built package
+exports only the native AST-v2 `LessCompatPlugin`, and its bundle contained no
+`toLessNode`, `fromLessPluginReturnValue`, visitor, or transform symbols. The
+dead transform/node adapters and their unreferenced helper/type/runtime files
+were removed in the alpha.9 cleanup; the package-root native `Fn` API remains.
+Likewise,
+`packages/fns/src/util/file-resolution.ts` is reached only by the legacy
+`packages/fns/src/less/*` helpers and must wait for that public barrel's
+migration/quarantine rather than being deleted as if it were Context's
+resolver. The parser-runtime boundary audit is green (zero tracked temporary
+scanner/reparse sites); remaining string scans in AST serialization are
+evaluation/output semantics, not source recognition.
+
+The aggressive-cutting verifier now treats the coordinated
+`ValueSlot`/`List`/`Block` and callable-contract cutover as an explicit
+seven-file `semantic-runtime` evidence lane. That lane requires named semantic
+cases, focused behavior/build commands, and a current benchmark/output baseline
+with `performanceClaim: "none"`; it does not pretend this feature-changing work
+is a neutral optimization. Precise/conservative/removal contracts remain
+required for any actual cutting or performance claim.
+
+## Direct-root cutover order
+
+The parser work has one real composition gate: a leaf dialect grammar must be
+able to macro-fuse imported, recognition-only shared syntax while retaining its
+own local direct-constructor reductions. It must not serialize local builders,
+relax direct-builder capture validation, or create a reusable builder artifact.
+That leaf-only fusion proves that imported recognition-only property/keyword
+terminals fuse into local direct AST reductions with their token values intact.
+It is incomplete public-parser implementation, not a private architecture or
+completion claim. Continue in this dependency order:
+
+1. Complete all four parser families (CSS, Less, SCSS, Jess) as direct AST v2
+   `Stylesheet` parsers.
+2. Update each plugin to consume its parser's `Stylesheet` while preserving the
+   existing Context-to-plugin dispatch topology and plugin-specific semantics.
+3. Update the Jess package integration/render route to use those AST-consuming
+   plugins, then delete only legacy tree-specific realization such as
+   `StyleImport` and any proven duplicate filesystem/module implementation.
+
+### Canonical loop model
+
+The public AST-v2 `For` contract is defined by the documented Jess
+`$for (… of …)` syntax—not by Less `each()`. It is a flexible iteration protocol
+in the spirit of JavaScript `for…of`: the source kind (list, collection/map,
+range, or a later iterable value) determines the useful entry shape presented to
+the authored binding pattern. Its bindings, source-dependent iterable behavior,
+and source-order semantics must be named and shaped as Jess concepts. In
+particular, do not preserve `valueName`, `keyName`, or `indexName` as the public
+canonical node vocabulary merely because legacy Less `each()` used them.
+
+Less `each()` is a compatibility input dialect. The Less parser lowers it into
+compatible Jess-shaped loop helpers/patterns at its own boundary; it does not
+make Less callback/key/index fields a core AST API. A general `For` rewrite must
+preserve the public Jess header contract: `[$key, $value]` means key/value in
+that order; the source kind supplies the entry shape. The current legacy tree
+instead fills tuple slots positionally as value, key, counter for both comma and
+bracket forms. That is a legacy implementation discrepancy to repair during the
+general `For` rewrite, not an ambiguity in the public language and not a reason
+to expose Less callback/key/index fields. Pin the remaining source-specific
+entry shapes against public examples before direct Jess and SCSS parser tests.
+Do not mis-lower SCSS tuple bindings to Less map-key/list-index roles while that
+work is in progress.
+
+`Context._getPath`, `getTree`, `resolveImportPath`, `parseString`, and module
+loading are retained coordination/capability seams. In step 2, migrate only the
+parser/document result path (`getTree`, `parseString`, plugin parse contracts,
+and document caches) from legacy `Rules` to AST `Stylesheet`. Retain resolution and
+raw-byte/JSON/module capabilities unchanged unless a later dedicated audit
+decides their ownership; do not replace or delete the dispatch path while parser
+closure is still in progress.
+
+## Current parser-closure status
+
+All four dialect packages now expose their stable public `parse()` operation as
+a direct Parseman-to-`Stylesheet` route; explicitly named CST/document APIs remain
+for language-service consumers. The direct grammars are still incomplete, so no
+dialect has completed feature-complete parser closure. The public CSS/Less/SCSS/
+Jess plugin adapters now call those direct parser operations and return the
+canonical `Stylesheet` through Context; that integration is verified below but
+does not claim parser or evaluator feature completion. The reductions below are
+incomplete implementation toward that public route, not a second architecture
+or a completion milestone.
+
+- CSS public `parse()` directly returns `Stylesheet`. The current verified
+  closure includes structured selectors and selector-to-block comment trivia,
+  declaration-component comments and `!important` trivia, shared exponent
+  numbers, `calc()` modulo, balanced query
+  functions, conditional blocks, `@page`/margin boxes,
+  `@font-feature-values`, typed static `@supports` conditions, generic opaque blocks, `@document`, nested `@scope`,
+  and top-versus-nested known-block bodies. The direct public route is checked
+  against the existing positive and error CSS fixture corpus. Literal CSS `@import` is now a
+  top-level-only `AtRuleStatement`, never an import-resolution fact. Structured
+  declaration values now carry scoped function and `var()` fallback components,
+  including balanced nested component blocks; malformed or crossed delimiters
+  remain rejected by grammar. Valid block comments between `url` and its opening
+  delimiter lower to the existing `Url`; malformed URL payloads remain strict.
+  This is a bounded value/import slice, not CSS
+  feature completion: selector/value closure and corpus differential remain.
+- SCSS public `parse()` directly returns `Stylesheet`. Its verified direct
+  slices include static selector/comment/conditional structure, ordinary
+  structural interpolated simple selectors, structural
+  interpolation, complex selectors with typed combinators, static
+  attributes/placeholders, selector-valued pseudo arguments, and bounded static
+  non-selector pseudo arguments, interpolated
+  declaration names, declaration merge modifiers, exact static `@extend`, descriptor-only `@font-face`,
+  `@counter-style`, `@property` (including a typed `--custom-property` header),
+  static root/nested CSS `@starting-style` and `@layer` blocks with grammar-owned
+  static headers,
+  root-only static CSS `@charset`, `@namespace`, and `@layer` statements through
+  the existing `AtRuleStatement` fact (with Sass `//` comments remaining
+  non-emitting trivia),
+  static CSS `@scope` blocks through the existing `AtRuleBlock` fact, including
+  their existing root, conditional, and declaration-capable nested placements,
+  finite CSS `@page` plus margin-box blocks with static headers and
+  declaration/comment-only bodies,
+  finite `@font-feature-values` blocks with grammar-owned static `Any` headers,
+  finite feature sub-blocks, and declaration/comment-only descriptor bodies,
+  static CSS `@document`/`@-moz-document` blocks with recursive frame-one bodies,
+  quoted/URL `@import` targets (including structural `#{…}` segments within
+  quoted targets, quoted `url(...)` targets, and empty `url()` targets), static option lists, a
+  bounded typed CSS-emitting `layer`-then-declaration-`supports(...)`-then-
+  static media-query tail, an optional
+  final variable-declaration semicolon, and unquoted interpolated
+  declaration URLs as existing `Url(Interpolation)` facts; unquoted interpolated
+  import URLs remain explicitly rejected. It also includes static `@for` endpoints with grammar-owned
+  arithmetic,
+  static custom-property tokens in typed value positions as existing `Keyword`
+  facts (without changing Sass custom-property declaration semantics),
+  typed static `@supports` conditions, and static CSS keyframes (including vendor headers, quoted escaped static
+  names, typed selector lists, and conditional placement). The additional `@if`
+  slice admits literal booleans plus static typed comparisons (`==`, `!=`,
+  `>=`, `<=`, `>`, `<`) and grouped boolean structure, including its existing
+  reachability inside mixin, `@each`, and `@for` bodies. Its selected bodies
+  retain existing variable declarations, mixin definitions/calls, `@each`, and
+  `@for` statements in authored order; a selected mixin is available to a later
+  sibling through the shared source-order `If` publication model. This does not
+  claim Sass bare truthiness, function predicates, comma/list conditions, or
+  full Sass scope semantics.
+  `@extend !optional` remains rejected until its diagnostic
+  semantics have a typed AST field. SCSS media/container
+  range queries need ownership redesign rather than flattening into
+  `SpacedValue`; `SpacedValue` itself remains an existing undecided
+  representation. Static SCSS module directives are a top-level document-prefix
+  grammar and use parser-owned classification of unescaped literal paths:
+  `@use "sass:name"` rewrites to `ModuleImport` / `@-use
+  "#sass/name"`; clear script-module paths (including JSON) become
+  `ModuleImport`; stylesheet paths become `StyleImport` / `@-compose`; and
+  `@forward` is the existing `StyleImport` with `forward: true`, rendered as
+  `@-export`. This is construction only: retained Context/plugin coordination
+  still resolves, loads, caches, and evaluates the resulting import facts.
+  Escaped or dynamic targets, plus `with`, `show`/`hide`, or prefix
+  configuration, remain rejected until their typed/decoded representation exists.
+- Less public `parse()` directly returns `Stylesheet`, including its direct
+  static mixin subset with literal-pattern/rest parameters, named arguments,
+  typed logical guards, corresponding ruleset guards, and typed indirect
+  variable (`@@name`) references. Its verified current closure also admits
+  escaped ordinary declaration/property identifiers, ordinary `PropertyReference`
+  and the current internal `MapAccessor` values
+  (pending the owner-reviewed public access-node rename), non-emitting `//` line comments, full
+  direct statement bodies in detached-ruleset and `each()` forms (including
+  existing typed keyframes and flat static mixin-call iterables/bindings), and
+  inline `:extend(...)` rules with the same canonical statement body as an
+  ordinary ruleset while retaining authored `ExtendInstruction` placement,
+  `*[selector-list]` capture delimiters around its explicit static
+  selector-list family (checked against ordinary selectors for that static
+  subset; dynamic selector content is rejected only in capture),
+  properties, a terminal declaration without a final semicolon, typed static
+  `@supports` conditions, static CSS keyframes, lone typed interpolation
+  preludes for `@media`, `@supports`, and `@keyframes`, and exact opaque
+  UnicodeRange value/list leaves that remain outside arithmetic. Unquoted dynamic URL
+  values and Less `@import url(...)` targets retain existing `Url(Interpolation)`
+  facts. A lone `@{…}` import tail is likewise a typed `Interpolation`; mixed static/
+  dynamic tails remain rejected until their segment model exists. Parser
+  construction does not resolve any import fact. Generic at-rule headers
+  remain static-only. Those are grammar-owned AST
+  construction slices; named CSS colors and `transparent` lower through shared
+  recognition to existing typed `Color` values while ordinary identifiers and
+  `currentColor` remain non-color keywords. Less
+  grammar/evaluation parity remains incomplete.
+- Jess public `parse()` directly returns `Stylesheet`, including static
+  selectors, semantic `$[…]` selector templates, documented `$for`
+  list/range/key-value collection bindings, static unresolved typed
+  `StyleImport`/`ModuleImport` facts for documented `@-` imports, and static
+  first-class `Apply` facts for documented static ruleset-only selector lists.
+  Documented `$ >` named mixin
+  arguments lower directly to existing `CallArg { name, value }` facts; they do
+  not add a dialect-local call node or binding path. Documented zero-argument
+  variable-held callable statements lower directly to existing `VariableCall`
+  facts; argument-bearing variable calls remain held until their typed
+  argument/binding model exists. CSS `url()` values
+  and documented `$[…]` declaration names lower structurally through existing
+  `Url` and `Declaration.name: Interpolation` facts rather than raw source text,
+  (including structured `$[…]` path segments in ordinary values and CSS
+  `@import` targets) as canonical `Url` nodes, typed static `@supports` conditions, media/container
+  range-query facts, `@property --name` descriptor blocks, static CSS keyframes,
+  and modern CSS slash-separated function components. Existing variable-led
+  call expressions remain available within those components; the slash itself
+  is not bare Jess arithmetic. The documented lone `@media $(name) { ... }`
+  form is a typed interpolation prelude and remains block-only; it does not
+  widen generic headers or `@container`.
+  Static CSS at-rules are
+  carried directly by the existing canonical
+  at-rule facts, including terminal static generic CSS opaque blocks through a
+  shared recognition-only Parseman artifact. Jess collection literals lower to the canonical
+  `DetachedRuleset`, not a CST-shaped map or opaque source fallback. Dynamic
+  `$apply` targets remain rejected until `Apply` has a typed dynamic-selector
+  model; static `$apply` constructs one `Apply` fact at root, rule, selected
+  `$if`, mixin-definition, and `$for` body positions. `Apply` is a core
+  ruleset-only, whole-selector, merge-all operation; it is not a dialect render
+  policy or an ordinary `MixinCall`. R3 now
+  gives `$` live/current and `$$` scoped/final references explicit
+  AST lookup facts; normal declarations write both stores, while `?:` and `:=`
+  retain their selected lookup/write behavior. `$[$name]` is a live/live
+  dynamic variable reference; Less `@@name` remains scoped/scoped. Selected
+  `$if` branch declarations now enter both stores only after branch selection;
+  they are not globally precollected. Selected `$if` branch mixin definitions
+  publish only when the normal source-order walker reaches their definition;
+  false-arm definitions stay invisible and publication is activation-local.
+  Direct `$if` conditions also carry the existing strict `not`/`and`/`or` guard
+  tree, including both adjacent and spaced comparisons; mixin-only guard forms
+  remain excluded. Existing direct `MixinCall`, `VariableCall`, `$apply`, and
+  `$for` statements execute through the ordinary selected-body walker; typed Jess
+  style/module imports are emitted as facts while their plugin-owned loading and
+  resolution remains a separate follow-up. The remaining
+  documented Jess direct-route blockers are canonical AST/evaluator model work,
+  not parser-host, Context, or import-resolution work: `$while` has no canonical
+  AST/evaluation model; member/dynamic references and module calls need the
+  owner-reviewed access/call model; and
+  `@-compose` modifiers/configuration plus anonymous mixin/function forms need
+  typed source-fact/callable models. Do not paper over any of those forms with
+  raw source, a legacy tree, or a parser-side resolver. Do not migrate plugins or
+  Context results back onto a legacy tree route. Keep the existing direct
+  `Stylesheet` plugin/render route while completing the remaining dialect-specific
+  grammar and evaluator coverage.
+
+For the approved parser-only slices above: new node materialization is only
+parser-owned canonical AST construction; no eval/render traversal, resolver,
+loader, bridge, or new runtime parse path was added. Verification proves
+grammar parity and construction only, never speed.
+
+### Audited model gates before further direct-parser admission
+
+These are real AST/evaluator requirements discovered from the current public
+grammars. They are not permission to add a raw fallback, a parser-side resolver,
+or a legacy-tree port.
+
+- CSS/Less/SCSS/Jess general-enclosed `@supports` conditions (for example
+  `selector(.x)` and `(future condition)`) now use the inert, grammar-owned
+  `GeneralEnclosed { form: 'function' | 'paren', name, content: Interpolation }`
+  fact. `Interpolation` is the publishable public noun (the former `Interp`
+  name has no compatibility alias). Its recursive Parseman content admits only
+  literal structured bytes and the dialect's explicit interpolation syntax; it
+  is not `FunctionCall`, `Block`, `Any`, or a parser-local raw fallback. The
+  serializer keeps a `GeneralEnclosed` segment structurally protected while it
+  normalizes surrounding supports syntax, including when authored content has
+  private-use Unicode bytes.
+- Less static `~"…"` / `~'…'` uses the existing `Quoted.escaped` fact in
+  ordinary values, URLs, import targets, guards, generic static at-rule
+  headers, and keyframe names; ordinary quoted backslashes do not set that
+  flag. Interpolated escaped strings and `~(…)` remain model gates until the
+  direct grammar emits the existing `Interpolation`/`Block` facts and the
+  serializer proves their authored output; this is an integration/evidence
+  gap, not a limitation of the AST-v2 value model.
+  Escaped literals remain excluded from direct `@supports` and query values:
+  Less preserves literal `~"…"` spelling in a direct supports condition, while
+  the existing escaped `Quoted` serializer emits inner bytes. Do not widen
+  either context without a supports/query-specific representation and output
+  proof.
+- Less attributes with `@{…}` in their name or value now form one complete
+  `SimpleSelector.interp: Interpolation` token. The grammar preserves brackets,
+  static namespaces, operators, quotes, and modifiers as literal parts and
+  retains each variable interpolation in source order. Dynamic namespaces,
+  pseudos, and extend headers remain excluded; this is selector-token structure,
+  not a generic raw-selector fallback.
+- SCSS nested-property outer and leaf names now accept the already-supported
+  structural `#{…}` property interpolation and lower directly to ordered
+  `Declaration.name` facts, inserting exactly one prefix hyphen. An own value's
+  trailing `!important` stays only on that own declaration; generated leaf
+  declarations retain their own priority. The body remains declaration-only:
+  comments, variables, control flow, recursive nested properties, and
+  `@extend` are still held for a truthful delayed-prefix placement model.
+- Complete SCSS condition semantics need shared semantic `Boolean` and `Null`
+  values and an explicit false/null-only truth predicate distinct from the
+  existing Less exact-true predicate. Do not map a Sass comma list to `or`, and
+  do not silently reuse Less comparison semantics for Sass operators. Public
+  value-node approval and a comparison-policy audit are pending.
+- Deferred Less `&:extend(...)` needs `ExtendStatement` retained at its authored
+  placement plus a render-local placement plan. `ExtendInstruction` remains the
+  correct rule-attached data. The existing static preplan sees only direct rules,
+  so direct grammar admission without that execution work would silently no-op.
+  Public-name approval is pending.
+- SCSS `@use`/`@forward` configuration needs typed config entries and typed
+  forward prefix/filter facts. An escaped or dynamic target cannot truthfully be
+  classified as `ModuleImport` or `StyleImport` before evaluation; a deferred
+  import fact and matching Jess lowering require an owner-reviewed public model.
+- SCSS `@at-root` needs a core output-placement statement, not an
+  `AtRuleBlock` or synthetic `Rule`. The pending candidate is
+  `AtRoot { target: default | selector | filter, body }`, where filter records
+  `with`/`without` plus typed names. It retains lexical binding scope while
+  selecting an output-placement ancestry; no literal `@at-root` may reach CSS.
+  Exact filter vocabulary and selector-anchor behavior require owner approval
+  before parser or serializer work.
+- Variable-held calls use `VariableCall { target: VariableReference, args:
+  CallArg[] }`, replacing `DetachedCall` without an alias. The current Jess and
+  Less grammar admits only their existing zero-argument spellings; the node can
+  retain arguments, but grammar work must not invent their syntax. `$`/`$$`
+  lookup mode remains on the `VariableReference`; named/spread wrapper-argument
+  semantics are held until they are defined against a variable holding an
+  already-invoked `MixinCall`.
+- Non-terminal semicolonless bare Less calls are not a harmless extension of
+  the existing `FunctionCall` statement fact: depending on the following
+  tokens, Less treats them as a sequence of statements or as a selector prefix.
+  The public direct route admits semicolon-terminated calls and one terminal
+  call before a block/document boundary; it must not guess at the remaining
+  forms or absorb them as raw text. Their complete grammar/eval model remains
+  a later direct-parser gap.
+- Jess collection access needs a typed `MemberReference` model distinct from
+  Less `MapAccessor` and bare `PropertyReference`. All `$[…]` interpolation is
+  semantically ambient member access—`$[foo]` variable-member, `$['foo']`
+  property-member, `$[$name]` computed variable-member—but the current direct
+  AST still encodes those three base-less forms separately as
+  `VariableReference`, `PropertyReference`, and `VarIndirect` inside an
+  `Interpolation`. The new model must consolidate those partial encodings and
+  add left-associated explicit-target access: dot/declaration names,
+  variable-member bracket names, property-member quoted names, zero-based
+  signed indexes, and computed bracket keys remain distinct typed access forms;
+  every `$`/`$$` lookup mode stays on its own `VariableReference`. This records
+  syntax, not a decision to port Less:
+  `MapAccessor` has one-based indexing, Less variable/property namespaces, and
+  a raw-byte fallback, all invalid for Jess. Existing R7 controls dot-member
+  ambiguity (the surface must yield exactly one variable/property declaration;
+  multiple candidates within either kind or across kinds is an error). A terminal
+  `?` converts any member-chain lookup miss to Nil; the enclosing node's ordinary
+  Nil-collapse semantics decide the output. JS own-export policy and final
+  node/field names require owner approval before parser or evaluator work.
+  `$while` is not currently a documented Jess feature; do not
+  port its legacy block-frame behavior without first defining its public
+  control-flow contract.
+- Jess static generic CSS opaque at-rule blocks have an existing terminal
+  `OpaqueAtRuleBlock` model. The earlier claim that Parseman cannot macro-fuse
+  their structural capture was wrong: imported recognition-only `scanTo` and
+  `balanced` artifacts fuse correctly. The failed attempt imported CSS's terminal
+  AST-builder grammar instead of a recognition-only artifact. Extract the opaque
+  header/body capture into `internal-css-recognition`, then fuse it into Jess's
+  local reduction. Do not replace that work with runtime grammar composition, a
+  scanner, regex recognition, or source reparse.
+
+### Queued after public parser closure
+
+- Parseman needs a compile-time grammar-family abstraction for the case where
+  two direct productions share the same combinator structure but substitute
+  different recursive entry rules. A TypeScript helper that calls `node`,
+  `sequence`, or `parser` is rejected because it hides that structure from
+  macro fusion (`composeLeaf() must macro-fuse; runtime composition is
+  forbidden`). Jess selector capture therefore keeps its static and
+  interpolation-capable selector families explicit; do not work around this
+  with a host, scanner, post-parse validation, or runtime combinator factory.
+  A Parseman feature must preserve first sets, recursive rule identity, and
+  macro-compiled output while allowing this parameterization.
+- Generate and publish a complete Parseman railroad-diagram reference for CSS,
+  Less, SCSS, and Jess in the public Docusaurus site (`packages/docs`). This
+  must run from each finished public grammar (including reachable rules and
+  documented terminals), be regenerated in CI or an explicit docs command, and
+  link from the parser-language docs. Do not generate diagrams from today's
+  incomplete direct-AST grammars or present them as the language reference.
+- Design dialect-to-Jess compiled conversion around opt-in observed
+  compilation facts: resolved import/file provenance and actual function-call
+  outcomes determine Jess-relative paths and `@-from`/`@-use` dependencies.
+  See [`DIALECT-TO-JESS-COMPILED-CONVERSION.md`](../../DIALECT-TO-JESS-COMPILED-CONVERSION.md).
+  It must not re-resolve/reparse source or replace Context/plugin dispatch.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: PERF BATCH INTEGRATION — three disjoint byte-identical perf wins applied together onto `origin/dev`. (1) LEAN `round`: new `tree/util/round.ts` replaces `lodash-es/round` in `dimension.ts`/`color.ts` — an inlined copy of lodash's exact exponential-shift algorithm (same `Math.round`, same `${n}e`.split('e') dance) minus the generic `toNumber`/`toInteger` coercion, plus an integer fast-path; every Dimension/Color serialize + color-channel clamp hits it. (2) DE-GENERATORIFY walk (`node-base.ts`, `declaration.ts`): the generator `walk`/`nodes`/`_walkFromValue` become a non-generator `_walkInto(out, deep, reverse)` that materializes children into ONE shared `Node[]` in the exact same pre-order; `walk`/`nodes` now return that array (still iterable, so `for…of`/spread consumers are unchanged). Kills per-`yield`/per-`yield*`-frame cost and the per-node sub-array a deep generator allocated. (3) CALLABLE-LOOKUP INDEX (`rules.ts`): `getCallableEntriesForKey` was re-scanning every rule per distinct lookup key; now `ensureCallableIndex` builds the full key→entries index in ONE pass over `rules` and memoizes it on `_lookup.callableFullIndex`, invalidated alongside `callableLookupCache` when the scope's callable set changes. All three are byte-identical individually AND combined (full gate below).
-- Architecture surface: three non-overlapping files under `packages/core/src/tree`. (1) `dimension.ts`/`color.ts` swap one import; `util/round.ts` is a new leaf pure-number helper with no node/tree/context reach. (2) `node-base.ts`/`declaration.ts` change the child-walk MECHANISM (generator → array-fill) but not what it walks — `childKeysOf`/`readNodeField`/field order unchanged; `Declaration` keeps its bespoke name/value/important order via an overridden `_walkInto`. (3) `rules.ts` touches only the callable-lookup memo path (`RulesLookupState.callableFullIndex`, `ensureCallableIndex`, `getCallableEntriesForKey`, the `addCallable*`/`collectCallablesFor` signatures that now take an `index` Map instead of a per-key `bucket`, and the invalidation site). No Node class gains a field; no output tree is retained by any of the three.
-- Separation/duplication: (1) `round.ts` is a single new file that DELETES a dependency edge (drops `lodash-es/round` from two hot files) — it replaces, not duplicates. (2) `_walkInto` UNIFIES the former `walk` + `_walkFromValue` + `nodes` generators onto one array-fill primitive (net: `_walkFromValue` deleted, one polymorphic `_walkInto` added + two thin `collectFieldInto`/`pushNodeInto` module helpers that inline the old array/plain-object branch logic verbatim). (3) `ensureCallableIndex` REPLACES the per-key `collectCallablesFor(this, lookupKey, bucket)` re-scan; `addCallableEntry`/`addCallableSelectors`/`collectCallablesFor` lose their `lookupKey`+`bucket` params for a shared `index` Map — same collection code, keyed once instead of filtered per call.
-- Cumulative node weight: no field added to any Node CLASS. `callableFullIndex` is one nullable field on the per-scope `RulesLookupState` memo object (a lookup-cache sibling of the existing `callableLookupCache`/`varsByName`/`functionsByName`), not on a Node; it holds references already reachable from `rules`, is built lazily, and is nulled on callable-set change. Net node weight delta = 0.
-- New traversal: [loop/traversal] the new `for` loops in `collectFieldInto`/`pushNodeInto` (`node-base.ts`) are the SAME array + plain-object child iteration the deleted `_walkFromValue` generator ran — one pass over each child field, byte-identical DFS order, now pushing into a shared array instead of yielding. No new whole-tree or per-leaf pass: total node-visit count is unchanged (strictly fewer frames). `ensureCallableIndex`'s single pass over `rules` REPLACES the previous per-distinct-key re-scan — it runs once per scope and is memoized, so repeated lookups now do a Map get instead of re-walking; net traversal is REDUCED, not added.
-- New node/materialization: [materialized array/object] the `Node[]` in `walk`/`nodes`/`_walkInto` is the deliberate core of win (2): ONE array shared across a whole deep walk, replacing the generator's per-`yield*`-frame allocations — fewer allocations, not more, and freed by the caller as before. `round.ts` allocates only the two transient `${n}e`.split('e') string pairs lodash already allocated (integer fast-path skips even those). No output tree is materialized by any change.
-- Render path: byte-identical on all three. (1) `round` reproduces lodash's algorithm exactly (verified: all-less 106/106 byte-identical, which exercises Dimension/Color number formatting heavily). (2) `_walkInto` preserves pre-order and reverse order exactly, so every emit/eval/extend consumer of `walk`/`nodes` sees the identical node sequence. (3) the callable index returns the SAME entries `collectCallablesFor` produced (same key/match tuples, same source-rules fallback when the local index misses), so mixin/namespace resolution is unchanged. Full suites green (below).
-- Helper/API surface: (1) `round.ts` exports `round` (named + default) — one new internal helper, one fewer external dep. (2) `walk`/`nodes` change return type from `Generator<Node>` to `Node[]` (both iterable — no call-site churn); `_walkFromValue` (private) is deleted; `_walkInto` (+ module-private `collectFieldInto`/`pushNodeInto`) added; net public method count unchanged. (3) `ensureCallableIndex` is a new PRIVATE method; `addCallable*`/`collectCallablesFor` are private and drop a param each. Net exported-symbol delta on the package surface = 0 (all additions are internal).
-- Metadata mutations: none. No `.parent`/`sourceNode`/`sourceRoot`/`location`/`index`-field assignment in any of the three. `round` is pure over numbers. `_walkInto` only `out.push`es references. `ensureCallableIndex` writes only the memo field `_lookup.callableFullIndex` (a lookup cache, not node metadata) and the invalidation site nulls it.
-- Review-flagged diff tokens: [loop/traversal] all new `for` loops are `collectFieldInto`/`pushNodeInto`'s field-child iteration (the deleted generator's own loops, same order, now array-filling) + `ensureCallableIndex`'s single memoized `rules` pass (replaces per-key re-scan) — zero hot-path/per-leaf traversal added, total visits reduced (accounted above). [generator] the two `[generator]` matches are the WORDS "per-yield / per-`yield*`-frame cost" and "`for…of` / `yield*` consumers are unchanged" in the new JSDoc — this change DELETES every generator (`function*`/`yield`) from the walk path; no generator is added. [node construction] the one `[node construction]` match is `index = new Map()` in `ensureCallableIndex` — a memoized per-scope lookup Map (NOT a Node construction; `Map` merely matches the `new Uppercase(` pattern), built once and reused, invalidated with `callableLookupCache`. [side map/set] every `Map` match is that same callable-index memo — the `callableFullIndex: Map<…>` field declaration, the `index: Map<…>` params threaded through `addCallable*`/`collectCallablesFor`, the `ensureCallableIndex(): Map<…>` return type, and the one `new Map()`; it holds already-reachable references, is a scope-scoped cache (sibling of the pre-existing `callableLookupCache`), and is nulled on callable-set change — zero added long-lived side state, and it REPLACES a repeated O(rules) per-key re-scan. [materialized array/object] the `Node[]` matches (`out: Node[]`, `const out: Node[] = [this]`, `const out: Node[] = []`, the `walk(): Node[]`/`nodes(): Node[]` signatures) are the shared per-walk output array that REPLACES per-yield generator-frame allocation — a net allocation REDUCTION; the `= {`-adjacent matches are type views, not output materialization. [parent/source mutation] the only `sourceNode`/`sourceRoot`/`.parent` matches are the WORDS in this prose (the Metadata line naming what is NOT written); the code performs zero `.parent`/`sourceNode`/`sourceRoot`/`location`/`index`-field assignment — `round` is pure over numbers, `_walkInto` only `out.push`es references, and `ensureCallableIndex` writes only the memo field.
-- Evidence: all-less byte-identical 106/106 (the primary byte-for-byte oracle — exercises Dimension/Color number formatting, mixin/namespace callable lookup, and the child-walk on every fixture); core 3300/0; less-parser 516/0; all-less-error 92/0; `spine-production-ratchet` 130/0; fns 522/4 (the 4 reds are the pre-existing SCSS `is-bracketed()` set, untouched by these files). Combined `benchmark.less` A/B (same-worktree `git stash` toggle of the three applied changes, warmup + N≥15 median, output verified byte-identical) reported below in the integration deliverable. All three verified byte-identical individually by their originating agents and re-verified combined here.
-- Verdict: accepted — three internal perf wins (drop a dep for an inlined pure helper; generator→shared-array walk; memoized full callable index replacing per-key re-scan), no new Node field, no tree mutation, no output tree, byte-identical output across the full gate.
+### Gate policy
 
---- prior pass ---
+Alpha readiness uses the staged patch gate and its focused evidence, not the
+historical `origin/dev..HEAD` inventory; the aggregate mode was deleted because
+it had no bounded owner or remediation. Runtime cost cuts require exact
+owner contracts and measurements; semantic/parser/frontend/public changes
+require behavior/build/boundary evidence without fabricated performance claims.
 
-- Latest pass: bootstrap FINAL blocker (`bootstrap-clean-repro` GREEN) — LOOP-GENERATED EXTEND THROUGH IMPORT. Two coupled fixes: (a) `engageExtendLayer` scans only the parsed entry root, so an import-only document (`bootstrap.less` = `@import`s, no direct `:extend`) never engaged the layer and DROPPED every imported extend — `wireExtends` now also engages when a RESOLVED imported body carries an extend (`treeHasExtend`); (b) `wireSpineExtends`'s gather now EXPANDS `$for`/`each` loops (via `spineIterationSurfaces`) so a per-iteration interpolated extender (`.container-@{bp}`) resolves concretely and its `:extend` merges into the (static, shared) target group — plus `isSpineEligibleFor` now threads `allowExtend`, so a loop body carrying an `:extend` no longer forces its imported body onto the eval fallback (which ignores spine extend headers). The loop-expansion is BEST-EFFORT: an un-expandable loop (iterable/body reads a binding absent in the static gather context — e.g. a mixin-scoped `@shadows`) is caught and SKIPPED with a subjects/instructions rollback, byte-identical to the pre-fold drop. Bootstrap `.container-lg` now merges; render 156k, all 4 assertions pass.
-- Architecture surface: `spine-extend.ts` gather (`wireSpineExtends` — `descendChildren`/`gatherRuleset` now `MaybePromise`, new `gatherForExtends`) and `emit-walk.ts` (`wireExtends` import-body extend-engagement + `isSpineEligibleFor` extend threading). The gather stays a pure selector-graph pass; it becomes async ONLY when it expands a loop (the common no-loop case is untouched sync). No Node class changed; no output tree retained — the loop surfaces are throwaway gather scaffolding (extenders emit nothing; only the static target's header override surfaces at emit).
-- Separation/duplication: no new file. `gatherForExtends` reuses the render fold's `spineIterationSurfaces` primitive (the SAME per-iteration surface build) — not a parallel expander. The import-body engagement reuses `collectImportedRootSubjects` (already walked for the re-gate) + `treeHasExtend` (existing predicate, now imported into emit-walk). `isSpineEligibleFor` gains two params it forwards.
-- Cumulative node weight: no field added to any Node class. The loop surfaces are the fold's existing reused-leaf copies, discarded after gather. Net: one gather helper + async-threading of two existing gather fns.
-- New traversal: [loop/traversal] the new loops are `gatherForExtends`'s surface + surface-child iteration and the sequential `step`/`stepBody`/`stepSurface` drivers that replace the former `for…of` bodies (same single gather walk, now promise-threadable). No whole-tree/per-leaf hot-path traversal added — the gather runs once per root render, and the loop expansion runs once per extend-bearing `For` reached.
-- New node/materialization: [materialized array/object] the `Rules[]` surfaces come from the unchanged `spineIterationSurfaces`; `gatherForExtends` allocates none of its own (the `as unknown as {…}` is a type view). `subjectsMark`/`instructionsMark` are index snapshots (numbers) for rollback, not allocations.
-- Render path: unchanged. Both fixes only enrich the extend GATHER (a header-override computation consumed by `effectiveHeaderSelector`); the descent/emit is untouched. Byte-identical where no imported/loop extend exists (the layer stays disengaged) and where a loop can't expand (rollback → same drop as before). Full suites green.
-- Helper/API surface: `wireSpineExtends` return type widens to `MaybePromise<{headers,hoisted}>` (its one production caller threads it; the sync test caller's shapes have no loop → still returns the object synchronously). `treeHasExtend` newly imported into emit-walk. `gatherForExtends` is a local closure. Net exported-symbol delta = 0.
-- Metadata mutations: none. `gatherForExtends` save/restores `context.rulesContext` around each surface's gather (a transient live-frame pointer for interpolation resolution, not a node field); it never assigns `.parent`/`sourceNode`/`sourceRoot`/`location`/`index`. The rollback truncates the local `subjects`/`instructions` arrays only.
-- Review-flagged diff tokens: [loop/traversal] every new `for`/`while` is the gather's own sequential driver (`step`/`stepBody`/`stepSurface`) or the surface iteration — the same one-per-root selector-graph walk, now promise-threadable; adds zero hot-path traversal (accounted above). [routine error control] the `try`/`catch` in `gatherForExtends` (+ the promise rejection handlers) implement the BEST-EFFORT skip: a loop that can't expand at gather time is caught, rolled back (subjects/instructions truncated to the pre-loop marks, `rulesContext` restored), and skipped — byte-identical to the pre-fold drop; they swallow ONLY the un-expandable-loop case (a real defer, not a silenced bug) and the `gatherRuleset`/media-scope `catch`es re-throw. [materialized array/object] the `Rules[]`/`= {` matches are the `spineIterationSurfaces` result type view + the arrow-fn closures; no output materialization (accounted above). [parent/source mutation] ZERO in the code — the `sourceNode`/`sourceRoot`/`.parent` matches are words in THIS prose and inside the unchanged `spineIterationSurfaces`; the gather writes no node field. [side map/set] the `Map`/`Set` matches are TYPE ANNOTATIONS only — the `Map<Ruleset, Selector>`/`Set<Rules>` on the widened `wireSpineExtends` return type and the `applyWired` closure param — zero map/set is CONSTRUCTED here (the headers map is composed by the unchanged `composeSpineSubjectHeaders`); zero added runtime side-map/set state.
-- Evidence: `bootstrap-clean-repro` GREEN (render 156,635 bytes; `.col-sm-`, `--breakpoint-sm:576px`, `.container-lg` all present; zero rejections). New lock (`spine-guarded-mixin-forfold.test.ts` → "spine loop-generated extend through import"). Suites at pre-existing baseline: core 3300/0, all-less byte-identical 105/0, config 29/0, `spine-production-ratchet` 130/0, less-parser 512/0, 4 locks. The 12 `emit-walk-ratchet` + 3 `spine-wire-selector-shapes` (dual-config artifact) + 1 `security-script-runtime` reds are ALL pre-existing on clean `origin/dev` (verified by file revert) — this pass introduces zero new failures.
-- Verdict: accepted — imported + loop-generated extend gather (best-effort loop expansion, rollback-on-unexpandable), no new Node field, no tree mutation, no output tree, byte-identical off the new shape, takes `bootstrap-clean-repro` to GREEN.
+### Current pass: typed interpolated Less extend targets
 
---- prior pass ---
+- **New traversal / materialization:** none. The existing cold extend-selector
+  prepass resolves an instruction target in the same rule/frame visit that
+  already resolves authored selector interpolation. No second planner pass,
+  source scan, node copy, or render-time selector walk was added.
+- **New node/materialization:** none. The parser retains `.@{name}` as the
+  existing interpolation-backed `SimpleSelector`; the prepass replaces that
+  existing selector fact with its resolved text exactly as it already does for
+  rule selectors.
+- **Render path:** unchanged direct string emission. `computeExtends` receives
+  the resolved parser-owned target and retains its existing IR matching path.
+- **Selector-template validation:** the existing ampersand composition branch
+  rejects a quoted comma-list parent only when it meets a non-leading `&`
+  template (for example `.fruit-&`). It adds no scan or traversal: the already
+  computed canonical child string and already-carried parent branches supply
+  both facts. Ordinary separate selector branches and leading `&` composition
+  keep their existing routes.
+- **Helper/API surface:** one private complex-selector helper deletes duplicate
+  per-compound resolution bookkeeping; no public API, host, bridge, or Context
+  surface was added.
+- **Metadata mutations:** existing selector memo invalidation only (`_hasInterp`,
+  `_hasAmp`, `_canon`); the literal-ampersand rule is preserved.
+- **Evidence:** Less public parser 63/63, CSS public parser 13/13, and Jess
+  public extend/at-rule compiler tests 7/7. This is correctness evidence only;
+  no performance claim is made.
 
-- Latest pass: bootstrap spine blockers cont'd — EVAL-FALLBACK print-state isolation at TWO more sites in the import/root emitter (`rules.ts`). A container child (`isRulesetOrAtRule` → `n.render`) and a non-spine-foldable IMPORT body (`_emitSpineImportFold`'s `evalFallback` → `importNode.render`) both route to the EVAL render (`evalForRender` → `prepareRenderPrintState`), which RESETS `context.printState` in place; un-isolated in the single-pass spine that swapped the live writer/frame-arrays and silently DROPPED every later sibling/import (bootstrap `_reboot`'s `a { #hover({…}) }` — a detached-ruleset-arg mixin deferred to eval — dropped the whole following `_grid`; ~4× output recovered, 37,990 → 156,472 bytes). Both wrapped in the EXISTING `evalIsolatingSpinePrintState`; each `render` returns its own string spliced into the live writer.
-- Architecture surface: `rules.ts` only — the two eval-render call sites in `_emitRulesBody`'s `emitNode` (`isRulesetOrAtRule` branch) and `_emitSpineImportFold`'s `evalFallback`. Both gated to `options.spineMode` (the `serializeRulesContainerInline` / non-spine branches are untouched). Same isolation primitive the guard/value-leaf resolves use. No Node class changed; no output tree retained.
-- Separation/duplication: ZERO new helpers — reuses the already-exported `evalIsolatingSpinePrintState`. Two existing calls wrapped.
-- Cumulative node weight: no field added to any Node class. No node state.
-- New traversal: none — the wrap adds a shallow `context.printState` snapshot/restore around calls that already ran.
-- New node/materialization: none — the snapshot is a shallow object spread of the existing print-state, freed on return; the eval renders already allocated their own writers.
-- Render path: byte-identical — restores the live writer/frames after each eval render so the spliced string lands and later siblings emit normally (was: later content lost). Full suites green.
-- Helper/API surface: unchanged — no new export (`evalIsolatingSpinePrintState` was exported in the prior pass).
-- Metadata mutations: none — snapshot/restore of `context.printState` (a transient render buffer, not node fields); no `.parent`/`sourceNode`/`sourceRoot`/`location`/`index` write.
-- Review-flagged diff tokens: [routine error control] the eval-render calls are wrapped in `evalIsolatingSpinePrintState`, whose EXISTING `try`/`catch` restores print-state on the throwing edge (unchanged helper, prior pass); the two new call sites add zero `try`/`catch`/`Error` of their own. [materialized array/object] the `= {` matches are the arrow-fn closures passed to `evalIsolatingSpinePrintState` (`() => n.render(…)`); they allocate no array/object — the isolator's shallow snapshot is pre-existing. [parent/source mutation] ZERO — no `.parent`/`sourceNode`/`sourceRoot`/`location` assignment; the wrapped `render` calls are unchanged.
-- Evidence: minimal lock (`spine-guarded-mixin-forfold.test.ts` → "spine import eval-fallback print-state isolation") — an imported `a { #hover({…}) }` no longer drops a following import. Bootstrap: 37,990 → 156,472 bytes; `bootstrap-clean-repro` now passes length + `.col-sm-` + `--breakpoint-sm:576px` (was failing all); REMAINING red = `.container-lg` only (a nested `:extend(.container-fluid all)` from an interpolated `.container-@{bp}` inside `each`+`#media-breakpoint-up` detached rulesets + a `\%responsive-container` placeholder — a distinct spine-extend coverage item, NOT this pass; documented for continuation). Suites green: core 3300/0, all-less byte-identical 105/0, config 29/0, `spine-production-ratchet` 130/0, less-parser 512/0, 3 locks. The 12 `emit-walk-ratchet` reds remain PRE-EXISTING on clean `origin/dev`.
-- Verdict: accepted — two eval-render sites print-state-isolated with an existing primitive, no new Node field, no tree mutation, no output tree, byte-identical, recovers ~4× dropped bootstrap output.
+### Current pass: explicit-mixin ruleset placement publication
 
---- prior pass ---
+- **New traversal / materialization:** one direct `for` loop over an explicit
+  mixin's already-canonical immediate body records only Rules that were actually
+  rendered into child placement frames. Namespace lookup adds one ordered walk
+  over those published placement facts after ordinary imported/authored facts.
+  This cannot be carried by the existing `Map<Rule, Frame>` alone: the same
+  canonical Rule may be placed by more than one mixin activation with different
+  live bindings.
+- **New node/materialization:** none. `PublishedRulesetPlacement` is tiny
+  render-frame semantic state (`Rule` identity plus its existing evaluated
+  child `Frame`), never an AST clone, wrapper, mutation, or cached resolver
+  result.
+- **Render path:** unchanged direct string emission. The fact is created only
+  after an explicit mixin body has emitted; it permits a later sibling
+  namespaced call to enter that exact activation and use its existing live
+  variables/import facts.
+- **Helper/API surface:** added private `publishExplicitRulesets`, scoped to
+  explicit-mixin nested expansion; ruleset-mixins retain their normal dispatch
+  path. No public operation/type changed.
+- **Metadata mutations:** only append-only state on the current render Frame;
+  no parent/source/frozen metadata changes.
+- **Evidence:** focused canonical AST regression covers interpolated `.person`
+  placement followed by `.person.sayGender()` and its captured `@gender`;
+  public `mixins-interpolated` and all 11 `tests-config/namespacing` fixtures
+  pass. This is behavior evidence only; no performance claim is made.
 
-- Latest pass: bootstrap spine blockers — (a) LOOP-FOLD via the root / import-splice emitter (`Rules._emitSpineForFold`): a `$for`/`each` reaching `_emitRulesBody`'s `emitNode` (a root-direct loop, or one inside an imported body spliced via `_emitSpineImportFold`) now expands into per-iteration bound surfaces instead of falling to the `isChildRules` branch that emitted the body ONCE UNBOUND (`'color' is not defined` on a nested interpolated selector `.alert-@{color}`); (b) GUARD-EVAL print-state isolation (`serializeSpineFrameContainer`): a passing `when` guard whose operands render nested values (a function call, or a local var whose binding is a call) reset `context.printState` in place mid-descent and silently dropped the body — now isolated via `evalIsolatingSpinePrintState`.
-- Architecture surface: the ROOT / import-splice emitter (`rules.ts` `Rules._emitRulesBody`'s `emitNode`) gains a `For`-route to a new sibling method `_emitSpineForFold` (mirrors the CONTAINER descent's existing `runSpineForExpansion` in `serialize-helper.ts` — same `spineIterationSurfaces` primitive, same `rulesContext = surface` frame thread as `processNode`). The guard-eval site in `serializeSpineFrameContainer` (`serialize-helper.ts`) is wrapped in the EXISTING `evalIsolatingSpinePrintState` isolation the value-leaf resolves already use. No Node class changed; no output tree retained.
-- Separation/duplication: no new file. `_emitSpineForFold` is the emitter-side analogue of `runSpineForExpansion` — it REUSES `For.spineIterationSurfaces` and `evalIsolatingSpinePrintState` (newly EXPORTED from `serialize-helper.ts`, previously a private helper — a visibility change, not a new mechanism). It does not duplicate the container fold's dedup/merge re-plan (not needed for the root/import splice; a loop that needs cross-iteration merge stays a follow-on). The guard fix adds ZERO helpers — it wraps an existing call in an existing isolator.
-- Cumulative node weight: no field added to any Node class. No node state. Net: one method (`_emitSpineForFold`) + one newly-exported existing helper.
-- New traversal: [loop/traversal] the two new loops live in `_emitSpineForFold` — an OUTER loop over the loop's per-iteration surfaces and an INNER loop over each surface's already-materialized children, driving the SAME `emitNode` the container fold drives. This is the loop-expansion the eval path performs per iteration; it runs once per `For` node reached (not per leaf, not on a hot per-node path beyond the iteration it represents). No whole-tree scan added.
-- New node/materialization: [materialized array/object] the `Rules[]` surfaces are produced by the EXISTING `For.spineIterationSurfaces` (unchanged) — the fold only ITERATES them; `_emitSpineForFold` allocates no array/object of its own (the `as unknown as {…}` is a type view, not an allocation). No output tree is built; each surface child emits through `emitNode` exactly as an authored child would.
-- Render path: both fixes are byte-identical to eval. The loop-fold makes an import/root loop render its per-iteration bound bytes (was: throw or unbound-drop); the guard-isolation makes a passing guard's body survive (was: silently dropped into a swapped writer). Neither alters output where it already matched — the guard isolation only restores the live writer, and simple guards with no rendering operand pay a shallow snapshot.
-- Helper/API surface: `evalIsolatingSpinePrintState` changes from module-private to EXPORTED (`serialize-helper.ts` → `rules.ts`), the same one-consumer export shape the file's other spine helpers use. `_emitSpineForFold` is a PRIVATE method (no public API). Net exported-symbol delta = +1 (an existing helper, now shared).
-- Metadata mutations: none by the new code. `_emitSpineForFold` save/restores `context.rulesContext` around each child emit (the `processNode` frame-thread discipline — a transient live-frame pointer, not a node field write); it never assigns `.parent`/`sourceNode`/`sourceRoot`/`location`/`index`. The surfaces' own frame wiring is done by the unchanged `spineIterationSurfaces`.
-- Review-flagged diff tokens: [loop/traversal] the two `for` loops are `_emitSpineForFold`'s surface + surface-child iteration — the loop-expansion the eval path already does per iteration, driving the existing `emitNode`, once per `For` reached; adds zero whole-tree/hot-leaf traversal (accounted above). [routine error control] the two `try`/`catch` are the frame-restore discipline required by the async splice — each restores `context.rulesContext` to its saved value on the throwing edge before rethrowing (mirrors `runSpineForExpansion`/`processNode`'s existing `restoreFrame` on-error path), so a failed child emit cannot leak the surface frame onto the shared context; they introduce zero fresh error TYPE and swallow nothing (every catch rethrows). [materialized array/object] the `Rules[]` view + `= {` object-literal matches are the type assertion `as unknown as { spineIterationSurfaces… }` (a compile-time view, no allocation) and the arrow-fn bodies; the only real array (`surfaces`) is produced by the unchanged `spineIterationSurfaces` and merely iterated — no output materialization (accounted above). [parent/source mutation] ZERO in the code — the `sourceNode`/`sourceRoot`/`.parent` matches are words in THIS prose (the Metadata line naming what is NOT written) and inside `spineIterationSurfaces`'s pre-existing surface build (unchanged by this pass); `_emitSpineForFold` and the guard-isolation wrap perform no `.parent`/`sourceNode`/`sourceRoot`/`location` assignment.
-- Evidence: minimal repros byte-identical to eval + less@4 — (a) `each(@map,#(@value,@key){ .item-@{key}{ #mixin(@key) } })` inside an imported body folds per-iteration (was `'…' is not defined`); (b) `#fs(inherit)` two-level RFS-shape guarded mixin in a nested ruleset emits its `font-size` (was dropped). Bootstrap: was THROW `'color' is not defined`; now renders clean (no throw, no rejections) — remaining truncation is a SEPARATE full-bootstrap-only value/grid divergence (a `#border-radius` value `0.2rem` vs `0.25rem` + a grid `.row`/`make-grid-columns` drop that does NOT repro in the 6-import `code+grid` slice, which is now byte-identical) — documented for continuation, not this pass. Suites green: core 3300/0, all-less byte-identical 105/0, config-fixtures 29/0, jess `spine-production-ratchet` 130/0, 2 NEW locks (`spine-guarded-mixin-forfold.test.ts`). The 12 `emit-walk-ratchet` reds are PRE-EXISTING on clean `origin/dev` (verified by file revert) — not introduced here.
-- Verdict: accepted — two byte-identical spine correctness fixes (import/root loop-fold coverage + guard-eval print-state isolation), no new Node field, no tree mutation, no output tree, one existing helper newly shared.
+### Current pass: bubble-body async cursor
 
---- prior pass ---
+- **New traversal / materialization:** one existing source-order body loop now
+  owns its direct-leaf group and numeric cursor. It replaces the prior outer
+  loop plus one `emitBubbleStatement` invocation per child; no `slice`,
+  `map`, copied statement array, node, wrapper, or side map is created. A
+  continuation is allocated only when `flatten`, a nested at-rule, an import,
+  or a selected `$if` body actually returns a promise.
+- **New node/materialization:** none. Loaded imports retain their canonical
+  `Stylesheet`; the renderer calls the same bubble-body placement routine with
+  the importer frame and never copies children or reconstructs source.
+- **Render path:** direct leaves accumulate in one shared group and stringify
+  once at a real boundary. An async import resumes the same group/index after
+  its loaded body completes. The import callback temporarily restores the
+  legacy loaded-root placement depth while emitting that body, then restores
+  the import statement depth before the cursor continues; the at-rule header
+  still owns its braces and empty-block rewind.
+- **Helper/API surface:** deleted `emitBubbleStatement`; added no public API.
+  The local cursor is necessary to retain an exact source index across an
+  asynchronous boundary without sliced tails or per-statement closures.
+- **Metadata mutations:** none.
+- **Review-flagged diff tokens:** `[loop/traversal]` is this pass's single
+  replacement source-order cursor, which deletes the prior outer
+  loop/per-statement dispatch pair and is needed to resume at an async source
+  index. `[array helper]`, `[array spread/materialization]`, `[node
+  construction]`, `[parent/source mutation]`, `[side map/set]`, `[routine
+  error control]`, and `[materialized array/object]` are concurrent shared-tree
+  work, not this cursor pass: it adds no arrays, nodes, maps, source mutation,
+  or routine errors.
+- **Evidence:** core build, 22 focused AST import tests (including the promoted
+  async duplicate-import regression), focused AST at-rule/mixin/extend suites,
+  and public `strict-imports` plus `layer` collapse:false fixtures pass. The
+  repository-wide aggressive verifier still reports unrelated concurrent
+  shared-diff cost-contract entries; no performance claim has been made.
 
-- Latest pass: benchmark spine blockers — (a) APPEND×EXTEND gate PRECISION (replace whole-tree over-reject with a collision-only predicate); (b) REFERENCE-EXTEND unmapped-target FOLD (an absent import-reference target is inert, not an abort-to-eval).
-- Architecture surface: the spine ELIGIBILITY/TOPOLOGY gates only — `isSpineEligibleRoot` (`emit-walk.ts`) and `isSpineExtendTopology` (`extend/spine-extend.ts`). These decide spine-vs-eval; they emit nothing and touch no output node. No change to the render path, the fold splice, or any Node.
-- Separation/duplication: no new file. Added ONE predicate `treeHasExtendTargetableAppend` (`spine-extend.ts`) that REPLACES the deleted `treeHasAmpersandAppend` (`emit-walk.ts`, ~24 lines removed) — a swap, not an addition: the old gate rejected ANY append+extend tree; the new one rejects only when an extend target atom could equal an append-generated atom (`parent + suffix`). The reference relaxation REUSES the existing per-target `isInertNomatch` clause (adds a `reGateResolved` guard + an imported-subject inertness check), not a new mechanism.
-- Cumulative node weight: no field added to any Node class. No node state. Net helper count unchanged (one predicate added, one deleted).
-- New traversal: [loop/traversal] every new loop lives in `treeHasExtendTargetableAppend`, a SOURCE-TREE eligibility predicate that runs ONCE per ROOT render (not per node, never on the hot leaf/emit path). It is a traversal SWAP: the deleted `treeHasAmpersandAppend` already walked the whole ruleset/at-rule tree + each selector (via `selectorHasAmpersandAppend`); the new walk does the same single pass and additionally collects append suffixes/atoms + extend-target atoms in the same visit. The `node.walk(true)` inside `selectorAppendSuffixes` walks ONE selector's small node tree (identical cost to the deleted append-detector). The reference relaxation's `[...importedRootSubjects].some(...)` iterates the RESOLVED-imported-subject set (small) only in re-gate mode (import+extend trees) per unmapped target — bounded by imported-subject count, off entirely for the no-import common case.
-- New node/materialization: [side map/set] + [materialized array/object] the 3 `Set`s (`suffixes`, `generatedAtoms`, `targetAtoms`) and the `string[]` returns of `selectorAtoms`/`selectorAppendSuffixes` are DECISION-TIME SCRATCH inside the predicate — allocated on entry, freed on return, sized O(appends + extends) for that one root, NEVER attached to a node, the render state, or an output tree. They exist because the collision decision needs the atom sets; they replace the old gate's boolean-only short-circuit. No output materialization (this path emits nothing).
-- Render path: UNCHANGED. Both outcomes are byte-identical to eval — admit → spine fold (`deriveCalls===0`), reject → eval two-walk. The predicate cannot alter output; it only routes.
-- Helper/API surface: `treeHasExtendTargetableAppend` is exported from `spine-extend.ts` and imported by `emit-walk.ts` (the same one-consumer shape the deleted `treeHasAmpersandAppend` had, just relocated to where the extend gather helpers live). Net exported-symbol delta ≈ 0.
-- Metadata mutations: none. The predicate is pure over the source tree (`flatLocalSelector`/`valueOf` reads only); no `.parent`/`sourceNode`/`sourceRoot`/index/location write. The reference relaxation reads `importedRootSubjects` (already resolved by `wireSpineImports`) — no mutation.
-- Review-flagged diff tokens: [loop/traversal] all new loops are the once-per-root eligibility predicate `treeHasExtendTargetableAppend` swapping in for the deleted whole-tree `treeHasAmpersandAppend` scan — same single source-tree pass, no hot-path/per-node traversal added (accounted above). [side map/set] the 3 `Set`s are per-call decision scratch, freed on return, never node/render state (accounted above). [materialized array/object] the `string[]` atom lists + the `walk` closure's `parentAtoms` array are decision-time scratch, no output materialization (accounted above). [parent/source mutation] ZERO — the only matches are the identifier names `parentText`/`parentAtoms` (the COMPOSED-PARENT selector TEXT threaded read-only through the walk to compute append-generated names) and this prose; the code performs no `.parent`/`sourceNode`/`sourceRoot` assignment — the predicate never writes any node field.
-- Evidence: append+extend UNRELATED folds (`deriveCalls===0`), append-GENERATED-target extend STAYS on eval (byte-identical), reference-extend absent-target folds as a no-op (empty, = eval + less@4), reference-extend present-target still folds. Suites green: core 3300/0, jess `spine-production-ratchet` 130/0 (incl. 4 new locks), all-less 105/0, less-parser 508/0. Perf A/B (same-build spine-vs-eval toggle, warmup 8 + 15-trial median, byte-identical output): a 60-block append+extend workload folds 19.4ms vs eval 26.8ms (1.38×); a 60-extend reference workload folds 10.1ms vs eval 18.1ms (1.80×). NOTE: `benchmark.less` itself still does NOT fold spine-only — it is additionally blocked by mid-body `@charset` (design-excluded document framing) and the direct-merge-alongside-mixin-call deferred residual; those are separate items, not this pass.
-- Verdict: accepted — deletes the whole-tree append+extend over-reject for a collision-only predicate and folds the inert reference-extend case, both pure routing decisions, no node state, no tree mutation, no render-path change, byte-identical both ways.
+### Current pass: deferred imported-callable document scope
 
---- prior pass ---
+- **New traversal / materialization:** none. `Context` records one existing
+  `TreeContext` against an imported callable's already-shared body-array
+  identity when the typed import fact publishes a direct `MixinDef` or `Rule`.
+  This is two immediate-child publication loops that already exist (normal
+  emission and the intentional extend planner); it does not walk a parsed
+  document, rebuild a body, reparse source, or create an emitter ownership map.
+- **New node/materialization:** none. The added session-only
+  `WeakMap<object, TreeContext>` carries no AST metadata and creates no node,
+  wrapper, source-parent link, or resolver result. A synthesized zero-argument
+  ruleset mixin reuses `Rule.body`, so the same association covers it without a
+  second representation.
+- **Render path:** direct and nested mixin/reference execution asks `Context`
+  to restore that body owner's existing document scope only while its current
+  body callback runs. The returned `MaybePromise` retains the scope through an
+  async nested import/read and restores the caller scope in both success and
+  error paths. The one proven `walkBody` inline-import branch now returns its
+  existing async continuation rather than dropping it; this preserves the
+  cursor/order and does not broaden import resolution.
+- **Helper/API surface:** `Context.rememberDocumentBody` and
+  `Context.withDocumentBody` are narrow session-provenance operations derived
+  from the existing document identity table. They add no parser selection,
+  filesystem access, module loading, plugin dispatch, host, bridge, or
+  compatibility route.
+- **Metadata mutations:** none. The AST stays plain canonical source facts;
+  all association is weak, session-local, and import-publication-only.
+- **Review-flagged diff tokens:** `[side map/set]` is the one required
+  `WeakMap<body, TreeContext>` session provenance table; it replaces no lookup
+  structure, is consulted only at deferred body entry, and cannot retain an AST
+  body. `[loop/traversal]` is the two existing import-publication loops gaining
+  a constant-time direct-child association; no descendant traversal is added.
+  The inline continuation may allocate the existing sliced remainder only when
+  Context IO is actually async; it is necessary to retain the source cursor and
+  replaces the prior dropped promise. All other verifier tokens are concurrent
+  shared-tree work outside this pass.
+- **Lifecycle evidence:** `context-provenance.test.ts` creates exactly two
+  Context-registered documents and one deferred body association. It records
+  five ordered ownership observations: root entry, imported-body entry,
+  imported-body post-`await`, root restoration, and root restoration after a
+  rejected `withSourceOwner` activation. The test also proves an unassociated
+  body uses the active root owner rather than allocating provenance. This is
+  test-local evidence, not a production counter or a performance claim.
+- **Evidence:** core and Jess builds pass; 12 Context-backed path-resolution
+  tests pass with no unhandled rejection, including explicit imported mixin and
+  bare ruleset-as-mixin bodies whose nested `(inline)` reads must use the
+  imported directory and then restore the root directory. Public Less parser
+  tests pass 67/67 and the Less hotpath corpus completes. `benchmark.less`
+  does not activate a deferred imported callable body, so it is not evidence
+  for this lifecycle path and no benchmark claim is made.
 
-- Latest pass: STRIPE nested-container recursion fold (distinct-per-level container surfaces) + gate lift.
-- Architecture surface: the spine mixin-fold splice (`serialize-helper.ts` `runSpineMixinExpansion`), the recursion eligibility gate (`emit-walk.ts` `treeHasRecursiveMixinCall`, now DELETED), and the root-fold statement-validity guard (`check-valid-nodes.ts`). Ownership stays where it was: the fold splice owns per-placement projection; the gate owned deferral (now unneeded); the guard owns root value-drop detection.
-- Separation/duplication: no new helper file. `distinctFoldChild` is a small local closure inside `runSpineMixinExpansion`, mirroring the loop fold's existing per-iteration `copyWithReusableLeaves` — it UNIFIES the two folds on the same projection primitive rather than adding a parallel mechanism. Deleted `treeHasRecursiveMixinCall` (~95 lines) + its call site; the recursion gate is gone, not relocated.
-- Cumulative node weight: no field added to any Node class. The seen-tracker is a per-pass local `WeakSet`, not node state. Net: one gate function removed.
-- New traversal: none added. `distinctFoldChild` does an O(1) type test + `WeakSet` membership per spliced child (no loop). The deleted gate removed a document-level `root.walk` cycle-detection pre-scan — a net traversal DELETION on the eligibility path.
-- New node/materialization: `copyWithReusableLeaves(child)` fires ONLY on a container child's 2nd+ occurrence within one expansion pass (recursion re-entry / repeated call) — the exact placements that would otherwise COLLAPSE to one printed block. First occurrence stays SHARED (zero copy on the common single-call container mixin); scalar leaves never copied. This is the SAME reused-leaf placement copy the loop fold already pays per iteration — a projection giving each level its own printed-block identity, not a deep clone and not a tree mutation.
-- Render path: unchanged shape — the copy is a serialize-time projection consumed immediately by the existing `processNode` descent; no output tree retained. `checkValidNodes` now skips `Call`/`Mixin` (statement-legal, expanded by the pass) so the spine root-fold can check a recursive body's RAW surface without false-flagging the unexpanded recursive call — a no-op on the eval path (which only ever sees post-expansion output).
-- Helper/API surface: no exported API added; `copyWithReusableLeaves` is an existing import. One local closure added, one gate function + call deleted → net API surface reduced.
-- Metadata mutations: `copy.index = child.index` carries the splice-order index onto the placement copy (output-invisible bookkeeping, ruling 1); no `.parent`/`sourceNode`/`sourceRoot`/location mutation. The shared canonical node is never mutated.
-- Review-flagged diff tokens: [array helper] the single `surface.rules.map(...)` is the PRE-EXISTING fold-splice map, only its element expression changed (`child` → `distinctFoldChild(child)`) — same iteration, one wrapped call. [copy helper] `copyWithReusableLeaves` (1 call + 1 import + 3 comment mentions) is the loop fold's own reused-leaf projection primitive, applied only to 2nd+ container occurrences; justified as the distinct-per-level surface projection above, reusing the existing copy family. [parent/source mutation] the only matches are the words in THIS prose (the Metadata line naming what is NOT mutated); the code performs zero parent/source/location assignment — the placement copy is a fresh detached surface, the canonical node is never re-parented.
-- Evidence: STRIPE self/mutual/≥3-level/root-scope/interpolated-selector recursion folds `deriveCalls===0`, distinct-per-level blocks, byte-identical to the eval toggle + less@4 (`lessc 4.6.3` diff clean on the recursion mechanism). Suites green: core 3300/0, jess `spine-production-ratchet` 126/0, all-less 105/0, error 92/0, less-parser 508/0. Perf A/B (same-worktree revert toggle, warmup + N median): STRIPE fixture folds faster than eval; benchmark neutral (stays on eval either way).
-- Verdict: accepted — deletes the recursion gate + its pre-scan traversal, folds STRIPE via the loop fold's existing projection primitive, no new node state, no tree mutation.
+### Current pass: Less guard equality for emitted keyword values
 
-## History
+- **New traversal / materialization:** none. The existing two-operand guard
+  comparison adds one constant-time cross-kind equality check before the
+  existing per-kind comparator; it allocates no node, array, map, or render
+  state.
+- **Render path:** unchanged. Guard dispatch receives already-materialized
+  values and returns a boolean; it never constructs an output value or scans
+  source. The branch is limited to exact emitted-byte equality when one operand
+  is the existing `Keyword` materialization of `~"…"` / `e("…")`.
+- **Helper/API surface:** none. No node, public type, parser rule, Context
+  method, bridge, or compatibility path was added.
+- **Metadata mutations:** none.
+- **Review-flagged diff tokens:** `[loop/traversal]`, `[array helper]`,
+  `[array spread/materialization]`, `[node construction]`, `[side map/set]`,
+  `[routine error control]`, and `[materialized array/object]` reported by the
+  repository-wide diff verifier belong to concurrent parser/core work in this
+  shared dirty tree. This pass adds none of those mechanisms: its only
+  production addition is a scalar conditional and immediate boolean return.
+- **Evidence:** the core typed comparison regression proves `3 = ~"3"` in both
+  directions while `3 != 4`; rebuilt `tests-unit/mixins-guards/mixins-guards.less`
+  is byte-identical. No performance claim.
 
-Landed design/plan/readout/audit docs and this router's former pass-by-pass
-`Aggressive Cutting Self-Prosecution` log live in **`archive/`** (see
-`archive/README.md` for the index). Full content is preserved — read one when you
-need the *why/how* behind a shipped mechanism. Notably `archive/HANDOFF-history.md`
-holds the self-prosecution log.
+### Current pass: public Less `Stylesheet` dispatch and execution
+
+- **New traversal / materialization:** one bounded root-child scan for static
+  CSS-terminal import prelude output; no node materialization. Jess passes
+  the parser-owned `Stylesheet` directly to the existing AST serializer; it
+  does not construct a `Rules`, bridge, aggregate document, or render-only
+  node. The builtin evaluator is assembled once at module initialization and
+  retained on the render Context. One `WeakMap` entry per parsed `Stylesheet`
+  retains its already-known file/plugin source identity; import entry simply
+  switches the existing `treeContext` and restores it. Context's cache widens
+  only to hold the parsed document it already coordinates. The renderer performs
+  one root-only scan when no caller-supplied import handler owns terminal import
+  decisions; it writes already-typed static CSS terminal imports and retains one
+  identity set solely to skip their later source positions. It does not resolve,
+  load, parse, allocate output nodes, or walk nested/imported documents.
+  The remaining non-value/prelude `SpacedValue` path uses the existing per-part
+  fold and one existing-size output loop to read parser-owned separator bytes;
+  when no newline separator is present it takes the same single-space output
+  branch as before. Ordinary declaration/value arrays use `ValueSlot` plus the
+  provenance layout side table described above. No source scan, list re-split,
+  node, or extra side map is introduced.
+- **Render path:** `Rules.render` remains only for legacy documents. A
+  `Stylesheet` takes the direct serializer branch under `Context.withDocument`.
+  Imports call the retained Context dispatch path from that serializer; each
+  loaded document enters its Context-owned source scope and restores its
+  importer afterward. External URL/protocol-relative identifiers first require
+  an explicit plugin `canResolveImport` claim, then travel through the same
+  resolver → locator → source → parser route. An unclaimed external import stays
+  a CSS terminal; Context never fetches it. A Jess-side import callback,
+  pre-flattened import wrapper, or AST-to-tree conversion is rejected.
+- **Helper/API surface:** one normalized Context parser dispatch selects
+  `safeParse` or the legacy throwing wrapper; callers do not acquire another
+  parse/load path. `Context.withDocument` replaces two Jess-only AST scope
+  helpers and the public renderer's `importDocument` callback; it owns no new
+  resolution behavior. `Context.loadImport` adds only the explicit external
+  capability admission before delegating to existing `getTree`; it adds no
+  resolver, parser, cache, source fetcher, or reparse path. The Less plugin
+  directly calls `@jesscss/less-parser.parse`.
+  `buildEvaluator` is the existing typed core execution seam, publicly exported
+  so Jess can pair it with the `@jesscss/fns` registry without creating a core →
+  fns cycle. The public Less test configuration explicitly chooses macro-compiled
+  parser output instead of attempting Parseman runtime composition.
+- **Metadata mutations:** AST documents set `context.document`; they do not
+  overwrite legacy `context.root`, whose meaning remains tied to the old
+  evaluator until that runtime is deleted.
+- **Evidence:** core and Jess builds pass; focused core AST import/value tests,
+  7 public Jess API tests, 4 Context-backed path-resolution tests, and the
+  isolated Less operations fixture pass. The public
+  evaluator proof covers a variable, mixin, arithmetic, and builtin through the
+  Less parser → plugin → Context → Jess route. No performance claim.
+
+### Current pass: R3 live/scoped binding contract
+
+- **New traversal / materialization:** the declaration index is one immutable,
+  source-order map per body; live cells and scoped reassignment overlays are
+  per activation, as required by `RESOLVER-SHAPE-SPEC.md`. No source rescan,
+  parser replay, or render-only node creation occurs.
+- **Render path:** variable reads select exactly one store. Live reads never
+  fall through to the declaration index; scoped reads never consult live cells.
+  A source-order walk activates declarations before later live uses.
+- **Helper/API surface:** `VariableReference.lookup`, `VariableDeclaration.write`,
+  and `VarIndirect.lookup` are mandatory public AST facts. No defaults, host,
+  bridge, callback registry, or dialect-local binding model remains.
+- **Evidence:** focused core AST proofs; CSS 98, Less 183, SCSS 134, and Jess 70
+  parser tests; package-export, parser-boundary,
+  docs, and diff checks. Fresh reviews closed live selector/import activation,
+  dynamic-variable lookup mode, glued sigils, and stale public AST assertions.
+  No performance claim.
+
+### Current pass: direct Less/SCSS/Jess existing-fact closure
+
+- **New traversal / materialization:** none. Parser reductions construct only
+  existing `Interpolation`, `Url`, `ImportAtRule`, `VariableDeclaration`, `If`, and
+  `Quoted` facts. No resolver, source scan, reparse, copied node, or temporary
+  render node was added.
+- **Render path:** one constant-time `Quoted.escaped ? value : src` leaf branch
+  emits Less static unquoted strings; it adds no walk, allocation, or helper.
+  SCSS/Jess ordinary backslash escapes retain `escaped: false`, so they keep
+  their authored quotes. Existing URL/import and typed at-rule serializers
+  otherwise evaluate the parser-owned facts. Generic Less at-rule headers use a
+  separate static-only grammar because ordinary generic-header rendering does
+  not retain parenthesis structure.
+- **Helper/API surface:** parser-local grammar productions only; no host,
+  bridge, action callback, public compatibility API, or Context change.
+- **Review-flagged diff tokens:** `[loop/traversal]`, `[array helper]`,
+  `[array spread/materialization]`, `[node construction]`, `[routine error
+  control]`, and `[materialized array/object]` are parser-reduction work: they
+  run once during Parseman construction and produce the canonical source facts,
+  never on the eval/render hot path. The reduction `throw` sites are impossible
+  grammar-child invariant failures, never ordinary parse misses or runtime
+  control flow. This slice adds no loop, array, node, or throw to rendering.
+  `[side map/set]` belongs to the separately documented R3 activation-state
+  model above; this slice adds none. The repository-wide
+  verifier still reports unrelated shared-diff registry entries, so it is not a
+  pass/commit gate result for this uncommitted shared worktree.
+- **Literal parent-suffix interpolation:** `&@{suffix}` remains the existing
+  `Interpolation`-backed `SimpleSelector`, not a new selector node or parent-transform
+  model. `compoundHasAmpersand` reads only literal `Interpolation` segments, never
+  resolved references. The existing extend interpolation prepass carries the
+  pre-mutation literal-only `_hasAmp` bit across template materialization, so
+  a reference resolving to `&` never becomes a parent selector. No planner
+  scan, extra traversal, or resolved-reference detection was added.
+- **Evidence:** CSS parser 98/98, Less parser 183/183, SCSS parser 134/134,
+  Jess parser 70/70, focused core AST acceptance 12/12, focused core import
+  placement 7/7, parser-runtime-boundary 0, docs validation, diff check, and
+  fresh cross-reviews. The direct Less
+  route now also recognizes deprecated glued percent-format calls as the
+  existing `%` `FunctionCall`; CST/direct/public parity and a static escaped
+  quote argument are covered. The CSS-3 fixture additionally proves the exact
+  legacy doubled-quote `url-prefix` argument, structural generic-header parens,
+  and multi-token `@supports` feature values. Static CSS `ImportAtRule` facts now retain their
+  canonical nested Rule placement in SCSS and Less—including mixin expansion,
+  selected control flow, and post-nested-rule ordering—rather than being
+  hoisted by the shared serializer. CSS still rejects nested imports and Jess's
+  CSS-import spelling remains `AtRuleStatement`. Static SCSS nested properties
+  now lower directly to ordered existing declarations, including empty blocks;
+  the CST-valid dynamic/control-flow prefix cases remain model gates. Review
+  found the generic Less interpolation escape hatch and direct Less now admits
+  existing detached-ruleset facts only at its CST-valid binding, mixin-argument,
+  parameter-default, and standalone-call positions. Generic declaration values
+  and percent-format arguments remain excluded. Legacy raw detached fallback
+  bodies remain explicitly CST-only because no typed AST fact can retain their
+  payload without a raw/reparse fallback. The generic Less interpolation escape
+  hatch is covered for leading, glued, and spaced forms. No performance claim.
+
+### Current pass: direct Jess value/header closure
+
+- **New traversal / materialization:** none. Parseman reductions construct only
+  existing `Quoted`, `Url`, `Interpolation`, and at-rule facts; empty `url()` uses the
+  existing `Url(Any(''))` representation.
+- **Render path:** unchanged. Existing value/at-rule serialization evaluates
+  those typed facts; no source reconstruction, resolution, or reparse occurs.
+- **Helper/API surface:** two parser-local predicates distinguish a flattened
+  header fact from its `@...` token. They keep the documented dynamic media
+  spelling block-only rather than adding a host, fallback, or generic header
+  path.
+- **Evidence:** public Jess parser suite (51 tests), CSS parser suite (96
+  tests), parser-runtime-boundary (0), diff check, and two adversarial reviews;
+  the reviews found and closed empty `@import url()` and dynamic media-statement
+  leakage. No performance claim.
+
+### Current pass: canonical Jess `For`
+
+- **Authority and deleted vocabulary:** the public Jess `$for` documentation is
+  the contract. The old AST-v2 `valueName` / `keyName` / `indexName` fields were
+  a Less `each()` callback model incorrectly made public; they are deleted.
+  `For.binding` now retains the authored Jess single, comma, bracket, or tuple
+  pattern. Less `each()` lowers at the Less parser boundary only.
+- **New traversal:** `forRangeItems` adds one bounded numeric loop to enumerate
+  a typed Jess `Range`; existing `forItems` still enumerates iterable entries.
+  This is semantic iteration, not a later rediscovery or reparsing pass. The
+  resulting entry array is current serializer control state and is not claimed
+  as a performance improvement; compact streaming iteration remains a separate
+  performance question.
+- **New node/materialization:** `Range` is parser-owned public AST
+  materialization with typed bounds, step, and endpoint inclusion flags.
+  `ForBinding` is plain public AST data, not a runtime host or side map. No
+  nodes are created merely to stringify CSS. A Jess value-position collection
+  materializes the already-owned canonical `DetachedRuleset`; it does not add a
+  new map node, compatibility tree, or render-time conversion.
+- **Render path:** `expandFor` and `expandNestedFor` bind and emit the existing
+  `For` body. Bracket bindings use documented key/value order; comma bindings
+  use value/key-or-index/counter; tuple bindings destructure typed list entries.
+- **Helper/API surface:** `range` and `ForBinding` replace three Less-shaped
+  public fields. No BuilderHost, ParseHost, bridge, action registry, scanner,
+  or source reparse is introduced.
+- **Metadata mutations:** none.
+- **Evidence:** public Jess parse/AST/render proof now covers list, range, and
+  collection key/value examples from the language documentation; the Jess
+  parser suite (44 tests), package build, parser-runtime-boundary check, and
+  diff check pass. This establishes semantic shape only; it makes no
+  performance claim.
+
+### Current pass: typed `@supports` and general-enclosed conditions
+
+- **Authority and scope:** `@supports` accepts typed static feature conditions,
+  logical `not`/`and`/`or`, recursively nested conditions, and
+  `GeneralEnclosed` function/parenthesized forms. Its content is a structured
+  `Interpolation`, never `Any` or a raw/reparse fallback. Other unsupported
+  dynamic forms stay rejected until they have truthful typed models.
+- **New traversal:** one bounded recursive serializer walk of a supports
+  prelude. It is necessary because ordinary value evaluation transparently
+  removes `Block(delimiter: 'paren')` around computed operations, while supports parentheses are
+  grammatical grouping and must remain in emitted CSS. No source/tree scan,
+  reparse, resolver, or side-map lookup is added.
+- **New node/materialization:** parser reductions create `GeneralEnclosed` only
+  at its public grammar position, plus the existing `Block`, `Operation`,
+  `Keyword`, `SpacedValue`, and leaf facts. No copied node, raw prelude, or
+  render-only materialization is added.
+- **Render path:** `@supports` writes the grammar-owned condition structure;
+  ordinary value serialization is unchanged. This preserves `(display: grid)`
+  rather than evaluating it into `display : grid` and losing the parens.
+- **Helper/API surface and metadata mutations:** the public AST names are
+  `Interpolation`, `GeneralEnclosed`, and `VariableCall`; there are no aliases
+  for old `Interp`/`DetachedCall` names. No metadata mutation, host, bridge, or
+  compatibility route.
+- **Evidence:** direct AST shape, public parse/render, rejection matrix, Less
+  package build, and parser-boundary verification. No performance claim or
+  benchmark is made.
+
+> **Removed historical staging record.** The former block here made private,
+> unreachable, CST-only, or delayed-public-route claims. Those claims were
+> wrong and have been deleted rather than retained as planning evidence. The
+> current public parse-to-Stylesheet architecture and the sections above and
+> below are the only applicable guidance.
+
+### Declaration-merge importance propagation
+
+- Prior pass: declaration-merge importance propagation.
+- Architecture surface: `mergeFold` carries an importance signal through the existing AST evaluator; no parser, host, bridge, or compatibility surface changed.
+- Separation/duplication: the merge path reuses the ordinary declaration importance contract rather than introducing a second value evaluator or render route.
+- Cumulative node weight: none; the signal is one boolean on the existing emit context.
+- New traversal: none.
+- New node/materialization: none; the merge-only signal is one boolean on the existing emit context, preserving the ordinary declaration contract when a value reaches `Important` through a variable.
+- Render path: merged declaration output remains direct string emission; the change only records the existing value-evaluation signal before writing the one merged line.
+- Helper/API surface: none.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none; the repair adds no allocation, traversal, map, clone, or error-control path.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-merge-importance-signal","verdict":"accepted","costDelta":"neutral","why":"The already-admitted declaration-merge loop carries one importance bit on its existing emit context instead of allocating a per-member sink. It repairs the ordinary declaration contract for Important values reached through a variable; it makes no speed claim.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}]
+  ```
+- Evidence: `packages/core/src/ast/__tests__/declaration-merge-direct-acceptance.test.ts` (including reset across a later merge group and ordinary declaration), the direct core AST suite, and the benchmark output oracle recorded above.
+- Verdict: accepted correctness repair; no performance claim.
+
+### Current pass: imported AST extend planning
+
+#### Overlay ingestion stack-safety self-prosecution
+
+- **New traversal:** two indexed loops in `collectPlan` append the existing
+  render-local overlay fact arrays. They replace argument spreading, which
+  converted a finite imported-loop overlay into one giant call and overflowed
+  V8's argument stack at 185,268 subjects. The loops preserve source order and
+  are the only pass over those arrays before the existing `mayMatch` pass.
+- **New node/materialization:** none. Each loop pushes the existing fact
+  reference directly; it creates neither a concatenated array nor a copied
+  subject/instruction value.
+- **Render path:** planner-only, reached only when extends are admitted; no
+  output nodes or strings are produced.
+- **Helper/API surface / metadata mutations:** none.
+- **Evidence:** direct AST regression ingests 150,000 overlay subjects, above
+  V8's spread argument limit. The complete 37-import Bootstrap prefix now
+  completes. This is a correctness/stack-safety repair, not a speed claim.
+
+- **New traversal:** `planImportedExtends` is the one cold pre-render import
+  traversal, required before `computeExtends` so imported selectors and root
+  selectors share one plan. Its `visit` cursor runs statements in source order;
+  `collectPlacedExtendFacts` follows `Rule`/`AtRuleBlock` bodies and, only when a
+  `For` body can carry an extend, executes the existing `forItems` +
+  `bindForEntry` semantics once per item. This is not a render walk: the normal
+  `emitImportAtRule`/`emitDocumentStatements` cursor is still the only output
+  traversal. The static no-extend direct-AST import path retains its old
+  synchronous bypass; Context imports are already MaybePromise-capable and may
+  discover imported-only extends.
+- **New node/materialization:** none. The deleted `{ ...root, children }` and
+  `{ ...atRule, body }` synthetic planner view is gone. Selector facts are small
+  extend IR values (`Branch`/`Level`), not AST nodes; no parsed node, statement,
+  body array, source metadata, or wrapper is copied or mutated.
+- **Placement state / allocations:** one `object` token per actually iterated
+  extend-bearing `For` item, stored in a render-session
+  `WeakMap<For, readonly object[]>`; one placement projection map is allocated
+  only when such a token receives an extend result. The preflight otherwise uses
+  its existing import-once `Set`, its existing planned-import `WeakMap`, and
+  temporary selector-IR arrays necessary for `computeExtends`. Static documents
+  continue to use the original per-rule maps directly: `byPlacement` is null and
+  no frame-chain lookup runs.
+- **Render path:** `expandFor` and `expandNestedFor` select the pre-issued token
+  by the already-existing iteration index and put it on that iteration's lexical
+  `Frame`. Extend projection lookup first takes the old direct map; only when
+  placement results exist does it walk the bounded parent `Frame` chain to the
+  nearest token. It never scans source/AST, resolves imports, or constructs an
+  output node merely to stringify.
+- **Helper/API surface:** all helpers are file-private (`resolvedExtendBranch`,
+  `resolvedExtendLevel`, `bodyMayPlanExtend`, `collectPlacedExtendFacts`, and
+  `extendProjection`). No export, compatibility shim, parser host, bridge,
+  action registry, or plugin API was added. The old synthetic-root planner path
+  was deleted rather than retained beside the typed-fact route.
+- **Metadata mutations:** none on AST. `Frame.extendPlacement` and the two weak
+  maps are render-session semantic placement state. Existing variable activation
+  occurs in the preflight's private planner frame; it never publishes into the
+  subsequent render frame.
+- **Review-flagged diff tokens:** this pass owns the cold source-order loops in
+  `collectPlacedExtendFacts`/`planImportedExtends`, selector-IR arrays, the
+  planner-local token array, and `WeakMap` placement projections described
+  above. They replace the deleted cloned-root/at-rule planning materialization;
+  they are not on a static document's render path. The verifier's remaining
+  global danger-token and cost-contract findings cover the concurrently dirty
+  parser/core files listed by the command, so they cannot be attributed to this
+  narrow pass in the shared worktree.
+- **Evidence:** `packages/core/src/ast/__tests__/import-at-rule.test.ts` covers
+  two imported loop iterations resolving to `.from-one` and `.from-two` in one
+  target group, while retaining sync imports, retry/error diagnostics, and
+  reference visibility (24/24). The public parser/compiler fixture
+  `packages/jess/test/less/spine-guarded-mixin-forfold.test.ts` proves imported
+  Less `each()` interpolated extenders (4/4). Core build passes. No speed claim
+  is made; the benchmark below is a non-parity measurement only.
+
+### Current pass: mixin-call empty accessor
+
+- **New traversal:** `lastVarMember` performs two bounded cold-path iterations
+  only after a typed `BracketLookup(index: -1)` reaches a mixin-call result
+  with no emitted declaration members. It reads the existing ordered callee
+  frames and their precomputed `declIndex` keys; that order is the only place
+  the conventional final `@return` member exists after normal mixin emission
+  intentionally suppresses variable declarations. It does not walk source
+  text, parent links, or output nodes.
+- **New node/materialization:** none. The accessor retains the parser-owned
+  `Reference(MixinCall, BracketLookup(-1))` facts. The fallback returns the
+  existing binding/value and frame; it does not clone, mutate, or construct an
+  AST node or a placement wrapper.
+- **Render path:** unchanged direct serialization. The fallback is evaluator
+  lookup state only, reached for a value reference; it does not build output
+  nodes or recover/reparse source. Non-empty declaration maps keep the existing
+  ordered-list index behavior.
+- **Helper/API surface:** one private evaluator helper, `lastVarMember`. It
+  closes the missing half of the existing `lookupVarMember` callee-frame path;
+  no exported API, host, bridge, parser fallback, or compatibility adapter was
+  added.
+- **Metadata mutations:** none.
+- Review-flagged diff tokens: two nested `for...of` loops are confined to
+  the cold empty-bracket mixin-result fallback. They are necessary to preserve
+  declared candidate/source order from existing frame facts; no new map, side
+  table, or materialized member list is created.
+- **Evidence:** direct AST acceptance proves a typed mixin-call plus
+  `BracketLookup(-1)` resolves its final local variable. The public Less
+  compiler regression proves `.add(10px, 10px)[]` renders `20px`; core build
+  and focused tests pass. This is a correctness repair only; no performance
+  claim or benchmark is made.
+
+### Current pass: interpolated explicit-mixin rule publication
+
+- **New traversal:** none. The existing `publishExplicitRulesets` loop already
+  visits direct `Rule` children of a selected explicit mixin definition. The
+  flat `expandCall` now invokes that existing publication seam, matching the
+  nested emitter's established behavior; no new lookup walk, selector scan, or
+  source traversal was added.
+- **New node/materialization:** no AST node/copy/wrapper. A call-specific
+  lexical `Frame` is established only when a direct child Rule has not yet been
+  flattened. That frame is semantic placement state: a later sibling namespace
+  call can see the actual mixin-parameter bindings before the deferred rule
+  render closure runs. `flatten` reuses it when it does run, so this moves an
+  already-required frame creation earlier rather than creating a second one.
+- **Render path:** direct emit stays unchanged. The publication has no output;
+  it makes canonical nested Rule facts callable at the same lexical point that
+  Less exposes them. No text recovery, reparse, or render-time AST build is
+  introduced.
+- **Helper/API surface:** no new helper or public API. The repair calls the
+  existing private `publishExplicitRulesets` from the flat path; it remains the
+  single owner of `publishedRules` placement state.
+- **Metadata mutations:** existing render-local `rulePlacements` and
+  `publishedRules` only; neither lives on canonical AST nodes. The placement is
+  keyed by call frame, preventing an interpolated Rule shared by separate calls
+  from leaking parameters across placements.
+- Review-flagged diff tokens: no new traversal token. One existing cold
+  publication loop now materializes a `Frame` only for an explicit mixin child
+  Rule before deferred flattening; this is necessary semantic placement state
+  and reused by the renderer.
+- **Evidence:** the final public historical interpolated-path source now emits
+  `mi-test-d { gender: "Male"; }`; a second public test proves two interpolated
+  child rules retain separate `red`/`blue` call frames. Direct core mixin/value
+  suites and public Less semantic suites pass. No performance claim or benchmark
+  is made.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: public AST-v2 cutover snapshot commit gate (parser, Context/plugin,
+  evaluator, serializer, reference, import, and direct-route work staged together).
+- Architecture surface: the staged work replaces public parser output with canonical
+  AST-v2 `Stylesheet` and carries that document through the retained Context/plugin
+  dispatch and direct serializer. It is not a private grammar, bridge, parser host,
+  action registry, source reparse, or fallback route.
+- Separation/duplication: grammar reductions own construction; Context retains
+  resolution/module/source coordination; evaluator and serializer consume the same
+  canonical AST. The staged snapshot intentionally removes Rules-typed public-route
+  assumptions rather than retaining an AST-to-tree compatibility path.
+- Cumulative node weight: parser construction now allocates canonical public AST
+  facts at parse time. Render-local `Frame`, extend-planning IR, and provenance maps
+  exist only where a semantic placement/source fact cannot live on the immutable
+  source tree. This is a semantic cutover, not a byte-identical refactor and not a
+  performance acceptance claim.
+- New traversal: parser reductions walk recognized child arrays to construct typed
+  nodes; source-order evaluator/serializer loops execute statements; import/extend
+  planning performs its documented cold preflight only when the typed admission
+  predicate finds an extend-bearing import body. No scanner, source-text pass,
+  source reparse, or render-time AST walk was introduced.
+- New node/materialization: Parseman reductions construct only canonical AST-v2
+  nodes from recognized children. Evaluation does not build nodes merely to
+  stringify. The staged `Reference` chain, import facts, `Plugin`, and direct
+  dialect grammar nodes replace legacy/callback representations rather than wrap
+  them.
+- Render path: `Stylesheet` rendering remains direct string emission under the
+  active Context document scope. Imports dispatch through `Context.getTree` and
+  plugin resolution; they do not pre-splice text, bridge into Rules, or create an
+  output-node tree.
+- Helper/API surface: added parser-local grammar factories/reducers and private
+  evaluator/serializer helpers are the narrow owners of their typed facts. Public
+  operations remain `parse`, Context dispatch, and render; no BuilderHost, ParseHost,
+  callback/action registry, or parser compatibility alias is added.
+- Metadata mutations: canonical AST nodes remain immutable source facts. Parent,
+  source-owner, lexical binding, provenance, and extend-placement data are carried
+  in documented render/session Frames or Context-owned maps; no post-hoc parent
+  restoration or source-tree mutation is used to recover placement.
+- Review-flagged diff tokens: [loop/traversal] and [array helper] are Parseman
+  reduction child classification plus existing source-order evaluator/planner loops;
+  [array spread/materialization] and [materialized array/object] are canonical
+  grammar child/result construction and bounded selector/planner facts;
+  [node construction] is direct canonical AST construction at parse time;
+  [parent/source mutation] is Context/Frame provenance and placement state, not AST
+  repair; [side map/set] is render-session Context/extend/provenance state keyed by
+  canonical identities; [routine error control] is grammar-child invariant failure
+  or exceptional diagnostics, never ordinary parser/evaluator miss control flow.
+  The staged snapshot contains several semantic feature changes, so these tokens
+  cannot truthfully be treated as a neutral byte-identical change.
+- Evidence: focused direct parser/core suites previously cover CSS, Less, SCSS, and
+  Jess `parse() -> Stylesheet`; current staged verification independently records
+  Less AST grammar 214/214, path resolution 12/12, and the full Bootstrap import
+  fixture completing after the extend admission/stack-safety repairs. The remaining
+  Less-alpha verifier gaps and full package/release gates are tracked separately;
+  this block makes no performance claim.
+- Verdict: documentation and ownership review are complete for the staged snapshot;
+  cost-contract acceptance remains deliberately unclaimed until each changed
+  production surface has a compatible measured or exact structural contract. Do not
+  invent a benchmark-byte-identity result for feature-changing parser/evaluator work.
+
+## Parser/codegen evidence audit (2026-07-21; no performance acceptance)
+
+This is a machine-readable evidence record, **not** an aggressive-cutting cost
+contract and not a claim that the public parser cutover is performance-neutral.
+It exists to prevent three different facts from being conflated: direct AST
+construction, disabled runtime coverage/trace, and emitted parser code size or
+allocation cost.
+
+```json
+{
+  "schema": "jess-parser-codegen-audit/v1",
+  "status": "semantic-cutover-measured-performance-pending",
+  "parseman": "0.28.0",
+  "publicRoots": {
+    "css": "packages/css-parser/src/index.ts: parse() calls run(CssAstDocument, input, { trivia })",
+    "less": "packages/less-parser/src/index.ts: parse() calls run(LessAstDocument, input, { trivia })",
+    "scss": "packages/scss-parser/src/index.ts: parse() calls run(ScssAstDocument, input, { trivia })",
+    "jess": "packages/jess-parser/src/index.ts: parse() calls run(JessAstDocument, input, { trivia })"
+  },
+  "normalInstrumentation": {
+    "coverage": "off: no public root supplies RunOptions.instrumentation",
+    "trace": "off: no public root supplies RunOptions.instrumentation",
+    "profile": "off: no public root supplies RunOptions.profile",
+    "testOnlyCoverage": "packages/css-parser/test/macro-compiled.test.ts creates a separate Vite transform with grammarCoverage: true and explicitly passes instrumentation"
+  },
+  "boundaryEvidence": {
+    "command": "pnpm run verify:parser-runtime-boundary",
+    "result": "0 tracked temporary sites (0 exact ledger sites)"
+  },
+  "directRouteEvidence": {
+    "commands": [
+      "pnpm --filter @jesscss/css-parser test -- --run test/public-parse.test.ts test/macro-compiled.test.ts",
+      "pnpm --filter @jesscss/less-parser test -- --run test/public-parse.test.ts test/macro-compiled.test.ts",
+      "pnpm --filter @jesscss/scss-parser test -- --run test/public-parse.test.ts test/parse-only.test.ts test/ast-macro-compiled.test.ts",
+      "pnpm --filter @jesscss/jess-parser test -- --run test/parse-only.test.ts test/macro-compiled-ast.test.ts"
+    ],
+    "result": "CSS 23 focused tests; Less 67 public-route tests; SCSS and Jess focused macro/direct suites passed in the same audit run"
+  },
+  "generatedArtifactEvidence": {
+    "method": "sha256 and literal-count inspection of current built artifacts",
+    "coverageHooks": 0,
+    "traceHooks": 0,
+    "macroCompositionCalls": 0,
+    "internalRecognitionImports": 0,
+    "residual": "The generated artifacts still contain optional Parseman profile and CST-host branches. This is not active during ordinary parse(), but it is emitted code and cannot be described as AST-only collector elision or as a neutral performance change."
+  },
+  "requiredBeforeAcceptance": [
+    "Capture an exact generated-artifact baseline after the published Parseman version is rebuilt into all four parser packages.",
+    "Measure parse-only and end-to-end compiler phases under one repeatable protocol with identical semantic fixture coverage.",
+    "Determine whether profile/CST-host code emission is intentionally retained by Parseman 0.28 or should be removed in a separately reviewed codegen change.",
+    "Do not add an aggressive-cutting cost-contract record until the changed owner surface, output identity scope, and measurement are known."
+  ]
+}
+```
+
+### Parseman 0.28 release evidence (2026-07-21)
+
+Parseman PR #42 was prepared on `release/grammar-semantic-coverage` (head
+`572a614`) and merged at `aa1e7d2`; all seven review threads are resolved,
+including the later CodeRabbit/Greptile follow-up fixes. The released
+`parseman@0.28.0` package is published and its clean packed-consumer proof
+imports the required public coverage/trace exports
+(`runWithGrammarCoverage`, `createGrammarCoverageCollector`,
+`createGrammarTraceSink`, and `compile`). Parseman's own release checks passed:
+typecheck/build, changelog/docs build, 112 test files with 1,826 passed and 4
+skipped, the immediate rerun of all 20 performance tests, and `perf:guard`.
+`npm view parseman@0.28.0` reports the package published on 2026-07-21 at
+19:09:21Z. No separate git tag was present in the inspected local refs; the
+published artifact came from the reviewed release branch merged to `main`.
+Jess's frozen offline install also resolves only `parseman@0.28.0` and passes;
+all four parser packages build against it. Normal public parser/compiler/CLI
+routes remain instrumentation-off; coverage and trace are opt-in test or
+diagnostic builds only.
+
+### Release-gate attribution (2026-07-21)
+
+### Recorded Direct Less built-artifact benchmark (superseded pending clean rerun; 2026-07-21)
+
+This is the first matching record for the **published-Parseman, built direct
+parser**. It is retained for investigation, but is not the release baseline:
+the worktree has since changed and the numbers must be superseded by one
+matched, clean build before they establish a gate. It is not an A/B and does
+not establish a regression against the historical private/source driver.
+
+| Phase | Exact protocol | Recorded result |
+| --- | --- | --- |
+| Direct parse | `packages/less-parser/lib/index.js` SHA-256 `a70424fcb473cbd0a5bdab155668ec7b6d40fee1e5ff9de2613e58c4475d309b` (1,811,614 bytes), built at `3a8808ef` (2026-07-21); `parse(source)` on `packages/jess/benchmark/benchmark.less` (106,802 bytes); Node v24.11.1 arm64; 20 warmups + 3×45 samples | **60.971 ms** median; p25 59.303, p75 62.396, p90 64.217. The returned `Stylesheet` has 677 children; stable JSON snapshot is unchanged at 957,390 bytes, SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd`. |
+| Public Compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`, built at `3a8808ef`; built `jess`, `plugin-less`, and `plugin-less-compat`; same Node/fixture | **79.823 ms** round-median across 135 samples; p25 77.956, p75 82.030; 4.39% sample RSD / 0.76% round RSD (`usable`). Output remains 122,390 bytes, SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`. |
+
+The plugin's `safeParse()` calls the same public `@jesscss/less-parser.parse`,
+so the two measurements share the canonical frontend. Their difference is not
+a phase attribution: the Compiler measurement also includes Context/plugin,
+document, evaluation, and rendering work. It does establish that direct parse
+is the dominant measured phase on this fixture.
+
+### Current direct Less baseline (2026-07-22; evidence refresh, no A/B claim)
+
+A clean rebuilt `packages/less-parser/lib/index.js` was measured against the
+same `benchmark.less` source with Node v24.11.1 arm64, 20 warmups, and three
+45-sample rounds. The generated bundle is 1,821,274 bytes with SHA-256
+`13a6325c2b3dc517c3ce1374266aa94b611403ec3072ec558ee9088ee7660fad`. Direct
+`parse(source)` returned 677 children; its stable JSON snapshot was 946,987
+bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`. The
+round medians were 64.816, 63.603, and 65.092 ms; the round median is
+**64.816 ms**. This supersedes the prior pending-clean-rerun parse number as a
+current baseline only. It is not a comparison against 0.26/0.27 and does not
+isolate a cause for the change.
+
+The matching public Compiler hot-path refresh used
+`pnpm run measure:less:hotpath -- --fixture packages/jess/benchmark/benchmark.less
+--iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json` at commit
+`d7e17390c9f82f150e59f6d4a9c79b6562b1fbdf`. It produced a usable 80.056 ms
+round median (round medians 80.300, 80.056, 80.013 ms). The output remained
+122,390 bytes with SHA-256
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`. This is
+also a baseline refresh, not an A/B or performance acceptance claim.
+
+### Latest direct Less performance refresh (2026-07-21; no A/B claim)
+
+After the subsequent AST/list and F5 work, the rebuilt Less parser artifact is
+1,822,568 bytes with SHA-256
+`99630b5a18e658479b1717d73e2f5e5f9ee72dda64d669217f8deb9fe11e3ac9`. Under the
+same Node v24.11.1 arm64, `benchmark.less`, 20-warmup/three-45-sample
+protocol, direct parse round medians were **67.86, 69.78, and 68.05 ms**;
+aggregate median **68.38 ms** (p25 66.40, p75 70.42, p90 73.03). The parsed
+stylesheet still has 677 children and the 946,987-byte snapshot is unchanged
+(SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`).
+The public Compiler hot-path round median was **85.86 ms** under the same
+protocol, with the canonical 122,390-byte CSS output unchanged (SHA-256
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`).
+
+Fresh V8 sampling over 150 direct parses attributed 8,903/10,165 samples
+(87.57%) to generated Less-bundle frames, 377 (3.71%) to GC, and 246 (2.42%)
+to core. This identifies generated reducer execution as the dominant measured
+phase, not a specific regression. The current artifact still contains optional
+profile (1,698 references) and CST-output (411 references) branches, while
+coverage/trace/composeLeaf hooks are absent from normal output. No parser
+performance acceptance or regression claim is made until a matched Parseman
+0.27/0.28 generated-bundle A/B exists.
+
+### Clean Parseman 0.28 identity refresh (2026-07-22; no A/B claim)
+
+The clean detached `parseman@0.28.0` worktree and current `c53c001bb` worktree
+were rebuilt sequentially and measured on the same Apple arm64 host with Node
+v24.11.1, `benchmark.less` (106,802 bytes), and 20 warmups followed by three
+45-sample rounds. The detached direct parser's round medians were 60.205,
+60.697, and 61.305 ms (round median **60.697 ms**); the current `c53c001bb`
+parser's were 61.613, 60.539, and 61.084 ms (round median **61.084 ms**).
+Both returned 677-child `Stylesheet` documents with the same stable 946,987-byte
+JSON snapshot, SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203be8de68ad2057aa6cc13c3`.
+
+The public Compiler hot-path refresh (same protocol, `--trim 0.1`) measured
+**78.201 ms** round-median in the detached worktree and **75.859 ms** in
+`c53c001bb`; the latter's aggregate trimmed median was **75.650 ms**, round RSD
+1.099%, classified `usable`. Both explicit Less plugin routes produce the same
+122,723-byte CSS, SHA-256
+`2ab6d3fd8f322df0f0be7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
+
+The generated Less bundle is 1,822,568 bytes in both worktrees, but its digest
+differs (`cda51323a0e453ad4e0381ce1aa446a4dc44f9858064424553324101840ae4d5`
+detached; `6b615885eb3fb995dc84dba4b2d76ae09f63d4f00fe8f3a1b767d109d331baa8`
+at `c53c001bb`) because Parseman-generated reducer identifiers include the
+absolute worktree path. This is not a semantic or output difference, but it
+means the runs are not a binary A/B. The older 122,390-byte
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` digest is
+from a superseded artifact and must not be attributed to `c53c001bb`.
+
+V8 sampling of 200 direct parses in the detached 0.28 artifact recorded 9,633
+samples: 5,717 (59.35%) in named `_r_DirectLess*` reducers, 1,612 (16.73%) in
+other generated `_fb/_r_` reducers, and 1,166 (12.10%) in other parser-bundle
+helpers (88.18% combined parser-bundle frames); GC accounted for 311 (3.23%).
+This identifies generated reducer execution as the dominant cost surface, not a
+safe first-set or combinator rewrite.
+
+This remains a baseline refresh, not a Parseman version A/B. The workspace
+grammar imports `composeLeaf`, which is exported by `parseman@0.28.0` but not by
+the 0.27 package; all current parser manifests require `^0.28.0`. Rebuilding
+against 0.27 would therefore require changing the grammar/API and would not be
+a matched comparison.
+
+Historical values must not be treated as an A/B: the former 33.65 ms direct-AST
+figure was a Vite/source `renderAstFile` partial-driver phase (20 warmups/N=60),
+and the 24.42 ms figure was a Parseman 0.27-era built parser floor. Current
+grammar imports `composeLeaf` in all four AST frontends; npm packages 0.26.0 and
+0.27.1 do not export that symbol, while 0.28.0 does. Therefore the current
+grammar cannot produce a valid 0.26/0.27 generated-bundle comparison without
+changing the grammar; no such comparison may be reported.
+
+The 2026-07-21 refresh is likewise **not an A/B**. The generated bundle grew by
+13,783 bytes from the preceding recorded artifact while semantic cutover work was
+landing. The stable AST snapshot and public output digest prove only that the
+measured inputs/outputs are still the canonical ones; they do not isolate a cause
+for the 2.35 ms direct-parse movement or the 2.33 ms compiler movement.
+
+Independent current evidence:
+
+- Fresh V8 CPU sampling over 150 direct parses of the refreshed artifact recorded
+  9,165 sampled frames: 8,144 (88.86%) were generated Less-bundle frames and 307
+  (3.35%) were GC. The earlier leaf-only sampling was a different denominator and
+  must not be compared numerically. Both observations establish generated grammar
+  execution as dominant, but neither identifies a particular choice/backtrack or
+  AST factory as causal.
+- Allocation sampling over 30 direct parses attributes 515,240 of 1,303,176
+  sampled bytes to emitted reducer frames. It establishes material allocation
+  in the generated parser, not how much is retained canonical AST versus
+  transient recognition/capture state; do not call it an AST-allocation result.
+- Provenance is not a plausible whole-parser explanation: Less invokes
+  `withSourceSpan` at only two grammar reductions. Trivia is a live candidate:
+  `run()` always creates `_triviaLog` and the refreshed built bundle contains
+  1,941 `_triviaLog` references, while public `parse()` discards that result. Its
+  cost has not yet been isolated.
+- `composeLeaf` is macro-time, not a runtime composition layer: the refreshed
+  built bundle has no `composeLeaf(` call and normal public parse supplies neither
+  profile nor coverage/trace instrumentation. The same bundle still emits optional
+  profile (1,694 `_pmProfile`) and CST-host (411 `_parsemanCstOutput`) branches;
+  whether their normal-path predicates are material requires a separate
+  generated-code A/B, not inference from literal counts.
+- Current non-coverage artifacts cannot provide branch/rollback counts: they
+  contain no `_grammarTrace` hooks. A same-source coverage-enabled diagnostic
+  build is the required next measurement for choice/backtracking; it must remain
+  outside normal parser and benchmark routes.
+
+**Diagnostic result (2026-07-21):** the same-source coverage-enabled Less
+transform completed `benchmark.less` and exposed 14,330 failed
+`DirectLessStaticNthPseudo` entries plus 10,878 failed
+`DirectLessStaticPseudo` entries. Generated output confirms that both are only
+gated by `:` before their whole structural-node rules run. This identifies a
+shared-prefix candidate, but the trace has 241 stable rule IDs and zero
+choice-arm IDs, so it cannot attribute a failure to a name, argument, or
+rollback branch. Do not make a speculative first-set rewrite from those totals.
+The next Parseman-only diagnostic design is
+[`parseman-diagnostic-trace-design.md`](../parseman-diagnostic-trace-design.md):
+add opt-in stable choice-arm tracing while preserving all existing rule IDs,
+then run its adversarial near-prefix matrix before choosing one structural
+trie/residual experiment. Normal parser and benchmark routes remain
+uninstrumented.
+
+`verify:aggressive-cutting-review` compares the working `dev` tip with
+`origin/dev`; this is a 96-commit, 237-file integration delta (+12,490/-40,189
+lines), not a small release patch. `6734da512` alone changes 34 production
+surfaces. Therefore an accepted whole-snapshot record would be false: direct
+grammar reductions, evaluator/serializer semantics, Context document dispatch,
+provenance, and extend placement all introduce or replace real runtime work.
+
+The audit must stay split by ownership; changing the verifier base, running only
+staged mode, or assigning blanket `neutral-or-negative` contracts would hide the
+unreviewed cutover and is rejected.
+
+For an alpha release snapshot, `release:alpha:check` invokes the aggressive-cutting
+verifier with `--mode=release`. That mode keeps the registry, self-prosecution,
+and source-metadata checks, while treating the full `dev` → `alpha` squash diff
+as historical aggregate rather than re-prosecuting every old hunk. Package/API
+safety remains a separate, later release-check responsibility.
+
+| Audit family | Current files | Existing behavior evidence | Required acceptance evidence |
+| --- | --- | --- | --- |
+| Cold exports, diagnostics, and CST-only API cleanup | `ast.ts`, `index.ts`, `value.ts`, `error/{codes,diagnostics}.ts`, CSS README/CST surfaces | package/API tests and public CST tests | Exact cold-path reachability plus a current package/API run; these are the only candidates for narrow neutral contracts. |
+| Direct Parseman frontends | CSS/Less `ast/grammar.ts`, parser public entries, shared grammar files | parser AST/public/macro suites; parser-runtime boundary proof | generated-artifact parse-only baseline, rule coverage, and per-family allocation/choice evidence. No legacy-parser timing is a substitute. |
+| Canonical engine | `ast/{at-rule,evaluator,mixin-dispatch,value-*.ts,nodes.ts,serialize.ts}`, `context.ts`, `plugin.ts` | direct acceptance, import, mixin, value, Plugin, and public Compiler suites | individual fact-flow/admission contracts for each added state/traversal plus matched parse-render and render measurements where work is hot. |
+| Extend/provenance placement | `ast/extend/{ir,plan,emit,solve}.ts`, `ast/provenance.ts` | direct extend cases, imported-loop fixture, Bootstrap completion | admission counters for the imported-extend preflight, projection/overlay allocation proof, and Bootstrap plus benchmark non-regression. |
+
+Current compiler-oracle capture, not an A/B claim: public built-artifact
+`benchmark.less`, `collapseNesting: true`, produced 122,390 bytes with SHA-256
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` in both
+parse-render and render runs (20 warmups, 45 alternating pairs). It is useful as
+the current output anchor only; it does not prove the semantic cutover is
+performance-neutral.
+
+### Serializer family audit: leaf emission (2026-07-21; no acceptance claim)
+
+`packages/core/src/ast/serialize.ts` is still one physical file, but it must not
+be treated as one cost surface. The current ownership split is:
+
+| Family | Current owner | Boundary |
+| --- | --- | --- |
+| source-order collection | `emitDocumentStatements`, `emitNestedBody`, `walkBody` | statement order, async cursor, and declaration-group boundaries |
+| reference lookup | `resolveReferenceResult` plus typed value/mixin dispatch | resolve a `Reference` chain without a source-text recovery path |
+| selector resolution | selector interpolation/composition helpers plus extend planning | selector bytes and placement projection before rule emission |
+| import preparation | `prepareBodyPlugins`, `planImportedExtends`, typed import dispatch | document/session facts before their source-order execution |
+| leaf emission | `mergeFold`, `emitLeaf`, `emitNestedLeaf` | direct declaration/comment/call/at-rule byte emission |
+
+The bounded audit family is **leaf emission**. It owns a `Leaf` already selected
+by the source-order family and emits bytes directly. It must not acquire a
+dialect policy, AST copy, output-node materialization, resolver re-walk, or a
+second grouping pass. `mergeFold` is admitted only after the existing
+`groupHasMerge` scan; ordinary leaves go straight to `emitLeaf`/
+`emitNestedLeaf`.
+
+- Behavior evidence: `pnpm --filter @jesscss/core test -- --run
+  src/ast/__tests__/declaration-merge-direct-acceptance.test.ts
+  src/ast/__tests__/at-rule-direct-acceptance.test.ts
+  src/ast/__tests__/opaque-at-rule-block.test.ts
+  src/ast/__tests__/import-at-rule.test.ts` — 37 tests passed.
+- Current whole-render output anchor: `WARMUP=20 N=45 node
+  packages/core/perf/bench-extend.mjs` emitted 122,390 bytes, SHA-256
+  `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`, median
+  74.0 ms (min 69.1, max 82.8). This measures the whole compiler route, **not**
+  leaf emission, and is intentionally not a speed claim.
+
+No aggressive-cutting cost-contract record is accepted for this audit: no
+leaf-emission machinery was deleted or changed, and a total-render timing cannot
+prove a leaf-only cost delta. A future leaf change needs a matched family-local
+counter or profiling attribution, the canonical benchmark non-regression
+protocol, and byte identity before it may claim neutral/decrease.
+
+## Aggressive Cutting Self-Prosecution
+
+### Current pass: alpha release snapshot review boundary
+
+- **Architecture surface:** the review CLI adds a release-only evidence mode;
+  production parser, evaluator, lookup, render, and package code are unchanged.
+- **Separation/duplication:** default working review and `--mode=staged` retain
+  their existing patch-scoped changed-path, danger-token, and cost-contract
+  enforcement. `--mode=release` reuses the same registry and self-prosecution
+  validators while omitting only historical aggregate squash accounting.
+- **Cumulative node weight:** none; no production runtime code changes.
+- **New traversal:** none in production. The verifier deliberately avoids Git
+  changed-path and diff collection in release mode.
+- **New node/materialization:** none in production. Focused tests create only a
+  temporary Git sandbox to prove the CLI boundary.
+- **Render path:** unchanged.
+- **Helper/API surface:** one internal CLI mode is added and invoked directly by
+  `release:alpha:check`; no package script alias or public production API is
+  added.
+- **Metadata mutations:** none in production or package metadata beyond the
+  existing root release-check command.
+- **Review-flagged diff tokens:** none in production; the test fixture stages an
+  intentional loop/array token only to prove staged mode still rejects it while
+  release mode does not inspect the aggregate patch.
+- **Evidence:** focused verifier tests cover strict staged behavior, release
+  evidence-only behavior, and rejection of malformed Handoff and registry
+  evidence; direct default, staged, and release CLI invocations are rerun.
+- **Verdict:** accepted release-orchestration boundary with no runtime or
+  performance claim.
+
+### Current pass: alpha squash pre-commit dispatch
+
+- **Architecture surface:** the root pre-commit orchestrator selects the
+  aggressive-review mode from the exact current branch name; no production
+  package or runtime source changes.
+- **Separation/duplication:** only staged commits on branch `alpha` map to
+  release-snapshot evidence review. `dev`, feature branches, detached heads,
+  and ordinary staged commits retain strict `--mode=staged`; pre-push keeps its
+  existing workflow mode.
+- **Cumulative node weight:** none; no production runtime code changes.
+- **New traversal:** none in production. Pre-commit performs one cold Git branch
+  query before invoking the existing verifier.
+- **New node/materialization:** none in production or verification state.
+- **Render path:** unchanged.
+- **Helper/API surface:** two script-local helpers isolate branch discovery and
+  mode selection; no package export or public API is added.
+- **Metadata mutations:** none.
+- **Review-flagged diff tokens:** none in production; branch selection is cold
+  release orchestration.
+- **Evidence:** the focused pre-commit test runs the real orchestrator in a
+  temporary Git clone with a recording `pnpm`, proving `alpha` requests release
+  mode and `dev` requests staged mode without bypassing the hook.
+- **Verdict:** accepted exact-branch release dispatch with no runtime or
+  performance claim.
+
+### Current pass: direct AST `DocumentContext` provenance
+
+- **Architecture surface:** canonical documents now retain `DocumentContext`
+  rather than constructing the legacy `TreeContext`. Context still owns the
+  existing plugin resolve → locate → source → parse dispatch; only the active
+  source identity/options carrier changed.
+- **Separation/duplication:** source identity and plain import-request facts
+  are now defined once outside legacy tree node machinery; the existing Context
+  plugin dispatch remains the only import-resolution route.
+- **New traversal:** none. Switching a document or deferred body assigns its
+  already-known source identity; resolver, diagnostics, URL rewriting, and
+  file-reading consume that carried fact without a tree/source walk or reparse.
+- **New node/materialization:** one `DocumentContext` replaces the previous
+  per-document `TreeContext` allocation. It contains only resolved options,
+  file identity, and parser plugin—no rules scope, selector cache, placement,
+  or AST node materialization. Legacy `TreeContext` remains confined to legacy
+  tree execution until its dedicated deletion pass.
+- **Render path:** direct AST diagnostics and fns file resolution read the
+  Context `sourceContext` fact. A canonical render therefore does not enter a
+  tree context; legacy execution retains the same structural source-fact
+  accessor while it exists.
+- **Helper/API surface:** `DocumentContext`/`SourceContext` are the explicit
+  public source-identity contract. Plain plugin import request options moved out
+  of legacy `tree/import-style`; tree-only postlude data remains local as
+  `LegacyImportOptions`. No bridge, resolver, parser host, or compatibility
+  parser was added.
+- **Metadata mutations:** none. Source identity remains Context-owned session
+  state keyed by canonical document/body identity.
+- **Evidence:** core build; Context provenance/safe-parse tests; fns `data-uri`
+  tests; package-export and Jess API verification. No performance claim.
+- Behavior evidence: Context provenance/safe-parse and fns data-uri tests prove
+  canonical documents use `DocumentContext` while retained tree callers still
+  receive the same source facts.
+- Build evidence: `pnpm --filter @jesscss/core build` completed after the
+  public type/export extraction.
+- Boundary evidence: package-export and Jess API verification passed; the
+  review verifier's hunk tests reject root, eval, selector, and spine changes.
+
+### Current pass: direct Less performance evidence refresh (documentation only)
+
+- **New traversal:** none. No production or generated-parser source changed.
+- **New node/materialization:** none. The direct parser snapshot is recorded only
+  to prove the measured canonical result shape stayed stable.
+- **Render path:** unchanged. The public Compiler measurement exercised the
+  existing Context → plugin → `Stylesheet` → serializer route.
+- **Helper/API surface:** none.
+- **Metadata mutations:** none.
+- **Evidence:** rebuilt artifacts plus the exact 20-warmup/3×45-sample direct
+  parse protocol and the public hotpath command. The refreshed artifacts differ
+  from the previous record, so this pass makes no A/B or performance claim.
+
+### Current pass: imported extend semantic preflight
+
+- **Architecture surface:** `planImportedExtends` / `bodyMayPlanExtend` in the
+  one canonical AST serializer and the selector planner's typed `PlanOverlay`.
+  No frontend-specific engine, bridge, parser host, raw source recovery, or
+  alternate render route is involved.
+- **Separation/duplication:** the profile hook observes facts already produced
+  by the sole imported-extend path. It does not create a second planner, import
+  resolver, selector representation, or evaluator.
+- **Cumulative node weight:** zero canonical AST nodes, copied statements, or
+  output nodes. The feature path retains only the pre-existing render-local
+  overlay facts and placement tokens required by repeated canonical loop bodies.
+- **New traversal:** `planImportedExtends` reads a loaded import's typed body in
+  source order. `bodyMayPlanExtend` is intentionally an unbounded, explicit
+  statement-stack scan: the import body is only known after Context/plugin
+  resolution, so its extend fact cannot be carried by the importer. The scan is
+  not a bounded admission probe and must not borrow the `precise` contract kind.
+- **New node/materialization:** none. A false body scan never enters
+  `collectPlacedExtendFacts`, `collectPlan`, selector-IR construction, overlay
+  arrays, or loop-token allocation. A true imported loop creates only the
+  existing render-local fact values and one token per concrete iteration; it
+  never copies the AST or creates output nodes.
+- **Render path:** this is a pre-render semantic fact pass. Ordinary emission
+  remains `emitDocumentStatements`; the preflight writes no CSS and does not
+  reparse source or perform a second output walk.
+- **Helper/API surface:** one module-local, import-time-captured profile counter
+  recorder is shared by `plan.ts` and the serializer. It is absent unless a test
+  installs `__JESS_EXTEND_PROFILE_COUNTERS__` before loading core; it is not a
+  mode, feature switch, Context option, or public API.
+- **Metadata mutations:** none on canonical AST. Existing `Frame` placement
+  tokens and render-session weak maps remain the sole placement state.
+- **Danger-token accounting:** the source-order stack scan, `For` iteration,
+  overlay facts, and weak-map tokens are semantic work only after a loaded body
+  proves it can carry an extend. The false-path counter proof is specifically
+  required because this owner cannot honestly claim a bounded cheap probe or a
+  performance improvement.
+- **Review-flagged diff tokens:** [loop/traversal] is the typed loaded-body
+  preflight and concrete loop iteration; [array helper] and [array
+  spread/materialization] are pre-existing selector/overlay fact collection;
+  [node construction], [parent/source mutation], and [routine error control]
+  have no owned instance here; [side map/set] is the existing render-session
+  placement WeakMap; [materialized array/object] is the existing feature-path
+  overlay and token state. The remaining matches are concurrently dirty
+  AST/parser/evaluator work and are not attributed to this narrow owner.
+- **[generic defensive read]:** the `Object.prototype.hasOwnProperty` check in
+  `packages/core/src/ast/value-dispatch.ts` is cold named-record validation for
+  callable metadata, not a parser or render-path probe; `Reflect.apply` is the
+  direct callable invocation seam. No generic property probing was added to a
+  parser or evaluator hot path by this pass.
+- **Evidence:** `extend-preflight-contract.test.ts` proves the no-extend false
+  path (`collectPlan`, collector, overlay, and loop placements all zero) and a
+  two-item imported loop (one import, two concrete placements, two subjects and
+  two instructions). `import-at-rule.test.ts` remains 25/25. A built-artifact
+  public Compiler A/B against committed `6734da512`, with 20 warmups and 45
+  alternating pairs, was byte-identical at 122,390 bytes / SHA-256
+  `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`.
+  Parse-render was 81.476→81.000 ms (26/45) and render was 14.281→14.101 ms
+  (24/45). These are instrumentation/noise controls, not a speed or neutrality
+  claim.
+- Behavior evidence: `extend-preflight-contract.test.ts` exercises both the
+  no-feature body and imported-loop feature path; direct parser suites remain
+  responsible for their typed `Stylesheet` construction rather than borrowing
+  this serializer contract.
+- Build evidence: the release build and package-level TypeScript builds are the
+  required proof for parser/frontend/public-plumbing edits; they are not runtime
+  cost evidence and must be rerun for the assembled alpha candidate.
+- Boundary evidence: parser frontend edits require the parser-runtime-boundary
+  verifier plus public parser/plugin route tests; Context/public export edits
+  require package export and packed-consumer checks. These boundary proofs are
+  deliberately separate from the strict evaluator/render/lookup cost ledger.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-extend-import-preflight",
+    "verdict":"accepted",
+    "necessity":{
+      "status":"proven",
+      "factSource":"A loaded import document's typed Rule, AtRuleBlock, and For bodies are the first authoritative source for whether imported selectors or concrete loop placements can contribute an extend.",
+      "rediscovery":"Without the preflight, the renderer would discover imported extend facts after the root extend plan was already computed, losing source-order cross-import placement semantics.",
+      "carryForward":"The loaded document body is inspected once in source order; only its existing typed selector facts and one token per concrete extend-bearing loop iteration are carried into the root plan overlay.",
+      "whyNotCarried":"The importer cannot carry an arbitrary imported document's extend fact before Context/plugin resolution loads that document; the loaded typed body is the earliest truthful boundary."
+    },
+    "performanceClaim":"none",
+    "why":"A loaded import is resolved during evaluation, so its typed body is the first authoritative source for whether extend planning is necessary. The explicit source-order scan returns before planner, collector, overlay, or loop-placement work on the exercised false path; treating it as a bounded micro-admission would be false.",
+    "dangerTokensJustification":"The scan, concrete loop iteration, overlay facts, and placement tokens are semantic source-order work only after a loaded body proves it may carry an extend. The false path records zero collector, overlay, and loop work; the feature path records only the concrete imported-loop facts required by the existing root planner.",
+    "falsePath":{"fixture":"extend-preflight-contract:no-extend","counters":{"calls":1,"collectorCalls":0,"overlaySubjects":0,"overlayInstructions":0,"loopPlacements":0}},
+    "featurePath":{"fixture":"extend-preflight-contract:imported-loop","counters":{"importsVisited":1,"loopPlacements":2,"overlaySubjects":2}},
+    "baseline":{"fixture":"benchmark.less","phase":"parse-render","currentMedianMs":81,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"ast-evaluator-function-call-boundary",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"A FunctionCall that has no registered callable is an optional CSS function and must preserve authored call bytes without a diagnostic. Once a scoped or global callable has been selected, its synchronous or asynchronous rejection is an invocation result, so functionMode—not name resolution—decides preserve-and-warn versus propagation. MixinCall resolution never reaches this boundary.",
+    "dangerTokensJustification":"The synchronous success path now creates neither a fallback closure nor a recovery closure. The fallback value is materialized only for an optional miss or a selected-callable failure; Promise.catch allocates only after a genuinely async callable result. This is a semantic policy correction with a structural hot-path deletion, not an A/B speed claim.",
+    "cases":["unresolved-optional-function-call","registered-sync-call-failure","registered-async-call-failure"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"ast-value-guard-equality-modes",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Equality mode belongs to typed guard comparison. Less accepts a unitless number against an equal unit magnitude, Sass accepts equal quoted and keyword text while retaining unit distinction, and exact preserves the structural distinction. These choices are compatibility semantics, not parser or function-resolution behavior.",
+    "dangerTokensJustification":"The comparison stays one typed value operation with no traversal, collector, AST node, side table, or fallback construction. It may recurse only through an already-materialized List when both operands are Lists; that pre-existing structural comparison is not changed by mode selection. The baseline is output identity only, not a speed claim.",
+    "cases":["less-unitless-dimension","sass-quoted-keyword","exact-structural-distinction"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"ast-value-operate-preserve-calc",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Preserve-mode percentage multiplication must remain a calc result instead of inventing a scalar percentage. A later explicit calc or arithmetic operation must compose that result as one valid calc expression; loose mode keeps its Less numeric result. This is arithmetic result policy, not a second evaluator or an import/parser fallback.",
+    "dangerTokensJustification":"The percent branch allocates only its required Keyword result. Calc byte inspection and parenthesis handling are an acknowledged transitional value-structure gap: authored calc has typed parser facts upstream, while a computed preserve result currently carries only bytes. This record makes no neutrality claim and does not conceal that remaining re-derivation debt.",
+    "cases":["preserve-percentage-product","loose-percentage-product","explicit-calc-composition"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+    "why":"This coordinated AST-v2 cutover changes ValueSlot/List/Block facts, authored layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those are semantic architecture changes with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+    "dangerTokensJustification":"The new array helpers, loops, side-table entries, typed wrappers, and result objects are accounted for as the direct implementation of the canonical value facts and demand boundaries. They are not presented as neutral or cheaper, and their behavior is covered by focused AST/list/mixin/provenance/F5 tests plus the release build.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
+    "behaviorEvidence":"The isolated `pnpm run verify:baseline` route passed, including core/parser/fixture behavior and the public Less/Jess semantic suites; the F5 lazy color-call cases remain separately recorded in the Less-alpha gate.",
+    "buildEvidence":"The release-shaped `pnpm run build:release` workspace build passed for the assembled canonical AST-v2 runtime.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"context-external-import-dispatch-boundary",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Context must decide whether an external stylesheet identifier enters its existing plugin dispatch. An unclaimed URL or protocol-relative specifier returns undefined so the serializer emits ordinary CSS; a claim permits exactly the established resolve, locate, source, and parser route. Core does not fetch, inspect a resolver result, or create an alternate import loader.",
+    "dangerTokensJustification":"The added loop runs only at the cold import boundary and stops at the first explicit claim. It allocates no node, source buffer, cache, parser result, or network request. The unclaimed path returns before resolve/locate/source/parse; a claimed path delegates to the existing Context work that was already required for a local stylesheet import.",
+    "cases":["claimed-external-import","unclaimed-external-terminal","ordinary-local-import"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"legacy-tree-visitor-abi-removal",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "costDelta":"neutral",
+    "why":"The Less-style core Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate SpineVisitor lifecycle hook remains, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390},
+    "benchmark":{"fixture":"benchmark.less","phase":"render","currentMedianMs":80.056,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- **Verdict:** accepted semantic-preflight, evaluator/value semantic-boundary,
+  the neutral legacy Visitor ABI deletion, and the explicit seven-file
+  `ast-semantic-runtime-cutover` record. Behavior,
+  focused package build, and current benchmark/output baselines are proved;
+  none of these records makes a wall-clock performance claim. The wider
+  release build remains a separate alpha gate.
+### Rejected nested Less `@media` conjunction assumption (2026-07-21)
+
+Commit `81e2f7ffc` assumed nested singleton `@media` groups should be emitted
+as sibling groups with conjoined qualifiers. The upstream Less corpus disproved
+that assumption: `at-rules-bubbling`, `at-rules-targeted`, and
+`extend-chaining` require the existing nested output. The implementation and
+its focused expectations were reverted. Do not reintroduce renderer-side media
+conjunction without a corpus-backed semantic specification that covers those
+cases.
+
+### Addendum: Less URL transform dispatch (semantic parity, not a cost claim)
+
+`Context.transformUrl` carries the active document's existing source identity
+and the render entry identity to that document's parser plugin. The Less
+plugin owns `rootpath`, `rewriteUrls`, and `urlArgs` transformation; it does
+not resolve, load, scan, or re-parse a URL. Structured `Url` emission retains
+quoted versus bare syntax before dispatch.
+
+- **Behavior evidence:** `tests-config/rewrite-urls-all`,
+  `rewrite-urls-local`, `rootpath-rewrite-urls-all`, and
+  `rootpath-rewrite-urls-local` pass byte-identically through the public Less
+  fixture harness, including URLs authored in an imported document. The
+  compiler preserves configured native Less-plugin hooks while retaining the
+  per-render option-bearing Less adapter.
+- **Remaining gap:** `tests-config/static-urls` and `url-args` remain expected
+  failures because both first stop at the distinct multiline data-URI grammar
+  case. This URL transform pass does not claim to implement that grammar.
+- **Cost/gate status:** no performance or neutrality claim. This is not an
+  aggressive-cutting cost contract, and the aggregate
+  `verify:aggressive-cutting-review` result remains globally red on existing
+  evaluator/value/extend/context inventory unrelated to this behavior entry.
+
+### Addendum: canonical AST source-span provenance (semantic diagnostics)
+
+`ast/provenance.ts` is a deliberately narrow parser-to-diagnostic fact channel.
+Parseman reductions attach only their exact source spans to a session-independent
+`WeakMap`; normal evaluation and rendering do not read it. The serializer reads
+the fact only while constructing a diagnostic, where a source offset is required
+to render the correct code frame. The process-global symbol is required because
+parser packages load the `@jesscss/core/ast` bundle while the compiler serializer
+loads the core root bundle; those are separate bundled module identities and
+must share the same parser-authored table.
+
+- **Behavior evidence:** `ast/__tests__/provenance.test.ts` proves that the
+  side table preserves node shape. The public Jess render diagnostic test and
+  a built-package Compiler route both report `$[path]` at source column 13,
+  proving that the parser-written span reaches root-bundle serialization.
+- **Fact flow:** Parseman reduction → `withSourceSpan` → `WeakMap` →
+  diagnostic-only `sourceSpanOf`; no source walk, reparse, node mutation, copy,
+  or render-time collection occurs.
+- **Cost/gate status:** no speed or neutrality claim. The existing `WeakMap`
+  write is semantic parser work for diagnostics, and its lookup is cold error
+  handling; this entry does not assert a global aggressive-cutting gate pass.
+
+### Active correction: dialect function conversion (proof before deletion)
+
+Retract any claim that the function library is fully converted or that
+legacy-node wrappers are an acceptable final state. The July 21 audit found 72
+same-named files in `packages/fns/src/less/` and `src/builtins/`; these are
+different implementations, not interchangeable copies. `builtins/` is frozen
+as comparison evidence, not a destination architecture.
+
+The active queue is behavior-complete conversion in the existing dialect-owned
+files (`shared/`, `less/`, and `sass/`): first capture the legacy suite baseline,
+then port one small function in place to an AST-v2 `Fn`, prove old and direct-AST
+parity, and only then delete the duplicate implementation when it is identical.
+No wrapper, alias, reduced behavior, or permanent legacy holdout is permitted.
+Relative color is a separate first semantic batch: direct AST retains its
+structured clause, but full `calc(r + 40)` needs a typed call-level channel
+evaluation design before a behavior-preserving port.
+
+The public-entrypoint cutover includes `packages/fns/src/index.ts`,
+`less/index.ts`, and `builtins.ts`: none may leave a legacy callable barrel or
+`src/builtins.ts` registry as the destination architecture. The final public
+assembly imports canonical callables from the existing `shared/`, `less/`, and
+`sass/` owners. The corresponding tree-based tests (`Context`, `callWithContext`,
+tree constructors, and `instanceof` assertions) must move to typed direct-call
+or compiler-route tests; their byte/output expectations remain oracle evidence.
+The package wildcard export means legacy subpaths also need an intentional public
+export cutover, rather than disappearing by accident. This is active work, not a
+completion claim.
+
+**Settled F5 relative-color and fallback boundary:** CSS-shaped literal
+`rgb`/`rgba`/`hsl`/`hsla` calls with three or more argument slots are
+un-operated bare Calls: they emit authored bytes and are not invoked unless a
+consumer demands their value (an enclosing operation or a Less/variable
+argument is such demand). Modern space/slash and relative syntax uses a nested
+structured slot and follows the same arity rule. Less's one-/two-slot overloads
+are not part of this lazy boundary: they dispatch through the selected Less
+callable, so recognized forms such as `rgba(#5F59)` canonicalize and malformed
+numeric arities reach the normal call-level `functionMode` policy. Therefore
+unsupported relative-color syntax does not throw while its CSS-shaped Call
+remains un-operated. On demand, the selected implementation may reject; the
+evaluator's existing `functionMode` policy—not an individual function—then
+decides whether to preserve the authored call or propagate the error. A
+function must never manufacture a fallback call node. Preserve this F5 demand
+gate when the builtin registry moves out of `builtins/`; it is distinct from
+lazy parameters and from `functionMode`. No broad relative-color port is
+approved by this statement.
+
+**Settled callable capability boundary:** direct callable invocation supports
+typed positional values plus typed named-record assignment (including mixed
+calls) for Sass and Jess. The evaluator/registry route continues to pass a
+typed positional `List`; Less is positional-only for the current alpha and may
+add hybrid records later only with an explicit Less syntax/evaluator decision.
+This is a callable capability boundary, not a claim that every dialect parser
+accepts named arguments.
+
+**Settled typed-list ownership and callable shape:** list recovery and numeric
+indexed access are core Jess value capabilities, not Less-owned helpers. Core
+owns exact separator/bracket-aware value structure, zero-based value access, and
+the universal `defineFunction`/`Fn` callable contract. Core does not normalize
+indices or impose one-based language semantics.
+Less, Sass, and future libraries register that same callable shape and provide
+declared semantic policy data (for example unit compatibility,
+bracketedness/separator defaults, rounding, or map behavior); they do not get
+separate function APIs or helper contracts. The AST-v2 cutover therefore audits
+and ports Sass list functions too; the legacy Sass list APIs are not a protected
+exception or a reason to retain legacy tree values. Every remaining legacy list
+dependency must either be replaced with the core capability or be explicitly
+shown to encode declared policy data rather than a second runtime model.
+
+**Value-list separator invariant:** a semicolon is a statement/declaration
+delimiter, not an AST-v2 value-list separator. When syntax places a semicolon
+between values outside the rules level, the parser reduction lowers it to the
+canonical comma-separated `List` fact. The typed value model therefore carries
+comma/space/slash (plus any explicit undecided policy), never a semicolon value
+separator.
+
+**Value-list index invariant:** core JS access is zero-based and does no numeric
+normalization. Less `extract` and Sass `list.nth`/`set-nth` each implement their
+own one-based conversion, truncation/flooring, non-finite, negative, and bounds
+rules inside the universal callable contract. A shared core accessor must not
+silently choose one language’s policy.

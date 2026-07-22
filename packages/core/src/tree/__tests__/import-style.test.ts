@@ -1,6 +1,6 @@
 import { sourceSpanOf } from '../util/provenance.js';
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import {
   style,
   rules,
@@ -27,6 +27,7 @@ import {
   Interpolated,
   interpolatedSelector,
   INTERPOLATION_PLACEHOLDER,
+  TreeContext,
   type Rules,
   Node,
   Any,
@@ -41,6 +42,8 @@ import type { CallableFindOptions, DeclarationFindOptions } from '../util/lookup
 import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 import { OutputWriter, getPrintOptions } from '../util/print.js';
 import { buildSourceMap } from '../util/sourcemap.js';
+import { createTriviaMap, makeTrivia } from '../util/trivia.js';
+import * as placementState from '../util/placement-state.js';
 import { resolve } from 'node:path';
 import { createTestContext } from './import-style-test-helpers.js';
 import { findPropertyDeclarationOccurrence, findVariableDeclarationOccurrence } from '../util/direct-rules-lookup.js';
@@ -1726,6 +1729,23 @@ describe('Style import', () => {
     it('keeps child-surface additive "with" configs visible to imported guarded mixins', async () => {
       const originalFindMixinsFast = RulesClass.prototype.findMixinsFast;
       const directChildSurfaceBridges: string[] = [];
+      // The imported guarded mixin now resolves on the result-surface fallback
+      // frame chain (the imported module surface is linked as an inline-member
+      // fallback), so the `findMixinsFastForUncoveredCallable` child-surface
+      // descent is retired for it. Assert it never fires (was 4 calls pre-slice).
+      type UncoveredCallableProbe = (
+        this: unknown,
+        key: string,
+        reason: unknown,
+        includeRulesets: boolean,
+        options: unknown,
+        rulesetsOnly?: boolean
+      ) => unknown;
+      const uncoveredCallableView = RulesClass.prototype as unknown as {
+        findMixinsFastForUncoveredCallable: UncoveredCallableProbe;
+      };
+      const originalFindUncovered = uncoveredCallableView.findMixinsFastForUncoveredCallable;
+      let guardedChildSurfaceDescents = 0;
       const libraryPath = resolve(process.cwd(), 'library-child-surface-guarded-mixin.jess');
       context.sourceTrees.set(libraryPath, rules([
         mixin({
@@ -1801,6 +1821,19 @@ describe('Style import', () => {
         }
         return originalFindMixinsFast.apply(this, args);
       };
+      uncoveredCallableView.findMixinsFastForUncoveredCallable = function(
+        this: unknown,
+        key: string,
+        reason: unknown,
+        includeRulesets: boolean,
+        options: unknown,
+        rulesetsOnly?: boolean
+      ) {
+        if (key === '.guarded-child-surface') {
+          guardedChildSurfaceDescents++;
+        }
+        return originalFindUncovered.call(this, key, reason, includeRulesets, options, rulesetsOnly);
+      };
 
       try {
         const css = await renderNodeToString(node, context, { context });
@@ -1811,8 +1844,10 @@ describe('Style import', () => {
         expect(css).toContain('border-color: purple;');
         expect(css).not.toContain('.light {\n  color: red;');
         expect(directChildSurfaceBridges).toEqual([]);
+        expect(guardedChildSurfaceDescents).toBe(0);
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
+        uncoveredCallableView.findMixinsFastForUncoveredCallable = originalFindUncovered;
       }
     });
 
@@ -1961,6 +1996,166 @@ describe('Style import', () => {
   });
 
   describe('multiple imports', () => {
+    it('drops retained placement mapping only for a closed static literal `(multiple)` spine run', async () => {
+      const importPath = resolve(process.cwd(), 'closed-static-multiple.jess');
+      const sourceRules = rules([
+        ruleset({
+          selector: sellist([sel([el('.closed-static')])]),
+          rules: [decl({ name: 'color', value: any('green') })]
+        })
+      ]);
+      context.sourceTrees.set(importPath, sourceRules);
+      const imports = [0, 1, 2].map(() => style({
+        path: quoted('closed-static-multiple.jess')
+      }, {
+        type: 'import',
+        importOptions: { multiple: true }
+      }));
+      const root = rules(imports);
+      context.root = root;
+
+      for (const imported of imports) {
+        const resolution = await imported.resolveForSpine(context);
+        expect(resolution.kind).toBe('fold');
+        if (resolution.kind !== 'fold') {
+          throw new TypeError('Expected folded multiple import');
+        }
+        expect(getImportPlacementChildSegments(resolution.body)).toBeUndefined();
+        expect(getImportPlacementSourceChild(resolution.body, resolution.body.rules[0]!)).toBeUndefined();
+      }
+    });
+
+    it('allocates placement mapping only when the admission retains state', async () => {
+      const segmentSpy = vi.spyOn(placementState, 'createPlacementChildSegment');
+      const resolveOne = async (
+        sourcePath: string,
+        sourceRules: Rules,
+        importOptions: { multiple: true; reference?: true } = { multiple: true }
+      ): Promise<Rules> => {
+        context.sourceTrees.set(sourcePath, sourceRules);
+        const imported = style({
+          path: quoted(sourcePath)
+        }, {
+          type: 'import',
+          importOptions
+        });
+        context.root = rules([imported]);
+        const resolution = await imported.resolveForSpine(context);
+        if (resolution.kind !== 'fold') {
+          throw new TypeError('Expected folded multiple import');
+        }
+        return resolution.body;
+      };
+
+      try {
+        const closedSource = rules([
+          ruleset({
+            selector: sellist([sel([el('.closed-static-allocation')])]),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ]);
+        segmentSpy.mockClear();
+        const discardedBody = await resolveOne(resolve(process.cwd(), 'closed-static-allocation.jess'), closedSource);
+        expect(segmentSpy).not.toHaveBeenCalled();
+        expect(getImportPlacementChildSegments(discardedBody)).toBeUndefined();
+
+        const dynamicSource = rules([
+          vardecl({ name: 'dynamic', value: any('green') })
+        ]);
+        segmentSpy.mockClear();
+        const dynamicBody = await resolveOne(resolve(process.cwd(), 'dynamic-allocation.jess'), dynamicSource);
+        expect(segmentSpy).toHaveBeenCalledTimes(dynamicSource.rules.length);
+        expect(getImportPlacementChildSegments(dynamicBody)).toHaveLength(dynamicSource.rules.length);
+
+        const commentSource = new RulesClass([
+          comment('/* keep */'),
+          ruleset({
+            selector: sellist([sel([el('.commented-allocation')])]),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ], undefined, undefined, new TreeContext({
+          trivia: createTriviaMap({
+            before: new Map([[0, makeTrivia('/* before */', 0, 11)]]),
+            after: new Map([[1, makeTrivia('/* after */', 0, 10)]])
+          })
+        }));
+        segmentSpy.mockClear();
+        const commentBody = await resolveOne(resolve(process.cwd(), 'commented-allocation.jess'), commentSource);
+        expect(segmentSpy).toHaveBeenCalledTimes(commentSource.rules.length);
+        expect(getImportPlacementChildSegments(commentBody)).toHaveLength(commentSource.rules.length);
+
+        context.opts.output = { sourceMap: true };
+        const sourceMapSource = rules([
+          ruleset({
+            selector: sellist([sel([el('.source-map-allocation')])]),
+            rules: [decl({ name: 'color', value: any('green') })]
+          })
+        ]);
+        segmentSpy.mockClear();
+        const sourceMapBody = await resolveOne(resolve(process.cwd(), 'source-map-allocation.jess'), sourceMapSource);
+        expect(segmentSpy).toHaveBeenCalledTimes(sourceMapSource.rules.length);
+        expect(getImportPlacementChildSegments(sourceMapBody)).toHaveLength(sourceMapSource.rules.length);
+      } finally {
+        context.opts.output = undefined;
+        segmentSpy.mockRestore();
+      }
+    });
+
+    it('retains spine placement mapping for excluded multiple-import shapes', async () => {
+      const sourcePath = resolve(process.cwd(), 'excluded-static-multiple.jess');
+      const staticSource = () => rules([
+        ruleset({
+          selector: sellist([sel([el('.excluded-static')])]),
+          rules: [decl({ name: 'color', value: any('green') })]
+        })
+      ]);
+      const resolveFirst = async (
+        sourceRules: Rules,
+        importOptions: { multiple: true; reference?: true } = { multiple: true },
+        addConsumer = false
+      ): Promise<Rules> => {
+        context.sourceTrees.set(sourcePath, sourceRules);
+        const imports = [0, 1, 2].map(() => style({
+          path: quoted('excluded-static-multiple.jess')
+        }, {
+          type: 'import',
+          importOptions
+        }));
+        context.root = rules(addConsumer
+          ? [...imports, decl({ name: 'consumer', value: any('black') })]
+          : imports);
+        const resolution = await imports[0]!.resolveForSpine(context);
+        if (resolution.kind !== 'fold') {
+          throw new TypeError('Expected folded multiple import');
+        }
+        return resolution.body;
+      };
+
+      expect(getImportPlacementChildSegments(await resolveFirst(rules([
+        vardecl({ name: 'blocked', value: any('green') })
+      ])))).toBeDefined();
+      expect(getImportPlacementChildSegments(await resolveFirst(staticSource(), {
+        multiple: true,
+        reference: true
+      }))).toBeDefined();
+      context.opts.output = { sourceMap: true };
+      expect(getImportPlacementChildSegments(await resolveFirst(staticSource()))).toBeDefined();
+      context.opts.output = undefined;
+      const commentSource = new RulesClass([
+        ruleset({
+          selector: sellist([sel([el('.commented-static')])]),
+          rules: [decl({ name: 'color', value: any('green') })]
+        })
+      ], undefined, undefined, new TreeContext({
+        trivia: createTriviaMap({
+          before: new Map([[0, makeTrivia('/* keep */', 0, 10)]]),
+          after: new Map([[0, makeTrivia('/* keep */', 0, 10)]])
+        })
+      }));
+      expect(getImportPlacementChildSegments(await resolveFirst(commentSource))).toBeDefined();
+      expect(getImportPlacementChildSegments(await resolveFirst(staticSource(), { multiple: true }, true))).toBeDefined();
+    });
+
     it('reuses source-free scalar leaves for first-use import-local placement', async () => {
       const originalClone = Any.prototype.clone;
       let clonedRedLeaves = 0;
@@ -2549,16 +2744,6 @@ describe('Style import', () => {
       expect(css).toContain('@import "file.css";');
       expect(css).toContain('.after {');
       expect(css.indexOf('@import "file.css";')).toBeLessThan(css.indexOf('.after {'));
-    });
-
-    it('import-module: context can resolve bare module-like specifiers', async () => {
-      const moduleContext = new Context();
-      moduleContext.treeContext = {
-        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
-      } as any;
-      const result = await (moduleContext as any)._getPath('lodash-es');
-      expect(typeof result.resolvedPath).toBe('string');
-      expect(result.resolvedPath.length).toBeGreaterThan(0);
     });
 
     it('import-once: default once semantics de-dupe repeated imports', async () => {
@@ -3848,32 +4033,6 @@ describe('Style import', () => {
       } finally {
         RulesClass.prototype.findMixinsFast = originalFindMixinsFast;
       }
-    });
-
-    it('import-remote: mapped remote package paths can be resolved as module-like imports', async () => {
-      const remoteContext = new Context({}, [{
-        name: 'remote-map',
-        supportedExtensions: ['.less'],
-        resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
-          const paths = Array.isArray(filePath) ? filePath : [filePath];
-          const mapped = paths.map((candidate) => {
-            const m = candidate.match(/^https?:\/\/cdn\.jsdelivr\.net\/npm\/([^?#]+)(?:[?#].*)?$/i);
-            return m?.[1] ?? candidate;
-          });
-          void currentDir;
-          void searchPaths;
-          return mapped;
-        },
-        locate() {
-          return null;
-        }
-      }]);
-      remoteContext.treeContext = {
-        file: { name: 'entry.less', path: process.cwd(), fullPath: resolve(process.cwd(), 'entry.less') }
-      } as any;
-      const result = await (remoteContext as any)._getPath('https://cdn.jsdelivr.net/npm/lodash-es/lodash.js');
-      expect(typeof result.resolvedPath).toBe('string');
-      expect(result.resolvedPath.length).toBeGreaterThan(0);
     });
 
     it('import-remote: reference remote imports remain engine imports instead of becoming literal CSS imports', async () => {

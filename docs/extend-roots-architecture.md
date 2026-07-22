@@ -61,6 +61,25 @@ Reference minimal example files:
 
 So: compose = boundary (no cross-extend unless mutable); import = no boundary, shared scope with parent.
 
+### 4a. Mutable propagation and namespace filters
+
+The intended `dev` contract is that `mutable` belongs to the composed placement
+and propagates through nested `@-compose` boundaries by default. An explicit
+protected boundary stops that propagation. This is placement-local: composing
+the same module elsewhere without `mutable` remains protected.
+
+Namespaces on `$extend` targets are **immediate-boundary filters**, not full
+paths through every nested module. If the consumer writes `library|.box`, the
+`library` segment is consumed when the query enters `library.jess`; the
+remaining `.box` target is then matched through `library.jess`'s accessible
+mutable child roots. If `library.jess` composed `base.jess as foundation`, the
+`foundation` namespace remains meaningful for extend statements written inside
+`library.jess`; it is not required in the consumer's `library|.box` query.
+
+A bare `$extend .box` is the unfiltered form: it searches all mutable roots
+accessible from the current extend. The namespace is optional and only narrows
+the immediate module surface.
+
 ## 5. Tree and lookup (summary)
 
 - **Extend roots** form a tree: `parentRoot` / `childrenRoots` in the registry.
@@ -94,6 +113,12 @@ This gives a single, consistent model: extend root + descendant roots only, with
    aligned, so the registry has a single child of doc per at-rule body.
 
 **Note:** Three extend-roots tests still fail (extends from inside at-rule into nested at-rules; layers with same name share extend roots; nested layers concatenate names). Cause is under investigation (e.g. registration order or which Rules identity is used for extendRoot vs. children).
+
+3. **Mutable compose propagation and namespace-filtered lookup**: The current
+   runtime assigns protection independently at each compose edge, and records
+   namespaces without using them to filter extend lookup. Implement the §4a
+   contract with focused nested-compose tests before treating this area as
+   complete.
 
 ### Extend-chaining hypothesis and fix
 

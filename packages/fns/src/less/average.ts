@@ -5,6 +5,12 @@ export function averageBase(cb: number, cs: number) {
   return (cb + cs) / 2;
 }
 
+/**
+ * Less `average()` — the per-channel arithmetic mean of two colors.
+ * @param color1 the first `Color`
+ * @param color2 the second `Color`
+ * @returns the averaged `Color`
+ */
 export default defineFunction(
   'average',
   function(color1: Color, color2: Color) {

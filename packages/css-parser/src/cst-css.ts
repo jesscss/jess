@@ -4,15 +4,13 @@ import type { ParseDoc } from 'parseman';
 
 export type { ParseDoc } from 'parseman';
 
-export function parseCss(
+export function parseCssCst(
   input: string,
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(cssGrammar as Record<string, unknown>, input, startRule, options);
 }
-
-export const parseCssCst = parseCss;
 
 /** Incremental (`.edit()`-able) CSS document — see {@link parseDocCst}. */
 export function parseCssDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {

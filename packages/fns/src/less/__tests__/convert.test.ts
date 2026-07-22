@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { Any, Dimension, Quoted } from '@jesscss/core';
+import { makeDimension, makeKeyword, makeQuoted } from '@jesscss/core/value';
 import convert from '../convert.js';
 
 describe('convert()', () => {
   it('converts compatible length, duration, and angle units', () => {
-    const cm = convert(new Dimension({ number: 1, unit: 'm' }), new Quoted('cm'));
-    const ms = convert(new Dimension({ number: 2, unit: 's' }), new Any('ms', { role: 'keyword' }));
-    const deg = convert(new Dimension({ number: 1, unit: 'turn' }), new Quoted('deg'));
+    const cm = convert(makeDimension(1, 'm'), makeQuoted('cm'));
+    const ms = convert(makeDimension(2, 's'), makeKeyword('ms'));
+    const deg = convert(makeDimension(1, 'turn'), makeQuoted('deg'));
 
     expect(cm.number).toBe(100);
     expect(cm.unit).toBe('cm');
@@ -17,12 +17,12 @@ describe('convert()', () => {
   });
 
   it('returns original value for missing/same/incompatible units', () => {
-    const noUnit = new Dimension({ number: 10 });
-    const sameUnit = new Dimension({ number: 10, unit: 'px' });
-    const incompatible = new Dimension({ number: 10, unit: 'px' });
+    const noUnit = makeDimension(10);
+    const sameUnit = makeDimension(10, 'px');
+    const incompatible = makeDimension(10, 'px');
 
-    expect(convert(noUnit, new Quoted('cm'))).toBe(noUnit);
-    expect(convert(sameUnit, new Quoted('px'))).toBe(sameUnit);
-    expect(convert(incompatible, new Quoted('s'))).toBe(incompatible);
+    expect(convert(noUnit, makeQuoted('cm'))).toMatchObject({ number: 10, unit: '' });
+    expect(convert(sameUnit, makeQuoted('px'))).toMatchObject({ number: 10, unit: 'px' });
+    expect(convert(incompatible, makeQuoted('s'))).toMatchObject({ number: 10, unit: 'px' });
   });
 });

@@ -1,14 +1,21 @@
-// The legacy Chevrotain parser has been removed — the functional macro parser
-// (ScssParser / scssGrammar) IS the parser now.
+import { run } from 'parseman';
+import type { Stylesheet } from '@jesscss/core/ast';
+import { scssAstGrammar } from './ast/grammar.js';
 
-export { ScssGrammar } from './builders.js';
-export { scssGrammar } from './grammar.js';
+function isStylesheet(value: unknown): value is Stylesheet {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Stylesheet'
+    && 'children' in value
+    && Array.isArray(value.children);
+}
 
-import { ScssParser } from './functional-parser.js';
-export { ScssParser, parseScssFn, type ScssFnParseResult, type ScssFnParseOptions } from './functional-parser.js';
-
-export const Parser = ScssParser;
-export { parseScssCst, parseScssDoc } from './cst.js';
-export type {
-  ScssCstChild, ScssCstError, ScssCstLeaf, ScssCstNode, ScssCstParseResult, ScssCstType
-} from './cst.js';
+/** Parse SCSS directly into the canonical AST v2 document. */
+export function parse(input: string): Stylesheet {
+  const result = run(scssAstGrammar.ScssAstDocument, input, { trivia: scssAstGrammar.whitespace });
+  if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
+    throw new SyntaxError('SCSS parse did not produce a complete Stylesheet document.');
+  }
+  return result.value;
+}

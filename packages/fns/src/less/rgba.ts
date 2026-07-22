@@ -2,6 +2,10 @@
 import { rgbImplementation, rgbOptions } from './rgb.js';
 import { defineFunction, type FunctionThis } from '@jesscss/core';
 
+/**
+ * Less `rgba()` — alias of `rgb()` kept for CSS `rgba()` compatibility; shares the
+ * same implementation ({@link rgbImplementation}) and overloads.
+ */
 const rgba = defineFunction(
   'rgba',
   async function(this: FunctionThis, ...args: any[]) {

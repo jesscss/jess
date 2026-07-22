@@ -54,6 +54,13 @@ export type ExtendValue = {
    *
    * - `namespace: '*'` means "search all extend roots in this file (ignore namespace scoping)".
    * - `namespace: 'ns'` means "search the extend root(s) assigned to namespace `ns`".
+   *
+   * @todo(dev): Treat this as an immediate-boundary filter, not a full nested
+   * namespace path. `library|.box` consumes `library` when entering
+   * `library.jess`, then applies `.box` to accessible mutable child modules.
+   * A child alias such as `foundation` remains meaningful inside `library.jess`
+   * and is not required in the outer query. A missing namespace searches all
+   * accessible mutable surfaces.
    */
   namespace?: string;
   flag?: ExtendFlag;

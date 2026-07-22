@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config([
   ...rootConfig,
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: ['src/**/*.ts', 'test/**/*.ts', 'vitest.config.ts'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -17,14 +17,8 @@ export default tseslint.config([
     }
   },
   {
-    // Proxy symbol access, visitor patterns, dynamic plugin interop
-    files: [
-      'src/plugin.ts',
-      'src/transform/proxy.ts',
-      'src/transform/adapter.ts',
-      'src/transform/from-less.ts',
-      'src/transform/to-less.ts'
-    ],
+    // Dynamic plugin interop in the native plugin boundary.
+    files: ['src/plugin.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-type-assertion': 'off'
     }

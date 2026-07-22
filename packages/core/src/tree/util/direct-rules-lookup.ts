@@ -505,8 +505,11 @@ function findWithinScopeSurface(
     countDirectLookup?.('declaration.cacheHit');
     return cached;
   }
-  countDirectLookup?.('declaration.cacheMiss');
-  countDirectLookup?.(`declaration.scope.${strategy.cacheTag}`);
+  if (countDirectLookup) {
+    countDirectLookup('declaration.cacheMiss');
+    countDirectLookup(`declaration.cacheMiss.${strategy.cacheTag}`);
+    countDirectLookup(`declaration.scope.${strategy.cacheTag}`);
+  }
 
   const includeLiveBindings = strategy.includeLiveBindings && options.includeLiveBindings !== false;
   if (strategy.prepareScopeFrame && includeLiveBindings) {
@@ -656,7 +659,6 @@ function findWithinScopeSurface(
       continue;
     }
 
-    countDirectLookup?.('declaration.childEntryEntered');
     const childState = findWithinScopeSurface(
       entry.node,
       key,
@@ -672,6 +674,14 @@ function findWithinScopeSurface(
     );
     const optionalOnly = isOptionalRulesEntry(entry, lookupType);
     mergeMatch(state, childState, optionalOnly);
+    if (countDirectLookup) {
+      countDirectLookup('declaration.childEntryEntered');
+      countDirectLookup(childState.publicMatch
+        ? 'declaration.childEntryPublicHit'
+        : childState.optionalMatch
+          ? 'declaration.childEntryOptionalHit'
+          : 'declaration.childEntryMiss');
+    }
     if (state.publicMatch && isPublicRulesEntry(entry, lookupType)) {
       break;
     }

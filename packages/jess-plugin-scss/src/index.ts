@@ -1,35 +1,26 @@
 import {
   type Plugin,
   AbstractPlugin,
-  TreeContext,
   type ISafeParseResult,
-  type SafeParseOptions,
   type ErrorDiagnostic,
-  type WarningDiagnostic,
-  JessError,
-  getErrorFromParser,
-  toDiagnostic,
   extractRelevantLines,
-  type Rules
 } from '@jesscss/core';
-import { Parser } from '@jesscss/scss-parser/jess';
-import path from 'node:path';
+import { parse } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 import type { EqualityMode, UnitMode } from '@jesscss/core';
 
 export type ScssPluginOptions = {
   allowExtendSelectors?: ExtendSelectorKind[];
   /**
-   * Unit mode for handling unit arithmetic.
-   * - 'loose': Convert units when possible (default for Less)
-   * - 'preserve': Create calc() expressions for unit errors (default for SCSS)
-   * - 'strict': Throw errors for unit mismatches
-   * @default 'preserve'
+   * Compatibility input retained on this frontend's option object. The shared
+   * evaluator reads the resolved Context compile/input option; configuring a
+   * Compiler should use `compile.unitMode` or matched input options.
    */
   unitMode?: UnitMode;
   /**
-   * Equality mode for guard/comparison semantics.
-   * @default 'strict'
+   * Compatibility input retained on this frontend's option object. It does not
+   * select a separate SCSS evaluator; configure the shared evaluator through
+   * Context compile/input options.
    */
   equalityMode?: EqualityMode;
   /**
@@ -41,10 +32,20 @@ export type ScssPluginOptions = {
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
+function parseErrorLocation(source: string, error: unknown): { line: number; column: number } {
+  const offset = typeof error === 'object' && error !== null && 'offset' in error && typeof error.offset === 'number'
+    ? Math.max(0, Math.min(source.length, error.offset))
+    : 0;
+  const before = source.slice(0, offset);
+  return {
+    line: before.split('\n').length,
+    column: offset - (before.lastIndexOf('\n') + 1) + 1
+  };
+}
+
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
-  parser: Parser;
   unitMode: UnitMode;
   equalityMode: EqualityMode;
 
@@ -52,7 +53,6 @@ export class ScssPlugin extends AbstractPlugin {
     super();
     this.unitMode = opts.unitMode ?? 'preserve';
     this.equalityMode = opts.equalityMode ?? 'sass';
-    this.parser = new Parser();
   }
 
   expandImport(importPath: string) {
@@ -60,94 +60,27 @@ export class ScssPlugin extends AbstractPlugin {
     return expandScssImportCandidates(importPath);
   }
 
-  safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
-    const allowExtendSelectors = this.opts.allowExtendSelectors
-      ?? parseOptions?.compilerOptions?.allowExtendSelectors
-      ?? ['simple'];
-
-    const context = new TreeContext({
-      file: {
-        name: path.basename(filePath),
-        path: path.dirname(filePath),
-        fullPath: filePath,
-        source
-      },
-      plugin: this,
-      allowExtendSelectors,
-      unitMode: this.unitMode,
-      equalityMode: this.equalityMode,
-      collapseNesting: this.opts.collapseNesting ?? false
-    });
-
-    const errors: ErrorDiagnostic[] = [];
-    const warnings: WarningDiagnostic[] = [];
-    let tree: Rules | undefined;
-
+  safeParse(filePath: string, source: string): ISafeParseResult {
     try {
-      const parseResult = this.parser.parse(source, 'Stylesheet', { context });
-      tree = parseResult.tree;
-
-      // Convert parser errors to normalized diagnostics
-      if (parseResult.errors.length) {
-        for (const error of parseResult.errors) {
-          const line = error.token?.startLine ?? 1;
-          const jessError = getErrorFromParser([error], undefined, filePath, source, { file: context.file });
-          const diagnostic = toDiagnostic(jessError);
-          if (!diagnostic.lines) {
-            diagnostic.lines = extractRelevantLines(source, line);
-          }
-          if ('errors' in diagnostic) {
-            errors.push(diagnostic);
-          } else {
-            warnings.push(diagnostic);
-          }
-        }
-      }
-
-      // Convert lexer errors
-      const lexErrors = parseResult.lexerResult?.errors ?? [];
-      if (lexErrors.length) {
-        for (const lexError of lexErrors) {
-          const line = typeof lexError.line === 'number' ? lexError.line : 1;
-          const jessError = getErrorFromParser([], [lexError], filePath, source, { file: context.file });
-          const diagnostic = toDiagnostic(jessError);
-          if (!diagnostic.lines) {
-            diagnostic.lines = extractRelevantLines(source, line);
-          }
-          if ('errors' in diagnostic) {
-            errors.push(diagnostic);
-          } else {
-            warnings.push(diagnostic);
-          }
-        }
-      }
-    } catch (error: unknown) {
-      if (error instanceof JessError) {
-        const diagnostic = toDiagnostic(error);
-        if ('errors' in diagnostic) {
-          errors.push(diagnostic);
-        } else {
-          warnings.push(diagnostic);
-        }
-      } else {
-        const message = error instanceof Error ? error.message : 'Unknown parsing error';
-        errors.push({
-          code: 'internal/unknown',
+      return { document: parse(source), errors: [], warnings: [] };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const location = parseErrorLocation(source, error);
+      return {
+        errors: [{
+          code: 'parse/syntax-error',
           phase: 'parse',
           message,
           reason: message,
-          fix: 'Check the file syntax and ensure it is valid.',
-          file: context.file,
+          fix: 'Check the SCSS source against the supported grammar.',
           filePath,
-          line: 1,
-          column: 1,
-          lines: extractRelevantLines(source, 1)
-        });
-      }
-      return { errors, warnings };
+          line: location.line,
+          column: location.column,
+          lines: extractRelevantLines(source, location.line)
+        } satisfies ErrorDiagnostic],
+        warnings: []
+      };
     }
-
-    return { tree, errors, warnings };
   }
 }
 

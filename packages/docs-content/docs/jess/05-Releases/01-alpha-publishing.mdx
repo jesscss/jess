@@ -15,13 +15,27 @@ The current alpha publish set is controlled by:
 
 - `scripts/release/alpha-allowlist.json`
 
-Packages not in the allowlist are intentionally excluded (for example, packages with private runtime dependencies).
+The publish set includes the direct parser/plugin closure installed by `jess`:
+Jess, Less, and SCSS parser plugins plus their parser packages. CSS is available
+only when a consumer explicitly configures a CSS document plugin; Jess does not
+install or route `.css` entries by default. `@jesscss/css-parser` remains in the
+set because the shipped dialect grammars use its shared CSS grammar. Packages
+with private runtime dependencies remain intentionally excluded.
 
 ## Branch/tag guardrails
 
 - `alpha` npm tag publishes are only allowed from branch `alpha`.
 - non-alpha npm tags (future stable releases) are only allowed from branch `main`.
 - These rules are enforced in the publish script, not just in docs.
+
+## Cut the release snapshot
+
+An alpha is a release snapshot, not a normal branch integration. After the
+exact `dev` candidate has passed its intended gates, squash it onto an
+up-to-date `alpha` worktree, add the owner-reviewed user-facing release notes,
+and commit that snapshot. Do not ordinary-merge or rebase `dev` into `alpha`.
+The full cut procedure is in the repository
+[`docs/releasing-alpha.md`](https://github.com/matthew-dean/jess/blob/dev/docs/releasing-alpha.md).
 
 ## Friendly one-command flow
 
@@ -43,11 +57,16 @@ pnpm run release:alpha
 
 1. Branch + working tree safety checks
 2. Baseline verification and publish-set validation
-3. Lockstep versioning (`changeset version`)
+3. Registry-aware lockstep alpha versioning
 4. Release commit + annotated git tag
 5. Push branch and tag
 6. Publish allowlisted packages to npm tag `alpha`
 7. npm smoke checks for `@alpha` installs
+
+Before the publish dry-run it also packs the allowlisted release set and installs
+those tarballs into an empty npm consumer. That proof imports every package by
+both ESM and CommonJS, exercises packed `jess`/`lessc` CLI paths, and verifies
+the optional JS-plugin sandbox gate without workspace links.
 
 ## Manual commands (advanced)
 

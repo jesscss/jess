@@ -182,7 +182,7 @@ $color-name: "red";
 ```
 
 ## TL;DR
-1. Use `$()` for dynamic bits—selectors, property names, and anything clever you want in output.
+1. Use `$[key]` for a dynamic selector, property, or mixin-name segment; use `$()` for a full expression in value or string output.
 2. Use `*[]` when the variable itself should hold a selector or selector list.
 3. Don't wrap variables for no reason; use direct variables unless you need interpolation.
 4. Never interpolate numbers if you want to do math with them.

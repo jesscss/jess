@@ -6,7 +6,13 @@ For alpha publishing details and package scope, see `docs/releasing-alpha.md`.
 
 ## Alpha release quick start
 
-From repo root:
+An alpha is first cut as a **squash snapshot of validated `dev` on `alpha`**;
+it is not an ordinary merge or rebase of `dev` into the release branch. Include
+the owner-reviewed user-facing changelog/release notes in that squash commit.
+The detailed cut procedure and its version-resolver caveat are in
+[`docs/releasing-alpha.md`](./docs/releasing-alpha.md#cut-the-alpha-snapshot-from-dev).
+
+Only after that committed snapshot is checked out on `alpha`, run from repo root:
 
 ```bash
 pnpm run release:alpha:dry-run
@@ -22,7 +28,7 @@ pnpm run release:alpha
 
 1. Verifies branch and working tree safety.
 2. Runs the baseline gate and alpha allowlist checks.
-3. Runs lockstep versioning via Changesets.
+3. Resolves and writes a fresh lockstep alpha version from the npm registry.
 4. Creates a release commit and annotated tag.
 5. Pushes branch + tag to origin.
 6. Publishes allowlisted packages to npm with `alpha` tag.

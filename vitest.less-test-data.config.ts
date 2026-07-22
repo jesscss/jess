@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { builtinModules } from 'node:module';
 import { defineConfig } from 'vitest/config';
+import parseman from 'parseman/plugin';
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname));
 const packagesRoot = path.join(repoRoot, 'packages');
@@ -120,8 +121,28 @@ function createWorkspaceSourceAliases() {
 }
 
 export default defineConfig({
+  // This integration config deliberately aliases most workspace packages to
+  // source. Parseman grammar source is therefore valid only when the same macro
+  // transform used by the normal Vitest config is active.
+  plugins: [parseman.vite()],
   resolve: {
-    alias: createWorkspaceSourceAliases(),
+    // Parseman grammars are macro-compiled package output. The Less integration
+    // suite exercises the public Jess route, so it must load the built public
+    // parser rather than aliasing its macro source into Vite at runtime.
+    alias: [
+      { find: '@jesscss/less-parser/grammar', replacement: path.join(packagesRoot, 'less-parser', 'lib', 'grammar.js') },
+      { find: '@jesscss/less-parser', replacement: path.join(packagesRoot, 'less-parser', 'lib', 'index.js') },
+      // Compiler imports the built-in Jess plugin even for a Less document. Its
+      // parser is macro-compiled too, so this integration route must not alias
+      // either package back to TypeScript source inside Vite.
+      { find: '@jesscss/plugin-jess', replacement: path.join(packagesRoot, 'jess-plugin-jess', 'lib', 'index.js') },
+      { find: '@jesscss/jess-parser', replacement: path.join(packagesRoot, 'jess-parser', 'lib', 'index.js') },
+      ...createWorkspaceSourceAliases().filter(alias =>
+        alias.find !== '@jesscss/less-parser'
+        && alias.find !== '@jesscss/plugin-jess'
+        && alias.find !== '@jesscss/jess-parser'
+      )
+    ],
     mainFields: ['source', 'import', 'module', 'exports', 'main']
   },
   test: {

@@ -1,39 +1,17 @@
-/**
- * Sass list.append() function
- *
- * Appends a value to a list.
- *
- * @example
- * append(1 2, 3) // 1 2 3
- * append(1, 2, comma) // 1, 2
- */
-import { defineFunction, Node, Quoted } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
 import { createSassListResult, getSassListInfo, resolveSassSeparator } from './util.js';
 
-const append = defineFunction(
-  'append',
-  function(list: Node, val: Node, separator?: Quoted): Node {
+const append = defineFunction('append', {
+  params: [
+    { name: 'list', kinds: 'any' },
+    { name: 'value', kinds: 'any' },
+    { name: 'separator', kinds: ['Quoted', 'Keyword'], optional: true }
+  ] as const,
+  body: (list, value, separator) => {
     const info = getSassListInfo(list);
     const sep = resolveSassSeparator(separator, info.sep);
-    return createSassListResult([...info.items, val], sep, info.bracketed);
-  },
-  {
-    params: [
-      {
-        name: 'list',
-        type: Node
-      },
-      {
-        name: 'val',
-        type: Node
-      },
-      {
-        name: 'separator',
-        type: Quoted,
-        optional: true
-      }
-    ]
+    return createSassListResult([...info.values, value], sep, info.bracketed);
   }
-);
+});
 
 export default append;

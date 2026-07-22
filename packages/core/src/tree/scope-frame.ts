@@ -582,9 +582,9 @@ export function lookupScopeFrameVariable(
   // mixin-body frame AND the root that holds the `@import`ed decls). Queue each
   // one — an inner frame's fallback must not shadow an outer frame's, so a single
   // first-wins slot dropped every import fallback above the innermost placement.
-  const fallbackQueue: ScopeFrame[] = [];
+  let fallbackQueue: ScopeFrame[] | undefined;
   if (includeFallbackFrames && frame?.fallbackFrame) {
-    fallbackQueue.push(frame.fallbackFrame);
+    (fallbackQueue ??= []).push(frame.fallbackFrame);
   }
   let visitedFallbackFrames: Set<ScopeFrame> | undefined;
   while (true) {
@@ -714,7 +714,7 @@ export function lookupScopeFrameVariable(
         return { kind: 'miss' };
       }
       if (includeFallbackFrames && f.fallbackFrame) {
-        fallbackQueue.push(f.fallbackFrame);
+        (fallbackQueue ??= []).push(f.fallbackFrame);
       }
       start = undefined;
       // A leak binding on the parent frame is source-order gated against where
@@ -733,7 +733,7 @@ export function lookupScopeFrameVariable(
     // on — the `visitedFallbackFrames` set makes each parent walk total. When the
     // queue drains, the symbol is genuinely absent.
     let nextFallback: ScopeFrame | undefined;
-    while (fallbackQueue.length > 0) {
+    while (fallbackQueue?.length) {
       const candidate = fallbackQueue.shift()!;
       if (!visitedFallbackFrames?.has(candidate)) {
         nextFallback = candidate;
@@ -747,10 +747,64 @@ export function lookupScopeFrameVariable(
     f = nextFallback;
     visitedFallbackFrames ??= new Set();
     if (nextFallback.fallbackFrame) {
-      fallbackQueue.push(nextFallback.fallbackFrame);
+      (fallbackQueue ??= []).push(nextFallback.fallbackFrame);
     }
     start = undefined;
   }
+}
+
+/**
+ * Probe a single prepared frame's callable buckets for `name`, returning the
+ * authoritative result for THAT frame only (no parent/fallback walk). Mirrors
+ * the per-frame decision the variable lookup makes inline; factored out so the
+ * fallback-chain traversal can reuse the exact same visibility rules (guard
+ * candidates, includeRulesets filtering) the primary walk applies.
+ */
+function probeScopeFrameCallable(
+  f: ScopeFrame,
+  name: string,
+  includeRulesets: boolean | undefined
+): ScopeFrameCallableLookupResult {
+  if (!f.callablesCovered) {
+    return { kind: 'uncovered', reason: 'frame' };
+  }
+
+  const callableBucketsByName = f.callableBucketsByName;
+  if (!callableBucketsByName?.has(name)) {
+    return { kind: 'uncovered', reason: 'key' };
+  }
+
+  const bucket = callableBucketsByName.get(name);
+  let hasUnconsumedCandidate = false;
+  if (bucket?.length) {
+    for (let i = bucket.length - 1; i >= 0; i--) {
+      const entry = bucket[i]!;
+      if (includeRulesets === false && entry.value instanceof Node && entry.value.type === 'Ruleset') {
+        continue;
+      }
+      if (
+        entry.match.length === 0
+      ) {
+        return { kind: 'hit', bucket };
+      }
+      hasUnconsumedCandidate = true;
+    }
+  }
+  if (hasUnconsumedCandidate) {
+    return { kind: 'uncovered', reason: 'candidate' };
+  }
+
+  const missesCovered = includeRulesets === false
+    ? f.mixinCallableMissesCovered
+    : f.callableMissesCovered;
+  if (!missesCovered) {
+    if (f.hasReferenceImports) {
+      return { kind: 'uncovered', reason: 'reference-import' };
+    }
+    return { kind: 'uncovered', reason: 'child-surface' };
+  }
+
+  return { kind: 'miss' };
 }
 
 export function lookupScopeFrameCallable(
@@ -759,55 +813,76 @@ export function lookupScopeFrameCallable(
   options?: {
     includeRulesets?: boolean;
     searchParents?: boolean;
+    /**
+     * Rules-side hook to materialize a frame's callable coverage before it is
+     * probed. Callable coverage is prepared lazily per-(frame,key) by
+     * `Rules.prepareCallableLookupFrame`, which this module cannot call across
+     * the no-Rules-import boundary. Passing this lets the primitive traverse the
+     * `fallbackFrame` (import) chain autonomously — symmetric with the variable
+     * lookup, whose declaration coverage is materialized eagerly at frame build.
+     * When omitted, fallback-chain traversal is skipped (caller drives it).
+     */
+    prepareFrame?: (frame: ScopeFrame, includeRulesets: boolean) => void;
   }
 ): ScopeFrameCallableLookupResult {
+  const includeRulesets = options?.includeRulesets;
+  const prepareFrame = options?.prepareFrame;
   let f = frame;
   while (f) {
-    if (!f.callablesCovered) {
-      return { kind: 'uncovered', reason: 'frame' };
+    const result = probeScopeFrameCallable(f, name, includeRulesets);
+    if (result.kind === 'hit') {
+      return result;
     }
-
-    const callableBucketsByName = f.callableBucketsByName;
-    if (!callableBucketsByName?.has(name)) {
-      return { kind: 'uncovered', reason: 'key' };
-    }
-
-    const bucket = callableBucketsByName.get(name);
-    let hasUnconsumedCandidate = false;
-    if (bucket?.length) {
-      for (let i = bucket.length - 1; i >= 0; i--) {
-        const entry = bucket[i]!;
-        if (options?.includeRulesets === false && entry.value instanceof Node && entry.value.type === 'Ruleset') {
-          continue;
+    if (result.kind === 'uncovered') {
+      // A frame whose only obstruction is an imported child surface can still be
+      // answered authoritatively by walking that import's fallback frame chain,
+      // provided the caller supplied a preparation hook. This is what retires the
+      // `findMixinsFastForUncoveredCallable` descent for imported-module mixins.
+      if (
+        prepareFrame
+        && (result.reason === 'child-surface' || result.reason === 'reference-import')
+        && f.fallbackFrame
+      ) {
+        const fallbackResult = walkFallbackCallable(f.fallbackFrame, name, includeRulesets, prepareFrame);
+        if (fallbackResult) {
+          return fallbackResult;
         }
-        if (
-          entry.match.length === 0
-        ) {
-          return { kind: 'hit', bucket };
-        }
-        hasUnconsumedCandidate = true;
       }
+      return result;
     }
-    if (hasUnconsumedCandidate) {
-      return { kind: 'uncovered', reason: 'candidate' };
-    }
-
-    const missesCovered = options?.includeRulesets === false
-      ? f.mixinCallableMissesCovered
-      : f.callableMissesCovered;
-    if (!missesCovered) {
-      if (f.hasReferenceImports) {
-        return { kind: 'uncovered', reason: 'reference-import' };
-      }
-      return { kind: 'uncovered', reason: 'child-surface' };
-    }
-
+    // result.kind === 'miss': this frame is covered but does not define `name`.
     if (options?.searchParents === false) {
       break;
     }
     f = f.parent;
   }
   return { kind: 'miss' };
+}
+
+/**
+ * Walk the fallbackFrame (import) chain looking for an authoritative callable
+ * hit, preparing each frame first. Returns a hit if found; undefined if the
+ * chain cannot answer (so the caller returns its original uncovered result and
+ * the legacy descent still runs). Acyclic via a visited set.
+ */
+function walkFallbackCallable(
+  start: ScopeFrame,
+  name: string,
+  includeRulesets: boolean | undefined,
+  prepareFrame: (frame: ScopeFrame, includeRulesets: boolean) => void
+): ScopeFrameCallableLookupResult | undefined {
+  let f: ScopeFrame | undefined = start;
+  const visited = new Set<ScopeFrame>();
+  while (f && !visited.has(f)) {
+    visited.add(f);
+    prepareFrame(f, includeRulesets !== false);
+    const result = probeScopeFrameCallable(f, name, includeRulesets);
+    if (result.kind === 'hit') {
+      return result;
+    }
+    f = f.fallbackFrame;
+  }
+  return undefined;
 }
 
 export function assignScopeFrameVariable(

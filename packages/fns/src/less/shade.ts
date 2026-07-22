@@ -7,6 +7,13 @@ import {
 } from '@jesscss/core';
 import mix from './mix.js';
 
+/**
+ * Less `shade()` — mix a color with black by `amount`; shorthand for
+ * `mix(#000, color, amount)`.
+ * @param color the input `Color`
+ * @param amount black mix weight as a `Dimension` percentage
+ * @returns the shaded `Color`
+ */
 const shade = defineFunction(
   'shade',
   function(this: Context, color: Color, amount: Dimension) {

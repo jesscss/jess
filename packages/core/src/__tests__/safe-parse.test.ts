@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Context } from '../context.js';
 import { createTestContext } from '../tree/__tests__/import-style-test-helpers.js';
 import { rules, ruleset, sellist, sel, el, decl, spaced, any as anyNode } from '../tree/index.js';
+import { stylesheet } from '../ast/nodes.js';
 import type { ErrorDiagnostic, WarningDiagnostic } from '../jess-error.js';
 import { resolve } from 'node:path';
 
@@ -43,7 +44,7 @@ describe('Safe Parse - Error and Warning Collection', () => {
       };
       (testPlugin as any).safeParse = (path: string, source: string) => {
         return {
-          tree: rules([]), // Return empty tree to avoid "File not supported" error
+          document: stylesheet([]),
           errors: [{
             code: 'parse/unexpected-token',
             phase: 'parse' as const,
@@ -108,7 +109,7 @@ line 5`;
       };
       (testPlugin as any).safeParse = (path: string, src: string) => {
         return {
-          tree: rules([]), // Return empty tree to avoid "File not supported" error
+          document: stylesheet([]),
           errors: [{
             code: 'parse/unexpected-token',
             phase: 'parse' as const,
@@ -177,7 +178,7 @@ line 3`;
       };
       (testPlugin as any).safeParse = (path: string, src: string) => {
         return {
-          tree: rules([]), // Return empty tree to avoid "File not supported" error
+          document: stylesheet([]),
           errors: [{
             code: 'parse/unexpected-token',
             phase: 'parse' as const,
@@ -327,7 +328,7 @@ line 5`;
       };
       (testPlugin as any).safeParse = (path: string, src: string) => {
         return {
-          tree: rules([]), // Return empty tree to avoid "File not supported" error
+          document: stylesheet([]),
           errors: [{
             code: 'parse/unexpected-token',
             phase: 'parse' as const,

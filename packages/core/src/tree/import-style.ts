@@ -1,9 +1,10 @@
 import { sourceSpanOf } from './util/provenance.js';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import { TreeContext, type Context } from '../context.js';
+import type { ImportOptions } from '../import-options.js';
 import { Node, F_NON_STATIC, F_VISIBLE, defineType, type NodeLocation, type LocationInfo } from './node.js';
 import { type Reference } from './reference.js';
-import { Rules, type RulesOptions, type RulesVisibility } from './rules.js';
+import { hasCarriedMergeOutputSurface, Rules, type RulesOptions, type RulesVisibility } from './rules.js';
 import { type Quoted } from './quoted.js';
 import { Interpolated } from './interpolated.js';
 import { Url } from './url.js';
@@ -169,19 +170,7 @@ function getInlineSourceLocation(source: string): NodeLocation {
  * @see https://sass-lang.com/documentation/at-rules/import/#plain-css-imports
  */
 
-export type ImportOptions = {
-  /**
-   * Affects evaluation - will be passed to registered import handlers when parsing.
-   * Normally this is done by file extension, but can be overridden to select a
-   * particular plugin handler.
-   *
-   * e.g. `@-import (type: less) 'foo.css';`
-   */
-  type?: string;
-  /** Rules are not rendered in output. */
-  reference?: boolean;
-  optional?: boolean;
-  inline?: boolean;
+export interface LegacyImportOptions extends ImportOptions {
   /**
    * Optional import postlude captured by parsers for forms like:
    * `@import (inline) "x.css" layer(foo) supports(display: grid) screen;`
@@ -189,46 +178,8 @@ export type ImportOptions = {
    * For inline imports, this is applied as serializer wrappers around the inlined source.
    */
   postlude?: Node;
-  /**
-   * Less's default behavior for `@import` is to only output any resolved resource once.
-   * In Jess, subsequent imports should output as reference unless the `multiple` option
-   * is set to true.
-   *
-   * @todo - Investigate what Sass does.
-   */
-  multiple?: boolean;
-  /**
-   * Allow extends to reach into this import.
-   * Default is false for @-compose (protected by default), true for @-import.
-   */
-  mutable?: boolean;
-  /**
-   * Sass `@forward` semantics:
-   * - members are NOT visible to the current stylesheet scope
-   * - members ARE made available downstream when this stylesheet is imported
-   */
-  forward?: boolean;
-  /**
-   * Sass `@forward ... as <prefix>-*;` prefixing.
-   * Stores the prefix portion (e.g. `bar-` from `bar-*`).
-   */
-  forwardAsPrefix?: string;
-  /**
-   * Sass `@forward ... show ...;` list.
-   * We capture raw member names (e.g. `$a`, `mixin-b`, `fn-c`) without semantics yet.
-   */
-  forwardShow?: string[];
-  /**
-   * Sass `@forward ... hide ...;` list.
-   * We capture raw member names (e.g. `$a`, `mixin-b`, `fn-c`) without semantics yet.
-   */
-  forwardHide?: string[];
-  /** Variables can't be reassigned (default is true for `@-compose` and false for `@-import`). */
-  readonly?: boolean;
-  /** Internal marker for "once" de-duplication rendering semantics. */
-  _dedupe?: boolean;
   [key: string]: unknown;
-};
+}
 
 export type StyleImportOptions = {
   /**
@@ -244,7 +195,7 @@ export type StyleImportOptions = {
    *     - bar: true
    *     - baz: '1'
    */
-  importOptions?: ImportOptions;
+  importOptions?: LegacyImportOptions;
 
   /** e.g. `import * as foo` sets namespace to `foo` */
   namespace?: string;
@@ -290,7 +241,7 @@ export interface StyleImport extends Node<StyleImportValue, StyleImportOptions> 
 type ImportPlacementState = {
   source: Rules;
   children: Node[];
-  childSegments: readonly ImportPlacementChildSegment[];
+  childSegments: readonly ImportPlacementChildSegment[] | undefined;
 };
 
 export type ImportPlacementChildSegment = PlacementChildSegment;
@@ -378,6 +329,33 @@ function isPlacementScalarChild(node: Node): boolean {
     return true;
   }
   return false;
+}
+
+function isStaticPlacementScalarChild(node: Node): boolean {
+  if (node.hasFlag(F_NON_STATIC)) {
+    return false;
+  }
+  if (isNode(node, N.VarDeclaration)) {
+    return false;
+  }
+  if (isNode(node, N.Declaration)) {
+    return true;
+  }
+  if (node instanceof Rules) {
+    for (let i = 0; i < node.rules.length; i++) {
+      if (!isStaticPlacementScalarChild(node.rules[i]!)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+function hasPlacementTrivia(rules: Rules): boolean {
+  const trivia = rules._treeContext?.opts?.trivia;
+  return trivia !== undefined
+    && (!trivia.entries('before').next().done || !trivia.entries('after').next().done);
 }
 
 function findImportPlacementValuePath(
@@ -485,6 +463,9 @@ export function getImportPlacementSegmentSourceChild(
   if (!state) {
     return undefined;
   }
+  if (!state.childSegments) {
+    return undefined;
+  }
   // NOTE: a placement child may itself LOOK like a reusable leaf (a cloned
   // container whose only child was reused-as-leaf clears F_HAS_NODE_CHILD) yet
   // still map to a distinct source child. So resolve positionally through the
@@ -507,7 +488,7 @@ export function getImportPlacementSegmentSourceChild(
 
 export function getImportPlacementChildSegments(placementRules: Rules): readonly ImportPlacementChildSegment[] | undefined {
   const state = findImportPlacementState(placementRules);
-  if (!state) {
+  if (!state?.childSegments) {
     return undefined;
   }
   const segments = new Array<ImportPlacementChildSegment>(state.childSegments.length);
@@ -621,6 +602,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
           wrapped.adopt(childNode);
         }
         wrapped.rules.push(childNode);
+        if (hasCarriedMergeOutputSurface(childNode)) {
+          wrapped.hasMergeOutputSurface = true;
+        }
       }
     }
     return wrapped;
@@ -646,7 +630,7 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return node;
   }
 
-  private createFirstUseImportPlacementState(sourceRules: Rules): ImportPlacementState {
+  private createFirstUseImportPlacementState(sourceRules: Rules, retainPlacementState = true): ImportPlacementState {
     // Thin placement: the placement OWNS its child containers (a fresh
     // declaration/ruleset surface per placement) while REUSING inert scalar
     // leaves (shared by identity via `reuseAsLeaf`). The canonical source
@@ -656,7 +640,12 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // and a reusable leaf placement child IS its own source. See
     // LIVE_BINDING_ARCHITECTURE.md §4.
     const children = new Array<Node>(sourceRules.rules.length);
-    const childSegments = new Array<PlacementChildSegment>(sourceRules.rules.length);
+    // `false` is only passed after the closed-static admission has already
+    // proved every source child is placement-scalar. Keep the shallow child
+    // array, but do not repeat that recursive check or allocate mapping state.
+    const childSegments = retainPlacementState
+      ? new Array<PlacementChildSegment>(sourceRules.rules.length)
+      : undefined;
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const source = sourceRules.rules[index]!;
       // Only pure scalar-declaration content is placement-owned (a fresh
@@ -664,11 +653,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
       // content (mixins with guards/params, at-rules, nested imports) MUST stay
       // shared: a reference-import's mixin guards resolve caller scope through
       // the shared source parent chain, which cloning would sever.
-      const output = isPlacementScalarChild(source)
-        ? source.cloneForPlacement({ detachChildren: true })
-        : source;
+      const output = retainPlacementState
+        ? isPlacementScalarChild(source)
+          ? source.cloneForPlacement({ detachChildren: true })
+          : source
+        : source.cloneForPlacement({ detachChildren: true });
       children[index] = output;
-      childSegments[index] = createPlacementChildSegment(source, output, index);
+      if (childSegments) {
+        childSegments[index] = createPlacementChildSegment(source, output, index);
+      }
     }
     return {
       source: sourceRules,
@@ -679,7 +672,8 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
 
   private materializeImportPlacementState(
     state: ImportPlacementState,
-    importSite: Rules
+    importSite: Rules,
+    retainPlacementState = true
   ): Rules {
     const placement = this.deriveRulesSurface(state.source, state.children, {
       shareChildren: true,
@@ -697,7 +691,9 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     // at the canonical imported tree (preserveSourceNode above), so the
     // scope-frame parent-walk re-points the shared children up the import-site
     // chain with no marker. See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
-    importPlacementStates.set(placement, state);
+    if (retainPlacementState) {
+      importPlacementStates.set(placement, state);
+    }
     return placement;
   }
 
@@ -805,11 +801,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     }
 
     importedRules.rules.length = 0;
+    importedRules.hasMergeOutputSurface = false;
     for (let index = 0; index < sourceRules.rules.length; index++) {
       const originalNode = sourceRules.rules[index]!;
       const nextNode = replacementsByIndex.get(index) ?? originalNode;
       importedRules.adopt(nextNode);
       importedRules.rules.push(nextNode);
+      if (hasCarriedMergeOutputSurface(nextNode)) {
+        importedRules.hasMergeOutputSurface = true;
+      }
     }
     return importedRules;
   }
@@ -839,10 +839,27 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     for (const newNode of additiveNonVariableNodes) {
       finalRules.adopt(newNode);
       finalRules.rules.push(newNode);
+      if (hasCarriedMergeOutputSurface(newNode)) {
+        finalRules.hasMergeOutputSurface = true;
+      }
     }
-    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+    // The imported module surface holds the composed-in members (mixins, rulesets,
+    // decls). Nested as a child of the boundary result surface, its public callables
+    // were previously reached only via the `directChildRuleEntries` descent
+    // (`findMixinsFastForUncoveredCallable`). Mark it as inlining its members to the
+    // parent so `linkInlineImportFallbackFrames` (run when the frame is built below)
+    // chains it as `finalRules`'s fallback frame — unifying it with the plain/`@import`
+    // inline model so the callable lookup resolves imported (guarded) mixins on the
+    // frame fallback chain and retires that descent. It must be adopted BEFORE the
+    // frame is built so the inline-import link is wired. Members stay behind the outer
+    // `importBoundary`.
+    importedRules.options.inlinesMembersToParent = true;
     finalRules.adopt(importedRules);
     finalRules.rules.push(importedRules);
+    this.attachConfiguredVarBindings(finalRules, additiveVariableNodes);
+    if (hasCarriedMergeOutputSurface(importedRules)) {
+      finalRules.hasMergeOutputSurface = true;
+    }
     return finalRules;
   }
 
@@ -1036,6 +1053,50 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
     return isThenable(maybePath) ? maybePath.then(finish) : finish(maybePath);
   }
 
+  private isClosedLiteralMultipleImport(path: string): boolean {
+    const io = this.options.importOptions;
+    if (
+      this.options.type !== 'import'
+      || this.with !== undefined
+      || io?.multiple !== true
+      || !isNode(this.path, N.Quoted)
+    ) {
+      return false;
+    }
+    for (const key in io) {
+      if (key !== 'multiple' && (key !== 'once' || io.once !== false)) {
+        return false;
+      }
+    }
+    const quoted = this.path as Quoted;
+    return quoted.options?.escaped !== true
+      && typeof quoted.value === 'string'
+      && quoted.value === path;
+  }
+
+  private canDiscardSpinePlacementState(context: Context, sourceRules: Rules, importSite: Rules): boolean {
+    const path = isNode(this.path, N.Quoted) && typeof (this.path as Quoted).value === 'string'
+      ? (this.path as Quoted).value
+      : undefined;
+    if (
+      path === undefined
+      || !this.isClosedLiteralMultipleImport(path)
+      || importSite !== context.root
+    ) {
+      return false;
+    }
+    if (context.opts.output?.sourceMap === true || hasPlacementTrivia(sourceRules) || !isStaticPlacementScalarChild(sourceRules)) {
+      return false;
+    }
+    for (let i = 0; i < context.root.rules.length; i++) {
+      const node = context.root.rules[i]!;
+      if (!(node instanceof StyleImport) || !node.isClosedLiteralMultipleImport(path)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private async _foldLessImportForSpine(context: Context, finalPath: string): Promise<SpineImportResolution> {
     const io = this.options.importOptions ?? {};
     // Bracket `context.treeContext` around `getTree` exactly as `evalNode`'s
@@ -1115,13 +1176,15 @@ export class StyleImport extends Node<StyleImportValue, StyleImportOptions> {
         return emptyFold(loaded.resolvedPath);
       }
       const importSite = this.getImportAnchorRules(context);
+      const retainPlacementState = !this.canDiscardSpinePlacementState(context, loaded.node, importSite);
       // Build the import-site placement over the parsed (un-evaled) imported body:
       // shares the canonical children, frame parent = the import site so a free var
       // resolves up the import chain (reuses `materializeImportPlacementState`'s
       // wiring). The spine descends these children resolving each leaf live.
       let placement = this.materializeImportPlacementState(
-        this.createFirstUseImportPlacementState(loaded.node),
-        importSite
+        this.createFirstUseImportPlacementState(loaded.node, retainPlacementState),
+        importSite,
+        retainPlacementState
       );
       // A `(reference)` placement carries `referenceMode` (mirrors `getFinalRules`):
       // the descent SUPPRESSES its output while registration + extend-reach still run.

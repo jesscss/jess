@@ -5,28 +5,28 @@ audiences:
   - jess
 origin: jess
 ---
-Mixins are JavaScript functions that return a set of _rules_.
+Mixins are Jess definitions that inject a set of _rules_ at the call site.
 ```css
-@mixin myMixin {
+myMixin() {
   width: 30px;
   height: 40px;
 }
 .box {
-  @include myMixin();
+  $ > myMixin();
 }
 ```
 Mixins can also have parameters and default values.
 ```css
-@mixin myMixin(width, height: 40px) {
+myMixin($width, $height: 40px) {
   width: $width;
   height: $height;
 }
 
 .box-1 {
-  @include myMixin(10px);
+  $ > myMixin(10px);
 }
 .box-2 {
-  @include myMixin(20px, 20px);
+  $ > myMixin(20px, 20px);
 }
 ```
 The above will produce:

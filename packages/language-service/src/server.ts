@@ -10,12 +10,14 @@ import {
   type CodeActionParams,
   type DocumentLinkParams,
   type DocumentFormattingParams,
+  type DocumentRangeFormattingParams,
   type FoldingRangeParams,
   type SelectionRangeParams,
   type CompletionParams,
   type HoverParams,
   type DefinitionParams,
   type ReferenceParams,
+  type DocumentHighlightParams,
   type DocumentSymbolParams,
   type SemanticTokensParams,
   type DocumentColorParams,
@@ -55,11 +57,16 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
-        triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ']
+        // Sigils/openers that begin a completion context: variables (@ $ -),
+        // selectors/mixins (. #), pseudo (:), scss placeholder (%), jess
+        // placeholder (\\), value/function/var()/url() ((), path segments (/),
+        // scss interpolation (#{) and jess interpolation ($[).
+        triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ', '.', '#', '%', '\\', '(', '/', '[']
       },
       hoverProvider: true,
       definitionProvider: true,
       referencesProvider: true,
+      documentHighlightProvider: true,
       documentSymbolProvider: true,
       foldingRangeProvider: true,
       selectionRangeProvider: true,
@@ -70,6 +77,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
         prepareProvider: true
       },
       documentFormattingProvider: true,
+      documentRangeFormattingProvider: true,
       documentLinkProvider: {
         resolveProvider: false
       },
@@ -130,6 +138,10 @@ connection.onReferences((params: ReferenceParams) => {
   return engine.findReferences(params.textDocument.uri, params.position);
 });
 
+connection.onDocumentHighlight((params: DocumentHighlightParams) => {
+  return engine.findDocumentHighlights(params.textDocument.uri, params.position);
+});
+
 connection.onDocumentSymbol((params: DocumentSymbolParams) => {
   return engine.getDocumentSymbols(params.textDocument.uri);
 });
@@ -156,6 +168,10 @@ connection.onRenameRequest((params: RenameParams) => {
 
 connection.onDocumentFormatting((params: DocumentFormattingParams) => {
   return engine.formatDocument(params.textDocument.uri);
+});
+
+connection.onDocumentRangeFormatting((params: DocumentRangeFormattingParams) => {
+  return engine.formatRange(params.textDocument.uri, params.range);
 });
 
 connection.onDocumentLinks((params: DocumentLinkParams) => {

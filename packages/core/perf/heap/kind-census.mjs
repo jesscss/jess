@@ -29,7 +29,9 @@ function walk(n) {
     return;
   }
   seen.add(n);
-  if (n.constructor && n.constructor.name === 'Reference') {
+  // Production bundles minify constructor names, so use Jess's stable node
+  // discriminant first and keep the constructor fallback for unbundled runs.
+  if ((n.type ?? n.constructor?.name) === 'Reference') {
     const t = n.options?.type ?? 'variable(undefined)';
     kinds.set(t, (kinds.get(t) || 0) + 1);
     fieldPresence.total++;

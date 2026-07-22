@@ -22,6 +22,7 @@ const BASELINE_PACKAGE_DIRS = new Set([
   'packages/less-parser',
   'packages/css-parser',
   'packages/jess',
+  'packages/jess-plugin-less',
   'packages/jess-plugin-less-compat'
 ]);
 
@@ -51,6 +52,10 @@ function runFrontierChecks() {
   run('pnpm', ['run', 'verify:node-copy-frontier']);
   run('pnpm', ['run', 'verify:render-buffer-frontier']);
   run('pnpm', ['run', 'verify:materialization-frontier']);
+}
+
+function runParserRuntimeBoundary() {
+  run('pnpm', ['run', 'verify:parser-runtime-boundary']);
 }
 
 function getWorkspaceDeps(manifest) {
@@ -219,9 +224,10 @@ if (CHANGED_ONLY) {
     packagesToCheck = getPackagesToCheck(changedDirs, revDeps, nameToDir);
   }
   if (packagesToCheck.length === 0) {
-    console.log('Verify baseline (--changed): no baseline packages changed or affected. Running frontier checks only.');
+    console.log('Verify baseline (--changed): no baseline packages changed or affected. Running boundary and frontier checks.');
+    runParserRuntimeBoundary();
     runFrontierChecks();
-    console.log('\n>>> Verify baseline passed (frontier checks only).');
+    console.log('\n>>> Verify baseline passed (parser boundary + frontier checks only).');
     process.exit(0);
   }
   console.log(
@@ -235,12 +241,25 @@ const runCore = packagesToCheck.includes('packages/core');
 const runLessParser = packagesToCheck.includes('packages/less-parser');
 const runCssParser = packagesToCheck.includes('packages/css-parser');
 const runJess = packagesToCheck.includes('packages/jess');
+const runLessPlugin = packagesToCheck.includes('packages/jess-plugin-less');
 const runLessCompat = packagesToCheck.includes('packages/jess-plugin-less-compat');
 
-// Build core if any downstream needs it
-const needsCoreBuild = runCore || runLessParser || runCssParser || runJess || runLessCompat;
-if (needsCoreBuild) {
-  run('pnpm', ['--filter', '@jesscss/core', 'build']);
+// Build the complete runtime chain before any baseline/profile consumer runs.
+// The generated package outputs are ignored by Git, so rebuilding only core
+// can leave jess/plugins pointed at a different source revision.
+const needsRuntimeBuild = runCore || runLessParser || runCssParser || runJess || runLessPlugin || runLessCompat;
+const runtimeBuildOrder = [
+  '@jesscss/core',
+  '@jesscss/less-parser',
+  '@jesscss/css-parser',
+  'jess',
+  '@jesscss/plugin-less',
+  '@jesscss/plugin-less-compat'
+];
+if (needsRuntimeBuild) {
+  for (const packageName of runtimeBuildOrder) {
+    run('pnpm', ['--filter', packageName, 'build']);
+  }
 }
 
 if (runCore) {
@@ -259,6 +278,7 @@ if (runLessCompat) {
   run('pnpm', ['--filter', './packages/jess-plugin-less-compat', 'test']);
 }
 
+runParserRuntimeBoundary();
 runFrontierChecks();
 run('pnpm', ['run', 'verify:package-exports']);
 run('pnpm', ['run', 'verify:node-constructor-metadata']);

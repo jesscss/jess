@@ -1,0 +1,43 @@
+---
+title: 'Advanced: variable resolution & scoping'
+sidebar_position: 2.5
+audiences:
+  - jess
+origin: jess
+---
+
+Jess makes the resolution model visible in the reference spelling:
+
+| Reference | Resolution model |
+| --- | --- |
+| `$foo` | Live: reads the current binding at evaluation time. |
+| `$$foo` | Scoped/final lookup. |
+
+The old `$!foo` spelling is retired. It is not a compatibility recommendation.
+
+## Live references
+
+`$foo` is the live form. It reads the current value at the evaluation point,
+rather than selecting a declaration from a hoisted scoped declaration stack.
+
+## Scoped/final lookup
+
+`$$foo` requests the scoped/final lookup model. Its resolver walks the
+relevant scope surface and evaluates the chosen declaration lazily. This is the
+mode to use when preserving scoped lookup behavior explicitly.
+
+## Missing names
+
+Both forms report an unresolved name as a `ReferenceError` unless the caller is
+performing an explicit optional/existence operation.
+
+## Declaration and assignment lookup
+
+Both `$foo: value` and `$$foo: value` create or update both bindings. `$foo?:`
+tests the live map and creates/updates both only if absent; `$$foo?:` tests the
+scoped/final map and creates/updates both only if absent. `$foo :=` updates the
+live/current binding; `$$foo :=` updates the scoped/final binding.
+
+For implementation detail, see
+`docs/future/core-architecture/RESOLVER-SHAPE-SPEC.md`; that active spec must
+follow the same public sigil direction.

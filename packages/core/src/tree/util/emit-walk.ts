@@ -34,6 +34,7 @@ import { Node, F_STATIC } from '../node.js';
 import { N } from '../node-type.js';
 import { isNode } from './is-node.js';
 import { comparePosition } from './compare.js';
+import { spanStartOf } from './provenance.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
@@ -44,6 +45,25 @@ import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeF
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
 import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend, treeHasExtend } from '../extend/spine-extend.js';
 import type { StyleImport, SpineImportResolution } from '../import-style.js';
+
+/**
+ * Profile-gated spine counters (zero-cost when the global bag is absent — the same
+ * pattern as `extend-roots.ts`'s `EXTEND_PROFILE_COUNTERS_KEY`). Captured once at
+ * module load, so a profiling harness must install the bag before importing core.
+ * Used by the `redundant-call-elimination` cost contract for the import-tree
+ * speculative-topology early-admit: it records the eliminated `isSpineExtendTopology`
+ * calls (import trees skip it; the post-wire re-gate is the sole authority).
+ */
+const SPINE_PROFILE_COUNTERS_KEY = '__JESS_SPINE_PROFILE_COUNTERS__';
+type SpineProfileGlobals = typeof globalThis & {
+  [SPINE_PROFILE_COUNTERS_KEY]?: Record<string, number>;
+};
+const spineProfileCounters = (globalThis as SpineProfileGlobals)[SPINE_PROFILE_COUNTERS_KEY];
+const recordSpineProfile = spineProfileCounters
+  ? (event: string, amount = 1): void => {
+      spineProfileCounters[event] = (spineProfileCounters[event] ?? 0) + amount;
+    }
+  : undefined;
 
 /**
  * `.type`-discriminant guards — narrow a base `Node` to a leaf class WITHOUT a
@@ -67,44 +87,6 @@ function isSpinePathResolutionError(error: unknown): boolean {
   return error instanceof Error
     && '_isPathResolutionError' in error
     && (error as Error & Record<'_isPathResolutionError', unknown>)._isPathResolutionError === true;
-}
-
-/**
- * Marker property on an error the wire pass throws when a DEFERRED (forward-dependent, case-B)
- * interpolated-path import resolves to a body it cannot fold byte-identically — specifically a body
- * carrying an `(inline)` sub-import. Eval's deferred-import RETRY lane (`drainPendingImports`) emits an
- * extra blank line AFTER a re-evaluated inline block; the clean spine fold does not reproduce that
- * reorder-specific spacing artifact. Routing this shape to eval keeps it byte-identical. `onWireError`
- * aborts to eval on this marker exactly as it does for a still-unresolvable path.
- */
-const SPINE_DEFERRED_UNSUPPORTED = '_isSpineDeferredUnsupported';
-function markDeferredUnsupported(): Error {
-  const error = new Error('spine: deferred interpolated-path import body is not foldable byte-identically (inline sub-import)');
-  (error as Error & Record<string, unknown>)[SPINE_DEFERRED_UNSUPPORTED] = true;
-  return error;
-}
-function isSpineDeferredUnsupportedError(error: unknown): boolean {
-  return error instanceof Error
-    && SPINE_DEFERRED_UNSUPPORTED in error
-    && (error as Error & Record<string, unknown>)[SPINE_DEFERRED_UNSUPPORTED] === true;
-}
-
-/**
- * True if `body`'s DIRECT children include an `(inline)` `@import` — the shape a deferred (case-B)
- * interpolated-path import cannot fold byte-identically (eval's retry lane adds a post-inline blank
- * line the spine fold does not). Direct-child scan only: a nested container's inline import is emitted
- * under that container's own serialization (not the reorder-affected root inline path).
- */
-function deferredBodyHasInlineImport(body: Rules): boolean {
-  for (const child of body.rules) {
-    if (isStyleImportNode(child)) {
-      const io = 'importOptions' in child.options ? child.options.importOptions : undefined;
-      if (io?.inline === true) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
@@ -151,7 +133,7 @@ export function isSpineFoldableCssImportStatement(node: Node): boolean {
   if (prelude === undefined) {
     return true;
   }
-  return prelude instanceof Node && prelude.hasFlag(F_STATIC);
+  return typeof prelude === 'string' || (prelude instanceof Node && prelude.hasFlag(F_STATIC));
 }
 
 /**
@@ -161,8 +143,8 @@ export function isSpineFoldableCssImportStatement(node: Node): boolean {
  * body); its bytes serialize verbatim at their source position (no hoist, unlike
  * `@import`, which reorders to the top-of-doc emitter). No scope effect, no eval
  * side effect — a pure token statement, admitted only when its NAME is a static
- * string and its prelude is absent or a static Node (an interpolated prelude needs
- * frame eval and is deferred). `@import` is EXCLUDED here (it hoists via
+ * string and its prelude is absent, a static string, or a static Node (an
+ * interpolated prelude needs frame eval and is deferred). `@import` is EXCLUDED here (it hoists via
  * `isSpineFoldableCssImportStatement` + `queueTopImport`); `@charset` never reaches
  * this shape (it parses to a role-`charset` `Any`, gated by `isSpineEligibleRoot`).
  */
@@ -180,7 +162,7 @@ export function isSpineFoldableStatementAtRule(node: Node): boolean {
   if (prelude === undefined) {
     return true;
   }
-  return prelude instanceof Node && prelude.hasFlag(F_STATIC);
+  return typeof prelude === 'string' || (prelude instanceof Node && prelude.hasFlag(F_STATIC));
 }
 
 /**
@@ -420,8 +402,17 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
   // name). Both static forms are fine — resolution is by `call.eval`, not the key
   // text — but a NON-string, non-Keyword key (a SelectorCapture `*[.foo]()`) stays
   // deferred.
+  // `rawKey` is the parser's authored-path marker. Without it, an array key can
+  // also be a runtime-produced/interpolated selector path; keep that legacy shape
+  // on eval rather than widening the spine gate from its flattened key alone.
+  const keyIsStaticPathArray = name.rawKey !== undefined
+    && Array.isArray(name.key)
+    && name.key.length > 0
+    && name.key.every((segment: unknown) => typeof segment === 'string');
   const keyIsKeyword = name.key instanceof Node && name.key.type === 'Keyword';
-  if (typeof name.key !== 'string' && !(type === 'variable' && keyIsKeyword)) {
+  if (typeof name.key !== 'string'
+    && !keyIsStaticPathArray
+    && !(type === 'variable' && keyIsKeyword)) {
     return false;
   }
   // NAMESPACE-PATH / cross-scope call (`.scope > .mixin()`, `#ns.m()`, `#a > #b >
@@ -642,6 +633,16 @@ export function resolveSpineMixinCall(
         && a.source.index !== undefined
         && b.source.index !== undefined) {
         return a.source.index - b.source.index;
+      }
+      // Namespace-path overloads may resolve from disjoint authored subtrees. Their
+      // parent chains are wired for closure resolution but are not guaranteed to
+      // share an ancestor for comparePosition's parent walk. Source spans provide
+      // stable document order for static authored candidates; retain structural
+      // comparison only when spans are unavailable.
+      const aStart = spanStartOf(a.source);
+      const bStart = spanStartOf(b.source);
+      if (aStart !== undefined && bStart !== undefined) {
+        return aStart - bStart;
       }
       return comparePosition(a.source, b.source);
     });
@@ -1816,8 +1817,21 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // check over the resolved imported subjects and ABORTS to eval, byte-identical, if still unmapped).
   // A no-import tree passes `speculativeImport: false`, so the gate is byte-and-alloc identical to today
   // for the common case (the extra Set is never allocated).
+  //
+  // REDUNDANT-CALL-ELIMINATION (import trees): the speculative extend-topology check here is a pure
+  // PERF short-circuit for the import case — `renderRootViaSpine`'s post-wire RE-GATE re-runs the
+  // STRICT `isSpineExtendTopology` over the resolved imported subjects (line ~2603) and is the SOLE
+  // authority on spine-vs-eval for an import+extend tree (it aborts to eval byte-identically when the
+  // shape is not foldable, and the invariant throw at `renderRootViaSpine` is SKIPPED for import trees).
+  // So the `allowImport ||` short-circuit skips the ~O(targets×tree) speculative walk and admits
+  // optimistically; the re-gate decides. A NON-import tree has NO re-gate (the invariant check there
+  // THROWS on a non-foldable shape), so `allowImport` is false and its topology is still proven strictly
+  // here — byte- and cost-identical to before.
+  if (recordSpineProfile && engageExtendLayer(root)) {
+    recordSpineProfile(allowImport ? 'earlyAdmit.importTopologyEliminated' : 'earlyAdmit.strictTopologyCalls');
+  }
   const allowExtend = engageExtendLayer(root)
-    && isSpineExtendTopology(root, collapse === true, allowImport ? { speculativeImport: true } : undefined);
+    && (allowImport || isSpineExtendTopology(root, collapse === true, undefined));
   return isSpineEligibleBody(root.rules, allowExtend, allowImport);
 }
 
@@ -2364,7 +2378,8 @@ export const SPINE_ABORT_TO_EVAL = Symbol('spine-abort-to-eval');
 export function renderRootViaSpine(
   root: Rules,
   context: Context,
-  options: FinalPrintOptions
+  options: FinalPrintOptions,
+  shareFlatWriter = false
 ): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> {
   spineRenderCounter.rootRenders++;
   // EXTEND-WORK GATE (design §4.0). Decide ONCE, here, whether this render must
@@ -2401,6 +2416,23 @@ export function renderRootViaSpine(
   const savedSpineMode = options.spineMode;
   const savedSpineImportPlacements = options.spineImportPlacements;
   options.spineMode = true;
+  let sharedPreludeWritten = false;
+  let sharedPreludeText = '';
+  let sharedBodyMark = -1;
+  const emitSharedPrelude = (): void => {
+    if (!shareFlatWriter || sharedPreludeWritten) {
+      return;
+    }
+    const charsetPrelude = renderQueuedCharset(context, options);
+    const importPrelude = renderQueuedTopImports(context, options);
+    const prelude = `${charsetPrelude}${importPrelude}`;
+    if (prelude) {
+      options.writer.add(prelude);
+    }
+    sharedPreludeText = prelude;
+    sharedBodyMark = options.writer.mark();
+    sharedPreludeWritten = true;
+  };
   // Per-position bookkeeping: number the body children BEFORE building the scope
   // frame, so the frame's declaration buckets carry source indices and a
   // re-declared / `snapshot` read resolves against the binding at its position.
@@ -2479,10 +2511,24 @@ export function renderRootViaSpine(
     // `@charset` FIRST, then `@import`s, then the body. A mid-body root `@charset`
     // folded during the descent registered `context.currentCharset` (emit skipped it);
     // CSS-passthrough imports queued to `context.topImports`.
-    const charsetPrelude = renderQueuedCharset(context, options);
-    const importPrelude = renderQueuedTopImports(context, options);
-    const prelude = `${charsetPrelude}${importPrelude}`;
-    return prelude ? `${prelude}${bodyText}` : bodyText;
+    const prelude = `${renderQueuedCharset(context, options)}${renderQueuedTopImports(context, options)}`;
+    const renderedText = prelude ? `${prelude}${bodyText}` : bodyText;
+    if (shareFlatWriter && sharedBodyMark >= 0) {
+      if (prelude !== sharedPreludeText) {
+        // A late queueing seam changed the document prelude after descent began.
+        // This is exceptional; repair the aliased range once rather than emit a
+        // second body or silently move imports after it.
+        options.writer.replaceSince(initialWriterMark, () => renderedText);
+      } else {
+        // The spine already wrote the body directly. Match its public framing
+        // (trimmed body plus one terminal newline) without joining the chunks.
+        options.writer.trimEndSince(sharedBodyMark);
+        if (bodyText) {
+          options.writer.add('\n');
+        }
+      }
+    }
+    return renderedText;
   };
   const fail = (error: unknown): never => {
     context.rulesContext = savedRulesContext;
@@ -2614,12 +2660,14 @@ export function renderRootViaSpine(
         // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
         // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
         options.spineExtendHoisted = result.hoisted;
+        emitSharedPrelude();
         return descend();
       };
       // The gather is async only when it expands a `$for`/`each` loop's extenders (loop-generated
       // interpolated extends); the common case resolves synchronously with zero promise overhead.
       return isThenable(wired) ? wired.then(applyWired, error => fail(error)) : applyWired(wired);
     }
+    emitSharedPrelude();
     return descend();
   };
   // IMPORTS (increment 2, document-wide scope registration). Resolve every foldable
@@ -2641,7 +2689,7 @@ export function renderRootViaSpine(
   // genuine error identically), byte-identical. A genuine error (missing file, parse failure) is NOT
   // a path-resolution error and propagates via `fail`.
   const onWireError = (error: unknown): string | typeof SPINE_ABORT_TO_EVAL | never =>
-    isSpinePathResolutionError(error) || isSpineDeferredUnsupportedError(error)
+    isSpinePathResolutionError(error)
       ? abortToEval()
       : (fail(error) as never);
   const wireImports = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
@@ -2869,7 +2917,7 @@ function wireSpineImportsInBody(
   // byte-identical. One retry-allowed drain + a final non-retry drain matches eval exactly
   // (a single reorder suffices for the acyclic forward dependency; a cycle re-throws).
   const pending: number[] = [];
-  const wireOne = (i: number, allowDefer: boolean, deferred: boolean): MaybePromise<void> => {
+  const wireOne = (i: number, allowDefer: boolean): MaybePromise<void> => {
     const child = children[i]!;
     const importNode = child as StyleImport;
     // ISOLATE per-import context (design §2 async discipline). Each import's
@@ -2901,14 +2949,6 @@ function wireSpineImportsInBody(
         return undefined;
       }
       const body = resolved.body;
-      // RESIDUAL (ratchet-locked, IOU): a DEFERRED (case-B) import whose body carries an `(inline)`
-      // sub-import is NOT foldable byte-identically — eval's retry lane adds a post-inline blank line
-      // the clean spine fold does not reproduce. Abort the whole tree to eval for this shape only; the
-      // pure case-B shape (plain rulesets / non-inline sub-imports) folds. `import-interpolation`
-      // corpus fixture. Case A (downward, non-deferred) is unaffected — its inline body agrees with eval.
-      if (deferred && deferredBodyHasInlineImport(body)) {
-        throw markDeferredUnsupported();
-      }
       const dedupe = spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options);
       const registered = body.prepareRegistration(context);
       const finishRegister = (): MaybePromise<void> => {
@@ -2968,7 +3008,7 @@ function wireSpineImportsInBody(
       if (!isStyleImportNode(child) || !isSpineFoldableImport(child) || cache.has(child)) {
         continue;
       }
-      const wired = wireOne(i, true, false);
+      const wired = wireOne(i, true);
       if (isThenable(wired)) {
         return wired.then(() => wireFrom(i + 1));
       }
@@ -2986,7 +3026,7 @@ function wireSpineImportsInBody(
     const batch = pending.splice(0);
     const drainRest = (start: number): MaybePromise<void> => {
       for (let k = start; k < batch.length; k++) {
-        const wired = wireOne(batch[k]!, allowRetry, true);
+        const wired = wireOne(batch[k]!, allowRetry);
         if (isThenable(wired)) {
           return wired.then(() => drainRest(k + 1));
         }

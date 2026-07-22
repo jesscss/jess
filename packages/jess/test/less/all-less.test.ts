@@ -7,7 +7,6 @@ import { Compiler } from '../../src/index.js';
 import { outputDiagnostics } from '../../src/diagnostics.js';
 import { getTestCases, resolveLessTestDataRoot } from '../test-utils.js';
 import lessPlugin from '@jesscss/plugin-less';
-import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 
 const readNumericFunctionArg = (value: any): number => {
   if (typeof value?.value === 'number') {
@@ -60,10 +59,10 @@ const baseCompiler = new Compiler({
     // (trusted) harness jsReadRoot to the test-data root so plugin-js can read them.
     jsReadRoot: testData,
     plugins: [
-      lessPlugin(),
-      lessCompatPlugin({
-        plugins: [lessHarnessFunctionsPlugin]
-      })
+      // [plugin/P2] The harness function plugin is registered through the NATIVE
+      // Less plugin's `plugins` option — its `install`-registered functions become
+      // ast/ GLOBAL fns (root-frame registry), no `@jesscss/plugin-less-compat`.
+      lessPlugin({ plugins: [lessHarnessFunctionsPlugin] })
     ]
   }
 });
@@ -140,19 +139,12 @@ const expectedFailureFixtures = new Map<string, string>([
   // match the Less golden .css under the harness config.
   ['tests-unit/import/import-reference.less', 'reference import filtering leaves extra at-rules'],
   ['tests-unit/import/import.less', '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)'],
-  ['tests-unit/operations/operations-advanced.less', 'advanced math/color operation behavior differs from Less'],
-  ['tests-unit/property-accessors/property-accessors.less', 'property accessor precedence differs from Less'],
-  ['tests-unit/scope/scope.less', 'parent selector scope output differs from Less'],
   ['tests-config/namespacing/namespacing-5.less', 'nested namespace callable lookup does not match Less'],
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
   ['tests-config/namespacing/namespacing-media.less', 'namespace lookup inside media query expression differs from Less'],
   ['tests-unit/urls/urls.less', 'blocked upstream of url/data-uri by unimplemented import-path interpolation (@import "@{file_to_import}" via mixin arg) and svg-gradient; data-uri()/url serialization themselves work (fns data-uri.test.ts + core url.test.ts)'],
   ['tests-config/process-imports/google.less', 'processImports=false should leave remote CSS imports out of rendered CSS'],
-  ['tests-config/rewrite-urls-all/rewrite-urls-all.less', 'rewriteUrls=all URL rebasing is not implemented'],
-  ['tests-config/rewrite-urls-local/rewrite-urls-local.less', 'rewriteUrls=local URL rebasing is not implemented'],
-  ['tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.less', 'rootpath with rewriteUrls=all is not implemented'],
-  ['tests-config/rootpath-rewrite-urls-local/rootpath-rewrite-urls-local.less', 'rootpath with rewriteUrls=local is not implemented'],
   ['tests-config/static-urls/urls.less', 'relativeUrls=false/rootpath static URL behavior is not implemented'],
   ['tests-config/url-args/urls.less', 'urlArgs URL query appending is not implemented'],
   ['tests-config/sourcemaps-basepath/sourcemaps-basepath.less', 'source-map annotation and artifact output need a dedicated harness'],
@@ -162,29 +154,44 @@ const expectedFailureFixtures = new Map<string, string>([
 
   // Former async-deadlock / infinite-loop skips: no longer hang, now render but
   // still mismatch Less. Graduated from skip → expected-failure so they run.
-  ['tests-unit/variables/variable-advanced.less', 'now parses (trailing-comma value list fixed); still diverges on eval-layer output (unit math emits calc(), nesting not collapsed, custom-prop spacing)'],
-  ['tests-unit/merge/merge.less', 'renders but +/+_ merge output differs from Less'],
   ['tests-unit/selectors/selectors.less', 'renders but throws mid-eval (currentArg.eval is not a function)'],
-  ['tests-unit/detached-rulesets/detached-rulesets.less', 'renders but a detached-ruleset mixin call is not found (.wrap-mixin)'],
+  ['tests-unit/detached-rulesets/detached-rulesets.less', 'detached-ruleset argument closure now matches Less; nested @media query merging still differs'],
   ['tests-unit/functions-each/functions-each.less', 'renders but each() output differs from Less'],
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
-  ['tests-unit/extend-exact/extend-exact.less', 'renders but exact-match :extend output differs from Less'],
-  ['tests-unit/mixins-important/mixins-important.less', 'renders but mixin !important propagation differs from Less'],
   ['tests-unit/property-name-interp/property-name-interp.less', 'renders but interpolated property-name output differs from Less'],
-  ['tests-unit/strings/strings.less', 'renders but string/escaping output differs from Less'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
   ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'renders but variables-in-at-rules output differs from Less'],
   ['tests-unit/plugin/plugin.less', '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)'],
   ['tests-unit/parse-interpolation/parse-interpolation.less', 'renders but interpolation formatting differs from Less'],
   ['tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', 'slashed combinator not yet supported'],
-  ['tests-unit/permissive-parse/permissive-parse.less', 'renders but permissive-parse output differs (Unexpected token)'],
+  ['tests-unit/permissive-parse/permissive-parse.less', 'throws on Less permissive @variable value (@this: () => {…}, VarDeclaration hot-path — scoped) + @{selectorList} comma-list selector (selector-capture agent). --* interpolation-only + unknown-at-rule prelude @{…}/var interpolation now match; two golden lines (--custom-color, --fortran bare-@) superseded by the interpolation-only owner rule, pending owner golden update'],
+
+  // v5 STRICT at-rule preludes: a top-level bare `@variable` in a non-value at-rule
+  // prelude/name/identifier is a HARD parse error (4.x only warned). These upstream
+  // 4.x fixtures use the bare form (`@media @smartphone`, `@container @varfoo (…)`);
+  // the migration target is `@{…}` interpolation, and a `@var` inside `(...)` stays
+  // valid. Kept running (asserted to fail) so a change to the ruling trips the marker;
+  // goldens are the external less.js 4.x oracle, unedited.
+  // (layer.less GRADUATED — it uses the `@{layer-name}` interpolation form, not the
+  //  bare `@var` prelude, so v5 renders it byte-identical to the maintained `.css`.)
+  ['tests-unit/media/media.less', 'v5 rejects a top-level bare @var at-rule prelude (@media @smartphone / @media @all and @tv)'],
+  ['tests-unit/container/container.less', 'v5 rejects a top-level bare @var at-rule prelude (@container @varfoo (…))'],
 
   // Previously-uncategorized hard failures — render but mismatch Less.
   // (extend.less + mixins-guards.less GRADUATED — the dev-merge extend/mixin-namespace
   //  fixes made them render byte-identical to Less; they're real passes now.
   //  extend-nest.less + extend-selector.less GRADUATED — the cutover-p1 spine extend
   //  wire-in now renders both byte-identical to the maintained `.css`; real passes.)
-  ['tests-unit/import/import-remote.less', 'renders but throws (n.hasNodeChild is not a function)']
+  ['tests-unit/import/import-remote.less', 'configured jsDelivr import resolution now reaches the typed loader; imported selectors.less still has an unsupported selector interpolation'],
+
+  // F5: Less/Jess deliberately leaves CSS-shaped, three-or-more-slot
+  // un-operated color constructors as authored calls, even when Less 4's oracle
+  // would clamp/reformat them. These fixtures exercise that settled lazy
+  // boundary; keep them runnable so a future accidental eager dispatch trips
+  // the marker rather than hiding it. Less one-/two-slot overload fixtures are
+  // expected to stay green and are not listed here.
+  ['tests-unit/color-functions/operations.less', 'F5 keeps an un-operated overflowing rgba() call authored instead of Less 4 channel clamping'],
+  ['tests-unit/functions/functions.less', 'F5 keeps an un-operated hsl() call authored instead of Less 4 clamp/canonicalization']
 ]);
 
 // Allow specific fixtures even when they are listed in shared invalidLess.

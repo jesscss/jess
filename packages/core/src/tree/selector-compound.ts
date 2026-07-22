@@ -68,6 +68,7 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   static override childKeys = ['value'] as const;
 
   override readonly value: CompoundSelectorComponent[];
+  declare protected _valueOf: string | undefined;
 
   constructor(
     value: CompoundSelectorComponent[],
@@ -76,6 +77,10 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   ) {
     super(value, options, location);
     this.value = value;
+  }
+
+  override invalidateCache(): void {
+    this._valueOf = undefined;
   }
 
   private ownSelector(item: CompoundSelectorComponent): CompoundSelectorComponent {

@@ -46,8 +46,9 @@ interface StylesConfig {
     searchPaths?: string[];
     enableJavaScript?: boolean;
     mathMode?: 'always' | 'parens-division' | 'parens' | 'strict';
-    unitMode?: 'loose' | 'strict';
-    equalityMode?: 'coerce' | 'strict';
+    unitMode?: 'loose' | 'preserve' | 'strict';
+    functionMode?: 'preserve' | 'error';
+    equalityMode?: 'less' | 'sass' | 'exact';
   };
   input?: InputOptions | InputOptions[];
   output?: OutputOptions | OutputOptions[];
@@ -85,7 +86,7 @@ export default {
   compile: {
     mathMode: 'parens-division',
     unitMode: 'loose',
-    equalityMode: 'coerce',
+    equalityMode: 'less',
     searchPaths: ['./src/styles', './node_modules']
   },
   input: [

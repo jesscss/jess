@@ -5,6 +5,13 @@ enumerates the CLASS-UNIQUE stored instance-field count of EVERY node class unde
 `packages/core/src/tree/`, per the owner's HARD BUDGET rule (CORE-CLEANUP.md
 § "⛔ HARD BUDGET — ≤5 CLASS-UNIQUE FIELDS PER NODE TYPE").
 
+> **Current-state correction (2026-07-13, `dev` `9bfec19be`).** This audit is
+> historical field-budget evidence, not the live cleanup queue. Re-check
+> `CORE-CLEANUP.md` and `RULES_FIELD_BUDGET.md` before assigning a row. The
+> current `Rules` and `Ruleset` counts are both five; the older “Ruleset 6”
+> wording and any ranked item that names already-landed `lookupVersion`,
+> `varsByName`, selector-marker, or frozen-slot work must not be replayed.
+
 Grounded in `origin/dev` (`e27725987`). "Class-unique" = fields the class declares
 BEYOND what its parent already carries. A field the parent FIRST declared counts
 against the parent, even when a subclass re-declares (re-types) it. Only **stored

@@ -103,6 +103,22 @@ export function copySourceSpan(dst: object & Flagged, src: object): void {
   setSourceSpan(dst, sourceSpanOf(src));
 }
 
+/** Copy the source span and flag from `src` onto `dst` without allocating a span object. */
+export function copySpanFields(dst: object & Flagged, src: object): void {
+  const source = fieldsOf(src);
+  const start = source._spanStart;
+  const target = fieldsOf(dst);
+  if (start === undefined) {
+    dst.flags &= ~F_HAS_SPAN;
+    target._spanStart = undefined;
+    target._spanEnd = undefined;
+    return;
+  }
+  target._spanStart = start;
+  target._spanEnd = source._spanEnd ?? start;
+  dst.flags |= F_HAS_SPAN;
+}
+
 /* =========================
  * Eval-error source location
  * ========================= */

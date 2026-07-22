@@ -1,28 +1,9 @@
-/**
- * Sass list.is-bracketed() function
- *
- * Returns whether a list is bracketed.
- *
- * @example
- * is-bracketed([1, 2, 3]) // true
- * is-bracketed(1, 2, 3) // false
- */
-import { defineFunction, Node, Bool } from '@jesscss/core';
-import { isBracketedList } from '@jesscss/core';
+import { defineFunction, isBracketedList, makeBool } from '@jesscss/core/value';
 
-const isBracketed = defineFunction(
-  'is-bracketed',
-  function(list: Node): Bool {
-    return new Bool(isBracketedList(list));
-  },
-  {
-    params: [
-      {
-        name: 'list',
-        type: Node
-      }
-    ]
-  }
-);
+/** Sass `list.is-bracketed()` reads the shared Block delimiter fact. */
+const isBracketed = defineFunction('is-bracketed', {
+  params: [{ name: 'list', kinds: 'any' }] as const,
+  body: list => makeBool(isBracketedList(list))
+});
 
 export default isBracketed;

@@ -12,7 +12,7 @@ SUPERSEDES and MERGES two priors into one coherent system:
 It also absorbs the flag-walk endgame (`FLAG-WALK-DELETION.md` C4) as its tail and states plainly how
 big that is and whether it lands incrementally or must be a coordinated cutover.
 
-**Oracle stance — reason to the consistent end-shape; no expectation is sacred.** The target is the
+**Reference stance — reason to the consistent end-shape; no expectation is sacred.** The target is the
 COHERENT v5 output the language should produce, judged on internal consistency + intended v5
 semantics. The working corpus is the v5 alpha `.less`→`.css` fixtures (`all-less` against the
 `~/git/oss/less.js` **alpha** branch via `@less/test-data`, under BOTH `collapseNesting:true` and the
@@ -588,7 +588,7 @@ from a re-composition into a cache read.
 There is no in-flow caller for a node→node per-call extend: SOLVE operates on the IR/selector layer
 and EMIT is the sole materializer. `extendSelector`/`applyExtendsToSelector`/`wouldMatchNode`
 (the ~25% perf hotspot) collapse into the (C) rewrite behind the target index. A thin test-only
-wrapper can remain for the differential oracle; the public node→node API is gone.
+wrapper can remain for the differential reference; the public node→node API is gone.
 
 ---
 
@@ -1123,7 +1123,7 @@ warnings and compat (3,4) are places the EXPECTATION itself is most likely the s
   — accept the graceful degradation to baseline, or add a spill-to-writer cap? (Deferred; not blocking.)
 
 - **OQ-C — RESOLVED (owner 2026-07-08): COORDINATED CUTOVER, not incremental.** Power the full target
-  architecture out on a dedicated branch (`CUTOVER-CHECKLIST.md` is the tracked plan). **Explicit reason
+  architecture out on a dedicated branch (`archive/CUTOVER-CHECKLIST-2026-07-18.md` is the historical tracked plan). **Explicit reason
   for cutover over incremental:** incremental attempts made agents BACKPEDAL — they start, read the
   existing eval→output-tree→visitor→serialize structure, and match it instead of driving to the target,
   poisoning the goal. The cutover is guardrailed against that: the design docs are the SPEC, the existing
@@ -1238,7 +1238,7 @@ remains.
   blast radius, each disjoint + byte-identical): (a) A1s collapse-survivor fresh-shell — makes
   `inherit` mutate only fresh nodes tree-wide, one clean invariant; (b) the extend PLAN precompute
   and target-index construction can be built and validated against the current apply path (differential
-  oracle) WITHOUT flipping the pass; (c) `getFullComposedForm` reading the live `composedSelectorStack`
+  reference) WITHOUT flipping the pass; (c) `getFullComposedForm` reading the live `composedSelectorStack`
   instead of re-walking `.parent` (the flagged extend-perf follow-up) — a self-contained win; (d) the
   extend-selector-matcher perf work (~25% hotspot) is worth doing regardless and de-risks the SOLVE
   fold.

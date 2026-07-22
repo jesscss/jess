@@ -4,27 +4,12 @@ This is the base CSS parser. It's maintained separately from the Jess parser so 
 
 See [some notes](./CSS_NOTES.md) on CSS syntax.
 
-## Scanner-First AST Proof
+## Public parsing model
 
-`parseCssStylesheet(filePath, source)` is the narrow compiler-facing
-scanner-first proof path. It returns a core `Stylesheet` and keeps cheap fields
-as strings, for example:
+`parse(source)` is the compiler-facing API. It macro-compiles Parseman grammar
+reductions directly to canonical AST v2 `Stylesheet` nodes; it does not scan
+source into a parallel schema, convert CST to AST, or call a construction host.
 
-```ts
-Stylesheet {
-  rules: [
-    Ruleset {
-      selector: '.a',
-      rules: [
-        Declaration {
-          name: 'color',
-          value: 'blue'
-        }
-      ]
-    }
-  ]
-}
-```
-
-This path does not use the removed structural/island prototype API. New parser
-work should keep producing real AST nodes rather than a parallel schema.
+The separately named CST/document APIs remain available only for
+language-service and document consumers. New parser work belongs in Parseman
+grammar structure with parser-local AST reductions.

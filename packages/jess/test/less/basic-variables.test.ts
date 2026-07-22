@@ -1,8 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
-describe.todo('Basic Variables', () => {
-  const compiler = new Compiler();
+describe('Less variable references through the public AST route', () => {
+  async function parseAndRender(source: string): Promise<string> {
+    const compiler = new Compiler();
+    const context = compiler.createContext('entry.less');
+    const parsed = await context.parseString(source, {
+      filePath: 'entry.less',
+      extension: '.less'
+    });
+
+    expect(parsed.node.type).toBe('Stylesheet');
+    expect(context.document).toBe(parsed.node);
+    return compiler.renderString(source, {
+      filePath: 'entry.less',
+      extension: '.less'
+    });
+  }
 
   it('should handle simple variable declaration and usage', async () => {
     const lessCode = `
@@ -13,8 +27,7 @@ describe.todo('Basic Variables', () => {
       }
     `;
 
-    const css = await compiler.renderString(lessCode, { language: 'less' });
-    expect(css).toContain('color: red');
+    await expect(parseAndRender(lessCode)).resolves.toBe('.test {\n  color: red;\n}\n');
   });
 
   it('should handle multiple variables', async () => {
@@ -28,8 +41,6 @@ describe.todo('Basic Variables', () => {
       }
     `;
 
-    const css = await compiler.renderString(lessCode, { language: 'less' });
-    expect(css).toContain('color: blue');
-    expect(css).toContain('background: green');
+    await expect(parseAndRender(lessCode)).resolves.toBe('.test {\n  color: blue;\n  background: green;\n}\n');
   });
 });

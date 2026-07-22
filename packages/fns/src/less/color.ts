@@ -9,6 +9,14 @@ import colors from 'color-name';
 
 const colorRegex = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/i;
 
+/**
+ * Less `color()` — parse a string into a `Color`. Accepts a named CSS color or a
+ * 3/4/6/8-digit hex string; a `Color` argument passes through (named colors are
+ * re-tagged as hex).
+ * @param c a `Quoted` string (color name or hex) or an existing `Color`
+ * @returns the parsed `Color`
+ * @throws if the string is neither a known color keyword nor a valid hex value
+ */
 export default defineFunction(
   'color',
   function(c: Color | Quoted) {

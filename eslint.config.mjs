@@ -89,7 +89,23 @@ const jsRules = {
   'no-return-assign': 0,
   '@stylistic/function-call-spacing': 'error',
   '@stylistic/comma-dangle': ['error', 'never'],
-  '@stylistic/padded-blocks': ['error', 'never']
+  '@stylistic/padded-blocks': ['error', 'never'],
+
+  // Consistency / DRY / organization nudges (all auto-fixable; `warn` because
+  // `pnpm lint` is not yet a blocking gate — promote to `error` once a baseline
+  // sweep lands). Run `pnpm lint:fix` on files you touch.
+  'object-shorthand': ['warn', 'always'],
+  'no-useless-rename': 'warn',
+  'no-lonely-if': 'warn',
+  'no-else-return': ['warn', { allowElseIf: false }],
+  'no-unneeded-ternary': ['warn', { defaultAssignment: false }],
+  'prefer-object-spread': 'warn',
+  'dot-notation': 'warn',
+
+  // Organization guardrails: a function that trips these is usually doing too
+  // much / named like a sentence — a signal to split, not a hard limit.
+  'max-depth': ['warn', 5],
+  'max-params': ['warn', 6]
 };
 
 export default tseslint.config([
@@ -148,6 +164,10 @@ export default tseslint.config([
         mjs: 'always',
         cjs: 'always'
       }],
+
+      // DRY / consistency (type-aware; auto-fixable). `warn` — see jsRules note.
+      'import/no-duplicates': 'warn',
+      '@typescript-eslint/prefer-optional-chain': 'warn',
 
       '@typescript-eslint/no-floating-promises': ['warn', {
         ignoreVoid: true

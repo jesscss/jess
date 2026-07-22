@@ -10,6 +10,13 @@ export function overlayBase(cb: number, cs: number) {
     : screenBase(cb - 1, cs);
 }
 
+/**
+ * Less `overlay()` — overlay blend: `multiply` for dark backdrop channels and
+ * `screen` for light ones, increasing contrast.
+ * @param color1 backdrop `Color`
+ * @param color2 source `Color`
+ * @returns the blended `Color`
+ */
 const overlay = defineFunction(
   'overlay',
   function(color1: Color, color2: Color) {

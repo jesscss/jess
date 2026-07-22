@@ -6,6 +6,13 @@ import {
   ColorFormat
 } from '@jesscss/core';
 
+/**
+ * Less `spin()` — rotate a color's HSL hue by `amount` degrees (wrapping mod 360),
+ * leaving saturation and lightness unchanged.
+ * @param color the input `Color`
+ * @param amount hue rotation as a `Dimension` in degrees
+ * @returns the hue-rotated `Color`
+ */
 export default defineFunction(
   'spin',
   function(this: Context, color: Color, amount: Dimension) {

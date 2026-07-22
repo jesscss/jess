@@ -14,68 +14,21 @@ export type ConversionPlugin = (value: unknown) => number | unknown;
 export type PreprocessParams = (args: any[], context: Context) => MaybePromise<any[]>;
 
 /**
- * Simple memoization utility for factory functions
- * Caches results based on stringified arguments
- */
-function memoize<Args extends any[], Return>(
-  fn: (...args: Args) => Return
-): (...args: Args) => Return {
-  const cache = new Map<string, Return>();
-  return (...args: Args): Return => {
-    const key = JSON.stringify(args);
-    if (cache.has(key)) {
-      return cache.get(key)!;
-    }
-    const result = fn(...args);
-    cache.set(key, result);
-    return result;
-  };
-}
-
-/**
  * Converts percentage values to a fraction of the specified base value
  * @param base - The base value to convert percentages to (e.g., 255 for RGB, 100 for HSL)
- * Memoized so that percentOf(255) always returns the same function instance
  */
-export const percentOf = memoize((base: number): ConversionPlugin => (value: unknown) => {
+export const percentOf = (base: number): ConversionPlugin => (value: unknown) => {
   if (value instanceof Dimension && value.unit === '%') {
-    const converted = value.number * base / 100;
-    return new Num(converted);
+    return new Num(value.number * base / 100);
   }
   return value;
-});
+};
 
 /**
- * Converts angle units to degrees
- * Supports: deg, turn, rad, grad
- * Memoized so that angleToDegrees() always returns the same function instance
- */
-export const angleToDegrees = memoize((): ConversionPlugin => (value: unknown) => {
-  if (!(value instanceof Dimension)) {
-    return value;
-  }
-  const { number, unit } = value;
-  if (unit === 'turn') {
-    return new Num(number * 360);
-  }
-  if (unit === 'rad') {
-    return new Num(number * 180 / Math.PI);
-  }
-  if (unit === 'grad') {
-    return new Num(number * 0.9);
-  }
-  if (unit === 'deg' || unit === '') {
-    return new Num(number);
-  }
-  return value;
-});
-
-/**
- * Normalizes hue values to 0-360 degree range
+ * Normalizes hue values to the 0-360 degree range.
  * Supports: deg, turn, rad, grad, % (percentage of 360)
- * Memoized so that normalizeHue() always returns the same function instance
  */
-export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => {
+const normalizeHueConvert: ConversionPlugin = (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
@@ -99,14 +52,14 @@ export const normalizeHue = memoize((): ConversionPlugin => (value: unknown) => 
   // Normalize to 0-360 range
   degrees = ((degrees % 360) + 360) % 360;
   return new Num(degrees);
-});
+};
+export const normalizeHue = (): ConversionPlugin => normalizeHueConvert;
 
 /**
- * Converts alpha values to 0-1 range
+ * Converts alpha values to the 0-1 range.
  * Supports: % (percentage of 1), unitless numbers
- * Memoized so that alphaToNumber() always returns the same function instance
  */
-export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) => {
+const alphaToNumberConvert: ConversionPlugin = (value: unknown) => {
   if (!(value instanceof Dimension)) {
     return value;
   }
@@ -121,23 +74,25 @@ export const alphaToNumber = memoize((): ConversionPlugin => (value: unknown) =>
     return value; // Don't convert if unit is not recognized
   }
 
-  const clamped = Math.max(0, Math.min(1, result));
-  return new Num(clamped);
-});
+  return new Num(Math.max(0, Math.min(1, result)));
+};
+export const alphaToNumber = (): ConversionPlugin => alphaToNumberConvert;
 
 /**
- * Converts any dimension to a number (removes units)
- * Memoized so that toNumber() always returns the same function instance
+ * Converts any dimension to a unitless number.
+ * A value that is already a `Num` is returned unchanged (no realloc); any other
+ * `Dimension` yields a fresh unitless `Num`; anything else passes through.
  */
-export const toNumber = memoize((): ConversionPlugin => (value: unknown) => {
-  if (value instanceof Dimension) {
-    return new Num(value.number); // Extract number from Dimension
-  }
+const toNumberConvert: ConversionPlugin = (value: unknown) => {
   if (value instanceof Num) {
+    return value;
+  }
+  if (value instanceof Dimension) {
     return new Num(value.number);
   }
-  return value; // Don't know how to handle this, pass through
-});
+  return value;
+};
+export const toNumber = (): ConversionPlugin => toNumberConvert;
 
 /**
  * Creates a preprocessParams function that splits a Sequence into individual arguments.

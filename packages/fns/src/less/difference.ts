@@ -5,6 +5,13 @@ export function differenceBase(cb: number, cs: number) {
   return Math.abs(cb - cs);
 }
 
+/**
+ * Less `difference()` — subtract the two colors channel by channel and take the
+ * absolute value.
+ * @param color1 backdrop `Color`
+ * @param color2 source `Color`
+ * @returns the blended `Color`
+ */
 const difference = defineFunction(
   'difference',
   function(color1: Color, color2: Color) {

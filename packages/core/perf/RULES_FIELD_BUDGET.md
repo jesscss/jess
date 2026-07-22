@@ -5,7 +5,7 @@ READ-ONLY audit for the owner's HARD BUDGET rule (CORE-CLEANUP.md § "⛔ HARD B
 `Rules` declares and every field `Ruleset` adds, separates class-unique from
 inherited, classifies each, and gives the ordered slice plan to ≤5.
 
-Grounded in `origin/dev` (`e9f018a5a`). Line numbers are from
+Grounded in `origin/dev` (`9bfec19be`). Line numbers are from
 `packages/core/src/tree/{rules,ruleset,node-base}.ts` at that commit. Getters/setters
 live on the prototype and cost NO instance slot — only **stored fields** count.
 
@@ -23,37 +23,32 @@ live on the prototype and cost NO instance slot — only **stored fields** count
 
 ## Executive summary
 
-- **`Rules` class-unique stored fields: 7.** (`rules`, `varsByName`, `_lookup`,
-  `rulesFlags`, `lookupVersion`, `_scopeFrame`, `pendingExtends`.) The `rulesFlags`
-  pack (c40fea6, 11 booleans → 1 int) and the `_lookup` lazy sub-struct (~12 cold
-  lookup fields → 1 slot) already landed — the raw own-key count is down 42→32, and
-  the *class-unique stored-field* count is already **7, not the "dozens"** the SLIM
-  audit describes (that audit predates both slims). So the flagship violator is
-  **7, needs to shed 2** to hit ≤5.
+- **`Rules` class-unique stored fields: 5.** (`rules`, `_lookup`, `rulesFlags`,
+  `_scopeFrame`, `_treeContext`). The `rulesFlags` pack and `_lookup` lazy
+  sub-struct are landed; `varsByName` and `lookupVersion` are accessors backed by
+  `_lookup`, and the dead `pendingExtends` field is gone. The raw own-key count
+  remains the useful shape metric (42→32 on the tracked Ruleset census); the old
+  seven-field enumeration below is historical, not current state.
 - **`Ruleset` class-unique stored fields: 5.** (`selector`, `guard`,
   `selectorBeforeExtend`, `_selectorCacheOwner`, `_valueOf`.) `rules` is re-typed,
   not re-declared. **Ruleset is exactly AT budget (5) today** — but two of its
   five are cold/derivable, so it has slack if anything new lands.
 
-- **Classification tally (Rules, 7 class-unique):**
-  - irreducible: **3** (`rules`, `_scopeFrame`, `_lookup`)
+- **Classification tally (Rules, 5 class-unique):**
+  - irreducible: **4** (`rules`, `_scopeFrame`, `_lookup`, `_treeContext`)
   - already-packed: **1** (`rulesFlags` — one int holding 12 bits)
-  - **DEAD — drop now: 1** (`pendingExtends` — zero read/write sites in the entire
-    monorepo; the ONLY occurrence is its own initializer. Independent of C4.)
-  - fold-into-existing-struct: **2** (`lookupVersion` → into `_lookup`;
-    `varsByName` → into `_lookup`)
+  - historical cuts already landed: `pendingExtends` deletion plus
+    `lookupVersion`/`varsByName` relocation into `_lookup`
 - **Classification tally (Ruleset, 5 class-unique):**
   - irreducible: **3** (`selector`, `guard`, `selectorBeforeExtend`)
   - derivable-cache: **1** (`_valueOf` — pure memo of `valueOf()`)
   - cold/lazy already: **1** (`_selectorCacheOwner` — `declare`, lazy)
 
-- **Achievable floor:** **`Rules` CAN reach ≤5 cheaply and independently.**
-  `pendingExtends` is DEAD (drop it: 7→6, zero risk). Then fold EITHER
-  `lookupVersion` OR `varsByName` into the already-existing `_lookup` sub-struct to
-  hit 5; fold both to reach 4. All three moves have ZERO dependency on the
-  flag-walk / rules.ts deep-rework. **The irreducible core is 4** (`rules`,
-  `_scopeFrame`, `rulesFlags`, `_lookup`) — under 5. There is NO irreducible-over-5
-  problem for Rules, and NO C4 gating on the path to budget.
+- **Achievable floor:** **`Rules` is already at the ≤5 budget.** `_scopeFrame` is
+  the irreducible, load-bearing scope-chain cache (91 call sites); moving it into
+  `_lookup` would add state allocation/indirection and is fenced unless a new
+  matched measurement justifies that trade. There is no current R0/R1/R2 code
+  slice to replay.
 - **`Ruleset` is at 5** and needs no action to be compliant, but `_valueOf`
   (derivable) folds it to 4 with slack if desired.
 
@@ -63,9 +58,10 @@ live on the prototype and cost NO instance slot — only **stored fields** count
 
 ### Inherited base `Node` fields (count against `Node`, NOT Rules) — node-base.ts
 Per-instance STORED fields on the base class (getters excluded):
-`_spanStart` (444), `_spanEnd` (445), `_sourceRoot` (447), `_treeContext` (452),
-`_options` (454), `flags` (478), `_requiredSemi` (554, `declare` + ctor-set),
-`sourceNode` (570, `declare` + ctor-set), `index` (578), `parent` (618).
+`_spanStart` (525), `_spanEnd` (526), `_sourceRoot` (528), `_options` (533),
+`flags` (557), `sourceNode` (658, `declare` + ctor-set), `index` (666), and
+`parent` (706). `_treeContext` is Rules-only and `requiredSemi` is backed by
+`flags`; neither is a Node instance slot in the current tree.
 `type`/`shortType`/`nodeType` are prototype props (`declare`, set by `defineType`)
 — no instance slot. `frozen`/`hoistToRoot`/`generated`/`registrationPrepared`/
 `visible`/`requiredSemi` are all **getters backed by `flags` bits** — no slot.
@@ -77,14 +73,12 @@ These are `Rules`'s inheritance; they do NOT spend Rules's budget.
 | # | field | line | stored kind |
 |---|-------|------|-------------|
 | 1 | `rules: Node[]` | 1033 | eager array (the child list) |
-| 2 | `varsByName: Map<…> \| undefined` | 1036 | lazy map (`??=`) |
-| 3 | `_lookup: RulesLookupState \| undefined` | 1042 | lazy sub-struct (holds ~12 cold fields) |
-| 4 | `rulesFlags = 0` | 1086 | eager int (packs 12 bits) |
-| 5 | `lookupVersion = 0` | 1196 | eager int |
-| 6 | `_scopeFrame: ScopeFrame \| undefined` | 1239 | lazy ref |
-| 7 | `pendingExtends = new Set(...)` | 4353 | eager Set |
+| 2 | `_lookup: RulesLookupState \| undefined` | current class body | lazy sub-struct (holds cold lookup fields plus relocated versions/indexes) |
+| 3 | `rulesFlags = 0` | current class body | eager int (packs 12 bits) |
+| 4 | `_scopeFrame: ScopeFrame \| undefined` | current class body | load-bearing lazy ref; not a safe relocation target |
+| 5 | `_treeContext: TreeContext \| undefined` | current class body | Rules-only source-tree context |
 
-**Current class-unique count for `Rules` = 7.**
+**Current class-unique count for `Rules` = 5.**
 
 All the `has*ChildSurface` / `_bodyEvaluated` / `_hasExtends` /
 `_hasReferenceImports` / `_registrationPrepared` / `_placementRepointed` names are
@@ -119,12 +113,16 @@ the old eval-time `Ruleset.hoistToRoot =` write was removed by C1 (2e21baae1), a
 
 ### Rules
 
+> The detailed rows below retain the original audit reasoning. Their R0/R1/R2
+> actions are historical and already landed; the current field count is the
+> five-field summary above.
+
 **1. `rules` (1033) — IRREDUCIBLE.**
 The child-node array; the `childKeys=['rules']` payload of a declaration list. Read
 on every walk (eval, render, lookup, coalesce). Cannot be packed/derived/lazied —
 it IS the node's content. Spends 1 of 5.
 
-**2. `varsByName` (1036) — FOLD INTO `_lookup`.**
+**2. `varsByName` (historical) — `[LANDED]` folded into `_lookup`.**
 Per-scope `Map<name, VarDeclaration binding entries>`, the static var-lookup index.
 Writers: `resetDerivedState` clears it (1445), lazy `??= new Map()` (1567, 5132,
 5513). Readers: scope-frame build (`scope-frame.ts:324/330` builds
@@ -147,9 +145,9 @@ One Rules-private int holding 12 bits: 7 `has*ChildSurface` + `_bodyEvaluated`
 (R_BODY_EVALUATED) + `_hasExtends` + `_hasReferenceImports` +
 `_registrationPrepared` + `_placementRepointed`. Landed c40fea6. Deliberately a
 Rules-only int (not base `flags`) so leaf-node flag reads don't widen. Spends 1 of
-5. Headroom: 12/31 bits used, room for `varsByName`-present / other future bits.
+5. Headroom: 12/31 bits used, reserved for future Rules-local flags only.
 
-**5. `lookupVersion` (1196) — FOLD INTO `_lookup`.**
+**5. `lookupVersion` (historical) — `[LANDED]` folded into `_lookup`.**
 Cache-invalidation counter. Writers: bumped on mutation (rules.ts:4873,
 reference.ts:244), reset in `resetDerivedState` (1450). Readers: reference
 resolution reads the current version (reference.ts:465). Distinct from the
@@ -168,7 +166,7 @@ The scope-chain frame; the single most-referenced Rules field (91 sites),
 central to all variable/callable resolution. Lazily built but load-bearing on the
 hot path. Cannot derive (it caches the resolved lexical chain). Spends 1 of 5.
 
-**7. `pendingExtends` (4353) — DEAD; DROP NOW (7→6, independent, zero risk).**
+**7. `pendingExtends` (historical) — `[LANDED]` dead field removed.**
 `Set<[find, extendWith, partial]>` declared with an eager `new Set()` initializer.
 **A monorepo-wide grep (`packages/**/*.ts`) finds EXACTLY ONE occurrence: the field
 initializer itself (rules.ts:4353). Zero reads, zero writes anywhere.** Name-based
@@ -219,6 +217,10 @@ the cheapest concession — recompute or lazy-struct).
 
 ## 3. Ordered slice plan to ≤5
 
+> **Historical plan, fully landed on current `dev`.** The R0/R1/R2 rows below
+> describe completed cuts and are retained as provenance only; do not replay them
+> from old worktrees or assign them as fresh work.
+
 Each slice gated: build core, stable failure set unchanged, output byte-identical
 (collapse-bench + dynamic-bench + all-less), A/B the render median. Do NOT touch
 `rules.ts` / `ruleset.ts` / `declaration.ts` / `tree/extend/*` while the live
@@ -226,14 +228,14 @@ deep-rework / extend agents hold them — **serialize behind them** (these slice
 write `rules.ts`, so they must land after or interleave with the live rules.ts work,
 coordinated per the FLAG-WALK pull-before-spawn protocol).
 
-**Slice R0 — delete dead `pendingExtends` (7→6). Cheapest, zero-risk, lands FIRST.**
+**Slice R0 — `[LANDED]` delete dead `pendingExtends` (historical 7→6).**
 Remove the field declaration (rules.ts:4353). Nothing reads or writes it (verified
 monorepo-wide). No accessor, no reset, no clone handling to touch. Gate: build +
 byte-identical (guaranteed — no behavior). This alone is a dead-code + per-instance
 `Set`-alloc win. **Fully independent** of flag-walk and the live rules.ts rework
 (it's a one-line deletion far from the deep-rework hot region).
 
-**Slice R1 — `lookupVersion` → `RulesLookupState` (6→5). Hits budget.**
+**Slice R1 — `[LANDED]` `lookupVersion` → `RulesLookupState` (historical 6→5).**
 Add `lookupVersion = 0` to `RulesLookupState`; convert the base field to a
 getter/setter delegating into `_lookup` (mirror the existing
 `declarationLookupVersion` accessor exactly). Update the 4 sites (rules.ts:1450
@@ -242,7 +244,7 @@ reference resolution path — A/B `dynamic-bench` to confirm the `_lookup?.x ?? 
 read is neutral (precedent: 3 sibling counters already do this). **Independent of
 flag-walk.** ← **after R1, `Rules` is at 5 = compliant.**
 
-**Slice R2 (optional, → 4) — `varsByName` → `RulesLookupState` (5→4).**
+**Slice R2 — `[LANDED]` `varsByName` → `RulesLookupState` (historical 5→4).**
 Add `varsByName` to `RulesLookupState`; getter/setter delegate. Update the ~8 core
 sites (rules.ts:1445/1503/1518/1567/1630/2330/5132/5195/5232/5513); scope-frame.ts
 takes `Rules.varsByName` as a param — no signature change, just the source
@@ -253,25 +255,19 @@ flag-walk.** Not required for compliance (R0+R1 already reach 5).
 lazy Ruleset sub-struct or drop it (5→4) — only if a future Ruleset field would push
 over budget. Lowest priority.
 
-**Riskiest slice:** R1 (`lookupVersion`), solely because it sits on the reference
-hot path — mitigated by A/B and the 3-sibling precedent. R0 is zero-risk (dead
-code); R2 carries no hot-read risk (varsByName reads already tolerate `undefined`).
+**Historical risk note:** R1 touched the reference hot path and was accepted with
+the sibling-counter precedent and compatibility gates. There is no current R0/R1/R2
+implementation lane to start.
 
 ---
 
 ## 4. Realism verdict
 
-**≤5 is achievable for `Rules` WITHOUT touching the eval/registration/lookup
-machinery semantics.** R0 deletes a dead field (zero behavior). R1/R2 are pure
-field-relocation into an *already-existing* lazy sub-struct that these very fields
-already conceptually belong to (they reset together in `resetDerivedState`). No
-behavior change, no flag-walk dependency, no C4 gate.
-
-There is **NO irreducible-over-5 core.** The genuine irreducible set is **4**:
-`rules` (content), `_scopeFrame` (scope chain), `rulesFlags` (packed bits), `_lookup`
-(the lazy cold-lookup struct — destination for the folds). Everything else is dead
-(`pendingExtends`) or a straggler that belongs in `_lookup` (`lookupVersion`,
-`varsByName`). The steady-state floor is **4**.
+**`Rules` is already at the ≤5 budget without touching eval/registration/lookup
+semantics.** The current five fields are `rules`, `_lookup`, `rulesFlags`,
+`_scopeFrame`, and `_treeContext`; the historical R0/R1/R2 cuts are complete.
+`_scopeFrame` is the irreducible, load-bearing scope-chain cache, not a fresh
+deletion target.
 
 Cross-reference to the flag-walk endgame: the prompt's concern that
 `_registrationPrepared` / `_hasExtends` / lookup versions are "entangled with
@@ -280,8 +276,7 @@ registration / propagateFlagsFrom" is real for *deletion of the semantics*, but
 marginal slots), so C4 does NOT gate reaching ≤5. The one field the prompt guessed
 was C4-entangled (`pendingExtends`) turned out to simply be dead.
 
-Bottom line for the owner: **`Rules` is at 7, not "dozens" — the landed `rulesFlags`
-+ `_lookup` slims already did the heavy lifting.** One dead-field deletion (R0) + one
-mechanical fold (R1), both flag-walk-independent, take it 7 → 5. A second optional
-fold (R2) reaches 4. **`Ruleset` is already at 5** (compliant); `_valueOf` folds it
-to 4 if ever needed. No owner arbitration required — there is no irreducible >5.
+Bottom line for the owner: **`Rules` is at 5, not "dozens" — and the historical
+R0/R1/R2 work is already in `dev`.** `Ruleset` is also at 5 (compliant); `_valueOf`
+is a future concession only if that changes. No new implementation lane is
+justified by the old field-budget checklist alone.

@@ -266,6 +266,14 @@ export const rgbOptions = {
   preprocessParams: [splitSequence()]
 } satisfies DefineFunctionOptions;
 
+/**
+ * CSS/Less `rgb()` — construct a `Color` from red, green and blue channels (each
+ * `0–255` or a percentage) with optional alpha. Also accepts a single `Color`
+ * (re-emitted in `rgb()` form, optionally overriding alpha) and CSS relative-color
+ * syntax `rgb(from <color> r g b [/ a])`.
+ * @returns the resulting `Color`
+ * @see https://developer.mozilla.org/docs/Web/CSS/color_value/rgb
+ */
 const rgb = defineFunction(
   'rgb',
   rgbImplementation,

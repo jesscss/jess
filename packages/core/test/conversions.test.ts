@@ -3,7 +3,6 @@ import { defineFunction } from '../src/define-function.js';
 import { Dimension, Num } from '../src/tree/index.js';
 import {
   percentOf,
-  angleToDegrees,
   normalizeHue,
   alphaToNumber,
   toNumber
@@ -34,43 +33,6 @@ describe('Conversion Plugins', () => {
       const result = converter(input);
 
       expect((result as Num).number).toBe(75); // 75% of 100
-    });
-  });
-
-  describe('angleToDegrees', () => {
-    it('should convert turns to degrees', () => {
-      const converter = angleToDegrees();
-      const input = new Dimension({ number: 0.5, unit: 'turn' });
-      const result = converter(input);
-
-      expect((result as Num).number).toBe(180); // 0.5 turn = 180 degrees
-    });
-
-    it('should convert radians to degrees', () => {
-      const converter = angleToDegrees();
-      const input = new Dimension({ number: Math.PI, unit: 'rad' });
-      const result = converter(input);
-
-      expect((result as Num).number).toBe(180); // π radians = 180 degrees
-    });
-
-    it('should convert gradians to degrees', () => {
-      const converter = angleToDegrees();
-      const input = new Dimension({ number: 100, unit: 'grad' });
-      const result = converter(input);
-
-      expect((result as Num).number).toBe(90); // 100 grad = 90 degrees
-    });
-
-    it('should pass through degrees and unitless values', () => {
-      const converter = angleToDegrees();
-      const degInput = new Dimension({ number: 45, unit: 'deg' });
-      const unitlessInput = new Dimension({ number: 90, unit: '' });
-
-      expect(converter(degInput)).toBeInstanceOf(Num);
-      expect((converter(degInput) as Num).number).toBe(45);
-      expect(converter(unitlessInput)).toBeInstanceOf(Num);
-      expect((converter(unitlessInput) as Num).number).toBe(90);
     });
   });
 
@@ -250,7 +212,7 @@ describe('defineFunction with Conversion Plugins', () => {
             type: Dimension,
             convert: [
               percentOf(100),    // Convert percentage to fraction of 100
-              angleToDegrees(),  // Convert angles to degrees
+              normalizeHue(),    // Normalize any angle to 0-360 degrees
               toNumber()         // Convert to number
             ]
           }
@@ -259,7 +221,7 @@ describe('defineFunction with Conversion Plugins', () => {
     );
 
     it('should chain multiple conversions', () => {
-      // 50% of 100 = 50, then angle conversion (no effect), then to number
+      // 50% of 100 = 50, then hue normalization (no effect on a Num), then to number
       const input = new Dimension({ number: 50, unit: '%' });
       expect(complexFunction(input)).toBe('result: 50');
 

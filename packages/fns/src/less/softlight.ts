@@ -13,6 +13,12 @@ export function softlightBase(cb: number, cs: number) {
   return cb - (1 - 2 * cs) * e * (d - cb);
 }
 
+/**
+ * Less `softlight()` — soft-light blend, a gentler variant of `overlay`.
+ * @param color1 backdrop `Color`
+ * @param color2 source `Color`
+ * @returns the blended `Color`
+ */
 export default defineFunction(
   'softlight',
   function(color1: Color, color2: Color) {

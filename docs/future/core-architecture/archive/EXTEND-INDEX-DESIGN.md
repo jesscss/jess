@@ -1,7 +1,7 @@
 # Extend as a closed term-rewriting system over a selector IR (design + build spec)
 
 **Status:** design / prototype. Built PARALLEL to the existing walk (`extendSelector` in
-`packages/core/src/tree/util/extend.ts`), validated by a differential oracle test — NOT a replacement
+`packages/core/src/tree/util/extend.ts`), validated by a differential reference test — NOT a replacement
 until it's byte-identical across the whole extend suite. Discovery is replaced; the *idea* is that match
 AND rewrite both happen on one IR and iterate to fixpoint without round-tripping to selector nodes.
 
@@ -27,7 +27,7 @@ algebra closes on itself.
 
 **Compound = DUAL representation (load-bearing).** A compound is a SET (order-independent): `.a.b` matches
 `.b.a` — matching must never depend on atom order, and a bitset gives that for free (`(find & cand) === find`).
-BUT a pure bitset loses order, and OUTPUT must be byte-identical to the oracle: `.b.a` must serialize as
+BUT a pure bitset loses order, and OUTPUT must be byte-identical to the reference: `.b.a` must serialize as
 `.b.a` (not re-sorted to `.a.b`), and `all`-mode substitution must put the extender in the MATCHED atom's
 slot (`.b.a.c` find `.a` → `.b.x.c`, not `.x.b.c`). So a compound carries BOTH: a **match-bitset** (order-free
 subset tests, the discovery hot path) AND an **ordered atom list** (used by rewrite + materialization to
@@ -38,9 +38,9 @@ duplicate is syntactically real and must round-trip verbatim), match-bitset `{b,
 because extend matching is set-containment not multiset: `.b.b.c` matches exactly the finds `.b.c` does).
 Do NOT build `Compound` as a JS `Set` — that eats the dupe and breaks output. Whole principle in one line:
 **the ordered list is the truth; the match-bitset is a lossy fingerprint (deduped + unordered) that is
-exactly what matching wants.** Oracle-verify: a find with its OWN dupe (`.b.b`) is almost certainly treated
+exactly what matching wants.** Reference-verify: a find with its OWN dupe (`.b.b`) is almost certainly treated
 as `{b}` (set semantics) — confirm. And `all`-substitution when the found atom appears twice (`.b.b.c` find
-`.b`) — which occurrence(s) get replaced — is oracle-defined; pin it, don't invent.
+`.b`) — which occurrence(s) get replaced — is reference-defined; pin it, don't invent.
 
 **DUP FULL-MATCH — OWNER-RULED: the walk is BUGGY here; do NOT enshrine it.** Two matching questions,
 two semantics: PARTIAL/`all` = set-containment (dedup fine — "is the find INSIDE the target"); FULL/exact =
@@ -58,7 +58,7 @@ owner-verified as a **Less 4.x incompatibility** ("a full match must go side-to-
 the compound location as FULL — the deduped keyset can't see the extra `.b`, so the stranded atom isn't
 recorded as a remainder. Fix: a full compound match must CONSUME ALL target simples (count/multiset), else
 partial-with-remainder (`areCompoundSelectorsEquivalent` already has the length check; this location-
-classification path bypasses it). Output-changing → surface any test/golden baking in `.b.b.c,.ext` for review.
+classification path bypasses it). Output-changing → surface any test/expected `.css` baking in `.b.b.c,.ext` for review.
 
 **METHODOLOGY (load-bearing — the walk is NOT ground truth):** byte-identical-to-`extendSelector` is the
 gate for REAL cases, but where the walk is wrong, matching it reproduces the bug. So a prototype↔walk
@@ -110,18 +110,18 @@ to the inner/parent region is not a real match at this level" rule, enforced at 
   whether the matched span touches child material, parent-graft material, or both.
 - **Hoist depth:** current engine hoists to ROOT on ANY crossing → replicate that for byte-identical
   parity. (Minimal-hoist — up to only the outermost crossed seam — is a future, output-CHANGING nicety;
-  needs owner sign-off, out of scope for the oracle-validated build. Model it as: rewrite output carries a
+  needs owner sign-off, out of scope for the reference-validated build. Model it as: rewrite output carries a
   `placement` target; today it's binary {this-level, root}, minimal-hoist would make it level-indexed.)
 
 ### `&` crossing — VERIFIED representation + TWO extra gates (differential-probed, 2026-07-06)
 - **Representation confirmed:** post-eval `&` is NOT flattened — it stays an `Ampersand` node holding a
   parent REFERENCE (`_selectorContainer.selector`, read via `getResolvedSelector()`); composition is on
-  demand. The doc's graft model is correct. The oracle classifies crossing via a **two-probe differential**
+  demand. The doc's graft model is correct. The reference classifies crossing via a **two-probe differential**
   (`checkAmpersandCrossingDuringExtension`, extend.ts:3384): build the RESOLVED form (graft parent at the `&`
   position) and the EMPTY form (drop `&` + trailing implicit-space combinator); `crossed ⇔ find matches
   RESOLVED ∧ ¬find matches EMPTY`. Reproducible in-IR with ZERO node cloning (bitset subset tests over the
-  lifted parent) — vs the oracle's two `selectorCompare` calls on fully-materialized `copySelectorTreeForExtend`
-  clones. **Future-slim signal:** the oracle's per-amp double-clone+compare is heavier than the semantics need.
+  lifted parent) — vs the reference's two `selectorCompare` calls on fully-materialized `copySelectorTreeForExtend`
+  clones. **Future-slim signal:** the reference's per-amp double-clone+compare is heavier than the semantics need.
 - **Gate 2 (STANDS) — simple-find parent-only → NOT_FOUND** (extend.ts:1589 full-skip + :1622 partial
   whole-location gate): a simple find matching ONLY the parent portion (`&.bar` parent `.foo`, find `.foo`
   — reachable from `.foo { &.bar {} }`) collapses to `NOT_FOUND` (both modes) — "parent-only" is `NOT_FOUND`
@@ -136,7 +136,7 @@ to the inner/parent region is not a real match at this level" rule, enforced at 
 - **METHODOLOGY (load-bearing): differential inputs MUST be reachable + well-formed.** Hand-built `el()/sel()`
   subjects are safe only for context-free shapes. For `&`/nesting/combinator cases, validity depends on
   context, so DERIVE the subject from real Less source through parse→eval (the actual selector the engine
-  sees), never assemble a leading-combinator/detached subject by hand. Otherwise the oracle's behavior on an
+  sees), never assemble a leading-combinator/detached subject by hand. Otherwise the reference's behavior on an
   unreachable input gets mistaken for spec (that is exactly what produced the withdrawn Gate 1).
 
 ## Rewrite (closed constructor ops — stays in the IR)
@@ -164,7 +164,7 @@ formatting. Only step that touches nodes.
 
 ## Global flow — lift once, fixpoint in IR, materialize once (integration with `processExtends`)
 The per-call `extendByIndex` contract (below) is for DIFFERENTIAL VALIDATION only (one selector × one find ×
-one extendWith, vs the oracle). The real integration — what actually delivers "stay in the IR until done" —
+one extendWith, vs the reference). The real integration — what actually delivers "stay in the IR until done" —
 is a global flow that replaces `processExtends`'s **apply** loop (the **gather** of which extends exist +
 their scope stays):
 1. **Lift once** — at `processExtends` entry (post-eval; selectors concrete), lift every in-scope selector
@@ -181,12 +181,12 @@ their scope stays):
 Validation order: prove per-call parity on the case ladder FIRST (the current build); THEN wire this global
 flow and re-validate against full-render output (`all-less` byte-identical).
 
-## Build plan (parallel + oracle-validated)
+## Build plan (parallel + reference-validated)
 - New module `packages/core/src/tree/util/extend-index.ts` exposing
   `extendByIndex(target, find, extendWith, partial): ExtendSelectorSurface | 'NOT_FOUND'` — the SAME
   contract as `extendSelector`. Reuse the existing fold surgery where practical; the point is discovery.
 - Differential test `packages/core/src/tree/util/__tests__/extend-index-differential.test.ts`:
-  for each case run both `extendSelector` (ORACLE) and `extendByIndex`, assert `str(mine) === str(oracle)`
+  for each case run both `extendSelector` (REFERENCE) and `extendByIndex`, assert `str(mine) === str(reference)`
   (`.valueOf()`), using the existing builders (`el`, `sel`, `sellist`, `compound`, `is`, `co`).
 - **Case ladder** (add one at a time; each new case tells you which layer is missing):
   1. exact single compound — `extendSelector(el('.a'), el('.a'), el('.b'), false)` → `(.a, .b)`
@@ -200,7 +200,7 @@ flow and re-validate against full-render output (`all-less` byte-identical).
   7. `all`/partial vs exact
   8. chained fixpoint (target→ext→target)
   9. deep nesting + hoist depth
-- Existing oracle-shaped tests to mine: `extend-unit.test.ts`, `extend-simplified-cases.test.ts`,
+- Existing reference-shaped tests to mine: `extend-unit.test.ts`, `extend-simplified-cases.test.ts`,
   `extend-selector-algorithm.test.ts`, `extend-combinator-handling.test.ts`,
   `extend-ampersand-boundary.test.ts`, `find-extendable-locations.test.ts`.
 - Gate: differential test green for each landed case; core suite unaffected (new files only). No push.
@@ -212,7 +212,7 @@ stays in `util/`). Not exported → bundle-excluded.
   cloning-free (no `.clone()`/`composeSelector`/`copySelectorTreeForExtend`/`selectorCompare`). Unbuildable
   shapes return an exported `UNSUPPORTED` sentinel (fail-loud, never silent delegation).
 - **Real-corpus proof (delegation off):** copies of the existing extend suites drive `extendByIndexOwn`,
-  byte-compared to the `extendSelector` oracle (`corpus-harness.ts`, throws on any MISMATCH). Own-engine PASS:
+  byte-compared to the `extendSelector` reference (`corpus-harness.ts`, throws on any MISMATCH). Own-engine PASS:
   simplified 13/13, algorithm 33/35, combinator 7/7, where-cases 4/4; 159 tests green across `tree/extend/`,
   full extend suite 558 pass / 0 fail (no regressions). **The thin cloning-free construction reproduces the walk
   byte-identically on every covered case** — including the graft-into-target set (see RUNG CLOSED below).
@@ -223,7 +223,7 @@ stays in `util/`). Not exported → bundle-excluded.
 
 ### RUNG CLOSED (2026-07-06) — extending INTO a graft target
 Own construction now builds INTO `:is(...)` / `:not(...)` / `:where(...)` / `:has(...)` targets, byte-identical
-to the oracle. A pseudo-with-selector-arg is a **recursive extend point**: recurse `extendByIndexOwn(arg, find,
+to the reference. A pseudo-with-selector-arg is a **recursive extend point**: recurse `extendByIndexOwn(arg, find,
 extendWith, partial)` and rewrap in the SAME pseudo (`is()` builder for `:is`, `pseudo({name,arg})` otherwise) —
 cloning-free, reusing authored inner nodes. Key rules (all differential-probed + hardcoded-pinned):
 - Whole inner branch matched → append extendWith into the arg list (`:is(.a,.b)` f `.a` → `:is(.a,.b,.c)`).
@@ -238,22 +238,22 @@ UNSUPPORTED 8→0. 159 tests green across `tree/extend/`; full extend suite 558 
 
 ### RUNG CLOSED (2026-07-06) — remainder-splitting (dev `f6f19651c`)
 A whole-span partial match with an unmatched remainder now splits correctly (own construction, byte-identical to
-the oracle). Discriminator: **whole span** (find matches every compound of the target seq, positions `0..T-1`) →
+the reference). Discriminator: **whole span** (find matches every compound of the target seq, positions `0..T-1`) →
 **sibling-split** (original branch unchanged + one sibling = the LAST spanned compound's remainder atoms merged
 into extendWith's head compound; earlier remainders ignored; target combinators dropped); **proper-substring
-span** → the existing `:is()`-wrap. Open edges resolved from the oracle: extendWith LIST merges into the first
+span** → the existing `:is()`-wrap. Open edges resolved from the reference: extendWith LIST merges into the first
 branch only (`.c.d,.e`), extendWith `:is(...)` is NOT flattened in sibling-split (`.c:is(.d,.e)` via
 `extendWithBranchesUnflat`), list flattens into the `:is` arg in the wrap case. algorithm own-PASS 33→35,
 UNSUPPORTED 2→0; extend-index 159→172; full extend suite 571/0; no walk-bugs surfaced.
 
 ### RUNG CLOSED (2026-07-06) — `:is` boundary-cross flatten (PARTIAL)
-Own construction now builds the PARTIAL `:is` boundary-cross flatten, byte-identical to the oracle. The
+Own construction now builds the PARTIAL `:is` boundary-cross flatten, byte-identical to the reference. The
 matched span is derived by aligning the find's atoms LEFT-TO-RIGHT onto the target compound's atom
 positions (a strictly-increasing positional subsequence), where a find atom is consumed by a plain atom
 (equal) or a COMPLETE single-atom `:is` branch. Derived rules (differential-probed + hardcoded-pinned):
 - **Which atoms flatten:** the matched span collapses to `:is(<find-as-written>, <extendWith-branches>)`
   placed FIRST in the compound; the `.b` (non-matched) `:is` arm is DROPPED, NOT distributed. (The doc's
-  earlier "distributes `.c` into each arm" phrasing was wrong — the oracle takes the PARTIAL `:is`-wrap
+  earlier "distributes `.c` into each arm" phrasing was wrong — the reference takes the PARTIAL `:is`-wrap
   path, not `detectAndHandleBoundaryCrossing` which only runs in FULL mode. The `:is` first arg is the
   FIND verbatim, e.g. `:is(.a,.b).c` f `.a.c` → `:is(.a.c,.d)`, `.c.a` → `:is(.c.a,.d)`.)
 - **Original branch disposition:** REPLACED in place (no separate original branch), unlike full mode which
@@ -268,11 +268,11 @@ positions (a strictly-increasing positional subsequence), where a find atom is c
 - **Non-positional whole consume → APPEND, not flatten:** `:is(.a,.b).c` f `.c.a` (find atoms out of target
   position order) → `:is(.a,.b).c,.d`. This is the sole discriminator between flatten and full-append.
 - **Partial-of-a-branch does NOT cross:** `:is(.a.z,.b).c` f `.a.c` (find `.a` is only part of branch `.a.z`)
-  → oracle NOT_FOUND; own returns UNSUPPORTED (fail-loud, was UNSUPPORTED before — no regression).
+  → reference NOT_FOUND; own returns UNSUPPORTED (fail-loud, was UNSUPPORTED before — no regression).
 No walk-bug / EXPECTED-DIVERGENCE surfaced. extend-index 172→185; full extend suite 571→584/0; no regressions.
 
 ### RUNG CLOSED (2026-07-06) — rung 4: partial-of-branch, subset-in-full, OR-finds, clean multi-compound graft (dev `028accefb`)
-Four classes closed, all oracle-derived + hardcode-pinned; no walk-bugs. extend-index 185→204; full extend suite 584→603/0; core 3011/0.
+Four classes closed, all reference-derived + hardcode-pinned; no walk-bugs. extend-index 185→204; full extend suite 584→603/0; core 3011/0.
 - **`:is` partial-of-branch → NOT_FOUND** (was UNSUPPORTED). Broader than hypothesized: ANY find whose sym reaches only a
   *multi-atom* `:is` branch head (`.a` in `.a.z`), or is absent from the target, never matches → NOT_FOUND in BOTH modes.
   New `graftCompoundSubsetSatisfiable` (each find sym = plain atom or a *complete single-atom* `:is` branch).
@@ -286,8 +286,8 @@ Four classes closed, all oracle-derived + hardcode-pinned; no walk-bugs. extend-
 ### RUNG CLOSED (2026-07-06) — rung 5: multi-compound `:is`-graft EXPANSION
 A MULTI-compound find crossing a BARE single-`:is` compound (`:is(.a,.b)` in its own slot), where the
 alignment is NOT the clean rung-4 whole-span-full, now builds via own construction, byte-identical to
-the oracle. The rung-4 report's hypothesis (`.x :is(.a .c,.d),.x .b .c` — distribute-into-arms) was
-WRONG; the oracle takes a simpler **expand-then-per-arm-extend** path (derived by direct probe):
+the reference. The rung-4 report's hypothesis (`.x :is(.a .c,.d),.x .b .c` — distribute-into-arms) was
+WRONG; the reference takes a simpler **expand-then-per-arm-extend** path (derived by direct probe):
 - **Rule:** expand the `:is` into one sibling branch per arm (splice the arm's compounds into the graft
   slot, `expandComplexSelectorWithIs` semantics), then run the plain multi-compound extend on each
   expanded (now-plain) branch. The expanded branches are plain → the plain engine reproduces every
@@ -301,19 +301,19 @@ WRONG; the oracle takes a simpler **expand-then-per-arm-extend** path (derived b
   FULL → `.x .a .c,.x .b .c,.d`. Multi-compound arms splice (`:is(.a .m,.b) .c` f `.a .m .c` → `.a .m .c,.b .c,.d`);
   `>` combinators preserved (`.x>:is(.a,.b)>.c` f `.a>.c` → `.x>.a>.c,.x>.b>.c,.d`).
 - **Scope (fail-loud):** exactly ONE bare-`:is` compound per branch; a 2nd graft the find must cross is
-  the oracle's `.x :is(.a,.b) :is(.p,.q)` NOT_FOUND shape → UNSUPPORTED (proving NOT_FOUND needs the
-  expand-then-fail machinery; prefer fail-loud). Embedded grafts (`.m:is(.a,.b)` f `.a .c` → oracle
-  NOT_FOUND) and non-bare graft compounds (`:is(.a,.b).q .c` → oracle NOT_FOUND) do NOT expand → the
+  the reference's `.x :is(.a,.b) :is(.p,.q)` NOT_FOUND shape → UNSUPPORTED (proving NOT_FOUND needs the
+  expand-then-fail machinery; prefer fail-loud). Embedded grafts (`.m:is(.a,.b)` f `.a .c` → reference
+  NOT_FOUND) and non-bare graft compounds (`:is(.a,.b).q .c` → reference NOT_FOUND) do NOT expand → the
   path returns null and the per-branch graft path (→ UNSUPPORTED) handles them.
 No walk-bug / EXPECTED-DIVERGENCE surfaced. Pre-existing plain-path note (NOT this rung): the own
 engine's MULTI-compound substring `:is`-wrap flattens a `:is(...)` extendWith (`.x :is(.a .c,.d,.e)`)
-where the oracle keeps it nested (`.x :is(.a .c,:is(.d,.e))`) — this divergence exists on dev's plain
+where the reference keeps it nested (`.x :is(.a .c,:is(.d,.e))`) — this divergence exists on dev's plain
 path independent of the graft, unreached by the real corpus; out of scope here.
 extend-index 204→221; full extend suite 603→620/0; core 3011→3028/0.
 
 ### RUNG CLOSED — rung 6: `&` (ampersand) TARGETS (own construction, dev `4d758a309`)
 Own construction now builds `&`-target output (child-only / crossing / parent-only / `&&` same-parent),
-byte-identical to the oracle, via `extendAmpersandTarget`: reproduce the oracle's two/three-probe
+byte-identical to the reference, via `extendAmpersandTarget`: reproduce the reference's two/three-probe
 classification in-IR (resolved / empty / parent-alone forms), then recurse `extendByIndexOwn` on the
 cloning-free RESOLVED form (`resolvedFormSeq` + `resolveAllAmps`) at the original `partial` flag, with a
 parent-only → NOT_FOUND gate. `hoistToRoot` is a placement flag that does not change the byte output, so
@@ -324,7 +324,7 @@ merge-ordering, list-parent grafts.
 ### RUNG CLOSED (2026-07-06) — rung 7: leading-combinator relative `&`
 A NESTED RELATIVE rule (`.parent { > &.child {} }`) composes post-eval to a ComplexSelector whose
 FIRST component is a combinator (`> &.child`). Rung 6 left this UNSUPPORTED (its plain resolved-form
-recursion drops the combinator + uses the wrong wrap-span). The oracle takes its
+recursion drops the combinator + uses the wrong wrap-span). The reference takes its
 `shouldSkipRelativePartialBoundary` path (`extend.ts:1594`): re-target on the amp-RESOLVED form via
 `replaceAmpersandWithItsValue` (KEEPING the leading combinator), then run the normal in-place `:is`-wrap.
 Own construction now builds this byte-identical (`extendRelativeAmpersandTarget`), all shapes
@@ -377,29 +377,29 @@ the walk and records the byte comparison. Perf/scaling stress files are excluded
 `.a-N` volume and would blow their timing budget under double-work instrumentation).
 
 **Result: 2,595 distinct reachable tuples. own-PASS 325, NOT_FOUND-both 2,221, UNSUPPORTED 47, DIVERGENCE 2
-(both benign).** The sweep took DIVERGENCEs 21→2 and closed these own-engine BUGS (all oracle-derived,
+(both benign).** The sweep took DIVERGENCEs 21→2 and closed these own-engine BUGS (all reference-derived,
 hardcode-pinned in `extend-index-own.test.ts §16`, no walk-bug surfaced):
 - **FULL-append dedup** — appending an extendWith already present as a target OR-branch emitted a duplicate
   (`.base,.child` f `.base` e `.child` → `,.child` dup; self-extend `.w` f `.w` e `.w` → `.w,.w`). Fixed:
   dedup the append against existing branches (`hasExactCartesianProduct` sibling).
 - **Dup-atom find multiset** — a find with an internal duplicate (`.e.e`) matched via set-syms, so `.e` f
-  `.e.e` "matched" (own `.e`) where the oracle is NOT_FOUND. Fixed: `compoundSubset` is MULTISET when both
+  `.e.e` "matched" (own `.e`) where the reference is NOT_FOUND. Fixed: `compoundSubset` is MULTISET when both
   compounds are plain (per-sym count). The `.e.e.x` f `.e.e` PARTIAL contiguous-dup-wrap is UNSUPPORTED
   (unreached; a wrong per-slot wrap would be worse).
 - **Bare-`:is` FULL-append whole-selector gate** — a bare `:is` compound appended in FULL mode even when it
   was only ONE compound of a multi-compound seq (`.aa :is(.dd,.ee)` f `.dd` → wrongly `:is(.dd,.ee,.ff)`).
   Fixed: FULL append only when the `:is` IS the whole selector; else subset → unchanged (PARTIAL still wraps).
-- **Single-arm multi-compound `:is` not unwrapped** — `d :is(.b .c)` f `.b .c` FULL kept the wrapper (oracle),
+- **Single-arm multi-compound `:is` not unwrapped** — `d :is(.b .c)` f `.b .c` FULL kept the wrapper (reference),
   own unwrapped to `d .b .c`. Fixed: a single-arm `:is` with a MULTI-compound arm stays wrapped on a
   full through-match; a single-COMPOUND arm (`.x :is(.a) .c`) still unwraps.
 - **Graft-target no-match → NOT_FOUND** — a graft branch with an extra plain compound (`:is(.foo,.bar) .baz`)
   returned the target UNCHANGED for a non-matching find instead of NOT_FOUND (a bare-compound hostIdx was set
   unconditionally). Fixed: recurse into the graft first; null recursion → real no-match.
-And added fail-loud UNSUPPORTED gates (own engine produced wrong output; oracle machinery not built):
-- **Element/ID conflict** (`a.info` f `.info` e `div.foo` → oracle `ELEMENT_CONFLICT`) — conflict-validation
+And added fail-loud UNSUPPORTED gates (own engine produced wrong output; reference machinery not built):
+- **Element/ID conflict** (`a.info` f `.info` e `div.foo` → reference `ELEMENT_CONFLICT`) — conflict-validation
   machinery not built → UNSUPPORTED (`partialWrapMayConflict`, conservative: only when extendWith carries a
   tag/id and the combined context would exceed one element or id).
-- **Exact-mode cartesian de-distribution** (`.a .b,.a .d,.c .b` f `.c .b` e `.c .d` → oracle `:is(.a,.c)
+- **Exact-mode cartesian de-distribution** (`.a .b,.a .d,.c .b` f `.c .b` e `.c .d` → reference `:is(.a,.c)
   :is(.b,.d)`) — walk output-compaction not built → UNSUPPORTED (`hasExactCartesianProduct`).
 - **`:is` arm with an internal non-space combinator** (`:is(.replace.replace,.c.replace+.replace) .replace`
   f `.replace.replace .replace` — the extend-exact fixture) — the boundary-cross flatten of a `+`/`>`/`~`-arm
@@ -409,30 +409,30 @@ And added fail-loud UNSUPPORTED gates (own engine produced wrong output; oracle 
 1. `.ext3,.ext4,.ee` f `.bb` e `.ff` — a FIXPOINT-accounting artifact: the isolated tuple is NOT_FOUND on
    BOTH engines (verified by direct probe); the sink captured the walk's *accumulated render* result. The
    per-call own answer is correct.
-2. `div:is(a>.foo)` f `.foo` FULL — oracle returns the target unchanged (subset match, no CSS change), own
+2. `div:is(a>.foo)` f `.foo` FULL — reference returns the target unchanged (subset match, no CSS change), own
    returns NOT_FOUND. Both emit no output change; the only asserting test checks `not.toThrow()`. A
    classification difference, not a wrong output.
 
-**The 9 UNSUPPORTED-with-oracle-output are the honest residual list** — all either the fail-loud gates above
+**The 9 UNSUPPORTED-with-reference-output are the honest residual list** — all either the fail-loud gates above
 or the 3 pre-documented residual classes (distinct-parent `&&` `.foo.bar.baz.suffix`; multi-graft-in-both-
 slots `:is(...) :is(...)`; `:where`/graft FINDS `:where(.a)` f `:where(.a)`), and every one is reached ONLY
 from hand-built UNIT tests, not from any render fixture. **The render-only sweep (the 8 render-fixture test
 files: extend-rules / -eval-integration / -roots / extend.test / -less-fixtures / -media-scope / -import-style
-/ -memo-differential) produced ZERO wrong-output divergences and ZERO UNSUPPORTED-with-oracle-output after
+/ -memo-differential) produced ZERO wrong-output divergences and ZERO UNSUPPORTED-with-reference-output after
 the fixes** (the one reachable `.replace.replace` gap is fail-loud UNSUPPORTED, never wrong output).
 
 **VERDICT: GO for wiring `processExtendsByIndex` into production (rung 9).** Across the whole reachable
-corpus the own engine is byte-identical to the oracle on every case it builds, and fail-loud UNSUPPORTED on
+corpus the own engine is byte-identical to the reference on every case it builds, and fail-loud UNSUPPORTED on
 every case it does not (never a wrong or spurious-NOT_FOUND answer). The remaining UNSUPPORTED shapes are
-unreached by real renders; a production wire can relay UNSUPPORTED to the oracle for those without any
+unreached by real renders; a production wire can relay UNSUPPORTED to the reference for those without any
 observed corpus impact. No walk-bug / EXPECTED-DIVERGENCE surfaced. tree/extend 252→270; full extend suite
 651→669/0; core 3059→3077/0; build + tsc (0-new-in-`tree/extend/`) clean.
 
 ### RUNG CLOSED (2026-07-07) — rung 9: residual UNSUPPORTED-with-output classes
-The rung-8 sweep left 10 UNSUPPORTED-with-oracle-output tuples (all unit-test-only, never a render). Three
-of the pre-documented residual CLASSES are now closed by own construction, byte-identical to the oracle
+The rung-8 sweep left 10 UNSUPPORTED-with-reference-output tuples (all unit-test-only, never a render). Three
+of the pre-documented residual CLASSES are now closed by own construction, byte-identical to the reference
 (differential-probed on the exact sweep tuples + hardcode-pinned in `extend-index-own.test.ts §17`); the
-remaining 7 are the genuinely-intractable fail-loud gates that a wire-in relays to the oracle. No walk-bug /
+remaining 7 are the genuinely-intractable fail-loud gates that a wire-in relays to the reference. No walk-bug /
 EXPECTED-DIVERGENCE surfaced. UNSUPPORTED-with-output 10→7; tree/extend 270→283; full extend suite 669→682/0;
 core 3077→3095/0; build + tsc (0-new-in-`tree/extend/`) clean.
 
@@ -441,7 +441,7 @@ core 3077→3095/0; build + tsc (0-new-in-`tree/extend/`) clean.
    parents not modeled). Rule derived + closed: a **CHILD-ONLY** match — find confined to the compound's
    genuinely-child atoms, DISJOINT from every resolved-parent sym — is order-independent (the parents ride
    as fixed passengers), so recurse the resolved form. **Any parent contact (crossing / parent-only) →
-   NOT_FOUND** (the oracle's answer on every reachable distinct-parent tuple: `f .baz`, `f .foo`, and
+   NOT_FOUND** (the reference's answer on every reachable distinct-parent tuple: `f .baz`, `f .foo`, and
    crossing `f .foo.suffix` are all NOT_FOUND). Also FIXED a related order bug in `resolvedFormSeq`: an
    embedded amp's parent-tail atoms are now spliced **AT the amp's position** in the atom list (not
    prepended), so distinct-parent order is faithful (`.foo.bar` then `.baz` then `.suffix`, not `.baz.foo.
@@ -450,10 +450,10 @@ core 3077→3095/0; build + tsc (0-new-in-`tree/extend/`) clean.
    reachable find-side sweep tuple). A find carrying a `:where`/`:not`/`:has`/multi-arm-`:is` graft that
    structurally EQUALS a whole target OR-branch → append extendWith (deduped), original branches verbatim
    (`extendFindSideGraftWholeMatch`, gated before the blanket find-graft UNSUPPORTED). Works in BOTH modes.
-   **Left UNSUPPORTED (unreached, wire-in oracle-falls-back):** single-arm `:is` finds (`.a:is(.b)` →
-   oracle UNWRAPS to `.a.b`; the unwrap-on-append is not built → never a wrong non-unwrapped output), and
+   **Left UNSUPPORTED (unreached, wire-in reference-falls-back):** single-arm `:is` finds (`.a:is(.b)` →
+   reference UNWRAPS to `.a.b`; the unwrap-on-append is not built → never a wrong non-unwrapped output), and
    non-whole-branch shapes (proper subset `:where(.a).c` f `:where(.a)`, partial-wrap, mismatched arg).
-3. **Multi-graft-in-both-slots, find wholly absent** (`:is(.foo,…) :is(.bar,…)` f `.ext8 .ext9` → oracle
+3. **Multi-graft-in-both-slots, find wholly absent** (`:is(.foo,…) :is(.bar,…)` f `.ext8 .ext9` → reference
    NOT_FOUND). Was UNSUPPORTED (the `bareIs.length !== 1` multi-graft fail-loud). Added a **definite-NOT_FOUND
    fast-reject** at `tryMultiGraftExpand` entry: if any find sym is absent from the target's FULL sym superset
    (`allSymsInSeq` — every id everywhere, INCLUDING inside every graft arg + resolved amp parent), the find
@@ -461,11 +461,11 @@ core 3077→3095/0; build + tsc (0-new-in-`tree/extend/`) clean.
    byte-identical; in the accumulating render-sweep it now shows as a BENIGN fixpoint-accounting divergence,
    same class as the 2 pre-existing ones — the isolated tuple is NOT_FOUND on BOTH engines, verified by probe.)
 
-**The 7 remaining UNSUPPORTED-with-output are the irreducible fail-loud set** (wire-in relays to the oracle,
+**The 7 remaining UNSUPPORTED-with-output are the irreducible fail-loud set** (wire-in relays to the reference,
 never a wrong output): element/id CONFLICT validation (`a.info` f `.info` e `div.foo` → `ELEMENT_CONFLICT`;
 ×2 element, ×2 id shapes), exact-mode cartesian de-distribution (`.a .b,.a .d,.c .b` f `.c .b` e `.c .d` →
 `:is(.a,.c) :is(.b,.d)`), and the `:is`-arm-internal-`+`-combinator boundary-cross flatten (`.replace.replace`
-extend-exact fixture). All three need oracle machinery the own engine deliberately does not build.
+extend-exact fixture). All three need reference machinery the own engine deliberately does not build.
 
 ## Non-goals (for the validated prototype)
 Minimal-hoist (output change); replacing the walk (only after full-suite byte-identical); touching the

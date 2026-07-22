@@ -78,11 +78,7 @@ export class Operation extends Node<OperationValue> {
   // expression stays parenthesized on output. Treat it like a nested Operation:
   // preserve the operation rather than trying to operate on the Paren.
   private static isUnoperable(node: Node): boolean {
-    // A preserved `calc(...)` Call (produced by createCalcFallback when
-    // `operate()` throws on incompatible units) is not a single operable
-    // terminal either. Recognizing it here routes `calc(X) op Y` through the
-    // compose path so it nests into a calc rather than stringifying to an Any.
-    return isNode(node, N.Operation) || isNode(node, N.Paren) || isCalcCall(node);
+    return isNode(node, N.Operation) || isNode(node, N.Paren);
   }
 
   // A preserved calc holds a single inner value as its only arg (`calc(l op r)`

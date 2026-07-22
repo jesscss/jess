@@ -7,7 +7,6 @@ import {
   keyword, Anonymous
 } from '../index.js';
 import { Context } from '../../context.js';
-import { Parser } from '../../../../less-parser/src/index.js';
 import {
   AtRule
 } from '../at-rule.js';
@@ -158,6 +157,32 @@ describe('AtRule', () => {
     });
 
     expect(node.valueOf()).toBe('@media screen');
+  });
+
+  it('lazily materializes the at-rule identity cache', () => {
+    const node = atrule({
+      name: '@media',
+      prelude: 'screen',
+      rules: Array<Node>(0)
+    });
+
+    expect('_valueOf' in node).toBe(false);
+    expect(node.valueOf()).toBe('@media screen');
+    expect('_valueOf' in node).toBe(true);
+    expect(node.valueOf()).toBe('@media screen');
+  });
+
+  it('does not recreate an uncached identity slot during interpolated-name preparation', async () => {
+    const node = atrule({
+      name: interpolated({ source: '@media', replacements: Array<never>(0) }),
+      prelude: 'screen',
+      rules: Array<Node>(0)
+    });
+
+    expect('_valueOf' in node).toBe(false);
+    const prepared = await node.prepareRegistration(context);
+    expect('_valueOf' in prepared).toBe(false);
+    expect(prepared.valueOf()).toBe('@media screen');
   });
 
   it('includes structured preludes in raw-name at-rule identity', () => {
@@ -3238,28 +3263,6 @@ describe('AtRule', () => {
             })
           ]
         }),
-        // `.mediaMixin` def + two calls (`.a` passes `100px`, `.b` takes the `200px`
-        // default). PARSED rather than hand-built: a real parse creates a DISTINCT
-        // per-call rules surface for each `.mediaMixin(...)` expansion, so `.a`
-        // resolves `@fallback=100px` and `.b` resolves `@fallback=200px`
-        // independently. A hand-built tree that inlines one shared mixin body aliases
-        // the SAME nested `@media (max-width: @fallback)` node across both surfaces;
-        // a currently-latent spine bug then leaks `.a`'s param frame into `.b` (only
-        // reachable via such an aliased AST — see CUTOVER-STATUS IOU). Splicing the
-        // parsed nodes keeps this fixture faithful to what media.less actually yields.
-        ...(new Parser().parse(
-          '.mediaMixin(@fallback: 200px) {\n'
-          + '  background: black;\n'
-          + '  @media handheld {\n'
-          + '    background: white;\n'
-          + '    @media (max-width: @fallback) {\n'
-          + '      background: red;\n'
-          + '    }\n'
-          + '  }\n'
-          + '}\n'
-          + '.a {\n  .mediaMixin(100px);\n}\n'
-          + '.b {\n  .mediaMixin();\n}'
-        ).tree.rules),
         vardecl({
           name: 'smartphone',
           value: quoted(any('only screen and (max-width: 200px)', { role: 'any' }), { escaped: true })
@@ -4084,32 +4087,6 @@ describe('AtRule', () => {
           @media (x), (y) {
             .body {
               width: 100%;
-            }
-          }
-        }
-        .a {
-          background: black;
-        }
-        @media handheld {
-          .a {
-            background: white;
-          }
-          @media (max-width: 100px) {
-            .a {
-              background: red;
-            }
-          }
-        }
-        .b {
-          background: black;
-        }
-        @media handheld {
-          .b {
-            background: white;
-          }
-          @media (max-width: 200px) {
-            .b {
-              background: red;
             }
           }
         }

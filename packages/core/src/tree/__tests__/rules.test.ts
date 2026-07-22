@@ -200,6 +200,36 @@ describe('Rules', () => {
     expect(node.registrationPrepared).toBe(true);
   });
 
+  it('admits source-order normalization only for direct Rules output surfaces', async () => {
+    const leaf = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    expect(leaf.hasDirectChildRuleSurface).toBe(false);
+
+    const root = rules([
+      ruleset({
+        selector: sellist([sel([el('.box')])]),
+        rules: [
+          ruleset({
+            selector: sellist([sel([el('.nested')])]),
+            rules: [decl({ name: 'background', value: any('blue') })]
+          }),
+          call({
+            name: ref('decls', { type: 'function' })
+          })
+        ]
+      })
+    ]);
+    root.setFunctionBinding('decls', () => rules([decl({ name: 'color', value: any('red') })]));
+
+    const evaluated = await root.eval(context);
+    const body = expectRulesNode(evaluated.at(0));
+    expect(body.hasDirectChildRuleSurface).toBe(true);
+    expect(evaluated.render(context)).toBe(
+      '.box {\n  color: red;\n  .nested {\n    background: blue;\n  }\n}\n'
+    );
+  });
+
   it('renders already evaluated rules without deriving another root surface', async () => {
     const source = rules([
       vardecl({ name: 'brand', value: any('red') }),
@@ -342,6 +372,38 @@ describe('Rules', () => {
     expect(buffer.parts).toEqual(['color: red;\n']);
     expect(resolveCalls).toBe(0);
     expect(node.registrationPrepared).toBe(false);
+  });
+
+  it('shares the writer with an explicitly compiler-owned flat root buffer', async () => {
+    const node = rules([
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    context.root = node;
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBe('color: red;\n');
+    expect(buffer.parts.join('')).toBe(rendered);
+    expect(buffer.parts).not.toContain(rendered);
+    expect(context.printState.writer?.writesTo(buffer.parts)).toBe(true);
+  });
+
+  it('writes a spine-hoisted charset before the shared flat root body', async () => {
+    const node = rules([
+      any('@charset "utf-8";', { role: 'charset' }),
+      decl({ name: 'color', value: any('red') })
+    ]);
+    const buffer = createRenderBuffer('flat');
+    buffer.shareWriter = true;
+    context.root = node;
+
+    const rendered = await node.render(context, buffer);
+
+    expect(rendered).toBe('@charset "utf-8";\ncolor: red;\n');
+    expect(buffer.parts.join('')).toBe(rendered);
+    expect(buffer.parts).not.toContain(rendered);
   });
 
   it('keeps non-root direct render as a body fragment while buffers keep emitted separators', async () => {

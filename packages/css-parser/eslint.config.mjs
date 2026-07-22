@@ -19,18 +19,4 @@ export default tseslint.config([
       '@typescript-eslint/no-unsafe-type-assertion': 'error'
     }
   },
-  {
-    files: [
-      'src/cssParser.ts',
-      'src/cssRecursiveParser.ts',
-      'src/productions/atRules.ts',
-      'src/productions/misc.ts',
-      'src/productions/selectors.ts',
-      'src/productions/values.ts',
-      'src/util/index.ts'
-    ],
-    rules: {
-      '@typescript-eslint/no-unsafe-type-assertion': 'warn'
-    }
-  }
 ]);

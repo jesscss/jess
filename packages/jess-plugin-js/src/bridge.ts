@@ -37,11 +37,14 @@ const colorFormatFromString = (value: string | undefined): ColorFormat | undefin
   if (!value) {
     return undefined;
   }
+  // ColorFormat is a numeric enum, so a string can only name a member by its
+  // key ('HEX' | 'RGB' | 'HSL'); the reverse mapping ('0' -> 'HEX') resolves to
+  // a string and is rejected by the typeof-number guard.
   if (value in ColorFormat) {
-    return ColorFormat[value as keyof typeof ColorFormat];
-  }
-  if (Object.values(ColorFormat).includes(value as ColorFormat)) {
-    return value as ColorFormat;
+    const resolved = ColorFormat[value as keyof typeof ColorFormat];
+    if (typeof resolved === 'number') {
+      return resolved;
+    }
   }
   return undefined;
 };

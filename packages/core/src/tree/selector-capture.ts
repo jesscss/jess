@@ -31,7 +31,7 @@ export class SelectorCapture extends Node<SelectorLike> {
   static override childKeys = ['selector'] as const;
 
   readonly selector: SelectorLike;
-  private _selectorNode?: Selector;
+  declare private _selectorNode?: Selector;
 
   constructor(value: SelectorLike, options?: undefined, location?: LocationInfo) {
     super(value, options, location);

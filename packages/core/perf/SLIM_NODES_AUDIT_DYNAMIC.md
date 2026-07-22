@@ -6,6 +6,13 @@ instances — so the per-instance weight of the eval-heavy nodes was untracked.
 This file fills that gap: a live-tree census on a mixin + reference + extend
 workload, plus the field matrix for the fattest DISJOINT node it surfaced.
 
+> **Current-state correction (2026-07-13, `dev` `9bfec19be`).** This is
+> measurement history, not a work queue. Re-check the live tracker and current
+> field-budget audit before opening any follow-up from the old “left” list;
+> existing reference/extend/parser worktrees own several adjacent lanes. The
+> `Reference.role` removal and its heap evidence are already landed evidence,
+> not a fresh assignment.
+
 ## Method / grounding
 
 - **Live-instance census:** `perf/heap/dyn-census.mjs` renders an extend/mixin/ref

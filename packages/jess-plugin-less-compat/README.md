@@ -1,35 +1,45 @@
 # @jesscss/plugin-less-compat
 
-**The Less.js 4.x compatibility bridge — run existing Less plugins and visitors
-against the Jess AST.**
+**An AST-v2 native-function contribution package.**
 
-[Jess](https://github.com/jesscss/jess) needs to meet a Less 4.x ecosystem with
-years of plugins and visitors written against the old Less AST. This package
-bridges the two: it converts a Jess `Rules` tree to a
-Less.js-compatible tree, runs Less 4.x visitors over it, and converts the result
-back — so tools like autoprefixing or minification plugins can keep working
-against Jess-compiled stylesheets.
-
-It's the load-bearing piece of the eventual **`less@5` adoption layer**: the seam
-that lets a Less 4.x project move onto Jess without abandoning its existing plugin
-setup.
+[Jess](https://github.com/jesscss/jess) accepts typed AST-v2 `Fn` values here.
+The public compiler does **not** support Less 4 visitors, `functionRegistry`
+callbacks, `@plugin` scripts, post-processors, or conversion between Less tree
+nodes and Jess values.
 
 ## How it works
 
-- **Bidirectional transformation** between Jess AST nodes and Less.js AST nodes,
-  with lazy per-field conversion so only the fields a visitor touches are
-  materialized.
-- **Visitor support** — Less 4.x visitors run over the converted tree.
-- Package resolution for `@plugin "name"` is delegated to
-  [`@jesscss/plugin-node-modules`](../jess-plugin-node-modules).
+- **Native functions only** — pass `Fn` values from `@jesscss/core/value`; their
+  bodies receive typed values and `FnCtx` capabilities.
+
+For example, migrate a Less `functionRegistry.add('increment', fn)` contribution
+to a typed function and register it through `functions`:
+
+```ts
+import { Compiler } from 'jess';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
+import lessCompatPlugin from '@jesscss/plugin-less-compat';
+
+const increment = defineFunction('increment', {
+  params: [{ kinds: ['Dimension'] }] as const,
+  body: value => makeDimension(value.number + 1, value.unit)
+});
+
+const compiler = new Compiler({
+  compile: { plugins: [lessCompatPlugin({ functions: [increment] })] }
+});
+```
+
+The old `plugins`/`functionRegistry` option is not a compatibility shim: it is
+not part of this package's public options. Legacy Less visitors, tree values,
+and script-plugin hooks must be migrated to an AST-v2 plugin or run under
+Less.js directly.
 
 ## Status
 
-**Alpha / experimental.** It works for the plugins it has been exercised against
-(e.g. `less-plugin-autoprefix`, `less-plugin-clean-css`, `less-plugin-dls`), but
-it has not been validated across the whole Less plugin ecosystem, and the surface
-may change. If you need broad, battle-tested Less-plugin support today, use
-Less.js directly.
+**Alpha / experimental.** The supported public route is native function
+contribution only. If you need Less visitors, `functionRegistry`, script-plugin,
+or post-processor support today, use Less.js directly.
 
 The programmatic plugin/compiler API is **not yet stabilized** — the `jess` CLI
 is the documented public surface for the alpha. Watch the
