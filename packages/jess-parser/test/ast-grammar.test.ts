@@ -1192,15 +1192,33 @@ describe('Jess AST grammar facts', () => {
 
   it('rejects unsupported dynamic CSS url bodies rather than falling through to FunctionCall', () => {
     for (const source of [
-      '.asset { image: url($(path)); }',
       '.asset { image: url($path); }',
       '.asset { image: url(images/$[path] icon.svg); }',
-      '@import url($(path));',
       '@import url($path);',
       '.asset { image: url("images/icon.svg"; }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+  });
+
+  it('admits $(…) expression interpolation in url bodies as a value position', () => {
+    // A url body is a value position (like a quote interior), so the $(…)
+    // arithmetic/expression form is admitted there alongside the $[…] accessor —
+    // unlike identifier-like slots (selectors, property names) which stay accessor-only.
+    for (const source of ['.asset { image: url($(path)); }', '@import url($(path));']) {
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
+    }
+    const rule = parse('.asset { image: url($(path)); }').children[0];
+    expect(rule).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Declaration', name: 'image',
+        value: { type: 'Url', value: { type: 'Interpolation', parts: [
+          { ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'path' } }, unquote: true }
+        ] } }
+      }]
+    });
   });
 
   it('constructs public static selector lists, compounds, combinators, and nested rules directly', () => {
