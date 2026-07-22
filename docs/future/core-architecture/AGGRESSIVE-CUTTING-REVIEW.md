@@ -259,6 +259,18 @@ a blanket optimization exemption or a new active architecture queue.
       "why": "This slice changes only ESLint-required indentation/control-bracing and upgrades an existing StyleImport discriminant check into a truthful TypeScript type predicate. It adds no runtime branch, traversal, allocation, resolver, or output policy; the predicate preserves the existing type check and the serializer/import walk remains the same execution path.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
     }
+  },
+  {
+    "id": "ast-extend-emit-lint-only-normalization",
+    "kind": "neutral-or-negative",
+    "surface": "mechanical ESLint normalization in the existing AST extend emitter",
+    "files": ["packages/core/src/ast/extend/emit.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "This slice changes only ESLint-required braces, operator layout, arrow-parameter style, and trailing commas in the existing AST extend emitter. It adds no planner, selector traversal, allocation, or output policy; the emitted extend facts and dispatch path are unchanged.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+    }
   }
 ]
 ```

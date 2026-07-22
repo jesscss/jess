@@ -2194,3 +2194,42 @@ silently choose one language’s policy.
   }]
   ```
 - Verdict: accepted mechanical quality cleanup; no performance claim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: mechanical ESLint normalization in the canonical AST extend
+  emitter.
+- Architecture surface: `packages/core/src/ast/extend/emit.ts` remains the
+  existing typed extend-output owner. No parser host, bridge, resolver, planner,
+  or compatibility surface was added.
+- Separation/duplication: none. Existing extend IR emission and selector output
+  ownership are unchanged.
+- Cumulative node weight: unchanged. No AST, selector, planner, or render-frame
+  object is added.
+- New traversal: none. Every loop and conditional is pre-existing; only braces
+  and operator layout were normalized.
+- New node/materialization: none.
+- Render path: unchanged direct selector/output emission.
+- Helper/API surface: no new helper or public API.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [node
+  construction], [parent/source mutation], [side map/set], and [materialized
+  array/object] are unchanged existing AST extend-plan expressions whose
+  surrounding formatting was fixed; [routine error control] is an existing
+  try path. No cost-bearing construct was introduced.
+- Evidence: the AST extend preflight contract passes 2/2; targeted ESLint is
+  clean; the benchmark oracle remains `benchmark.less`, collapseNesting=true,
+  122390 bytes, SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`.
+  No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-extend-emit-lint-only-normalization",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"The changed lines are mechanical ESLint normalization in the existing AST extend emitter. No runtime operation, traversal, allocation, planner fact, or output policy is added.",
+    "dangerTokensJustification":"[loop/traversal], [routine error control], [array helper], and [array spread/materialization] are existing constructs shown as changed only because their formatting was normalized. The canonical extend path and benchmark byte oracle are unchanged.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted mechanical quality cleanup; no performance claim.

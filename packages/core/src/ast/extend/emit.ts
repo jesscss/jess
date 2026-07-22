@@ -40,7 +40,7 @@ import {
   isSimple,
   multisetSubset,
   simpleText,
-  textSimples,
+  textSimples
 } from './ir.js';
 import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
@@ -126,10 +126,14 @@ function branchSingleCompound(b: Branch): Compound | null {
 /** True when `target`'s text-simples are ⊆ some compound in `level`. */
 function compoundHitsLevel(target: Compound, level: Level): boolean {
   const need = textSimples(target);
-  if (need.length === 0) return false;
+  if (need.length === 0) {
+    return false;
+  }
   for (const b of level) {
     for (const seg of b.segs) {
-      if (multisetSubset(need, textSimples(seg.compound))) return true;
+      if (multisetSubset(need, textSimples(seg.compound))) {
+        return true;
+      }
     }
   }
   return false;
@@ -144,10 +148,14 @@ function descendsFrom(b: string, headerSet: string[]): boolean {
   const token = headerSet.length === 1 ? headerSet[0]! : `:is(${headerSet.join(', ')})`;
   const cands = headerSet.length > 1 ? [token, ...headerSet] : headerSet;
   for (const h of cands) {
-    if (b === h) return true;
+    if (b === h) {
+      return true;
+    }
     if (b.startsWith(h)) {
       const next = b[h.length]!;
-      if (' .#:[>+~&'.includes(next)) return true;
+      if (' .#:[>+~&'.includes(next)) {
+        return true;
+      }
     }
   }
   return false;
@@ -203,25 +211,37 @@ function siblingCompact(branches: Branch[], allowMultiSeg: boolean): Branch[] {
  * differ in structure or in more than one compound. Multi-segment rows only merge
  * when `allowMultiSeg` (see {@link siblingCompact}). */
 function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch | null {
-  if (a.segs.length !== b.segs.length) return null;
+  if (a.segs.length !== b.segs.length) {
+    return null;
+  }
   const multiSeg = a.segs.length > 1;
-  if (multiSeg && !allowMultiSeg) return null;
+  if (multiSeg && !allowMultiSeg) {
+    return null;
+  }
   let diff = -1;
   for (let i = 0; i < a.segs.length; i++) {
     const as = a.segs[i]!;
     const bs = b.segs[i]!;
-    if (as.comb !== bs.comb) return null;
+    if (as.comb !== bs.comb) {
+      return null;
+    }
     if (compoundText(as.compound) !== compoundText(bs.compound)) {
-      if (diff !== -1) return null;
+      if (diff !== -1) {
+        return null;
+      }
       diff = i;
     }
   }
-  if (diff === -1) return null;
+  if (diff === -1) {
+    return null;
+  }
   // Merge the differing compound into `:is()`. When the branch is a single segment
   // (no shared segment context), only merge if the compounds share a suffix — two
   // whole branches sharing NOTHING (`.ext8.ext9` / `.fuu`) stay a comma list.
   const merged = mergeCompoundsToIs(a.segs[diff]!.compound, b.segs[diff]!.compound, multiSeg);
-  if (!merged) return null;
+  if (!merged) {
+    return null;
+  }
   const segs = a.segs.map((s, i) => (i === diff ? { comb: s.comb, compound: merged } : cloneSeg(s)));
   // [import:reference] the merged branch is visible if EITHER source is visible (an
   // `:is(a, b)` emits its whole group). Only two hidden branches merge to hidden.
@@ -240,19 +260,25 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
   const bs = b.simples;
   let suffix = 0;
   while (
-    suffix < as.length &&
-    suffix < bs.length &&
-    simpleText(as[as.length - 1 - suffix]!) === simpleText(bs[bs.length - 1 - suffix]!)
+    suffix < as.length
+    && suffix < bs.length
+    && simpleText(as[as.length - 1 - suffix]!) === simpleText(bs[bs.length - 1 - suffix]!)
   ) {
     suffix++;
   }
-  if (suffix === 0 && !allowNoSuffix) return null;
+  if (suffix === 0 && !allowNoSuffix) {
+    return null;
+  }
   const aLead = as.slice(0, as.length - suffix);
   const bLead = bs.slice(0, bs.length - suffix);
-  if (aLead.length === 0 || bLead.length === 0) return null;
+  if (aLead.length === 0 || bLead.length === 0) {
+    return null;
+  }
   const leadBranch = (lead: Simple[]): Branch[] => {
     // A single leading `:is(...)` flattens into the merged group.
-    if (lead.length === 1 && lead[0]!.t === 'is') return lead[0]!.branches.map(cloneBranch);
+    if (lead.length === 1 && lead[0]!.t === 'is') {
+      return lead[0]!.branches.map(cloneBranch);
+    }
     return [descendantBranch(lead.map(cloneSimple))];
   };
   const isGroup = isSimple([...leadBranch(aLead), ...leadBranch(bLead)]);
@@ -268,7 +294,9 @@ function mergeCompoundsToIs(a: Compound, b: Compound, allowNoSuffix: boolean): C
 function sharedPrefixLen(a: Level[], b: Level[]): number {
   const n = Math.min(a.length, b.length);
   let i = 0;
-  while (i < n && a[i] === b[i]) i++;
+  while (i < n && a[i] === b[i]) {
+    i++;
+  }
   return i;
 }
 
@@ -283,7 +311,9 @@ function sharedPrefixLen(a: Level[], b: Level[]): number {
  */
 function relativizeExtender(inst: PlanInstruction, subject: PlanSubject): PlanInstruction {
   const drop = Math.min(sharedPrefixLen(subject.path, inst.extenderPath), subject.path.length - 1);
-  if (drop === 0) return inst;
+  if (drop === 0) {
+    return inst;
+  }
   return { ...inst, extenderPath: inst.extenderPath.slice(drop) };
 }
 
@@ -297,13 +327,17 @@ export function computeExtends(
   root: Stylesheet,
   hiddenRules?: ReadonlySet<Rule>,
   referenceBoundaries?: ReadonlyMap<Rule, object>,
-  overlay?: PlanOverlay,
+  overlay?: PlanOverlay
 ): ExtendResults | null {
   // Zero-cost gate: an allocation-free pre-scan short-circuits the common case (no
   // `:extend()` anywhere) before any subject/instruction plan is built.
-  if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) return null;
+  if (!documentHasExtend(root) && (!overlay || overlay.instructions.length === 0)) {
+    return null;
+  }
   const plan = collectPlan(root, hiddenRules, referenceBoundaries, overlay);
-  if (plan.instructions.length === 0) return null;
+  if (plan.instructions.length === 0) {
+    return null;
+  }
 
   const flatByRule = new Map<Rule, string[]>();
   const hiddenByRule = new Map<Rule, boolean[]>();
@@ -312,12 +346,14 @@ export function computeExtends(
   const staticProjection: ExtendPlacementResults = { flatByRule, hiddenByRule, nestedPlan, hoistHeader };
   let byPlacement: WeakMap<object, ExtendPlacementResults> | null = null;
   const projectionFor = (subject: PlanSubject): ExtendPlacementResults => {
-    if (!subject.placement) return staticProjection;
+    if (!subject.placement) {
+      return staticProjection;
+    }
     const all = byPlacement ??= new WeakMap<object, ExtendPlacementResults>();
     let projection = all.get(subject.placement);
     if (!projection) {
       projection = {
-        flatByRule: new Map(), hiddenByRule: new Map(), nestedPlan: new Map(), hoistHeader: new Map(),
+        flatByRule: new Map(), hiddenByRule: new Map(), nestedPlan: new Map(), hoistHeader: new Map()
       };
       all.set(subject.placement, projection);
     }
@@ -337,21 +373,27 @@ export function computeExtends(
       // [import:reference] a hidden subject's own seed branches are hidden; a visible
       // extender folded in later carries its own (visible) provenance, so only the
       // all-hidden case drops the whole rule.
-      if (s.hidden) for (const b of r) b.hidden = true;
+      if (s.hidden) {
+        for (const b of r) {
+          b.hidden = true;
+        }
+      }
       rawCache.set(s, r);
     }
     return r;
   };
 
   const reachingOf = (s: PlanSubject): PlanInstruction[] =>
-    plan.instructions.filter((i) =>
+    plan.instructions.filter(i =>
       (i.referenceBoundary === null || i.referenceBoundary === s.referenceBoundary)
-        && reaches(i.scope, s.scope)
+      && reaches(i.scope, s.scope)
     );
 
   const childrenOf = new Map<PlanSubject, PlanSubject[]>();
   for (const s of plan.subjects) {
-    if (s.parent) (childrenOf.get(s.parent) ?? childrenOf.set(s.parent, []).get(s.parent)!).push(s);
+    if (s.parent) {
+      (childrenOf.get(s.parent) ?? childrenOf.set(s.parent, []).get(s.parent)!).push(s);
+    }
   }
 
   // ---- decl-less `&&` self-collapse (`.e { && {…} }` → `.e.e { … }`) ----
@@ -364,17 +406,23 @@ export function computeExtends(
   const collapsedParent = new Set<Rule>();
   const collapsedChild = new Set<PlanSubject>();
   const isPureAmpSelfCompound = (s: PlanSubject): boolean => {
-    if (s.ownLocal.length !== 1) return false;
+    if (s.ownLocal.length !== 1) {
+      return false;
+    }
     const br = s.ownLocal[0]!;
-    if (br.segs.length !== 1) return false;
+    if (br.segs.length !== 1) {
+      return false;
+    }
     const simples = br.segs[0]!.compound.simples;
-    return simples.length >= 2 && simples.every((x) => x.t === 'text' && x.text === '&');
+    return simples.length >= 2 && simples.every(x => x.t === 'text' && x.text === '&');
   };
   for (const p of plan.subjects) {
     let onlyRule: Statement | null = null;
     let bail = false;
     for (const st of p.rule.body) {
-      if (st.type === 'MixinDef' || st.type === 'VariableDeclaration') continue;
+      if (st.type === 'MixinDef' || st.type === 'VariableDeclaration') {
+        continue;
+      }
       if (st.type === 'Rule' && onlyRule === null) {
         onlyRule = st;
         continue;
@@ -382,11 +430,17 @@ export function computeExtends(
       bail = true; // a direct decl/comment/mixin-call/at-rule, or a second rule
       break;
     }
-    if (bail || onlyRule === null) continue;
+    if (bail || onlyRule === null) {
+      continue;
+    }
     const kids = childrenOf.get(p) ?? [];
-    if (kids.length !== 1) continue;
+    if (kids.length !== 1) {
+      continue;
+    }
     const c = kids[0]!;
-    if (c.rule !== onlyRule || !isPureAmpSelfCompound(c)) continue;
+    if (c.rule !== onlyRule || !isPureAmpSelfCompound(c)) {
+      continue;
+    }
     collapsedParent.add(p.rule);
     collapsedChild.add(c);
   }
@@ -399,10 +453,10 @@ export function computeExtends(
   // a subject is a candidate iff it or any ancestor is a seed. Everything else gets
   // the cheap default and is proven (EXTEND-REDESIGN.md §2) to need nothing more.
   const isSeed = (s: PlanSubject): boolean =>
-    s.mayMatch ||
-    (s.parent !== null && s.rule.extendInstructions !== undefined && s.rule.extendInstructions.length > 0) ||
-    collapsedParent.has(s.rule) ||
-    collapsedChild.has(s);
+    s.mayMatch
+    || (s.parent !== null && s.rule.extendInstructions !== undefined && s.rule.extendInstructions.length > 0)
+    || collapsedParent.has(s.rule)
+    || collapsedChild.has(s);
   const candidate = new Set<PlanSubject>();
   for (const s of plan.subjects) {
     // document (pre-)order ⇒ parent precedes child, so the ancestor's membership is
@@ -415,7 +469,9 @@ export function computeExtends(
   // ---- FLAT solve, candidates ONLY ----
   const flatBySubject = new Map<PlanSubject, Branch[]>();
   for (const s of plan.subjects) {
-    if (!candidate.has(s)) continue;
+    if (!candidate.has(s)) {
+      continue;
+    }
     const { list: flat, changed } = solveComposed(rawOf(s), s, plan);
     flatBySubject.set(s, flat);
     // A rule the extend engine actually changed emits its EXTENDED header with
@@ -429,7 +485,9 @@ export function computeExtends(
       projectionFor(s).flatByRule.set(s.rule, compacted.map(branchText));
       // [import:reference] carry the per-branch visibility mask only when some branch
       // is hidden — a document with no reference imports never allocates it.
-      if (compacted.some((b) => b.hidden)) projectionFor(s).hiddenByRule.set(s.rule, compacted.map((b) => b.hidden === true));
+      if (compacted.some(b => b.hidden)) {
+        projectionFor(s).hiddenByRule.set(s.rule, compacted.map(b => b.hidden === true));
+      }
     }
   }
 
@@ -448,7 +506,9 @@ export function computeExtends(
     const rawKeys = new Set(rawOf(p).map(branchText));
     for (const inst of reachingOf(p)) {
       if (inst.partial && rawKeys.has(branchText(inst.target))) {
-        for (const e of composePath(inst.extenderPath)) out.push(branchText(e));
+        for (const e of composePath(inst.extenderPath)) {
+          out.push(branchText(e));
+        }
       }
     }
     return out;
@@ -462,7 +522,9 @@ export function computeExtends(
   //   so it does NOT cascade (its children emit nested under the new header).
   const flattenModeOf = new Map<PlanSubject, 'collapse' | 'renest'>();
   const ownMode = (s: PlanSubject): 'none' | 'collapse' | 'renest' => {
-    if (s.parent === null) return 'none';
+    if (s.parent === null) {
+      return 'none';
+    }
     const cross = (): 'collapse' | 'renest' => (hasChildSubjects(s) ? 'renest' : 'collapse');
     const parentKeys = new Set(rawOf(s.parent).map(branchText));
     // trigger P: an `all`-extender aliasing the parent whole complex whose target
@@ -483,15 +545,21 @@ export function computeExtends(
     const raw = rawOf(s);
     const phSet = extendedParentHeader(s.parent);
     for (const inst of reachingOf(s)) {
-      if (!raw.some((b) => branchWholeMatches(b, inst.target, inst.partial))) continue;
+      if (!raw.some(b => branchWholeMatches(b, inst.target, inst.partial))) {
+        continue;
+      }
       // An EXACT (`!partial`) whole-match into a rule with nested children does NOT
       // flatten — the exact extender cannot carry the children, so it SPLITS to a
       // sibling rule (the target's direct decls only) while this rule stays put. Only
       // an `all` whole-match (which propagates into children) or an exact match into
       // a LEAF crosses the `&`.
-      if (!inst.partial && hasChildSubjects(s)) continue;
+      if (!inst.partial && hasChildSubjects(s)) {
+        continue;
+      }
       for (const e of composePath(inst.extenderPath)) {
-        if (!descendsFrom(branchText(e), phSet)) return cross();
+        if (!descendsFrom(branchText(e), phSet)) {
+          return cross();
+        }
       }
     }
     return 'none';
@@ -501,15 +569,20 @@ export function computeExtends(
     // ownMode is 'none' and no ancestor collapsed); leave them out of the map so they
     // take the cheap default. Document order guarantees the parent's mode is decided
     // first for the cascade read.
-    if (!candidate.has(s)) continue;
+    if (!candidate.has(s)) {
+      continue;
+    }
     const own = ownMode(s);
-    if (own !== 'none') flattenModeOf.set(s, own);
-    else if (s.parent !== null && flattenModeOf.get(s.parent) === 'collapse') flattenModeOf.set(s, 'collapse');
+    if (own !== 'none') {
+      flattenModeOf.set(s, own);
+    } else if (s.parent !== null && flattenModeOf.get(s.parent) === 'collapse') {
+      flattenModeOf.set(s, 'collapse');
+    }
   }
 
   const isFlattened = (s: PlanSubject): boolean => flattenModeOf.has(s);
   const hasSurvivingChild = (s: PlanSubject): boolean =>
-    (childrenOf.get(s) ?? []).some((c) => !isFlattened(c));
+    (childrenOf.get(s) ?? []).some(c => !isFlattened(c));
 
   // ---- per-subject nested header + splits ----
   for (const s of plan.subjects) {
@@ -525,7 +598,7 @@ export function computeExtends(
         projectionFor(s).nestedPlan.set(s.rule, {
           flatten: false,
           header: s.ownLocal.map(branchText),
-          splits: [],
+          splits: []
         });
       }
       continue;
@@ -566,14 +639,18 @@ export function computeExtends(
       const identity = rawOf(s);
       if (survivors) {
         for (const inst of reaching) {
-          if (inst.partial) continue;
-          if (identity.some((b) => branchText(b) === branchText(inst.target))) {
-            for (const e of composePath(inst.extenderPath)) splits.push(e);
+          if (inst.partial) {
+            continue;
+          }
+          if (identity.some(b => branchText(b) === branchText(inst.target))) {
+            for (const e of composePath(inst.extenderPath)) {
+              splits.push(e);
+            }
           }
         }
       }
       const splitKeys = new Set(splits.map(branchText));
-      header = flatBySubject.get(s)!.filter((b) => !splitKeys.has(branchText(b)));
+      header = flatBySubject.get(s)!.filter(b => !splitKeys.has(branchText(b)));
     } else {
       // A surviving nested rule: rewrite ONLY the own-local selector with the
       // child-side `all`-matches (whole-segment → comma; sub-compound → `:is()`);
@@ -586,14 +663,14 @@ export function computeExtends(
         // [fold] re-express each extender RELATIVE to this subject's parent context —
         // a sibling under a shared ancestor folds as its own-local remainder
         // (`.attribute-test`), not the double-prefixed full path.
-        .map((inst) => relativizeExtender(inst, s));
+        .map(inst => relativizeExtender(inst, s));
       header = runFixpoint(s.ownLocal.map(cloneBranch), applied, buildContribs(applied)).list;
     }
     projectionFor(s).nestedPlan.set(s.rule, {
       flatten: false,
       header: header.map(branchText),
-      splits: dedupBranchTexts(splits).map((t) => [t]),
-      collapseTransparent: collapsedParent.has(s.rule),
+      splits: dedupBranchTexts(splits).map(t => [t]),
+      collapseTransparent: collapsedParent.has(s.rule)
     });
   }
 
