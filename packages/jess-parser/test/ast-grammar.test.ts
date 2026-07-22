@@ -17,6 +17,15 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && Array.isArray(value.children);
 }
 
+function isRule(value: unknown): value is Rule {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Rule'
+    && 'body' in value
+    && Array.isArray(value.body);
+}
+
 function hasCstGrammar(node: unknown, grammarType: string): boolean {
   if (typeof node !== 'object' || node === null) {
     return false;
@@ -414,7 +423,12 @@ describe('Jess AST grammar facts', () => {
       expect(direct.unconsumedFrom, source).toBeNull();
       const document = parse(source);
       expect(document).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule' }] });
-      expect((document.children[0] as Rule).body[0]).toMatchObject(
+      const first = document.children[0];
+      expect(isRule(first)).toBe(true);
+      if (!isRule(first)) {
+        throw new Error('Expected declaration test document to contain a Rule.');
+      }
+      expect(first.body[0]).toMatchObject(
         { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, important: true }
       );
       expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toContain(
@@ -1143,7 +1157,10 @@ describe('Jess AST grammar facts', () => {
       phase: 'resolve',
       reason: 'Symbol "@path" is undefined in this scope.'
     });
-    expect(sourceSpanOf((missingPath as JessError).node!)).toEqual({ start: 12, end: 19 });
+    if (!(missingPath instanceof JessError) || missingPath.node === undefined) {
+      throw new Error('Expected missing import path to carry a JessError source node.');
+    }
+    expect(sourceSpanOf(missingPath.node)).toEqual({ start: 12, end: 19 });
 
     expect(parse('@import url();')).toMatchObject({
       children: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { type: 'Any', src: '' } } }]
@@ -1671,7 +1688,10 @@ describe('Jess AST grammar facts', () => {
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({ type: 'Stylesheet' });
-    expect((direct.value as Stylesheet).children.slice(0, 5)).toMatchObject([
+    if (!isStylesheet(direct.value)) {
+      throw new Error('Expected direct Jess parse to produce a Stylesheet.');
+    }
+    expect(direct.value.children.slice(0, 5)).toMatchObject([
       {
         type: 'MixinDef', name: 'match',
         guard: {
