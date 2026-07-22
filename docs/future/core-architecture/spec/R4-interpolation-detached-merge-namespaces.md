@@ -85,11 +85,11 @@ Related string/escape operators that resolve to the same "unquoted bytes" leaf:
   in §R4.1.6 because it shares the "resolve to a name, then look up" machinery.
 - **`.jess` forms** `$(expr)` (value interpolation) and `$[key]` (map/property
   index interpolation) are the `.jess`-dialect spellings of the same two
-  operations (splice-resolved-value, index-a-collection). They bridge to the
-  SAME tree2 nodes as `@{…}` / `#map[key]`; only the front-end (`.jess` parser →
-  bridge) differs. The `.jess` parser deliberately trails (memory
-  `jess-parser-intentionally-trails`), so R4 builds the core nodes + the Less
-  front-end now; the `.jess` front-end wires the identical nodes later.
+  operations (splice-resolved-value, index-a-collection). They must reduce
+  through the `.jess` parser's public `parse() -> Stylesheet` route to canonical
+  AST-v2 facts; there is no bridge or deferred “wire the front-end later” stage.
+  Retain the grammar-shape observations below only after validating them against
+  the current direct parser contract.
 
 ### R4.1.2 Data model
 

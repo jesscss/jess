@@ -6,6 +6,10 @@
 > pipeline: dialect `parse() -> Stylesheet` → plugin → retained Context dispatcher →
 > Jess AST evaluation/render, with byte identity before timing. See `HANDOFF.md`.
 
+> All “AST is test-only,” `parseToAst`, direct-build-host, and bridge-orthogonal
+> conclusions in the historical survey below are struck with the plan. They are
+> not evidence about the current public route or a release gate.
+
 > READ-ONLY survey, base `origin/dev` (@ `53e9db8dd`, advancing under an in-flight
 > fns Stage F). All file:line citations are on `origin/dev`. No source edited.
 > **Bottom line up front:** the shortest path is **NOT "just add a harness."**

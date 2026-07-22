@@ -8,12 +8,18 @@
 > Supersedes the mechanics (not the principles) of
 > `spec/R6-plugins-compat-modules.md`, which was written against the older
 > `tree2-cleanroom` snapshot (`bridgeToTree2` / `ValueService` / async
-> record-replay). Those layers no longer exist on `dev`: the engine is
-> `parseToAst` (direct build host, no legacy `Rules`, no bridge) →
-> `serialize` (single eval+emit walk) → CSS, with a caller-injected
-> `ValueEvaluator` over a flat `FnRegistry` (`ast/value-dispatch.ts`). This
-> spec re-expresses R6's Part A/B/C for that live shape and adds the piece R6
+> record-replay). Those layers no longer exist on `dev`: the public route is
+> each dialect's `parse()` reduction directly to `Stylesheet`, followed by the
+> retained Context/plugin dispatch and canonical evaluation/render. This spec
+> re-expresses R6's Part A/B/C for that public shape and adds the piece R6
 > hand-waved: a **scope-frame-aware function registry**.
+
+> **Architecture correction (2026-07-22).** Any `parseToAst` or “direct build
+> host” wording that remains below is historical shorthand and is not an API or
+> an implementation stage. Plugin design consumes the public `Stylesheet` from
+> a dialect parser; it does not create, preserve, or replace a parser host,
+> bridge, or second source-loading path. Context remains the sole plugin/import
+> dispatcher.
 
 ## HARD constraints (non-negotiable)
 
@@ -390,11 +396,11 @@ Between parse+import-resolution and `serialize`, the driver runs an optional
 structural pre-walk over the `ast/` plain-data node tree:
 
 ```
-{ root } = parseToAst(src)
-resolved = resolveDirectImports(root.children, …)     // existing
+stylesheet = parse(src)                               // dialect public entry
+resolved = context.loadImports(stylesheet, …)         // retained Context dispatch
 if (preEvalVisitors.length)                            // HARD gate: empty ⇒ skip
   resolved = preWalk(resolved, preEvalVisitors)        // structural rewrite
-css = serialize(root(resolved), { evaluator, … })      // the single pass
+css = serialize(resolved, { evaluator, … })            // the single pass
 ```
 
 - `preWalk` feeds the settled `(node) => Node | void` contract at each node

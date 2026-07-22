@@ -1,23 +1,15 @@
 # AST arena — standing experiment handoff
 
-> **ELEVATED 2026-07-15 (owner-ratified): tree2 is no longer just an arena perf experiment —
-> it is THE definitive core rewrite (the destination representation).** The owner ratified two
-> decisions: (1) tree2 SUPERSEDES the `origin/dev` spine / eval-cutover effort — the D-EVAL
-> flip, field-slim levers, and reuse-gate deletions are MOOT-under-tree2 (stop investing); the
-> spine is the interim shipping alpha ONLY; there is NO second parallel cutover; port only the
-> DESIGNS (extend PLAN/SOLVE/EMIT pipeline, live-binding/`BindingCell`, projection visitor
-> contract, sourcemap/trivia guards, ratchets); flip the FRONT END to tree2 at parity vs the
-> the intended-v5 expected output. (2) R0-FIRST: build `collapseNesting:false` nested-output mode BEFORE
-> extend. The governing coverage-matrix + done-right roadmap is now
-> [`TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md`](./TREE2-DEFINITIVE-REWRITE-COVERAGE-AND-ROADMAP.md)
-> — read it as the plan of record. The experiment log below stays intact as the rung-by-rung
-> history.
+> **ARCHIVED ARCHITECTURE CORRECTION (2026-07-22).** The earlier owner-ratified
+> tree2-destination/staged-front-end direction recorded below is superseded. The
+> public destination is AST-v2 `Stylesheet` from each dialect's direct Parseman
+> `parse()` reduction; no tree2 front-end flip, bridge, or host stage is required.
+> Retain this file only as performance/design evidence, and do not treat its
+> roadmap or branch instructions as active work.
 
-Status: living handoff, opened 2026-07-15. This is an OPEN-ENDED experimental track,
-distinct from the incremental-lever perf work on `origin/dev`. An agent picks this up,
-runs one radical-departure experiment, appends its result to the log at the bottom, and
-either lands a proven byte-identical win or discards and records why. Then the next agent
-(or the next iteration) continues from the log.
+Status: ARCHIVED experiment log, opened 2026-07-15. It is not an active handoff or
+destination plan. New performance work follows `HANDOFF.md` and must measure the
+public direct parser/evaluator route.
 
 ## Mission
 

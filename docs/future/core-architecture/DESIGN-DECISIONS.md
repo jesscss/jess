@@ -172,7 +172,7 @@ reference"* framing is superseded by this row. Source:
 
 | # | Ruling | Status | Source / detail |
 |---|--------|--------|-----------------|
-| C1 | tree2 = THE definitive core rewrite (destination representation), now shipped as the `ast/` engine — no longer "just an arena perf experiment". | SETTLED (owner-ratified 2026-07-15) | `AST-ARENA-EXPERIMENT-HANDOFF.md`, `memory:tree2-is-definitive-core-rewrite` |
+| C1 | AST v2 `Stylesheet` is the canonical public representation and destination. The old `tree2`/`tree2-frontend` experiment and its bridge/host vocabulary are historical evidence only; they are not a second destination or a required front-end stage. | SETTLED (owner correction, 2026-07-22) | `HANDOFF.md` and the direct `parse() -> Stylesheet` contract |
 | C2 | P0 KEYSTONE: the parser is the SOLE source of structure; core NEVER re-derives structure from bytes. | SETTLED | `TREE2-CONSTITUTION.md` P0, `memory:parser-owns-structure-no-byte-rederivation` |
 | C3 | Unified node model: ONE plain-data representation; discriminant `type:'Dimension'` (PascalCase = Less `.type`); numeric `Kind`/lowercase `kind` are dead. Serialize + value-eval = free functions on nodes (tree-shakeable), nodes stay pure minimal data. | SETTLED | `UNIFIED-NODE-MODEL-SPEC.md`, `memory:ast-v2-unified-node-model`, `memory:arena-serialize-external-treeshake` |
 | C4 | Committed render architecture = node-reuse + live-binding spine; folds are serialize-time PROJECTION, not tree mutation. | SETTLED | `memory:committed-architecture-object-reduction`, `memory:spine-is-projection-not-mutation` |
