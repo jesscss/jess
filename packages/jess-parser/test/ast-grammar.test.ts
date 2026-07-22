@@ -17,6 +17,13 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && Array.isArray(value.children);
 }
 
+function stylesheet(value: unknown): Stylesheet {
+  if (!isStylesheet(value)) {
+    throw new TypeError('Expected the Jess grammar to produce a Stylesheet');
+  }
+  return value;
+}
+
 function hasCstGrammar(node: unknown, grammarType: string): boolean {
   if (typeof node !== 'object' || node === null) {
     return false;
@@ -414,7 +421,11 @@ describe('Jess AST grammar facts', () => {
       expect(direct.unconsumedFrom, source).toBeNull();
       const document = parse(source);
       expect(document).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule' }] });
-      expect((document.children[0] as Rule).body[0]).toMatchObject(
+      const rule = document.children[0];
+      if (rule?.type !== 'Rule') {
+        throw new Error('expected a rule containing the important declaration');
+      }
+      expect(rule.body[0]).toMatchObject(
         { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, important: true }
       );
       expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toContain(
@@ -1133,7 +1144,7 @@ describe('Jess AST grammar facts', () => {
 
     let missingPath: unknown;
     try {
-      serialize(parse('@import url($[path]); $path: "images/icon.svg";'));
+      void serialize(parse('@import url($[path]); $path: "images/icon.svg";'));
     } catch (error) {
       missingPath = error;
     }
@@ -1143,7 +1154,10 @@ describe('Jess AST grammar facts', () => {
       phase: 'resolve',
       reason: 'Symbol "@path" is undefined in this scope.'
     });
-    expect(sourceSpanOf((missingPath as JessError).node!)).toEqual({ start: 12, end: 19 });
+    if (!(missingPath instanceof JessError) || !missingPath.node) {
+      throw new Error('expected a JessError with parser provenance');
+    }
+    expect(sourceSpanOf(missingPath.node)).toEqual({ start: 12, end: 19 });
 
     expect(parse('@import url();')).toMatchObject({
       children: [{ type: 'AtRuleStatement', name: '@import', prelude: { type: 'Url', value: { type: 'Any', src: '' } } }]
@@ -1671,7 +1685,7 @@ describe('Jess AST grammar facts', () => {
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({ type: 'Stylesheet' });
-    expect((direct.value as Stylesheet).children.slice(0, 5)).toMatchObject([
+    expect(stylesheet(direct.value).children.slice(0, 5)).toMatchObject([
       {
         type: 'MixinDef', name: 'match',
         guard: {

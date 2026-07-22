@@ -20,7 +20,8 @@ describe('typed Plugin lexical body preparation', () => {
   it('hoists direct typed Plugins over both earlier and later statements in one body', () => {
     const seen: string[] = [];
     const pluginHost: PluginHost = { loadPlugin: ({ specifier }) => {
-      seen.push(specifier); return [fn('probe', 'root')];
+      seen.push(specifier);
+      return [fn('probe', 'root')];
     } };
     const document = stylesheet([
       rule('.before', [decl('value', funcCall('probe', []))]),

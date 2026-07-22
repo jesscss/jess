@@ -35,8 +35,7 @@ describe('nearestOuter (Jess `:=`)', () => {
     if (!cell) {
       return undefined;
     }
-    const value = cell.value as { toString(): string };
-    return value.toString();
+    return cell.value.toString();
   }
 
   it('reassigns the enclosing binding cell (nested `:=` writes the outer scope)', async () => {
@@ -145,6 +144,7 @@ describe('nearestOuter (Jess `:=`)', () => {
     } catch (e) {
       thrown = e;
     }
-    expect(String((thrown as Error)?.message ?? thrown)).toContain('"ro" is readonly');
+    const message = thrown instanceof Error ? thrown.message : String(thrown);
+    expect(message).toContain('"ro" is readonly');
   });
 });

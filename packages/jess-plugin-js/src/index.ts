@@ -166,8 +166,8 @@ type BrokerResponse = {
 type RpcRequest =
   | { id: number; type: 'load'; modulePath: string }
   | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
-  | { id: number; type: 'loadLessPlugin'; modulePath: string }
-  | { id: number; type: 'invokeLessPluginFunction'; modulePath: string; functionName: string; args: unknown[] };
+  | { id: number; type: 'loadLessPlugin'; modulePath: string; options: string | null }
+  | { id: number; type: 'invokeLessPluginFunction'; modulePath: string; options: string | null; functionName: string; args: unknown[] };
 
 type RpcResult =
   | {
@@ -546,8 +546,8 @@ export class JsPlugin extends AbstractPlugin {
     request:
       | { type: 'load'; modulePath: string }
       | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
-      | { type: 'loadLessPlugin'; modulePath: string }
-      | { type: 'invokeLessPluginFunction'; modulePath: string; functionName: string; args: unknown[] }
+      | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
+      | { type: 'invokeLessPluginFunction'; modulePath: string; options: string | null; functionName: string; args: unknown[] }
   ): Promise<RpcResult> {
     await this.ensureRuntime();
     this.clearIdleTimer();

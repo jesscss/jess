@@ -458,7 +458,10 @@ describe('Condition', () => {
 
     it('a placement clone still evaluates (children not dropped)', async () => {
       const src = condition([num(1), '<', num(2)]);
-      const cloned = src.cloneForPlacement() as Condition;
+      const cloned = src.cloneForPlacement();
+      if (!(cloned instanceof Condition)) {
+        throw new TypeError('Expected a Condition placement clone.');
+      }
       const evald = await cloned.eval(context);
       expect(evald.render(context)).toBe('true');
     });

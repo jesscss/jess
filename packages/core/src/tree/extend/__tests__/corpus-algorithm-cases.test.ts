@@ -12,7 +12,7 @@ import { el, sel, sellist, compound, is, co, pseudo, attr, quoted, type Selector
 import { extendViaOwn, reportFrontier, resetFrontier } from './corpus-harness.js';
 
 function not(arg: Selector): Selector {
-  return pseudo({ name: ':not', arg }) as unknown as Selector;
+  return pseudo({ name: ':not', arg });
 }
 
 describe('CORPUS (own engine): Extend Selector Algorithm', () => {

@@ -18,7 +18,12 @@ import {
 } from './selector-compound.js';
 import { SimpleSelector } from './selector-simple.js';
 import { BasicSelector } from './selector-basic.js';
-import { SelectorList, selectorListValueOf, emitSelectorListLike, type SelectorListItem } from './selector-list.js';
+import {
+  SelectorList,
+  selectorListValueOf,
+  emitSelectorListLike,
+  type SelectorListItem
+} from './selector-list.js';
 import { selectorListItemForMatch } from './util/selector-match-core.js';
 import { PseudoSelector } from './selector-pseudo.js';
 import {
@@ -36,7 +41,7 @@ import {
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
-import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
+import { isRenderBuffer, prepareBufferPrintState, writeRenderText, writeRenderTextResult, type RenderBuffer } from './util/render-buffer.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership, reuseLeaf } from './util/cloning.js';
@@ -69,6 +74,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
 }
 
+function copySelectorForRulesetMetadata(selector: Selector): Selector;
+function copySelectorForRulesetMetadata(selector: string): string;
+function copySelectorForRulesetMetadata(selector: Selector | string): Selector | string;
 function copySelectorForRulesetMetadata(selector: Selector | string): Selector | string {
   // A bare-string selector (strings-not-nodes model) is immutable — return as-is.
   if (typeof selector === 'string') {
@@ -114,7 +122,7 @@ function rulesetSelectorIsPlaceholder(selector: SelectorLike | Nil | undefined):
 type RulesetOptions = NodeOptions & {
   parentSelector?: Selector | Nil;
   /** Own selector before parent resolution (getImplicitSelector); used by extend so nested rulesets extend .replace,.c not the resolved form. */
-  ownSelector?: Selector | Nil;
+  ownSelector?: Selector | string | Nil;
   hasDefault?: boolean;
 };
 
@@ -319,7 +327,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   }
 
   override clone(cloneFn?: (n: Node) => Node): this {
-    const clonePart = <T extends Node | string | undefined>(part: T): T => (
+    const clonePart = <T extends SelectorLike | Node | Nil | undefined>(part: T): T => (
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- cloneFn preserves the concrete selector/guard field type supplied by this ruleset part.
       cloneFn && part instanceof Node ? cloneFn(part) as T : part
     );
@@ -527,7 +535,13 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
     // SelectorList — delegate back to composeSelector so per-item semantics apply.
     if (isNode(child, N.SelectorList)) {
-      return Ruleset.composeSelector(child, parent);
+      const composed = Ruleset.composeSelector(child, parent);
+      if (composed instanceof Selector) {
+        return composed;
+      }
+      return Array.isArray(composed)
+        ? SelectorList.create(composed).inherit(child)
+        : new BasicSelector(composed).inherit(child);
     }
 
     if (isNode(child, N.CompoundSelector)) {
@@ -787,7 +801,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       this._valueOf = '';
       return this._valueOf;
     }
-    this._valueOf = (selector as Selector).valueOf();
+    this._valueOf = selector.valueOf();
     return this._valueOf;
   }
 
@@ -798,7 +812,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
    * mutates `selector`, we must clear this cache so frame/header caching
    * reflects the updated selector.
    */
-  invalidateSelectorValueCache(nextSelector?: Selector | Nil): void {
+  invalidateSelectorValueCache(nextSelector?: SelectorLike | Nil): void {
     this._valueOf = undefined;
     if (nextSelector === undefined) {
       const sel = this.selector;
@@ -812,6 +826,10 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
 
     if (nextSelector instanceof Nil) {
       cacheOwner._valueOf = '';
+      return;
+    }
+    if (Array.isArray(nextSelector)) {
+      cacheOwner._valueOf = selectorListValueOf(nextSelector);
       return;
     }
     if (nextSelector) {
@@ -924,7 +942,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const spineOptions = getPrintOptions(spinePrintOptions);
       const rendered = serializeRulesContainer(this, spineOptions);
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderText(bufferOrOptions, rendered)
+        ? writeRenderTextResult(bufferOrOptions, rendered)
         : rendered;
     }
     const finishNilSelectorBodyRender = (rendered: string): string => {
@@ -938,7 +956,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     };
     const renderEvaluatedRuleset = (node: Ruleset) => {
       if (isRenderBuffer(bufferOrOptions)) {
-        return writeRenderText(
+        return writeRenderTextResult(
           bufferOrOptions,
           serializeRulesContainer(node, prepareBufferPrintState(context, options))
         );
@@ -1678,14 +1696,18 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       )
         ? ownSelector
         : (referenceFilteredLocal instanceof Nil ? renderSelector : (referenceFilteredLocal ?? renderSelector));
-      cached = composeParent
-        ? (
-            behavior.skipSameSelectorCompose !== false
-            && composeInput.valueOf() === composeParent.valueOf()
-              ? composeInput
-              : Ruleset.composeSelector(composeInput, composeParent)
-          )
+      const composed = composeParent
+        && !(
+          behavior.skipSameSelectorCompose !== false
+          && composeInput.valueOf() === composeParent.valueOf()
+        )
+        ? Ruleset.composeSelector(composeInput, composeParent)
         : composeInput;
+      cached = composed instanceof Selector
+        ? composed
+        : Array.isArray(composed)
+          ? SelectorList.create(composed).inherit(composeInput)
+          : new BasicSelector(composed).inherit(composeInput);
       if (options.referenceMode === true && options.referenceRenderEnabled === true) {
         cached = Ruleset.expandGeneratedIs(cached) ?? cached;
         cached = Ruleset.simplifyGeneratedIsSelector(cached) ?? cached;
@@ -1852,23 +1874,20 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     }
     // Reference mode filters extend targets from the list — work on a copy so the
     // shared source selector is untouched. (Reference emission is the deferred lane.)
-    if (!(renderSelector instanceof Nil) && options.referenceFilterTargets) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      renderSelector = copySelectorForRulesetMetadata(renderSelector) as Selector;
+    if (renderSelector instanceof Nil) {
+      return false;
+    }
+    if (options.referenceFilterTargets) {
+      renderSelector = copySelectorForRulesetMetadata(renderSelector);
     }
     // A selector emits its authored form; visibility is not a render-time mutation.
-    const renderSelectorIsSurface = typeof renderSelector === 'string' || Array.isArray(renderSelector);
     const savedTrivia = options.trivia;
     const position = options.writer.position();
     if (withoutComments) {
       options.trivia = createTriviaMap();
     }
     try {
-      if (renderSelectorIsSurface) {
-        emitSelectorListLike(renderSelector, options);
-      } else {
-        renderSelector.writeSyntax(options);
-      }
+      renderSelector.writeSyntax(options);
       options.writer.trimEndSince(position);
     } finally {
       options.trivia = savedTrivia;
@@ -1985,7 +2004,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
   private _storeOwnSelector(node: Ruleset, selector: SelectorLike | Nil, selectorBits: Context['selectorBits']): void {
     // Store own selector before parent resolution so extend can extend .replace,.c not the resolved form.
     this.attachSelectorBits(selector, selectorBits);
-    let storedOwn: Selector | Nil;
+    let storedOwn: Selector | string | Nil;
     if (selector instanceof Nil) {
       storedOwn = selector;
     } else if (typeof selector === 'string' || isRulesetSelectorMetadata(selector)) {

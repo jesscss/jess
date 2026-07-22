@@ -125,6 +125,33 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/**
+ * Run a preflight command against the registry-resolved candidate version.
+ *
+ * The release snapshot normally still carries the previous alpha's manifest
+ * version immediately after the dev -> alpha squash.  `publish-alpha.mjs`
+ * intentionally rejects that stale branch version, so pass the fresh candidate
+ * through an internal environment variable while its dry-run packs the set.
+ * No manifest is mutated by this hand-off; the real version write happens only
+ * after the preflight succeeds.
+ */
+function runWithPreflightVersion(resolution, callback) {
+  if (!resolution) {
+    return callback();
+  }
+  const previous = process.env.ALPHA_PREFLIGHT_VERSION;
+  process.env.ALPHA_PREFLIGHT_VERSION = resolution.resolved;
+  try {
+    return callback();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.ALPHA_PREFLIGHT_VERSION;
+    } else {
+      process.env.ALPHA_PREFLIGHT_VERSION = previous;
+    }
+  }
+}
+
 /** Read the version npm currently resolves for `pkgName@tag`, or null. */
 function viewTagVersion(pkgName, tag) {
   const result = spawnSync('npm', ['view', `${pkgName}@${tag}`, 'version', '--json'], {
@@ -244,18 +271,11 @@ if (!options.dryRun) {
   assertReadyWorkingTree(rootDir);
 }
 
-if (options.skipCheck) {
-  console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
-} else {
-  run('pnpm', ['run', 'release:alpha:check'], rootDir);
-}
-
+// Resolve the fresh lockstep candidate before the expensive preflight, but do
+// not write package manifests until every check passes.  The candidate is
+// forwarded only to the nested publish dry-run; see runWithPreflightVersion.
 let resolution = null;
 if (!options.skipVersion) {
-  // Intent-first, registry-guarded version resolution replaces manual bumping:
-  // resolve ONE lockstep version for the whole allowlist that is guaranteed
-  // fresh (unpublished) for every package, then apply it lockstep. No
-  // --skip-version / manual manifest edit is required for a normal release.
   const { plan: versionPlan } = getReleaseState(rootDir);
   resolution = resolveAlphaPublishVersion({ rootDir, plan: versionPlan });
   console.log(`\nResolved lockstep alpha version: ${resolution.resolved}`);
@@ -263,6 +283,18 @@ if (!options.skipVersion) {
     `  intended=${resolution.intended}, `
     + `publishedMax=${resolution.publishedMax ?? '(none)'}, reason=${resolution.reason}`
   );
+}
+
+if (options.skipCheck) {
+  console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
+} else {
+  runWithPreflightVersion(resolution, () => run('pnpm', ['run', 'release:alpha:check'], rootDir));
+}
+
+if (!options.skipVersion) {
+  // Intent-first, registry-guarded version resolution has already happened
+  // above.  Apply the candidate only after the preflight succeeds, so a failed
+  // check leaves the release snapshot clean and inspectable.
   if (!options.dryRun) {
     const applied = applyLockstepVersion(rootDir, resolution.resolved);
     if (applied.changed.length > 0) {
@@ -290,7 +322,7 @@ if (options.dryRun) {
   if (options.setLatest) {
     dryPublishArgs.push('--set-latest');
   }
-  run('node', dryPublishArgs, rootDir);
+  runWithPreflightVersion(resolution, () => run('node', dryPublishArgs, rootDir));
   process.exit(0);
 }
 

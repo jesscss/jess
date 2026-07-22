@@ -1,16 +1,33 @@
 import { type IRecognitionException, type ILexingResult } from 'chevrotain';
 import type { TreeContext } from '../context.js';
-import type { LocationInfo } from '../tree/node.js';
 import { type JessErrorCode, type Phase, type Severity, resolveTemplate } from './codes.js';
 import { lineColAt } from './code-frame.js';
 
 type JessFile = TreeContext['file'];
 
 /** Minimal shape for passing context and a node to helpers. */
-export type TreeContextLike = { file: JessFile };
+export type TreeContextLike = { file?: JessFile };
 
-/** Node type carrying a source span. */
-export type LocNode = { location?: LocationInfo; spanStart?: number; spanEnd?: number };
+/** Any source subject a diagnostic may retain. Legacy nodes can carry inline
+ * offsets; canonical AST nodes keep their spans in provenance side state and
+ * therefore legitimately have no location-shaped own fields. */
+export type LocNode = object;
+
+/** Read an optional legacy inline offset without requiring every diagnostic
+ * subject to expose the legacy node-location shape. */
+export function inlineSpanStart(node: LocNode | undefined): number | undefined {
+  if (node === undefined || !('spanStart' in node)) {
+    return undefined;
+  }
+  return typeof node.spanStart === 'number' ? node.spanStart : undefined;
+}
+
+export function inlineSpanEnd(node: LocNode | undefined): number | undefined {
+  if (node === undefined || !('spanEnd' in node)) {
+    return undefined;
+  }
+  return typeof node.spanEnd === 'number' ? node.spanEnd : undefined;
+}
 
 /**
  * Initialization bag for a diagnostic.
@@ -80,7 +97,7 @@ export class JessError extends Error {
     const fileObj = init.ctx?.file;
     const source = fileObj?.source ?? init.source;
     // Line/col derive from the node's source offset + source (not stored on nodes).
-    const nodeOffset = init.node?.spanStart;
+    const nodeOffset = inlineSpanStart(init.node);
     const derived = nodeOffset !== undefined && source !== undefined
       ? lineColAt(source, nodeOffset)
       : undefined;

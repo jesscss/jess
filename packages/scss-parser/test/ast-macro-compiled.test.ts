@@ -1,6 +1,10 @@
 import { createServer } from 'vite';
 import { run } from 'parseman';
 
+function isGrammarModule(value: unknown): value is typeof import('../src/ast/grammar.js') {
+  return typeof value === 'object' && value !== null && 'scssAstGrammar' in value;
+}
+
 test('canonical SCSS AST grammar macro-fuses recognition leaves with no runtime import', async () => {
   const server = await createServer({
     root: new URL('..', import.meta.url).pathname,
@@ -12,7 +16,11 @@ test('canonical SCSS AST grammar macro-fuses recognition leaves with no runtime 
     expect(transformed?.code).not.toContain('@jesscss/internal-css-recognition');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
 
-    const grammarModule = await server.ssrLoadModule('/src/ast/grammar.ts') as typeof import('../src/ast/grammar.js');
+    const loaded = await server.ssrLoadModule('/src/ast/grammar.ts');
+    if (!isGrammarModule(loaded)) {
+      throw new Error('Expected coverage module to expose the SCSS AST grammar.');
+    }
+    const grammarModule = loaded;
     const property = run(
       grammarModule.scssAstGrammar.ScssAstDocument,
       '@property --accent { syntax: "<color>"; inherits: false; }',
@@ -37,8 +45,8 @@ test('compiler-facing SCSS entrypoint does not load the CST grammar', async () =
   });
   try {
     const transformed = await server.transformRequest('/src/index.ts');
-    expect(transformed?.code).not.toContain("./cst.js");
-    expect(transformed?.code).not.toContain("./grammar.js");
+    expect(transformed?.code).not.toContain('./cst.js');
+    expect(transformed?.code).not.toContain('./grammar.js');
   } finally {
     await server.close();
   }

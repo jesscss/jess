@@ -37,10 +37,16 @@ function str(v: unknown): string {
     return v;
   }
   if (Array.isArray(v)) {
-    return v.map(s => String(typeof s === 'string' ? s : ((s as { valueOf?: () => unknown }).valueOf?.() ?? s))).join(',');
+    return v.map(s => valueText(s)).join(',');
   }
-  const o = v as { valueOf?: () => unknown };
-  return String(o.valueOf?.() ?? v);
+  return valueText(v);
+}
+
+function valueText(value: unknown): string {
+  if (value !== null && typeof value === 'object' && 'valueOf' in value && typeof value.valueOf === 'function') {
+    return String(value.valueOf());
+  }
+  return String(value);
 }
 
 /**
@@ -79,12 +85,10 @@ export function resetFrontier(): void {
 export function reportFrontier(suite: string): void {
   const pass = frontier.filter(f => f.status === 'own-pass');
   const uns = frontier.filter(f => f.status === 'unsupported');
-  /* eslint-disable no-console */
   console.log(`\n=== COVERAGE FRONTIER [${suite}] ===`);
   console.log(`  own-engine PASS: ${pass.length}`);
   console.log(`  UNSUPPORTED:     ${uns.length}`);
   for (const u of uns) {
     console.log(`    UNSUPPORTED  ${u.label}  (oracle: ${u.oracle})`);
   }
-  /* eslint-enable no-console */
 }

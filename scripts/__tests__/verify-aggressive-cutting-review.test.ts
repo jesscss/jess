@@ -17,6 +17,9 @@ import {
   isExactParserRuntimeDebtDeletion,
   publicArtifactReferences,
   productionChangedPaths,
+  proveStagedQualityOnlyFix,
+  qualityOnlyStagedPaths,
+  reproduceApprovedQualityFixes,
   runtimeChangedPaths,
   scopedChangedPaths,
   validateCostAuditRecords,
@@ -24,6 +27,106 @@ import {
   validateCostContractRegistry,
   validateChangedContractSurface
 } from '../verify-aggressive-cutting-review.mjs';
+
+describe('proven staged quality-only review', () => {
+  const sourceFile = 'packages/core/src/ast/extend/ir.ts';
+  const lintBefore = `export function sample(value) {\n  if (value) return [value,];\n  const pick = (item) => item;  \n  return pick(value);\n}\n`;
+  const lintAfter = `export function sample(value) {\n  if (value) {\n    return [value];\n  }\n  const pick = item => item;\n  return pick(value);\n}\n`;
+
+  it('accepts only modified lintable files under reviewed source roots', () => {
+    expect(qualityOnlyStagedPaths(
+      [
+        { status: 'M', paths: [sourceFile] },
+        { status: 'M', paths: ['packages/less-parser/src/ast/grammar.ts'] }
+      ],
+      [],
+      []
+    )).toEqual([sourceFile, 'packages/less-parser/src/ast/grammar.ts']);
+
+    for (const entry of [
+      { status: 'A', paths: [sourceFile] },
+      { status: 'D', paths: [sourceFile] },
+      { status: 'R100', paths: [sourceFile, 'packages/core/src/ast/extend/plan.ts'] }
+    ]) {
+      expect(qualityOnlyStagedPaths([entry], [], [])).toBeUndefined();
+    }
+    expect(qualityOnlyStagedPaths(
+      [{ status: 'M', paths: [sourceFile] }],
+      [sourceFile],
+      []
+    )).toBeUndefined();
+    expect(qualityOnlyStagedPaths(
+      [{ status: 'M', paths: [sourceFile] }],
+      [],
+      ['eslint.config.mjs']
+    )).toBeUndefined();
+    expect(qualityOnlyStagedPaths(
+      [{ status: 'M', paths: [sourceFile] }, { status: 'M', paths: ['docs/note.md'] }],
+      [],
+      []
+    )).toBeUndefined();
+  });
+
+  it('proves the approved seven-rule formatting cascade through real ESLint output', async () => {
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      entries: [{ status: 'M', paths: [sourceFile] }],
+      dirtyPaths: [],
+      readBefore: () => lintBefore,
+      readTarget: () => lintAfter
+    })).resolves.toBe(true);
+  });
+
+  it('rejects semantic, manual, and disallowed-fixer changes', async () => {
+    const common = {
+      entries: [{ status: 'M', paths: [sourceFile] }],
+      dirtyPaths: [],
+      readBefore: () => lintBefore
+    };
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      ...common,
+      readTarget: () => lintAfter.replace('return pick(value);', 'return pick(value) !== value;')
+    })).resolves.toBe(false);
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      ...common,
+      readTarget: () => lintAfter.replace('const pick = item => item;', 'const pick = (item) => item;')
+    })).resolves.toBe(false);
+
+    const optionalBefore = 'export const read = value => value && value.name;\n';
+    await expect(proveStagedQualityOnlyFix('staged', { unstaged: [] }, {
+      ...common,
+      readBefore: () => optionalBefore,
+      readTarget: () => 'export const read = value => value?.name;\n'
+    })).resolves.toBe(false);
+  });
+
+  it('rejects fatal or remaining lint errors even when bytes match', async () => {
+    await expect(reproduceApprovedQualityFixes(
+      [sourceFile],
+      () => lintBefore,
+      () => lintAfter,
+      async () => ({
+        output: lintAfter,
+        fatalErrorCount: 1,
+        errorCount: 1,
+        warningCount: 0
+      })
+    )).resolves.toBe(false);
+  });
+
+  it('permits non-blocking warnings when approved fixes reproduce the exact bytes', async () => {
+    await expect(reproduceApprovedQualityFixes(
+      [sourceFile],
+      () => lintBefore,
+      () => lintAfter,
+      async () => ({
+        output: lintAfter,
+        fatalErrorCount: 0,
+        errorCount: 0,
+        warningCount: 2
+      })
+    )).resolves.toBe(true);
+  });
+});
 
 describe('aggressive-cutting review scope', () => {
   const snapshots = {
@@ -192,7 +295,7 @@ describe('alpha release snapshot CLI boundary', () => {
         writeFileSync(resolve(sandbox, path), readFileSync(resolve(repo, path)));
       }
 
-      const runtimePath = 'packages/core/src/ast/serialize.ts';
+      const runtimePath = 'packages/core/src/ast/extend/ir.ts';
       const runtimeSource = readFileSync(resolve(sandbox, runtimePath), 'utf8');
       writeFileSync(
         resolve(sandbox, runtimePath),

@@ -346,7 +346,7 @@ function latestHistoryByFixture(records) {
 
 function compareRecords(currentRecords, baselineRecords, threshold) {
   const baselineByFixture = latestHistoryByFixture(baselineRecords);
-  return currentRecords.map(record => {
+  return currentRecords.map((record) => {
     const baseline = baselineByFixture.get(record.fixture);
     if (!baseline) {
       return { fixture: record.fixture, status: 'missing-baseline' };

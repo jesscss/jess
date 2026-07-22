@@ -4,6 +4,8 @@ import type { Rules } from '../rules.js';
 import type { CallSignature } from './recursion-helper.js';
 import { attachMixinOutputSlot } from './mixin-output-slot.js';
 import { makeJessError } from '../../jess-error.js';
+import { isNode } from './is-node.js';
+import { N } from '../node-type.js';
 
 /**
  * Spine-root parity with `checkValidNodes`' `isRoot && fromCallOutput` rule: a
@@ -23,16 +25,17 @@ function assertNoRootPropertyDeclaration(rules: readonly Node[] | undefined, con
   for (let i = 0; i < rules.length; i++) {
     const node = rules[i]!;
     if (node.type === 'Declaration') {
+      const propertyName = isNode(node, N.Declaration) ? node.name : undefined;
       throw makeJessError({
         code: 'eval/property-in-root',
         phase: 'eval',
         ctx: context.treeContext,
         node,
-        meta: { what: String((node as { name?: unknown }).name ?? 'property') }
+        meta: { what: String(propertyName ?? 'property') }
       });
     }
     if (node.type === 'Rules') {
-      assertNoRootPropertyDeclaration((node as { rules?: readonly Node[] }).rules, context);
+      assertNoRootPropertyDeclaration(isNode(node, N.Rules) ? node.rules : undefined, context);
     }
   }
 }

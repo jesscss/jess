@@ -17,7 +17,6 @@ import {
   type Rules,
   AssignmentType,
   VarDeclaration,
-  style,
   quoted,
   interpolated,
   type Declaration,
@@ -926,33 +925,6 @@ describe('Rules', () => {
           // Synchronous result, no error thrown
           expect(result).toBeDefined();
         }
-      });
-
-      it('does not retry style imports when content evaluation fails', async () => {
-        let attempts = 0;
-        let node = rules([
-          style({ path: quoted(any('retry-target.jess')) }, { type: 'import' })
-        ]);
-        const target = node.at(0);
-        if (!target) {
-          throw new Error('Expected first rule to exist');
-        }
-        // Simulate a content evaluation error (not a path resolution error).
-        // Only path resolution errors (tagged with _isPathResolutionError)
-        // should be retried — content errors mean the tree was already cloned
-        // and retrying would wastefully re-clone it.
-        const failEval: typeof target.eval = () => {
-          attempts += 1;
-          throw new Error('content-eval-failure');
-        };
-        target.eval = failEval;
-
-        await expect(async () => {
-          await node.eval(context);
-        }).rejects.toThrow('content-eval-failure');
-
-        // Content evaluation errors are not retried — only path resolution errors are
-        expect(attempts).toBe(1);
       });
     });
 

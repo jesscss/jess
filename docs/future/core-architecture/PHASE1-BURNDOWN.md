@@ -8,7 +8,8 @@ routes are also deleted. These are not pending cleanup items and must not be
 reintroduced to repair a caller.
 
 Core's AST package owns canonical AST data, constructors, evaluation, and
-serialization. Dialects own grammar recognition and direct AST construction.
+serialization. Each dialect parser's grammar owns recognition and calls those
+core constructors directly; no dialect owns core AST/eval/render behavior.
 `Context` remains the core coordination/state boundary: it dispatches import
 expansion, resolution, location, source loading, parsing, and plugin module
 import to plugins. It also currently provides explicit core raw-byte and JSON

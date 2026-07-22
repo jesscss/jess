@@ -54,4 +54,3 @@ describe('@jesscss/style-resolver', () => {
     expect(r?.filePath).toContain('foo.scss');
   });
 });
-

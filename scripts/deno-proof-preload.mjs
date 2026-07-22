@@ -21,7 +21,7 @@ const counters = {
 
 globalThis.__JESS_DENO_PROOF__ = counters;
 
-const isPluginJsRequest = (request) =>
+const isPluginJsRequest = request =>
   request === '@jesscss/plugin-js' || String(request).startsWith('@jesscss/plugin-js/');
 
 const commandLooksLikeDeno = (command) => {

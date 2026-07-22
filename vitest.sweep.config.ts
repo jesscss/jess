@@ -13,10 +13,18 @@ function workspaceSrcAliases() {
   for (const d of readdirSync(resolve(root, 'packages'))) {
     const pj = resolve(root, 'packages', d, 'package.json');
     const src = resolve(root, 'packages', d, 'src/index.ts');
-    if (!existsSync(pj) || !existsSync(src)) continue;
+    if (!existsSync(pj) || !existsSync(src)) {
+      continue;
+    }
     let name: string | undefined;
-    try { name = JSON.parse(readFileSync(pj, 'utf8')).name; } catch { continue; }
-    if (!name) continue;
+    try {
+      name = JSON.parse(readFileSync(pj, 'utf8')).name;
+    } catch {
+      continue;
+    }
+    if (!name) {
+      continue;
+    }
     alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
   }
   return alias;
@@ -24,7 +32,9 @@ function workspaceSrcAliases() {
 
 function lessTestDataRoot(): string | undefined {
   const env = process.env.LESS_TEST_DATA_ROOT;
-  if (env && existsSync(resolve(env, 'tests-unit'))) return env;
+  if (env && existsSync(resolve(env, 'tests-unit'))) {
+    return env;
+  }
   const candidates = [resolve(root, '../less.js/packages/test-data')];
   try {
     const gitDir = execFileSync('git', ['rev-parse', '--git-common-dir'], { cwd: root, encoding: 'utf8' }).trim();

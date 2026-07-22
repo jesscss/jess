@@ -13,6 +13,13 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && 'children' in value && Array.isArray(value.children);
 }
 
+function stylesheet(value: unknown): Stylesheet {
+  if (!isStylesheet(value)) {
+    throw new TypeError('Expected the SCSS grammar to produce a Stylesheet');
+  }
+  return value;
+}
+
 const evaluator = buildEvaluator(makeBuiltinRegistry());
 
 describe('SCSS canonical-AST grammar', () => {
@@ -77,7 +84,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
-    expect(serialize(result.value as Stylesheet)).toEqual({ css: '.yes {\n  color: green;\n}\n' });
+    expect(serialize(stylesheet(result.value))).toEqual({ css: '.yes {\n  color: green;\n}\n' });
   });
 
   it('constructs and evaluates static SCSS comparison conditions through existing guard facts', () => {
@@ -93,7 +100,7 @@ describe('SCSS canonical-AST grammar', () => {
         ]
       }]
     });
-    expect(serialize(result.value as Stylesheet, { evaluator })).toEqual({ css: '.right {\n  color: green;\n}\n' });
+    expect(serialize(stylesheet(result.value), { evaluator })).toEqual({ css: '.right {\n  color: green;\n}\n' });
   });
 
   it('covers every direct SCSS comparison spelling without consuming arithmetic or boolean boundaries', () => {
@@ -107,7 +114,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.ok, condition).toBe(true);
       expect(result.unconsumedFrom, condition).toBeNull();
       expect(isStylesheet(result.value), condition).toBe(true);
-      expect(serialize(result.value as Stylesheet, { evaluator }).css, condition).toContain(`.${expected} {`);
+      expect(serialize(stylesheet(result.value), { evaluator }).css, condition).toContain(`.${expected} {`);
     }
   });
 
@@ -125,7 +132,7 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'For', binding: { kind: 'single', name: 'i' } }
       ] }] }]
     });
-    expect(serialize(result.value as Stylesheet, { evaluator })).toEqual({
+    expect(serialize(stylesheet(result.value), { evaluator })).toEqual({
       css: '.host {\n  color: blue;\n}\n.each {\n  color: red;\n}\n.step {\n  width: 1;\n}\n'
     });
   });
@@ -145,7 +152,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toMatchObject({ children: [{ type: 'If', branches: [{ body: [{ type: 'If' }] }] }] });
-    expect(serialize(result.value as Stylesheet)).toEqual({ css: '.nested {\n  color: green;\n}\n' });
+    expect(serialize(stylesheet(result.value))).toEqual({ css: '.nested {\n  color: green;\n}\n' });
   });
 
   it('constructs restricted @if blocks nested in direct static media bodies', () => {
@@ -160,7 +167,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       children: [{ type: 'AtRuleBlock', name: '@media', body: [{ type: 'If', branches: [{ guard: { g: 'truth', value: { src: 'false' } } }, { guard: null }] }] }]
     });
-    expect(serialize(result.value as Stylesheet)).toEqual({ css: '@media screen {\n  .inside {\n    color: green;\n  }\n}\n' });
+    expect(serialize(stylesheet(result.value))).toEqual({ css: '@media screen {\n  .inside {\n    color: green;\n  }\n}\n' });
   });
 
   it('rejects unmodelled @if conditions and body forms instead of borrowing eval or legacy parsing', () => {
@@ -219,8 +226,8 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'Rule', body: [{ type: 'MixinCall', name: 'imported' }] }
       ]
     });
-    expect(serialize(result.value as Stylesheet, { evaluator }).css).toContain('@import "if.css";');
-    expect(serialize(result.value as Stylesheet, { evaluator }).css).toContain('@import url("rule.css");');
+    expect(serialize(stylesheet(result.value), { evaluator }).css).toContain('@import "if.css";');
+    expect(serialize(stylesheet(result.value), { evaluator }).css).toContain('@import url("rule.css");');
   });
 
   it('constructs a static SCSS import as canonical ImportAtRule', () => {
@@ -657,7 +664,7 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'Declaration', name: 'font-size', value: { src: '1rem' } }
       ] }]
     });
-    expect(serialize(result.value as Stylesheet)).toEqual({
+    expect(serialize(stylesheet(result.value))).toEqual({
       css: '.card {\n  font-family: fantasy;\n  font-weight: bold;\n  font: 20px;\n  font-size: 1rem;\n}\n'
     });
 
@@ -690,7 +697,7 @@ describe('SCSS canonical-AST grammar', () => {
         ]
       }]
     });
-    expect(serialize(result.value as Stylesheet, { evaluator })).toEqual({
+    expect(serialize(stylesheet(result.value), { evaluator })).toEqual({
       css: '.card {\n  font-color: red;\n  font-weight: bold;\n  font-weight: 700;\n}\n'
     });
   });
@@ -710,7 +717,7 @@ describe('SCSS canonical-AST grammar', () => {
         { type: 'Declaration', name: 'font-size', important: false, value: { src: '1rem' } }
       ] }]
     });
-    expect(serialize(result.value as Stylesheet)).toEqual({
+    expect(serialize(stylesheet(result.value))).toEqual({
       css: '.card {\n  font: 20px !important;\n  font-size: 1rem;\n}\n'
     });
   });
@@ -725,7 +732,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', body: [] }] });
-    expect(serialize(result.value as Stylesheet)).toEqual({ css: '' });
+    expect(serialize(stylesheet(result.value))).toEqual({ css: '' });
   });
 
   it('keeps CST-only nested-property body forms out of the direct lowering', () => {
@@ -947,7 +954,7 @@ describe('SCSS canonical-AST grammar', () => {
         }
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(stylesheet(result.value)).css).toBe(
       '@supports not ((display: grid) and (color)) {\n  .card {\n    color: blue;\n  }\n}\n'
     );
 
@@ -1552,9 +1559,10 @@ describe('SCSS canonical-AST grammar', () => {
 
       const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      const first = stylesheet(result.value).children[0];
       const loop = source.startsWith('.host')
-        ? (result.value as Stylesheet).children[0]!.type === 'Rule' && (result.value as Stylesheet).children[0]!.body[0]
-        : (result.value as Stylesheet).children[0];
+        ? first?.type === 'Rule' && first.body[0]
+        : first;
       expect(loop).toMatchObject({
         type: 'For', binding: { kind: 'single', name: 'i' },
         iterable: { type: 'Range', start: { type: 'Dimension', number: source.startsWith('.host') ? 2 : 1 }, end: { type: 'Dimension', number: source.startsWith('.host') ? 4 : 3 }, includeStart: true, includeEnd }
@@ -1583,7 +1591,7 @@ describe('SCSS canonical-AST grammar', () => {
         }
       }]
     });
-    expect(serialize(result.value as Stylesheet, { evaluator })).toEqual({
+    expect(serialize(stylesheet(result.value), { evaluator })).toEqual({
       css: '.n {\n  width: 2px;\n}\n.n {\n  width: 3px;\n}\n'
     });
   });
@@ -1613,14 +1621,14 @@ describe('SCSS canonical-AST grammar', () => {
       { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Any', src: 'svg url("https://example.test/svg")' } },
       { type: 'AtRuleStatement', name: '@layer', prelude: { type: 'Any', src: 'theme' } }
     ] });
-    expect(serialize(result.value as Stylesheet)).toEqual({
+    expect(serialize(stylesheet(result.value))).toEqual({
       css: '@charset "UTF-8";\n@namespace svg url("https://example.test/svg");\n@layer theme;\n'
     });
 
     const lineComment = run(scssAstGrammar.ScssAstDocument, '@layer theme // local note\n;', { trivia: scssAstGrammar.whitespace });
     expect(lineComment.ok).toBe(true);
     expect(lineComment.unconsumedFrom).toBeNull();
-    expect(serialize(lineComment.value as Stylesheet)).toEqual({ css: '@layer theme;\n' });
+    expect(serialize(stylesheet(lineComment.value))).toEqual({ css: '@layer theme;\n' });
 
     for (const invalid of [
       '@debug "note";',
@@ -1663,8 +1671,11 @@ describe('SCSS canonical-AST grammar', () => {
     const comma = body.body[1]?.type === 'Declaration' ? body.body[1].value : null;
     expect(Array.isArray(adjacent)).toBe(true);
     expect(comma).toMatchObject({ type: 'List' });
-    expect(valueLayoutOf(adjacent as object)).toEqual([' /* keep */\n  ']);
-    expect(valueLayoutOf(comma as object)).toEqual([',\n  ']);
+    if (typeof adjacent !== 'object' || adjacent === null || typeof comma !== 'object' || comma === null) {
+      throw new Error('expected structured declaration values');
+    }
+    expect(valueLayoutOf(adjacent)).toEqual([' /* keep */\n  ']);
+    expect(valueLayoutOf(comma)).toEqual([',\n  ']);
     expect(serialize(document).css).toContain('color: red /* keep */\n    blue;');
     expect(serialize(document).css).toContain('shadow: a,\n    b;');
   });

@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { makeDimension, makeKeyword, makeList, type Dimension, type Fn, type Keyword, type ValueObj } from '@jesscss/core/value';
 import min from '../min.js';
 
-const call = (fn: Fn, unitMode: 'loose' | 'preserve' | 'strict', ...args: ValueObj[]): ValueObj =>
-  fn(makeList(args, ','), { modes: { unitMode }, stringify: value => value.bytes }) as ValueObj;
+const call = (fn: Fn, unitMode: 'loose' | 'preserve' | 'strict', ...args: ValueObj[]): ValueObj => {
+  const result = fn(makeList(args, ','), { modes: { unitMode }, stringify: value => value.bytes });
+  if (result instanceof Promise) {
+    throw new TypeError('Expected min() to be synchronous in this test.');
+  }
+  return result;
+};
 
 function expectDimension(value: unknown): Dimension {
   expect(value).toMatchObject({ type: 'Dimension' });

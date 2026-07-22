@@ -16,7 +16,14 @@ import { hsl } from '../hsl.js';
 
 const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: { bytes: string }) => value.bytes };
 const call = (fn: (args: ReturnType<typeof makeList>, context: typeof ctx) => unknown, ...args: Parameters<typeof makeList>[0]) =>
-  fn(makeList(args, ','), ctx) as Color;
+  colorResult(fn(makeList(args, ','), ctx));
+
+function colorResult(value: unknown): Color {
+  if (value === null || typeof value !== 'object' || !('type' in value) || value.type !== 'Color') {
+    throw new TypeError('Expected a Color result.');
+  }
+  return value;
+}
 
 const hexColor = (rgb: [number, number, number], alpha: number, node: string): Color =>
   makeColorRgb(rgb, alpha, HEX, { node });

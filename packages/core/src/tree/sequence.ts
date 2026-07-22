@@ -49,6 +49,20 @@ export type SequenceOptions = {
   leadingContainerName?: boolean;
 };
 
+type SequenceConstructor = new (
+  value: Node[],
+  options?: SequenceOptions,
+  location?: NodeLocation
+) => Sequence;
+
+function isSequenceConstructor(value: unknown): value is SequenceConstructor {
+  if (typeof value !== 'function') {
+    return false;
+  }
+  const prototype = Reflect.get(value, 'prototype');
+  return typeof prototype === 'object' && prototype !== null && prototype instanceof Sequence;
+}
+
 function isIdentifierChar(value: string | undefined): boolean {
   return Boolean(value && /[A-Za-z_-]/u.test(value));
 }
@@ -61,10 +75,6 @@ function isIdentifierChar(value: string | undefined): boolean {
  */
 function isLeadingCommaToken(node: Node): boolean {
   return node.type === 'Any' && node.valueOf() === ',';
-}
-
-function hasNonWhitespaceTrivia(run: ReturnType<NonNullable<PrintOptions['trivia']>['lookup']>): boolean {
-  return Boolean(run?.hasComment);
 }
 
 function sequenceNodeTrivia(node: Node): PrintOptions['trivia'] | undefined {
@@ -121,14 +131,15 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     this.preserveWhitespace = options?.preserveWhitespace;
   }
 
+  private sequenceConstructor(): SequenceConstructor {
+    const constructor = this.constructor;
+    return isSequenceConstructor(constructor) ? constructor : Sequence;
+  }
+
   private withValue(value: Node[]): Sequence {
     // Preserve the concrete class (e.g. QueryCondition) across eval so its
     // syntax writer — not the base Sequence one — renders the evaluated value.
-    const Ctor = this.constructor as new (
-      value: Node[],
-      options?: SequenceOptions,
-      location?: NodeLocation
-    ) => Sequence;
+    const Ctor = this.sequenceConstructor();
     return new Ctor(
       value,
       this._options ? { ...this._options } : undefined,

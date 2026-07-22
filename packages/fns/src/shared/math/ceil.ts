@@ -1,15 +1,9 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../../util/mathHelper.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
 
-export default defineFunction(
-  'ceil',
-  function(value: Dimension | number) {
-    return mathHelper(Math.ceil, ['value'], undefined, value);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }]
-  }
-);
+/** Less `ceil()` and Sass `math.ceil()` over the canonical value domain. */
+const ceil = defineFunction('ceil', {
+  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
+  body: value => makeDimension(Math.ceil(value.number), value.unit)
+});
+
+export default ceil;

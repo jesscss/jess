@@ -241,7 +241,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
-    return renderInvisibleEffect(undefined, bufferOrOptions) as string;
+    return renderInvisibleEffect(undefined, bufferOrOptions);
   }
 
   override writeSyntax(options: FinalPrintOptions): void {
@@ -278,12 +278,12 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     this.writeBraced(options);
   }
 
-  override prepareRegistration(context: Context): MaybePromise<this> {
+  override prepareRegistration(context: Context): MaybePromise<Mixin> {
     if (this.registrationPrepared) {
       return this;
     }
 
-    return this._prepareMixinRegistration(context) as MaybePromise<this>;
+    return this._prepareMixinRegistration(context);
   }
 
   private _prepareMixinRegistration(context: Context): MaybePromise<Mixin> {
@@ -362,22 +362,12 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   }
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
-  override evalNode(context?: Context): MaybePromise<this> {
+  override evalNode(_context?: Context): MaybePromise<this> {
     // A mixin definition is a lazy template — evalNode returns self without
     // walking the body. But callers that DO evaluate a mixin body rely on the
     // narrow §2.7 eval-state signal to distinguish evaluated from cold. Rules.evalNode
     // is bypassed here, so stamp it directly. See rules.ts callable-descendant gate.
     this._bodyEvaluated = true;
-    // A `reference:true` import inside a namespace-mixin body must still become a
-    // reachable callable descendant when the body itself is evaluated directly
-    // (namespace descent) — the lazy self-return above never walks the body, so
-    // resolve just the reference-import lane. No-op unless the body carries one.
-    if (context !== undefined) {
-      const resolved = this.resolveBodyReferenceImports(context);
-      if (isThenable(resolved)) {
-        return (resolved as Promise<Rules>).then(() => this);
-      }
-    }
     return this;
   }
 

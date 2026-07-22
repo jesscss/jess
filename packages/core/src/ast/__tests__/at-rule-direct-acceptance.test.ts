@@ -80,8 +80,8 @@ describe('At-rule canonical AST emission', () => {
   it('preserves authored private-use bytes inside general-enclosed content', () => {
     const document = stylesheet([
       atRuleBlock('@supports', generalEnclosed('function', 'selector', interpolation([
-        { lit: '\uE000  .card\uE001 ' },
-      ])), [rule('.card', [decl('display', keyword('grid'))])]),
+        { lit: '\uE000  .card\uE001 ' }
+      ])), [rule('.card', [decl('display', keyword('grid'))])])
     ]);
 
     expect(render(document)).toContain('@supports selector(\uE000  .card\uE001 )');

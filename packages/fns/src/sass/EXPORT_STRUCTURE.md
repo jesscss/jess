@@ -2,6 +2,12 @@
 
 This document explains the export structure for Sass functions, matching Sass's module system.
 
+> **Source roadmap, not a published package surface.** The current alpha
+> publishes only `@jesscss/fns` and `@jesscss/fns/builtins`. The Sass folders
+> below describe source ownership and future module organization; their
+> `@jesscss/fns/sass/*` examples are not importable until matching runtime
+> entrypoints are built and explicitly exported from `package.json`.
+
 ## Structure Overview
 
 - **`sass/index.ts`** - Global legacy functions (deprecated, for backward compatibility)

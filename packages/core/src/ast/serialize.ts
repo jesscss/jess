@@ -46,6 +46,7 @@ import type {
   Any,
   Apply,
   Color,
+  Comment,
   ComplexSelector,
   CompoundSelector,
   Declaration,
@@ -76,7 +77,8 @@ import type {
   ValueNode,
   ValueSlot,
   VarIndirect,
-  VariableDeclaration
+  VariableDeclaration,
+  VariableReference
 } from './nodes.js';
 // [atrule] block + statement at-rule node types
 import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
@@ -97,7 +99,7 @@ import {
 import type { Fn, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
-import { calcInner } from './value-operate.js'; // [calc]
+import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeBlock, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { DefaultGuardAmbiguityError, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -118,13 +120,31 @@ function mapMaybe<T, U>(m: MaybePromise<T>, f: (t: T) => MaybePromise<U>): Maybe
   return isThenable(m) ? m.then(f) : f(m);
 }
 
-function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybePromise<U>): MaybePromise<U> {
+function isResolvedArray<T>(arr: Array<MaybePromise<T>>): arr is T[] {
   for (let i = 0; i < arr.length; i++) {
     if (isThenable(arr[i])) {
-      return Promise.all(arr).then(f);
+      return false;
     }
   }
-  return f(arr as T[]);
+  return true;
+}
+
+function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybePromise<U>): MaybePromise<U> {
+  return isResolvedArray(arr) ? f(arr) : Promise.all(arr).then(f);
+}
+
+/**
+ * Narrow the recursive readonly-array arm shared by authored values and mixin
+ * call arguments. `Array.isArray` narrows only mutable arrays in TypeScript, so
+ * it leaves the public `readonly ValueSlot[]` arm in the scalar branch.
+ */
+function isValueSlotArray(value: ValueSlot | MixinCall): value is readonly ValueSlot[] {
+  return !('type' in value);
+}
+
+/** A callable binding is the one scalar arm that is not an ordinary value. */
+function isMixinCallValue(value: ValueSlot | MixinCall): value is MixinCall {
+  return !isValueSlotArray(value) && value.type === 'MixinCall';
 }
 
 export interface Position {
@@ -268,10 +288,11 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
     if (loaded.node?.type !== 'Stylesheet') {
       return undefined;
     }
+    const document = loaded.node;
     return {
-      document: loaded.node,
+      document,
       key: loaded.resolvedPath,
-      withinDocument: emit => context.withDocument(loaded.node, emit)
+      withinDocument: emit => context.withDocument(document, emit)
     };
   };
 }
@@ -483,16 +504,23 @@ function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: (
 }
 
 function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
-  if (Array.isArray(value) || value.type !== 'DetachedRuleset') {
+  if (!isDetachedRulesetBinding(value)) {
     return;
   }
   (frame.detachedBindings ??= new Map()).set(value, { lexicalFrame, sourceOwner });
 }
 
+function isDetachedRulesetBinding(value: Binding): value is DetachedRuleset {
+  return 'type' in value && value.type === 'DetachedRuleset';
+}
+
 function detachedBinding(frame: Frame | null, value: Binding): DetachedBinding | undefined {
+  if (!isDetachedRulesetBinding(value)) {
+    return undefined;
+  }
   let fallback: Frame | null | undefined;
   for (let current = frame; current; current = current.parent) {
-    const hit = current.detachedBindings?.get(value as DetachedRuleset);
+    const hit = current.detachedBindings?.get(value);
     if (hit) {
       return hit;
     }
@@ -552,7 +580,8 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
       const loaded = load({ specifier, options });
       if (isThenable(loaded)) {
         return loaded.then((fns) => {
-          addScopedFns(frame, fns, e); return run(index + 1);
+          addScopedFns(frame, fns, e);
+          return run(index + 1);
         });
       }
       addScopedFns(frame, loaded, e);
@@ -884,7 +913,7 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDef): voi
   if (!selected || !meta.selectedPath.every(path => selected.get(path.node) === path.body)) {
     return;
   }
-  const events = frame.selectedMixinEvents ??= new Map();
+  const events = frame.selectedMixinEvents ??= new Map<string, OrderedMixinCandidate[]>();
   const list = events.get(definition.name);
   if (list?.some(candidate => candidate.definition === definition)) {
     return;
@@ -1395,7 +1424,7 @@ function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scop
 
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
   bindDetached(frame, node.value, frame, sourceOwnerForBody(
-    !Array.isArray(node.value) && node.value.type === 'DetachedRuleset' ? node.value.body : node,
+    'type' in node.value && node.value.type === 'DetachedRuleset' ? node.value.body : node,
     frame,
     e
   ));
@@ -1455,7 +1484,7 @@ function resolvePropRef(
   frame: Frame | null,
   name: string,
   e: EvalCtx
-): { value: ValueNode; frame: Frame; important: boolean; merged?: readonly PropertyDeclarationFact[] } | undefined {
+): { value: ValueSlot; frame: Frame; important: boolean; merged?: readonly PropertyDeclarationFact[] } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const timeline = f.propertyTimeline;
@@ -1557,14 +1586,16 @@ function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
  * `@p()`), so like a detached ruleset reaching a value position it folds to empty
  * bytes; every other binding is an ordinary value node. */
 function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
-  return b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e);
+  return 'type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e);
 }
 
 function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = span === undefined ? undefined : lineColAt(source, span.start);
+  const location = source === undefined || span === undefined
+    ? undefined
+    : lineColAt(source, span.start);
   throw ERR.nameNotFound({
     node,
     filePath: file?.fullPath,
@@ -1601,7 +1632,7 @@ function unresolvedMixinCall(call: MixinCall, e: EvalCtx): never {
  * a stray async value there raises rather than being silently mis-dispatched.
  */
 function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
-  return (v: ValueNode) => {
+  return (v: ValueSlot) => {
     const b = evalBytes(v, frame, e);
     if (isThenable(b)) {
       throw new Error('async value in a synchronous dispatch position');
@@ -1615,8 +1646,8 @@ function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
  * (guard leaves compare typed values / call type-fns). Sync for the same reason.
  */
 function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
-  return (v: ValueNode) => {
-    const val = evalTyped(v, frame, e);
+  return (v: ValueSlot) => {
+    const val = evalTypedSlot(v, frame, e);
     if (isThenable(val)) {
       throw new Error('async value in a synchronous guard position');
     }
@@ -1727,10 +1758,29 @@ function materializeNode(node: Keyword | Color | Dimension | Quoted | Any | Comm
  * opaque `Any` leaf sniffs. Variable refs / parens are transparent.
  */
 function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
-  if (!Array.isArray(slot)) {
+  if (!isValueSlotArray(slot)) {
     return evalValue(slot, frame, e);
   }
-  const values = slot.map(value => evalValueSlot(value, frame, e));
+  // Less `math: 0` treats an authored top-level slash as arithmetic even when
+  // the parser retained it as an adjacent ValueSlot array.  Promote only the
+  // narrow, grammar-owned arithmetic shape here; ordinary space/slash values
+  // (font shorthands, lists, nested groups) continue through the layout join
+  // below.  The authored AST is immutable and no source bytes are inspected.
+  const promoted = promoteBareSlashValue(slot, e);
+  if (promoted !== null) {
+    return evalValue(promoted, frame, e);
+  }
+  // In Less's parens-division mode, a slash at this same authored boundary
+  // keeps the whole scalar expression authored.  Evaluate parenthesized
+  // children through their own `parenDepth`, but do not eagerly reduce a
+  // neighboring `+`/`-` operation before the preserved slash is emitted.
+  const preserveBareSlash = (e.calcDepth ?? 0) === 0
+    && e.modes.mathMode === 'parens-division'
+    && hasTopLevelBareSlash(slot);
+  const valueContext = preserveBareSlash
+    ? { ...e, modes: { ...e.modes, mathMode: 'strict' as const } }
+    : e;
+  const values = slot.map(value => evalValueSlot(value, frame, valueContext));
   return combineAll(values, (resolved) => {
     const separators = valueLayoutOf(slot);
     if (separators === undefined) {
@@ -1745,8 +1795,145 @@ function evalValueSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   });
 }
 
+type BareSlashToken =
+  | { readonly kind: 'operand'; readonly node: ValueNode }
+  | { readonly kind: 'operator'; readonly operator: '+' | '-' | '*' | '/' | '%' };
+
+type BareSlashOperator = '+' | '-' | '*' | '/' | '%';
+
+const BARE_SLASH_OPERATORS = new Set(['+', '-', '*', '/', '%']);
+const BARE_SLASH_MULTIPLICATIVE = new Set<BareSlashOperator>(['*', '/', '%']);
+const BARE_SLASH_ADDITIVE = new Set<BareSlashOperator>(['+', '-']);
+
+function isBareSlashOperator(operator: string): operator is BareSlashOperator {
+  switch (operator) {
+    case '+':
+    case '-':
+    case '*':
+    case '/':
+    case '%':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isBareSlash(node: ValueNode): boolean {
+  return (node.type === 'Any' || node.type === 'Keyword') && node.src === '/';
+}
+
+function hasTopLevelBareSlash(slot: readonly ValueSlot[]): boolean {
+  for (const part of slot) {
+    if (!isValueSlotArray(part) && isBareSlash(part)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Flatten one existing arithmetic spine into infix tokens.  This deliberately
+ * accepts only numeric/color leaves: variable references, calls, blocks, lists,
+ * and authored space groups must retain their existing value semantics instead
+ * of being guessed at by a broad declaration-value walk.
+ */
+function appendBareSlashTokens(node: ValueNode, tokens: BareSlashToken[]): boolean {
+  if (node.type === 'Dimension' || node.type === 'Color') {
+    tokens.push({ kind: 'operand', node });
+    return true;
+  }
+  if (node.type !== 'Operation' || !isBareSlashOperator(node.operator)) {
+    return false;
+  }
+  if (!appendBareSlashTokens(node.left, tokens)) {
+    return false;
+  }
+  tokens.push({ kind: 'operator', operator: node.operator });
+  return appendBareSlashTokens(node.right, tokens);
+}
+
+/** Reduce one precedence tier over an already validated infix token stream. */
+function reduceBareSlashTier(
+  values: ValueNode[],
+  operators: Array<'+' | '-' | '*' | '/' | '%'>,
+  tier: ReadonlySet<string>
+): { values: ValueNode[]; operators: Array<'+' | '-' | '*' | '/' | '%'> } {
+  const nextValues: ValueNode[] = [values[0]!];
+  const nextOperators: Array<'+' | '-' | '*' | '/' | '%'> = [];
+  for (let i = 0; i < operators.length; i++) {
+    const operator = operators[i]!;
+    const right = values[i + 1]!;
+    if (tier.has(operator)) {
+      const left = nextValues.pop()!;
+      nextValues.push(operation(operator, left, right));
+    } else {
+      nextOperators.push(operator);
+      nextValues.push(right);
+    }
+  }
+  return { values: nextValues, operators: nextOperators };
+}
+
+/**
+ * Promote a direct Less value array containing an authored slash to one
+ * arithmetic operation tree in eager math mode.  Returns `null` for any shape
+ * that is not an unambiguous scalar arithmetic expression, preserving the
+ * existing authored join path for lists and CSS shorthand values.
+ */
+function promoteBareSlashValue(slot: readonly ValueSlot[], e: EvalCtx): ValueNode | null {
+  if (!e.ev || e.modes.mathMode !== 'always' || slot.length < 3) {
+    return null;
+  }
+  // Stay off the common adjacent-value path unless the grammar has already
+  // exposed a top-level slash leaf.  Nested groups are deliberately ignored:
+  // they have their own typed/list semantics and are not bare-slash facts.
+  if (!hasTopLevelBareSlash(slot)) {
+    return null;
+  }
+  const tokens: BareSlashToken[] = [];
+  for (const part of slot) {
+    if (isValueSlotArray(part)) {
+      return null;
+    }
+    if (isBareSlash(part)) {
+      tokens.push({ kind: 'operator', operator: '/' });
+      continue;
+    }
+    if (!appendBareSlashTokens(part, tokens)) {
+      return null;
+    }
+  }
+  if (!tokens.some(token => token.kind === 'operator' && token.operator === '/')) {
+    return null;
+  }
+  if (tokens.length < 3 || tokens.length % 2 === 0) {
+    return null;
+  }
+  const values: ValueNode[] = [];
+  const operators: Array<'+' | '-' | '*' | '/' | '%'> = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]!;
+    if (i % 2 === 0) {
+      if (token.kind !== 'operand') {
+        return null;
+      }
+      values.push(token.node);
+    } else {
+      if (token.kind !== 'operator') {
+        return null;
+      }
+      operators.push(token.operator);
+    }
+  }
+  let reduced = reduceBareSlashTier(values, operators, BARE_SLASH_MULTIPLICATIVE);
+  reduced = reduceBareSlashTier(reduced.values, reduced.operators, BARE_SLASH_ADDITIVE);
+  return reduced.values.length === 1 && reduced.operators.length === 0
+    ? reduced.values[0]!
+    : null;
+}
+
 function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
-  if (!Array.isArray(slot)) {
+  if (!isValueSlotArray(slot)) {
     return evalTyped(slot, frame, e);
   }
   if ((e.calcDepth ?? 0) > 0) {
@@ -1780,7 +1967,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       const bound = hit.value;
       return withExcluded(e, bound, () =>
-        bound.type === 'MixinCall'
+        isMixinCallValue(bound)
           ? force(e, literal(''))
           : evalTypedSlot(bound, hit.frame, e)
       );
@@ -1793,7 +1980,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (resolved === null) {
         return force(e, literal(node.raw));
       }
-      return resolved.value.type === 'MixinCall'
+      return isMixinCallValue(resolved.value)
         ? force(e, literal(node.raw))
         : evalTypedSlot(resolved.value, resolved.frame, e);
     }
@@ -1875,16 +2062,29 @@ function isSlashGroup(node: SpacedValue): boolean {
  * not change the authored AST or wrap ordinary arrays outside calc.
  */
 function slashGroupOfSlot(slot: ValueSlot): SpacedValue | null {
-  if (!Array.isArray(slot)) {
+  if (!isValueSlotArray(slot)) {
     return null;
   }
-  if (!slot.some(p => (p.type === 'Any' || p.type === 'Keyword') && p.src.trim() === '/')) {
+  let hasSlash = false;
+  for (const part of slot) {
+    if (isValueSlotArray(part)) {
+      return null;
+    }
+    hasSlash ||= (part.type === 'Any' || part.type === 'Keyword') && part.src.trim() === '/';
+  }
+  if (!hasSlash) {
     return null;
+  }
+  const parts: ValueNode[] = [];
+  for (const part of slot) {
+    if (!isValueSlotArray(part)) {
+      parts.push(part);
+    }
   }
   const separators = valueLayoutOf(slot);
   return separators === undefined
-    ? { type: 'SpacedValue', parts: slot }
-    : { type: 'SpacedValue', parts: slot, separators };
+    ? { type: 'SpacedValue', parts }
+    : { type: 'SpacedValue', parts, separators };
 }
 
 /**
@@ -2092,8 +2292,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         // Fallback: un-evaluated, variable-resolved source assembly (no math).
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
-        return combineAll([l, r], ([lv, rv]) =>
-          literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`)
+        return combineAll([l, r], values =>
+          literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`)
         );
       }
       const mathMode = e.modes.mathMode ?? 'parens-division';
@@ -2104,7 +2304,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       if (!shouldOperate) {
         const l = evalValue(node.left, frame, e);
         const r = evalValue(node.right, frame, e);
-        return combineAll([l, r], ([lv, rv]) => literal(`${emitValue(lv)} ${node.operator} ${emitValue(rv)}`));
+        return combineAll([l, r], values =>
+          literal(`${emitValue(values[0]!)} ${node.operator} ${emitValue(values[1]!)}`)
+        );
       }
       const ev = e.ev;
       // Operands are materialized TYPED (tag sourced from the parse), not re-sniffed.
@@ -2112,7 +2314,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       const r = evalTyped(node.right, frame, e);
       // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
       const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
-      return combineAll([l, r], ([lv, rv]) => ev.operate(node.operator, lv, rv, m));
+      return combineAll([l, r], values => ev.operate(node.operator, values[0]!, values[1]!, m));
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
@@ -2245,7 +2447,7 @@ function stripOuterQuotes(s: string): string {
 /** One resolved declaration in a map/namespace body (name → value in a frame). */
 interface DeclEntry {
   name: string;
-  value: ValueNode;
+  value: Binding;
   frame: Frame | null;
   important: boolean;
 }
@@ -2345,10 +2547,13 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
 
 /** Resolve a map/namespace accessor's base to a declaration map + its frame. */
 function resolveBaseDeclMap(
-  base: ValueNode | MixinCall,
+  base: Binding,
   frame: Frame | null,
   e: EvalCtx
 ): DeclMap | null {
+  if (isValueSlotArray(base)) {
+    return null;
+  }
   if (base.type === 'Reference') {
     const resolved = resolveReferenceResult(base, frame, e);
     return resolved === null ? null : resolveBaseDeclMap(resolved.value, resolved.frame, e);
@@ -2396,7 +2601,7 @@ function resolveBaseDeclMap(
   // `each(.mixin(), …)` iterable uses — `forItemsFromMixinCall`).
   if (base.type === 'VariableReference' && frame) {
     const bound = lookupVar(frame, base.name);
-    if (bound?.type === 'MixinCall') {
+    if (bound && isMixinCallValue(bound)) {
       return declMapFromMixinCall(bound, frame, e);
     }
   }
@@ -2466,18 +2671,18 @@ function resolveReferenceResult(
     value = resolved.value;
     valueFrame = resolved.frame;
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
-      ?? sourceOwnerForBody(!Array.isArray(value) && value.type === 'DetachedRuleset' ? value.body : value, valueFrame, e);
+      ?? sourceOwnerForBody(!isValueSlotArray(value) && value.type === 'DetachedRuleset' ? value.body : value, valueFrame, e);
   }
   for (const step of node.steps) {
     if (step.type === 'Call') {
-      if (value.type === 'MixinCall') {
+      if (isMixinCallValue(value)) {
         value = step.args.length === 0 ? value : { ...value, args: step.args };
       }
       continue;
     }
-    if (step.type === 'BracketLookup' && step.keyKind === 'index'
-      && (Array.isArray(value) || (!Array.isArray(value) && (value.type === 'List' || value.type === 'SpacedValue')))) {
-      const items = Array.isArray(value)
+    if (step.type === 'BracketLookup' && step.keyKind === 'index' && typeof step.key === 'number'
+      && (isValueSlotArray(value) || (!isValueSlotArray(value) && (value.type === 'List' || value.type === 'SpacedValue')))) {
+      const items = isValueSlotArray(value)
         ? value
         : value.type === 'List' ? value.value : value.parts;
       const index = step.key < 0
@@ -2490,7 +2695,7 @@ function resolveReferenceResult(
       value = item;
       continue;
     }
-    if (Array.isArray(value)) {
+    if (isValueSlotArray(value)) {
       return null;
     }
     const map = resolveBaseDeclMap(value, valueFrame, e);
@@ -2505,7 +2710,7 @@ function resolveReferenceResult(
         throw new Error(`Ambiguous reference member: ${step.name}`);
       }
       matched = prop ?? variable;
-    } else if (step.keyKind !== 'index') {
+    } else if (step.keyKind !== 'index' && typeof step.key !== 'number') {
       // `[@name]` names a variable member of the evaluated map/call result.
       // In particular, a mixin-call base must resolve `[@return]` from every
       // selected callee frame, rather than evaluating `@return` in the caller.
@@ -2553,7 +2758,10 @@ function resolveReferenceResult(
         }
       }
     } else {
-      const idx = step.key as number;
+      if (typeof step.key !== 'number') {
+        return null;
+      }
+      const idx = step.key;
       const i = idx < 0 ? map.list.length + idx : idx - 1;
       matched = map.list[i] ?? (idx === -1 && map.list.length === 0 ? lastVarMember(map, e) : undefined);
     }
@@ -2578,7 +2786,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
   if (resolved === null) {
     return literal(node.raw);
   }
-  return resolved.value.type === 'MixinCall'
+  return isMixinCallValue(resolved.value)
     ? literal(node.raw)
     : evalValueSlot(resolved.value, resolved.frame, e);
 }
@@ -2592,7 +2800,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
 function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
   let cur: Binding | undefined = node;
   const seen = new Set<Binding>();
-  while (cur?.type === 'VariableReference') {
+  while (cur !== undefined && !isValueSlotArray(cur) && cur.type === 'VariableReference') {
     if (seen.has(cur)) {
       return undefined;
     } // cyclic
@@ -2617,12 +2825,16 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): Value | und
   if (node.name === 'isdefined') {
     // Defined iff the single argument resolves to a bound value. A non-`VariableReference`
     // argument (a literal / call) is inherently defined.
-    const bound = arg.type === 'VariableReference' ? resolveBindingNode(arg, frame) : arg;
+    const bound = !isValueSlotArray(arg) && arg.type === 'VariableReference'
+      ? resolveBindingNode(arg, frame)
+      : arg;
     return literal(bound !== undefined ? 'true' : 'false');
   }
   if (node.name === 'isruleset') {
     const bound = resolveBindingNode(arg, frame);
-    return literal(bound?.type === 'DetachedRuleset' ? 'true' : 'false');
+    return literal(bound !== undefined && !isValueSlotArray(bound) && bound.type === 'DetachedRuleset'
+      ? 'true'
+      : 'false');
   }
   return undefined;
 }
@@ -2651,7 +2863,7 @@ function isIntegerString(s: string): boolean {
  */
 function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const ce: EvalCtx = { ...e, calcDepth: (e.calcDepth ?? 0) + 1 };
-  return mapMaybe(evalTyped(node.args[0]!, frame, ce), (v) => {
+  return mapMaybe(evalTypedSlot(node.args[0]!, frame, ce), (v) => {
     if (v.type === 'Keyword') {
       return calcInner(v.bytes) !== null ? v : makeKeyword(`calc(${v.bytes})`);
     }
@@ -2679,8 +2891,8 @@ function hasCssColorCallShape(node: FunctionCall): boolean {
   if (node.args.length !== 1) {
     return false;
   }
-  const [slot] = node.args;
-  return Array.isArray(slot) && slot.length >= 3;
+  const slot = node.args[0]!;
+  return isValueSlotArray(slot) && slot.length >= 3;
 }
 
 /** Re-emit a call after resolving variable/interpolation bytes, without invoking its callable. */
@@ -2720,8 +2932,10 @@ function guardDeps(frame: Frame | null, e: EvalCtx): {
 /** The `GuardNode` an argument of a logical fn contributes: a structured
  *  `Condition` carries its own guard tree; any other value is a bare TRUTH test
  *  (`if((iscolor(@x)), …)`, `if(true, …)`) — the same rule a bare guard value uses. */
-function condGuard(node: ValueNode): GuardNode {
-  return node.type === 'Condition' ? node.guard : { g: 'truth', value: node };
+function condGuard(node: ValueSlot): GuardNode {
+  return !isValueSlotArray(node) && node.type === 'Condition'
+    ? node.guard
+    : { g: 'truth', value: node };
 }
 
 /** The Less logical / conditional fns whose argument is a boolean CONDITION (a
@@ -2733,11 +2947,11 @@ const LOGICAL_FNS = new Set(['if', 'boolean', 'not', 'and', 'or']);
  *  LAZY — only the taken branch folds; an absent else is empty bytes. */
 function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const deps = guardDeps(frame, e);
-  const truthOf = (a: ValueNode | undefined): boolean => a !== undefined && evalGuard(condGuard(a), deps);
+  const truthOf = (a: ValueSlot | undefined): boolean => a !== undefined && evalGuard(condGuard(a), deps);
   switch (name) {
     case 'if': {
       const branch = truthOf(node.args[0]) ? node.args[1] : node.args[2];
-      return branch === undefined ? literal('') : evalValue(branch, frame, e);
+      return branch === undefined ? literal('') : evalValueSlot(branch, frame, e);
     }
     case 'not': return makeBool(!truthOf(node.args[0]));
     case 'and': return makeBool(node.args.every(a => evalGuard(condGuard(a), deps)));
@@ -2816,7 +3030,9 @@ function evalCall(
         const file = e.context?.sourceContext?.file;
         const source = file?.source;
         const span = source === undefined ? undefined : sourceSpanOf(node);
-        const location = span === undefined ? undefined : lineColAt(source, span.start);
+        const location = source === undefined || span === undefined
+          ? undefined
+          : lineColAt(source, span.start);
         e.context?.warn(WARN.unresolvedFunction({
           node,
           filePath: file?.fullPath,
@@ -2843,7 +3059,9 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: EvalCtx): ne
   const file = e.context?.sourceContext?.file;
   const source = file?.source;
   const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = span === undefined ? undefined : lineColAt(source, span.start);
+  const location = source === undefined || span === undefined
+    ? undefined
+    : lineColAt(source, span.start);
   throw ERR.invalidFunction({
     node,
     filePath: file?.fullPath,
@@ -2880,7 +3098,12 @@ function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): Ma
 
 /** Fold a value node and return its emitted bytes. */
 function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return mapMaybe(evalValueSlot(node, frame, e), emitValue);
+  return mapMaybe(evalValueSlot(node, frame, e), (value) => {
+    if (!isLiteral(value)) {
+      validateFinalUnits(value, e.modes);
+    }
+    return emitValue(value);
+  });
 }
 
 /**
@@ -2961,6 +3184,9 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
     return null;
   }
   const bound = hit.value;
+  if (isValueSlotArray(bound)) {
+    return null;
+  }
   if (bound.type === 'SelectorCapture') {
     const branches = bound.branches.slice();
     return { branches, multi: branches.length > 1, capture: true };
@@ -3037,7 +3263,8 @@ function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx)
     for (let i = index; i < interp.parts.length; i++) {
       const part = interp.parts[i]!;
       if ('lit' in part) {
-        out += part.lit; continue;
+        out += part.lit;
+        continue;
       }
       const g = refGroupInterp(part.ref, entryFrame, e);
       if (g !== null) {
@@ -3054,6 +3281,16 @@ function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx)
     return resolveEmergentInterp(out, entryFrame, e);
   };
   return step(0, '');
+}
+
+/** Synchronous selector-interpolation consumers cannot suspend and resume a
+ * partially mutated selector. Public emitted selectors retain the async path. */
+function resolveSimpleTextSync(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): string {
+  const value = resolveSimpleText(sim, frame, e);
+  if (isThenable(value)) {
+    throw new Error('async value in synchronous selector interpolation is unsupported');
+  }
+  return value;
 }
 
 function resolveCompound(c: CompoundSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
@@ -3118,6 +3355,14 @@ function compose(parents: string[], child: SelectorList, frame: Frame | null, e:
   return combineAll(parts, values => values.flat());
 }
 
+function composeSync(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
+  const value = compose(parents, child, frame, e);
+  if (isThenable(value)) {
+    throw new Error('async value in a synchronous nested selector composition is unsupported');
+  }
+  return value;
+}
+
 /**
  * [nesting] The EMITTED-header branches for `child` under `parents`. Identical to
  * `compose` EXCEPT an `&`-less child under MULTIPLE parents compacts to a single
@@ -3170,6 +3415,14 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Eval
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   return combineAll(list.selectors.map(c => expandComplex(c, frame, e)), values => values.flat());
+}
+
+function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
+  const value = ownStrings(list, frame, e);
+  if (isThenable(value)) {
+    throw new Error('async value in a synchronous nested selector header is unsupported');
+  }
+  return value;
 }
 
 /** [atrule-bubbling] Flat-mode own selectors at a ROOT context (no parent): like
@@ -3370,7 +3623,7 @@ function put(e: Emit, s: string): void {
  * `.m() !important` placement onto every declaration the body emits. */
 interface Leaf {
   node: Statement;
-  frame: Frame | null;
+  frame: Frame;
   important?: boolean;
   /** Produced by the core `$apply` expansion; its repeated output stays visible. */
   fromApply?: true;
@@ -3395,7 +3648,7 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
   for (let i = 0; i < comp.simples.length; i++) {
     const sim = comp.simples[i]!;
     if (sim.interp !== null) {
-      comp.simples[i] = simpleSelector(resolveSimpleText(sim, frame, e));
+      comp.simples[i] = simpleSelector(resolveSimpleTextSync(sim, frame, e));
     }
   }
   comp._hasInterp = false;
@@ -3615,10 +3868,7 @@ function collectPlacedExtendFacts(
           return addInstructions(0);
         };
         const placed = mapMaybe(own, addRule);
-        if (isThenable(placed)) {
-          return placed;
-        }
-        continue;
+        return placed;
       }
       if (statement.type === 'AtRuleBlock') {
         const nested = collectPlacedExtendFacts(statement.body, frame, e, overlay, path, scope, parent, hidden, referenceBoundary);
@@ -3738,7 +3988,12 @@ function planImportedExtends(
       // itself is the admission fact: it includes static Rule extends and the
       // possible `$for`/`each()` loop bodies whose concrete placements the
       // planner must still preflight.
-      if (bodyMayPlanExtend(loaded.document.children)) {
+      // A reference import contributes hidden Rule subjects even when the imported
+      // document contains no own `:extend()`: a visible extender in the importing
+      // document may still target one of those rules. Ordinary imports retain the
+      // feature-bearing admission gate and avoid planner work when no extend facts
+      // can participate.
+      if (bodyMayPlanExtend(loaded.document.children) || importHasOption(options, 'reference')) {
         recordAstExtendProfile?.('astExtend.preflight.importsFeatureBearing');
         const referenceBoundary = importHasOption(options, 'reference') ? {} : null;
         const placed = collectPlacedExtendFacts(loaded.document.children, childFrame, e, overlay, [], [], null, referenceBoundary !== null, referenceBoundary);
@@ -3920,7 +4175,7 @@ function emitDocumentStatements(
       }
     };
     for (const child of children) {
-      if (e.hoistedCssImports?.has(child as ImportAtRule)) {
+      if (child.type === 'ImportAtRule' && e.hoistedCssImports?.has(child)) {
         continue;
       }
       if (child.type !== 'ImportAtRule') {
@@ -3951,8 +4206,8 @@ function emitDocumentStatements(
     try {
       return emit(child);
     } catch (error) {
-      if (allowDefer && error instanceof ImportPathNotReady) {
-        deferredImports.push(child as ImportAtRule);
+      if (allowDefer && child.type === 'ImportAtRule' && error instanceof ImportPathNotReady) {
+        deferredImports.push(child);
         return undefined;
       }
       if (error instanceof ImportPathNotReady) {
@@ -4151,7 +4406,7 @@ function emitDocumentStatements(
  * is defined (`frame`). An unguarded rule always emits; a CSS ruleset guard never
  * uses `default()` (that is a mixin-dispatch decision), so `isDefault` is `false`.
  */
-function ruleGuardPasses(rule: Rule, frame: Frame, e: Emit): boolean {
+function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): boolean {
   if (!rule.guard) {
     return true;
   }
@@ -4620,9 +4875,12 @@ function walkBody(
         // at-rule is a container, so (partitioned) it defers to `trailing` after the
         // leading block, matching the legacy flatten order.
         if (staysNested(node.name)) {
-          addLeaf(group, partition, { node, frame }, forceLeading); break;
+          addLeaf(group, partition, { node, frame }, forceLeading);
+          break;
         }
-        const atNode = node, atFrame = frame, atComposed = composed;
+        const atNode = node;
+        const atFrame = frame;
+        const atComposed = composed;
         if (partition) {
           flushPending(partition);
           partition.encounteredContainer = true;
@@ -4641,7 +4899,8 @@ function walkBody(
       }
       case 'AtRuleStatement': {
         if (staysNested(node.name)) {
-          addLeaf(group, partition, { node, frame }, forceLeading); break;
+          addLeaf(group, partition, { node, frame }, forceLeading);
+          break;
         }
         const atNode = node;
         if (partition) {
@@ -4704,18 +4963,24 @@ function walkBody(
       case 'StyleImport': {
         const importNode = node;
         if (partition) {
-          flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitStyleImport(importNode, frame, e));
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitStyleImport(importNode, frame, e));
         } else {
-          flush(); emitStyleImport(node, frame, e);
+          flush();
+          emitStyleImport(node, frame, e);
         }
         break;
       }
       case 'ModuleImport': {
         const importNode = node;
         if (partition) {
-          flushPending(partition); partition.encounteredContainer = true; partition.trailing.push(() => emitModuleImport(importNode, frame, e));
+          flushPending(partition);
+          partition.encounteredContainer = true;
+          partition.trailing.push(() => emitModuleImport(importNode, frame, e));
         } else {
-          flush(); emitModuleImport(node, frame, e);
+          flush();
+          emitModuleImport(node, frame, e);
         }
         break;
       }
@@ -4934,7 +5199,8 @@ function expandCall(
           finish();
         },
         (error) => {
-          finish(); throw error;
+          finish();
+          throw error;
         }
       );
     }
@@ -4996,7 +5262,7 @@ function expandApply(
           rule.body, composed, ancestor, applyFrame, group, flush, partition, e,
           imp, forceLeading, propertyScope, true
         )
-      ), rule.body);
+      ));
       if (isThenable(emitted)) {
         return emitted.then(() => run(index + 1));
       }
@@ -5029,7 +5295,7 @@ function descendNamespacePath(path: MixinCall['path'], frame: Frame): Frame | nu
     // Imported facts execute in a particular render placement. A Rule found by
     // namespace lookup contributes both that placement's already-published
     // import prefix and its authored body, matching lexical import splice order.
-    const bodies = rules.flatMap(r => [
+    const bodies: Statement[] = rules.flatMap(r => [
       ...(owner?.rulePlacements?.get(r)?.importedRules ?? []),
       ...r.body
     ]);
@@ -5049,6 +5315,9 @@ function captureArgDefFrames(bindings: Map<string, Binding> | null, callerFrame:
     return;
   }
   for (const v of bindings.values()) {
+    if (isValueSlotArray(v)) {
+      continue;
+    }
     if (v.type === 'DetachedRuleset') {
       bindDetached(callFrame, v, callerFrame, callerFrame.sourceOwner ?? null);
     } else if (v.type === 'MixinCall') {
@@ -5081,11 +5350,11 @@ function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e
     const v = s.value;
     // A mixin-CALL-bound var (`@p: .m()`) is not byte-snapshottable; leave it to
     // resolve lazily at its call site rather than snapshotting a leaked copy.
-    if (v.type === 'MixinCall') {
+    if (isMixinCallValue(v)) {
       continue;
     }
     let snap: ValueNode;
-    if (v.type === 'DetachedRuleset' || isTypedLiteral(v)) {
+    if (!isValueSlotArray(v) && (v.type === 'DetachedRuleset' || isTypedLiteral(v))) {
       snap = v;
     } else {
       const b = evalBytes(v, callFrame, e);
@@ -5179,7 +5448,7 @@ function publishExplicitRulesets(frame: Frame, body: Statement[], callFrame: Fra
 /** The taken branch value of an `if(cond, then, else)` call — its condition
  *  evaluated through the guard evaluator (same rule `evalLogical` applies). The
  *  `else` branch may be absent, so the result can be `undefined`. */
-function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueNode | undefined {
+function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueSlot | undefined {
   const cond = node.args[0];
   const taken = cond !== undefined && evalGuard(condGuard(cond), guardDeps(frame, e));
   return taken ? node.args[1] : node.args[2];
@@ -5200,11 +5469,15 @@ function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): Mix
   let cur: Binding | undefined = node;
   while (cur && !seen.has(cur)) {
     seen.add(cur);
+    if (isValueSlotArray(cur)) {
+      return undefined;
+    }
     if (cur.type === 'MixinCall') {
       return cur;
     }
     if (cur.type === 'VariableReference') {
-      cur = lookupVar(frame, cur.name); continue;
+      cur = lookupVar(frame, cur.name);
+      continue;
     }
     return undefined;
   }
@@ -5216,11 +5489,15 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
   let cur: Binding | undefined = node;
   while (cur && !seen.has(cur)) {
     seen.add(cur);
+    if (isValueSlotArray(cur)) {
+      return undefined;
+    }
     if (cur.type === 'DetachedRuleset') {
       return cur;
     }
     if (cur.type === 'VariableReference') {
-      cur = lookupVar(frame, cur.name); continue;
+      cur = lookupVar(frame, cur.name);
+      continue;
     }
     if (cur.type === 'Reference') {
       const resolved = resolveReferenceResult(cur, frame, e);
@@ -5228,7 +5505,8 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
       continue;
     }
     if (cur.type === 'FunctionCall' && cur.name.toLowerCase() === 'if') {
-      cur = pickIfBranch(cur, frame, e); continue;
+      cur = pickIfBranch(cur, frame, e);
+      continue;
     }
     return undefined;
   }
@@ -5297,7 +5575,7 @@ function expandReferenceCall(
   if (!resolved) {
     return;
   }
-  if (resolved.value.type === 'MixinCall') {
+  if (isMixinCallValue(resolved.value)) {
     const home = e.mixinCallHomes?.get(resolved.value) ?? resolved.frame ?? frame;
     return expandCall(resolved.value, composed, ancestor, home, group, flush, partition, e, false, forceLeading, undefined, propertyScope, applyExpansion);
   }
@@ -5416,7 +5694,7 @@ function resolveForRuleset(
   frame: Frame | null,
   e: EvalCtx
 ): { body: Statement[]; frame: Frame | null; detached?: DetachedBinding } | null {
-  if (Array.isArray(node)) {
+  if (isValueSlotArray(node)) {
     return null;
   }
   if (node.type === 'DetachedRuleset') {
@@ -5426,6 +5704,9 @@ function resolveForRuleset(
   if (node.type === 'VariableReference') {
     const bound = lookupVar(frame, node.name);
     if (!bound) {
+      return null;
+    }
+    if (isValueSlotArray(bound)) {
       return null;
     }
     if (bound.type === 'DetachedRuleset') {
@@ -5442,7 +5723,9 @@ function resolveForRuleset(
   }
   if (node.type === 'Reference') {
     const resolved = resolveReferenceResult(node, frame, e);
-    return resolved === null ? null : resolveForRuleset(resolved.value, resolved.frame, e);
+    return resolved === null || isMixinCallValue(resolved.value)
+      ? null
+      : resolveForRuleset(resolved.value, resolved.frame, e);
   }
   return null;
 }
@@ -5458,18 +5741,19 @@ function resolveForNode(
   let cur = node;
   let f = frame;
   for (;;) {
-    if (Array.isArray(cur)) {
+    if (isValueSlotArray(cur)) {
       return { node: cur, frame: f };
     }
     if (cur.type === 'Block') {
-      cur = cur.inner; continue;
+      cur = cur.inner;
+      continue;
     }
     if (cur.type === 'VariableReference') {
       const hit = resolveVarRef(f, cur.name, cur.lookup, e);
       // A mixin-CALL binding is not a plain list/scalar iterable node; stop at the
       // `VariableReference` (the list-fallback then treats it as a single item — the mixin-call
       // iterable proper is handled up front in `forItems`).
-      if (!hit || hit.value.type === 'MixinCall') {
+      if (!hit || isMixinCallValue(hit.value)) {
         return { node: cur, frame: f };
       }
       cur = hit.value;
@@ -5500,7 +5784,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
     if (n.type === 'Declaration') {
       const name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, e);
       items.push({ value: n.value, key: any(name) });
-    } else if (n.type === 'VariableDeclaration' && n.value.type !== 'MixinCall') {
+    } else if (n.type === 'VariableDeclaration' && !isMixinCallValue(n.value)) {
       items.push({ value: n.value, key: any(n.name) });
     }
   }
@@ -5510,10 +5794,10 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
 /** The ordered items an `each()` iterable expands to. */
 function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): ForItem[] {
   // [each mixin-call iterable] `.mixin()` output → iterate its declarations.
-  if (!Array.isArray(node) && node.type === 'MixinCall') {
+  if (isMixinCallValue(node)) {
     return frame === null ? [] : forItemsFromMixinCall(node, frame, e);
   }
-  if (!Array.isArray(node) && node.type === 'Range') {
+  if (!isValueSlotArray(node) && node.type === 'Range') {
     return forRangeItems(node, frame, e);
   }
   const map = resolveForRuleset(node, frame, e);
@@ -5522,8 +5806,14 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Fo
     for (const s of map.body) {
       if (s.type === 'Declaration') {
         const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, map.frame, e);
-        items.push({ value: s.value, key: any(name), ...(s.value.type === 'DetachedRuleset' && map.detached ? { detached: map.detached } : {}) });
-      } else if (s.type === 'VariableDeclaration' && s.value.type !== 'MixinCall') {
+        items.push({
+          value: s.value,
+          key: any(name),
+          ...(!isValueSlotArray(s.value) && s.value.type === 'DetachedRuleset' && map.detached
+            ? { detached: map.detached }
+            : {})
+        });
+      } else if (s.type === 'VariableDeclaration' && !isMixinCallValue(s.value)) {
         items.push({ value: s.value, key: any(s.name) });
       }
     }
@@ -5536,7 +5826,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Fo
   // items; any other single value (an escaped `e("…")`, a scalar) is ONE item — it
   // is not a list, so it is never split.
   const { node: base, frame: baseFrame } = resolveForNode(node, frame, e);
-  if (Array.isArray(base)) {
+  if (isValueSlotArray(base)) {
     return base.map(value => ({ value, key: null }));
   }
   if (base.type === 'Range') {
@@ -5603,7 +5893,7 @@ function bindForEntry(node: For, value: ValueSlot, key: ValueNode | null, index:
     bindings.set(binding.names[0], key ?? index);
     bindings.set(binding.names[1], value);
   } else {
-    const values = Array.isArray(value) ? value : !Array.isArray(value) && value.type === 'SpacedValue' ? value.parts : !Array.isArray(value) && value.type === 'List' ? value.value : [value];
+    const values = isValueSlotArray(value) ? value : value.type === 'SpacedValue' ? value.parts : value.type === 'List' ? value.value : [value];
     for (let i = 0; i < binding.names.length && i < values.length; i++) {
       bindings.set(binding.names[i]!, values[i]!);
     }
@@ -5617,7 +5907,7 @@ function bindForDetached(frame: Frame, bindings: Map<string, ValueSlot>, item: F
     return;
   }
   for (const value of bindings.values()) {
-    if (value === item.value && !Array.isArray(value) && value.type === 'DetachedRuleset') {
+    if (value === item.value && !isValueSlotArray(value) && value.type === 'DetachedRuleset') {
       bindDetached(frame, value, item.detached.lexicalFrame, item.detached.sourceOwner);
     }
   }
@@ -5689,7 +5979,7 @@ function dispatch(
   // it falls back to the caller frame (`parent: frame`).
   const makeCalleeTyped = (
     def: MixinDef,
-    bindings: Map<string, ValueNode> | null,
+    bindings: Map<string, CallValue> | null,
     isDefault: () => boolean
   ): TypedResolver => {
     const home = homes?.get(def);
@@ -5750,9 +6040,10 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
   const args: CallArg[] = [];
   for (const a of call.args) {
     if (!a.spread) {
-      args.push(a); continue;
+      args.push(a);
+      continue;
     }
-    if (a.value.type === 'MixinCall') {
+    if (isMixinCallValue(a.value)) {
       throw new Error('A deferred mixin call cannot be used as a spread argument.');
     }
     const bytes = resolveCaller(a.value).trim();
@@ -5782,9 +6073,9 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
     // A mixin call passed directly as an arg value (`.wrapper(.something(foo))`):
     // wrap it as a detached ruleset whose body is that call, so `@another-mixin()`
     // dispatches it (its args resolve in the caller frame's runtime binding).
-    if (a.value.type === 'VariableReference') {
+    if ('type' in a.value && a.value.type === 'VariableReference') {
       const bound = lookupVar(frame, a.value.name);
-      if (bound?.type === 'DetachedRuleset') {
+      if (bound && !isValueSlotArray(bound) && bound.type === 'DetachedRuleset') {
         changed = true;
         return { ...a, value: bound };
       }
@@ -5792,7 +6083,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
       // as an arg binds BY REFERENCE, wrapped as a detached ruleset whose body is that
       // call (so `@another-mixin()` in the callee dispatches it). The wrapper's home is
       // the caller frame, where the call's own selector/args resolve.
-      if (bound?.type === 'MixinCall') {
+      if (bound && isMixinCallValue(bound)) {
         changed = true;
         return { ...a, value: bound };
       }
@@ -5996,7 +6287,11 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
       let important = false;
       for (let k = 0; k < indices.length; k++) {
         const idx = indices[k]!;
-        const dn = group[idx]!.node as Declaration;
+        const mergeLeaf = group[idx]!;
+        if (mergeLeaf.node.type !== 'Declaration') {
+          throw new TypeError('Expected declaration merge member');
+        }
+        const dn = mergeLeaf.node;
         // Match ordinary declaration emission: an Important wrapper may sit
         // behind a variable reference, and promotes this whole merged line.
         // Keep that one-bit signal on the existing emit context: merged output
@@ -6052,7 +6347,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     const onNewLine = node.valueOnNewLine === true;
     put(e, onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
@@ -6297,7 +6592,8 @@ function emitImportAtRule(
               ? emitted.then(() => {
                   finish();
                 }, (error) => {
-                  e.depth--; throw error;
+                  e.depth--;
+                  throw error;
                 })
               : (finish(), emitted);
           } catch (error) {
@@ -6326,24 +6622,34 @@ function emitImportAtRule(
             }
             throw error;
           }
-          return isThenable(result)
-            ? result.then(
-                () => {
-                  if (reference) {
-                    e.referenceImportDepth--;
-                  } if (multiple) {
-                    e.multipleImportDepth--;
-                  }
-                },
-                (error) => {
-                  if (reference) {
-                    e.referenceImportDepth--;
-                  } if (multiple) {
-                    e.multipleImportDepth--;
-                  } throw error;
+          if (isThenable(result)) {
+            return result.then(
+              () => {
+                if (reference) {
+                  e.referenceImportDepth--;
                 }
-              )
-            : (reference && e.referenceImportDepth--, multiple && e.multipleImportDepth--, result);
+                if (multiple) {
+                  e.multipleImportDepth--;
+                }
+              },
+              (error) => {
+                if (reference) {
+                  e.referenceImportDepth--;
+                }
+                if (multiple) {
+                  e.multipleImportDepth--;
+                }
+                throw error;
+              }
+            );
+          }
+          if (reference) {
+            e.referenceImportDepth--;
+          }
+          if (multiple) {
+            e.multipleImportDepth--;
+          }
+          return result;
         }
         return loaded.withinDocument ? loaded.withinDocument(emit) : emit();
       }
@@ -6355,7 +6661,7 @@ function emitImportAtRule(
 
 /** A missing typed interpolation reference is retryable only at an import boundary. */
 class ImportPathNotReady extends Error {
-  constructor(readonly cause: Error) {
+  constructor(override readonly cause: Error) {
     super(cause.message);
   }
 }
@@ -6672,10 +6978,12 @@ function normalizeSupportsBytes(p: string): string {
       let end = i + 1;
       for (; end < p.length; end++) {
         if (p[end] === '\\') {
-          end++; continue;
+          end++;
+          continue;
         }
         if (p[end] === quote) {
-          end++; break;
+          end++;
+          break;
         }
       }
       out += p.slice(i, end);
@@ -6725,8 +7033,15 @@ function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[]): string
  * deliberately local to the supports prelude; ordinary declaration values keep
  * their existing evaluation semantics.
  */
-function evalSupportsPreludeSync(node: ValueNode, frame: Frame | null, e: EvalCtx): SupportsPreludePart[] {
+function evalSupportsPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): SupportsPreludePart[] {
   const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
+  if (isValueSlotArray(node)) {
+    const authored = valueLayoutOf(node);
+    return node.flatMap((part, index) => [
+      ...(index === 0 ? [] : plain(authored?.[index - 1] ?? ' ')),
+      ...evalSupportsPreludeSync(part, frame, e)
+    ]);
+  }
   switch (node.type) {
     case 'GeneralEnclosed':
       // `<general-enclosed>` owns arbitrary CSS syntax. Its bytes must not pass
@@ -6759,7 +7074,7 @@ function evalSupportsPreludeSync(node: ValueNode, frame: Frame | null, e: EvalCt
  * delegating all leaf evaluation to the normal value path.
  */
 function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
-  if (Array.isArray(node)) {
+  if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
     let out = '';
     for (let index = 0; index < node.length; index += 1) {
@@ -7097,6 +7412,21 @@ function emitBubbleBody(
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
   const group: Leaf[] = [];
+  // Less hoists direct declarations in a bubbled conditional block ahead of
+  // nested rules, even when those declarations occur after a child rule in
+  // authored order (`.a { @media/@container { .b { … } color: blue; } }`).
+  // Keep this narrow: only a static declaration/comment/rule/at-rule body can
+  // be safely staged without executing dynamic mixin/loop/import expansion
+  // twice or changing live-binding activation order. Dynamic bodies retain the
+  // existing streaming path below.
+  const deferStaticChildren = ctx !== null && statements.every(statement =>
+    statement.type === 'Declaration'
+    || statement.type === 'Comment'
+    || statement.type === 'Rule'
+    || statement.type === 'AtRuleBlock'
+    || statement.type === 'AtRuleStatement'
+  );
+  const deferredChildren: Array<() => MaybePromise<void>> | null = deferStaticChildren ? [] : null;
   const flushDirect = (): void => {
     if (group.length === 0) {
       return;
@@ -7129,44 +7459,88 @@ function emitBubbleBody(
           group.push({ node, frame });
           break;
         case 'Rule':
-          flushDirect();
-          e.depth++;
-          {
-            const emitted = flatten(node, ctx, ctxAncestor, frame, e);
-            if (isThenable(emitted)) {
-              return emitted.then(
+          if (deferStaticChildren) {
+            deferredChildren!.push(() => {
+              e.depth++;
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              if (isThenable(emitted)) {
+                return emitted.then(() => {
+                  e.depth--;
+                }, (error) => {
+                  e.depth--;
+                  throw error;
+                });
+              }
+              e.depth--;
+            });
+          } else {
+            flushDirect();
+            e.depth++;
+            {
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              if (isThenable(emitted)) {
+                return emitted.then(
+                  () => {
+                    e.depth--;
+                    return run(index + 1);
+                  },
+                  (error) => {
+                    e.depth--;
+                    throw error;
+                  }
+                );
+              }
+            }
+            e.depth--;
+          }
+          break;
+        case 'AtRuleBlock':
+          if (deferStaticChildren) {
+            deferredChildren!.push(() => {
+              e.depth++;
+              const nested = emitAtRuleBlock(node, frame, e, ctx);
+              if (isThenable(nested)) {
+                return nested.then(() => {
+                  e.depth--;
+                }, (error) => {
+                  e.depth--;
+                  throw error;
+                });
+              }
+              e.depth--;
+            });
+          } else {
+            flushDirect();
+            e.depth++;
+            const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
+            if (isThenable(nested)) {
+              return nested.then(
                 () => {
-                  e.depth--; return run(index + 1);
+                  e.depth--;
+                  return run(index + 1);
                 },
                 (error) => {
-                  e.depth--; throw error;
+                  e.depth--;
+                  throw error;
                 }
               );
             }
+            e.depth--;
           }
-          e.depth--;
-          break;
-        case 'AtRuleBlock':
-          flushDirect();
-          e.depth++;
-          const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
-          if (isThenable(nested)) {
-            return nested.then(
-              () => {
-                e.depth--; return run(index + 1);
-              },
-              (error) => {
-                e.depth--; throw error;
-              }
-            );
-          }
-          e.depth--;
           break;
         case 'AtRuleStatement':
-          flushDirect();
-          e.depth++;
-          emitAtRuleStatement(node, frame, e);
-          e.depth--;
+          if (deferStaticChildren) {
+            deferredChildren!.push(() => {
+              e.depth++;
+              emitAtRuleStatement(node, frame, e);
+              e.depth--;
+            });
+          } else {
+            flushDirect();
+            e.depth++;
+            emitAtRuleStatement(node, frame, e);
+            e.depth--;
+          }
           break;
         case 'ImportAtRule':
           flushDirect();
@@ -7193,7 +7567,8 @@ function emitBubbleBody(
                     e.depth += 2;
                   },
                   (error) => {
-                    e.depth += 2; throw error;
+                    e.depth += 2;
+                    throw error;
                   }
                 );
               }
@@ -7204,10 +7579,12 @@ function emitBubbleBody(
           if (isThenable(imported)) {
             return imported.then(
               () => {
-                e.depth--; return run(index + 1);
+                e.depth--;
+                return run(index + 1);
               },
               (error) => {
-                e.depth--; throw error;
+                e.depth--;
+                throw error;
               }
             );
           }
@@ -7281,6 +7658,18 @@ function emitBubbleBody(
       }
     }
     flushDirect();
+    if (deferredChildren === null) {
+      return;
+    }
+    const runDeferred = (childIndex: number): MaybePromise<void> => {
+      for (let i = childIndex; i < deferredChildren.length; i++) {
+        const emitted = deferredChildren[i]!();
+        if (isThenable(emitted)) {
+          return emitted.then(() => runDeferred(i + 1));
+        }
+      }
+    };
+    return runDeferred(0);
   };
   return run(0);
 }
@@ -7504,9 +7893,11 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     put(e, onNewLine ? ':' : ': ');
     const valStart = e.off;
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
     if (e.positions) {
-      e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
+      if (!isValueSlotArray(node.value)) {
+        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
+      }
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
     put(e, ';\n');
@@ -7531,8 +7922,8 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
  */
 function nestedSourceStrings(source: NestedHeaderSource, e: EvalCtx): string[] {
   const parents = source.parent === null
-    ? ownStrings(source.selector, source.frame, e)
-    : compose(nestedSourceStrings(source.parent, e), source.selector, source.frame, e);
+    ? ownStringsSync(source.selector, source.frame, e)
+    : composeSync(nestedSourceStrings(source.parent, e), source.selector, source.frame, e);
   return parents;
 }
 
@@ -7540,7 +7931,7 @@ interface TransparentShell {
   readonly rule: Rule;
   readonly call: MixinCall;
   readonly def: MixinDef;
-  readonly bindings: Map<string, CallValue>;
+  readonly bindings: Map<string, CallValue> | null;
   readonly home: Frame;
 }
 
@@ -7632,7 +8023,8 @@ function emitTransparentShells(
       const emitted = emitNestedBody(shell.def.body, callFrame, e, undefined, imp, source);
       if (isThenable(emitted)) {
         return emitted.then(() => {
-          finish(); return run(index + 1);
+          finish();
+          return run(index + 1);
         });
       }
       finish();
@@ -7699,8 +8091,8 @@ function emitNestedRule(
   const own = plan
     ? plan.header
     : placement === null
-      ? ownStrings(rule.selector, frame, e)
-      : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
+      ? ownStringsSync(rule.selector, frame, e)
+      : composeSync(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
   const header = idt ? own.join(',\n' + idt) : own.join(',\n');
   // Less only coalesces this nested-output root seam after an authored header
   // has been evaluated. Static same-selector root rules remain distinct.
@@ -7808,7 +8200,8 @@ function emitHoisted(rule: Rule, frame: Frame, e: Emit): MaybePromise<void> {
         e.hoistMode = prev;
       },
       (error) => {
-        e.hoistMode = prev; throw error;
+        e.hoistMode = prev;
+        throw error;
       }
     );
   }
@@ -7916,7 +8309,8 @@ function expandNestedCall(
         e.mixinDepth--;
       },
       (error) => {
-        e.mixinDepth--; throw error;
+        e.mixinDepth--;
+        throw error;
       }
     );
   }
@@ -7964,7 +8358,7 @@ function expandNestedApply(
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         prepareBodyPlugins(rule.body, applyFrame, e),
         () => emitNestedBody(rule.body, applyFrame, e, undefined, imp, source, null, sharedLeaves, true)
-      ), rule.body);
+      ));
       if (isThenable(emitted)) {
         return emitted.then(() => run(index + 1));
       }
@@ -7993,7 +8387,7 @@ function expandNestedReferenceCall(
   if (!resolved) {
     return;
   }
-  if (resolved.value.type === 'MixinCall') {
+  if (isMixinCallValue(resolved.value)) {
     return expandNestedCall(resolved.value, frame, e, imp, source, sharedLeaves, applyExpansion);
   }
   if (step.args.length !== 0) {

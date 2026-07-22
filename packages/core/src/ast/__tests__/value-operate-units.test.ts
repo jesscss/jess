@@ -8,7 +8,7 @@
  * op resolves the surviving unit (`8cats * 9dogs / 4cats` → `18dogs`).
  */
 import { describe, expect, it } from 'vitest';
-import { operate } from '../value-operate.js';
+import { operate, validateFinalUnits } from '../value-operate.js';
 import { makeDimension } from '../value-factory.js';
 import type { EvalModes, ValueObj } from '../value-eval.js';
 
@@ -65,7 +65,26 @@ describe('cross-unit arithmetic — vs less@4.6.7 (parens-division)', () => {
     expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'), PRESERVE)).toBe('2em');
   });
 
-  it('strict throws on a non-singular result unit', () => {
-    expect(() => operate('*', dim(2, 'px'), dim(3, 's'), STRICT)).toThrow(/Multiple units/);
+  it('strict defers non-singular validation until final materialization', () => {
+    const compound = operate('*', dim(2, 'px'), dim(3, 's'), STRICT);
+    expect(compound.bytes).toBe('6px');
+    expect(() => validateFinalUnits(compound, STRICT)).toThrow(/Multiple units/);
+  });
+
+  it('strict allows intermediate units to cancel before final validation', () => {
+    const first = operate('/', dim(10, 'px'), dim(5, 'em'), STRICT);
+    const second = operate('/', first, dim(1, 'px'), STRICT);
+    const third = operate('*', second, dim(3, 'em'), STRICT);
+    const final = operate('*', third, dim(1, 'px'), STRICT);
+    expect(final.bytes).toBe('6px');
+    expect(() => validateFinalUnits(final, STRICT)).not.toThrow();
+
+    const unitless = operate('/', dim(1, 'px'), dim(1, 'px'), STRICT);
+    expect(unitless.bytes).toBe('1');
+    expect(() => validateFinalUnits(unitless, STRICT)).not.toThrow();
+  });
+
+  it('strict still rejects incompatible additive units immediately', () => {
+    expect(() => operate('+', dim(1, 'px'), dim(1, 'em'), STRICT)).toThrow(/Incompatible units/);
   });
 });

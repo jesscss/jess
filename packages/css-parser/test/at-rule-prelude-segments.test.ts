@@ -36,7 +36,7 @@ describe('lossless at-rule prelude segments', () => {
       ['AtPreludeGroup', '[theme=") /* ] */"]'],
       ['AtPreludeWhitespace', ' '],
       ['AtPreludeText', 'foo\\ bar'],
-      ['AtPreludeWhitespace', ' '],
+      ['AtPreludeWhitespace', ' ']
     ]);
   });
 

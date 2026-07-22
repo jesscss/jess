@@ -13,7 +13,7 @@ import { type Context } from '../context.js';
 import { attachSelectorBitLibrary, Selector, type SelectorLike } from './selector.js';
 import { Ampersand } from './ampersand.js';
 import type { Rules } from './rules.js';
-import type { Ruleset } from './ruleset.js';
+import { Ruleset } from './ruleset.js';
 import { createPublicNil, Nil } from './nil.js';
 import { ComplexSelector, type ComplexSelectorComponent } from './selector-complex.js';
 import { createGeneratedIsPseudo } from './selector-pseudo.js';
@@ -280,7 +280,7 @@ type RegisterExtendRecordArgs = {
   extendRoot: Rules;
   target: Selector;
   selector: Selector;
-  authoredSelector: Selector | undefined;
+  authoredSelector: ExtendValue['selector'];
   flag: ExtendFlag | undefined;
   currentFrame: Ruleset | undefined;
 };
@@ -332,7 +332,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
           parentIs,
           ' ',
-          copySelectorForExtendRecord(ownSel, selectorBits)
+          copySelectorForExtendRecord(asExtendSelectorNode(ownSel), selectorBits)
         ]), selectorBits);
         usedParentListComposition = true;
       }
@@ -356,10 +356,11 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
           && parentSel
           && !(parentSel instanceof Nil)
         ) {
-          const composeSelector = (rs.constructor as { composeSelector(child: SelectorLike, parent: SelectorLike): SelectorLike }).composeSelector;
-          const composed = composeSelector(
+          const composed = Ruleset.composeSelector(
             copySelectorForExtendRecord(fullSel, selectorBits),
-            typeof parentSel === 'string' ? parentSel : copySelectorForExtendRecord(parentSel, selectorBits)
+            typeof parentSel === 'string'
+              ? parentSel
+              : copySelectorForExtendRecord(asExtendSelectorNode(parentSel), selectorBits)
           );
           // composeSelector goes textual when the parent is a string surface, so the
           // result may be a bare string — materialize it back to a Selector node.
@@ -371,7 +372,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
         const parentSel = currentFrame.selector;
         if (parentSel && !(parentSel instanceof Nil) && typeof parentSel !== 'string' && resolvedSel.valueOf() !== parentSel.valueOf()) {
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
-            copySelectorForExtendRecord(parentSel, selectorBits),
+            copySelectorForExtendRecord(asExtendSelectorNode(parentSel), selectorBits),
             ' ',
             copySelectorForExtendRecord(resolvedSel, selectorBits)
           ]), selectorBits);
@@ -391,7 +392,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
   context.extends.push([target, resolvedSel, flag === ExtendFlag.All, extendRoot, extendNode, docOrder, fromReferenceScope]);
 }
 
-function getRulesetOwnSelector(ruleset: Ruleset): Selector | undefined {
+function getRulesetOwnSelector(ruleset: Ruleset): SelectorLike | undefined {
   const { options } = ruleset;
   const ownSelector = options && 'ownSelector' in options ? options.ownSelector : undefined;
   return ownSelector instanceof Nil ? undefined : ownSelector;

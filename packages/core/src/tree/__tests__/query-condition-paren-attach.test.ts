@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Context } from '../../context.js';
 import { atrule, query, paren, keyword, quoted, decl, rules, ruleset, sel, el, vardecl, spaced, ref, color } from '../index.js';
-import { renderNodeToString } from '../util/render-buffer.js';
-import { createRenderBuffer } from '../util/render-buffer.js';
+import { createRenderBuffer, renderNodeToString } from '../util/render-buffer.js';
 
 /**
  * A `Paren` term in an at-rule prelude query condition attaches to the
@@ -24,7 +23,7 @@ describe('QueryCondition paren attachment', () => {
   };
 
   it('attaches an empty paren to a function-name keyword with no space', async () => {
-    const out = await render(query([keyword('url-prefix', { role: 'keyword' }), paren(undefined as any)]));
+    const out = await render(query([keyword('url-prefix', { role: 'keyword' }), paren()]));
     expect(out).toContain('@document url-prefix() {');
   });
 

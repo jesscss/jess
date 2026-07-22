@@ -2,9 +2,7 @@ import {
   F_STATIC,
   type Node, type Rules, Any, Node as NodeClass, Rules as RulesNode,
   // Simplified API
-  decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num,
-  // Additional types for test helpers
-  StyleImport, Quoted
+  decl, any, sel, el, sellist, rules, ruleset, spaced, ref, call, op, list, paren, negative, atrule, mixin, condition, QueryCondition, interpolated, interpolatedSelector, num
 } from '../src/index.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -219,16 +217,6 @@ export function createVariableInSquareBlock(squareValue = list([DEFAULT_VARIABLE
   ]);
 }
 
-export function createStyleImport(importPath = any('x.less')) {
-  return rules([
-    new StyleImport({
-      path: new Quoted(importPath.valueOf(), { quote: '\'' })
-    }, {
-      type: 'import'
-    })
-  ]);
-}
-
 export function createMixinDefinition(bodyDecl = decl({ name: 'color', value: DEFAULT_COLOR })) {
   return rules([
     mixin({
@@ -428,8 +416,7 @@ export const testPatterns = {
   complexSelectorInterpolation: (interpolatedSelector = interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
   selectorListInterpolation: (interpolatedSelector = interpolated({ source: '.\u0000\u0001', replacements: [DEFAULT_VARIABLE] })) => () => createSelectorInterpolation(interpolatedSelector),
 
-  // Import and mixin patterns
-  styleImport: (importPath = any('x.less')) => () => createStyleImport(importPath),
+  // Mixin patterns
   mixinDefinition: (bodyDecl = decl({ name: 'color', value: DEFAULT_COLOR })) => () => createMixinDefinition(bodyDecl),
   mixinCall: (name = 'x') => () => createStaticRuleset(DEFAULT_SELECTOR, [decl({ name: 'color', value: DEFAULT_COLOR })]),
 

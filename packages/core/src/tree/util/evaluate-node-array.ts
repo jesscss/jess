@@ -58,7 +58,7 @@ export function coerceValueNode(item: NodeArrayItem): Node {
   // A raw space-group array may carry the segment span stamped by the parser's
   // value assembly; move it to the coerced Sequence so trivia lookup (which is
   // keyed by node span) can recover the authored comma-item whitespace.
-  const span = sourceSpanOf(item as unknown as object);
+  const span = sourceSpanOf(item);
   if (span && sourceSpanOf(seq) === undefined) {
     setSourceSpan(seq, span);
   }
@@ -80,16 +80,33 @@ export function coerceNodeArray(value: NodeArrayItem[]): Node[] {
     // must not be run through value coercion.
     if (typeof item !== 'string' && !Array.isArray(item)) {
       if (out) {
-        out[i] = item as Node;
+        out[i] = item;
       }
       continue;
     }
     if (!out) {
-      out = value.slice(0, i) as Node[];
+      const prefix = value.slice(0, i);
+      if (!isNodeArray(prefix)) {
+        throw new TypeError('Expected only canonical nodes before a raw value segment.');
+      }
+      out = prefix;
     }
     out[i] = coerceValueNode(item);
   }
-  return out ?? (value as Node[]);
+  if (out) {
+    return out;
+  }
+  // `out` is only allocated when a raw string/array segment is encountered.
+  // If no coercion was needed, every union member is necessarily a Node; make
+  // that invariant explicit instead of asserting it through the raw union.
+  if (isNodeArray(value)) {
+    return value;
+  }
+  throw new TypeError('Expected only canonical nodes or coercible value segments.');
+}
+
+function isNodeArray(value: NodeArrayItem[]): value is Node[] {
+  return value.every(item => item instanceof Node);
 }
 
 export function evaluateNodeArrayMaybe(
@@ -97,14 +114,14 @@ export function evaluateNodeArrayMaybe(
   rawValue: NodeArrayItem[]
 ): MaybePromise<Node[]> {
   const value = coerceNodeArray(rawValue);
-  let values: Node[] | undefined = value !== (rawValue as Node[]) ? value : undefined;
+  let values: Node[] | undefined = value !== rawValue ? value : undefined;
   for (let index = 0; index < value.length; index++) {
     const node = value[index]!;
     const out = node.eval(context);
     if (isThenable(out)) {
-      return evaluateNodeArrayRest(context, value, values, index, out as Promise<Node>);
+      return evaluateNodeArrayRest(context, value, values, index, Promise.resolve(out));
     }
-    const evaluated = out as Node;
+    const evaluated = out;
     if (values) {
       values[index] = evaluated;
     } else if (evaluated !== node) {
@@ -138,7 +155,7 @@ async function evaluateNodeArrayRest(
   for (let index = pendingIndex + 1; index < value.length; index++) {
     const node = value[index]!;
     const out = node.eval(context);
-    const evaluated = isThenable(out) ? await out : out as Node;
+    const evaluated = isThenable(out) ? await out : out;
     if (values) {
       values[index] = evaluated;
     } else if (evaluated !== node) {

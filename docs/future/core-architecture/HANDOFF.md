@@ -52,6 +52,167 @@ and source-map artifacts (4). These add to 30. In particular, a missing mixin re
 ordinary function call with an optional function reference may fall back to a
 CSS `Call` when lookup misses.
 
+### `callWithContext` deletion prerequisite
+
+The legacy tree call path has been audited rather than treated as an implicit
+compatibility seam. `packages/core/src/tree/call.ts` reaches
+`callWithContext` from exactly five dynamic-function paths:
+`evalOptionalFallbackOutput`, `evalPlainDynamicFunction`,
+`evalMetadataDynamicFunction`, `renderDynamicFunctionOutput`, and the ordinary
+`evalFromStateInFrame` extended-function branch. These are all legacy-tree
+execution routes. The ordinary branch keeps two distinct rules: a
+`No matching mixins` failure is a hard missing-mixin error (apart from selector
+capture), while a selected function's invocation failure may preserve the
+authored call only under its optional/silent-fail policy and
+`functionMode !== 'error'`.
+
+`packages/core/src/define-function.ts` shows why this cannot be replaced by a
+wrapper: `callWithContext` unwraps and clones legacy `List`/`Node` arguments,
+runs legacy preprocessors, resolves positional/record/hybrid overloads,
+evaluates non-lazy nodes through `Context`, supplies `FunctionThis` (`context`,
+`caller`, `args`, `rawArgs`), performs legacy `instanceof` validation and
+conversion, and finally invokes either `_internal` or a Context-bound function.
+That contract is the bridge deletion target, not a public runtime model.
+
+The replacement is the existing AST-v2 value seam. A canonical `Fn` is called
+with `(List, FnCtx)` by `buildEvaluator`/`value-dispatch`; `ParamSpec` kinds,
+defaults, rest, and explicit lazy thunks provide typed binding, while direct
+Sass/Jess embeddings may use named records. `FnCtx` carries only resolved modes,
+the value-to-string hook, and optional IO; it does not expose `Context`, legacy
+nodes, callers, or source re-evaluation. Unknown function names remain authored
+calls without a warning; failures from a function that actually resolved are
+handled by `functionMode` (preserve + warning versus error). The plugin adapter
+populates this same `Fn` registry/host, so Context remains the session and
+plugin/import dispatcher rather than a function-body ABI.
+
+The deletion gate is therefore concrete: migrate every production consumer of
+the old contract (currently the Less `rgb`/`hsl`/`rgba`/`hsla`/`each` paths and
+the Sass compatibility/map functions), then migrate their direct tests from
+`RuntimeFunction`/`callWithContext` to typed `ValueObj` and registry calls.
+Only after the consumer/test search is empty may `tree/call.ts`,
+`define-function.ts`, and their old conversion exports be removed; no adapter,
+alias, or tree-to-AST bridge is allowed as an intermediate state.
+
+### Alpha packaging blocker: generated legacy declarations
+
+The alpha tarball audit found a packaging surface issue, not a reason to
+delete declaration files blindly. `@jesscss/core` exposes only `.`, `./value`,
+and `./ast` in its package `exports`, but `src/index.ts` still does
+`export * from './tree/index.js'`; therefore the legacy tree classes and the
+explicit tree utility exports are genuinely public through the root entry.
+`tsconfig.build.json` separately emits declarations and maps for every
+`src/**/*.ts`, so unexported `lib/tree/**` helpers are generated artifacts but
+must remain until no reachable declaration refers to them.
+
+`@jesscss/fns` is broader and currently inconsistent: its `./*` export map
+claims every generated `lib/*.d.ts/js/cjs` subpath, while `tsdown.config.ts`
+only emits the `index` and `builtins` runtime entries. Legacy Less/Sass/shared/
+util declaration subpaths are therefore published (and advertised by the
+README/docs) even when their matching runtime file is absent. Replace the
+wildcard only after either generating the documented subpaths or explicitly
+withdrawing and testing them; `plugin-js` currently treats all
+`@jesscss/fns/*` paths as trusted.
+
+**Bounded package cut (2026-07-22).** The first safe export correction removes
+the `@jesscss/fns` `./*` wildcard. A workspace consumer search found only the
+root `@jesscss/fns` import and the explicit `@jesscss/fns/builtins` import; no
+production or test consumer imports a Less/Sass/shared/util subpath. The fns
+build emits runtime entries only for `index` and `builtins`; the former
+wildcard therefore advertised declaration-only paths whose corresponding
+`.js`/`.cjs` files do not exist. The README and Sass export-structure note now
+state that those folders are source ownership boundaries, not published
+entrypoints. `plugin-js`'s filesystem trust rule remains a separate sandbox
+boundary for resolved built-in files and is not used to justify package
+subpaths. The core root tree barrel is intentionally not cut in this batch:
+`Context`, the legacy fns implementation, and compat consumers still import
+its classes, so the prerequisite migration remains the next required slice.
+
+The minimal cut sequence is:
+
+**A.** Finish the remaining legacy `@jesscss/fns` Less/Sass function and test
+migrations to `@jesscss/core/value`; rewrite or intentionally retire the
+production `packages/jess-plugin-js/src/bridge.ts`, which still transports
+legacy `Any`/`Color`/`Dimension`/`List`/`Rules` values.
+
+**B.** Delete `define-function.ts`, `conversions.ts`, and their root exports
+after the consumer search is empty.
+
+**C.** Migrate `Context` and `jess`/plugins off `TreeContext`, legacy
+`Node`/`Rules` state, spine/visitor fields, and tree-only utilities while
+retaining the AST-v2 `DocumentContext`, plugin host, and import dispatch.
+
+**D.** Remove `export * from './tree/index.js'` and explicit legacy utility
+exports from `core/src/index.ts`; expose only the stable Context/plugin/error,
+`ast`, and `value` seams.
+
+**E.** Remove the now-unreachable tree runtime and legacy tests/visitor ABI.
+
+**F.** Tighten declaration builds to the public entry closure and replace the
+`fns` wildcard with explicit, runtime-backed subpath exports. Verify packed
+install imports and type resolution before alpha publication.
+
+**No-op consumer audit (2026-07-22).** A bounded audit of the remaining
+`@jesscss/core` imports in `packages/fns` found no honest pure cut to land
+without first resolving function-owner semantics. The remaining consumers are
+clustered as follows:
+
+- Less color functions (`contrast`, `fade*`, HSL adjusters, `shade`/`tint`,
+  `color`, and constructors) still depend on legacy `Color` source-format and
+  raw-channel metadata, `Context`, or the legacy `mix` contract. Their
+  canonical `builtins/` counterparts are comparison evidence, not an approved
+  destination or compatibility alias.
+- Less structural/context functions (`each`, `isruleset`, `iif`/logical,
+  format/replace, data-URI/image/SVG helpers) consume `Node`/`Rules`,
+  lazy-thunk, or Context/IO capabilities and require their own behavior
+  migrations.
+- Sass map/list/string functions consume legacy `Collection`, `Declaration`,
+  `Any`, and Context contracts. They need typed map/list semantics and direct
+  tests before tree imports can be removed.
+- Shared `math/max` and `math/min` still use legacy `Node.compare`; Less's
+  canonical `min-max` policy and Sass's unit/error behavior have not been
+  proven identical, so they must not be ported by assumption.
+- `less/types` mixes value predicates with legacy `isurl`; a partial rewrite
+  would leave the same root-tree consumer and would not advance the deletion
+  gate.
+
+The next owner decision is explicit: either rewrite each existing dialect owner
+in place and move the canonical color/list kernels to an approved shared value
+owner, or approve an ownership inversion in which the current `builtins/`
+implementations become direct registry consumers of the rewritten `less/` or
+`sass/` owners. Until that decision and the corresponding red-to-green oracle
+tests exist, do not delete the tree barrel or land a partial alias/bridge.
+
+### `plugin-js` bridge disposition
+
+The `packages/jess-plugin-js/src/bridge.ts` audit does not identify another
+parser/compiler AST bridge. It is the external Deno-process transport for the
+legacy Less JavaScript runtime ABI: host-side legacy `Any`, `Color`,
+`Dimension`, `List`, `Quoted`, `Sequence`, `Rules`, and `Declaration` values
+are encoded as tagged JSON, while `runtime-worker.ts` decodes them into its
+own `less.tree` classes (`Dimension`, `Color`, `Quoted`, `Keyword`,
+`Anonymous`, `Value`, `Expression`, and `DetachedRuleset`).
+
+That ABI is observable and tested by
+`packages/jess-plugin-js/test/plugin-js-security.test.ts` (the
+`less.tree`/`less.dimension`/`less.value` `instanceof` and legacy `@plugin`
+cases), by `packages/jess/test/less/wall8-repro.test.ts`, and by the
+`plugin-js` README's typed-bridge guarantee. AST-v2 `@jesscss/core/value` is
+not a 1:1 replacement: it has structural `Dimension`/`Color`/`Quoted`/
+`Keyword`/`List`/`Block`/`Bool`/`Nil`, but no anonymous-vs-keyword `Any`,
+`Sequence`/Expression value, detached Rules/Declaration map, or class identity;
+it also carries different color source-format metadata. Substituting those
+shapes now would silently break external modules and Less map/plugin behavior.
+
+Do not add a dual canonical/legacy branch and do not delete this transport in
+the alpha. Its future cut requires an owner-approved canonical cross-process
+protocol covering raw/anonymous values, sequence/layout facts, detached
+rules/map semantics, and color source metadata; a new worker API and facade;
+migration of the bridge tests, README, legacy plugin fixtures, and callers; and
+only then removal of the legacy Less facade plus all core-tree imports from
+`bridge.ts`. Until that protocol is approved and proven, this is a legitimate
+external runtime compatibility seam, not evidence that the public parser or
+compiler still uses a tree-to-AST bridge.
+
 ## Active orchestrator goal
 
 Drive the public AST-v2 cutover, Less alpha readiness, Parseman release,
@@ -157,7 +318,40 @@ when recognition changes. For eval/render/lookup/traversal/copying changes, run
 requires fresh builds, core tests, the Jess AST-v2 production-route ratchet,
 and the Less corpus.
 
-### Current Less-alpha gate status (2026-07-21; public route and F5 gate green)
+### Verified alpha squash policy (2026-07-22)
+
+The `alpha` and `dev` branches share a common ancestor but independently added
+the same source paths. A disposable rehearsal confirmed that
+`git merge --squash dev` from `alpha` creates a broad add/add conflict set;
+these are history-topology conflicts, not a semantic queue to resolve by hand.
+Do not ordinary-merge or rebase `dev` into `alpha`.
+
+For the refresh, first create a recovery ref such as
+`git branch alpha-pre-alpha9-cut alpha` and work in an isolated `alpha`
+worktree. Import the endpoint tree with a two-tree patch
+(`git diff --binary alpha..dev` and `git apply --index`), then restore only
+`packages/*/package.json` from the recovery ref. The verified manifest delta
+contains only lockstep package-version fields and `pnpm-lock.yaml` is
+unchanged, so this retains the alpha package versions while preserving the
+current `dev` root scripts. Keep `dev`'s root quality gates (`verify:types` and
+bounded production lint) and its newer HANDOFF/readiness/release evidence;
+reconcile the alpha release note from final gate evidence instead of restoring
+the older alpha docs wholesale.
+
+Commit one controlled refresh on `alpha`, confirm a clean source tree, and run
+the full `release:alpha` chain before owner-approved publication. The
+orchestrator resolves the fresh registry candidate before preflight, passes it
+to the nested publish dry-run without mutating manifests, and writes the
+lockstep versions only after checks pass; this avoids treating the previous
+alpha manifest left by the squash as the publish candidate while retaining the
+alpha-clobber guard. A direct `release:alpha:check` invocation still expects
+the alpha manifests to already carry a fresh candidate. The chain is the
+release build, strict types, production lint, Less-alpha route, direct public
+`jess-parser`, `plugin-jess`, and `rollup-plugin-jess` tests, AST-v2 production
+ratchet, baseline, release-mode aggressive-cutting review, allowlist validation,
+packed-consumer proof, and publish dry-run.
+
+### Current Less-alpha gate status (2026-07-22; public route and F5 gate green)
 
 The public Less route reaches canonical AST-v2 evaluation and serialization for
 direct and imported documents: the Less plugin calls the public direct parser,
@@ -178,12 +372,174 @@ harness loads the macro-compiled public parser artifact, not Parseman grammar
 source, and the Less-alpha command builds that parser/plugin pair before
 running integration tests.
 
+Current verification snapshot for this candidate:
+
+- The complete `@jesscss/core` suite is 3,194 passed, 9 skipped, and 2 todo
+  (`pnpm --filter @jesscss/core test -- --run`, 2026-07-22). The skipped/todo
+  cases remain visible and are not converted into passing evidence.
+- The repository-wide production ESLint audit reports 0 errors and 317
+  warnings. The warnings remain tracked debt; there is no current ESLint-error
+  blocker.
+- Strict `verify:types` has exactly four diagnostics, all parser-entry
+  `FusedRule` declaration mismatches against published Parseman `0.28.0`.
+  Prepared Parseman `0.28.1` removes these four diagnostics, but it must be
+  published, installed, and followed by parser rebuilds before strict types
+  can be called green.
+- The Jess alpha closure is the 18-package
+  `scripts/release/alpha-allowlist.json`; `rollup-plugin-jess` is intentionally
+  excluded because it depends on `jess` and is not part of the runtime
+  closure. The final snapshot still needs the allowlist, packed-consumer, and
+  clean-install proofs.
+- A clean benchmark baseline is recorded below. The current same-bundle trivia
+  isolation is diagnostic only; the remaining performance blocker is a
+  causally isolating matched generated-bundle A/B for reducer/choice changes,
+  not a release timing threshold. The current grammar requires `composeLeaf`
+  absent from Parseman 0.27, and generated reducer IDs vary with absolute
+  worktree paths.
+- Serial rebuild-and-measure evidence at `66c700d06` is now reproducible:
+  `benchmark.less` parses to a 677-child `Stylesheet` (JSON 946,987 bytes,
+  SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`)
+  and renders to 122,723 bytes (SHA-256
+  `2ab6d3fd8f322df0f0be7c1a481b528ec50a7fb035604b744c7543397d56b3fe`). With
+  serialized builds and 20 warmups plus 3×45 samples, the public compiler
+  round median is 74.397 ms (usable signal; trimmed median 75.915 ms).
+  This is a current baseline, not a matched-version performance claim.
+
+Per-change-slice over-engineering review follows the protocol in
+[`less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md#per-change-slice-review-protocol).
+When the Ponytail tool is unavailable, reports must say **Ponytail-style
+manual review**; they must not imply that an actual plugin invocation ran.
+
 The old `spine-production-ratchet.test.ts` was removed from the gate because it
 asserted occupancy of the deleted public path's legacy tree counter; 121 of its
 139 cases failed solely because AST-v2 rendering correctly never entered that
 counter. `ast-v2-production-ratchet.test.ts` is the replacement production
 gate: it proves canonical `Stylesheet` ownership, direct Less evaluation,
 Context/plugin import loading, and absence of legacy output-tree materialization.
+
+### Less math/unit residual split (2026-07-22)
+
+Explicit compile-level `mathMode` and `unitMode` already flow through the
+canonical Context options. `LessPlugin.setContext` now installs its normalized
+legacy `math`/`strictUnits` (and related Less mode) values into Context when an
+explicit compile value has not already won. The focused
+`packages/jess/test/less/strict-units.test.ts` proves that the nested
+`language.less` options in both units `styles.config.cjs` files reach the
+public Context route. Keep that options proof separate from the remaining
+bare-slash evaluator fact below; neither permits a parser bridge or a second
+resolver:
+
+1. **Structural bare-slash precedence.** `DirectLessValueTerm` already retains
+   the typed `ValueSlot[]` parts and their authored boundary layout, including
+   a slash leaf. When the configured Less math mode permits evaluation
+   (`math: 0` and `mathMode: 'always'` are equivalent), the evaluator must
+   promote that existing structure to the correct arithmetic precedence and
+   evaluate it. `parens-division` is the opposite contract: a bare slash stays
+   authored, while a parenthesized or calc expression has its own arithmetic
+   path. The authoritative regression fixture is
+   `tests-config/units/no-strict/no-strict.less`: `test-division`, `t3`, and
+   `t6` still must evaluate under its `language.less.math: 0` config; the
+   focused test currently records their authored output as the explicit
+   remaining mismatch. Equivalent bare slash values under
+   `mathMode: 'parens-division'` must remain authored divisions. This
+   promotion must not reparse source bytes or add a second value parser. The
+   existing `normal small / 20px` shorthand exception under eager math remains
+   a separate CSS-value classification, not evidence that all slash-shaped
+   values are arithmetic.
+2. **Deferred strict-unit validation.** The unit evaluator must retain the
+   numerator/denominator facts through an operation chain and validate
+   singularity only at final typed materialization/emission. Intermediate
+   compound units are allowed to cancel in a later operation; strict mode must
+   therefore produce `cancels-to-nothing: 1` and `cancels: 6px` in
+   `tests-config/units/strict/strict-units.less`, rather than throwing before
+   cancellation. Incompatible `+`/`-` unit checks remain strict errors. This is
+   a value-domain timing fix, not a parser change.
+
+### Bounded bare-slash fold design (implemented)
+
+The remaining eager-math slash mismatch has a bounded evaluator-only design;
+the design is recorded here so it is not rediscovered as a parser or bridge
+proposal. `DirectLessValueTerm` already provides the typed top-level
+`ValueSlot[]` and its authored boundaries. A future `promoteBareSlashValue`
+step may run immediately before `evalValueSlot` joins that array, but only when
+`mathMode === 'always'`:
+
+1. Reject nested arrays, non-arithmetic `Operation` operators, and any
+   top-level run containing more than one scalar. This preserves ordinary
+   space/slash lists such as `normal small/20px` rather than treating a list as
+   one arithmetic operand.
+2. Treat each remaining top-level scalar `Operation` as one existing typed
+   spine. Flatten only its `+`, `-`, `*`, `/`, and `%` nodes into infix tokens;
+   never inspect or reconstruct source bytes.
+3. Require a slash leaf between one-expression runs. A slash leaf is the
+   grammar-owned `Keyword('/')` (or the historical opaque `Any('/')` fact),
+   not a byte search. Reject `Keyword`/`Any` leaves other than that slash, and
+   reject `Quoted`, `SpacedValue`, and `List` operands. Numeric `Dimension` and
+   `Color` leaves are the static operands; variable/property references,
+   function calls, and parenthesized `Block` values may be admitted only if the
+   typed evaluator already owns their value contract.
+4. Fold the resulting tokens in two existing precedence passes (`* / %`, then
+   `+ -`) into temporary `Operation` values using the canonical constructor,
+   then send that temporary value through the existing evaluator. The authored
+   AST is unchanged; no parser host, source reparse, bridge, side table, or
+   broad declaration-value walk is introduced.
+
+The Less 4.6.3 oracle for `math: 0` is:
+
+```text
+4 / 2 + 5em  -> 7em
+4+2 / 5em    -> 4.4em
+2em/1em      -> 2em
+```
+
+The corresponding `math: 2`/parens-only route preserves all three authored
+values. Parenthesized division (`(10px / 2)`) remains the existing `5px` path,
+while a bare `10px / 2` under `parens-division` remains authored.
+
+The evaluator implementation is `promoteBareSlashValue` in
+`packages/core/src/ast/serialize.ts`. It first requires the existing top-level
+grammar slash fact, then admits only `Dimension`/`Color` leaves and existing
+`+ - * / %` `Operation` spines. It folds those tokens through the existing
+`operation()` constructor in the two Less precedence tiers. Any nested array,
+space group, non-arithmetic operator, or non-static leaf returns to the normal
+authored layout join. In `parens-division`, the same top-level slash fact
+temporarily suppresses eager sibling operations while retaining the existing
+parenthesis-depth path. No source bytes, parser, bridge, or AST mutation is
+involved.
+
+### Aggressive Cutting Self-Prosecution — bare-slash evaluator
+
+- **[loop/traversal] New traversal:** one bounded scan of a top-level `ValueSlot[]` for the
+  parser-owned slash leaf, followed only on a recognized slash shape by one
+  recursive walk over existing arithmetic `Operation` children and two short
+  precedence reductions. The scan is necessary because the parser already
+  retains the slash as a leaf; no source-byte rediscovery is introduced. The
+  common non-slash path returns before token allocation.
+- **[node construction] New node/materialization:** no runtime value objects or AST nodes are
+  created for authored output. The rare recognized shape creates temporary
+  `Operation` records solely for the existing typed evaluator, then emits the
+  resulting value; the immutable authored AST is untouched.
+- **[array helper] Render path:** ordinary lists and nested groups stay on the existing
+  `evalValueSlot`/layout join. Arithmetic promotion is immediate evaluation,
+  not a render-time node walk or source reconstruction.
+- **[array spread/materialization] Helper/API surface:** `promoteBareSlashValue`, its token reducer, and the
+  slash-shape predicate are private serializer helpers; they replace the
+  previously missing precedence step and expose no public API.
+- **[side map/set] Metadata mutations:** none. No parent/source metadata, side map, or
+  context mutation was added.
+- **[materialized array/object] Evidence:** focused strict-unit tests prove `7em`, `4.4em`, `2em`, strict
+  cancellation, ordinary slash-list preservation, grouped division, and
+  parens-division controls. Full performance claims remain unmade; this is a
+  correctness slice.
+
+The two fixes can be tested and reviewed independently: direct evaluator tests
+cover slash promotion and strict cancellation separately. The nested units
+fixtures are discovered by `scripts/less-corpus-report.mjs` (report-only); the
+current `all-less.test.ts` glob does not enumerate their two-level
+`tests-config/units/<case>/` paths. The dedicated strict-units test now proves
+the legacy options route and keeps the three no-strict slash mismatches
+visible, rather than weakening them into a pass. No source-byte reparse,
+scanner, compatibility path, or dialect-local resolver is permitted.
 
 Built-artifact public-route instrumentation is also decisive: a direct Less
 `Compiler.renderToResult(...)` reads or writes none of Context's legacy
@@ -695,6 +1051,18 @@ or a legacy-tree port.
   outcomes determine Jess-relative paths and `@-from`/`@-use` dependencies.
   See [`DIALECT-TO-JESS-COMPILED-CONVERSION.md`](../../DIALECT-TO-JESS-COMPILED-CONVERSION.md).
   It must not re-resolve/reparse source or replace Context/plugin dispatch.
+- **Final-pass output positions / sourcemaps:** replace mutable global absolute
+  cursor accounting with a `trackPositions`-only composable output-fragment
+  lane. Fragments retain local node-boundary markers beside string leaves;
+  charset/import hoists and adjacent-block reopening move or append fragment
+  references, async values resolve their slot before flattening, and one final
+  linear pass produces CSS plus public absolute offsets. Reject repeated
+  partial joins/counts, offset rewriting after reorder, and per-character
+  objects. Preserve the current plain `string[]` maps-off path exactly. Before
+  adoption, prove byte identity plus final offsets for hoisted charset/CSS
+  imports, reopened adjacent rules, empty-block rollback, async replacement,
+  repeated mixin placement, and imported-document origins; measure maps-off
+  regression and tracked-fragment allocation against matched baselines.
 
 ## Aggressive Cutting Self-Prosecution
 
@@ -705,6 +1073,21 @@ historical `origin/dev..HEAD` inventory; the aggregate mode was deleted because
 it had no bounded owner or remediation. Runtime cost cuts require exact
 owner contracts and measurements; semantic/parser/frontend/public changes
 require behavior/build/boundary evidence without fabricated performance claims.
+
+### Queued design audit: final-pass output positions
+
+- **This docs pass:** no runtime traversal, node, allocation, API, or metadata
+  mutation was added. The queue rejects the current `Emit.off` model because
+  async placeholders and output rewrites can make eagerly stored absolute
+  offsets stale.
+- **Required future shape:** a cold, `trackPositions`-only fragment/marker
+  lane; final flattening is the sole absolute-offset calculation. The normal
+  render path must remain the existing direct `string[]` emission without
+  fragment objects, marker arrays, source-map work, or a second render walk.
+- **Evidence requirement:** behavior tests must cover every reorder/rollback
+  path and async replacement before positions become public evidence; only a
+  matched benchmark/allocation comparison may claim the maps-off path remains
+  neutral.
 
 ### Current pass: typed interpolated Less extend targets
 
@@ -759,6 +1142,29 @@ require behavior/build/boundary evidence without fabricated performance claims.
   placement followed by `.person.sayGender()` and its captured `@gender`;
   public `mixins-interpolated` and all 11 `tests-config/namespacing` fixtures
   pass. This is behavior evidence only; no performance claim is made.
+
+### Audit result: imported nested namespace MixinDef provenance (rejected)
+
+- **Question audited:** can namespaced lookup consume imported `MixinDef` facts
+  already published in `Frame.mixins` without adding a second registry or
+  resolver?
+- **Evidence:** the broad `Frame.mixins` prepass admitted the imported chain but
+  regressed the existing `mixin-direct-acceptance` closure case (`@gender` became
+  unresolved); the full core suite was otherwise 3194 passed, 9 skipped, and 2
+  todo. A refinement using the existing Context `sourceOwnerForBody` fact kept
+  core green but still left `namespacing-5.less`'s imported `secondary` member
+  authored in the output. The existing namespace Context suite remains 2/2 and
+  the config corpus remains 29/29 only because `namespacing-5.less` is still an
+  expected failure.
+- **Decision:** rejected and reverted. There is no currently sufficient existing
+  provenance contract that distinguishes every imported nested definition from
+  detached/selected/published definitions at this lookup boundary. Do not add a
+  generic map scan, marker, side registry, or duplicate resolver as a workaround;
+  reopen only with a narrowly specified import-publication fact and adversarial
+  red/green coverage for both the namespace oracle and `@gender` closure case.
+- **Ponytail-style review:** rejection accepted. The attempted loop was a cold
+  branch, but its semantic provenance was not truthful; source-owner refinement
+  was insufficient. No production change remains from this audit.
 
 ### Current pass: bubble-body async cursor
 
@@ -1091,6 +1497,7 @@ require behavior/build/boundary evidence without fabricated performance claims.
   ```json
   [{"id":"ast-merge-importance-signal","verdict":"accepted","costDelta":"neutral","why":"The already-admitted declaration-merge loop carries one importance bit on its existing emit context instead of allocating a per-member sink. It repairs the ordinary declaration contract for Important values reached through a variable; it makes no speed claim.","byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"adfd26732125a33fc1e264aca7d7ecde8c7c1da43f968e3106bd387a1f78e840","outputBytes":133983}}]
   ```
+
 - Evidence: `packages/core/src/ast/__tests__/declaration-merge-direct-acceptance.test.ts` (including reset across a later merge group and ordinary declaration), the direct core AST suite, and the benchmark output oracle recorded above.
 - Verdict: accepted correctness repair; no performance claim.
 
@@ -1288,6 +1695,21 @@ require behavior/build/boundary evidence without fabricated performance claims.
   fixture completing after the extend admission/stack-safety repairs. The remaining
   Less-alpha verifier gaps and full package/release gates are tracked separately;
   this block makes no performance claim.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, parser-delivered string-or-array selector surfaces, synchronously empty mixin rendering, and mixin preparation that may return a distinct Mixin. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"[materialized array/object] appears in type signatures for the existing optional Context file and selector-array surfaces. [node construction] A raw selector array becomes the existing SelectorList node only at Ampersand append/resolved-selector and composed-header cache boundaries that require Selector behavior; key-set analysis keeps the raw array and uses its existing array-aware compute path. [loop/traversal] Existing registration and merge-body loops retain their exact work. The render helper overload records that an absent effect cannot produce a Promise, and Mixin registration drops a false receiver-subtype cast without adding a wrapper or runtime branch. No resolver, output buffer, side map, error-control path, or second traversal is added.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result"],
+    "behaviorEvidence":"The focused Mixin suite passes 196/196, including invisible rendering and interpolated-name preparation; the preceding selector/ruleset/rules/declaration contract evidence remains green.",
+    "buildEvidence":"The core package build and package-export verification pass; strict source diagnostics remain at the known 54 with no Mixin, Rules, or render-buffer diagnostic.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
 - Verdict: documentation and ownership review are complete for the staged snapshot;
   cost-contract acceptance remains deliberately unclaimed until each changed
   production surface has a compatible measured or exact structural contract. Do not
@@ -1367,6 +1789,19 @@ all four parser packages build against it. Normal public parser/compiler/CLI
 routes remain instrumentation-off; coverage and trace are opt-in test or
 diagnostic builds only.
 
+The follow-up Parseman `0.28.1` release branch contains the public `FusedRule`
+declaration-contract correction required by the four current parser-entry type
+diagnostics. Branch `release/0.28.1-fused-rule-contract` is clean at `6ba5dbd`
+(the implementation fix is `5ce3bf1`) and is two commits ahead of
+`origin/main`. Its release checks passed: 113 test files (1,827 passed, 4
+skipped), focused coverage/macro/FusedRule checks (36/36), typecheck, build,
+docs build, changelog validation, performance guard, and npm pack dry-run.
+`npm view parseman@0.28.1` still returns E404, so it is release-ready locally
+but is not yet an npm dependency for Jess. Do not call the strict all-package
+type gate green, or claim a clean consumer proof, until that package is
+published and the four parser packages are rebuilt against the published
+version.
+
 ### Release-gate attribution (2026-07-21)
 
 ### Recorded Direct Less built-artifact benchmark (superseded pending clean rerun; 2026-07-21)
@@ -1388,30 +1823,91 @@ a phase attribution: the Compiler measurement also includes Context/plugin,
 document, evaluation, and rendering work. It does establish that direct parse
 is the dominant measured phase on this fixture.
 
-### Current direct Less baseline (2026-07-22; evidence refresh, no A/B claim)
+### Current direct Less baseline (verified 2026-07-22; no A/B claim)
 
-A clean rebuilt `packages/less-parser/lib/index.js` was measured against the
-same `benchmark.less` source with Node v24.11.1 arm64, 20 warmups, and three
-45-sample rounds. The generated bundle is 1,821,274 bytes with SHA-256
-`13a6325c2b3dc517c3ce1374266aa94b611403ec3072ec558ee9088ee7660fad`. Direct
-`parse(source)` returned 677 children; its stable JSON snapshot was 946,987
-bytes with SHA-256
-`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`. The
-round medians were 64.816, 63.603, and 65.092 ms; the round median is
-**64.816 ms**. This supersedes the prior pending-clean-rerun parse number as a
-current baseline only. It is not a comparison against 0.26/0.27 and does not
-isolate a cause for the change.
+The current built direct parser artifact is
+`packages/less-parser/lib/index.js`, 1,827,807 bytes, SHA-256
+`a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`. Against
+the 106,802-byte `benchmark.less` fixture on Node v24.11.1 arm64, 20 warmups
+and three 45-sample rounds produced direct-parse medians of 64.402, 60.319,
+and 60.210 ms; the round median is **60.319 ms**. The returned `Stylesheet`
+has 677 children and its stable JSON snapshot is 946,987 bytes,
+SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
 
-The matching public Compiler hot-path refresh used
+The matching public Compiler run was
 `pnpm run measure:less:hotpath -- --fixture packages/jess/benchmark/benchmark.less
---iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json` at commit
-`d7e17390c9f82f150e59f6d4a9c79b6562b1fbdf`. It produced a usable 80.056 ms
-round median (round medians 80.300, 80.056, 80.013 ms). The output remained
-122,390 bytes with SHA-256
-`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`. This is
-also a baseline refresh, not an A/B or performance acceptance claim.
+--iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json` at dev commit
+`b3ab56d61acd8d3d2b130f73fec3abbd099c137a`. Its round medians were 74.759,
+82.314, and 73.645 ms; the usable round median is **74.759 ms**. The output
+is 122,723 bytes, SHA-256
+`2ab6d3fd8f322df0fbe7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
 
-### Latest direct Less performance refresh (2026-07-21; no A/B claim)
+These are current baselines only, not a Parseman-version A/B or a timing
+acceptance claim. The output/hash change from the older 122,390-byte anchor is
+first evidenced with the recursive Less parser argument repair (`212e132ea`),
+before the later strict-unit and Context-option wiring changes; no causal
+performance claim is made for those later changes.
+
+### Independent Less timer-boundary audit (2026-07-22; no causal claim)
+
+An independent read-only audit reran the same 106,802-byte
+`packages/jess/benchmark/benchmark.less` fixture on Node v24.11.1 arm64 from
+the measured `dev` artifact at `1564f0519` (the later barrel-only `62f5407ed`
+commit does not change the parser bundle). The public end-to-end command was
+`node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less
+--iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; it produced 135
+samples with round-median **75.0169 ms** (trimmed sample median 74.7203 ms).
+The timer starts at `scripts/measure-less-hotpath.mjs:421`, immediately before
+`await compiler.render(file)`, and stops at `:425`. Consequently it includes
+`Compiler.prepareRender` (config/plugin/context setup), Context file loading and
+plugin parsing, AST evaluation, serialization, and post-processors; it is not a
+parse-only timer. `Compiler.render` confirms this composition at
+`packages/jess/src/index.ts:1169-1177`, with `getTree`/parse in
+`prepareStylesheet` (`:1072-1095`) and serialization in `renderStylesheet`
+(`:1098-1115`). The output in this run remained 122,723 bytes,
+SHA-256 `2ab6d3fd8f322df0fbe7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
+
+The matching direct public-parser measurement used the same fixture, 20 warmups,
+and three 45-sample rounds around `parse(source)`. The public boundary is
+`packages/less-parser/src/index.ts:27-33`: Parseman `run(entry, input,
+{ trivia })` followed by the complete-`Stylesheet` check. Round medians were
+59.091, 59.037, and 58.683 ms; round-median **59.037 ms**. The result had 677
+children; `JSON.stringify(document)` was 946,987 bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
+
+For a same-input control, `parseLessCst(source)` through
+`packages/less-parser/src/cst.ts:4-10` measured round-median **19.759 ms**
+(19.615, 19.759, 20.454 ms). This is useful evidence for the historical
+20–30 ms class, but it is a different output boundary (legacy CST construction)
+and is not an AST-v2 or Parseman-version A/B. The historical 33.65 ms figure was
+a Vite/source `renderAstFile` partial-driver phase (20 warmups/N=60), while
+24.42 ms was a Parseman 0.27-era built-parser floor. Current grammar requires
+`composeLeaf`, which pre-0.28 Parseman packages do not export, so neither figure
+can be presented as a matched regression baseline.
+
+A separate `node --prof` run (20 warmups + 180 direct AST parses) produced
+11,176 ticks, including 4,307 JavaScript ticks. Within the JavaScript table,
+named generated Less-parser bundle frames accounted for 3,935 ticks (~91.4% of
+JavaScript samples), regex engine entries for 353 ticks (~8.2%), and core JS for
+19 ticks. The largest named frames were `DirectLessStaticPseudo` (167), an
+opaque generated reducer (`_13f08895__pf260`, 158), `DirectLessValueAtom`
+(151), `DirectLessStaticNthPseudo` (126), `DirectLessTopProduct` (122), and
+generated value/reducer helpers (`_pf273` 119, `_tf2` 118); `isValueNode` took
+104 ticks. These are ranking evidence, not a regression diagnosis.
+
+The five investigation candidates, in evidence order, are: (1) the generated
+reducer call graph/fused output; (2) selector pseudo/nth shared-prefix choices;
+(3) recursive value/math reducer chains; (4) generated reduction type guards
+such as `isValueNode`; and (5) the always-enabled trivia path plus regex-heavy
+recognition. The next causally useful performance experiment is a matched
+rebuilt-bundle A/B (same Parseman release, absolute-path-normalized generated
+identifiers, same source/output hashes), with opt-in choice-arm/rollback trace
+for candidate (2). The same-bundle trivia isolation below is a diagnostic
+control and does not satisfy this reducer/choice comparison. Until the
+causally isolating experiment exists, these measurements remain baselines and
+no parser regression cause or speed claim is accepted.
+
+### Superseded direct Less performance refresh (2026-07-21; historical, no A/B claim)
 
 After the subsequent AST/list and F5 work, the rebuilt Less parser artifact is
 1,822,568 bytes with SHA-256
@@ -1422,8 +1918,9 @@ aggregate median **68.38 ms** (p25 66.40, p75 70.42, p90 73.03). The parsed
 stylesheet still has 677 children and the 946,987-byte snapshot is unchanged
 (SHA-256 `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`).
 The public Compiler hot-path round median was **85.86 ms** under the same
-protocol, with the canonical 122,390-byte CSS output unchanged (SHA-256
-`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`).
+protocol, with the then-current 122,390-byte CSS output. This record and its
+`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` hash are
+historical and superseded by the current 122,723-byte output above.
 
 Fresh V8 sampling over 150 direct parses attributed 8,903/10,165 samples
 (87.57%) to generated Less-bundle frames, 377 (3.71%) to GC, and 246 (2.42%)
@@ -1517,6 +2014,35 @@ Independent current evidence:
   build is the required next measurement for choice/backtracking; it must remain
   outside normal parser and benchmark routes.
 
+### Matched optional Parseman instrumentation-guard isolation (2026-07-22; diagnostic, no speed claim)
+
+The optional Parseman profile and CST-output guards were isolated in a temporary
+copy of the current built Less parser. Side A was the committed
+`packages/less-parser/lib/index.js` (1,827,807 bytes, SHA-256
+`a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`). Side B
+was generated from that exact file with only the normal-path reads of
+`_ctx._pmProfile` replaced by an undefined diagnostic binding and
+`_ctx.build?._parsemanCstOutput` replaced by `false`; the temporary copy was
+not a public or benchmark artifact. B was 1,812,467 bytes, SHA-256
+`05703701303497689f1e3ffe85ad7ba8de139cf99c434f852b145d1241886767`.
+
+The fixture was `packages/jess/benchmark/benchmark.less` (106,802 bytes,
+SHA-256 `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`)
+on Node `v24.11.1` arm64. Both sides received 20 warmups and three 45-pair
+rounds; each pair alternated A/B order. Every parse returned a 677-child
+`Stylesheet`; stable JSON was 946,987 bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3` on both
+sides. Round medians (A/B) were 59.470/59.458, 60.039/59.696, and
+59.892/59.692 ms. Aggregate medians were A 59.918 ms and B 59.649 ms; the
+paired B−A delta median was +0.139 ms and mean +0.307 ms, with B faster in
+62/135 pairs and slower in 73/135 pairs.
+
+This matched isolation detects no material normal-path cost from these
+optional profile/CST guards and does not justify a production optimization or
+a parser-speed claim. The guards remain required for opt-in Parseman profiling,
+CST diagnostics, and future trace/coverage work; ordinary parse and benchmark
+routes remain uninstrumented.
+
 **Diagnostic result (2026-07-21):** the same-source coverage-enabled Less
 transform completed `benchmark.less` and exposed 14,330 failed
 `DirectLessStaticNthPseudo` entries plus 10,878 failed
@@ -1531,6 +2057,70 @@ add opt-in stable choice-arm tracing while preserving all existing rule IDs,
 then run its adversarial near-prefix matrix before choosing one structural
 trie/residual experiment. Normal parser and benchmark routes remain
 uninstrumented.
+
+### Matched Less trivia isolation (2026-07-22; diagnostic, no production speed claim)
+
+The first valid same-bundle isolation after the generated-artifact identity
+audit measured only the runtime trivia handoff. Both sides were rebuilt from
+`eae9c7832` with `parseman@0.28.0` and the same generated Less parser source.
+Side A is the public `run(entry, input, { trivia })` route. Side B is a
+temporary diagnostic copy of that generated bundle with exactly that call
+changed to `run(entry, input, {})`; no grammar, AST reducer, or source fixture
+was changed. The temporary copy is not a public or benchmark route and was not
+committed. The generated A artifact is 1,827,807 bytes, SHA-256
+`9a547b2d466b2a9e9f3fd7dc044a8031f6997149d491b263c7818e8be951a5bc`; B is
+1,827,799 bytes, SHA-256
+`f3f83b11936ecee597b50bb9ab5c98e70752cf129fa49d8568481724f726cf04`, with
+the expected single wrapper substitution.
+
+The fixture was `packages/jess/benchmark/benchmark.less` (106,802 bytes,
+SHA-256 `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`).
+On Node `v25.9.0`, the paired protocol used 20 warmups followed by three
+45-pair rounds, alternating A/B order (135 timed parses per side). A's round
+medians were 58.6923, 58.0804, and 58.3212 ms (sample median 58.2974 ms,
+mean 59.9382 ms); B's were 57.5564, 57.9407, and 58.2123 ms (sample median
+57.9357 ms, mean 59.3542 ms). The paired B−A delta median was −0.5440 ms and
+mean −0.5840 ms, with 70/135 B wins. Both returned 677-child `Stylesheet`
+documents whose stable JSON is 946,987 bytes with SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3`.
+
+This is evidence that trivia bookkeeping is a measurable candidate on this
+fixture (directionally about 0.9% in this run), not an accepted speedup: the
+paired deltas ranged from −48.05 to +53.17 ms and the no-trivia side is only a
+diagnostic isolation. Any production change must preserve authored trivia
+semantics and repeat this test under the canonical Node/round protocol before
+claiming a performance result.
+
+### Current matched Less trivia isolation (2026-07-22; diagnostic, no speed claim)
+
+The same diagnostic was rerun against the current clean `dev` parser artifact
+after the latest Less/fns changes. Side A is the committed
+`packages/less-parser/lib/index.js`; side B is a temporary copy with exactly
+one textual substitution in the public parser wrapper:
+`run(entry, input, { trivia })` → `run(entry, input, {})`. No grammar source,
+generated reducer, Parseman dependency, or fixture changed between sides. A is
+1,827,807 bytes (SHA-256
+`a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`); B is
+1,827,799 bytes (SHA-256
+`1a9798a7ddf712b480b58abc5a1ae3b8d15bf1fade467e28312bcaad82f6e868`).
+
+The fixture is `packages/jess/benchmark/benchmark.less`, 106,802 bytes,
+SHA-256 `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`.
+On Node `v24.11.1` arm64, the paired protocol used 20 warmups per side and
+three 45-pair rounds with alternating A/B order. Both sides returned a
+677-child `Stylesheet`; stable JSON was 946,987 bytes, SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`, byte
+identical across A and B. A's round medians were 58.4782, 59.0490, and
+59.6915 ms (sample median 59.0490 ms, mean 60.1277 ms); B's were 59.1712,
+59.1683, and 59.5038 ms (sample median 59.2237 ms, mean 60.6329 ms). The
+paired B−A delta median was +0.2384 ms and mean +0.5053 ms; B won 57/135
+pairs and lost 78/135, with a −27.5054 to +26.6878 ms range.
+
+This is a valid current generated-bundle isolation, but it is noisy and does
+not support a production speed claim: disabling trivia in the diagnostic copy
+was directionally slower in this run. It supersedes neither the public trivia
+semantics nor the requirement for an accepted production optimization. The
+temporary B artifact was deleted after measurement.
 
 `verify:aggressive-cutting-review` compares the working `dev` tip with
 `origin/dev`; this is a 96-commit, 237-file integration delta (+12,490/-40,189
@@ -1556,12 +2146,12 @@ safety remains a separate, later release-check responsibility.
 | Canonical engine | `ast/{at-rule,evaluator,mixin-dispatch,value-*.ts,nodes.ts,serialize.ts}`, `context.ts`, `plugin.ts` | direct acceptance, import, mixin, value, Plugin, and public Compiler suites | individual fact-flow/admission contracts for each added state/traversal plus matched parse-render and render measurements where work is hot. |
 | Extend/provenance placement | `ast/extend/{ir,plan,emit,solve}.ts`, `ast/provenance.ts` | direct extend cases, imported-loop fixture, Bootstrap completion | admission counters for the imported-extend preflight, projection/overlay allocation proof, and Bootstrap plus benchmark non-regression. |
 
-Current compiler-oracle capture, not an A/B claim: public built-artifact
-`benchmark.less`, `collapseNesting: true`, produced 122,390 bytes with SHA-256
-`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` in both
-parse-render and render runs (20 warmups, 45 alternating pairs). It is useful as
-the current output anchor only; it does not prove the semantic cutover is
-performance-neutral.
+Historical compiler-oracle captures below use the superseded 122,390-byte
+output (`ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`).
+They remain evidence for their individual slices, but are not the current
+output anchor and do not prove the semantic cutover is performance-neutral.
+The current output anchor is 122,723 bytes / SHA-256
+`2ab6d3fd8f322df0fbe7c1a481b528ec50a7fb035604b744c7543397d56b3fe` above.
 
 ### Serializer family audit: leaf emission (2026-07-21; no acceptance claim)
 
@@ -1826,10 +2416,10 @@ protocol, and byte identity before it may claim neutral/decrease.
     "id":"ast-semantic-runtime-cutover",
     "verdict":"accepted",
     "performanceClaim":"none",
-    "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
     "why":"This coordinated AST-v2 cutover changes ValueSlot/List/Block facts, authored layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those are semantic architecture changes with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
     "dangerTokensJustification":"The new array helpers, loops, side-table entries, typed wrappers, and result objects are accounted for as the direct implementation of the canonical value facts and demand boundaries. They are not presented as neutral or cheaper, and their behavior is covered by focused AST/list/mixin/provenance/F5 tests plus the release build.",
-    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
     "behaviorEvidence":"The isolated `pnpm run verify:baseline` route passed, including core/parser/fixture behavior and the public Less/Jess semantic suites; the F5 lazy color-call cases remain separately recorded in the Less-alpha gate.",
     "buildEvidence":"The release-shaped `pnpm run build:release` workspace build passed for the assembled canonical AST-v2 runtime.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
@@ -1993,3 +2583,1604 @@ normalization. Less `extract` and Sass `list.nth`/`set-nth` each implement their
 own one-based conversion, truncation/flooring, non-finite, negative, and bounds
 rules inside the universal callable contract. A shared core accessor must not
 silently choose one language’s policy.
+
+## Aggressive Cutting Self-Prosecution — recursive guard value slots
+
+- Architecture surface: the private `guardUsesDefault` classifier now accepts
+  the truthful `ValueSlot` shape rather than pretending every operand slot is a
+  node.
+- Separation/duplication: no resolver, evaluator, renderer, scanner, or second
+  guard model was added; the existing classifier remains the single owner.
+- Cumulative node weight: none. The change allocates no node, wrapper, array,
+  side map, or placement state.
+- New traversal: `guardUsesDefault` now follows a nested raw `ValueSlot[]`
+  while it is already scanning a guard operand for `default()`. The public value
+  model permits this nesting, so stopping at the array was both type-invalid and
+  semantically incomplete. The scan remains short-circuiting and runs only for
+  mixin guard classification; no render-wide walk was added.
+- New node/materialization: none.
+- Render path: unchanged. No value is resolved or materialized for output.
+- Helper/API surface: none. The existing private recursive function accepts
+  the truthful `ValueSlot` input directly.
+- Metadata mutations: none.
+- Review-flagged diff tokens: the added `some` is the required short-circuit
+  descent into a nested slot array already admitted by the public type; it does
+  not collect or copy the array.
+- Behavior evidence: `src/ast/__tests__/guard.test.ts` proves both a nested
+  positive `default()` case and an otherwise-identical negative case.
+- Build evidence: strict `tsc -p packages/core/tsconfig.build.json --noEmit`
+  removes all three prior `ast/guard.ts` diagnostics (core source count
+  342 to 339).
+- Boundary evidence: no public export or call signature changes; only the
+  private classifier's input truthfully widens from `ValueNode` to `ValueSlot`.
+- Evidence: focused behavior, strict-build, and boundary evidence are listed
+  above; no benchmark was run because this pass makes no performance claim.
+- Verdict: accepted correctness fix. Performance was not measured and no speed
+  claim is made.
+
+### Current pass: strict canonical runtime contracts
+
+- Architecture surface: the private mixin byte/default resolver now accepts
+  canonical recursive `ValueSlot`, matching `evalBytes` and the existing
+  `MixinCall.args` data contract. Context import loading retains its narrowed
+  `Stylesheet` fact across the document callback, selected-mixin events retain
+  their declared candidate map type, and direct function binding admits the
+  already-supported absent optional input. Detached binding, variable
+  activation, property lookup, value-position binding, and ruleset guards now
+  accept their already-declared recursive value/eval-context inputs without
+  pretending arrays are nodes or requiring the full output emitter. The
+  serializer now has one structural readonly-array guard for that public value
+  union; map entries retain the truthful recursive/callable binding rather than
+  narrowing declaration values to scalar nodes. Guard truth/comparison/call
+  operands and logical-function branches now carry the same canonical
+  `ValueSlot`, so authored adjacent arrays no longer fall through scalar-only
+  type assumptions. Reference steps narrow their typed call/index/member facts
+  before accessing the corresponding fields. Closure capture, leaked bindings,
+  conditional detached-ruleset aliases, mixin-call aliases, and `$for`/`each`
+  map items now make the same scalar/call/array distinction before dispatch.
+  `$apply` calls the existing source-owner scope with its actual three-argument
+  contract; the removed fourth JavaScript argument was ignored at runtime.
+  Diagnostic subjects now admit canonical AST objects without pretending that
+  they own legacy inline location fields; two structural readers preserve
+  `spanStart`/`spanEnd` behavior only when those legacy fields are actually
+  present. The canonical serializer narrows recursive declaration slots before
+  recording scalar value positions, keeps nullable selected-mixin bindings
+  nullable through the existing call frame, and makes the existing synchronous
+  nested-selector contract explicit. `Important` is now included in `Node`,
+  `NodeType`, and `isNode`, matching its existing public `ValueNode` factory and
+  eliminating the prior internally contradictory union.
+  Retained Ruleset, Rules, and Ampersand consumers now accept the same
+  `SelectorLike` string/array/node surface their constructors and parser facts
+  already expose. Array-backed ampersands remain raw for key-set analysis and
+  become selector nodes only where append/resolution/cache behavior requires a
+  node. Registration reaches each array member before node-only source metadata
+  is read, and merge descent distinguishes plain inline Rules from Ruleset and
+  AtRule scopes without relying on an over-broad node-bit predicate.
+- Separation/duplication: no second resolver or array-flattening policy was
+  added. Existing core `evalBytes` remains the only byte-resolution owner.
+- Cumulative node weight: source trees are unchanged. A parser-delivered selector
+  array is materialized only when Ampersand append/resolution or the composed
+  header cache requires `Selector` methods; the key-set path explicitly retains
+  the raw array and performs no wrapper allocation.
+- New traversal: recursive value evaluation remains in the existing evaluator
+  path. [loop/traversal] The calc-only slash recognizer now validates that a raw
+  slot is shallow before constructing the existing temporary `SpacedValue`.
+  It scans without allocation on the overwhelmingly common no-slash path; only
+  a recognized slash group performs the second copy needed by the scalar-only
+  `SpacedValue.parts` contract.
+  Alias and detached-ruleset loops are unchanged; they now terminate cleanly
+  when the current recursive binding is an authored array.
+  The ruleset-callable member loop and property-merge body loop already existed;
+  this pass only moves the former before node-only metadata reads and narrows the
+  latter with the actual `Rules` class before excluding nested cascade scopes.
+- New node/materialization: no new node type, wrapper layer, or side map.
+  [materialized array/object] A recognized calc slash group copies its shallow
+  readonly slot into the pre-existing temporary `SpacedValue`; no-slash and
+  nested-array inputs allocate nothing in this recognizer.
+  [materialized array/object] Recursive `@supports` slots assemble the one
+  existing `SupportsPreludePart[]` result required by the normalizer; the
+  recursive array was previously rejected by the scalar-only signature. No AST
+  node or persistent runtime surface is created.
+  [node construction] Raw selector arrays become an existing `SelectorList` only
+  at Ampersand append/resolved-selector and composed-header cache boundaries.
+  String surfaces likewise use the already-established `BasicSelector` at those
+  same node-required boundaries. [inherit/adopt/frozen] Composed replacements
+  inherit source span/flags from the selector they replace; no parent restoration,
+  deep clone, or persistent adapter is added.
+- Render path: unchanged direct emission. Scalar guard/logical behavior is
+  identical; recursive slots now use the existing `evalTypedSlot` and
+  `evalValueSlot` owners instead of being misclassified as scalar nodes. The
+  ruleset header removes an unreachable array/string emission branch after those
+  surfaces have already returned or been converted at the cache boundary.
+- Helper/API surface: two file-private structural type guards centralize the
+  existing node-vs-readonly-array and value-vs-mixin-call checks. The already
+  public `GuardNode` operand fields widen compatibly from `ValueNode` to the
+  canonical `ValueSlot`; no new operation, alias, or alternate guard API is
+  introduced. The selector metadata copy overloads and Ampersand container type
+  only state existing runtime shapes; they add no runtime helper or public alias.
+- Metadata mutations: selector cache invalidation now serializes an array with
+  the existing selector-list serializer instead of assigning `Array.valueOf()`
+  to a string cache. No new cache or metadata field is introduced.
+- Review-flagged diff tokens: [side map/set] is the pre-existing lazy
+  `selectedMixinEvents` map with its already-declared generic type made explicit;
+  no second map or lookup was added. [materialized array/object] appears only in
+  type annotations for that existing map, `bindDirect`'s existing input/output
+  arrays, and the widened guard-call operand type; the pass adds no array or
+  object allocation. [array helper] The namespace `flatMap` was pre-existing;
+  this pass only gives its existing `bodies` result the truthful `Statement[]`
+  annotation, without adding a helper, pass, or allocation. [loop/traversal]
+  The existing variable-alias chain now
+  checks that its current binding is scalar before reading its discriminant; it
+  adds no iteration. [parent/source mutation] The three `source` matches are
+  read-only diagnostic-source narrowing before `lineColAt`; no source, parent,
+  node, or provenance state is mutated. The new `type` checks distinguish a
+  typed node from a recursive slot array before reading the discriminant; they
+  allocate nothing and add no scan.
+  [array helper] and [array spread/materialization] in the supports-prelude
+  branch recursively preserve the already-authored slot boundaries while
+  producing the existing normalization input. [node construction] and
+  [routine error control] are the same exceptional synchronous-selector
+  boundary already owned by `resolveComplexSync`: an async plugin result cannot
+  resume an in-place extend preflight or synchronous nested-header probe, so an
+  `Error` is allocated only when that unsupported contract is violated, never
+  for a lookup miss or ordinary branch result. [side map/set] on the transparent
+  shell is only a truthful nullable type for the existing bindings map; it does
+  not allocate a map.
+  [node construction] identifies the existing `BasicSelector` normalization and
+  the newly truthful raw-array normalization only at selector-node-required
+  append/resolution/cache boundaries. [inherit/adopt/frozen] preserves the
+  composed source selector's established span/flag inheritance on that result;
+  no source child is moved or cloned. [parent/source mutation] is a read-only
+  `sourceNode` lookup moved after the array branch so arrays never reach node-only
+  metadata. [loop/traversal] consists only of the existing selector-member
+  registration and merge-body loops in their corrected type order.
+- Behavior evidence: the focused core tests prove recursive authored and
+  default mixin arguments; import, selected-mixin, and direct-function suites
+  pass 101/101; the complete core suite passes; and the public Less parser suite
+  passes 269/269. Detached ruleset, property access, and ruleset-guard coverage
+  adds 36/36 focused passing cases. The guard suite directly proves that one
+  recursive slot reaches the typed truth resolver as one operand.
+- Build evidence: core package build and `verify:package-exports` pass. Strict
+  core source diagnostics fall from 339 to 241 without suppression; this
+  serializer slice moves the source count from 310 to 241 and the full core
+  config from 710 to 641. The current guard/logical/reference slice moves core
+  source diagnostics from 241 to 204 and the full core config from 641 to 605.
+  The following closure/call/iteration narrowing slice moves core source
+  diagnostics from 204 to 158 and the full core config from 605 to 559.
+  The canonical serializer/diagnostic drain then moves core source diagnostics
+  from 158 to 127 and the full core config from 559 to 528; no diagnostics remain
+  in `ast/serialize.ts`, `ast/node.ts`, or the diagnostic files touched by this
+  pass. The remaining strict source diagnostics are confined to `tree/**`.
+  The following retained-tree contract batch moves that isolated source count
+  from 127 to 73 on a fresh compiler run. It removes no tree compatibility
+  surface: it makes existing async render results, source spans, guard fields,
+  bitset inversion state, combinator recognition, and selector-list result
+  shapes truthful so the remaining consumers can be deleted or migrated from a
+  sound baseline rather than hidden behind assertions.
+  The selector-surface consumer batch then moves the isolated source count from
+  73 to 54 and the full core config from 474 to 453. Ruleset, Rules, and
+  Ampersand now admit the parser-delivered string/array selector surfaces they
+  already receive, without widening the canonical aliases or adding a bridge.
+  Registration tests prove every array member remains callable, and Ampersand
+  key-set analysis consumes the raw array without materializing a wrapper.
+  Extend registration, root composition, and composed-match walking now admit
+  the same parser-delivered selector surface, materializing a Selector only at
+  APIs that require node behavior.
+- Boundary evidence: the Less public parser suite passes after rebuilding core,
+  and package export verification confirms the entrypoint remains valid.
+- Evidence: focused and full behavior, build, export, and strict-type evidence
+  are listed above. No benchmark was run because no performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, recursive map-entry values, guard/logical/reference operands, closure aliases, iteration inputs, canonical diagnostic subjects, and scalar position facts make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy. Important now participates in the public Node union it already semantically belonged to.",
+    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy; the existing alias-chain loop only gains a scalar guard. [array helper] The namespace flatMap already existed and only gains a Statement[] annotation; the supports flatMap recursively emits the existing prelude-part result. [array spread/materialization] and [materialized array/object] in that supports branch preserve authored recursive slot boundaries in the one transient SupportsPreludePart[] consumed immediately by the normalizer. The recognized slash group alone copies into the existing scalar-part temporary SpacedValue; guard-call, namespace bodies, and binding maps are type annotations. [side map/set] The binding Map matches are existing parameter/member types widened to CallValue or nullable, not new maps. [parent/source mutation] Diagnostic source variables are only narrowed for read-only line lookup; no source or parent state changes. [node construction] and [routine error control] identify exceptional Error construction when an async plugin result violates a pre-existing synchronous selector preflight/header contract; ordinary lookup misses and branch results do not throw. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
+    "behaviorEvidence":"The complete core suite passes 3318/3318; focused recursive arguments, imports, selected mixins, direct-function, value-access, recursive guard truth, at-rule, extend-preflight, nested mixin, and Node-union cases pass.",
+    "buildEvidence":"The core package build and package-export verification pass after the resolver and canonical serializer contract corrections.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, parser-delivered string-or-array selector surfaces, synchronously empty mixin rendering, and mixin preparation that may return a distinct Mixin. Extend registration, root composition, and composed-match walking consume that same surface and require nodes only at placement-copy, bit-library, and matcher boundaries. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"[materialized array/object] appears in type signatures for the existing optional Context file and selector-array surfaces. [node construction] A raw selector array becomes the existing SelectorList node only at Ampersand append/resolved-selector, composed-header cache, extend placement-copy, bit-library ownership, and composed-match boundaries that require Selector behavior; key-set analysis keeps the raw array and uses its existing array-aware compute path. [loop/traversal] The existing per-member callable registration and merge-body loops retain their exact work, while the extend matcher continues its existing walk over one normalized selector node. No resolver, output buffer, side map, error-control path, or second traversal is added. The combinator predicate keeps the same runtime checks and narrows only the exact Combinators string-literal union or Combinator node, leaving ordinary selector strings in the false branch.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The focused selector/ruleset/rules/mixin/declaration suites pass 470 tests with 5 pre-existing skips. The new regressions prove raw selector-array Ampersand append/key-set behavior and callable registration for every array member; existing registration, merge-scope, composition, reference-render, invisible-mixin render, and interpolated-name preparation suites remain green.",
+    "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73, 54, and then 41 without suppression. The complete core suite passes 3321/3321 with 14 skips and two deferred cases; core build and package-export verification pass.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted type-contract correction with no compatibility shim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: mechanical serializer/import-walk ESLint normalization and a
+  truthful StyleImport type predicate.
+- Architecture surface: `serialize-helper.ts` and `emit-walk.ts` keep the same
+  canonical serializer/import ownership. The edits do not add a parser host,
+  bridge, resolver, output tree, or compatibility surface.
+- Separation/duplication: none. The existing serializer and import-walk owners
+  remain the only implementations of these paths; the predicate shares the
+  existing discriminant fact rather than introducing a second resolver.
+- Cumulative node weight: unchanged. No canonical AST or render placement
+  object is added.
+- New traversal: none. The added type predicate is the existing
+  `node.type === 'StyleImport'` check expressed as a TypeScript narrowing; all
+  loops and promise continuations are existing execution paths.
+- New node/materialization: none. No node, array, map, frame, or writer is
+  created by this pass.
+- Render path: unchanged direct string emission; formatting changes cannot alter
+  the emitted bytes, and the type predicate preserves the existing branch.
+- Helper/API surface: no public API. `isSpineFoldableImport` only exposes the
+  type fact already established by its existing discriminant guard.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] and [array spread/materialization]
+  are diff-line artifacts from reindenting existing loops/spreads, not new
+  runtime constructs; [routine error control] is likewise an existing
+  try/catch continuation whose braces were normalized. No new loop, spread, or
+  exceptional control path was introduced.
+- Evidence: core build passed; the complete core suite passed 3317 tests with
+  14 skipped and two deferred cases; targeted ESLint is clean for both changed files; the
+  benchmark oracle remains `benchmark.less`, collapseNesting=true, 122390 bytes,
+  SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`.
+  No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"serializer-lint-only-normalization",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"The changed lines are mechanical lint normalization plus a type predicate that preserves the existing StyleImport discriminant branch. No runtime work, allocation, traversal, or output policy is added.",
+    "dangerTokensJustification":"[loop/traversal] and [array spread/materialization] are only reindented existing constructs; [routine error control] is only an existing try/catch continuation with braces normalized. The benchmark path therefore retains the registered byte oracle and no new cost-bearing operation.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted mechanical quality cleanup; no performance claim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: mechanical ESLint normalization in the canonical AST extend
+  emitter.
+- Architecture surface: `packages/core/src/ast/extend/emit.ts` remains the
+  existing typed extend-output owner. No parser host, bridge, resolver, planner,
+  or compatibility surface was added.
+- Separation/duplication: none. Existing extend IR emission and selector output
+  ownership are unchanged.
+- Cumulative node weight: unchanged. No AST, selector, planner, or render-frame
+  object is added.
+- New traversal: none. Every loop and conditional is pre-existing; only braces
+  and operator layout were normalized.
+- New node/materialization: none.
+- Render path: unchanged direct selector/output emission.
+- Helper/API surface: no new helper or public API.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal], [array helper], [node
+  construction], [parent/source mutation], [side map/set], and [materialized
+  array/object] are unchanged existing AST extend-plan expressions whose
+  surrounding formatting was fixed; [routine error control] is an existing
+  try path. No cost-bearing construct was introduced.
+- Evidence: the AST extend preflight contract passes 2/2; targeted ESLint is
+  clean; the benchmark oracle remains `benchmark.less`, collapseNesting=true,
+  122390 bytes, SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`.
+  No performance claim is made.
+- Behavior evidence: the AST extend preflight contract passes 2/2 and the
+  existing value-operation/color behavior remains covered by the focused core
+  suites.
+- Build evidence: the core package build passes for this public value helper.
+- Boundary evidence: the changed public AST value module keeps its existing
+  `@jesscss/core/value` export and no new entrypoint or consumer contract is
+  introduced.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-extend-emit-lint-only-normalization",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"The changed lines are mechanical ESLint normalization in the existing AST extend emitter. No runtime operation, traversal, allocation, planner fact, or output policy is added.",
+    "dangerTokensJustification":"[loop/traversal], [routine error control], [array helper], and [array spread/materialization] are existing constructs shown as changed only because their formatting was normalized. The canonical extend path and benchmark byte oracle are unchanged.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted mechanical quality cleanup; no performance claim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: truthful retained-mixin registration/render contracts and exact
+  guard-comparison negation narrowing.
+- Architecture surface: retained tree mixin preparation/rendering and canonical
+  AST-v2 guard comparison keep their existing owners; no bridge or alternate
+  evaluator is added.
+- Separation/duplication: none. Existing render, registration, and comparison
+  helpers remain their sole owners.
+- Cumulative node weight: unchanged; no node, frame, wrapper, collection, or
+  side table is created.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: invisible mixins still synchronously emit the empty string when
+  there is no asynchronous effect; emitted bytes and buffer segments are unchanged.
+- Helper/API surface: an internal overload states the existing synchronous
+  result, while registration drops a false receiver-subtype promise. No alias,
+  wrapper, or public entrypoint is added.
+- Metadata mutations: unchanged existing `registrationPrepared` and `withParts`
+  behavior only.
+- Review-flagged diff tokens: no allocation/traversal token is added. The
+  existing Selector materialization is only moved behind the already-required
+  node-only boundaries; no new `[node construction]` site is introduced.
+  Explicit
+  guard-result branches replace one unsafe assertion over the same closed scalar
+  domain.
+- Evidence: Mixin passes 196/196; comparison/equality suites pass all 29 cases
+  discovered by the workspace configuration; strict core source diagnostics
+  remain at the known 54 with no touched-file diagnostic; core build and package
+  exports pass.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, singleton-collapsing selector-list results, parser-delivered string-or-array selector surfaces, synchronously empty mixin rendering, and mixin preparation that may return a distinct Mixin. This pass states those existing runtime facts exactly while retained consumers are removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"The render helper overload records that an absent effect cannot produce a Promise, and Mixin registration drops a false receiver-subtype cast without adding a wrapper, allocation, traversal, or runtime branch. Extend registration, root composition, and composed-match walking materialize a Selector only at existing node-only boundaries; no extra traversal or wrapper is added. Rules widens only its public result type to admit an existing derived Rules result. No resolver, output buffer, side map, error-control path, or second traversal is added.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The focused Mixin suite passes 196/196, including invisible rendering and interpolated-name preparation; the preceding selector/ruleset/rules/declaration contract evidence remains green.",
+    "buildEvidence":"The core package build and package-export verification pass; strict core source diagnostics are 41 after the extend selector-surface batch, with no diagnostic in its touched files.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"ast-value-guard-equality-modes",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Guard comparison negation retains the existing four-result mapping exactly: undefined stays undefined, -1 becomes 1, 1 becomes -1, and 0 remains 0. The explicit branches remove an unsafe numeric assertion without changing equality-mode dispatch or result policy.",
+    "dangerTokensJustification":"The replacement adds no allocation, loop, traversal, exception path, lookup, or helper call. It exchanges one unary negation plus assertion for explicit scalar comparisons over the same closed four-value domain and makes no performance or neutrality claim.",
+    "cases":["less-unitless-dimension","sass-quoted-keyword","exact-structural-distinction"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"ast-value-guard-negate-result",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"Guard comparison negation retains the existing closed-result mapping exactly while replacing an unsafe numeric assertion: undefined stays undefined, negative and positive reverse, and equality remains zero.",
+    "dangerTokensJustification":"The explicit scalar branches add no allocation, loop, traversal, exception path, lookup, or helper call. They make the existing four-result mapping type-checkable and make no performance or neutrality claim.",
+    "cases":["incomparable-remains-undefined","negative-and-positive-reverse","equality-remains-zero"],
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"Selector-analysis consumes the existing string-or-node selector surface directly through its typed PseudoSelector and Ampersand discriminants; no bridge, clone, resolver, or output policy is added.",
+    "dangerTokensJustification":"The existing selector component loop and bitset computation remain unchanged; the removed structural assertions do not add traversal, allocation, side state, or error control.",
+    "cases":["selector-array-key-set-analysis"],
+    "behaviorEvidence":"The full core suite and selector-analysis focused tests pass.",
+    "buildEvidence":"Core build and strict production type verification pass with zero core diagnostics.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted exact contract correction with focused behavior, strict
+  type, build, export, and registered runtime evidence; no performance claim.
+
+## Aggressive Cutting Self-Prosecution — legacy tree StyleImport deletion
+
+- Architecture surface: deleted `tree/import-style.ts`, its root export and
+  constructor type, its Rules registration/evaluation/retry machinery, and its
+  spine resolve/register/cache/dedupe/extend-re-gate implementation. Canonical
+  AST-v2 `StyleImport` execution remains in `ast/serialize.ts` and continues to
+  dispatch file loading through `Context` plugins.
+- Separation/duplication: the duplicate legacy tree executor is gone; only the
+  AST serializer owns typed stylesheet-import execution.
+- Cumulative node weight: reduced by the deleted StyleImport class, placement
+  surfaces, import-body evaluation output, caches, and retry state. No runtime
+  object was added.
+- New traversal: none. The pass removes import scans, imported-body scans,
+  deferred retry loops, and fallback-frame wiring from the legacy executor.
+- New node/materialization: none. The deleted executor created placement Rules,
+  cloned/evaluated import bodies, and maintained import resolution state; no
+  replacement tree node or bridge was introduced.
+- Render path: the tree spine no longer resolves or expands stylesheet imports.
+  Terminal CSS `@import` statement emission remains ordinary statement output;
+  typed stylesheet import execution is owned by the AST serializer.
+- Helper/API surface: removed the public tree `style`/`StyleImport` export,
+  `resolveForSpine`, `resolveBodyReferenceImports`, spine import caches and
+  wiring helpers, and the abort-to-eval sentinel. No alias or compatibility shim
+  was added.
+- Metadata mutations: no new mutations. StyleImport-specific Rules flag
+  propagation, deferred resolution queues, placement caches, dedupe ledgers, and
+  imported extend subject state were removed. Generic Rules `referenceMode`
+  placement facts remain.
+- Review-flagged diff tokens: `[array spread/materialization]` and `[side
+  map/set]` are pre-existing extend header projection expressions whose lines
+  changed only because import-only parameters and return unions were deleted;
+  this pass adds neither an array spread nor a Map/Set. No other danger category
+  is introduced.
+- Evidence: the canonical AST import suite passes 27/27, including Context
+  loader dispatch, reference imports, source-order retries, namespace member
+  reads, raw inline imports, CSS-terminal fallthrough, and nested async imports.
+  The focused Rules/safe-parse/extend suites pass 136 tests with 6 existing
+  skips. Core build passes. Performance was not measured, so no speed claim is
+  made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-style-import-executor-removal",
+    "verdict":"accepted",
+    "costDelta":"decrease",
+    "why":"The duplicate legacy StyleImport executor, its Rules/spine consumers, public tree export, retry queues, placement caches, and imported-extend re-gate are deleted. Canonical AST-v2 StyleImport execution and Context/plugin loading remain unchanged, and no replacement bridge or runtime work is added.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-visitor-abi-removal",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"This pass only updates a retained node-base comment while the already-accepted visitor ABI removal remains unchanged; no runtime visitor, dispatch, traversal, allocation, or output policy is restored.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"serializer-lint-only-normalization",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"Deleting the serializer's legacy StyleImport expansion and wiring removes branches and calls; retained serializer expressions preserve their prior execution shape and no traversal, allocation, resolver, or output policy is added.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained Rules, Mixin, and scope-frame behavior keeps generic reference-mode Rules placement while deleting only StyleImport-specific registration, retry, and evaluation branches. No alternate evaluator, compatibility shim, new traversal, output policy, or performance claim is introduced.",
+    "dangerTokensJustification":"The cut adds no allocation, loop, traversal, exception path, lookup, side map, or node construction. Existing extend projection spreads and Map/Set result types remain unchanged in their original lines; the diff removes import-specific scans, queues, caches, and placement construction.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The full core suite passes 3191 tests in 199 files with nine existing skips and two todos; generic reference-mode Rules placement tests remain green.",
+    "buildEvidence":"The core package build and package-export verification pass after deleting the public tree StyleImport surface.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted deletion. It removes a duplicate import executor and its
+  public tree surface while retaining the canonical AST-v2 import contract.
+
+### Addendum: bounded core tree lint guards (2026-07-21)
+
+This bounded cleanup covers only `tree/list.ts`,
+`tree/util/check-valid-nodes.ts`, `tree/util/evaluate-node-array.ts`,
+`tree/util/callable-candidate.ts`, and `tree/util/extend-helpers.ts`. It does
+not touch the import-style, emit-walk, serialize-helper, extend-index, spine,
+or Context deletion lanes.
+
+- **Review-flagged diff tokens:** `[loop/traversal]`, `[array helper]`,
+  `[node construction]`, and `[materialized array/object]` are accounted for
+  below; no performance claim is made.
+- **New traversal:** `isNodeArray` checks the already-materialized prefix only
+  when a raw parser value segment first appears. Existing list loops remain
+  source-order emission/evaluation loops; this adds no new render walk.
+- **New materialization:** `coerceNodeArray` is reused at list boundaries so
+  parser raw strings/arrays are normalized once before node-only helpers. Its
+  all-Node fast path returns the original array; the raw-shape path is the
+  existing cold normalization contract, not a second tree.
+- **Node/error path:** the new `TypeError` is an exceptional invariant guard for
+  an impossible raw prefix, not routine control flow or node materialization.
+- **Evidence:** List 26/26; callable-candidate 18/18; check-valid-nodes 6/6;
+  find-extendable-locations 14/14; core compile and staged aggressive review
+  pass. The optional test’s deliberate `as never` call remains untouched as an
+  API-contract follow-up.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded core tree lint/type-safety cleanup across five source
+  files; no import-style, emit-walk, serialize-helper, extend-index, spine, or
+  Context deletion lane was changed.
+- Architecture surface: existing List and validation helpers retain their
+  runtime responsibilities. Unsafe assertions were replaced with truthful
+  `NodeArrayItem` typing, `isNode`/`N` narrowing, and the existing
+  `coerceNodeArray` boundary; no parser host, bridge, visitor ABI, resolver, or
+  construction host was introduced.
+- Separation/duplication: parser raw values remain representable at the List
+  boundary, while node-only consumers reuse the one existing coercer; no second
+  list model or conversion bridge was added.
+- Cumulative node weight: no AST node class, source node, parent link, frame
+  state, or render-session map is allocated by this cleanup.
+- New traversal: `isNodeArray` inspects only the existing prefix after a raw
+  segment; existing source-order List loops are unchanged.
+- New traversal/materialization: `isNodeArray` inspects only the existing
+  prefix after a raw segment; `coerceNodeArray` returns all-Node arrays as-is
+  and normalizes only the existing raw parser shape at node-only boundaries.
+- New node/materialization: the existing coercer returns its input for all-Node
+  arrays and normalizes only the documented raw parser shape; no second tree is
+  created.
+- Render path: List render/evaluate/compare behavior and output order are
+  unchanged.
+- Helper/API surface: no public API was added; the List input shape and helper
+  narrowing now state the runtime facts truthfully.
+- Metadata mutations: no AST parent/source/provenance mutation or side table
+  was added.
+- Review-flagged diff tokens: `[loop/traversal]` existing source-order walk;
+  `[array helper]` existing coercion boundary; `[array spread/materialization]`
+  existing spread contract; `[node construction]` unchanged direct
+  construction; `[side map/set]` unchanged; `[routine error control]` only
+  exceptional invariant `TypeError`; `[materialized array/object]` unchanged
+  render-time work; `[generic defensive read]` is the existing `Reflect.apply`
+  body-invocation boundary, now fed by runtime-validated function metadata and
+  typed arguments without adding a second dynamic property lookup.
+- Evidence: focused tests pass List 26/26, callable-candidate 18/18,
+  check-valid-nodes 6/6, and find-extendable-locations 14/14; all five changed
+  production files report zero ESLint errors; core compile passes. No speed,
+  neutrality, byte-identity, or memory claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"bounded-core-tree-lint-guards",
+    "verdict":"accepted",
+    "owner":"the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+    "cases":["List raw NodeArrayItem normalization","canonical node-array prefix guard","root node validation narrowing","callable candidate record narrowing","extend helper lint-safe syntax"],
+    "performanceClaim":"none",
+    "why":"This is bounded type-safety and initialization-cycle repair over existing helpers. It preserves established List, validation, array evaluation, callable candidate, and extend-helper behavior.",
+    "dangerTokensJustification":"Checked raw-prefix narrowing and reuse of the existing coercer add no render/tree traversal, node construction, side map, cloning path, or routine exception control; the invariant TypeError is exceptional and the all-node path returns the original array.",
+    "behaviorEvidence":"Focused Vitest suites pass List 26/26, callable-candidate 18/18, check-valid-nodes 6/6, and find-extendable-locations 14/14.",
+    "buildEvidence":"The five changed production files report zero ESLint errors and core compile completes successfully.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":74.0,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted bounded semantic/type-safety cleanup; the optional test
+  assertion is a deliberate API-contract follow-up, not a suppressed lint
+  error.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded AST extend/value/context contract cleanup. The pass
+  normalizes lint-invalid control flow, replaces unsafe value-function casts
+  with runtime guards, and reads declaration metadata through the existing
+  static contract. No parser host, bridge, resolver, fallback, or compatibility
+  surface was added.
+- Architecture surface: `ast/extend/{compose,plan,solve}.ts` remain the
+  canonical selector IR composition/planning/fixpoint owners; `ast/value-dispatch.ts`
+  remains the typed function-definition boundary; `ast/value-units.ts` remains
+  the shared unit table; and `tree/declaration.ts` remains the retained
+  declaration render owner. Context and import dispatch are untouched.
+- Separation/duplication: runtime definition validation is performed once at
+  the `defineFunction` boundary; no second function registry, coercion layer,
+  parser, or source re-read is introduced.
+- Cumulative node weight: no AST node, selector, frame, side table, or render
+  placement is allocated by this cleanup. Function metadata guards only inspect
+  the definition supplied by the caller before invocation.
+- New traversal: no traversal is added. Existing extend loops and fixpoint
+  walks are only brace/operator normalization; function parameter checks run
+  once while defining a callable.
+- New node/materialization: none. Typed values are narrowed in place, and
+  `Reflect.apply` continues to invoke the existing function body with the
+  existing bound argument list.
+- Render path: declaration bytes, extend output, unit conversion, and callable
+  results remain behaviorally unchanged.
+- Helper/API surface: no public export, alias, wrapper, or shim is added.
+- Metadata mutations: none beyond the existing callable metadata assignment.
+- Review-flagged diff tokens: `[loop/traversal]`, `[array helper]`,
+  `[node construction]`, `[generic defensive read]`, and
+  `[materialized array/object]` are either existing extend/value structures or
+  validation-only boundary code; `[routine error control]` is limited to
+  exceptional invalid-call/definition TypeErrors. No new runtime traversal,
+  allocation, or error path is introduced.
+- Behavior evidence: focused core suites pass 106/106, including value function
+  binding, direct extend composition/preflight, unit operations, and 85
+  declaration/merge cases; targeted ESLint reports 0 errors and 0 warnings on
+  every changed production file.
+- Build evidence: `pnpm --filter @jesscss/core build` passes; strict production
+  verification reports no diagnostics in any changed file (remaining core
+  diagnostics are confined to unrelated retained tree selector/serializer
+  lanes and four published Parseman 0.28.0 entry contracts).
+- Boundary evidence: `@jesscss/core/value` keeps the same public callable
+  function contract and unit table exports; no package entrypoint or parser
+  boundary changes.
+- Evidence: core focused behavior suites, core build, strict type verification,
+  and changed-file ESLint are the authoritative checks for this bounded pass;
+  benchmark output remains the current render baseline only.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "why":"This is a truthful type and lint cleanup within the existing AST-v2 value/function and selector-extend owners. Runtime guards replace unsafe assertions without adding a bridge, fallback evaluator, second registry, or new traversal.",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "dangerTokensJustification":"The existing extend loops, branch arrays, and fixpoint walk are only brace/operator normalization. The value path adds runtime definition guards and retains the existing Reflect.apply boundary; it does not add a second traversal, registry, clone, node, or fallback evaluator.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
+    "behaviorEvidence":"Focused value, extend, preflight, unit, and declaration suites pass 106/106; changed files have zero ESLint diagnostics.",
+    "buildEvidence":"The @jesscss/core build passes and strict verification has no diagnostic in the changed AST files.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"Declaration provenance reads use the existing Declaration child-key contract and detached-ruleset checks use runtime discriminants; no tree bridge, clone, resolver, or output policy is added.",
+    "dangerTokensJustification":"Declaration metadata reads use the existing static child-key contract and runtime discriminants. No node, array, map, frame, traversal, clone, resolver, or routine error path is added; the existing exceptional detached-ruleset TypeError remains the only failure path.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The declaration and declaration-merge suites pass 85/85, including source-span, merge, async, and render-buffer paths.",
+    "buildEvidence":"The @jesscss/core build passes with no changed-file type diagnostic.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted bounded contract/type cleanup; no performance claim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded Context/emit/selector/sequence/callable/serializer
+  contract cleanup. Context remains the sole plugin/session/import dispatcher;
+  no parser host, bridge, resolver, fallback, shim, alternate evaluator, or
+  output policy was added.
+- Architecture surface: existing Context plugin source/parser/module dispatch,
+  emit-walk spine, selector matching, extend IR, Sequence subclass evaluation,
+  callable-output validation, and serializer boundaries remain the owners.
+- Separation/duplication: no second Context dispatcher, selector matcher,
+  serializer, or evaluator was introduced; tagged IR and existing node
+  discriminants replace only unsafe narrowing assertions.
+- Cumulative node weight: no new AST nodes, clones, frames, side maps, or
+  render placements were added; existing selector/list materialization remains
+  at the node-only boundary that already requires it.
+- New traversal: none. Existing source-order, extend, callable, selector, and
+  serializer loops retain their prior traversal shape.
+- New node/materialization: none beyond existing selector/list boundaries;
+  Sequence uses a checked constructor identity to preserve existing subclasses.
+- Render path: emit-walk reads `context.opts.output.collapseNesting`, serializer
+  keeps existing at-rule/selector/rules guards, and callable output keeps the
+  existing root-property diagnostic path.
+- Helper/API surface: no public API, compatibility alias, parser bridge, or
+  resolver helper was added; `getCombinatorComponents` now states the exact
+  string-or-node return surface it already produced.
+- Metadata mutations: none. Existing inheritance, source identity, Context
+  plugin context, and render-session state are untouched.
+- Review-flagged diff tokens: `[array helper]` and
+  `[materialized array/object]` are existing selector/IR values and constructor
+  signatures; `[node construction]` is existing exceptional Context error and
+  typed IR facts; `[generic defensive read]` is a checked constructor/type
+  discriminant; `[side map/set]` is existing extend ownership; `[routine error
+  control]` is the existing unsupported-plugin exception. No new
+  `[loop/traversal]`, `[copy helper]`, `[inherit/adopt/frozen]`, or
+  `[parent/source mutation]` was introduced.
+- Evidence: full core tests, core build, strict production type verification,
+  and focused changed-file ESLint all pass; no performance claim is made.
+- Verdict: accepted bounded type-contract correction; no compatibility shim.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"core-context-emit-selector-contract",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "why":"The slice makes existing Context, emit, selector, Sequence, callable, and serializer facts truthful without adding a second runtime path.",
+    "dangerTokensJustification":"Existing selector/IR arrays and discriminant reads are retained at their current boundaries; no new traversal, resolver, node, clone, side map, or output policy is introduced.",
+    "cases":["Context-plugin-source-parser-dispatch","emit-walk-context-output-option","Ruleset-interpolated-selector-boundary","selector-match-string-and-node-combinators","extend-index-tagged-graft-atoms","Sequence-subclass-preserving-evaluation","callable-output-root-property-guard","serializer-at-rule-and-selector-surface"],
+    "behaviorEvidence":"Full core tests pass and focused changed-file tests cover selector matching, Sequence, callable output, and serializer paths.",
+    "buildEvidence":"Core build and strict production type verification pass with zero core diagnostics.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"Selector-analysis consumes the existing string-or-node selector surface directly through its typed PseudoSelector and Ampersand discriminants; no bridge, clone, resolver, or output policy is added.",
+    "dangerTokensJustification":"The existing selector component loop and bitset computation remain unchanged; the removed structural assertions do not add traversal, allocation, side state, or error control.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"The full core suite and selector-analysis focused tests pass.",
+    "buildEvidence":"Core build and strict production type verification pass with zero core diagnostics.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+
+- Latest pass: bounded strict-type cleanup in `tree/util/extend.ts`,
+  `tree/reference.ts`, `tree/extend/spine-extend.ts`, and the `OutputWriter`
+  maybe-promise overload. No parser host, bridge, resolver, fallback, or shim
+  was introduced.
+- Architecture surface: these files remain the canonical retained selector,
+  reference, and writer owners; no alternate evaluator or compatibility path
+  was added.
+- Separation/duplication: selector arrays are accepted only at the existing
+  parser-delivery surface and normalized at existing node-only boundaries; no
+  second selector or reference implementation was introduced.
+- Cumulative node weight: no clone, frame, side table, or render placement was
+  added; a `SelectorList` is created only when an existing node-only API needs
+  one.
+- New traversal: none. Existing selector-list loops and reference frame reads
+  are unchanged; only their already-produced unions are narrowed at the API
+  boundary.
+- New node/materialization: parser-delivered selector arrays are wrapped in
+  the existing `SelectorList` only when a node-only recursive API requires a
+  `Selector`; no second tree or render-only node is created. No clones were
+  added.
+- Render path: `bufferSubjectDecls` still calls the existing writer preview;
+  the overload makes its existing synchronous/async behavior truthful.
+- Helper/API surface: no public helper or compatibility alias was added. The
+  local `selectorSurfaceNode` boundary helper replaces repeated ad hoc array
+  assumptions and does not add a runtime traversal.
+- Metadata mutations: no parent/source restoration, side table, frame,
+  frozen-state, or provenance mutation was added. Existing `inherit` calls
+  retain their established placement ownership semantics.
+- Review-flagged diff tokens: `[array helper]` and
+  `[array spread/materialization]` are existing selector-list construction and
+  parser-array normalization; `[node construction]` is only the existing
+  `SelectorList` node boundary; `[parent/source mutation]` is a read-only
+  fallback narrowing; `[side map/set]` is unchanged surrounding extend state;
+  `[inherit/adopt/frozen]` is existing ownership inheritance on the same
+  placement boundaries; `[generic defensive read]` is existing runtime
+  discriminant inspection; `[materialized array/object]` is existing selector
+  surface typing; `[routine error control]` is unchanged exceptional invariant
+  handling.
+- Evidence: focused extend/reference/spine suites pass 269/269; core build
+  passes; strict core type verification passes with zero core diagnostics.
+  No performance claim is made.
+- Verdict: accepted bounded type-contract correction; no compatibility shim.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained Rules, Mixin, and scope-frame behavior keeps generic reference-mode Rules placement while deleting only StyleImport-specific registration, retry, and evaluation branches. No alternate evaluator, compatibility shim, new traversal, output policy, or performance claim is introduced.",
+    "dangerTokensJustification":"SelectorList construction occurs only at existing node-only boundaries; no new traversal, resolver, side map, clone, or output policy is introduced.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance","parser-delivered-selector-array-ampersand","selector-array-ruleset-callable-registration","selector-array-key-set-analysis","selector-compose-cache-node-boundary","ordered-registration-context-restoration","property-merge-container-scope","mixin-invisible-sync-render-and-registration-result","extend-record-selector-surface","extend-root-composition-selector-surface","extend-walk-composed-match-selector-surface"],
+    "behaviorEvidence":"Focused extend/reference/spine tests pass 269/269.",
+    "buildEvidence":"Core build and strict core verification pass with zero diagnostics in the changed files.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded Less direct-AST mixin argument repair. The semicolon-group
+  reducer now preserves recursive `ValueSlot` arguments (including authored
+  adjacent terms) when constructing the canonical `List`; no bridge, source
+  reparse, parser host, fallback, or alternate evaluator was introduced.
+- Architecture surface: `packages/less-parser/src/ast/grammar.ts` remains the
+  parser-owned direct Parseman reduction boundary, and `@jesscss/core/ast`'s
+  existing recursive `ValueSlot`/`List.value` contract remains the sole public
+  representation. The fix changes only the reducer's input narrowing from
+  scalar `ValueNode` to the already-defined recursive slot contract.
+- Separation/duplication: no second list/value model or conversion helper was
+  added; the existing `requireValueSlot` boundary is reused for both scalar and
+  recursive argument values.
+- Cumulative node weight: no AST node, frame, map, side table, or render state
+  is added. The reducer retains the same `List` node and argument count.
+- New traversal: none. The existing comma-group `map` remains one pass over the
+  already-reduced argument facts; no source scan, lookahead, or reparse is added.
+- New node/materialization: none beyond the existing `List` construction; raw
+  recursive slots remain raw and are not flattened or copied.
+- Render path: unchanged. The canonical serializer/evaluator consumes the same
+  `MixinCall.args` shape; the repaired benchmark case now reaches that existing
+  path instead of throwing during parse reduction.
+- Helper/API surface: no public export, alias, shim, or compatibility helper was
+  added; `requireValueSlot` is the existing grammar-local narrowing boundary.
+- Metadata mutations: none.
+- Review-flagged diff tokens: `[array helper]` is the existing comma-group
+  `List` construction and `map`; no new loop, traversal, spread/materialization,
+  node construction, side map/set, or routine error path was introduced.
+- Behavior evidence: the complete Less parser suite passes 270/270, including
+  the new regression covering `linear-gradient(...), url(...) center/cover
+  no-repeat` in a semicolon-terminated variadic mixin call; the rebuilt public
+  parser now accepts `benchmark.less` and returns a 677-child `Stylesheet`.
+- Build evidence: `pnpm --filter @jesscss/less-parser build` passes and touched
+  source/test ESLint reports zero diagnostics. Direct package `tsc --noEmit`
+  has only the pre-existing published Parseman 0.28.0 `FusedRule` contract
+  diagnostic at `src/index.ts`; the code change introduces no new diagnostic.
+- Boundary evidence: public `parse()` and the Context/plugin `safeParse()` route
+  both consume the repaired direct grammar; the rebuilt compiler renders the
+  same fixture with 122,723 bytes / SHA-256
+  `2ab6d3fd8f322df0f0be7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
+- Evidence: matched current sanity measurements (not a performance claim) are
+  direct parse 63.53 ms round median under 20 warmups + 3×45 samples and public
+  Compiler 76.56 ms round median under the same fixture/options protocol; the
+  direct parser bundle is 1,827,807 bytes, SHA-256
+  `a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`.
+- Verdict: accepted bounded correctness repair; no performance claim.
+
+## Aggressive Cutting Self-Prosecution — Less strict-unit final validation
+
+- Latest pass: the AST-v2 value domain now defers strict unit singularity until
+  final typed materialization/emission. Compound numerator/denominator facts
+  stay on the existing `Dimension` result while later operations cancel them;
+  no bridge, source reparse, parser host, fallback, or alternate evaluator was
+  introduced.
+- Architecture surface: `packages/core/src/ast/value-operate.ts` and the
+  existing `packages/core/src/ast/serialize.ts` final typed-value emission
+  boundary; no new parser or evaluator host is introduced.
+- Separation/duplication: the validator reuses the existing `Dimension`,
+  `List`, and `Block` value facts and is the sole strict-unit final check; no
+  duplicate unit resolver or source-level reparse exists.
+- Cumulative node weight: zero new AST nodes, frames, maps, side tables, or
+  retained render state; only existing value facts are inspected.
+- **New traversal:** `validateFinalUnits` recursively visits an already-final
+  typed `List`/`Block` only when strict units are enabled. This one final-boundary
+  walk is required to validate nested typed values without rejecting an
+  intermediate operation; no source-tree traversal or rediscovery is added.
+- **New node/materialization:** none. The helper reads existing `Dimension`,
+  `List`, and `Block` values. The temporary one-element unit fallback arrays in
+  the singularity predicate are value-domain checks, not AST/list materialization
+  or retained state.
+- **Render path:** unchanged direct string emission. `evalBytes` validates the
+  final typed value immediately before `emitValue`; intermediate `operate`
+  results are never sent through that boundary.
+- **Helper/API surface:** one exported value-domain validator is used by the
+  existing serializer boundary and focused value-operation tests. It adds no
+  public dialect API, resolver, shim, or compatibility surface.
+- **Metadata mutations:** none. No parents, source spans, frozen flags, maps,
+  or side tables are changed.
+- **Review-flagged diff tokens:** `[loop/traversal]` is the strict-only final
+  List/Block walk described above; `[node construction]` is the exceptional
+  strict diagnostic and is not routine control flow; `[materialized
+  array/object]` is limited to temporary unit-count fallback arrays in the
+  predicate. No clone, node, render-only object, source mutation, or routine
+  error path was added.
+- **Behavior evidence:** core AST suite passes 169/169; the focused
+  `value-operate-units.test.ts` passes 11/11; the public strict Less fixture
+  passes byte-identically (`cancels-to-nothing: 1`, `cancels: 6px`). The
+  no-strict fixture remains a separate, known bare-slash-precedence gap and is
+  intentionally not claimed by this slice.
+- Evidence: the focused core and strict Less fixture commands below are the
+  executable behavior evidence; this bounded semantic repair makes no timing
+  or allocation claim.
+- **Build/type evidence:** core build passes; changed source has no new type
+  diagnostics. The authoritative repository type command still reports the
+  existing four Parseman `FusedRule` diagnostics; this bounded slice adds no
+  new diagnostics.
+- **Ponytail-style manual review:** accepted. The pass is scoped to the final
+  typed-value boundary, retains unit facts on existing values, and adds no
+  parser/evaluator duplicate or source-byte recovery path.
+- **Verdict:** accepted bounded correctness repair; performance remains
+  unclaimed and unmeasured.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "why":"Strict unit singularity is a final-value rule; delaying it preserves existing compound-unit facts so cancellation chains match the Less oracle without adding a second evaluator. This is one focused semantic correction inside the already-owned canonical evaluator/value cutover, not a performance or neutrality claim.",
+    "dangerTokensJustification":"The strict-only final List/Block recursion and temporary unit-count fallback arrays are cold final validation, not source traversal or AST materialization; the exceptional diagnostic is emitted only when a final typed value violates strict-unit rules. No clone, node, render-state, source mutation, or duplicate resolver was added.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve"],
+    "behaviorEvidence":"Core AST suite passes 169/169; focused value-operate-units passes 11/11; the public strict Less fixture renders byte-identically with cancels-to-nothing: 1 and cancels: 6px. The no-strict fixture's unrelated bare-slash precedence gap remains explicitly unclaimed.",
+    "buildEvidence":"pnpm --filter @jesscss/core build passes; changed production source and focused tests are lint-clean.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+
+## Aggressive Cutting Self-Prosecution — shared color-channel Fn conversion
+
+- Latest pass: `shared/color/{red,green,blue,alpha}.ts` now define the public
+  Less/Sass channel callables directly over `@jesscss/core/value`; the previous
+  `@jesscss/core` tree `Color`/`Num`/`Dimension` contract is removed from this
+  shared family. Less and Sass barrels already reached these same files, so the
+  public route is converted in place rather than routed through `builtins/`.
+- Architecture surface: the existing shared function owners and universal
+  value-domain `defineFunction` seam remain the only call path. No builtins
+  relocation, wrapper, alias, bridge, or legacy conversion helper was added.
+- Separation/duplication: the four functions use the existing value-domain
+  `colorRgbRounded`/`makeDimension` semantics and do not import or call the
+  comparison-only `builtins/` implementations.
+- Cumulative node weight: zero AST nodes, tree objects, clones, frames, maps,
+  or side tables; the only returned object is the required value-domain
+  `Dimension` result.
+- New traversal: none. Each function performs only its existing channel read
+  and one typed-value construction.
+- New node/materialization: no AST nodes, tree objects, clones, frames, maps,
+  or side tables. `makeDimension` creates the required canonical value result
+  for the public callable contract.
+- Render path: unchanged. The callables return typed value facts; the existing
+  evaluator/serializer emits their `bytes` without a tree render or conversion.
+- Helper/API surface: no helper or export was added. The existing public shared,
+  Less, and Sass barrels retain their names and now expose canonical callables.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. The diff has no new traversal, node,
+  clone, spread/materialization, side map, metadata mutation, or routine error
+  control machinery.
+- Evidence: fns full suite passes 69 files / 459 tests; the re-export and
+  canonical math focused suite passes 2 files / 11 tests; fns build passes;
+  changed files are ESLint-clean. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.
+
+## Aggressive Cutting Self-Prosecution — Less color-reader Fn conversion
+
+- Latest pass: Less `hue`, `saturation`, `lightness`, and `luma` now directly
+  re-export their canonical AST-v2 value-domain implementations. No legacy
+  reader implementation, wrapper, or new host seam was introduced.
+- Architecture surface: existing `colorHslClamped`, `colorRgbRounded`,
+  `getLuma`, `requireColor`, and `makeDimension` value helpers only. The HSL
+  accessor remains lazy: authored HSL source is read from its carried `hsl`
+  facts; RGB colors derive HSL only when requested.
+- Separation/duplication: one implementation per reader. Less files are direct
+  public entrypoint re-exports, not compatibility shims.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each reader returns one canonical `Dimension` value.
+- New traversal: none. Existing HSL/RGB reader helpers perform the same scalar
+  calculations as before.
+- New node/materialization: no legacy tree nodes or AST nodes; `makeDimension`
+  creates the required typed result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate evaluator was introduced.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Semantic evidence: a pre-cutover parity test passed for RGB and authored HSL
+  source cases, matching legacy reader numbers and serialized bytes for all four
+  functions (legacy unitless `Num` undefined normalizes to canonical `''`).
+  Focused reader/registry tests pass 1 file / 3 tests; full fns suite and package
+  build are required batch gates. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; no duplicate Less
+  implementations remain for these four reader functions.
+
+## Aggressive Cutting Self-Prosecution — Less blend Fn conversion
+
+- Latest pass: Less `hardlight`, `softlight`, `exclusion`, `multiply`, and
+  `screen` now directly re-export their canonical AST-v2 value-domain owners,
+  preserving every existing base-helper export. The legacy `hardLightBase`
+  casing remains as an explicit alias of canonical `hardlightBase`.
+- Architecture surface: existing value-domain `defineFunction`, `colorBlend`,
+  `requireColor`, and blend kernels only. No legacy tree import, bridge, parser
+  host, fallback evaluator, or duplicate resolver remains in these Less modules.
+- Separation/duplication: one implementation per blend function. Less files are
+  intentional public entrypoint re-exports, not compatibility shims.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each callable returns one canonical `Color` value.
+- New traversal: none. The existing alpha-aware three-channel blend loop and
+  per-channel kernels are reused unchanged.
+- New node/materialization: no legacy tree nodes or AST nodes; the existing
+  color factory creates the required value result once.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, output-policy seam, or alternate evaluator was introduced.
+- Helper/API surface: no new helper or public name; all previous Less base helper
+  names remain available, including the historical `hardLightBase` spelling.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Semantic evidence: a pre-cutover parity test compared each legacy result with
+  its canonical counterpart for fractional-alpha RGB inputs; all five matched
+  raw channels and serialized bytes. Focused typed/registry tests pass 2 files /
+  8 tests; full fns suite and package build are required batch gates. No
+  performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; no duplicate Less blend
+  implementations remain for this five-function batch.
+
+## Aggressive Cutting Self-Prosecution — Less overlay alias audit
+
+- Latest pass: Less `overlay` now directly re-exports the canonical AST-v2
+  value-domain implementation and its public `overlayBase` helper. Typed tests
+  cover both blend branches and assert the Less path and registry identity.
+- Architecture surface: existing value-domain `defineFunction`, `colorBlend`,
+  `requireColor`, `multiplyBase`, and `screenBase` only. No legacy tree import,
+  bridge, parser host, fallback evaluator, or duplicate resolver remains in the
+  Less overlay module.
+- Separation/duplication: one overlay implementation remains in builtins; the
+  Less file is an intentional public entrypoint re-export, not a compatibility
+  shim. The shared base helper names remain available for existing consumers.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. The callable returns the existing canonical `Color` value once.
+- New traversal: none. The existing three-channel alpha-aware blend loop and
+  per-channel overlay kernel are reused unchanged.
+- New node/materialization: no legacy tree nodes or AST nodes. The existing
+  color factory creates the required value result.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, output-policy seam, or alternate evaluator was introduced.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Audit disposition: the initial average comparison used the wrong expected
+  serialized spelling. Legacy `Color._rgb` retains fractional channel precision
+  (`127.5`), while its RGB serializer emits `rgb(128, 128, 128)`; the canonical
+  value result preserves the same raw channels and bytes. The follow-on average
+  conversion is recorded immediately below.
+- Evidence: focused overlay/blend/serialization tests pass 3 files / 15 tests;
+  full fns suite and package build are required batch gates. No performance
+  claim is made for the overlay-only pass.
+- Verdict: accepted bounded in-place AST-v2 overlay conversion; average now has
+  a separately verified canonical alias pass below.
+
+## Aggressive Cutting Self-Prosecution — Less average alias audit
+
+- Latest pass: Less `average` now directly re-exports the canonical AST-v2
+  value-domain implementation and its public `averageBase` helper. Tests assert
+  the Less path and registry identity plus raw channel and serialized-byte parity.
+- Architecture surface: existing value-domain `defineFunction`, `colorBlend`,
+  and `requireColor` only. No legacy tree import, bridge, parser host, fallback
+  evaluator, or duplicate resolver remains in the Less average module.
+- Separation/duplication: one implementation remains in builtins; the Less file
+  is an intentional public entrypoint re-export, not a compatibility shim.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. The callable returns one canonical `Color` value.
+- New traversal: none. The existing alpha-aware three-channel blend loop and
+  average kernel are reused unchanged.
+- New node/materialization: no legacy tree nodes or AST nodes. The existing
+  color factory creates the required value result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate evaluator was introduced.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused average/overlay/blend/serialization tests pass 3 files / 15
+  tests; full fns suite and package build are required batch gates. No
+  performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 average conversion; no duplicate
+  Less implementation remains.
+
+## Aggressive Cutting Self-Prosecution — Less argb/difference Fn conversion
+
+- Latest pass: Less `argb` and `difference` public paths now directly re-export
+  the existing canonical AST-v2 value-domain implementations from `builtins/`.
+  Focused tests use typed `Color` facts and assert that the Less entrypoint and
+  registry contain the same callable object.
+- Architecture surface: existing value-domain `defineFunction`, color factories,
+  `colorRgbRounded`, `colorRawRgb`, and `colorBlend` only. No legacy `Color`, tree
+  utility, parser host, bridge, fallback evaluator, or duplicate resolver remains
+  in these public modules.
+- Separation/duplication: one implementation per function. The Less files are
+  intentional public entrypoint re-exports, not compatibility shims or duplicate
+  implementations. `argb` preserves rounded display channels plus raw channels;
+  `difference` uses the shared alpha-aware blend kernel.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. The functions return only their required canonical `Color` value.
+- New traversal: none. `argb` reads typed color channels once; `difference` uses
+  the existing three-channel blend loop already owned by the shared kernel.
+- New node/materialization: no legacy tree nodes or AST nodes. Color factories
+  create the required canonical value result once.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, output-policy seam, or alternate evaluator was introduced.
+- Helper/API surface: no helper or public name was added. Existing Less `argb`
+  and `difference` entrypoints remain available with the canonical value contract.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused argb/blend/serialization tests pass 3 files / 12 tests; full
+  fns suite and package build are required batch gates. No performance claim is
+  made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.
+
+## Aggressive Cutting Self-Prosecution — Less e/escape Fn conversion
+
+- Latest pass: Less `e` and `escape` public subpaths now directly re-export the
+  canonical AST-v2 value-domain implementations from `builtins/`; no legacy
+  `Node`, `Quoted`, `Any`, `serializeNodeValue`, or Context wrapper remains in
+  either public module. The registry and public Less paths are asserted to use
+  the same callable objects.
+- Architecture surface: existing `defineFunction`, `FnCtx`, and `makeKeyword`
+  value contracts only. `escape` remains context-sensitive through its existing
+  typed `List`/`FnCtx.stringify` contract; this slice does not alter logical or
+  Context-dependent function semantics.
+- Separation/duplication: one implementation per function. The Less files are
+  intentional public entrypoint re-exports, not compatibility shims or duplicate
+  implementations.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Only canonical `Keyword` values are returned where the function's
+  existing behavior requires a transformed string.
+- New traversal: none. `e` performs one typed-value check; `escape` serializes
+  the supplied typed argument list through the existing host hook and applies its
+  existing URL encoding.
+- New node/materialization: no legacy tree nodes or AST nodes. `makeKeyword`
+  creates the required canonical value result; raw legacy direct calls are no
+  longer accepted by these public paths.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, fallback evaluator, or output-policy seam was introduced.
+- Helper/API surface: no helper or public name was added. Existing Less `e` and
+  `escape` entrypoints remain available with the canonical value contract.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused e/escape, registry, and re-export tests pass 4 files / 12
+  tests; full fns suite and package build are required batch gates. No
+  performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.
+
+## Aggressive Cutting Self-Prosecution — shared math Fn conversion
+
+- Latest pass: shared `ceil`, `floor`, and `round` now define the canonical
+  typed value callables. Less public subpaths are explicit re-exports of those
+  owners, and the comparison-only builtins registry imports the shared owners
+  directly. This is an in-place AST-v2 value conversion, not a builtins move.
+- Architecture surface: the existing value-domain `defineFunction` seam and
+  `makeDimension` factory are the only production path. The converted files
+  have no legacy tree imports or `mathHelper`; no parser host, bridge, resolver,
+  compatibility shim, or alternate evaluator was introduced.
+- Separation/duplication: there is one implementation per math function.
+  Less's published paths and Sass global/module exports consume the shared
+  owner; the alias tests assert those identities.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each callable creates only its required canonical `Dimension` result.
+- New traversal: none. The functions perform one typed numeric operation and
+  one value construction.
+- New node/materialization: no AST/tree nodes or routine materialization;
+  `makeDimension` returns the required typed value. Raw JavaScript numbers are
+  intentionally rejected at this public callable boundary, matching the
+  canonical `defineFunction` contract; parser/evaluator inputs are typed
+  `Dimension` values.
+- Render path: unchanged. Returned typed values continue through the existing
+  evaluator/serializer path. `round` retains its optional typed precision and
+  unit-preserving behavior.
+- Helper/API surface: no new helper or public name. Existing Less paths remain
+  documented exports implemented as direct re-exports, not compatibility code.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused math/Sass alias suite passes 6 files / 23 tests; full fns
+  suite passes 72 files / 466 tests. Build and aggressive-cutting verification
+  are the required batch gates. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.
+
+## Aggressive Cutting Self-Prosecution — Less bare-slash evaluator
+
+- Latest pass: `promoteBareSlashValue` now evaluates the parser-owned scalar
+  slash fact in eager Less math and leaves ordinary lists and parenthesized
+  values on their existing paths.
+- Architecture surface: one canonical AST-v2 `ValueSlot` evaluator and the
+  existing typed `operation()` constructor; no parser bridge, source reparse,
+  scanner, resolver, or compatibility evaluator.
+- Separation/duplication: no duplicate arithmetic implementation. The helper
+  only restores precedence from existing `Operation` nodes and delegates every
+  result to the canonical value evaluator.
+- Cumulative node weight: the authored AST remains immutable; only the rare
+  recognized scalar slash shape gets temporary operation records for immediate
+  typed evaluation.
+- New traversal: [loop/traversal] bounded top-level slash detection, one
+  recursive walk over an existing arithmetic spine, and two precedence-tier
+  reductions; no whole-tree or source walk.
+- New node/materialization: [node construction] temporary `Operation` records
+  are created only for immediate arithmetic evaluation; no render-only nodes,
+  legacy nodes, clones, or metadata mutation.
+- Render path: [array helper] ordinary space/slash lists and nested groups use
+  the pre-existing layout join; no array is built merely to stringify.
+- Helper/API surface: [array spread/materialization] private
+  `promoteBareSlashValue`, `appendBareSlashTokens`, and tier reducer replace a
+  missing precedence step and expose no public API.
+- Metadata mutations: [side map/set] none; the three operator sets are
+  immutable module-level classification facts, not runtime side maps.
+- [materialized array/object] Allocation accounting: token/value arrays occur
+  only after a top-level slash leaf is present; the common no-slash path returns
+  before token allocation. The parens-division mode object is allocated only
+  for a recognized slash boundary.
+- Review-flagged diff tokens: `[loop/traversal]`, `[array helper]`,
+  `[array spread/materialization]`, `[node construction]`, `[side map/set]`,
+  and `[materialized array/object]` are all bounded above and covered by the
+  allocation accounting above.
+- Evidence: focused `strict-units.test.ts` passes 4/4, including `7em`,
+  `4.4em`, `2em`, strict cancellation, ordinary slash-list preservation,
+  grouped division, and parens-division controls. Build passed for core and
+  the jess dependency graph. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "why":"The bare-slash promotion is a bounded correctness repair inside the existing canonical AST-v2 serializer owner. It classifies one parser-owned top-level slash boundary, creates temporary operation facts only for immediate typed evaluation, and preserves the no-slash path; no speed or neutrality claim is made.",
+    "dangerTokensJustification":"[loop/traversal] is limited to top-level slash detection, one existing arithmetic spine, and two precedence tiers; [array helper] and [materialized array/object] are limited to the recognized slash shape; [array spread/materialization] is one parens-mode context record; [node construction] is temporary Operation records; [side map/set] is immutable module-level operator classification. No source walk, clone, bridge, or parser reparse is added.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],
+    "behaviorEvidence":"Focused packages/jess strict-units.test.ts passes 4/4: 7em, 4.4em, 2em, strict cancellation, ordinary slash-list preservation, grouped division, and parens-division controls.",
+    "buildEvidence":"pnpm --filter @jesscss/core build and pnpm --filter jess... build pass.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted as a bounded evaluator-only Less math fix; no source
+  reparse, parser change, bridge, or public compatibility shim was added.
+
+## Aggressive Cutting Self-Prosecution — Less pi/mod Fn conversion
+
+- Latest pass: Less `pi` and `mod` now directly re-export the already-registered
+  canonical AST-v2 value-domain callables from `builtins/`. Both historical
+  named exports and default entrypoints remain available; the old duplicate
+  value-domain definitions are removed in place.
+- Architecture surface: the existing typed `defineFunction` contract and
+  `makeDimension` factory only. No legacy tree node, Context wrapper, parser
+  host, bridge, fallback evaluator, or compatibility shim was introduced.
+- Separation/duplication: one implementation per function. Less's public
+  files are intentional entrypoint re-exports of the canonical builtins, not
+  relocation wrappers or duplicate implementations.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each callable creates only its required canonical `Dimension` result.
+- New traversal: none. `pi` computes one constant; `mod` performs one scalar
+  remainder and carries the dividend unit, as the prior Less function did.
+- New node/materialization: no legacy tree nodes or AST nodes; `makeDimension`
+  creates the required value-domain result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate output path was added.
+- Helper/API surface: no helper or public name was added. Existing `pi`/`mod`
+  named and default Less exports remain available through direct aliases.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: the focused parity suite compares canonical results with
+  pre-cutover Less `Dimension` oracles for unitless `pi` and signed/fractional
+  `mod` inputs, asserting numbers, units, and serialized bytes. Registry and
+  named/default entrypoint identity are asserted for both functions.
+- Verification evidence: focused parity tests pass 3/3; full fns suite passes
+  74 files / 482 tests; `@jesscss/core` and `@jesscss/awaitable-pipe` upstream
+  builds plus `@jesscss/fns` build pass; package export verification and
+  aggressive-cutting review pass. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining Less
+  function files require their own behavior-parity batches.
+
+## Aggressive Cutting Self-Prosecution — Less sqrt Fn conversion
+
+- Latest pass: Less `sqrt` now directly re-exports the canonical AST-v2
+  value-domain callable from `builtins/`; the duplicate Less body is removed in
+  place. The Less named/default path and builtin registry resolve to the same
+  callable object.
+- Architecture surface: the existing typed `defineFunction`/`Fn` value
+  contract, `unaryMath`, and `makeDimension` result factory only. No legacy tree
+  node, Context wrapper, parser host, bridge, fallback evaluator, or
+  compatibility shim was introduced.
+- Separation/duplication: one implementation per function. The Less module
+  remains an explicit public entrypoint re-export, not a moved copy or a second
+  runtime implementation.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each call creates only its required canonical `Dimension` result.
+- New traversal: none. Existing `unaryMath` performs one typed dimension check,
+  scalar `Math.sqrt`, and unit preservation; it intentionally does not apply
+  angle normalization for the `null` output-unit mode.
+- New node/materialization: no legacy tree nodes or AST nodes; the canonical
+  value factory creates the required result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate output path was added.
+- Helper/API surface: no helper or public name was added. Existing Less `sqrt`
+  named and default exports remain available through the direct re-export.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: the focused parity suite compares canonical results with a local
+  pre-cutover Less `mathHelper` oracle across unitless, ordinary-unit, and
+  angle-unit inputs (including a negative input's `NaN` result), asserting
+  numbers, units, and serialized bytes. Registry and named/default entrypoint
+  identity are asserted. Focused tests pass 2/2; the full fns suite passes 76
+  files / 486 tests; `@jesscss/fns` build, changed-file ESLint, and
+  aggressive-cutting review pass. No performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining Less math
+  functions require their own behavior-parity batches.
+
+## Aggressive Cutting Self-Prosecution — bubbled @container child-rule order (historical record; superseded below)
+
+- Latest pass: the canonical AST-v2 serializer now stages only static children
+  of a bubbled conditional block when its propagated selector context is
+  non-null. Direct declarations/comments are emitted before those child rules,
+  matching Less for both `@media` and `@container`; dynamic mixin, loop, import,
+  and variable-bearing bodies retain the existing streaming path.
+- Architecture surface: `packages/core/src/ast/serialize.ts` only. This is a
+  render-order correction in the existing AST-v2 emitter; no parser host,
+  bridge, source reparse, scanner, compatibility path, or second evaluator was
+  introduced.
+- Separation/duplication: no duplicate selector or at-rule emitter. Deferred
+  callbacks invoke the existing `flatten`, `emitAtRuleBlock`, and
+  `emitAtRuleStatement` operations after the one existing direct-leaf flush.
+- Cumulative node weight: no AST nodes, frames, side maps, or copies are added.
+  One short-lived callback array is created only for a static bubbled body.
+- New traversal: `[loop/traversal]` one bounded pass over the already-owned
+  statement array to classify whether static staging is safe, plus one ordered
+  callback pass over deferred children. No source/tree rediscovery or recursive
+  walk is added.
+- New node/materialization: none. `[materialized array/object]` is the
+  short-lived deferred callback array for static child emitters only; it is not
+  a node/value materialization and the dynamic path allocates nothing new.
+- Render path: direct declarations still resolve through `flushBlock`; child
+  rules and nested at-rules still stringify through their existing emitters.
+  Nothing is rendered to an intermediate AST or string solely to reorder it.
+- Helper/API surface: no public helper or API. The local static-shape predicate
+  and callback queue are limited to this emitter and disappear after the body.
+- Metadata mutations: none. Existing frame, source, position, and import state
+  are threaded unchanged through the deferred callbacks.
+- Review-flagged diff tokens: `[loop/traversal]` is the bounded statement-array
+  classification and ordered callback loop; `[materialized array/object]` is
+  the static-only callback queue. No clone, side-map, source mutation, or
+  render-only value array was added.
+- Evidence: public Less integration lock in
+  `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` passes 8/8, including
+  byte-equivalent nested `@media` and `@container` cases where a declaration
+  follows a child rule. The focused at-rule suite passes 11/12 (one pre-existing
+  skipped nesting case); core build and changed-file ESLint pass with existing
+  warnings. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the canonical AST-v2 serializer/evaluator owners listed by ast-semantic-runtime-cutover",
+    "why":"Static bubbled conditional bodies must match Less's declaration-before-child ordering. The existing dynamic streaming path is unchanged; only the already-owned statement array is classified and static child emitter callbacks are staged.",
+    "dangerTokensJustification":"[loop/traversal] is one bounded statement-array classification and one deferred-child callback loop; [materialized array/object] is a static-only callback queue. No source walk, clone, bridge, or parser reparse is added.",
+    "cases":["bubbled-media-direct-before-child","bubbled-container-direct-before-child","dynamic-bubble-body-streaming-preserved"],
+    "behaviorEvidence":"at-rule-bubbling-bugs.test.ts passes 8/8, with both @media and @container direct-after-child cases matching Less output.",
+    "buildEvidence":"pnpm --filter @jesscss/core build and pnpm --filter jess test -- --run test/less/at-rule-bubbling-bugs.test.ts pass."
+  }]
+  ```
+- Verdict: accepted bounded AST-v2 emitter correction; no performance claim is
+  made and no legacy route was retained.
+
+## Aggressive Cutting Self-Prosecution — Less pow Fn conversion
+
+- Latest pass: Less `pow` now directly re-exports the canonical AST-v2
+  value-domain callable from `builtins/`; the duplicate Less body is removed in
+  place. The Less named/default path and builtin registry resolve to the same
+  callable object.
+- Architecture surface: the existing typed `defineFunction`/`Fn` value
+  contract, `requireDimension`, and `makeDimension` result factory only. No
+  legacy tree node, Context wrapper, parser host, bridge, fallback evaluator,
+  or compatibility shim was introduced.
+- Separation/duplication: one implementation per function. The Less module is
+  an explicit public entrypoint re-export, not a moved copy or a second runtime
+  implementation.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each call creates only its required canonical `Dimension` result.
+- New traversal: none. The canonical implementation performs two typed
+  dimension checks, one scalar `Math.pow`, and carries the base unit exactly as
+  the prior Less function did.
+- New node/materialization: no legacy tree nodes or AST nodes; the canonical
+  value factory creates the required result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, alternate output path, or function-level fallback was added.
+- Helper/API surface: no helper or public name was added. Existing Less `pow`
+  named and default exports remain available through direct re-exports.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: the focused parity suite compares canonical results with a local
+  pre-cutover Less `Dimension` oracle across signed, fractional, unitless, and
+  mixed-unit inputs, asserting numbers, units, and serialized bytes. Registry
+  and named/default entrypoint identity are asserted. Focused tests pass 3
+  files / 5 tests; the full fns suite passes 77 files / 488 tests; the fns
+  build, changed-file ESLint, and aggressive-cutting review pass. No
+  performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining Less
+  function files require their own behavior-parity batches.
+
+## Aggressive Cutting Self-Prosecution — Less sin/cos Fn conversion
+
+- Latest pass: Less `sin` and `cos` now directly re-export the canonical
+  AST-v2 value-domain callables from `builtins/`; the duplicate Less bodies are
+  removed in place. The Less named/default paths and builtin registry all
+  resolve to the same callable objects.
+- Architecture surface: the existing typed `defineFunction`/`Fn` value
+  contract and `makeDimension` result factory only. No legacy tree node,
+  Context wrapper, parser host, bridge, fallback evaluator, or compatibility
+  shim was introduced.
+- Separation/duplication: one implementation per function. The Less modules
+  remain explicit public entrypoint re-exports, not moved copies or aliases to
+  a second runtime implementation.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Each call creates only its required canonical `Dimension` result.
+- New traversal: none. Existing `unaryMath` performs one typed dimension check,
+  angle normalization, and scalar `Math.sin`/`Math.cos` operation.
+- New node/materialization: no legacy tree nodes or AST nodes; the canonical
+  value factory creates the required result once.
+- Render path: unchanged typed evaluator/serializer route; no tree conversion,
+  source reparse, or alternate output path was added.
+- Helper/API surface: no helper or public name was added. Existing Less
+  `sin`/`cos` named and default exports remain available through direct
+  re-exports.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: the focused parity suite compares canonical results with a local
+  pre-cutover Less `mathHelper` oracle across unitless, degree, gradian, turn,
+  and ordinary-unit inputs, asserting numbers, units, and serialized bytes;
+  registry and named/default entrypoint identity are asserted for both calls.
+  Focused tests pass 4/4; the full fns suite passes 75 files / 484 tests;
+  `@jesscss/fns` build and aggressive-cutting review pass. No performance claim
+  is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining Less math
+  functions require their own behavior-parity batches.
+
+## Aggressive Cutting Self-Prosecution — bubbled @container child-rule order (current)
+
+- Latest pass: static bubbled conditional bodies now stage direct declarations
+  and comments before child rules, matching Less for both `@media` and
+  `@container`; dynamic mixin, loop, import, and variable-bearing bodies keep
+  the existing streaming route.
+- Architecture surface: `packages/core/src/ast/serialize.ts` only. No parser
+  host, bridge, source reparse, scanner, compatibility path, or second evaluator.
+- Separation/duplication: deferred callbacks invoke existing `flatten`,
+  `emitAtRuleBlock`, and `emitAtRuleStatement`; no duplicate emitter exists.
+- Cumulative node weight: no nodes, frames, side maps, or copies. One callback
+  array exists only for a static bubbled body.
+- New traversal: `[loop/traversal]` one bounded statement-array classification
+  and one ordered callback pass; no source/tree rediscovery or recursive walk.
+- New node/materialization: none. `[materialized array/object]` is only the
+  static callback queue, not a node/value materialization.
+- Render path: direct leaves still use `flushBlock`; child rules/at-rules still
+  stringify through existing emitters; no intermediate output tree/string.
+- Helper/API surface: no public helper or API; the predicate and queue are
+  local to this emitter.
+- Metadata mutations: none; existing frame/source/position/import state is
+  threaded unchanged.
+- Review-flagged diff tokens: `[loop/traversal]` is the bounded classification
+  and callback loop; `[materialized array/object]` is the static-only queue.
+  No clone, side-map, source mutation, or render-only value array was added.
+- Evidence: `at-rule-bubbling-bugs.test.ts` passes 8/8, including byte-equivalent
+  @media/@container direct-after-child cases; core build and changed-file ESLint
+  pass with existing warnings. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Static bubbled conditional bodies must match Less declaration-before-child ordering while dynamic streaming remains unchanged; this is semantic runtime work, not a neutral or speed claim.","dangerTokensJustification":"[loop/traversal] is one bounded statement classification plus one callback pass; [materialized array/object] is a static-only callback queue; no source walk, clone, bridge, or parser reparse.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"at-rule-bubbling-bugs.test.ts 8/8 with both @media and @container Less-oracle cases.","buildEvidence":"core build and focused jess suite pass.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
+  ```
+- Verdict: accepted bounded AST-v2 emitter correction; no legacy route retained.
+
+## Aggressive Cutting Self-Prosecution — matched parser instrumentation-guard isolation (diagnostic)
+
+- Latest pass: a temporary generated Less-parser copy removed only normal-path
+  reads of optional Parseman profile/CST-output state. This was a read-only
+  diagnostic experiment; no production or generated artifact was changed.
+- Architecture surface: the existing direct Parseman `run(entry, input,
+  { trivia })` boundary and canonical AST-v2 `Stylesheet` result. No parser
+  host, bridge, source reparse, scanner, compatibility path, or shim was added.
+- Separation/duplication: none. The diagnostic copy exercised the same generated
+  grammar and parser-local reductions as the committed artifact.
+- Cumulative node weight: none. The experiment changed no node factory,
+  evaluator, renderer, frame, map, or retained AST shape.
+- New traversal: none. The benchmark loop existed in the temporary measurement
+  harness only; it is not production code or a parser path.
+- New node/materialization: none. Both sides returned the same 677-child
+  `Stylesheet` and byte-identical 946,987-byte stable JSON.
+- Render path: not applicable; this is direct parse-only timing. No values or
+  nodes were resolved merely to stringify.
+- Helper/API surface: none. The temporary substitution is deleted after the
+  measurement and is not a package export or runtime helper.
+- Metadata mutations: none. No source, parent, location, profile, cache, or
+  Context state was mutated.
+- Review-flagged diff tokens: `[array helper]` appears only in the historical
+  aggregate inventory line already present in the integration diff; this docs
+  entry adds no runtime danger-token code. Other danger categories are absent
+  from the pass.
+- Evidence: Node v24.11.1 arm64; `benchmark.less` 106,802 bytes, SHA-256
+  `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`; A
+  artifact 1,827,807 bytes/SHA-256
+  `a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`; B
+  artifact 1,812,467 bytes/SHA-256
+  `05703701303497689f1e3ffe85ad7ba8de139cf99c434f852b145d1241886767`;
+  20 warmups and three 45-pair alternating rounds. A/B round medians were
+  59.470/59.458, 60.039/59.696, and 59.892/59.692 ms; aggregate A 59.918 ms,
+  B 59.649 ms; paired B−A median +0.139 ms, mean +0.307 ms, B faster in 62/135
+  pairs and slower in 73/135. Stable output JSON SHA-256 was
+  `8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c3` on
+  both sides. This is behavior and matched-isolation evidence only; it does
+  not support a production speed claim or optimization.
+- Verdict: reject an optional-guard optimization on this evidence; retain the
+  guards for opt-in Parseman profiling/CST diagnostics and continue the
+  reducer/choice/backtracking investigation separately.
+
+## Aggressive Cutting Self-Prosecution — reference-import extend admission
+
+- Latest pass: a reference-imported stylesheet is now admitted to the existing
+  typed extend preflight even when that imported document contains no own
+  `:extend()`. A visible extender in the importing document can therefore fold
+  into a hidden imported target's direct declarations. Ordinary imports keep the
+  existing `bodyMayPlanExtend()` admission gate.
+- Architecture surface: this remains the existing Context/plugin-loaded
+  `Stylesheet` import fact and the canonical AST-v2 extend planner. No parser
+  host, bridge, source reparse, resolver, scanner, or compatibility route was
+  added.
+- Separation/duplication: none. The change reuses
+  `collectPlacedExtendFacts()` and the existing `referenceBoundary` provenance;
+  it adds no alternate import walk or resolver.
+- Cumulative node weight: none. Existing planner subjects reference canonical
+  `Rule` nodes; this admission does not copy or materialize nodes.
+- New traversal: the existing cold reference-import preflight now visits the
+  imported rule subjects when `reference` is set. This is required because the
+  importer may extend a target that has no local extend instruction; carrying the
+  subject through the already-owned planner state is cheaper and more truthful
+  than rediscovering it during render.
+- New node/materialization: none. Canonical `Rule` nodes are reused; no copies,
+  wrappers, maps, or metadata mutations were introduced.
+- Render path: no new render traversal or string materialization. The planner's
+  existing hidden/visible branch mask controls whether the imported target emits
+  under the visible extender selector.
+- Helper/API surface: none; one admission predicate now includes the existing
+  typed `reference` option.
+- Metadata mutations: none beyond the pre-existing reference-boundary fact passed
+  to the planner.
+- Review-flagged diff tokens: none in the runtime hunk; the added condition does
+  not introduce a loop, allocation, side map, copy, or routine error path.
+- Evidence: `pnpm --filter @jesscss/core test -- --run` passed 199 files,
+  3194 passed, 9 skipped, and 2 intentionally marked tests; `pnpm --filter @jesscss/core test -- --run
+  src/ast/__tests__/import-at-rule.test.ts` passed 27/27; `pnpm --filter jess
+  test -- reference-import-namespace.test.ts extend-cross-import.test.ts --run
+  --globals` passed 4/4; the red `extend-cross-import.test.ts` reference-import
+  oracle now passes byte-identically; config fixtures pass 29/29 with existing
+  expected-failure markers. This is behavior evidence only; no performance claim
+  was made.
+- Ponytail-style manual review: no `delete`, `stdlib`, `native`, `yagni`, or
+  `shrink` finding; `Lean already. Ship.`
+- Hot-path cost contracts:
+  ```json
+  [
+    {
+      "id": "ast-extend-import-preflight",
+      "verdict": "accepted",
+      "performanceClaim": "none",
+      "why": "Reference-import extend visibility is a semantic correction in the existing cold preflight: a hidden imported target with no local extend must still be available to a visible importer extender, while ordinary imports retain the existing feature-bearing admission gate. This is not a speed or neutrality claim.",
+      "dangerTokensJustification": "The existing typed preflight collector is reused only for reference imports; no new parser walk, renderer traversal, node materialization, side map, copy, source mutation, or routine error path is added. Ordinary imports retain the prior zero-feature admission behavior.",
+      "falsePath": {
+        "fixture": "extend-preflight-contract:no-extend",
+        "counters": {"calls": 1, "collectorCalls": 0, "overlaySubjects": 0, "overlayInstructions": 0, "loopPlacements": 0}
+      },
+      "featurePath": {
+        "fixture": "extend-preflight-contract:imported-loop",
+        "counters": {"importsVisited": 1, "loopPlacements": 2, "overlaySubjects": 2}
+      },
+      "baseline": {
+        "fixture": "benchmark.less",
+        "phase": "parse-render",
+        "currentMedianMs": 81.0,
+        "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+        "outputBytes": 122390
+      },
+      "behaviorEvidence": "extend-preflight-contract.test.ts proves false and feature paths; extend-cross-import.test.ts reference-import oracle passes byte-identically; core import-at-rule passes 27/27; full core passes 3194 tests.",
+      "buildEvidence": "pnpm --filter @jesscss/core build and focused Jess suites pass."
+    },
+    {
+      "id": "ast-semantic-runtime-cutover",
+      "verdict": "accepted",
+      "performanceClaim": "none",
+      "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+      "why": "This coordinated AST-v2 runtime surface includes the extend planner's reference-import admission correction. It is semantic architecture work with existing traversal and placement state; no single admission counter, byte-identical A/B, or speed claim would describe it truthfully.",
+      "dangerTokensJustification": "The existing cold preflight collector is reused for reference imports and the canonical Rule subjects remain shared. No parser walk, renderer traversal, node materialization, side map, copy, source mutation, or routine error path is added by the admission correction.",
+      "cases": ["ValueSlot-array-evaluation-and-authored-layout", "List-value-separator-and-Block-delimiter-facts", "reference-index-and-For-array-access", "Less-lazy-color-call-demand-boundary", "defineFunction-typed-positional-named-and-lazy-binding", "mixin-dispatch-ValueSlot-argument-resolution", "ValueLayout-provenance-side-table", "preserve-mode-calc-result-composition", "extend-composition-plan-and-fixpoint-solve", "Less-eager-bare-slash-precedence-and-parens-division"],
+      "behaviorEvidence": "Full core suite passes 199 files / 3194 tests; import-at-rule passes 27/27; reference-import and extend-cross-import output oracles pass 4/4.",
+      "buildEvidence": "pnpm --filter @jesscss/core build and focused Jess suites pass.",
+      "baseline": {
+        "fixture": "benchmark.less",
+        "phase": "render",
+        "currentMedianMs": 79.823,
+        "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6",
+        "outputBytes": 122390
+      }
+    }
+  ]
+  ```
+- Verdict: accepted bounded semantic correction; no legacy route retained.
+
+## Aggressive Cutting Self-Prosecution — Less interpolated selector pseudos
+
+- Latest pass: the public direct Less AST grammar now reduces interpolated pseudo
+  names (`:@{name}` / `::@{name}`), interpolated `:nth-*` arguments
+  (`:nth-child(@{index})`), quoted interpolation after the CSS `|=` attribute
+  operator, and leading combinators inside nested functional pseudo selectors
+  as typed selector facts. The namespace-prefix arm now proves it is not
+  consuming `|=`, and the pseudo argument reuses the existing canonical
+  `ComplexSelector.leadingComb` field. No selector text is rescanned or
+  reparsed, and no compatibility bridge is added.
+- Architecture surface: `packages/less-parser/src/ast/grammar.ts` direct
+  Parseman reductions and the existing canonical AST selector factories.
+- Separation/duplication: the grammar reuses the existing interpolation and
+  selector-simple factories; no alternate selector parser or renderer exists.
+- Cumulative node weight: one existing `SimpleSelector` containing one
+  `Interpolation` payload per authored dynamic pseudo/attribute; one existing
+  `ComplexSelector.leadingComb` fact per relative pseudo argument; no wrapper
+  nodes.
+- New traversal: none; the existing compound-selector reduction consumes the
+  new atom in its ordinary one-or-more simple-selector sequence.
+- New node/materialization: none beyond the existing interpolation parts.
+- Render path: unchanged canonical selector serialization/evaluation; the
+  interpolation is materialized only when the selector is evaluated/rendered.
+- Helper/API surface: no public helper or package export; two parser-local
+  reductions are added to the direct grammar rule map.
+- Metadata mutations: none; source spans and parent/child relationships remain
+  those produced by the canonical AST factories.
+- Behavior evidence: `packages/less-parser/test/ast-grammar.test.ts` passes
+  152/152 and `packages/less-parser/test/public-parse.test.ts` passes 70/70;
+  the full `selectors.less` fixture now renders without a parse throw (3542
+  bytes vs Less's 3557-byte oracle), with the first remaining byte difference
+  at the unrelated repeated `.foo + .foo` declaration output.
+- Build evidence: `pnpm --filter @jesscss/less-parser build` passes; changed
+  parser/test files pass ESLint.
+- Boundary evidence: the existing public `parse()` route returns canonical
+  `Stylesheet`/`SimpleSelector`/`Interpolation` nodes directly; only the
+  direct Less grammar and its AST-contract tests changed, with no new host,
+  bridge, scanner, resolver, or package API.
+- Evidence: the focused parser suites and package build above are the complete
+  behavior/build boundary evidence for this bounded selector-family change.
+- Existing recognizer note: the production continues to use the pre-existing
+  `when` boundary lookahead in this pseudo-selector family; this slice adds no
+  handwritten recognizer or new regex.
+- Review-flagged diff tokens: none. No traversal, clone, side map, metadata
+  mutation, or routine error-control path was added.
+- Verdict: accepted bounded direct-AST selector grammar correction; the fixture's
+  remaining dynamic attribute form is a separate selector-family slice.

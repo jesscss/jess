@@ -14,11 +14,15 @@ function getPublicPackages() {
   return fs.readdirSync(packagesRoot)
     .map((dir) => {
       const packageJsonPath = path.join(packagesRoot, dir, 'package.json');
-      if (!fs.existsSync(packageJsonPath)) return null;
+      if (!fs.existsSync(packageJsonPath)) {
+        return null;
+      }
 
       const pkg = readJson(packageJsonPath);
       const isPublic = !pkg.private || pkg.publishConfig?.access === 'public';
-      if (!isPublic) return null;
+      if (!isPublic) {
+        return null;
+      }
 
       return {
         dir,

@@ -143,7 +143,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
   ['tests-config/namespacing/namespacing-media.less', 'namespace lookup inside media query expression differs from Less'],
-  ['tests-unit/urls/urls.less', 'blocked upstream of url/data-uri by unimplemented import-path interpolation (@import "@{file_to_import}" via mixin arg) and svg-gradient; data-uri()/url serialization themselves work (fns data-uri.test.ts + core url.test.ts)'],
+  ['tests-unit/urls/urls.less', 'renders but CSS @import placement and multiline function formatting differ from Less'],
   ['tests-config/process-imports/google.less', 'processImports=false should leave remote CSS imports out of rendered CSS'],
   ['tests-config/static-urls/urls.less', 'relativeUrls=false/rootpath static URL behavior is not implemented'],
   ['tests-config/url-args/urls.less', 'urlArgs URL query appending is not implemented'],
@@ -158,9 +158,16 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/detached-rulesets/detached-rulesets.less', 'detached-ruleset argument closure now matches Less; nested @media query merging still differs'],
   ['tests-unit/functions-each/functions-each.less', 'renders but each() output differs from Less'],
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
-  ['tests-unit/property-name-interp/property-name-interp.less', 'renders but interpolated property-name output differs from Less'],
+  ['tests-unit/property-name-interp/property-name-interp.less', 'Less5 owner-set rejection of deprecated dash-only @- and @{-} variable names; Less4 deprecation is implemented in unpushed worktree commit db03543d'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
-  ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'renders but variables-in-at-rules output differs from Less'],
+  ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'Less5 rejects dynamic @charset interpolation; static charset remains on the generic statement route pending the public Charset node decision'],
+  ['tests-unit/plugin-module/plugin-module.less', 'Less5 alpha rejects clean-css: its legacy CommonJS @plugin graph uses require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime intentionally does not support (a cold worker can instead report its explicit startup diagnostic); this is not a parser, evaluator, or Context import-resolution failure'],
+  // Explicit Less5 removals. Keep these legacy fixtures runnable so an
+  // accidental reintroduction is visible rather than silently skipped.
+  ['tests-unit/javascript-REMOVED/legacy/javascript.less', 'Less5 removes backtick JavaScript evaluation, including javascriptEnabled legacy configurations'],
+  ['tests-unit/ie-filters-REMOVED/legacy/ie-filters.less', 'Less5 removes legacy IE progid:DXImageTransform filter syntax'],
+  ['tests-unit/functions/legacy/functions.less', 'Less5 rejects this legacy fixture\'s non-Less $list parameter/reference syntax'],
+  ['tests-unit/plugin-preeval/plugin-preeval.less', 'Less5 does not support the legacy tree visitor ABI (isPreEvalVisitor, manager.addVisitor, visitors.Visitor); this is not an @plugin extension-resolution gap'],
   ['tests-unit/plugin/plugin.less', '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)'],
   ['tests-unit/parse-interpolation/parse-interpolation.less', 'renders but interpolation formatting differs from Less'],
   ['tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', 'slashed combinator not yet supported'],
@@ -182,7 +189,6 @@ const expectedFailureFixtures = new Map<string, string>([
   //  fixes made them render byte-identical to Less; they're real passes now.
   //  extend-nest.less + extend-selector.less GRADUATED — the cutover-p1 spine extend
   //  wire-in now renders both byte-identical to the maintained `.css`; real passes.)
-  ['tests-unit/import/import-remote.less', 'configured jsDelivr import resolution now reaches the typed loader; imported selectors.less still has an unsupported selector interpolation'],
 
   // F5: Less/Jess deliberately leaves CSS-shaped, three-or-more-slot
   // un-operated color constructors as authored calls, even when Less 4's oracle
@@ -222,7 +228,6 @@ describe('Can render Less files to CSS', () => {
           const testName = testCases.length > 1 ? `${file} [${index + 1}/${testCases.length}]` : file;
           const configSuffix = testCases.length > 1 ? ` (${path.basename(testCase.expectedFile)})` : '';
           const expectedFailureReason = expectedFailureFixtures.get(file);
-
           const runFixture = async () => {
             const expectedCss = readFileSync(testCase.expectedFile, 'utf8');
 

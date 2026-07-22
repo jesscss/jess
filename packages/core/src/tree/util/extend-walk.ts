@@ -46,7 +46,7 @@
  * due to createProcessedSelector differences.
  */
 
-import type { Selector } from '../selector.js';
+import type { Selector, SelectorLike } from '../selector.js';
 import { SimpleSelector } from '../selector-simple.js';
 import { SelectorList, type SelectorListItem } from '../selector-list.js';
 import { selectorListItemForMatch } from './selector-match-core.js';
@@ -72,6 +72,13 @@ function copySelectorsForPlacement(value: Selector[]): Selector[] {
 
 function isSelectorNode(value: unknown): value is Selector {
   return isNode(value, N.Selector);
+}
+
+function selectorNodeForExtendMatch(value: SelectorLike): Selector {
+  if (typeof value === 'string') {
+    return new BasicSelector(value);
+  }
+  return Array.isArray(value) ? SelectorList.create(value) : value;
 }
 
 function expectSelector(value: unknown): Selector {
@@ -1273,7 +1280,7 @@ function wouldMatchNode(
       // is longer than the local node, so an exact local hit is invalid.
       if (ctx.isRoot && parentSelector) {
         if (node.hasFlag(F_AMPERSAND)) {
-          const composed = Ruleset.composeSelector(node, parentSelector);
+          const composed = selectorNodeForExtendMatch(Ruleset.composeSelector(node, parentSelector));
           if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
             return 'crossing';
           }
@@ -1354,7 +1361,7 @@ function wouldMatchNode(
     // only become visible after substituting the parent selector into the
     // whole compound. Looking at each `&` component independently misses that.
     if (parentSelector && !partial && node.hasFlag(F_AMPERSAND)) {
-      const composed = Ruleset.composeSelector(node, parentSelector);
+      const composed = selectorNodeForExtendMatch(Ruleset.composeSelector(node, parentSelector));
       if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
         return 'crossing';
       }

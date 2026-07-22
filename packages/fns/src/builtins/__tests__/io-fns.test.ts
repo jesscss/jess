@@ -18,7 +18,11 @@ import { imageHeight } from '../image-height.js';
 function call(fn: Fn, list: List, c: FnCtx): ValueObj {
   // These unit stubs are deliberately synchronous; async capability coverage lives
   // at the Compiler/Context boundary below the function package.
-  return fn(list, c) as ValueObj;
+  const result = fn(list, c);
+  if (result instanceof Promise) {
+    throw new Error('Expected synchronous IO function result in this unit test.');
+  }
+  return result;
 }
 
 /** A 24-byte PNG header advertising `width × height` (parsed from bytes 16/20). */
@@ -34,6 +38,10 @@ function pngHeader(width: number, height: number): Buffer {
 /** A stub `FnIo` that resolves a fixed path→bytes map, else `null` (unreadable). */
 function stubIo(files: Record<string, Uint8Array>): FnIo {
   return { readFile: spec => files[spec] ?? null };
+}
+
+function file(name: string, bytes: Uint8Array): Record<string, Uint8Array> {
+  return { [name]: bytes };
 }
 
 /** The minimal `FnCtx` a value/IO fn body sees: the serialize hook + optional io. */
@@ -52,25 +60,25 @@ function args(...values: string[]): List {
 
 describe('data-uri', () => {
   it('inlines binary as base64 with a guessed mimetype', () => {
-    const io = stubIo({ 'a.png': Buffer.from('AB') });
+    const io = stubIo(file('a.png', Buffer.from('AB')));
     const out = call(dataUri, args('a.png'), ctx(io));
     expect(out.bytes).toBe(`url("data:image/png;base64,${Buffer.from('AB').toString('base64')}")`);
   });
 
   it('percent-encodes text with an explicit mimetype', () => {
-    const io = stubIo({ 'p.txt': Buffer.from('a b&c') });
+    const io = stubIo(file('p.txt', Buffer.from('a b&c')));
     const out = call(dataUri, args('text/plain', 'p.txt'), ctx(io));
     expect(out.bytes).toBe('url("data:text/plain,a%20b%26c")');
   });
 
   it('honors an explicit ;base64 mimetype flag', () => {
-    const io = stubIo({ 'f.dat': Buffer.from('hi') });
+    const io = stubIo(file('f.dat', Buffer.from('hi')));
     const out = call(dataUri, args('application/x-thing;base64', 'f.dat'), ctx(io));
     expect(out.bytes).toBe(`url("data:application/x-thing;base64,${Buffer.from('hi').toString('base64')}")`);
   });
 
   it('preserves a #fragment at the end of the emitted URI', () => {
-    const io = stubIo({ 'a.png': Buffer.from('AB') });
+    const io = stubIo(file('a.png', Buffer.from('AB')));
     const out = call(dataUri, args('image/png;base64', 'a.png#frag'), ctx(io));
     expect(out.bytes).toBe(`url("data:image/png;base64,${Buffer.from('AB').toString('base64')}#frag")`);
   });
@@ -87,7 +95,7 @@ describe('data-uri', () => {
 });
 
 describe('image-size / image-width / image-height', () => {
-  const io = stubIo({ 'img.png': pngHeader(640, 430) });
+  const io = stubIo(file('img.png', pngHeader(640, 430)));
 
   it('image-size → space list of px dimensions', () => {
     expect(call(imageSize, args('img.png'), ctx(io)).bytes).toBe('640px 430px');

@@ -6,6 +6,12 @@
 > its dual-host or legacy-tree architecture. The live parser cutover is public
 > Parseman reductions directly to AST v2 `Stylesheet`, as defined in `HANDOFF.md`.
 
+> **Do not read the body as a current blocker list.** Its “two producers,”
+> “AST render is test-only,” and “production render blocks deletion” statements
+> describe the superseded migration snapshot. Current work removes proven
+> unreachable legacy consumers while the public `parse() -> Stylesheet` route
+> and Context/plugin dispatch remain the architecture.
+
 DESIGN/SCOUT spec. Base: `origin/dev`. Scope: retire the legacy Less **`BuilderHost`**
 (`packages/less-parser/src/builders.ts`, `class LessGrammar` + the `BuilderHost`
 subclass in `functional-parser.ts`) so the ~34 remaining `builders.ts` regex that the

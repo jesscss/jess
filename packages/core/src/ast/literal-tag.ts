@@ -35,13 +35,19 @@ export function parseHex(hex: string): { rgb: [number, number, number]; alpha: n
   if (hexValue.length >= 6) {
     const chunks = hexValue.match(/.{2}/g) ?? [];
     chunks.forEach((c, i) => {
-      if (i < 3) rgba.push(parseInt(c, 16));
-      else rgba.push(parseInt(c, 16) / 255);
+      if (i < 3) {
+        rgba.push(parseInt(c, 16));
+      } else {
+        rgba.push(parseInt(c, 16) / 255);
+      }
     });
   } else {
     hexValue.split('').forEach((c, i) => {
-      if (i < 3) rgba.push(parseInt(c + c, 16));
-      else rgba.push(parseInt(c + c, 16) / 255);
+      if (i < 3) {
+        rgba.push(parseInt(c + c, 16));
+      } else {
+        rgba.push(parseInt(c + c, 16) / 255);
+      }
     });
   }
   const [r = 0, g = 0, b = 0, a = 1] = rgba;
@@ -81,7 +87,9 @@ export function colorFromSrc(src: string): ValueObj {
     return makeColorRgb(rgb, alpha, HEX, { node: src });
   }
   const named = namedColor(src);
-  if (named) return makeColorRgb(named.rgb, named.alpha, HEX, { node: src });
+  if (named) {
+    return makeColorRgb(named.rgb, named.alpha, HEX, { node: src });
+  }
   return makeKeyword(src);
 }
 
@@ -128,13 +136,19 @@ function sniffBuild(text: string): ValueObj {
   }
   // Numeric: ONE family (united or unitless — no split).
   if ((c0 >= 48 && c0 <= 57) || c0 === 43 || c0 === 45 || c0 === 46) {
-    if (NUM_RE.test(text)) return dimensionFromString(text);
+    if (NUM_RE.test(text)) {
+      return dimensionFromString(text);
+    }
   }
-  if (text === 'true' || text === 'false') return { type: 'Bool', value: text === 'true', bytes: text };
+  if (text === 'true' || text === 'false') {
+    return { type: 'Bool', value: text === 'true', bytes: text };
+  }
   // A bare identifier that names a CSS color materializes as a Color.
   if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
     const named = namedColor(text);
-    if (named) return makeColorRgb(named.rgb, named.alpha, HEX, { node: text });
+    if (named) {
+      return makeColorRgb(named.rgb, named.alpha, HEX, { node: text });
+    }
   }
   return isQuotedBytes(text) ? quotedFromBytes(text) : makeKeyword(text);
 }

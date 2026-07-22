@@ -24,11 +24,21 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
     return [v, v, v];
   }
   const hue2rgb = (p: number, q: number, t: number): number => {
-    if (t < 0) t += 1;
-    if (t > 1) t -= 1;
-    if (t < 1 / 6) return p + (q - p) * 6 * t;
-    if (t < 1 / 2) return q;
-    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    if (t < 0) {
+      t += 1;
+    }
+    if (t > 1) {
+      t -= 1;
+    }
+    if (t < 1 / 6) {
+      return p + (q - p) * 6 * t;
+    }
+    if (t < 1 / 2) {
+      return q;
+    }
+    if (t < 2 / 3) {
+      return p + (q - p) * (2 / 3 - t) * 6;
+    }
     return p;
   };
   const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
@@ -51,9 +61,15 @@ export function rgbToHsl(r0: number, g0: number, b0: number): [number, number, n
     const d = max - min;
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
     switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      default: h = (r - g) / d + 4; break;
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      default:
+        h = (r - g) / d + 4;
+        break;
     }
     h /= 6;
   }
@@ -83,7 +99,9 @@ export function colorRgb(c: Color): [number, number, number] {
 function toHex(c: Color): string {
   const values = colorRgb(c) as number[];
   const alpha = clamp(c.alpha, 1);
-  if (alpha < 1) values.push(round(alpha * 255));
+  if (alpha < 1) {
+    values.push(round(alpha * 255));
+  }
   let out = '#';
   for (const v of values) {
     const hex = v.toString(16);
@@ -108,7 +126,9 @@ function alphaText(c: Color, a: number): string {
  * canonical no-source branch (`${rgb[idx]}` / `${alpha}`).
  */
 export function serializeColor(c: Color): string {
-  if (c.node !== undefined) return c.node;
+  if (c.node !== undefined) {
+    return c.node;
+  }
   const format = c.format ?? HEX;
   if (format === RGB) {
     const rgb = colorRgb(c);
@@ -118,7 +138,9 @@ export function serializeColor(c: Color): string {
     const r = chan(0), g = chan(1), b = chan(2);
     const a = clamp(c.alpha, 1);
     const modern = c.modernSyntax === true;
-    if (modern) return a < 1 ? `rgb(${r} ${g} ${b} / ${alphaText(c, a)})` : `rgb(${r} ${g} ${b})`;
+    if (modern) {
+      return a < 1 ? `rgb(${r} ${g} ${b} / ${alphaText(c, a)})` : `rgb(${r} ${g} ${b})`;
+    }
     return a < 1 ? `rgba(${r}, ${g}, ${b}, ${alphaText(c, a)})` : `rgb(${r}, ${g}, ${b})`;
   }
   if (format === HSL) {
@@ -131,7 +153,9 @@ export function serializeColor(c: Color): string {
     // Legacy hue-unit rule: modern defaults to `deg` when unauthored; the
     // comma form preserves the authored unit (empty when unitless/derived).
     const hueUnit = modern ? (c.hueUnit || 'deg') : (c.hueUnit ?? '');
-    if (modern) return a < 1 ? `hsl(${roundedHue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit} ${S}% ${L}%)`;
+    if (modern) {
+      return a < 1 ? `hsl(${roundedHue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit} ${S}% ${L}%)`;
+    }
     return a < 1 ? `hsla(${roundedHue}${hueUnit}, ${S}%, ${L}%, ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit}, ${S}%, ${L}%)`;
   }
   return toHex(c);

@@ -56,17 +56,19 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 > lazy/guarded registration) and drop both from the allowlist; that is a separate
 > product decision and is NOT assumed here.
 
-Blocked (do not publish in alpha yet):
+Blocked from the initial alpha set (do not publish yet):
 
-- `@jesscss/parser` (runtime dependency on `@jesscss/scss-parser`; not needed by the alpha `jess`)
-- `rollup-plugin-jess` (depends on `jess`)
+- `rollup-plugin-jess` (depends on `jess`; it is a separate bundler integration,
+  not part of the runtime package closure)
 
 ## Branch and version policy
 
 - Publish alpha packages from branch `alpha`.
-- Cut each Jess alpha by **squash-merging the validated current `dev` snapshot
-  into `alpha`**. `alpha` is a release-snapshot branch, not a normal integration
-  branch: do not ordinary-merge or rebase `dev` into it.
+- Cut each Jess alpha by importing the validated current `dev` endpoint into an
+  isolated `alpha` worktree with the controlled two-tree patch procedure below,
+  then making one release-snapshot commit. `alpha` is a release-snapshot
+  branch, not a normal integration branch: do not ordinary-merge or rebase
+  `dev` into it.
 - Use lockstep versions for publishable packages (Changesets fixed group already configured).
 - Alpha publishes use npm dist-tag `alpha`.
 - For alpha publishes, package versions must include `-alpha.N`.
@@ -98,26 +100,31 @@ silently relabeled as passing.
 ## Cut the alpha snapshot from `dev`
 
 Do this only after the exact `dev` candidate has passed its intended readiness
-and release checks. Start from an up-to-date, clean `alpha` worktree, then make
-one squash commit containing the current `origin/dev` state:
+and release checks. The `alpha` and `dev` histories have independently added
+the same source paths, so a plain `git merge --squash origin/dev` is unsafe and
+must not be used. Follow the verified two-tree snapshot procedure recorded in
+the [Core Architecture Handoff](future/core-architecture/HANDOFF.md):
 
-```bash
-git fetch origin
-git switch alpha
-git pull --ff-only origin alpha
-git merge --squash origin/dev
-# Review the snapshot and add the curated user-facing changelog/release notes.
-git commit
-```
+1. Fetch the current refs, create a recovery ref such as
+   `alpha-pre-alpha9-cut` from `alpha`, and work in an isolated `alpha`
+   worktree.
+2. Import the endpoint tree with a binary two-tree patch, using
+   `git diff --binary alpha..dev` followed by `git apply --index`.
+3. Restore only `packages/*/package.json` from the recovery ref. This retains
+   the alpha package versions while preserving `dev`'s current root scripts,
+   release/readiness evidence, and handoff documentation; `pnpm-lock.yaml`
+   remains unchanged.
+4. Reconcile the owner-reviewed release notes from the final gate evidence,
+   commit one controlled refresh on `alpha`, and confirm a clean source tree.
 
-The squash commit must include proper, owner-reviewed release notes/changelog
+The controlled snapshot commit must include proper, owner-reviewed release notes/changelog
 for the user-visible changes in that alpha. Do not rely on commit history being
-preserved by the squash, and do not silently omit this step because the version
+preserved by the source-tree patch, and do not silently omit this step because the version
 bump is performed later.
 
 For the first Less-focused alpha, the release notes must also include a
 discoverable **Known limitations** section linking
-[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 30 runnable
+[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The 34 runnable
 upstream expected-failure markers are classified compatibility evidence, not a
 requirement to drain before alpha. Do not omit them or call them passing; block
 only on the advertised public-route, package/CLI, and core-safety gates.
@@ -125,19 +132,24 @@ only on the advertised public-route, package/CLI, and core-safety gates.
 The current draft source for the next cut is
 [`docs/releases/jess-2.0.0-alpha.9.md`](./releases/jess-2.0.0-alpha.9.md).
 It is deliberately marked as a draft: update it from the exact gate evidence
-before the squash, and do not use it as a substitute for the readiness trackers.
+before the snapshot commit, and do not use it as a substitute for the readiness trackers.
 
 The current `release:alpha` scripts do **not** run `changeset version` or
 generate package `CHANGELOG.md` files. They resolve a fresh lockstep alpha
-version from npm and write the package versions just before the release commit.
+version from npm before the preflight, but defer writing package versions until
+the preflight succeeds. During that preflight the fresh candidate is passed to
+the nested publish dry-run through an internal environment hand-off; this keeps
+the clobber guard active without treating the post-snapshot commit's previous
+manifest version as the candidate. The real package-version write happens just
+before the release commit.
 The repository's Changesets configuration remains useful for future changelog
 automation, but is not evidence that a changelog was generated by this release
 flow.
 
-After the squash snapshot is committed, run the preflight and release commands
+After the controlled snapshot is committed, run the preflight and release commands
 from `alpha` as described below. Do not copy `dev`'s placeholder version onto
 `alpha` manually: the release script's registry-aware resolver selects a fresh
-version. Its alpha-clobber guard deliberately rejects a squashed snapshot whose
+version. Its alpha-clobber guard deliberately rejects a snapshot whose
 manifest version is at or behind an already-published alpha.
 
 ### Moving the `latest` dist-tag during the alpha phase (gated, off by default)
@@ -184,14 +196,17 @@ pnpm run release:alpha
 What it does for you:
 
 1) Safety checks (`alpha` branch + clean working tree except `.cursor/*`)
-2) Full preflight (`release:alpha:check`: Less-alpha, AST-v2 production-route
-   ratchet, baseline, aggressive-cutting, allowlist, packed clean-consumer, and
-   dry-run publish checks)
-3) Registry-aware lockstep alpha-version resolution and manifest update
-4) Commit + annotated tag (`vX.Y.Z-alpha.N`)
-5) Push branch + tag to origin
-6) Publish allowlisted packages to npm tag `alpha`
-7) Smoke-check npm `@alpha` dist-tags
+2) Registry-aware lockstep alpha-version resolution (without mutating manifests)
+3) Full preflight (`release:alpha:check`: release build, strict production
+   types, bounded production-source lint, Less-alpha, the direct public
+   `jess-parser`, `plugin-jess`, and `rollup-plugin-jess` tests, AST-v2
+   production-route ratchet, baseline, aggressive-cutting, allowlist, packed
+   clean-consumer, and dry-run publish checks) against that resolved candidate
+4) Apply the lockstep version and update the lockfile
+5) Commit + annotated tag (`vX.Y.Z-alpha.N`)
+6) Push branch + tag to origin
+7) Publish allowlisted packages to npm tag `alpha`
+8) Smoke-check npm `@alpha` dist-tags
 
 Practice first without touching git/npm:
 
@@ -210,6 +225,24 @@ links; this is the release gate that proves the package closure a user will
 actually receive. Pass `-- --keep` only while debugging to retain its temporary
 consumer directory.
 
+### Strict source-quality proof
+
+The release build may use declaration/bundle tooling that passes `--noCheck`.
+That build success is not a type-quality result. Immediately after the release
+build, `pnpm run verify:types` runs `tsc -p tsconfig.build.json --noEmit` for
+every workspace build config in dependency order, without `--noCheck`. Every
+invocation selects the root workspace's pinned TypeScript compiler; a nested or
+package-local binary cannot change the accepted syntax or manufacture toolchain
+diagnostics. It runs all configs before failing so the release report identifies
+every package that still owns source diagnostics.
+
+`pnpm run lint:production` checks only the bounded production surfaces under
+`packages/*/src/**` and `scripts/**`; repository-root scratch files and build
+artifacts cannot enter through a worktree-wide shell glob. Test files and test
+directories are intentionally outside that release gate and remain available
+through the separate `pnpm run lint:test` command. A candidate is not green
+unless both strict production checks pass.
+
 ## First publish (2.0.0-alpha.1)
 
 When no allowlisted package has been published on the `alpha` tag, the normal
@@ -221,14 +254,16 @@ is part of this script:
 pnpm run release:alpha
 ```
 
-For subsequent releases, repeat the validated `dev` → `alpha` squash-cut and
+For subsequent releases, repeat the validated `dev` → `alpha` controlled snapshot cut and
 changelog step. The resolver selects the next unpublished lockstep alpha version
 when the snapshot's manifest version is stale. `--skip-version` is a recovery
 option for an already-prepared manifest, not the normal release procedure.
 
 ## Modular commands (advanced/manual flow)
 
-- Preflight only:
+- Preflight only (when run directly, alpha manifests must already carry a fresh
+  candidate; the one-command orchestrator resolves and forwards that candidate
+  automatically):
 
 ```bash
 pnpm run release:alpha:check

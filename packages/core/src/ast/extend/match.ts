@@ -16,7 +16,7 @@ import {
   descendantBranch,
   isOrPlainSimples,
   multisetSubset,
-  textSimples,
+  textSimples
 } from './ir.js';
 import type { Branch, Compound, Seg, Simple } from './ir.js';
 
@@ -33,7 +33,7 @@ export function applyInstruction(
   partial: boolean,
   extenderKeys: Set<string>,
   targetAtoms: Set<string>,
-  extenderHidden = false,
+  extenderHidden = false
 ): Branch[] | null {
   const targetKey = branchText(target);
   const out: Branch[] = [];
@@ -54,7 +54,9 @@ export function applyInstruction(
     // (`.replace.replace .replace` vs `:is(.replace.replace, …) .replace`).
     if (bKey === targetKey || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
       out.push(b);
-      for (const e of extenders) pushExtender(appends, e, chainHidden);
+      for (const e of extenders) {
+        pushExtender(appends, e, chainHidden);
+      }
       continue;
     }
     // ATOM FAST-REJECT: every remaining (`all`) match — whole-branch subset,
@@ -75,7 +77,9 @@ export function applyInstruction(
       // matches with surrounding combinator context (see `substituteMultiCompound`).
       if (matchesWholeBranchSubset(b, target)) {
         out.push(b);
-        for (const e of extenders) pushExtender(appends, e, chainHidden);
+        for (const e of extenders) {
+          pushExtender(appends, e, chainHidden);
+        }
         continue;
       }
       // [import:reference] a HIDDEN sub-part `all` match adds only invisible copies
@@ -139,9 +143,15 @@ function pushExtender(appends: Branch[], e: Branch, forceHidden: boolean): void 
  */
 export function branchWholeMatches(b: Branch, target: Branch, partial: boolean): boolean {
   const targetKey = branchText(target);
-  if (branchText(b) === targetKey) return true;
-  if (target.segs.length > 1 && branchExpansions(b).includes(targetKey)) return true;
-  if (partial && matchesWholeBranchSubset(b, target)) return true;
+  if (branchText(b) === targetKey) {
+    return true;
+  }
+  if (target.segs.length > 1 && branchExpansions(b).includes(targetKey)) {
+    return true;
+  }
+  if (partial && matchesWholeBranchSubset(b, target)) {
+    return true;
+  }
   return false;
 }
 
@@ -155,12 +165,18 @@ export function branchWholeMatches(b: Branch, target: Branch, partial: boolean):
  */
 function matchesWholeBranchSubset(b: Branch, target: Branch): boolean {
   const P = target.segs.length;
-  if (P < 2 || P !== b.segs.length) return false;
+  if (P < 2 || P !== b.segs.length) {
+    return false;
+  }
   for (let k = 0; k < P; k++) {
     const ts = target.segs[k]!;
     const bs = b.segs[k]!;
-    if (!multisetSubset(textSimples(ts.compound), textSimples(bs.compound))) return false;
-    if (k > 0 && ts.comb !== bs.comb) return false;
+    if (!multisetSubset(textSimples(ts.compound), textSimples(bs.compound))) {
+      return false;
+    }
+    if (k > 0 && ts.comb !== bs.comb) {
+      return false;
+    }
   }
   return true;
 }
@@ -175,7 +191,7 @@ function rewriteBranchPartial(
   extenders: Branch[],
   partial: boolean,
   extenderKeys: Set<string>,
-  targetAtoms: Set<string>,
+  targetAtoms: Set<string>
 ): Branch | null {
   const before = branchText(b);
   let work = cloneBranch(b);
@@ -200,19 +216,21 @@ function recurseIntoGrafts(
   extenders: Branch[],
   partial: boolean,
   extenderKeys: Set<string>,
-  targetAtoms: Set<string>,
+  targetAtoms: Set<string>
 ): Branch {
   return {
-    segs: b.segs.map((seg) => ({
+    segs: b.segs.map(seg => ({
       comb: seg.comb,
       compound: {
         simples: seg.compound.simples.map((s): Simple => {
-          if (s.t !== 'is') return s;
+          if (s.t !== 'is') {
+            return s;
+          }
           const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms);
           return inner ? { t: 'is', branches: inner } : s;
-        }),
-      },
-    })),
+        })
+      }
+    }))
   };
 }
 
@@ -222,7 +240,9 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
   const needSet = new Set(need);
   const segs = b.segs.map((seg) => {
     const have = textSimples(seg.compound);
-    if (!multisetSubset(need, have)) return seg;
+    if (!multisetSubset(need, have)) {
+      return seg;
+    }
     if (need.length > 1) {
       return { comb: seg.comb, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, extenders) };
     }
@@ -234,9 +254,9 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
         simples: seg.compound.simples.flatMap((s): Simple[] =>
           s.t === 'text' && needSet.has(s.text)
             ? isOrPlainSimples([descendantBranch([cloneSimple(s)]), ...extenders])
-            : [cloneSimple(s)],
-        ),
-      },
+            : [cloneSimple(s)]
+        )
+      }
     };
   });
   return { segs };
@@ -247,7 +267,7 @@ function collapseMatchedAtoms(
   compound: Compound,
   needSet: Set<string>,
   targetCompound: Compound,
-  extenders: Branch[],
+  extenders: Branch[]
 ): Compound {
   const matchedBranch = descendantBranch([{ t: 'text', text: compoundText(targetCompound) }]);
   const out: Simple[] = [];
@@ -288,7 +308,9 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
         break;
       }
     }
-    if (!ok) continue;
+    if (!ok) {
+      continue;
+    }
     // Build the matched span text (segments start..start+P-1, internal combinators).
     const spanSegs: Seg[] = [];
     for (let k = 0; k < P; k++) {
@@ -297,12 +319,15 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
     }
     const isSeg: Seg = {
       comb: start === 0 ? ' ' : segs[start]!.comb,
-      compound: { simples: isOrPlainSimples([{ segs: spanSegs }, ...extenders]) },
+      compound: { simples: isOrPlainSimples([{ segs: spanSegs }, ...extenders]) }
     };
     const outSegs: Seg[] = [];
     for (let i = 0; i < segs.length; i++) {
-      if (i < start || i >= start + P) outSegs.push(cloneSeg(segs[i]!));
-      else if (i === start) outSegs.push(isSeg);
+      if (i < start || i >= start + P) {
+        outSegs.push(cloneSeg(segs[i]!));
+      } else if (i === start) {
+        outSegs.push(isSeg);
+      }
     }
     return { segs: outSegs };
   }
@@ -322,15 +347,15 @@ function branchExpansions(b: Branch): string[] {
           // Graft the arg's segments in place (first arg-seg takes this seg's comb).
           const grafted = arg.segs.map((as, i) => ({
             comb: i === 0 ? seg.comb : as.comb,
-            compound: as.compound,
+            compound: as.compound
           }));
           next.push([...pre, ...grafted]);
         }
       }
       acc = next;
     } else {
-      acc = acc.map((pre) => [...pre, seg]);
+      acc = acc.map(pre => [...pre, seg]);
     }
   }
-  return acc.map((segs) => branchText({ segs }));
+  return acc.map(segs => branchText({ segs }));
 }

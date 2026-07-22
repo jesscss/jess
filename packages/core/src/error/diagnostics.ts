@@ -2,7 +2,7 @@ import { type IRecognitionException, type ILexingError, type ILexingResult } fro
 import type { Deprecation } from '../deprecation.js';
 import { type JessErrorCode, type Phase, isJessErrorCode } from './codes.js';
 import { lineColAt, extractRelevantLines } from './code-frame.js';
-import { JessError, type JessErrorInit, type LocNode, type TreeContextLike } from './jess-error.js';
+import { JessError, inlineSpanEnd, type JessErrorInit, type LocNode, type TreeContextLike } from './jess-error.js';
 
 /**
  * Normalized error format for all phases (lexing, parsing, evaluation).
@@ -289,7 +289,7 @@ export function toDiagnostic(error: JessError): ErrorDiagnostic | WarningDiagnos
   const lines = extractRelevantLines(source, error.line);
 
   // Derive endLine/endColumn from the node's end offset + source (not stored on nodes).
-  const endOffset = error.node?.spanEnd;
+  const endOffset = inlineSpanEnd(error.node);
   const endLc = endOffset !== undefined && source !== undefined
     ? lineColAt(source, endOffset)
     : undefined;

@@ -302,14 +302,15 @@ export function selectorSurfaceValueOf(value: SelectorLike): string {
   return value.valueOf();
 }
 
-/**
- * Finish a selector-list extend/compose result in the same representation as
- * `inheritFrom`: arrays stay arrays; legacy `SelectorList` nodes stay nodes.
- */
+/** Finish a selector-list result: a singleton collapses to its selector value;
+ * multi-item arrays stay arrays and node-backed surfaces stay SelectorList nodes. */
+export function finishSelectorListSurface(items: Selector[], inheritFrom: Selector): Selector;
+export function finishSelectorListSurface(items: SelectorListItem[], inheritFrom: SelectorListItem[]): SelectorLike;
+export function finishSelectorListSurface(items: SelectorListItem[], inheritFrom: Selector | SelectorListItem[]): SelectorLike;
 export function finishSelectorListSurface(
   items: SelectorListItem[],
-  inheritFrom: SelectorListLike
-): SelectorListLike {
+  inheritFrom: Selector | SelectorListItem[]
+): SelectorLike {
   if (items.length === 1) {
     return items[0]!;
   }

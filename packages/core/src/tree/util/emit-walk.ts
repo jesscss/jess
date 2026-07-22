@@ -38,13 +38,13 @@ import { spanStartOf } from './provenance.js';
 import { Nil } from '../nil.js';
 import { Rules } from '../rules.js';
 import { Ruleset } from '../ruleset.js';
+import type { Selector } from '../selector.js';
 import type { AtRule } from '../at-rule.js';
 import type { AtRuleStatement } from '../at-rule-statement.js';
 import type { VarDeclaration } from '../declaration-var.js';
-import { buildScopeFrame, linkImportFallbackFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
+import { buildScopeFrame, type BindingCell, type ScopeFrame } from '../scope-frame.js';
 import { getPrintOptions, OutputWriter, type FinalPrintOptions, type PrintOptions } from './print.js';
-import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend, treeHasExtend } from '../extend/spine-extend.js';
-import type { StyleImport, SpineImportResolution } from '../import-style.js';
+import { engageExtendLayer, isSpineExtendTopology, wireSpineExtends, flatLocalSelector, treeHasExtendTargetableAppend } from '../extend/spine-extend.js';
 
 /**
  * Profile-gated spine counters (zero-cost when the global bag is absent — the same
@@ -65,44 +65,19 @@ const recordSpineProfile = spineProfileCounters
     }
   : undefined;
 
-/**
- * `.type`-discriminant guards — narrow a base `Node` to a leaf class WITHOUT a
- * runtime (value) import of that class. A value import of `import-style.ts` /
- * `at-rule-statement.ts` here would pull those modules into this file's eager
- * init graph and reintroduce the `Rules`-not-yet-defined load cycle. Mirrors
- * `rules.ts`'s `isStyleImportRegistrationNode`.
- */
-function isStyleImportNode(node: Node): node is StyleImport {
-  return node.type === 'StyleImport';
-}
-
-/**
- * True if `error` is a StyleImport PATH-RESOLUTION failure (`_isPathResolutionError`, set by
- * `StyleImport._preparePathIdentity` when an interpolated import path's var is not yet bound). Import-
- * spec routing uses this to distinguish a FORWARD-dependent interpolated path (case B — abort to the
- * eval retry lane) from a genuine failure (missing file / parse error — propagate). Mirrors the eval
- * loop's `isStyleImportPathResolutionError`.
- */
-function isSpinePathResolutionError(error: unknown): boolean {
-  return error instanceof Error
-    && '_isPathResolutionError' in error
-    && (error as Error & Record<'_isPathResolutionError', unknown>)._isPathResolutionError === true;
-}
-
 function isAtRuleStatementNode(node: Node): node is AtRuleStatement {
   return node.type === 'AtRuleStatement';
 }
 
 /**
  * IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). True iff the tree carries
- * ANY `StyleImport` — the eval-free signal that the pass must engage import
- * machinery. When false the spine never touches `queueTopImport`, `getTree`, or
- * placement wiring: a no-import render pays ZERO import cost (the ratchet floor).
+ * any terminal CSS `@import` statement. Typed style-import execution belongs to
+ * the canonical AST serializer and Context/plugin document loader.
  * Mirrors `engageExtendLayer`: a single static tree scan, no side effects.
  */
 export function engageImportLayer(root: Node): boolean {
   for (const node of root.walk(true)) {
-    if (node.type === 'StyleImport' || isSpineFoldableCssImportStatement(node)) {
+    if (isSpineFoldableCssImportStatement(node)) {
       return true;
     }
   }
@@ -112,7 +87,7 @@ export function engageImportLayer(root: Node): boolean {
 /**
  * A leaf CSS `@import` at-rule statement the spine emits inline (CSS-passthrough,
  * IMPORTS increment 1). A statically-`.css`/remote `@import` parses DIRECTLY as an
- * `AtRuleStatement` (not a `StyleImport`) — no scope effect, no eval side effect;
+ * `AtRuleStatement` — no scope effect, no eval side effect;
  * it serializes its own bytes at its document position (already the top, since it
  * is authored first). Admitting it as a spine leaf unblocks a MIXED file (CSS
  * import + rulesets) whose imports would otherwise force the whole root to eval.
@@ -163,40 +138,6 @@ export function isSpineFoldableStatementAtRule(node: Node): boolean {
     return true;
   }
   return typeof prelude === 'string' || (prelude instanceof Node && prelude.hasFlag(F_STATIC));
-}
-
-/**
- * STATIC spine-fold admissibility for a `StyleImport` child (IMPORTS increment 1).
- * Delegates the whole shape decision to `StyleImport.isSpineFoldableStyleImport`
- * (owned by `import-style.ts`, where the import options live) — CSS-passthrough OR
- * a plain static-path Less `@import`. A non-foldable import (reference / inline /
- * interpolated-path / multiple / optional / postlude / with / compose — each a
- * REQUIRED P4 item) keeps its enclosing body OFF the spine.
- */
-export function isSpineFoldableImport(node: Node): boolean {
-  return isStyleImportNode(node) && node.isSpineFoldableStyleImport();
-}
-
-/**
- * RUNTIME body-simplicity gate for a resolved Less-import body (IMPORTS increment
- * 1). Reuses the same eligibility the whole spine turns on (`isSpineEligibleBody`
- * with `allowImport`, so a nested foldable import in the imported file also folds).
- * A `false` routes that import to the byte-identical eval fall-back
- * (`resolveSpineStyleImport` → `evalNode`) — the imported body carries a shape the
- * spine does not yet descend (e.g. a mixin call, guarded ruleset, reference-mode).
- */
-export function isSpineFoldableImportBody(body: Rules, allowExtend = false): boolean {
-  // EXTEND-THROUGH-IMPORT (plain, non-`(reference)` imports). When the document-wide spine
-  // extend gather is engaged (`allowExtend`), an imported body carrying `:extend` still folds
-  // INLINE: the extends were gathered by `wireSpineExtends` (which descends the same body node
-  // instances) and their subject headers installed on `options.spineExtendHeaders`. Folding the
-  // body inline (rather than the `evalNode` fall-back, which produces FRESH nodes the override
-  // map cannot key on) is what lets the imported subject ruleset pick up its composed header via
-  // `effectiveHeaderSelector`. The whole tree is gated to eval by the extend re-gate
-  // (`isSpineExtendTopology` with `importedRootSubjects`) unless the imported extend shape folds,
-  // so reaching here with `allowExtend` means the gather already accounted for every imported
-  // extend. The imported `Extend`/`ExtendList` body children are invisible-output effect nodes.
-  return isSpineEligibleBody(body.rules, allowExtend, true);
 }
 
 /**
@@ -1274,13 +1215,9 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   if (isNode(node, N.Comment)) {
     return true;
   }
-  // A spine-foldable `@import` (IMPORTS increment 1): CSS-passthrough (queued to
-  // the top-of-doc emitter) or a plain static-path Less import (its parsed body
-  // descended inline). Runtime body-simplicity is gated at fold time
-  // (`resolveSpineStyleImport` → `isSpineEligibleBody` on the resolved Less body),
-  // with a byte-identical eval fall-back for a non-simple imported body. Admitted
-  // only under `allowImport` (the import-work gate — `engageImportLayer`).
-  if (allowImport && (isSpineFoldableImport(node) || isSpineFoldableCssImportStatement(node))) {
+  // A terminal CSS `@import` is admissible under the import-work gate. Typed
+  // stylesheet imports execute only in the canonical AST serializer.
+  if (allowImport && isSpineFoldableCssImportStatement(node)) {
     return true;
   }
   // A bodyless STATEMENT at-rule (`@layer name;`, `@namespace …;`) emits its bytes
@@ -1567,12 +1504,8 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (context.currentCharset) {
     return false;
   }
-  // IMPORT-WORK GATE (design §4.0, IMPORTS increment 1). When the tree carries no
-  // `StyleImport`, the spine pays zero import cost; a pre-populated `context.topImports`
-  // (from an unrelated prior render on this context) still routes to the eval path.
-  // When the tree HAS foldable imports the spine OWNS the top-of-doc `@import` emit
-  // (CSS-passthrough → `queueTopImport`, prepended in `renderRootViaSpine`), so a
-  // (freshly-cleared) `topImports` no longer forces the eval path.
+  // Terminal CSS `@import` statements are admitted as ordinary output leaves. A
+  // pre-populated top-import queue from another render still routes to eval.
   const allowImport = engageImportLayer(root);
   if (!allowImport && context.topImports?.length) {
     return false;
@@ -1756,17 +1689,11 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // subjects/extenders (no nested extend) is spine-eligible — the pre-scan gathers and the
   // subject header is composed as an override. `allowExtend` admits the extend-bearing root
   // children + their ExtendList effect nodes. A NON-flat extend shape stays on the eval path.
-  // NESTED-scope imports are now REGISTERED during the descent (IMPORTS increment 3):
-  // `wireSpineContainerImports` links a body `@import`'s scope into the ENCLOSING
-  // container's frame at container-enter, so a consumer inside a `@media`/ruleset
-  // resolves the imported symbol. Root imports are wired by `wireSpineImports`. So a
-  // nested StyleImport no longer forces the eval path — the container's own
-  // eligibility (`isSpineEligibleContainer` with `allowImport`) admits it.
   // NAMESPACE-PATH over an imported namespace: FOLDS (gate 12, LANDED). A
   // namespace-path lookup (`#library.add-one()` / `#library.sizes[@width]`) resolves
   // via the shared `Rules.findMixinPath` / `findRulesetNamespacePathFast` seam, which
   // walked ONLY the primary parent chain — so a member defined only on an imported
-  // `fallbackFrame` (installed by `wireSpineImports` → `linkImportFallbackFrame`) was
+  // `fallbackFrame` was
   // invisible once the primary walk exhausted. This is NOT a same-named-merge problem:
   // `namespacing-2` has a LOCAL `#library { .sizes() }` (overriding, → 800px, resolves
   // locally) and consumes `#library.add-one` — a member ONLY the imported `#library`
@@ -1788,12 +1715,10 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   // `serializeRulesContainerInternal`'s close loop.)
   // Resolve collapse from the SAME source the render pass derives it from
   // (`prepareRenderPrintState` reads `context.opts.output.collapseNesting`) so the eligibility gate
-  // and `renderRootViaSpine`'s topology re-check agree. `context.output` (a distinct optional field)
-  // is consulted only as a fallback. The two MUST agree: `isSpineExtendTopology` is now
+  // and `renderRootViaSpine`'s topology re-check agree. The two MUST agree: `isSpineExtendTopology` is now
   // collapse-mode-dependent (#4a admits an expanded-mode nested compound target the collapse gate
   // rejects), so a divergent collapse value here would admit-then-fail-loud in `renderRootViaSpine`.
-  const collapse = collapseNesting
-    ?? (context.opts?.output?.collapseNesting ?? context.output?.collapseNesting) === true;
+  const collapse = collapseNesting ?? context.opts.output?.collapseNesting === true;
   // APPEND × EXTEND (a PRECISE deferral). An `:extend` TARGET may be an append-GENERATED
   // selector (`.component { &-inner {…} }` extended by `:extend(.component-inner)`). The
   // spine's extend layer gathers subjects/targets from the STATIC source tree, where the
@@ -1830,71 +1755,8 @@ export function isSpineEligibleRoot(root: Rules, context: Context, collapseNesti
   if (recordSpineProfile && engageExtendLayer(root)) {
     recordSpineProfile(allowImport ? 'earlyAdmit.importTopologyEliminated' : 'earlyAdmit.strictTopologyCalls');
   }
-  const allowExtend = engageExtendLayer(root)
-    && (allowImport || isSpineExtendTopology(root, collapse === true, undefined));
+  const allowExtend = engageExtendLayer(root) && isSpineExtendTopology(root, collapse === true);
   return isSpineEligibleBody(root.rules, allowExtend, allowImport);
-}
-
-/**
- * The Less `once` DEDUP verdict for one resolved import (IMPORTS increment 4). A
- * `multiple`/`once:false` import ALWAYS emits (returns false, never recorded). Else
- * the FIRST import of a `resolvedPath` becomes the once-owner (records it, returns
- * false = emit); a later import of the SAME path returns true = `dedupe` (scope-only,
- * no output). The ledger is `options.spineEmittedImportPaths`, shared for the whole
- * render — so a transitive re-import nested INSIDE another imported file dedups
- * against a root-position import of the same file too (mirrors the eval path's
- * document-global `context.evaldTrees`). Consulted at EVERY resolve point: the wire
- * pass AND the emit fold's fresh-resolve fallback.
- */
-export function spineImportDedupeVerdict(
-  resolvedPath: string | undefined,
-  multiple: boolean,
-  options: FinalPrintOptions
-): boolean {
-  // Inside a MULTIPLE-scoped body (a nested import within a `@import (multiple)`
-  // body), every import re-emits — mirrors `context.inMultipleImportScope`.
-  if (multiple || resolvedPath === undefined || (options.spineMultipleImportDepth ?? 0) > 0) {
-    return false;
-  }
-  const emittedPaths = (options.spineEmittedImportPaths ??= new Set());
-  if (emittedPaths.has(resolvedPath)) {
-    return true;
-  }
-  emittedPaths.add(resolvedPath);
-  return false;
-}
-
-/**
- * Run `fn` with the MULTIPLE-import scope depth bumped (IMPORTS increment 4) — used
- * while descending a `@import (multiple)` body so its NESTED imports also re-emit
- * (no `once` dedup), then restore on the outbound edge (chaining on the async path,
- * never a sync `finally` that would restore before an async leaf resolves).
- */
-export function withSpineMultipleScope<T>(
-  options: FinalPrintOptions,
-  multiple: boolean,
-  fn: () => MaybePromise<T>
-): MaybePromise<T> {
-  if (!multiple) {
-    return fn();
-  }
-  options.spineMultipleImportDepth = (options.spineMultipleImportDepth ?? 0) + 1;
-  const restore = <R>(value: R): R => {
-    options.spineMultipleImportDepth = (options.spineMultipleImportDepth ?? 1) - 1;
-    return value;
-  };
-  try {
-    const result = fn();
-    return isThenable(result)
-      ? result.then(restore, (error: unknown) => {
-          restore(undefined);
-          throw error;
-        })
-      : restore(result);
-  } catch (error) {
-    restore(undefined);
-    throw error;
-  }
 }
 
 /**
@@ -2093,7 +1955,7 @@ function splitCallPath(key: string): string[] {
 }
 
 /** True if a Ruleset's own selector carries interpolation (`.@{name}` / `@{sel}`) — a dynamic name. */
-function rulesetHasInterpolatedSelector(node: Node): boolean {
+function rulesetHasInterpolatedSelector(node: Ruleset): boolean {
   const local = flatLocalSelector(node);
   if (local === undefined) {
     return true; // no flat static selector → treat as dynamic
@@ -2345,15 +2207,8 @@ function renderQueuedCharset(context: Context, options: FinalPrintOptions): stri
 }
 
 /**
- * Register the root's OWN first `@charset` at root-enter, BEFORE imports are wired.
- * Eval scans the root's direct children (source order) during registration and takes
- * the first charset — which precedes any charset an `@import` later brings in. The
- * spine must match that ORDER: `wireSpineImports` preps imported bodies (whose own
- * `@charset` would set `currentCharset`) before the descent reaches the root's own
- * charset child, so without this the imported charset would wrongly win (the root's
- * `@charset "UTF-8"` losing to an imported `@charset "ISO-8859-1"`). Registering the
- * root's own charset here pins it; the `??=` in the emit skips (rules.ts /
- * `processNodeInner`) then keep the imported one only when the root has NONE of its own.
+ * Register the root's first `@charset` before the descent so document framing can
+ * prepend it once and suppress its inline source occurrence.
  */
 function wireSpineCharset(root: Rules, context: Context): void {
   if (context.currentCharset) {
@@ -2368,19 +2223,12 @@ function wireSpineCharset(root: Rules, context: Context): void {
   }
 }
 
-/**
- * Sentinel returned by `renderRootViaSpine` when the post-wire RE-GATE (import-spec routing) determines
- * the speculatively-admitted tree is not foldable — the caller (`Rules.render`) re-renders via the eval
- * path. Distinct object identity so it is never confused with rendered text.
- */
-export const SPINE_ABORT_TO_EVAL = Symbol('spine-abort-to-eval');
-
 export function renderRootViaSpine(
   root: Rules,
   context: Context,
   options: FinalPrintOptions,
   shareFlatWriter = false
-): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> {
+): MaybePromise<string> {
   spineRenderCounter.rootRenders++;
   // EXTEND-WORK GATE (design §4.0). Decide ONCE, here, whether this render must
   // engage the extend layer or stays a pure streaming spine. When the tree carries
@@ -2413,8 +2261,6 @@ export function renderRootViaSpine(
   // ABORT-TO-EVAL: capture the prior `spineMode` so an abort restores it — eval's serialize gates its
   // import-fold on `spineMode` (rules.ts), so a leaked `true` would make eval BOTH fold the import via
   // the spine path AND emit it itself → double output. The abort must hand eval a clean state.
-  const savedSpineMode = options.spineMode;
-  const savedSpineImportPlacements = options.spineImportPlacements;
   options.spineMode = true;
   let sharedPreludeWritten = false;
   let sharedPreludeText = '';
@@ -2554,49 +2400,6 @@ export function renderRootViaSpine(
     }
     return isThenable(step) ? step.then(finish, fail) : finish(step);
   };
-  // ABORT-TO-EVAL (import-spec routing, speculative-admit-then-abort). The sync gate speculatively
-  // admits an extend-bearing import tree; the RE-GATE below re-checks the extend topology against the
-  // RESOLVED imported subjects. If the resolved shape is NOT provably foldable, abort to eval — a CLEAN
-  // pre-first-byte fall-back: reset the context (`fail`'s restore, but return instead of throw), roll
-  // back the CSS-passthrough `topImports` the wire queued (so eval does not double-count), and signal
-  // the caller (`Rules.render`) to re-render via the eval path. No byte was written (asserted below), so
-  // the abort output equals eval's exactly. Only reachable for an import+extend tree whose re-gate fails.
-  const topImportsBaseline = context.topImports?.length ?? 0;
-  const abortToEval = (): typeof SPINE_ABORT_TO_EVAL => {
-    // No byte may have been emitted before an abort (the re-gate runs before `descend`). Fail loud if
-    // the invariant is violated — a post-emit abort could not equal eval's output.
-    if (options.writer && options.writer.mark() !== initialWriterMark) {
-      throw new Error('spine abort-to-eval: bytes were emitted before the re-gate (invariant breach)');
-    }
-    // Roll back CSS-passthrough imports the wire pass queued so the eval re-render owns them once.
-    if (context.topImports && context.topImports.length > topImportsBaseline) {
-      context.topImports.length = topImportsBaseline;
-    }
-    // Restore spine-only render state so eval's serialize does not see a leaked `spineMode` (which
-    // would make it BOTH fold the import via the spine path AND emit it → double output) or a stale
-    // placement cache. Eval re-resolves imports itself.
-    options.spineMode = savedSpineMode;
-    options.spineImportPlacements = savedSpineImportPlacements;
-    context.rulesContext = savedRulesContext;
-    context.root = savedRoot;
-    context.treeRoot = savedTreeRoot;
-    context.treeContext = savedTreeContext;
-    // Charset restore on abort is REGISTRATION-STATE-DEPENDENT:
-    //  - If the root was NOT yet registration-prepared (charset children still live),
-    //    roll back the spine's early pin so the eval re-render RE-SCANS the charset
-    //    during its own registration — otherwise the still-set `currentCharset` would
-    //    short-circuit `evalForRender` to the passthrough state (rules.ts:5324) with a
-    //    half-set charset.
-    //  - If the root WAS registration-prepared during wiring (`wireSpineImports` ran
-    //    `prepareRegistration`, which REPLACED each root `@charset` child with a `Nil`
-    //    placeholder and set `currentCharset`), the eval re-render takes the
-    //    `registrationPrepared` branch (rules.ts:5317) and does NOT re-scan — so
-    //    rolling back the pin would DROP the charset entirely (the `Nil` placeholders
-    //    carry no charset). KEEP the pin so the depth-0 `_toDocumentString` emits it,
-    //    byte-identical to a pure eval render.
-    context.currentCharset = root.registrationPrepared ? context.currentCharset : savedCurrentCharset;
-    return SPINE_ABORT_TO_EVAL;
-  };
   // EXTEND (P3, document-wide gather). Gather every `:extend` instruction with its extender
   // BUCKET PATH + compose the per-subject header overrides BEFORE the body descent, so
   // `Reaching(S)` is fully known at every subject's emit position (§4.0 → header final inline,
@@ -2604,58 +2407,15 @@ export function renderRootViaSpine(
   // `options.spineExtendHeaders`, which `Ruleset.effectiveHeaderSelector` consults so a subject
   // emits its composed Or-branch header. Pure structural (selector-graph) — synchronous.
   //
-  // RE-GATE (import-spec routing). Runs AFTER `wireSpineImports` has resolved the placements, so the
-  // imported ROOT-LEVEL subjects are now known. When the tree has imports, re-run the STRICT extend
-  // topology over the union of local + imported subjects; a failure aborts to eval. Then gather over
-  // BOTH the root body and the resolved imported bodies so an imported subject receives its header.
-  const wireExtends = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
-    let importedBodies: Rules[] | undefined;
-    let referenceBodies: Set<Rules> | undefined;
-    let engaged = extendEngaged;
-    // IMPORTED-ONLY EXTENDS. `engageExtendLayer(root)` scans only the PARSED entry root,
-    // which for an import-only document (`bootstrap.less` = a list of `@import`s, no
-    // direct `:extend`) has NONE — so `extendEngaged` is false and the whole extend
-    // gather was skipped, silently DROPPING every `:extend` that lives inside an imported
-    // body (bootstrap's grid `.container-@{bp} { &:extend(.container-fluid all) }` →
-    // `.container-lg`/`.container-sm`/… never merged into the `.container, .container-fluid`
-    // group). Imports are resolved by `wireSpineImports` BEFORE this runs, so the resolved
-    // imported bodies are now inspectable: engage the layer when ANY imported body carries
-    // an extend. Zero-cost when the tree has no import (the common case skips this entirely)
-    // and byte-identical when no imported body extends (the collected bodies scan is the
-    // same one `collectImportedRootSubjects` already walks).
-    let collected: ReturnType<typeof collectImportedRootSubjects> | undefined;
-    if (importLayer) {
-      collected = collectImportedRootSubjects(options);
-      if (!engaged) {
-        engaged = collected.bodies.some(body => treeHasExtend(body));
-      }
-    }
-    if (engaged) {
-      if (importLayer && collected) {
-        if (!isSpineExtendTopology(root, options.collapseNesting === true, { importedRootSubjects: collected.subjects })) {
-          return abortToEval();
-        }
-        // REFERENCE-EXTEND NARROW FOLD. The reference-body subject fold (own-form dropped) is
-        // proven byte-identical only for the SIMPLE shape: a reference body of PLAIN root-level
-        // rulesets, extended by a plain root-level extender in the importing file. Richer reference
-        // shapes — a reference body carrying its OWN `:extend`/`&`-selectors, nested containers,
-        // at-rules/namespaces, or `(reference, multiple)` — compose under different rules and stay
-        // EVAL-owned (byte-identical); abort the whole tree to eval when any is present. (RESIDUAL,
-        // ratchet-locked — `import-reference-issues` corpus.)
-        if (collected.referenceBodies.size > 0
-          && ![...collected.referenceBodies].every(isSimpleReferenceFoldBody)) {
-          return abortToEval();
-        }
-        importedBodies = collected.bodies;
-        referenceBodies = collected.referenceBodies;
-      }
+  const wireExtends = (): MaybePromise<string> => {
+    if (extendEngaged) {
       let wired: MaybePromise<{ headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }>;
       try {
-        wired = wireSpineExtends(root, context, options.collapseNesting === true, importedBodies, referenceBodies);
+        wired = wireSpineExtends(root, context, options.collapseNesting === true);
       } catch (error) {
         return fail(error);
       }
-      const applyWired = (result: { headers: Map<Ruleset, Selector>; hoisted: Set<Ruleset> }): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
+      const applyWired = (result: Awaited<ReturnType<typeof wireSpineExtends>>): MaybePromise<string> => {
         options.spineExtendHeaders = result.headers;
         // §4.3 hoist: subjects whose override is a full root-composed projection (`&`-crossing) —
         // their header emits VERBATIM (skip parent compose). Strictly the crossing subset.
@@ -2670,47 +2430,12 @@ export function renderRootViaSpine(
     emitSharedPrelude();
     return descend();
   };
-  // IMPORTS (increment 2, document-wide scope registration). Resolve every foldable
-  // StyleImport at the ROOT body ONCE, REGISTER the imported placement's scope into its
-  // frame (`prepareRegistration`), and LINK that frame as a fallback of the root's live
-  // frame — so an importer that CONSUMES an imported symbol (`#library.sizes[@width]`,
-  // an imported `@var`/mixin) resolves against the linked scope during the descent,
-  // WITHOUT the eval fallback. The resolved placement is cached on
-  // `options.spineImportPlacements` so the emit fold descends the SAME registered body
-  // (resolve + register exactly once). Async (`getTree`) — rides the isThenable bail.
-  // The extend RE-GATE (`wireExtends`) chains AFTER this so it sees the resolved placements.
-  // INTERPOLATED-PATH resolution failure (import-spec routing). An interpolated `@import` path
-  // (`@import "theme-@{t}.less"`) is admitted speculatively; the wire pass resolves it against the
-  // live frame. Case (A) (downward-resolvable) folds; case (B) (forward-dependent — the var bound by
-  // a LATER import) is DEFERRED + retried inside `wireSpineImportsInBody` (mirroring eval's
-  // `pendingImports` reorder) and folds too. `_isPathResolutionError` surfaces HERE only when the
-  // deferred drain STILL can't resolve the path (the var never binds / a cyclic path dependency) —
-  // a CLEAN pre-first-byte abort point: route to eval (which owns the same reorder + reports the
-  // genuine error identically), byte-identical. A genuine error (missing file, parse failure) is NOT
-  // a path-resolution error and propagates via `fail`.
-  const onWireError = (error: unknown): string | typeof SPINE_ABORT_TO_EVAL | never =>
-    isSpinePathResolutionError(error)
-      ? abortToEval()
-      : (fail(error) as never);
-  const wireImports = (): MaybePromise<string | typeof SPINE_ABORT_TO_EVAL> => {
-    if (!importLayer) {
-      return wireExtends();
-    }
-    let wired: MaybePromise<void>;
-    try {
-      wired = wireSpineImports(root, context, options);
-    } catch (error) {
-      return onWireError(error);
-    }
-    return isThenable(wired) ? wired.then(wireExtends, onWireError) : wireExtends();
-  };
   // M8 (interpolated-selector callable). When an interpolated-selector ruleset
   // (`.@{name} {}`) is present it may be a mixin CALL target — its callable identity
   // is an eval-pass side effect (`selector.eval` → `ownSelector`) the spine otherwise
   // skips. Replicate it at root-enter so a subsequent `.foo()` resolves. Gated on the
   // shape (`treeHasInterpolatedSelectorRuleset`), so a shape-free tree pays nothing.
-  // May be async (the selector's interpolation can read an async value) — rides the
-  // isThenable bail into the chain, exactly like `wireSpineImports`.
+  // May be async when selector interpolation reads an async value.
   if (treeHasInterpolatedSelectorRuleset(root)) {
     let wired: MaybePromise<void>;
     try {
@@ -2718,9 +2443,9 @@ export function renderRootViaSpine(
     } catch (error) {
       return fail(error);
     }
-    return isThenable(wired) ? wired.then(wireImports, fail) : wireImports();
+    return isThenable(wired) ? wired.then(wireExtends, fail) : wireExtends();
   }
-  return wireImports();
+  return wireExtends();
 }
 
 /**
@@ -2750,320 +2475,4 @@ function wireSpineInterpolatedSelectorCallables(root: Rules, context: Context): 
   if (isThenable(prepared)) {
     return prepared.then(() => undefined);
   }
-}
-
-/**
- * Register + link every foldable ROOT-level import's scope BEFORE the descent
- * (IMPORTS increment 2 — the registration-during-fold mechanism).
- *
- * For each spine-foldable `StyleImport` (or CSS-passthrough `@import` statement) in
- * the root body, in document order:
- *   - CSS-passthrough → cached `{ kind: 'css' }` (queued to `context.topImports` by
- *     `resolveForSpine`; no scope to register). A CSS `@import` STATEMENT provides no
- *     scope and needs no wiring — skipped.
- *   - Less import → `resolveForSpine` yields the parsed placement body; run its
- *     `prepareRegistration` (seeds the placement frame with the imported body's vars /
- *     mixins / namespaces), then `linkImportFallbackFrame(rootFrame, placementFrame)`
- *     so an importer consumer resolves the imported symbol on the fallback chain
- *     (consulted AFTER the primary scope, so a local binding always wins — the same
- *     discipline `linkInlineImportFallbackFrames` uses on the eval path). Cache the
- *     registered placement so the emit fold descends the SAME body.
- *
- * REGISTRATION-DURING-DESCENT INVARIANT: registration seeds NAMES only (no body
- * eval, no output tree) — `Rules.derive` stays 0. The placement's OUTPUT is emitted
- * later by the descent against this now-linked frame; its SCOPE is available the
- * instant the descent begins. Async (`getTree` / `prepareRegistration`).
- */
-function wireSpineImports(
-  root: Rules,
-  context: Context,
-  options: FinalPrintOptions
-): MaybePromise<void> {
-  return wireSpineImportsInBody(root.rules, root.getScopeFrame(), context, options);
-}
-
-/**
- * Collect the RESOLVED imported ROOT-LEVEL subjects for the extend RE-GATE (import-spec routing).
- *
- * After `wireSpineImports` has cached each foldable import's resolved placement body, an imported file's
- * root-level ruleset (`.a` in `lib.less`) is an addressable extend SUBJECT: its Ruleset node emits during
- * the descent (`_emitSpineImportFold` → `emitNode`), so a header override keyed on it lands. Return each
- * such subject's flat local selector TEXT (for the re-gate's target correspondence) AND its placement
- * `Rules` body (for `wireSpineExtends` to descend). Skips `css` (no scope), `dedupe` (no output), and
- * `reference` (reference-mode bodies emit under different rules — gated off the spine anyway) entries.
- *
- * The bodies are the SAME node instances the emit fold descends, so the override attaches to the emitted
- * ruleset. Only root-DIRECT-child rulesets are collected — a nested imported subject is not addressed by
- * a root-level header (the same restriction the local gather's root-subject clause uses).
- *
- * REFERENCE-MODE subjects are collected too (they are addressable extend targets — `@import (reference)`
- * suppresses their OWN output but an extend still reaches into them). They are returned as a SEPARATE
- * `referenceBodies` set so `wireSpineExtends` marks their gathered subjects `reference: true`: the header
- * override then DROPS the subject's own branch (the reference-suppressed original), leaving only the
- * extender branches — reproducing the eval-path `F_EXTEND_TARGET` reference-filter byte-identically.
- */
-function collectImportedRootSubjects(options: FinalPrintOptions): {
-  subjects: Set<string>;
-  bodies: Rules[];
-  referenceBodies: Set<Rules>;
-} {
-  const subjects = new Set<string>();
-  const bodies: Rules[] = [];
-  const referenceBodies = new Set<Rules>();
-  const cache = options.spineImportPlacements;
-  if (!cache) {
-    return { subjects, bodies, referenceBodies };
-  }
-  for (const entry of cache.values()) {
-    if (entry.kind !== 'fold' || entry.dedupe) {
-      continue;
-    }
-    bodies.push(entry.body);
-    if (entry.reference) {
-      referenceBodies.add(entry.body);
-    }
-    for (const child of entry.body.rules) {
-      if (isNode(child, N.Ruleset)) {
-        const local = flatLocalSelector(child);
-        if (local !== undefined) {
-          subjects.add(String(local.valueOf()));
-        }
-      }
-    }
-  }
-  return { subjects, bodies, referenceBodies };
-}
-
-/**
- * A `@import (reference)` body whose extend-fold is the proven-simple shape: EVERY root-level
- * child is a PLAIN `Ruleset` — a non-`&`, non-`:extend`-bearing selector with a body of value
- * leaves only (no nested container child). Such a body's subjects fold via the header-drop
- * (own-form suppressed, extender-only header). A body with an at-rule, a nested container, a
- * namespace, a `&`/interpolated selector, or its OWN `:extend` composes under different rules and
- * stays eval-owned — reported false so the caller aborts to eval.
- */
-function isSimpleReferenceFoldBody(body: Rules): boolean {
-  for (const child of body.rules) {
-    if (isNode(child, N.Comment)) {
-      continue;
-    }
-    if (!isNode(child, N.Ruleset)) {
-      return false; // at-rule / nested-import wrapper / non-ruleset — not the simple shape
-    }
-    const local = flatLocalSelector(child);
-    if (local === undefined || String(local.valueOf()).includes('&')) {
-      return false; // `&`/interpolated/selector-list surface the header-drop does not model
-    }
-    if (Ruleset.hasExtendedTopLevelSelector(child.selector) || rulesetBodyHasExtend(child.rules)) {
-      return false; // the reference body carries its OWN extend — composes under different rules
-    }
-    for (const grandchild of child.rules) {
-      if (isNode(grandchild, N.Ruleset | N.AtRule | N.Rules)) {
-        return false; // a nested container inside the reference ruleset — not the simple shape
-      }
-    }
-  }
-  return true;
-}
-
-/** True if any DIRECT child of `children` is an `Extend`/`ExtendList` (a body-level `:extend`). */
-function rulesetBodyHasExtend(children: readonly Node[]): boolean {
-  for (const child of children) {
-    if (child.type === 'Extend' || child.type === 'ExtendList') {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Register + link every foldable import that is a DIRECT child of `children` into
- * `targetFrame` (IMPORTS increment 3 — generalized nested-scope wiring). The root
- * pass (`wireSpineImports`) passes the root body + root frame; a NESTED container
- * (a ruleset / at-rule with a body import) passes its own body + own frame from
- * `serializeSpineFrameContainer` at container-enter — so an `@import` inside a
- * `@media`/ruleset links its imported scope to the ENCLOSING container's frame, and
- * a consumer in that container body resolves the imported symbol on the fallback
- * chain (consulted AFTER the container's primary scope, so a local binding wins).
- *
- * Per DIRECT-child foldable import, in document order, each isolated from the next:
- *   - CSS-passthrough → cached `{ kind: 'css' }` (queued top-of-doc; no scope).
- *   - Less import → `resolveForSpine` yields the parsed placement (parented to the
- *     current `context.rulesContext` — the container at wire time), `prepareRegistration`
- *     seeds its frame with the imported vars/mixins/namespaces, then
- *     `linkImportFallbackFrame(targetFrame, placementFrame)`. Cached so the emit fold
- *     descends the SAME registered body.
- *
- * REGISTRATION-DURING-DESCENT INVARIANT: registration seeds NAMES only — no body
- * eval, no output tree (`Rules.derive` = 0). The placement's OUTPUT is emitted later
- * by the descent against the now-linked frame; its SCOPE is available the instant
- * the container body descent begins. Async (`getTree` / `prepareRegistration`).
- */
-function wireSpineImportsInBody(
-  children: readonly Node[],
-  targetFrame: ScopeFrame,
-  context: Context,
-  options: FinalPrintOptions
-): MaybePromise<void> {
-  const cache = (options.spineImportPlacements ??= new Map());
-  // FORWARD-DEPENDENT interpolated-path DEFER lane (case B, IMPORTS increment 6 Tier-B).
-  // An interpolated `@import` path (`@import "theme-@{t}.less"`) whose var binds in a
-  // LATER sibling import is not resolvable at its own document position — `resolveForSpine`
-  // throws `_isPathResolutionError`. Instead of aborting the whole tree to eval, mirror the
-  // eval loop's `pendingImports`/`drainPendingImports` reorder: DEFER the failing import,
-  // continue wiring the rest (which bind the var into `targetFrame` via the fallback link),
-  // then RETRY the deferred imports. A retry that still throws is a GENUINE failure (var
-  // never bound / cyclic) and propagates — the outer `onWireError` then aborts to eval,
-  // byte-identical. One retry-allowed drain + a final non-retry drain matches eval exactly
-  // (a single reorder suffices for the acyclic forward dependency; a cycle re-throws).
-  const pending: number[] = [];
-  const wireOne = (i: number, allowDefer: boolean): MaybePromise<void> => {
-    const child = children[i]!;
-    const importNode = child as StyleImport;
-    // ISOLATE per-import context (design §2 async discipline). Each import's
-    // resolve + registration transiently mutates `context.treeContext`/`depth`
-    // (relative-path resolution + registration setup). Sequentially wiring
-    // several imports must not leak one import's treeContext into the NEXT
-    // sibling's relative resolution (a deeply-nested import would otherwise
-    // resolve its sibling against the wrong directory → dropped output). Snapshot
-    // + restore around EACH import's whole wire, on every exit path.
-    const savedTreeContext = context.treeContext;
-    const savedDepth = context.depth;
-    const restoreImportContext = <T>(value: T): T => {
-      context.treeContext = savedTreeContext;
-      context.depth = savedDepth;
-      return value;
-    };
-    // A FORWARD-dependent interpolated path throws here (sync) or rejects (async). While the
-    // defer lane is open, capture it as pending and move on; otherwise it propagates.
-    const onResolveError = (error: unknown): never | undefined => {
-      if (allowDefer && isSpinePathResolutionError(error)) {
-        pending.push(i);
-        return undefined;
-      }
-      throw error;
-    };
-    const registerAndLink = (resolved: SpineImportResolution): MaybePromise<void> => {
-      if (resolved.kind === 'css') {
-        cache.set(child, { kind: 'css' });
-        return undefined;
-      }
-      const body = resolved.body;
-      const dedupe = spineImportDedupeVerdict(resolved.resolvedPath, resolved.multiple, options);
-      const registered = body.prepareRegistration(context);
-      const finishRegister = (): MaybePromise<void> => {
-        const placementFrame = body.getScopeFrame();
-        // TRANSITIVE wiring: a Less import whose OWN body carries a top-level
-        // `@import` (an imported file that itself imports another) must link that
-        // nested import's scope into THIS placement's frame BEFORE we link the
-        // placement upward — otherwise a sibling in the intermediate file
-        // (`lib.less`'s `@pad: @z`, where `@z` lives in the transitively-imported
-        // `inner.less`) resolves against a frame with no fallback to the nested
-        // scope and throws `'z' is not defined`. The nested imports are wired into
-        // the placement's own frame (their scope is a fallback consulted after the
-        // placement's primary scope), recursively — so an N-deep import chain links
-        // each level into its importer. Registration seeds NAMES only (no output
-        // tree; `Rules.derive` stays 0). Same document-order/isolation discipline as
-        // the outer pass since it reuses `wireSpineImportsInBody`.
-        const link = (): void => {
-          linkImportFallbackFrame(targetFrame, placementFrame);
-          cache.set(child, { kind: 'fold', body, dedupe, multiple: resolved.multiple, reference: resolved.reference });
-        };
-        const wiredNested = wireSpineImportsInBody(body.rules, placementFrame, context, options);
-        return isThenable(wiredNested) ? wiredNested.then(link) : link();
-      };
-      return isThenable(registered) ? registered.then(finishRegister) : finishRegister();
-    };
-    let resolution: MaybePromise<SpineImportResolution>;
-    try {
-      resolution = importNode.resolveForSpine(context);
-    } catch (error) {
-      restoreImportContext(undefined);
-      return onResolveError(error);
-    }
-    let step: MaybePromise<void>;
-    try {
-      step = isThenable(resolution)
-        ? resolution.then(registerAndLink)
-        : registerAndLink(resolution);
-    } catch (error) {
-      restoreImportContext(undefined);
-      return onResolveError(error);
-    }
-    if (isThenable(step)) {
-      return step.then(
-        (value) => restoreImportContext(value),
-        (error: unknown) => {
-          restoreImportContext(undefined);
-          return onResolveError(error);
-        }
-      );
-    }
-    restoreImportContext(step);
-    return undefined;
-  };
-  const wireFrom = (start: number): MaybePromise<void> => {
-    for (let i = start; i < children.length; i++) {
-      const child = children[i]!;
-      if (!isStyleImportNode(child) || !isSpineFoldableImport(child) || cache.has(child)) {
-        continue;
-      }
-      const wired = wireOne(i, true);
-      if (isThenable(wired)) {
-        return wired.then(() => wireFrom(i + 1));
-      }
-    }
-    return undefined;
-  };
-  // Drain the deferred (forward-dependent) imports after the main document-order pass has
-  // bound their vars. `allowRetry` on the first drain (a deferred import may itself depend
-  // on another deferred one, resolved once the first drains); the final drain re-throws a
-  // still-unresolvable path so it aborts to eval. Mirrors eval's `drainPendingImports`.
-  const drainPending = (allowRetry: boolean): MaybePromise<void> => {
-    if (pending.length === 0) {
-      return undefined;
-    }
-    const batch = pending.splice(0);
-    const drainRest = (start: number): MaybePromise<void> => {
-      for (let k = start; k < batch.length; k++) {
-        const wired = wireOne(batch[k]!, allowRetry);
-        if (isThenable(wired)) {
-          return wired.then(() => drainRest(k + 1));
-        }
-      }
-      return undefined;
-    };
-    const drained = drainRest(0);
-    if (isThenable(drained)) {
-      return allowRetry ? drained.then(() => drainPending(false)) : drained;
-    }
-    return allowRetry ? drainPending(false) : drained;
-  };
-  const mainPass = wireFrom(0);
-  return isThenable(mainPass)
-    ? mainPass.then(() => drainPending(true))
-    : drainPending(true);
-}
-
-/**
- * Wire a NESTED container's direct foldable imports at container-enter (IMPORTS
- * increment 3). Called by `serializeSpineFrameContainer` AFTER the container's scope
- * frame is built and BEFORE its body descends, so a consumer inside the container
- * resolves an imported symbol against the container frame's fallback chain. A no-op
- * (returns undefined synchronously) when the body has no foldable import — the
- * common case pays nothing. `targetFrame` is the container's own scope frame.
- */
-export function wireSpineContainerImports(
-  children: readonly Node[],
-  targetFrame: ScopeFrame,
-  context: Context,
-  options: FinalPrintOptions
-): MaybePromise<void> {
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i]!;
-    if (child.type === 'StyleImport' && isSpineFoldableImport(child)) {
-      return wireSpineImportsInBody(children, targetFrame, context, options);
-    }
-  }
-  return undefined;
 }

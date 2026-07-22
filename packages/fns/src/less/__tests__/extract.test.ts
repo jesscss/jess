@@ -3,7 +3,13 @@ import { makeDimension, makeKeyword, makeList, type FnCtx, type ValueObj } from 
 import extract from '../extract.js';
 
 const ctx: FnCtx = { modes: { unitMode: 'preserve' }, stringify: value => value.bytes };
-const call = (...args: ValueObj[]): ValueObj => extract(makeList(args, ','), ctx) as ValueObj;
+const call = (...args: ValueObj[]): ValueObj => {
+  const result = extract(makeList(args, ','), ctx);
+  if (result instanceof Promise) {
+    throw new TypeError('Expected extract() to be synchronous in this test.');
+  }
+  return result;
+};
 
 describe('extract()', () => {
   it('extracts 1-based item from a list', () => {

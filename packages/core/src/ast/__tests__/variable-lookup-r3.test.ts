@@ -14,8 +14,8 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('tone', keyword('blue'), { mode: 'reassign', lookup: 'live' }),
       rule('.card', [
         decl('live', variableReference('tone', 'live')),
-        decl('scoped', variableReference('tone', 'scoped')),
-      ]),
+        decl('scoped', variableReference('tone', 'scoped'))
+      ])
     ]);
 
     expect(render(document)).toBe('.card {\n  live: blue;\n  scoped: navy;\n}\n');
@@ -27,16 +27,16 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('tone', keyword('blue'), { mode: 'declare' }),
       rule('.live', [
         decl('live', variableReference('tone', 'live')),
-        decl('scoped', variableReference('tone', 'scoped')),
-      ]),
+        decl('scoped', variableReference('tone', 'scoped'))
+      ])
     ]);
     const scoped = stylesheet([
       variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', lookup: 'scoped' }),
       variableDeclaration('tone', keyword('blue'), { mode: 'declare' }),
       rule('.scoped', [
         decl('live', variableReference('tone', 'live')),
-        decl('scoped', variableReference('tone', 'scoped')),
-      ]),
+        decl('scoped', variableReference('tone', 'scoped'))
+      ])
     ]);
 
     expect(render(live)).toBe('.live {\n  live: blue;\n  scoped: navy;\n}\n');
@@ -52,8 +52,8 @@ describe('R3 live and scoped variable stores', () => {
       rule('.card', [
         decl('live', variableReference('tone', 'live')),
         decl('scoped', variableReference('tone', 'scoped')),
-        decl('cycle', variableReference('cycle', 'scoped')),
-      ]),
+        decl('cycle', variableReference('cycle', 'scoped'))
+      ])
     ]);
 
     expect(render(document)).toBe('.card {\n  live: navy;\n  scoped: blue;\n  cycle: first;\n}\n');
@@ -66,8 +66,8 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('tone', keyword('blue'), { mode: 'reassign', lookup: 'live' }),
       rule('.card', [
         decl('live', varIndirect(variableReference('name', 'live'), 'live')),
-        decl('scoped', varIndirect(variableReference('name', 'live'), 'scoped')),
-      ]),
+        decl('scoped', varIndirect(variableReference('name', 'live'), 'scoped'))
+      ])
     ]);
 
     expect(render(document)).toBe('.card {\n  live: blue;\n  scoped: navy;\n}\n');
@@ -83,20 +83,20 @@ describe('R3 live and scoped variable stores', () => {
           variableDeclaration('tone', keyword('navy'), { mode: 'declare' }),
           ifNode([{
             guard: { g: 'truth', value: keyword('true') },
-            body: [variableDeclaration('nested', keyword('blue'), { mode: 'declare' })],
+            body: [variableDeclaration('nested', keyword('blue'), { mode: 'declare' })]
           }]),
           variableDeclaration('tone', keyword('green'), { mode: 'declare' }),
           rule('.inside', [
             decl('live', variableReference('tone', 'live')),
             decl('scoped', variableReference('tone', 'scoped')),
-            decl('nested', variableReference('nested', 'scoped')),
-          ]),
-        ],
+            decl('nested', variableReference('nested', 'scoped'))
+          ])
+        ]
       }]),
       rule('.after', [
         decl('live', variableReference('tone', 'live')),
-        decl('scoped', variableReference('tone', 'scoped')),
-      ]),
+        decl('scoped', variableReference('tone', 'scoped'))
+      ])
     ]);
 
     expect(render(document)).toBe(
@@ -112,7 +112,7 @@ describe('R3 live and scoped variable stores', () => {
       ifNode([
         {
           guard: { g: 'truth', value: keyword('false') },
-          body: [variableDeclaration('tone', keyword('red'), { mode: 'declare' })],
+          body: [variableDeclaration('tone', keyword('red'), { mode: 'declare' })]
         },
         {
           guard: null,
@@ -121,14 +121,14 @@ describe('R3 live and scoped variable stores', () => {
             variableDeclaration('tone', keyword('navy'), { mode: 'if-absent', lookup: 'live' }),
             variableDeclaration('tone', keyword('white'), { mode: 'if-absent', lookup: 'scoped' }),
             variableDeclaration('tone', keyword('green'), { mode: 'reassign', lookup: 'live' }),
-            variableDeclaration('tone', keyword('black'), { mode: 'reassign', lookup: 'scoped' }),
-          ],
-        },
+            variableDeclaration('tone', keyword('black'), { mode: 'reassign', lookup: 'scoped' })
+          ]
+        }
       ]),
       rule('.after', [
         decl('live', variableReference('tone', 'live')),
-        decl('scoped', variableReference('tone', 'scoped')),
-      ]),
+        decl('scoped', variableReference('tone', 'scoped'))
+      ])
     ]);
 
     expect(render(document)).toBe('.after {\n  live: green;\n  scoped: black;\n}\n');
@@ -139,23 +139,23 @@ describe('R3 live and scoped variable stores', () => {
       variableDeclaration('tone', keyword('gray'), { mode: 'declare' }),
       ifNode([{
         guard: { g: 'truth', value: keyword('true') },
-        body: [variableDeclaration('tone', variableReference('tone', 'scoped'), { mode: 'declare' })],
+        body: [variableDeclaration('tone', variableReference('tone', 'scoped'), { mode: 'declare' })]
       }]),
       forNode(spaced([dimension(1)]), [
         ifNode([{
           guard: { g: 'truth', value: keyword('true') },
-          body: [variableDeclaration('tone', keyword('blue'), { mode: 'declare' })],
+          body: [variableDeclaration('tone', keyword('blue'), { mode: 'declare' })]
         }]),
-        rule('.loop', [decl('scoped', variableReference('tone', 'scoped'))]),
+        rule('.loop', [decl('scoped', variableReference('tone', 'scoped'))])
       ], { kind: 'single', name: 'item' }),
       mixinDef('.m', [], [
         ifNode([{
           guard: { g: 'truth', value: keyword('true') },
-          body: [variableDeclaration('tone', keyword('navy'), { mode: 'declare' })],
+          body: [variableDeclaration('tone', keyword('navy'), { mode: 'declare' })]
         }]),
-        decl('from-mixin', variableReference('tone', 'scoped')),
+        decl('from-mixin', variableReference('tone', 'scoped'))
       ]),
-      rule('.out', [mixinCall('.m'), decl('after', variableReference('tone', 'scoped'))]),
+      rule('.out', [mixinCall('.m'), decl('after', variableReference('tone', 'scoped'))])
     ]);
 
     expect(render(document)).toBe(
@@ -172,13 +172,13 @@ describe('R3 live and scoped variable stores', () => {
         guard: { g: 'truth', value: keyword('true') },
         body: [
           variableDeclaration('a', variableReference('b', 'scoped'), { mode: 'declare' }),
-          variableDeclaration('b', variableReference('a', 'scoped'), { mode: 'declare' }),
-        ],
+          variableDeclaration('b', variableReference('a', 'scoped'), { mode: 'declare' })
+        ]
       }]),
       rule('.after', [
         decl('a', variableReference('a', 'scoped')),
-        decl('b', variableReference('b', 'scoped')),
-      ]),
+        decl('b', variableReference('b', 'scoped'))
+      ])
     ]);
 
     expect(render(document)).toBe('.after {\n  a: root-a;\n  b: root-b;\n}\n');
@@ -189,14 +189,14 @@ describe('R3 live and scoped variable stores', () => {
       mixinDef('.m', [{ name: 'seed' }], [
         ifNode([{
           guard: { g: 'truth', value: keyword('true') },
-          body: [variableDeclaration('branch', keyword('selected'), { mode: 'declare' })],
+          body: [variableDeclaration('branch', keyword('selected'), { mode: 'declare' })]
         }]),
         variableDeclaration('after', keyword('later'), { mode: 'declare' }),
         decl('seed', variableReference('seed', 'scoped')),
         decl('branch', variableReference('branch', 'scoped')),
-        decl('after', variableReference('after', 'scoped')),
+        decl('after', variableReference('after', 'scoped'))
       ]),
-      rule('.out', [mixinCall('.m', [{ value: keyword('parameter') }])]),
+      rule('.out', [mixinCall('.m', [{ value: keyword('parameter') }])])
     ]);
 
     expect(render(document)).toBe('.out {\n  seed: parameter;\n  branch: selected;\n  after: later;\n}\n');

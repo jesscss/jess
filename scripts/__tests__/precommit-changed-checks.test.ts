@@ -20,10 +20,22 @@ describe('pre-commit aggressive-review mode', () => {
     const fakeBin = resolve(sandbox, '.test-bin');
     const invocationLog = resolve(sandbox, '.pnpm-invocations');
     try {
-      execFileSync('git', ['clone', '--quiet', '--no-hardlinks', '--branch', 'dev', repo, sandbox]);
+      execFileSync('git', [
+        'clone',
+        '--quiet',
+        '--no-hardlinks',
+        '--branch',
+        'dev',
+        repo,
+        sandbox
+      ]);
       writeFileSync(
         resolve(sandbox, 'scripts/precommit-changed-checks.mjs'),
         readFileSync(resolve(repo, 'scripts/precommit-changed-checks.mjs'))
+      );
+      writeFileSync(
+        resolve(sandbox, 'scripts/staged-lint.mjs'),
+        readFileSync(resolve(repo, 'scripts/staged-lint.mjs'))
       );
       mkdirSync(fakeBin);
       const fakePnpm = resolve(fakeBin, 'pnpm');
@@ -54,6 +66,58 @@ describe('pre-commit aggressive-review mode', () => {
       expect(readFileSync(invocationLog, 'utf8').trim().split('\n')).toEqual([
         'run verify:aggressive-cutting-review -- --mode=release --skip-executable-evidence',
         'run verify:aggressive-cutting-review -- --mode=staged --skip-executable-evidence'
+      ]);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('uses the verifier default working scope for a pre-push invocation', () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const tempRoot = mkdtempSync(resolve(tmpdir(), 'jess-prepush-review-'));
+    const sandbox = resolve(tempRoot, 'repo');
+    const fakeBin = resolve(sandbox, '.test-bin');
+    const invocationLog = resolve(sandbox, '.pnpm-invocations');
+    try {
+      execFileSync('git', [
+        'clone',
+        '--quiet',
+        '--no-hardlinks',
+        '--branch',
+        'dev',
+        repo,
+        sandbox
+      ]);
+      writeFileSync(
+        resolve(sandbox, 'scripts/precommit-changed-checks.mjs'),
+        readFileSync(resolve(repo, 'scripts/precommit-changed-checks.mjs'))
+      );
+      writeFileSync(
+        resolve(sandbox, 'scripts/staged-lint.mjs'),
+        readFileSync(resolve(repo, 'scripts/staged-lint.mjs'))
+      );
+      mkdirSync(fakeBin);
+      const fakePnpm = resolve(fakeBin, 'pnpm');
+      writeFileSync(fakePnpm, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$JESS_PRECOMMIT_INVOCATIONS"\n');
+      chmodSync(fakePnpm, 0o755);
+
+      const probe = resolve(sandbox, 'docs/prepush-mode-probe.md');
+      writeFileSync(probe, 'working-scope probe\n');
+      execFileSync('git', ['add', 'docs/prepush-mode-probe.md'], { cwd: sandbox });
+
+      const env = {
+        ...process.env,
+        PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ''}`,
+        JESS_PRECOMMIT_INVOCATIONS: invocationLog
+      };
+      execFileSync(process.execPath, [
+        'scripts/precommit-changed-checks.mjs',
+        '--mode=upstream'
+      ], { cwd: sandbox, env, encoding: 'utf8' });
+
+      expect(readFileSync(invocationLog, 'utf8').trim().split('\n')).toEqual([
+        'run verify:baseline',
+        'run verify:aggressive-cutting-review'
       ]);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });

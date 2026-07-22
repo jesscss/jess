@@ -1,4 +1,4 @@
-import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, style, Mixin, nil, type AnyRole } from '../index.js';
+import { mixin, rules, el, decl, any, condition, expr, ref, list, vardecl, Node, call, ruleset, rest, sel, co, compound, sellist, interpolated, interpolatedSelector, INTERPOLATION_PLACEHOLDER, amp, pseudo, paren, dimension, op, quoted, seq, atrule, defaultguard, Rules as RulesClass, comment, Any, Bool, bool, JsFunction, Mixin, nil, type AnyRole } from '../index.js';
 import type { Declaration } from '../declaration.js';
 import type { MixinOutputChildSegment } from '../util/mixin-output-slot.js';
 import type { Condition } from '../condition.js';
@@ -2712,14 +2712,7 @@ describe('Mixin', () => {
       const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const fastPathHits: string[] = [];
       const parentRules = rules([]);
-      const fallbackRules = rules([
-        style({
-          path: quoted(any('reference-import.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
+      const fallbackRules = rules([], { referenceMode: true });
       const childRules = rules([]);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
@@ -2790,6 +2783,17 @@ describe('Mixin', () => {
           color: teal;
         }
       `);
+    });
+
+    it('registers every parser-delivered selector-array member as a ruleset callable', () => {
+      const frameRuleset = ruleset({
+        selector: ['.first', '.second'],
+        rules: [decl({ name: 'color', value: any('teal') })]
+      });
+      const root = rules([frameRuleset]);
+
+      expect(root.findMixin('.first', undefined)).toEqual([frameRuleset]);
+      expect(root.findMixin('.second', undefined)).toEqual([frameRuleset]);
     });
 
     it('ScopeFrame callable buckets: static miss skips Rules.findMixinsFast when no child surfaces exist', () => {
@@ -3074,14 +3078,7 @@ describe('Mixin', () => {
         return originalFindMixinsFast.apply(this, args);
       };
 
-      const referenceChild = rules([
-        style({
-          path: quoted(any('reference-import.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
+      const referenceChild = rules([], { referenceMode: true });
       namespaceRules = rules([referenceChild]);
       root = rules([
         mixin({
@@ -3694,14 +3691,7 @@ describe('Mixin', () => {
       };
 
       try {
-        const root = rules([
-          style({
-            path: quoted(any('reference-import.jess'))
-          }, {
-            type: 'import',
-            importOptions: { reference: true }
-          })
-        ]);
+        const root = rules([rules([], { referenceMode: true })]);
         root.getScopeFrame();
 
         expect(root.findMixin('.reference-import-missing', 'Mixin')).toBeUndefined();
@@ -3733,14 +3723,7 @@ describe('Mixin', () => {
           rules: [decl({ name: 'color', value: any('green') })]
         })
       ]);
-      const referenceChild = rules([
-        style({
-          path: quoted(any('reference-import.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
+      const referenceChild = rules([], { referenceMode: true });
       const root = rules([coveredChild, referenceChild]);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -3774,14 +3757,7 @@ describe('Mixin', () => {
       const namespaceKey = '#missing-imported-namespace';
       const rootBroadStarts: string[] = [];
       let nestedArrayFallbacks = 0;
-      const referenceChild = rules([
-        style({
-          path: quoted(any('reference-import.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
+      const referenceChild = rules([], { referenceMode: true });
       const root = rules([referenceChild]);
 
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -4427,14 +4403,7 @@ describe('Mixin', () => {
     });
 
     it('ScopeFrame callable buckets: child reference imports are carried apart from exact callable surfaces', () => {
-      const childRules = rules([
-        style({
-          path: quoted(any('reference-import.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
+      const childRules = rules([], { referenceMode: true });
       const root = rules([childRules]);
 
       root.collectDirectChildRulesEntries();
@@ -4490,14 +4459,7 @@ describe('Mixin', () => {
       expect(root._scopeFrame?.callableMissesCovered).toBe(true);
       expect(root._scopeFrame?.callableMissCoverageKnown).toBe(true);
 
-      const childRules = rules([
-        style({
-          path: quoted(any('late-reference-import.jess'))
-        }, {
-          type: 'import',
-          importOptions: { reference: true }
-        })
-      ]);
+      const childRules = rules([], { referenceMode: true });
       root.push(childRules);
 
       expect(root.directChildRuleEntries).toHaveLength(1);
@@ -4548,14 +4510,7 @@ describe('Mixin', () => {
         },
         {
           label: 'reference-import',
-          child: rules([
-            style({
-              path: quoted(any('reference-import.less'))
-            }, {
-              type: 'import',
-              importOptions: { reference: true }
-            })
-          ])
+          child: rules([], { referenceMode: true })
         },
         {
           label: 'empty',
@@ -8419,7 +8374,6 @@ describe('Mixin', () => {
       expect(css).toContain('mi-test-d {\n  gender: "Male";\n}');
       expect(css).not.toContain('mi-test-d .person {\n}');
     });
-
   });
 
   describe('serialization', () => {

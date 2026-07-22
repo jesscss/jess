@@ -18,11 +18,13 @@ function findMonorepoRoot(start: string): string {
   return process.cwd();
 }
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = findMonorepoRoot(__dirname);
+const moduleDir = dirname(fileURLToPath(import.meta.url));
+const ROOT = findMonorepoRoot(moduleDir);
 
 function getLogPath(): string {
-  if (process.env.DEBUG_LOG_PATH) return process.env.DEBUG_LOG_PATH;
+  if (process.env.DEBUG_LOG_PATH) {
+    return process.env.DEBUG_LOG_PATH;
+  }
   const logDir = process.env.DEBUG_LOG_DIR || join(ROOT, '.cursor');
   return join(logDir, 'debug.log');
 }

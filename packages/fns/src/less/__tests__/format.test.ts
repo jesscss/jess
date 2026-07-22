@@ -14,8 +14,11 @@ describe('format() / %()', () => {
       new Quoted('x y')
     );
     expect(result).toBeInstanceOf(Quoted);
-    expect((result as Quoted).valueOf()).toBe('/users/a%20b?name=x y%');
-    expect((result as Quoted).quote).toBe('\'');
+    if (!(result instanceof Quoted)) {
+      throw new TypeError('Expected format() to return a quoted value.');
+    }
+    expect(result.valueOf()).toBe('/users/a%20b?name=x y%');
+    expect(result.quote).toBe('\'');
   });
 
   it('returns Any for non-quoted templates', async () => {

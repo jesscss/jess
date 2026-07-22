@@ -4,12 +4,12 @@
  * It never composes the CST grammar: Parseman reductions construct canonical
  * core facts directly.
  */
-import { attempt, choice, composeLeaf, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { attempt, choice, composeLeaf, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
 import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, DetachedRuleset, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, DetachedRuleset, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -39,7 +39,7 @@ type JessAstRules = {
   DirectJessUnwrappedProduct: Combinator<ExpressionFact>;
   DirectJessUnwrappedProductRest: Combinator<ExpressionFact>;
   DirectJessUnwrappedArithmetic: Combinator<ValueNode>;
-  DirectJessUnwrappedSlashValue: Combinator<SpacedValue>;
+  DirectJessUnwrappedSlashValue: Combinator<ValueNode>;
   DirectJessGuardValue: Combinator<GuardNode>;
   DirectJessGuardCompare: Combinator<GuardNode>;
   DirectJessGuardCall: Combinator<GuardNode>;
@@ -62,7 +62,7 @@ type JessAstRules = {
   DirectJessCollection: Combinator<DetachedRuleset>;
   DirectJessValueAtom: Combinator<ValueNode>;
   DirectJessValueTerm: Combinator<ValueSlot>;
-  DirectJessValue: Combinator<ValueNode>;
+  DirectJessValue: Combinator<ValueSlot>;
   DirectJessImportant: Combinator<true>;
   DirectJessDeclaration: Combinator<Declaration>;
   DirectJessMixinParam: Combinator<Param>;
@@ -140,7 +140,7 @@ type JessAstRules = {
   DirectJessPropertyName: Combinator<Keyword>;
   DirectJessStaticPropertyValueAtom: Combinator<ValueNode>;
   DirectJessStaticPropertyValue: Combinator<ValueSlot>;
-  DirectJessStaticPropertyCallArgument: Combinator<ValueNode>;
+  DirectJessStaticPropertyCallArgument: Combinator<ValueSlot>;
   DirectJessStaticPropertyCall: Combinator<FunctionCall>;
   DirectJessStaticPropertyDescriptor: Combinator<Declaration>;
   DirectJessPropertyAtRule: Combinator<AtRuleBlock>;
@@ -176,6 +176,11 @@ type SharedCssAstSyntax = {
   CssAstSyntaxUrlInner: Combinator<string>;
   CssAstSyntaxStaticUrlInner: Combinator<string>;
   CssAstSyntaxGenericAtRuleName: Combinator<string>;
+  CssAstSyntaxSimple: Combinator<string>;
+  CssAstSyntaxPseudoColon: Combinator<string>;
+  CssAstSyntaxMediaAtKeyword: Combinator<string>;
+  JessAstOpaqueStaticPrelude: Combinator<string | null>;
+  JessAstOpaqueBody: Combinator<string>;
 };
 
 function requireToken(value: unknown): Token {
@@ -209,6 +214,13 @@ function isJessAtRuleHeader(value: unknown): value is JessAtRuleHeader {
     && 'prelude' in value;
 }
 
+function requireJessAtRuleHeader(value: unknown): JessAtRuleHeader {
+  if (!isJessAtRuleHeader(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid at-rule header.');
+  }
+  return value;
+}
+
 function isAtRuleNameToken(value: unknown): value is Token {
   return isToken(value)
     && !('type' in value)
@@ -217,6 +229,101 @@ function isAtRuleNameToken(value: unknown): value is Token {
 
 function isCompound(value: unknown): value is CompoundSelector {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'CompoundSelector' && 'simples' in value && Array.isArray(value.simples);
+}
+
+function isSimpleSelector(value: unknown): value is SimpleSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SimpleSelector'
+    && 'text' in value && (typeof value.text === 'string' || value.text === null)
+    && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
+}
+
+function isComplexSelector(value: unknown): value is ComplexSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'ComplexSelector'
+    && 'head' in value && isCompound(value.head)
+    && 'tail' in value && Array.isArray(value.tail);
+}
+
+function isSelectorList(value: unknown): value is SelectorList {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SelectorList'
+    && 'selectors' in value && Array.isArray(value.selectors)
+    && value.selectors.every(isComplexSelector);
+}
+
+function isJessComplexTail(value: unknown): value is JessComplexTail {
+  return typeof value === 'object' && value !== null
+    && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
+    && 'compound' in value && isCompound(value.compound);
+}
+
+function isJessReferenceTail(value: unknown): value is JessReferenceTail {
+  return typeof value === 'object' && value !== null
+    && 'step' in value && 'src' in value && typeof value.src === 'string';
+}
+
+function requireSimpleSelector(value: unknown): SimpleSelector {
+  if (!isSimpleSelector(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-simple selector child.');
+  }
+  return value;
+}
+
+function requireCompound(value: unknown): CompoundSelector {
+  if (!isCompound(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-compound selector child.');
+  }
+  return value;
+}
+
+function requireComplexSelector(value: unknown): ComplexSelector {
+  if (!isComplexSelector(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-complex selector child.');
+  }
+  return value;
+}
+
+function requireSelectorList(value: unknown): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-selector-list child.');
+  }
+  return value;
+}
+
+function requireJessComplexTail(value: unknown): JessComplexTail {
+  if (!isJessComplexTail(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid selector tail.');
+  }
+  return value;
+}
+
+function requireJessReferenceTail(value: unknown): JessReferenceTail {
+  if (!isJessReferenceTail(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid reference tail.');
+  }
+  return value;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('Direct Jess AST grammar produced a non-string child.');
+  }
+  return value;
+}
+
+function requireInterpolation(value: unknown): Interpolation {
+  if (!isInterpolation(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-interpolation child.');
+  }
+  return value;
+}
+
+function requireKeyword(value: unknown): Keyword {
+  if (!isValueNode(value) || value.type !== 'Keyword') {
+    throw new TypeError('Direct Jess AST grammar produced a non-keyword child.');
+  }
+  return value;
 }
 
 function staticSelectorText(selector: SelectorList): string {
@@ -262,14 +369,22 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'Range');
 }
 
+function isValueNodeArray(value: unknown): value is ValueNode[] {
+  return Array.isArray(value) && value.every(isValueNode);
+}
+
 function valueSlot(value: ValueNode): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
-  if (value.type === 'Block' && value.inner.type === 'SpacedValue') {
+  if (value.type === 'Block' && isSpacedValue(value.inner)) {
     return { ...value, inner: value.inner.parts };
   }
   return value;
+}
+
+function isSpacedValue(value: ValueSlot): value is SpacedValue {
+  return isValueNode(value) && value.type === 'SpacedValue';
 }
 
 function isValueSlotValue(value: unknown): value is ValueSlot {
@@ -277,7 +392,7 @@ function isValueSlotValue(value: unknown): value is ValueSlot {
 }
 
 function requireValueSlot(value: unknown): ValueSlot {
-  return Array.isArray(value) ? value as ValueNode[] : valueSlot(requireValueNode(value));
+  return isValueNodeArray(value) ? value : valueSlot(requireValueNode(value));
 }
 
 function isJessMixinCallArgument(value: unknown): value is JessMixinCallArgument {
@@ -291,14 +406,52 @@ function requireValueNode(value: unknown): ValueNode {
   return value;
 }
 
+function isGuardNode(value: unknown): value is GuardNode {
+  if (typeof value !== 'object' || value === null || !('g' in value)) {
+    return false;
+  }
+  switch (value.g) {
+    case 'default':
+      return true;
+    case 'truth':
+      return 'value' in value && isValueNode(value.value);
+    case 'cmp':
+      return 'op' in value && typeof value.op === 'string'
+        && 'left' in value && isValueNode(value.left)
+        && 'right' in value && isValueNode(value.right);
+    case 'call':
+      return 'name' in value && typeof value.name === 'string'
+        && 'args' in value && Array.isArray(value.args) && value.args.every(isValueNode);
+    case 'not':
+      return 'inner' in value && isGuardNode(value.inner);
+    case 'and':
+    case 'or':
+      return 'left' in value && isGuardNode(value.left)
+        && 'right' in value && isGuardNode(value.right);
+    default:
+      return false;
+  }
+}
+
+function requireGuardNode(value: unknown): GuardNode {
+  if (!isGuardNode(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-guard child.');
+  }
+  return value;
+}
+
 function isInterpolation(value: unknown): value is Interpolation {
   return typeof value === 'object' && value !== null && 'type' in value
     && value.type === 'Interpolation' && 'parts' in value && Array.isArray(value.parts);
 }
 
+function isInterpolationLiteral(part: InterpPart): part is { readonly lit: string } {
+  return 'lit' in part;
+}
+
 function appendInterpolationLiteral(parts: Interpolation['parts'], text: string): void {
   const previous = parts[parts.length - 1];
-  if (previous !== undefined && 'lit' in previous) {
+  if (previous !== undefined && isInterpolationLiteral(previous)) {
     parts[parts.length - 1] = { lit: previous.lit + text };
   } else {
     parts.push({ lit: text });
@@ -328,7 +481,7 @@ function requireExpressionFact(value: unknown): ExpressionFact {
     || typeof value.src !== 'string' || !isValueNode(value.value)) {
     throw new TypeError('Direct Jess AST grammar produced an invalid expression fact.');
   }
-  return value;
+  return { value: value.value, src: value.src };
 }
 
 function foldExpression(children: readonly unknown[]): ExpressionFact {
@@ -438,6 +591,60 @@ function requireStatements(children: readonly unknown[]): Statement[] {
   return statements;
 }
 
+function requireStatementList(value: unknown): Statement[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-statement list.');
+  }
+  return requireStatements(value);
+}
+
+function isIfBranch(value: unknown): value is IfBranch {
+  return typeof value === 'object' && value !== null
+    && 'guard' in value && (value.guard === null || isGuardNode(value.guard))
+    && 'body' in value && Array.isArray(value.body);
+}
+
+function requireIfBranch(value: unknown): IfBranch {
+  if (!isIfBranch(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid conditional branch.');
+  }
+  return { guard: value.guard, body: requireStatementList(value.body) };
+}
+
+function requireIfBranchArray(value: unknown): IfBranch[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid conditional branch list.');
+  }
+  return value.map(requireIfBranch);
+}
+
+function requireIfBranchTuple(value: IfBranch[]): [IfBranch, ...IfBranch[]] {
+  const first = value[0];
+  if (first === undefined) {
+    throw new TypeError('Direct Jess AST grammar produced an empty conditional branch list.');
+  }
+  return [first, ...value.slice(1)];
+}
+
+function isForBinding(value: unknown): value is ForBinding {
+  if (typeof value !== 'object' || value === null || !('kind' in value)) {
+    return false;
+  }
+  if (value.kind === 'single') {
+    return 'name' in value && typeof value.name === 'string';
+  }
+  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
+    && 'names' in value && Array.isArray(value.names)
+    && value.names.every(name => name === undefined || typeof name === 'string');
+}
+
+function requireForBinding(value: unknown): ForBinding {
+  if (!isForBinding(value)) {
+    throw new TypeError('Direct Jess AST grammar produced an invalid for binding.');
+  }
+  return value;
+}
+
 function isAtRuleBlock(value: unknown): value is AtRuleBlock {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleBlock';
 }
@@ -466,11 +673,15 @@ function isReferenceCall(value: unknown): value is Reference {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Reference';
 }
 
+function isQuoted(value: unknown): value is Quoted {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Quoted';
+}
+
 function requireStaticQuoted(value: unknown): Quoted {
-  if (typeof value !== 'object' || value === null || !('type' in value) || value.type !== 'Quoted') {
+  if (!isQuoted(value)) {
     throw new TypeError('Direct Jess module syntax requires a static quoted path.');
   }
-  return value as Quoted;
+  return value;
 }
 
 function isComment(value: unknown): value is Comment {
@@ -519,17 +730,6 @@ function isIf(value: unknown): value is If {
     && value.type === 'If'
     && 'branches' in value
     && Array.isArray(value.branches);
-}
-
-function requireDeclarations(children: readonly unknown[]): Declaration[] {
-  const declarations: Declaration[] = [];
-  for (const child of children) {
-    if (!isDeclaration(child)) {
-      throw new TypeError('Direct Jess AST grammar produced a non-declaration rule child.');
-    }
-    declarations.push(child);
-  }
-  return declarations;
 }
 
 function requireExactToken(value: unknown, expected: string): void {
@@ -744,13 +944,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       if (children.length === 1) {
-        return children[0] as GuardNode;
+        return requireGuardNode(children[0]);
       }
       if (requireToken(children[0]).value === 'not') {
-        return { g: 'not', inner: children[2] as GuardNode };
+        return { g: 'not', inner: requireGuardNode(children[2]) };
       }
       if (requireToken(children[0]).value === '(') {
-        return children[1] as GuardNode;
+        return requireGuardNode(children[1]);
       }
       return { g: 'default' };
     }
@@ -759,9 +959,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessGuardAnd',
     sequence(g.DirectJessGuardPrimary, oneOrMore(sequence(regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'and', left: result, right: children[index] as GuardNode };
+        result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -770,9 +970,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessGuardOr',
     sequence(g.DirectJessGuardPrimary, oneOrMore(sequence(regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'or', left: result, right: children[index] as GuardNode };
+        result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -780,7 +980,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessMixinGuard = node<GuardNode>(
     'DirectJessMixinGuard',
     choice(g.DirectJessGuardAnd, g.DirectJessGuardOr, g.DirectJessGuardCompare, g.DirectJessGuardPrimary),
-    children => children[0] as GuardNode
+    children => requireGuardNode(children[0])
   );
   const DirectJessExpression = node<Interpolation>(
     'DirectJessExpression',
@@ -1028,8 +1228,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     (children) => {
       const parts: Interpolation['parts'] = [];
       const append = (part: Interpolation['parts'][number]): void => {
-        if ('lit' in part && parts.length > 0 && 'lit' in parts[parts.length - 1]!) {
-          const previous = parts[parts.length - 1]!;
+        const previous = parts[parts.length - 1];
+        if (isInterpolationLiteral(part) && previous !== undefined && isInterpolationLiteral(previous)) {
           parts[parts.length - 1] = { lit: previous.lit + part.lit };
         } else {
           parts.push(part);
@@ -1070,13 +1270,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
-      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${children[3] as string})`);
+      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${requireString(children[3])})`);
     }
   );
   const DirectJessStaticCompound = node<CompoundSelector>(
     'DirectJessStaticCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessSimple))),
-    children => compoundSelectorOf(children as SimpleSelector[])
+    children => compoundSelectorOf(children.map(requireSimpleSelector))
   );
   const directJessCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'));
   const DirectJessStaticComplexTail = node<JessComplexTail>(
@@ -1099,19 +1299,19 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessStaticComplex',
     sequence(g.DirectJessStaticCompound, many(g.DirectJessStaticComplexTail)),
     children => complexSelector([
-      { compound: children[0] as CompoundSelector },
-      ...(children.slice(1) as JessComplexTail[]).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      { compound: requireCompound(children[0]) },
+      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
   const DirectJessStaticSelectorTail = node<ComplexSelector>(
     'DirectJessStaticSelectorTail',
     parser({ trivia: whitespace }, sequence(literal(','), g.DirectJessStaticComplex)),
-    children => children[1] as ComplexSelector
+    children => requireComplexSelector(children[1])
   );
   const DirectJessStaticSelector = node<SelectorList>(
     'DirectJessStaticSelector',
     parser({ trivia: whitespace }, sequence(g.DirectJessStaticComplex, many(g.DirectJessStaticSelectorTail))),
-    children => selist(...(children as ComplexSelector[]))
+    children => selist(...children.map(requireComplexSelector))
   );
   // The selector-list shared by ordinary selectors and `*[…]` is deliberately
   // limited to authored static pseudo arguments and typed An+B forms. CSS's
@@ -1147,7 +1347,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessSelectorCapture',
     sequence(literal('*['), g.DirectJessStaticSelector, literal(']')),
     (children) => {
-      const branches = (children[1] as SelectorList).selectors.map(complexCanonical);
+      const branches = requireSelectorList(children[1]).selectors.map(complexCanonical);
       return selectorCapture(branches, `*[${branches.join(', ')}]`);
     }
   );
@@ -1275,7 +1475,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       if (base.type !== 'VariableReference') {
         throw new TypeError('Direct Jess reference base must be a variable reference.');
       }
-      const tails = children.slice(1) as JessReferenceTail[];
+      const tails = children.slice(1).map(requireJessReferenceTail);
       return reference(base, tails.map(tail => tail.step), `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`);
     }
   );
@@ -1393,7 +1593,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessStaticAtNonOnlyKeyword = node<Keyword>(
     'DirectJessStaticAtNonOnlyKeyword',
     sequence(not(g.CssAstSyntaxQueryOnly), g.DirectJessKeyword),
-    children => requireValueNode(children.at(-1)) as Keyword
+    children => requireKeyword(children.at(-1))
   );
   const DirectJessStaticAtNonOnlyAtom = node<ValueNode>(
     'DirectJessStaticAtNonOnlyAtom',
@@ -1448,7 +1648,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessMediaPrelude = node<ValueNode | null>(
     'DirectJessMediaPrelude',
     choice(g.DirectJessMediaVariableExpression, g.DirectJessStaticAtPrelude),
-    children => children[0] as ValueNode | null
+    children => children[0] === null ? null : requireValueNode(children[0])
   );
   // Statement headers remain fully static. The documented deferred media form
   // is a block-only construct, so it cannot silently become `@media $(x);`.
@@ -1543,8 +1743,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       sequence(literal('('), g.DirectJessGeneralTemplate, literal(')'))
     ),
     children => children.length === 4
-      ? generalEnclosed('function', requireToken(children[0]).value, children[2] as Interpolation)
-      : generalEnclosed('paren', null, children[1] as Interpolation)
+      ? generalEnclosed('function', requireToken(children[0]).value, requireInterpolation(children[2]))
+      : generalEnclosed('paren', null, requireInterpolation(children[1]))
   );
   const DirectJessSupportsNot = node<Keyword>(
     'DirectJessSupportsNot',
@@ -1606,7 +1806,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessCharset = node<AtRuleStatement>(
     'DirectJessCharset',
     sequence(jessCharsetAtRuleName, g.DirectJessStaticQuoted, literal(';')),
-    children => atRuleStatement(requireToken(children[0]).value, children[1] as Quoted)
+    children => atRuleStatement(requireToken(children[0]).value, requireStaticQuoted(children[1]))
   );
   const DirectJessCssImportTarget = node<Quoted | Url>(
     'DirectJessCssImportTarget',
@@ -1621,7 +1821,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       if (children.length === 1) {
-        return children[0] as Quoted;
+        return requireStaticQuoted(children[0]);
       }
       if (children.length === 2) {
         return url(any(''));
@@ -1644,7 +1844,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessCssImport = node<AtRuleStatement>(
     'DirectJessCssImport',
     sequence(jessImportAtRuleName, g.DirectJessCssImportPrelude, literal(';')),
-    children => atRuleStatement(requireToken(children[0]).value, children[1] as ValueNode)
+    children => atRuleStatement(requireToken(children[0]).value, requireValueNode(children[1]))
   );
   const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
     'DirectJessSupportsAtRuleBlock',
@@ -1662,7 +1862,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     children => atRuleBlock(
       requireToken(children[0]).value,
-      children[1] as ValueNode,
+      requireValueNode(children[1]),
       requireStatements(children.slice(3, -1)
         .flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])
         .filter(child => !isToken(child)))
@@ -1740,7 +1940,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       many(choice(g.DirectJessComment, g.DirectJessStaticPropertyDescriptor)),
       literal('}')
     ),
-    children => atRuleBlock(requireToken(children[0]).value, children[1] as Keyword, requireStatements(children.slice(3, -1)))
+    children => atRuleBlock(requireToken(children[0]).value, requireKeyword(children[1]), requireStatements(children.slice(3, -1)))
   );
   // Keyframes already fit the canonical AtRuleBlock + Rule model.  Keep the
   // header and selector boundary static until Jess has typed interpolation for
@@ -1861,7 +2061,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessDeclaration = node<Declaration>(
     'DirectJessDeclaration',
     sequence(choice(DirectJessInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectJessValue, optional(g.DirectJessImportant), literal(';')),
-    children => decl(isToken(children[0]) ? requireToken(children[0]).value : children[0] as Interpolation, requireValueSlot(children[2]), null, children.includes(true))
+    children => decl(isToken(children[0]) ? requireToken(children[0]).value : requireInterpolation(children[0]), requireValueSlot(children[2]), null, children.includes(true))
   );
   const DirectJessAtRuleBlock = node<AtRuleBlock>(
     'DirectJessAtRuleBlock',
@@ -1877,8 +2077,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       literal('}')
     ),
     children => atRuleBlock(
-      (children[0] as JessAtRuleHeader).name,
-      (children[0] as JessAtRuleHeader).prelude,
+      requireJessAtRuleHeader(children[0]).name,
+      requireJessAtRuleHeader(children[0]).prelude,
       requireStatements(children.slice(2, -1)
         .flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])
         .filter(child => !isToken(child)))
@@ -1887,7 +2087,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessAtRuleStatement = node<AtRuleStatement>(
     'DirectJessAtRuleStatement',
     sequence(g.DirectJessStaticAtRuleHeader, literal(';')),
-    children => atRuleStatement((children[0] as JessAtRuleHeader).name, (children[0] as JessAtRuleHeader).prelude)
+    (children) => {
+      const header = requireJessAtRuleHeader(children[0]);
+      return atRuleStatement(header.name, header.prelude);
+    }
   );
   // An unknown CSS block is terminal authored syntax. Its shared recognition
   // artifact owns every balanced/string/comment boundary; the Jess reduction
@@ -2016,7 +2219,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     (children) => {
       if (typeof children[0] !== 'string') {
         requireExactToken(children[0], '[');
-        return { kind: 'bracket', names: [children[1] as string, children[3] as string] };
+        return { kind: 'bracket', names: [requireString(children[1]), requireString(children[3])] };
       }
       const names = children.filter((child): child is string => typeof child === 'string');
       if (names.length === 1) {
@@ -2069,7 +2272,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     children => forNode(
       requireValueNode(children[4]),
       requireStatements(children.slice(7, -1).flatMap(child => isMixinCallArray(child) ? child : [child])),
-      children[2] as ForBinding
+      requireForBinding(children[2])
     )
   );
   // `$if` conditions deliberately do *not* reuse the broader mixin-guard
@@ -2102,20 +2305,20 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       if (children.length === 1) {
-        return children[0] as GuardNode;
+        return requireGuardNode(children[0]);
       }
       return requireToken(children[0]).value === 'not'
-        ? { g: 'not', inner: children[2] as GuardNode }
-        : children[1] as GuardNode;
+        ? { g: 'not', inner: requireGuardNode(children[2]) }
+        : requireGuardNode(children[1]);
     }
   );
   const DirectJessIfGuardAnd = node<GuardNode>(
     'DirectJessIfGuardAnd',
     sequence(g.DirectJessIfGuardPrimary, oneOrMore(sequence(regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'and', left: result, right: children[index] as GuardNode };
+        result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -2124,9 +2327,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessIfGuardOr',
     sequence(g.DirectJessIfGuardPrimary, oneOrMore(sequence(regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfGuardPrimary))),
     (children) => {
-      let result = children[0] as GuardNode;
+      let result = requireGuardNode(children[0]);
       for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'or', left: result, right: children[index] as GuardNode };
+        result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
       }
       return result;
     }
@@ -2137,12 +2340,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     // form (`$if (true)`). Make the longer arm transactional so a missing
     // comparison operator returns recognition to the primary truth reduction.
     choice(attempt(g.DirectJessIfGuardCompare), g.DirectJessIfGuardAnd, g.DirectJessIfGuardOr, g.DirectJessIfGuardPrimary),
-    children => children[0] as GuardNode
+    children => requireGuardNode(children[0])
   );
   const DirectJessIfCondition = node<GuardNode>(
     'DirectJessIfCondition',
     sequence(literal('('), g.DirectJessIfGuard, literal(')')),
-    children => children[1] as GuardNode
+    children => requireGuardNode(children[1])
   );
   const DirectJessIfBody = node<Statement[]>(
     'DirectJessIfBody',
@@ -2160,12 +2363,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessElseIfBranch = node<IfBranch>(
     'DirectJessElseIfBranch',
     sequence(regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/), regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfCondition, g.DirectJessIfBody),
-    children => ({ guard: children[2] as GuardNode, body: children[3] as Statement[] })
+    children => ({ guard: requireGuardNode(children[2]), body: requireStatementList(children[3]) })
   );
   const DirectJessElseBranch = node<IfBranch>(
     'DirectJessElseBranch',
     sequence(regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfBody),
-    children => ({ guard: null, body: children[1] as Statement[] })
+    children => ({ guard: null, body: requireStatementList(children[1]) })
   );
   const DirectJessIf = node<If>(
     'DirectJessIf',
@@ -2177,21 +2380,21 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       optional(g.DirectJessElseBranch)
     ),
     (children) => {
-      const branches: IfBranch[] = [{ guard: children[1] as GuardNode, body: children[2] as Statement[] }];
+      const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
       for (const child of children.slice(3)) {
         if (Array.isArray(child)) {
-          branches.push(...child as IfBranch[]);
-        } else if (typeof child === 'object' && child !== null && 'guard' in child && 'body' in child) {
-          branches.push(child as IfBranch);
+          branches.push(...requireIfBranchArray(child));
+        } else if (isIfBranch(child)) {
+          branches.push(requireIfBranch(child));
         }
       }
-      return ifNode(branches as [IfBranch, ...IfBranch[]]);
+      return ifNode(requireIfBranchTuple(branches));
     }
   );
   const DirectJessCompound = node<CompoundSelector>(
     'DirectJessCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessInterpolatedSimple, g.DirectJessSimple))),
-    children => compoundSelectorOf(children as SimpleSelector[])
+    children => compoundSelectorOf(children.map(requireSimpleSelector))
   );
   const DirectJessComplexTail = node<JessComplexTail>(
     'DirectJessComplexTail',
@@ -2213,19 +2416,19 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessComplex',
     sequence(g.DirectJessCompound, many(g.DirectJessComplexTail)),
     children => complexSelector([
-      { compound: children[0] as CompoundSelector },
-      ...(children.slice(1) as JessComplexTail[]).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      { compound: requireCompound(children[0]) },
+      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
     ])
   );
   const DirectJessSelectorTail = node<ComplexSelector>(
     'DirectJessSelectorTail',
     sequence(literal(','), g.DirectJessComplex),
-    children => children[1] as ComplexSelector
+    children => requireComplexSelector(children[1])
   );
   const DirectJessSelector = node<SelectorList>(
     'DirectJessSelector',
     sequence(g.DirectJessComplex, many(g.DirectJessSelectorTail)),
-    children => selist(...(children as ComplexSelector[]))
+    children => selist(...children.map(requireComplexSelector))
   );
   const DirectJessApply = node<Apply>(
     'DirectJessApply',
@@ -2246,7 +2449,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       requireExactToken(children.at(-1), '}');
       const extensions = children.filter(isExtendInstructionArray).flat();
       const body = children.slice(2, -1).flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child]);
-      return rule(children[0] as SelectorList, requireStatements(body), extensions.length ? extensions : undefined);
+      return rule(requireSelectorList(children[0]), requireStatements(body), extensions.length ? extensions : undefined);
     }
   );
   const JessAstDocument = node<Stylesheet>(

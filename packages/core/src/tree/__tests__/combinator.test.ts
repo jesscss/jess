@@ -3,6 +3,7 @@ import { Context } from '../../context.js';
 import { co } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 import { OutputWriter } from '../util/print.js';
+import { isCombinator } from '../util/combinator.js';
 
 class CountingWriter extends OutputWriter {
   marks = 0;
@@ -24,6 +25,13 @@ describe('Combinator', () => {
 
   beforeEach(() => {
     context = new Context();
+  });
+
+  it('narrows only combinator strings and nodes', () => {
+    expect(isCombinator('.foo')).toBe(false);
+    expect(isCombinator('>')).toBe(true);
+    expect(isCombinator('||')).toBe(true);
+    expect(isCombinator(co('+'))).toBe(true);
   });
 
   it('renders combinator syntax through toTrimmedString()', () => {

@@ -7,19 +7,48 @@ before that runbook should be used. Features **deliberately deferred past this
 alpha** (config-lane URL/import handling, source maps, …) are sequenced in
 [`less-v5-release-plan.md`](./less-v5-release-plan.md).
 
-## Recorded direct-Less benchmark (superseded pending clean rerun; 2026-07-21)
+## Historical direct-Less benchmark (superseded; not an acceptance gate; 2026-07-21)
 
-These measurements are retained as reproducibility evidence, but are not the
-current release baseline. They were captured before the present migration
-worktree was clean and must be superseded by one matched, clean build before
-they can be used as an alpha gate. The public route is a built direct parser on
-Parseman `0.28.0`; older 20–30 ms source-driver and legacy-tree numbers measured
-different work and are not an A/B.
+These measurements are retained as reproducibility evidence only. They were
+captured before the present migration worktree was clean and must not be used
+as an alpha gate or current output oracle. In particular, the 122,390-byte
+`ea918f2d...` CSS and 1,797,831-byte parser artifact are superseded. The
+current clean baseline and the open performance-comparison blocker are recorded in the performance section of
+[`HANDOFF.md`](./future/core-architecture/HANDOFF.md). The public route is a
+built direct parser on Parseman `0.28.0`; older 20–30 ms source-driver and
+legacy-tree numbers measured different work and are not an A/B.
 
 | Phase | Protocol and identity | Result |
 | --- | --- | --- |
 | Direct parse | `packages/less-parser/lib/index.js`: SHA-256 `52d88a95557a821815d9f15f2d6ab05bbb5c64a55f0189fb97a050d7aea50285`, 1,797,831 bytes; `benchmark.less`, 106,802 bytes; Node v24.11.1 arm64; 20 warmups + 3×45 samples | 63.321 ms median (p25 61.776, p75 64.487); `Stylesheet` JSON SHA-256 `2ba996a1c46eb6d77ce8f1748b35d1135848c128104e00f46dadf7e9651c53bd` (957,390 bytes). |
 | Public compiler | `node scripts/measure-less-hotpath.mjs --fixture packages/jess/benchmark/benchmark.less --iterations 45 --warmup 20 --repeat 3 --trim 0.1 --json`; built Jess/Less-plugin chain | 77.492 ms round-median across 135 samples (usable 0.78% round RSD); CSS SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6` (122,390 bytes). |
+
+The remaining benchmark blocker is evidence quality, not a timing threshold:
+there is no valid matched Parseman 0.27/0.28 generated-bundle A/B yet. The
+current grammar requires `composeLeaf`, which the 0.27 package does not export,
+and generated reducer identifiers include the absolute worktree path. Until a
+matched, clean artifact protocol exists, timing movement is reported as a
+baseline only and never as a performance acceptance claim.
+
+## Current verification snapshot (2026-07-22)
+
+- Core behavior: the complete `@jesscss/core` suite is **3,192 passed, 9
+  skipped, and 2 todo**. The skipped/todo cases remain visible and are not
+  converted into passing evidence.
+- Source quality: the repository-wide production ESLint audit reports **0
+  errors and 317 warnings**. The warnings are tracked lint debt; there is no
+  current ESLint-error blocker.
+- Strict types: `pnpm run verify:types` reports **4 diagnostics**, all four
+  parser-entry `FusedRule` declaration mismatches against published Parseman
+  `0.28.0`. The prepared Parseman `0.28.1` release-branch fix removes these
+  four diagnostics, but it is not yet published or consumed here. No claim of
+  an all-package strict-type pass is valid until that package is published,
+  installed, and the parser packages are rebuilt.
+- Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
+  allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
+  excluded because it depends on `jess` and is not part of the runtime closure.
+  The allowlist and packed-consumer checks must still pass on the final
+  `2.0.0-alpha.9` snapshot.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
 instrumentation. Diagnostic coverage/trace uses a separate macro transform and
@@ -29,32 +58,38 @@ not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
 choice investigation is the opt-in stable choice-arm trace design in
 [`parseman-diagnostic-trace-design.md`](./future/parseman-diagnostic-trace-design.md).
 
-## External Less `5.0.0-alpha.1` package audit (2026-07-21)
+## External Less `5.0.0-alpha.1` package audit (2026-07-22)
 
 The sibling Less repository is on its `alpha` branch at `805c89e`, with the
-working tree carrying the intended v5 wrapper, CLI, publish-script, and test
-changes. Its package manifests are exactly `5.0.0-alpha.1`; the branch is not
-yet synchronized with `upstream/master` (`54` commits ahead, `32` behind), and
-the attempted merge has real conflicts in the v5/legacy build and test-data
-surfaces. Do not merge that upstream history blindly or discard the dirty
-alpha changes.
+working tree carrying the v5 wrapper, CLI, publish-script, and test changes.
+Its package manifests are exactly `5.0.0-alpha.1`. The branch is not yet
+synchronized with `master`: `git rev-list --left-right --count alpha...master`
+reports `54` commits ahead and `30` behind. The alpha worktree is dirty, so do
+not merge that history mechanically or discard its uncommitted release work.
 
-The built `lessc` smoke suite passes, as do the five publish-version/dependency
-rewrite tests and the package typecheck. The full Less node suite exits with six
-known v5 divergences (plugin-global/visitor behavior, advanced parser fixtures,
-URL/process-import behavior, and source-map artifacts); these remain classified
-known limitations rather than hidden or deleted failures.
+The package itself packs successfully: `npm pack --dry-run --json` reports
+`less@5.0.0-alpha.1` (12 files, 38,651 unpacked bytes). The built artifact also
+passes `npm run build`, `npm run typecheck`, and `npm run test:lessc`; the latter
+exercises built `lessc` version output, stdin, file output, sibling imports, and
+failure diagnostics. The five publish-version/dependency-rewrite tests pass.
 
-The first packed Less tarball exposed a release blocker: its local Jess
-dependencies were published as `link:` URLs, and a clean npm consumer fails
-with `EUNSUPPORTEDPROTOCOL`. The Less alpha publish script now requires an
-explicit `JESS_VERSION` (for example `2.0.0-alpha.9`), temporarily rewrites the
-four Jess runtime dependencies to that exact registry version for `npm publish`,
-and restores the local workspace-linked manifest afterward. Publication order
-is therefore: publish and clean-consumer-verify Jess `2.0.0-alpha.9` first,
-then publish Less with `JESS_VERSION=2.0.0-alpha.9`. The helper has a packed
-manifest proof; a real clean Less consumer remains pending the Jess alpha.9
-registry artifacts.
+A clean npm consumer cannot yet install the locally packed tarball: the local
+alpha manifest intentionally retains workspace `link:` dependencies, and npm
+fails with `EUNSUPPORTEDPROTOCOL` before installation. The alpha publish script
+requires an explicit `JESS_VERSION` (for example `2.0.0-alpha.9`) and temporarily
+rewrites the four Jess runtime dependencies to that exact registry version during
+`npm publish`, restoring the workspace-linked manifest afterward. Thus a real
+clean-consumer proof must wait until the corresponding Jess alpha artifacts are
+published; the helper test is not a substitute for that proof.
+
+The full Less node corpus is **not alpha-green**: `npm run test:node` exits `6`
+on this worktree, with failures spanning legacy plugin-global/registry and
+visitor assumptions, unsupported advanced parser fixtures, import/process-URL
+behavior, source-map artifacts, and other output divergences. These failures
+remain visible compatibility evidence; they must not be hidden or relabeled as
+passing behavior. Owner decision for this audit: **do not publish Less and do
+not change Jess `dev`**. Publication remains contingent on the controlled alpha
+workflow, the exact Jess dependency version, and the release gates above.
 
 With no Deno/plugin execution on `benchmark.less`, three repeated 8-run/3-warmup
 rounds measured Less alpha render medians of `99.44`, `98.56`, and `92.80` ms
@@ -69,6 +104,25 @@ identity are recorded, but they establish the current warm-path signal.
 - `[~]` in progress, with known gaps
 - `[?]` needs owner decision before implementation should proceed
 - `[x]` complete with evidence linked in this file
+
+## Per-change-slice review protocol
+
+Every delegated change slice gets two separate reviews before integration:
+
+1. Run the slice's focused behavior tests, build/type checks, ESLint, and any
+   applicable parser-boundary or aggressive-cutting verification.
+2. Review only that diff for over-engineering using the Ponytail rubric. A
+   callable Ponytail plugin invocation must be labeled **Ponytail invocation**
+   and include one finding per line using `delete`, `stdlib`, `native`,
+   `yagni`, or `shrink`, followed by `net: -N lines possible.`
+3. In this workspace/session, Ponytail is not exposed as a callable tool, so
+   an agent may instead report **Ponytail-style manual review**. That is an
+   explicitly manual application of the cached rubric, not a claim that the
+   plugin ran; it must still say `Lean already. Ship.` when no safe cut is
+   found.
+4. Disposition every finding before the slice is integrated. Ponytail is an
+   over-engineering review only; correctness, type, lint, performance, and
+   release gates remain independent and cannot be replaced by it.
 
 ## Alpha Release Gates
 
@@ -90,6 +144,15 @@ The alpha blocks only on these advertised correctness and release-safety gates:
   smoke/compatibility tests; and
 - a release-note known-limitations section that links the complete inventory and
   states the unsupported or divergent behavior honestly.
+- `[~]` **Strict source quality is blocking until the Parseman fix is
+  published.** The current integration candidate with published Parseman
+  `0.28.0` reports four strict parser-entry `FusedRule` diagnostics and no
+  core strict-type diagnostics. Prepared but unpublished Parseman `0.28.1`
+  removes those four declaration mismatches; after publication Jess must
+  install it, rebuild the parser packages, and rerun `verify:types`. The
+  production ESLint audit currently reports 0 errors and 317 warnings. The
+  warnings are tracked debt, not an ESLint-error gate, and neither the type
+  diagnostics nor warnings may be hidden by bundlers' `--noCheck` builds.
 - `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
   CSS-shaped `rgb()`/`rgba()`/`hsl()`/`hsla()` calls with three or more argument
   slots remain authored, verbatim CSS calls even under `functionMode: 'error'`;
@@ -141,6 +204,32 @@ are expressly advertised for a later alpha.
   owner acceptance before adding browser package exports or browser fixture
   parity. Jess should support tree-shaken browser builds, but the alpha should
   not imply that arbitrary `.less` files are parsed in the browser.
+
+## Controlled alpha refresh policy (verified 2026-07-22)
+
+`alpha` and `dev` have a common ancestor but both histories added the same
+working files afterward. A disposable rehearsal showed that
+`git merge --squash dev` from `alpha` produces a large add/add conflict surface;
+those conflicts are history topology, not a useful file-by-file review queue.
+Never ordinary-merge or rebase `dev` into `alpha`, and do not resolve that
+conflict set mechanically.
+
+Use a recovery ref and an isolated `alpha` worktree. Import the endpoint tree
+with a two-tree patch (`git diff --binary alpha..dev` followed by
+`git apply --index`), then restore only `packages/*/package.json` from the
+recovery ref. The package-manifest diff was verified to contain only the
+lockstep version fields, and `pnpm-lock.yaml` is unchanged; this preserves the
+alpha package versions without restoring alpha's weaker root release scripts.
+Keep `dev`'s root `package.json` (including strict `verify:types` and bounded
+production lint) and its newer HANDOFF/readiness/release evidence. Reconcile
+the alpha release note from the final gate output rather than restoring the
+older alpha docs wholesale.
+
+After the controlled tree cut, commit one refresh on `alpha`, verify a clean
+source tree, and rerun the complete `release:alpha:check` chain (build, strict
+types, production lint, Less-alpha, AST-v2 ratchet, baseline, aggressive
+cutting, allowlist, packed consumer, and publish dry-run) before any
+owner-approved publish.
 
 ## API Stabilization
 
@@ -291,6 +380,7 @@ remain explicit and be updated when its symptom or scope changes.
 | Callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Advanced Less callable, detached-ruleset, `each()`, namespace, and live/scoped lookup results can diverge. Missing mixins are still errors; ordinary unregistered `foo()` remains an optional CSS-function fallback, not a missing-mixin success. | Typed callable/reference lookup and binding semantics in core; graduate only with focused core proof plus byte-identical fixture output. |
 | Imports and conditional at-rules | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Some reference/remote/interpolated imports, process-import filtering, and media-query merging diverge. `@plugin` script execution itself is separately proved; its fixture mismatch shares the import/media rendering gap. | Context/plugin-owned import execution and typed media wrapping; no dialect-local resolver or source reparse. |
 | Parser/evaluator edge syntax | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Specific selector interpolation/pseudo, property interpolation, slashed-combinator, and permissive at-rule-prelude forms are rejected or render differently. | Extend the direct Parseman grammar and canonical AST only where the syntax has an agreed semantic shape; retain migration-policy questions as documented decisions. |
+| Less math/unit evaluation | `tests-config/units/no-strict/no-strict.less`, `tests-config/units/strict/strict-units.less` | `LessPlugin.setContext` normalization of legacy `language.less` `math: 0`/`strictUnits` is now proven by the focused strict-units test. The strict fixture is byte-identical. The remaining evaluator gap is structural bare-slash precedence in no-strict under eager `math: 0`/`mathMode: 'always'`; `parens-division` must preserve bare slash values. The focused test keeps exactly `test-division`, `t3`, and `t6` visible as mismatches. | Promote the existing typed `ValueSlot[]` structure without reparsing source bytes; retain strict-unit final validation after cancellation and strict incompatible `+`/`-` errors. The no-strict fixture's three named values must evaluate under its `language.less.math: 0` config before this row is green; equivalent bare slash values under `parens-division` remain authored. |
 | F5 lazy CSS color calls | `color-functions/operations`, `functions/functions` (the `color-functions/rgba` overload cases are green) | CSS-shaped un-operated rgb-family calls with three or more slots remain authored and byte-faithful; Less 4's goldens expect eager clamping or canonicalization for the two remaining boundary fixtures. Less one-/two-slot overloads are dispatched and tested. | Preserve the call-level demand boundary; only a consumer that needs a typed color may invoke the implementation. The focused F5 contract is 17/17. |
 | URL-option behavior | `static-urls`, `url-args` | Some configured static-URL/query-argument behavior differs from Less. The four rewrite/rootpath fixtures are byte-identical public-route passes, not limitations. | One Context/plugin-owned URL transform contract, with public compiler fixture proof; do not add a dialect-local resolver. |
 | Source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | Source-map annotations and emitted artifacts are not alpha-supported behavior. | Dedicated artifact harness and documented public source-map contract, rather than render-string assertions. |
@@ -342,6 +432,33 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
+- 2026-07-21 (historical baseline, superseded below): Made source quality an
+  explicit blocking alpha gate rather than inferring it from release builds
+  that use `--noCheck`. The dependency-ordered `verify:types` audit on the
+  then-current integration candidate with published Parseman 0.28.0 reported
+  245 diagnostics: 241 in core plus four parser-entry `FusedRule` diagnostics.
+  The bounded `lint:production` audit reported 1,357 findings. Those counts are
+  retained as historical burn-down evidence only.
+- 2026-07-22: Reconciled the current source-quality audit: core strict types
+  are clean, four parser-entry `FusedRule` diagnostics remain solely because
+  published Parseman 0.28.0 predates the prepared 0.28.1 declaration fix, and
+  production ESLint reports 0 errors and 317 warnings. The 18-package alpha
+  allowlist and intentionally excluded `rollup-plugin-jess` are now recorded
+  with the current package-closure evidence. The benchmark remains a baseline
+  investigation with no valid matched 0.27/0.28 performance A/B yet.
+- 2026-07-22: Re-audited the sibling Less `alpha` worktree. `less@5.0.0-alpha.1`
+  packs, built-artifact `lessc` smoke tests pass, and the five publish helper
+  tests plus package typecheck pass. A clean npm install is still blocked by the
+  publish-time `link:` dependency rewrite until Jess alpha artifacts exist in
+  the registry. The full Less node corpus exits 6 and is not alpha-green. The
+  owner decision is explicit: do not publish Less and do not change Jess `dev`
+  from this evidence-only audit.
+- 2026-07-21: Replaced the stale dirty/behind Less package snapshot with the
+  clean `5.0.0-alpha.1` release candidate at `1fc6d76b`. Verified
+  `HEAD..upstream/master=0`, `npm run test:lessc`, `npm run typecheck`, and the
+  five publish-version/dependency rewrite tests. Recorded the clean local Jess
+  `2.0.0-alpha.9` candidate at `3081a94fe` without claiming either registry
+  publication or final clean Less consumer verification.
 - 2026-06-19: Created this tracker after owner declared the current
   `benchmark.less` performance good enough for first Less alpha and identified
   API stabilization, expanded Less API tests, and CI guards as release blockers.

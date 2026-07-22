@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { defineFunction } from '../define-function.js';
 
+function invoke(fn: unknown, ...args: unknown[]): unknown {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected a callable function.');
+  }
+  return Reflect.apply(fn, undefined, args);
+}
+
 describe('defineFunction - Simple Test', () => {
   // Test positional internal function signature
   const testFunc = defineFunction(
@@ -19,11 +26,11 @@ describe('defineFunction - Simple Test', () => {
   });
 
   it('should work with record arguments', () => {
-    expect(testFunc({ name: 'hello', value: 42 } as any)).toBe('hello: 42');
+    expect(testFunc({ name: 'hello', value: 42 })).toBe('hello: 42');
   });
 
   it('should work with hybrid arguments', () => {
-    expect(testFunc('hello', { value: 42 } as any)).toBe('hello: 42');
+    expect(testFunc('hello', { value: 42 })).toBe('hello: 42');
   });
 
   it('should handle defaults', () => {
@@ -39,17 +46,17 @@ describe('defineFunction - Simple Test', () => {
     );
 
     expect(funcWithDefaults('test')).toBe('test: 100');
-    expect(funcWithDefaults({ name: 'test' } as any)).toBe('test: 100');
+    expect(funcWithDefaults({ name: 'test' })).toBe('test: 100');
     expect(funcWithDefaults('test', 42)).toBe('test: 42');
   });
 
   it('should validate types correctly', () => {
     expect(() => {
-      (testFunc as any)(123, 42);
+      invoke(testFunc, 123, 42);
     }).toThrow('Argument \'name\' must be of type \'string\'. Got: number');
 
     expect(() => {
-      (testFunc as any)('hello', 'not-a-number');
+      invoke(testFunc, 'hello', 'not-a-number');
     }).toThrow('Argument \'value\' must be of type \'number\'. Got: string');
   });
 });

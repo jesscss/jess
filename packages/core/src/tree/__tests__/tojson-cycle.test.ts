@@ -11,13 +11,15 @@ import { rules, decl } from '../index.js';
  */
 describe('toJSON cycle-safety', () => {
   it('does not blow the stack on the internal back-reference cycles', () => {
-    const r = rules([decl('color', 'red')]) as any;
+    const r = rules([decl('color', 'red')]);
     // Simulate the back-refs that parse/eval populate (all point back at `r`):
-    r._sourceRoot = r; // root back-ref (populated on parse trees)
-    r._treeContext = { root: r, sourceTrees: new Map([['x', r]]) }; // context → node
-    r._scopeFrame = { rulesNode: r, fallbackFrame: { rulesNode: r } }; // eval frame
-    r.parent = r;
-    r.sourceNode = r;
+    Object.assign(r, {
+      _sourceRoot: r,
+      _treeContext: { root: r, sourceTrees: new Map([['x', r]]) },
+      _scopeFrame: { rulesNode: r, fallbackFrame: { rulesNode: r } },
+      parent: r,
+      sourceNode: r
+    });
 
     expect(() => JSON.stringify(r)).not.toThrow();
 

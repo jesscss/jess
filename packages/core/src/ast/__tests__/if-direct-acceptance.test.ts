@@ -59,7 +59,7 @@ describe('If canonical AST emission', () => {
       rule('.before', [mixinCall('.paint')]),
       ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [mixin('b')] }]),
       mixin('c'),
-      rule('.after', [mixinCall('.paint')]),
+      rule('.after', [mixinCall('.paint')])
     ]);
 
     expect(serialize(document, { evaluator }).css).toBe(
@@ -74,10 +74,10 @@ describe('If canonical AST emission', () => {
       mixin('a'),
       ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
         mixin('b'),
-        ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [mixin('nested')] }]),
+        ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [mixin('nested')] }])
       ] }]),
       mixin('c'),
-      rule('.after', [mixinCall('.paint')]),
+      rule('.after', [mixinCall('.paint')])
     ]);
 
     expect(serialize(document, { evaluator }).css).toBe(
@@ -89,18 +89,18 @@ describe('If canonical AST emission', () => {
     const document = stylesheet([
       mixinDef('.outer', [{ name: 'tone' }], [
         ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
-          mixinDef('.inner', [], [decl('color', variableReference('tone', 'scoped'))]),
+          mixinDef('.inner', [], [decl('color', variableReference('tone', 'scoped'))])
         ] }]),
-        mixinCall('.inner'),
+        mixinCall('.inner')
       ]),
       mixinDef('.inner', [], [decl('fallback', keyword('root'))]),
       mixinDef('.base', [], [decl('color', keyword('base'))]),
       ifNode([{ guard: { g: 'truth', value: keyword('false') }, body: [
-        mixinDef('.base', [], [decl('color', keyword('wrong'))]),
+        mixinDef('.base', [], [decl('color', keyword('wrong'))])
       ] }]),
       rule('.one', [mixinCall('.outer', [{ value: keyword('red') }]), mixinCall('.base')]),
       rule('.two', [mixinCall('.outer', [{ value: keyword('blue') }]), mixinCall('.base')]),
-      rule('.after', [mixinCall('.inner')]),
+      rule('.after', [mixinCall('.inner')])
     ]);
 
     expect(serialize(document, { evaluator }).css).toBe(
@@ -114,16 +114,16 @@ describe('If canonical AST emission', () => {
     const document = stylesheet([
       rule('.outer', [
         ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
-          mixinDef('.nested', [], [decl('color', keyword('purple'))]),
+          mixinDef('.nested', [], [decl('color', keyword('purple'))])
         ] }]),
-        rule('.inner', [mixinCall('.nested')]),
+        rule('.inner', [mixinCall('.nested')])
       ]),
       atRuleBlock('@media', keyword('screen'), [
         ifNode([{ guard: { g: 'truth', value: keyword('true') }, body: [
-          mixinDef('.media', [], [decl('color', keyword('green'))]),
+          mixinDef('.media', [], [decl('color', keyword('green'))])
         ] }]),
-        rule('.card', [mixinCall('.media')]),
-      ]),
+        rule('.card', [mixinCall('.media')])
+      ])
     ]);
 
     expect(serialize(document, { evaluator }).css).toBe(

@@ -969,7 +969,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     options?: PrintOptions,
     evaluatedPrelude?: Node,
     evaluatedBody?: Rules
-  ): string {
+  ): MaybePromise<string> {
     const printState = isRenderBuffer(bufferOrOptions)
       ? prepareBufferPrintState(context, options)
       : prepareRenderPrintState(context, bufferOrOptions);
@@ -988,7 +988,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     try {
       const rendered = serializeRulesContainer(node, printState);
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderText(bufferOrOptions, rendered)
+        ? writeRenderTextResult(bufferOrOptions, rendered)
         : rendered;
     } finally {
       printState.atRuleHeaderNode = priorHeaderNode;
@@ -1003,7 +1003,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     context: Context,
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
-  ): string {
+  ): MaybePromise<string> {
     const resultNode = record.resultNode;
     const evaluatedBody = resultNode instanceof Nil
       ? undefined

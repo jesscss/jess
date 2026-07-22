@@ -1,21 +1,20 @@
-import { Dimension, defineFunction } from '@jesscss/core';
-import { mathHelper } from '../../util/mathHelper.js';
-import lodashRound from 'lodash-es/round.js';
+import { defineFunction, makeDimension, round as roundNumber } from '@jesscss/core/value';
 
-export default defineFunction(
-  'round',
-  function(value: Dimension | number, precision: Dimension | number = 0) {
-    return mathHelper(lodashRound, ['value', 'precision'], undefined, value, precision);
-  },
-  {
-    params: [{
-      name: 'value',
-      type: [Dimension, 'number']
-    }, {
-      name: 'precision',
-      type: [Dimension, 'number'],
-      optional: true,
-      default: 0
-    }]
-  }
-);
+/**
+ * Less `round(value, precision = 0)` and Sass `math.round(value)` over the
+ * canonical value domain. Sass's optional argument is retained as a harmless
+ * shared capability so Less keeps its documented precision behavior.
+ */
+const round = defineFunction('round', {
+  params: [
+    { name: 'value', kinds: ['Dimension'] },
+    { name: 'precision', kinds: ['Dimension'], optional: true }
+  ] as const,
+  body: (value, precision) => makeDimension(
+    roundNumber(value.number, precision?.number ?? 0),
+    value.unit
+  )
+});
+
+export { round };
+export default round;

@@ -1,8 +1,10 @@
-# Jess 2.0.0-alpha.9 — release notes
+# Jess 2.0.0-alpha.9 — draft release notes
 
-This is the user-facing changelog source for the validated `dev` → `alpha`
-squash snapshot. Publication remains a separate owner-approved action after the
-release checks pass.
+> **Draft for owner review.** This is the user-facing changelog source for the
+> next Jess alpha cut. The `dev` candidate has passed its pre-cut gates, but it
+> is not publishable until the controlled `dev` → `alpha` snapshot has passed
+> those gates again. Keep this file in that snapshot and revise it only from
+> release-gate evidence.
 
 ## Highlights
 
@@ -38,6 +40,24 @@ The candidate alpha publish set includes `@jesscss/jess-parser` and
 configured Context document/inlining plugin; Jess does not treat a CSS entry as
 a separate compilation mode.
 
+### Candidate verification snapshot
+
+The validated `dev` candidate resolves the next registry version as
+`2.0.0-alpha.9`. Its publishable runtime closure contains 18 packages; the
+closure validator and packed-consumer installation proof both pass.
+
+The pre-cut gate run passed the release build, strict production types,
+production lint (no errors), Less-alpha public API and fixture gates, Jess
+parser/plugin/Rollup tests, AST-v2 production-route ratchet, baseline suite,
+aggressive-cutting release review, package-closure validation, and packed
+consumer proof. Parseman `0.28.1` is the published dependency used by that
+candidate.
+
+The complete Less corpus currently reports 84 byte-identical passes, 32 output
+mismatches, 15 known errors, zero timeouts, and zero crashes. Seven of the
+output mismatches do not yet have dedicated fixture markers; they remain visible
+in the corpus report and are release-note follow-up work, not passing evidence.
+
 ### Public API changes
 
 - Use each dialect package's stable `parse(source)` API for a canonical
@@ -70,21 +90,34 @@ This is a deliberately breaking alpha architecture change.
   alpha.9 must be published first; the Less release script then receives
   `JESS_VERSION=2.0.0-alpha.9` so its local workspace links are rewritten to
   registry dependencies only for the publish window.
-- It does not claim complete Less 4.x corpus parity. The first alpha ships only
-  after its advertised public-route, package, CLI, and core-safety gates pass;
-  the 30 runnable upstream divergences are published as known limitations, not
-  hidden test exclusions. See [Less v5 alpha readiness](../less-v5-alpha-readiness.md)
-  for every fixture, its symptom/scope, and follow-up.
+- It does not claim complete Less 4.x corpus parity. The current full-corpus
+  result is 84 byte-identical passes, 32 output mismatches, and 15 known
+  errors; seven output mismatches still need dedicated fixture markers. These
+  remain visible compatibility work, not hidden passing evidence. See
+  [Less v5 alpha readiness](../less-v5-alpha-readiness.md) for the tracked
+  inventory and follow-up.
+- Less v5 intentionally removes backtick JavaScript evaluation, IE
+  `progid:DXImageTransform` filters, the legacy fixture's non-Less `$list`
+  parameter/reference syntax, legacy `@plugin` tree visitor hooks
+  (`isPreEvalVisitor`, `manager.addVisitor`, `visitors.Visitor`), and dash-only
+  variable names (`@-` and `@{-}`). The corresponding Less 4 line emits a
+  deprecation warning for the dash-only variable forms; alpha.9 does not retain
+  an AST-v2 compatibility shim for any of these removals.
+- Other known Less-alpha limitations include source-map artifacts, selected URL
+  and import configuration behavior, legacy CommonJS `@plugin` graphs, and
+  documented rendering differences such as media-query merging. They remain
+  classified corpus results rather than dialect-specific engine fallbacks.
 - It makes no parser-performance claim. The direct parser baseline and Parseman
   0.28 regression work remain release-gated and are measured separately.
 - It does not publish from local workspace links. Parseman 0.28 must be
   published, consumed through a real package version, and proven in a clean
   consumer install before this Jess alpha can ship.
 
-## Release-gate status
+## Before publishing
 
-The current candidate is a squash snapshot of the validated `dev` tree. Do not
-ordinary-merge or rebase `dev` into `alpha`. From the squashed `alpha` snapshot,
-run the documented package, parser/plugin, Less-alpha, baseline,
-cutting-review, CLI, and clean-consumer gates before an owner-approved
-publication of `2.0.0-alpha.9`.
+The release owner must verify the exact candidate on `dev`, update these notes
+from the resulting evidence, then squash that validated snapshot onto `alpha`.
+Do not ordinary-merge or rebase `dev` into `alpha`. From the squashed `alpha`
+snapshot, run the documented package, parser/plugin, Less-alpha, baseline,
+cutting-review, CLI, and clean-consumer gates before `release:alpha` resolves
+and publishes `2.0.0-alpha.9`.

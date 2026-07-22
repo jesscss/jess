@@ -1,6 +1,6 @@
 import { BitSetLibrary, isSubsetOf } from '../bitset.js';
 import { keySetOf, visibleKeySetOf } from '../selector-analysis.js';
-import { compound, el, sel, pseudo, co, num, type ComplexSelector } from '../../index.js';
+import { compound, el, sel, pseudo, co, num, ComplexSelector } from '../../index.js';
 import { Context } from '../../../context.js';
 
 describe('BitSet', () => {
@@ -116,8 +116,11 @@ describe('BitSets and selectors', () => {
   it('calculates subset keysets of complex selectors', async () => {
     let sel1 = sel([compound([el('a'), el('.foo')]), co('>'), el('.bar'), co('+'), el('.baz')]);
     let sel2 = sel([el('.foo'), co('>'), el('.bar'), co('+'), el('.baz')]);
-    let evald1 = await sel1.eval(context) as ComplexSelector;
-    let evald2 = await sel2.eval(context) as ComplexSelector;
+    const evald1 = await sel1.eval(context);
+    const evald2 = await sel2.eval(context);
+    if (!(evald1 instanceof ComplexSelector) || !(evald2 instanceof ComplexSelector)) {
+      throw new TypeError('Expected complex selector evaluation results.');
+    }
     expect(isSubsetOf(keySetOf(evald2), keySetOf(evald1))).toBe(true);
     /** Larger one doesn't fit into smaller */
     expect(isSubsetOf(keySetOf(evald1), keySetOf(evald2))).toBe(false);

@@ -98,8 +98,8 @@ importers:
         specifier: ^2.6.1
         version: 2.6.1
       parseman:
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       puppeteer:
         specifier: ^19.10.1
         version: 19.11.1(typescript@7.0.1-rc)
@@ -234,8 +234,8 @@ importers:
         specifier: workspace:*
         version: link:../_shared
       parseman:
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -357,8 +357,8 @@ importers:
   packages/internal-css-recognition:
     devDependencies:
       parseman:
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       tsdown:
         specifier: ~0.21.7
         version: 0.21.7(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(typescript@7.0.1-rc)
@@ -441,8 +441,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.5
       parseman:
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
 
   packages/jess-plugin:
     dependencies:
@@ -632,8 +632,8 @@ importers:
         specifier: ^4.6.3
         version: 4.6.3
       parseman:
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
@@ -669,8 +669,8 @@ importers:
         specifier: workspace:*
         version: link:../internal-css-recognition
       parseman:
-        specifier: 0.28.0
-        version: 0.28.0
+        specifier: 0.28.1
+        version: 0.28.1
       sass-spec:
         specifier: github:sass/sass-spec
         version: github.com/sass/sass-spec/f282e3844db9889a0747b810898f67571272e8e5(@babel/core@7.28.6)
@@ -17258,8 +17258,8 @@ packages:
     dependencies:
       entities: 6.0.1
 
-  /parseman@0.28.0:
-    resolution: {integrity: sha512-dupz0FA16uDc0P0fVqUhppp1Ur5o1eXDiG3g9wgGN6/Dhy4nbkobVMc3O50/kGD0Svo7nz7Q6HXhix0fFAvU6Q==}
+  /parseman@0.28.1:
+    resolution: {integrity: sha512-Nyzt8Em9aSJVbywFkY4/LRlb+fiXsFRSFGOwBtZ10o45yhlDyHjFO/fnVuDCEykhNVJv1u+Nd8ktoM4GhCtREA==}
     dependencies:
       magic-string: 0.30.21
       oxc-parser: 0.137.0

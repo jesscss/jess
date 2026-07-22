@@ -256,6 +256,32 @@ describe('Ampersand', () => {
     }
   });
 
+  it('derives appended ampersands from a parser-delivered selector array', async () => {
+    const parentSelector = [
+      '.one',
+      sel([el('.two')])
+    ];
+    const frame = ruleset({
+      selector: parentSelector,
+      rules: []
+    });
+    context.rulesetFrames.push(frame);
+
+    const resolved = await amp('-bar').resolve(context);
+
+    expect(resolved.toTrimmedString()).toBeString(`
+      .one-bar,
+      .two-bar
+    `);
+    expect(frame.selector).toBe(parentSelector);
+
+    const liveAmpersand = new Ampersand({ selectorContainer: frame });
+    expect(liveAmpersand.getKeySetContainerSelector()).toBe(parentSelector);
+    const keySet = selectorAnalysisFor(context.selectorBits).keySet(liveAmpersand);
+    expect(context.selectorBits.hasBit(keySet, '.one')).toBe(true);
+    expect(context.selectorBits.hasBit(keySet, '.two')).toBe(true);
+  });
+
   it('derives appended framed complex value without reparenting source selector children', async () => {
     const frame = ruleset({
       selector: sel([el('.foo'), co(' '), el('.bar')]),

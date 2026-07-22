@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { execSync, spawnSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
-import { stagedAddedLines, stagedLintMessages } from './staged-lint.mjs';
+import { stagedAddedLines, stagedLintableFiles, stagedLintMessages } from './staged-lint.mjs';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
@@ -42,7 +42,9 @@ function currentBranchName() {
 function aggressiveReviewMode() {
   return MODE === 'staged' && currentBranchName() === 'alpha'
     ? 'release'
-    : MODE;
+    : MODE === 'upstream'
+      ? undefined
+      : MODE;
 }
 
 function run(command, args, packageDir, options = {}) {
@@ -189,13 +191,6 @@ function packageDirs(files) {
   return [...unique].sort();
 }
 
-function stagedLintableFiles(files, packageDir) {
-  const prefix = `${packageDir}/`;
-  return files.filter(file =>
-    file.startsWith(prefix) && /\.(?:[cm]?js|[cm]?ts|tsx)$/.test(file)
-  );
-}
-
 function hasCodeImpactingChanges(files, packageDir) {
   const prefix = `${packageDir}/`;
   return files.some((file) => {
@@ -250,40 +245,44 @@ function runLintForFiles(packageDir, files) {
 }
 
 function stagedHunkLines(file) {
-  return stagedAddedLines(execSync(`git diff --cached --unified=0 -- ${JSON.stringify(file)}`, {
+  return stagedAddedLines(execFileSync('git', ['diff', '--cached', '--unified=0', '--', file], {
     cwd: ROOT,
     encoding: 'utf8'
   }));
 }
 
-function runStagedLintForFiles(packageDir, files) {
+async function runStagedLintForFiles(files) {
   if (files.length === 0) {
-    console.log(`- skip lint for ${packageDir} (no staged JS/TS files)`);
+    console.log('- skip staged lint (no staged files in the ESLint policy surface)');
     return;
   }
-  const rendered = `pnpm exec eslint --format json ${files.join(' ')}`;
-  console.log(`\n$ ${rendered}`);
-  const result = spawnSync('pnpm', ['exec', 'eslint', '--format', 'json', ...files], {
-    cwd: ROOT,
-    encoding: 'utf8'
-  });
-  const stdout = result.stdout ?? '';
-  const stderr = result.stderr ?? '';
-  if (result.status === 0) {
-    return;
-  }
+  console.log(`\n==> ESLint staged API (${files.length} files)`);
   let reports;
   try {
-    reports = JSON.parse(stdout);
-  } catch {
-    // A broken ESLint invocation/config must still block; only normal JSON
-    // diagnostics are eligible for staged-line filtering.
-    failures.push({ packageDir, command: rendered, status: result.status ?? 1, output: [stdout, stderr].filter(Boolean).join('\n').trim() });
-    process.exit(result.status ?? 1);
+    const { lintStagedFiles } = await import('./staged-eslint.mjs');
+    reports = await lintStagedFiles(files, { cwd: ROOT });
+  } catch (error) {
+    // A broken ESLint invocation/config means no complete diagnostic result was
+    // available, so it must block rather than be treated as historical debt.
+    const output = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    failures.push({ packageDir: 'eslint', command: 'ESLint staged API', status: 1, output });
+    console.error('ESLint staged API failed before diagnostics could be collected.');
+    console.error(output);
+    process.exit(1);
   }
   const actionable = reports.flatMap((report) => {
     const relative = path.relative(ROOT, report.filePath).split(path.sep).join('/');
-    return stagedLintMessages(report.messages ?? [], stagedHunkLines(relative)).map(message => ({
+    const messages = report.messages ?? [];
+    const filtered = stagedLintMessages(messages, stagedHunkLines(relative));
+    if (report.fatalErrorCount > 0 && !filtered.some(message => message.fatal === true)) {
+      filtered.push({
+        line: 0,
+        column: 0,
+        fatal: true,
+        message: 'ESLint reported a fatal diagnostic without a corresponding message.'
+      });
+    }
+    return filtered.map(message => ({
       filePath: relative,
       ...message
     }));
@@ -295,8 +294,8 @@ function runStagedLintForFiles(packageDir, files) {
   for (const message of actionable) {
     console.error(`${message.filePath}:${message.line}:${message.column} ${message.message}${message.ruleId ? ` (${message.ruleId})` : ''}`);
   }
-  failures.push({ packageDir, command: rendered, status: result.status ?? 1, output: JSON.stringify(actionable) });
-  process.exit(result.status ?? 1);
+  failures.push({ packageDir: 'eslint', command: 'ESLint staged API', status: 1, output: JSON.stringify(actionable) });
+  process.exit(1);
 }
 
 function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyRun) {
@@ -325,7 +324,13 @@ function runVerifyBaseline() {
 
 function runAggressiveCuttingReview({ mode, skipExecutableEvidence = false } = {}) {
   console.log('\n==> Running verify:aggressive-cutting-review (hot-path cost/admission contracts)');
-  const args = ['run', 'verify:aggressive-cutting-review', '--', `--mode=${mode}`];
+  const args = ['run', 'verify:aggressive-cutting-review'];
+  if (mode || skipExecutableEvidence) {
+    args.push('--');
+  }
+  if (mode) {
+    args.push(`--mode=${mode}`);
+  }
   if (skipExecutableEvidence) {
     args.push('--skip-executable-evidence');
   }
@@ -361,6 +366,10 @@ runAggressiveCuttingReview({
   skipExecutableEvidence: MODE !== 'upstream'
 });
 
+if (MODE === 'staged') {
+  await runStagedLintForFiles(stagedLintableFiles(files));
+}
+
 if (changedPackages.length === 0) {
   console.log(MODE === 'upstream'
     ? 'No package changes against upstream. Skipping package checks.'
@@ -383,7 +392,7 @@ for (const packageDir of changedPackages) {
   console.log(`\n==> ${packageDir}`);
   if (MODE === 'upstream') {
     runRequiredTestsForPackage(packageDir, scripts, files, baselineRan);
-    const lintableFiles = stagedLintableFiles(files, packageDir);
+    const lintableFiles = stagedLintableFiles(files).filter(file => file.startsWith(`${packageDir}/`));
     if (!hasCodeImpactingChanges(files, packageDir)) {
       console.log(`- skip typecheck/build/lint for ${packageDir} (no code-impacting changes)`);
       continue;
@@ -391,8 +400,6 @@ for (const packageDir of changedPackages) {
     runTypecheckForPackage(packageDir, scripts);
     runBuildForPackage(packageDir, scripts);
     runLintForFiles(packageDir, lintableFiles);
-  } else {
-    runStagedLintForFiles(packageDir, stagedLintableFiles(files, packageDir));
   }
 }
 

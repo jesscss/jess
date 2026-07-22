@@ -142,8 +142,6 @@ const lessCustomOuterContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\ufff
 const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\]'"\/\\])+|\/(?!\*)/);
 const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const lessCustomDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
-
-
 export const cssAstSyntax = rules(_g => ({
   CssAstSyntaxProperty: propertyName,
   CssAstSyntaxKeyword: keywordValue,

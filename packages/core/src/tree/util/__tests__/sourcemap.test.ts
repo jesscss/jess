@@ -19,7 +19,8 @@ describe('source map segments', () => {
     });
     const root = rules([
       decl({ name: 'color', value: any('red') })
-    ], undefined, undefined, treeContext);
+    ]);
+    root._treeContext = treeContext;
     const firstRule = root.rules[0];
     if (isNode(firstRule, N.Declaration)) {
       setSourceSpan(firstRule, spanOf(0, 11)); // offset 0 → line 0, col 0
@@ -38,7 +39,8 @@ describe('source map segments', () => {
     const treeContext = new TreeContext({
       file: { name: 'mapped.jess', path: '.', fullPath: '/abs/mapped.jess', source: 'color: red;' }
     });
-    const root = rules([decl({ name: 'color', value: any('red') })], undefined, undefined, treeContext);
+    const root = rules([decl({ name: 'color', value: any('red') })]);
+    root._treeContext = treeContext;
     setSourceSpan(root.rules[0]!, spanOf(0, 11));
 
     expect(root.toString(getPrintOptions({ writer, sourceMap: true }))).toBe('color: red;\n');
@@ -62,9 +64,13 @@ describe('source map segments', () => {
           decl({ name: 'x', value: any('y') })
         ]
       })
-    ], undefined, undefined, treeContext);
-    const rs = (nested.rules[0] as any).rules;
-    setSourceSpan(rs[0] as any, spanOf(7, 11)); // `x: y;` at offset 7 → line 1
+    ]);
+    nested._treeContext = treeContext;
+    const nestedRule = nested.rules[0];
+    if (!isNode(nestedRule, N.Ruleset) || !nestedRule.rules[0]) {
+      throw new Error('expected a nested ruleset declaration');
+    }
+    setSourceSpan(nestedRule.rules[0], spanOf(7, 11)); // `x: y;` at offset 7 → line 1
     const css = nested.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('.a {\n  x: y;\n}\n');
     const segs = w.getSegments();
@@ -89,7 +95,8 @@ describe('source map segments', () => {
     const b = decl({ name: 'b', value: any('2') });
     setSourceSpan(a, spanOf(0, 5)); // original line 0
     setSourceSpan(b, spanOf(8, 13)); // original line 3 (after "a: 1;\n\n\n")
-    const root = rules([a, b], undefined, undefined, treeContext);
+    const root = rules([a, b]);
+    root._treeContext = treeContext;
     const css = root.toString(getPrintOptions({ writer: w }));
     expect(css).toBe('a: 1;\n' + 'b: 2;\n');
     const lines = css.split('\n');
@@ -111,16 +118,26 @@ describe('source map segments', () => {
     });
     const left = rules([
       decl({ name: 'a', value: any('1') })
-    ], undefined, undefined, leftContext);
-    setSourceSpan(left.rules[0] as any, spanOf(0, 5));
+    ]);
+    left._treeContext = leftContext;
+    const leftRule = left.rules[0];
+    if (!leftRule) {
+      throw new Error('expected a left declaration');
+    }
+    setSourceSpan(leftRule, spanOf(0, 5));
 
     const rightContext = new TreeContext({
       file: { name: 'right.jess', path: '.', fullPath: '/abs/right.jess', source: 'b: 2;' }
     });
     const right = rules([
       decl({ name: 'b', value: any('2') })
-    ], undefined, undefined, rightContext);
-    setSourceSpan(right.rules[0] as any, spanOf(0, 5));
+    ]);
+    right._treeContext = rightContext;
+    const rightRule = right.rules[0];
+    if (!rightRule) {
+      throw new Error('expected a right declaration');
+    }
+    setSourceSpan(rightRule, spanOf(0, 5));
 
     const root = rules([left, right]);
     const css = root.toString(getPrintOptions({ writer: w }));

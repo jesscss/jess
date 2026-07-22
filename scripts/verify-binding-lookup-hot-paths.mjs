@@ -288,11 +288,11 @@ for (const name of [
   }
 }
 for (const [name, token] of [
-  ['readFunctionRulesLookupHandle', "handle.lookupType !== 'function'"],
-  ['readCallableRulesLookupHandle', "handle.lookupType !== 'mixin'"],
-  ['tryReadSourceStaticFunctionRulesLookupHandle', "handle.lookupType !== 'function'"],
-  ['tryReadSourceStaticMixinRulesLookupHandle', "handle.lookupType !== 'mixin'"],
-  ['tryReadSourceStaticMixinRulesetRulesLookupHandle', "handle.lookupType !== 'mixin-ruleset'"]
+  ['readFunctionRulesLookupHandle', 'handle.lookupType !== \'function\''],
+  ['readCallableRulesLookupHandle', 'handle.lookupType !== \'mixin\''],
+  ['tryReadSourceStaticFunctionRulesLookupHandle', 'handle.lookupType !== \'function\''],
+  ['tryReadSourceStaticMixinRulesLookupHandle', 'handle.lookupType !== \'mixin\''],
+  ['tryReadSourceStaticMixinRulesetRulesLookupHandle', 'handle.lookupType !== \'mixin-ruleset\'']
 ]) {
   const body = getFunctionSource(referenceSource, name);
   if (body === undefined) {

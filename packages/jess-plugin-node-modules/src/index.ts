@@ -1,6 +1,5 @@
 import {
   type Plugin,
-  type PluginInterface,
   AbstractPlugin
 } from '@jesscss/core';
 import { createRequire } from 'node:module';
@@ -150,8 +149,8 @@ export class NodeModulesPlugin extends AbstractPlugin {
     try {
       // Load the module using require
 
-      const module = this._require(resolvedPath) as Record<string, unknown>;
-      return module || null;
+      const module: unknown = this._require(resolvedPath);
+      return isRecord(module) ? module : null;
     } catch {
       // If loading fails, return null
       return null;
@@ -192,7 +191,10 @@ export class NodeModulesPlugin extends AbstractPlugin {
     // We can't directly resolve from absolute paths, but we can try to require it
     if (absoluteFilePath.includes('node_modules')) {
       try {
-        const module = this._require(absoluteFilePath) as Record<string, unknown>;
+        const module: unknown = this._require(absoluteFilePath);
+        if (!isRecord(module)) {
+          throw new TypeError(`Module "${absoluteFilePath}" did not export an object.`);
+        }
         return module;
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
@@ -211,6 +213,10 @@ function isBareModuleSpecifier(candidate: string): boolean {
     && !candidate.startsWith('../')
     && !candidate.startsWith('/')
     && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(candidate);
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return value !== null && typeof value === 'object';
 }
 
 const nodeModulesPlugin = ((opts?: NodeModulesPluginOptions) => {

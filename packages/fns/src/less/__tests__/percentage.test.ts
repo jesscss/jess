@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeDimension } from '@jesscss/core/value';
+import { builtinLessFns } from '../../builtins/index.js';
 import percentage from '../percentage.js';
 
 describe('percentage()', () => {
@@ -11,5 +12,9 @@ describe('percentage()', () => {
     expect(fromNumber.unit).toBe('%');
     expect(fromDimension.number).toBe(50);
     expect(fromDimension.unit).toBe('%');
+  });
+
+  it('is the same canonical function registered for the Less evaluator', () => {
+    expect(builtinLessFns.find(fn => fn.name === 'percentage')).toBe(percentage);
   });
 });

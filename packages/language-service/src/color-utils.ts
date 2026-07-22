@@ -166,6 +166,11 @@ export function colorToLSP(color: ParsedColor): LSPColor {
   return color;
 }
 
+function toTwoDigitHex(value: number): string {
+  const hex = Math.round(value).toString(16);
+  return hex.length === 1 ? `0${hex}` : hex;
+}
+
 function hexColor(text: string): ParsedColor | null {
   const hex = text.startsWith('#') ? text.slice(1) : text;
   if (![3, 4, 6, 8].includes(hex.length) || !/^[0-9a-f]+$/i.test(hex)) {

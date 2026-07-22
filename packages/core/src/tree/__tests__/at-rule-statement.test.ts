@@ -3,7 +3,7 @@ import { Context } from '../../context.js';
 import {
   any,
   atrulestatement,
-  quoted,
+  quoted
 } from '../index.js';
 import { createRenderBuffer } from '../util/render-buffer.js';
 

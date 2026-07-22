@@ -11,7 +11,13 @@ import zip from '../list/zip.js';
 import join from '../list/join.js';
 
 const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: ValueObj) => value.bytes };
-const call = (fn: Fn, ...args: ValueObj[]): ValueObj => fn(makeList(args, ','), ctx) as ValueObj;
+const call = (fn: Fn, ...args: ValueObj[]): ValueObj => {
+  const result = fn(makeList(args, ','), ctx);
+  if (result === undefined) {
+    throw new TypeError('Expected Sass list function to return a value.');
+  }
+  return result;
+};
 const values = (value: ValueObj): readonly ValueObj[] => value.type === 'List' ? value.value : value.type === 'Block' && value.inner.type === 'List' ? value.inner.value : [];
 
 describe('Sass list functions on the AST-v2 value domain', () => {
@@ -54,10 +60,14 @@ describe('Sass list functions on the AST-v2 value domain', () => {
   });
 
   it('uses the variadic registry contract for zip', () => {
-    const result = zip(makeList([
+    const value = zip(makeList([
       makeList([makeDimension(1), makeDimension(2)], ' '),
       makeList([makeDimension(3), makeDimension(4)], ' ')
-    ], ','), ctx) as List;
+    ], ','), ctx);
+    if (value.type !== 'List') {
+      throw new TypeError('Expected zip() to return a list.');
+    }
+    const result = value;
     expect(result).toMatchObject({ type: 'List', sep: ',' });
     expect(values(result)).toHaveLength(2);
     expect(values(values(result)[0]!)).toMatchObject([{ number: 1 }, { number: 3 }]);

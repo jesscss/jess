@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ESLint } from 'eslint';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const handoffPath = resolve(root, 'docs/future/core-architecture/HANDOFF.md');
@@ -13,7 +14,7 @@ const reviewMode = process.argv.includes('--mode=staged')
   ? 'staged'
   : process.argv.includes('--mode=release')
     ? 'release'
-  : 'working';
+    : 'working';
 const unsupportedAggregateMode = process.argv.includes('--mode=upstream');
 const reviewedSourceRoots = [
   'packages/core/src',
@@ -23,6 +24,16 @@ const reviewedSourceRoots = [
 ];
 const hotPathRoots = reviewedSourceRoots.map(rootPath => `${rootPath}/`);
 const parserRuntimeDebtPath = 'scripts/parser-runtime-boundary-debt.json';
+const approvedQualityFixRules = new Set([
+  'curly',
+  '@stylistic/arrow-parens',
+  '@stylistic/comma-dangle',
+  '@stylistic/block-spacing',
+  '@stylistic/brace-style',
+  '@stylistic/indent',
+  '@stylistic/no-trailing-spaces'
+]);
+const qualitySensitivePath = /(^|\/)(?:eslint\.config\.[^/]+|package\.json|pnpm-lock\.yaml)$/u;
 
 function sourceFiles(rootPath) {
   const found = [];
@@ -140,6 +151,103 @@ function git(args) {
     const stderr = error?.stderr?.toString?.() ?? '';
     throw new Error(stderr || `git ${args.join(' ')} failed`);
   }
+}
+
+function stagedStatusEntries() {
+  return git(['diff', '--cached', '--name-status', '--diff-filter=ACDMRTUXB', '--'])
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [status, ...paths] = line.split('\t');
+      return { status, paths };
+    });
+}
+
+function dirtyWorkingPaths() {
+  return git(['status', '--porcelain=v1', '--untracked-files=all'])
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((line) => {
+      const rawPath = line.slice(3);
+      const renameParts = rawPath.split(' -> ');
+      return renameParts.length === 2 ? renameParts : [rawPath];
+    });
+}
+
+function qualityOnlyStagedPaths(entries, unstagedPaths, dirtyPaths) {
+  if (entries.length === 0) {
+    return undefined;
+  }
+  const paths = [];
+  for (const entry of entries) {
+    if (entry.status !== 'M' || entry.paths.length !== 1) {
+      return undefined;
+    }
+    const path = entry.paths[0];
+    if (
+      !reviewedSourceRoots.some(sourceRoot => path.startsWith(`${sourceRoot}/`))
+      || !/\.[cm]?[jt]sx?$/u.test(path)
+    ) {
+      return undefined;
+    }
+    paths.push(path);
+  }
+  if (paths.some(path => unstagedPaths.includes(path))) {
+    return undefined;
+  }
+  if (dirtyPaths.some(path => qualitySensitivePath.test(path))) {
+    return undefined;
+  }
+  return paths;
+}
+
+async function reproduceApprovedQualityFixes(files, readBefore, readTarget, lintText) {
+  let fixed = false;
+  for (const file of files) {
+    const before = readBefore(file);
+    const target = readTarget(file);
+    const result = await lintText(before, file);
+    const output = result.output ?? before;
+    if (
+      result.fatalErrorCount !== 0
+      || result.errorCount !== 0
+      || output !== target
+    ) {
+      return false;
+    }
+    fixed ||= output !== before;
+  }
+  return fixed;
+}
+
+async function proveStagedQualityOnlyFix(mode, snapshots, options = {}) {
+  if (mode !== 'staged') {
+    return false;
+  }
+  const entries = options.entries ?? stagedStatusEntries();
+  const dirtyPaths = options.dirtyPaths ?? dirtyWorkingPaths();
+  const unstagedPaths = options.unstagedPaths
+    ?? (options.entries
+      ? snapshots.unstaged
+      : git(['diff', '--name-only', '--']).split('\n').filter(Boolean));
+  const files = qualityOnlyStagedPaths(entries, unstagedPaths, dirtyPaths);
+  if (!files) {
+    return false;
+  }
+  const eslint = options.eslint ?? new ESLint({
+    cwd: root,
+    fix: message => approvedQualityFixRules.has(message.ruleId)
+  });
+  const lintText = options.lintText ?? (async (source, file) => {
+    const [result] = await eslint.lintText(source, {
+      filePath: resolve(root, file),
+      warnIgnored: true
+    });
+    return result;
+  });
+  const readBefore = options.readBefore ?? (file => git(['show', `HEAD:${file}`]));
+  const readTarget = options.readTarget ?? (file => git(['show', `:${file}`]));
+  return reproduceApprovedQualityFixes(files, readBefore, readTarget, lintText);
 }
 
 function reviewBase() {
@@ -545,16 +653,6 @@ function validateNeutralRefactorMetadata(contract) {
   if (typeof nr.why !== 'string' || nr.why.trim().length < 40) {
     errors.push(`Neutral-or-negative cost contract ${contract.id} must justify cost-neutrality with a neutralRefactor.why paragraph.`);
   }
-  // Opt-in escape for a byte-identical STRUCTURAL refactor whose only new danger
-  // tokens are node construction that replaces equivalent removed work (e.g. the
-  // parser now OWNING structure — building a Sequence where it previously split a
-  // byte blob). Off by default; when true it does NOT relax byte-identity or the
-  // pass-level per-label prosecution — it only lets a prosecuted, cost-neutral,
-  // byte-identical refactor take the auto-pass instead of forcing a speedup
-  // contract that a non-perf structural change cannot honestly satisfy.
-  if ('allowsProsecutedDangerTokens' in nr && typeof nr.allowsProsecutedDangerTokens !== 'boolean') {
-    errors.push(`Neutral-or-negative cost contract ${contract.id} neutralRefactor.allowsProsecutedDangerTokens must be a boolean when present.`);
-  }
   const bi = nr.byteIdentity;
   if (
     !bi
@@ -603,11 +701,7 @@ function validatePrivateUnreachableMetadata(contract) {
  *   1. Danger-token-free: the live diff must introduce zero danger tokens (the caller
  *      passes hasDangerTokens from the same scan the rest of the gate runs). New
  *      allocation/loop/map/clone/error-control constructs ARE danger tokens, so a
- *      cost-add that reaches for them is refused here — UNLESS the contract opts in
- *      via allowsProsecutedDangerTokens for a byte-identical STRUCTURAL refactor
- *      (parser owning structure), in which case the tokens are admitted only with a
- *      per-label pass prosecution, a dangerTokensJustification, and strict-neutral
- *      costDelta; byte-identity and the prosecution requirement are NOT relaxed.
+ *      cost-add that reaches for them is refused here.
  *   2. Cost-non-increasing: costDelta must be "neutral" or "decrease"; an admitted
  *      "increase" is rejected and routes to a precise / conservative-filter contract.
  *   3. Byte-identity: the record restates the benchmark oracle sha/bytes it did not
@@ -616,25 +710,9 @@ function validatePrivateUnreachableMetadata(contract) {
  */
 function checkNeutralRefactor(record, meta, hasDangerTokens, errors) {
   let ok = true;
-  if (hasDangerTokens && !meta.allowsProsecutedDangerTokens) {
-    errors.push(`Neutral-or-negative record ${record.id} cannot auto-pass while the diff introduces danger tokens; account for them via a precise / conservative-filter / redundant-call-elimination contract, or — for a byte-identical STRUCTURAL refactor whose only new tokens are node construction replacing equivalent removed work — set neutralRefactor.allowsProsecutedDangerTokens and restate a dangerTokensJustification.`);
+  if (hasDangerTokens) {
+    errors.push(`Neutral-or-negative record ${record.id} cannot auto-pass while the diff introduces danger tokens; account for them via a precise / conservative-filter / redundant-call-elimination contract.`);
     ok = false;
-  }
-  if (hasDangerTokens && meta.allowsProsecutedDangerTokens) {
-    // The pass-level per-label prosecution ("Review-flagged diff tokens:") already
-    // forces every danger category to be accounted for; here the record must
-    // additionally restate WHY those constructs add no net cost (they offset
-    // removed work, or sit off the benchmark render path), and costDelta must be
-    // strictly "neutral" — a "decrease" claim beside newly-added constructs is not
-    // honest.
-    if (record.costDelta !== 'neutral') {
-      errors.push(`Neutral-or-negative record ${record.id} admits prosecuted danger tokens, so costDelta must be exactly "neutral" (not "decrease").`);
-      ok = false;
-    }
-    if (typeof record.dangerTokensJustification !== 'string' || record.dangerTokensJustification.trim().length < 40) {
-      errors.push(`Neutral-or-negative record ${record.id} admits prosecuted danger tokens, so it must restate a dangerTokensJustification paragraph explaining why each flagged construct is byte-identical and cost-neutral (offsets removed work / off the benchmark render path).`);
-      ok = false;
-    }
   }
   if (!['neutral', 'decrease'].includes(record.costDelta)) {
     errors.push(`Neutral-or-negative record ${record.id} must declare costDelta "neutral" or "decrease"; a cost increase cannot use the auto-pass.`);
@@ -2287,7 +2365,7 @@ function diffForStrictRuntimeHunks(diff) {
     .join('\n');
 }
 
-function runVerifier() {
+async function runVerifier() {
   if (unsupportedAggregateMode) {
     console.error('The aggregate --mode=upstream scan was removed: it had no bounded owner, remediation, or release decision. Use the default working patch scope or --mode=staged.');
     process.exitCode = 2;
@@ -2322,10 +2400,12 @@ function runVerifier() {
     ['materialized array/object', /\+\s*.*(new Array<|new Array\(|\[\]|=\s*\{)/]
   ];
 
+  const snapshots = changedPathSnapshots();
   const changedPaths = reviewMode === 'release'
     ? []
-    : scopedChangedPaths(reviewMode, changedPathSnapshots());
+    : scopedChangedPaths(reviewMode, snapshots);
   const diff = collectScopedDiff(reviewMode, changedPaths);
+  const qualityOnlyFix = await proveStagedQualityOnlyFix(reviewMode, snapshots);
   if (reviewMode === 'release') {
     console.log('Release snapshot mode: aggregate changed-path, danger-token, and cost/A-B accounting skipped.');
   }
@@ -2333,9 +2413,11 @@ function runVerifier() {
   // inventory, not a pretext for forcing parser/frontend/type edits into an
   // eval/render cost contract. Strict contract accounting receives only the
   // runtime-engine subset below.
-  const findings = collectDangerFindings(diff, dangerPatterns);
-  const strictRuntimePaths = strictRuntimeChangedPaths(changedPaths, diff);
-  const runtimeDiff = diffForStrictRuntimeHunks(diff);
+  const reviewedDiff = qualityOnlyFix ? '' : diff;
+  const reviewedChangedPaths = qualityOnlyFix ? [] : changedPaths;
+  const findings = collectDangerFindings(reviewedDiff, dangerPatterns);
+  const strictRuntimePaths = strictRuntimeChangedPaths(reviewedChangedPaths, reviewedDiff);
+  const runtimeDiff = diffForStrictRuntimeHunks(reviewedDiff);
   const runtimeFindings = collectDangerFindings(runtimeDiff, dangerPatterns);
 
   const handoff = readFileSync(handoffPath, 'utf8');
@@ -2418,7 +2500,7 @@ function runVerifier() {
     }
   }
 
-  const nonRuntimePaths = boundaryChangedPathsForDiff(changedPaths, diff);
+  const nonRuntimePaths = boundaryChangedPathsForDiff(reviewedChangedPaths, reviewedDiff);
   const boundaryEvidenceErrors = validateBoundaryEvidence(latestPass, nonRuntimePaths);
   if (boundaryEvidenceErrors.length > 0) {
     failed = true;
@@ -2429,7 +2511,12 @@ function runVerifier() {
     console.error(`- Classified non-runtime files: ${nonRuntimePaths.join(', ')}`);
   }
 
-  const parserRuntimeDebtDeletion = parserRuntimeDebtDeletionForCurrentDiff(reviewMode, changedPaths, diff, findings);
+  const parserRuntimeDebtDeletion = parserRuntimeDebtDeletionForCurrentDiff(
+    reviewMode,
+    reviewedChangedPaths,
+    reviewedDiff,
+    findings
+  );
   if (reviewMode === 'staged' && changedPaths.includes(parserRuntimeDebtPath) && !parserRuntimeDebtDeletion) {
     failed = true;
     console.error('\nParser-runtime debt changes must keep the staged boundary verifier clean and satisfy the exact deletion proof.');
@@ -2483,11 +2570,14 @@ function runVerifier() {
     if (parserRuntimeDebtDeletion) {
       console.log('Exact parser-runtime debt deletion: cost-contract review not required.');
     }
+    if (qualityOnlyFix) {
+      console.log('Exact staged ESLint reproduction proved a quality-only source change; semantic runtime accounting was not required.');
+    }
   }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  runVerifier();
+  await runVerifier();
 }
 
 export {
@@ -2506,6 +2596,9 @@ export {
   isExactParserRuntimeDebtDeletion,
   publicArtifactReferences,
   privateGrammarReachability,
+  proveStagedQualityOnlyFix,
+  qualityOnlyStagedPaths,
+  reproduceApprovedQualityFixes,
   scopedChangedPaths,
   strictRuntimeChangedPaths,
   validateCostAuditRecords,

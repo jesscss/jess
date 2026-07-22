@@ -32,7 +32,12 @@ function isStylesheet(value: unknown): value is Stylesheet {
 
 /** Parse Jess directly into the canonical AST v2 document. */
 export function parse(input: string): Stylesheet {
-  const result = run(jessAstGrammar.JessAstDocument, input, { trivia: jessAstGrammar.whitespace });
+  const entry = jessAstGrammar.JessAstDocument;
+  const trivia = jessAstGrammar.whitespace;
+  if (entry === undefined || trivia === undefined) {
+    throw new TypeError('Jess AST grammar is missing its public document entry.');
+  }
+  const result = run(entry, input, { trivia });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     const offset = result.ok
       ? result.unconsumedFrom ?? result.span.end

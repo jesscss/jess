@@ -13,10 +13,10 @@ import { Ampersand } from '../../ampersand.js';
 import { extendSelector } from '../../util/extend.js';
 import { extendByIndexOwn, UNSUPPORTED } from '../extend-index.js';
 
-const not = (arg: Selector): Selector => pseudo({ name: ':not', arg }) as unknown as Selector;
-const where = (arg: Selector): Selector => pseudo({ name: ':where', arg }) as unknown as Selector;
-const has = (arg: Selector): Selector => pseudo({ name: ':has', arg }) as unknown as Selector;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const not = (arg: Selector): Selector => pseudo({ name: ':not', arg });
+const where = (arg: Selector): Selector => pseudo({ name: ':where', arg });
+const has = (arg: Selector): Selector => pseudo({ name: ':has', arg });
+
 const ampWith = (selector: any): any => Ampersand.create({ selectorContainer: { selector } });
 
 /** Hardcoded-pin helper: assert own-engine output is EXACTLY `expected` (independent of oracle). */

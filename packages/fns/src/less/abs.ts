@@ -1,10 +1,2 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
-
-/** Less `abs()` over the canonical typed value domain. */
-const abs = defineFunction('abs', {
-  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
-  body: value => makeDimension(Math.abs(value.number), value.unit)
-});
-
-export { abs };
-export default abs;
+/** Less `abs()` is the shared canonical value-domain implementation. */
+export { abs, abs as default } from '../shared/math/abs.js';

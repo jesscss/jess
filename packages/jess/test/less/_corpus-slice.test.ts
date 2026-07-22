@@ -15,7 +15,7 @@
  *
  * Inert (skipped) when CORPUS_MODE is unset, so a normal `vitest run` ignores it.
  */
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import * as glob from 'glob';
 import * as path from 'path';
 import { readFileSync, appendFileSync, writeFileSync } from 'fs';
@@ -63,9 +63,11 @@ function makeTestCompiler(config: any) {
 
 const firstLine = (e: any) => String(e?.message ?? e).split('\n')[0];
 
-async function withTimeout<T>(work: () => Promise<T>) {
+async function withTimeout<T>(work: () => Promise<T>, timeoutMs = PER_FIXTURE_TIMEOUT_MS) {
   let timer: NodeJS.Timeout | undefined;
-  const t = new Promise<'__t__'>(r => { timer = setTimeout(() => r('__t__'), PER_FIXTURE_TIMEOUT_MS); });
+  const t = new Promise<'__t__'>((r) => {
+    timer = setTimeout(() => r('__t__'), timeoutMs);
+  });
   try {
     const res = await Promise.race([work().then(v => ({ v }), e => ({ e })), t]);
     if (res === '__t__') return { timedOut: true } as const;
@@ -74,6 +76,14 @@ async function withTimeout<T>(work: () => Promise<T>) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+function classifyRenderResult(result: { css: string; errors: readonly unknown[] }, expectedCss: string) {
+  const firstError = result.errors[0];
+  if (firstError) {
+    return { outcome: 'error' as const, detail: firstLine(firstError) };
+  }
+  return { outcome: result.css === expectedCss ? 'pass' as const : 'mismatch' as const };
 }
 
 function discover(): Job[] {
@@ -118,12 +128,21 @@ async function runJob(job: Job): Promise<{ file: string; kind: string; outcome: 
   }
   const res = await withTimeout(async () => {
     const r = await makeTestCompiler(job.config).renderToResult(job.lessPath, { outputFile: job.expectedFile });
-    return r.css === readFileSync(job.expectedFile!, 'utf8');
+    return classifyRenderResult(r, readFileSync(job.expectedFile!, 'utf8'));
   });
   if ('timedOut' in res) return { file: job.file, kind: 'render', outcome: 'timeout' };
   if ('error' in res) return { file: job.file, kind: 'render', outcome: 'error', detail: firstLine(res.error) };
-  return { file: job.file, kind: 'render', outcome: res.value ? 'pass' : 'mismatch' };
+  return { file: job.file, kind: 'render', ...res.value };
 }
+
+describe('corpus render diagnostic classification', () => {
+  it('records a returned compiler diagnostic as an error, not a CSS mismatch', () => {
+    expect(classifyRenderResult({ css: 'a{}', errors: [new Error('unsupported plugin ABI')] }, 'a{}')).toEqual({
+      outcome: 'error',
+      detail: 'unsupported plugin ABI'
+    });
+  });
+});
 
 (MODE ? describe : describe.skip)('corpus slice worker', () => {
   it('runs the assigned slice', async () => {

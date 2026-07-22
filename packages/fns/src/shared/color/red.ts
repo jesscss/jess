@@ -1,14 +1,9 @@
-import { defineFunction, Color, Num } from '@jesscss/core';
+import { colorRgbRounded, defineFunction, makeDimension } from '@jesscss/core/value';
 
-export default defineFunction(
-  'red',
-  function(color: Color) {
-    return new Num(color.rgb[0]);
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }]
-  }
-);
+/** Less/Sass `red()` over the canonical value domain. */
+const red = defineFunction('red', {
+  params: [{ name: 'color', kinds: ['Color'] }] as const,
+  body: color => makeDimension(colorRgbRounded(color)[0])
+});
+
+export default red;

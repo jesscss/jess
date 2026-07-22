@@ -2,6 +2,13 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import { makeDimension } from '@jesscss/core/value';
 import floor from '../less/floor.js';
 
+function invoke(fn: unknown, ...args: unknown[]): unknown {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected a callable function.');
+  }
+  return Reflect.apply(fn, undefined, args);
+}
+
 describe('floor function typed value contract', () => {
   test('floors a canonical Dimension and preserves its unit', () => {
     const result = floor(makeDimension(1.7, 'px'));
@@ -9,11 +16,11 @@ describe('floor function typed value contract', () => {
   });
 
   test('rejects untyped direct inputs at the callable boundary', () => {
-    expect(() => (floor as unknown as (...args: unknown[]) => unknown)(1.7)).toThrow('typed ValueObj');
-    expect(() => (floor as unknown as (...args: unknown[]) => unknown)({ value: 1.7 })).toThrow('typed ValueObj');
+    expect(() => invoke(floor, 1.7)).toThrow('typed ValueObj');
+    expect(() => invoke(floor, { value: 1.7 })).toThrow('typed ValueObj');
   });
 
   test('rejects legacy tree numeric values', () => {
-    expect(() => (floor as unknown as (...args: unknown[]) => unknown)({ type: 'Num', value: 1.7 })).toThrow('expected Dimension');
+    expect(() => invoke(floor, { type: 'Num', value: 1.7 })).toThrow('expected Dimension');
   });
 });

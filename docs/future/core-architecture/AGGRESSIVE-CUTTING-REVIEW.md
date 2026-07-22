@@ -39,6 +39,16 @@ the already-validated `dev` snapshot being squash-committed. Staged commits on
 the release exception is not available to ordinary development commits and
 does not require bypassing the hook with `--no-verify`.
 
+A staged source-only formatting commit may skip runtime cost accounting only
+when the verifier can reproduce every indexed byte exactly from `HEAD` by
+running ESLint with the fixed allowlist of non-semantic formatting rules. This
+proof accepts modified lintable files under the reviewed source roots only; it
+rejects added/deleted/renamed files, any other staged path, unstaged overlap,
+dirty ESLint/package/lock configuration, remaining lint diagnostics, and any
+indexed byte not produced by the approved fixes. Failure falls through to the
+ordinary semantic/runtime review automatically. This is semantic-identity
+proof for the staged patch, not benchmark byte identity or a performance claim.
+
 `semantic-preflight` is intentionally narrower than an optimization contract.
 Use it only where a semantic source-order inspection must occur before the
 engine can know whether planner work is needed. It must prove an exercised
@@ -161,6 +171,25 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
   },
   {
+    "id": "ast-value-guard-negate-result",
+    "kind": "semantic-boundary",
+    "surface": "closed guard-comparison result negation",
+    "files": ["packages/core/src/ast/value-guards.ts"],
+    "semanticBoundary": {
+      "trigger": "an ordered guard comparison reverses its left and right operands",
+      "scope": "Only the closed comparison result is inverted: undefined remains undefined, negative becomes positive, positive becomes negative, and equality remains equality. Equality-mode dispatch, operand materialization, variable resolution, and declaration rendering do not enter this helper.",
+      "cases": ["incomparable-remains-undefined", "negative-and-positive-reverse", "equality-remains-zero"],
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "sourceCheck": {
+      "file": "packages/core/src/ast/value-guards.ts",
+      "caller": "const negate = (",
+      "guard": "if (c === undefined)",
+      "call": "return c === -1 ? 1 : c === 1 ? -1 : 0;"
+    },
+    "evidence": {"command": ["pnpm", "vitest", "run", "packages/core/src/ast/__tests__/value-operate-compare.test.ts", "packages/jess/test/less/equality-mode.test.ts"]}
+  },
+  {
     "id": "ast-value-operate-preserve-calc",
     "kind": "semantic-boundary",
     "surface": "typed arithmetic preserve-mode calc result policy",
@@ -190,11 +219,14 @@ a blanket optimization exemption or a new active architecture queue.
       "packages/core/src/ast/mixin-dispatch.ts",
       "packages/core/src/ast/provenance.ts",
       "packages/core/src/ast/value-dispatch.ts",
-      "packages/core/src/ast/value-eval.ts"
+      "packages/core/src/ast/value-eval.ts",
+      "packages/core/src/ast/extend/compose.ts",
+      "packages/core/src/ast/extend/plan.ts",
+      "packages/core/src/ast/extend/solve.ts"
     ],
     "semanticRuntime": {
-      "owner": "the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
-      "scope": "This coordinated cutover changes ValueSlot/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, and Less lazy color-call demand across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
+      "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+      "scope": "This coordinated cutover changes ValueSlot/List/Block facts, authored value layout, callable binding, mixin argument resolution, reference/index access, Less lazy color-call demand, and the bounded eager bare-slash precedence promotion across cooperating runtime owners. Those changes are semantic architecture work with real traversal and allocation shape; no single admission counter, byte-identical A/B, or speed claim would describe them truthfully.",
       "cases": [
         "ValueSlot-array-evaluation-and-authored-layout",
         "List-value-separator-and-Block-delimiter-facts",
@@ -203,14 +235,16 @@ a blanket optimization exemption or a new active architecture queue.
         "defineFunction-typed-positional-named-and-lazy-binding",
         "mixin-dispatch-ValueSlot-argument-resolution",
         "ValueLayout-provenance-side-table",
-        "preserve-mode-calc-result-composition"
+        "preserve-mode-calc-result-composition",
+        "extend-composition-plan-and-fixpoint-solve",
+        "Less-eager-bare-slash-precedence-and-parens-division"
       ],
       "performanceClaim": "none",
       "baseline": {"fixture": "benchmark.less", "phase": "render"}
     },
     "evidence": {
-      "behaviorCommand": ["pnpm", "run", "verify:baseline"],
-      "buildCommand": ["pnpm", "run", "build:release"]
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/value-define-function.test.ts", "src/ast/__tests__/extend-direct-acceptance.test.ts", "src/ast/__tests__/extend-preflight-contract.test.ts", "src/ast/__tests__/value-operate-units.test.ts", "src/tree/__tests__/declaration.test.ts", "src/tree/__tests__/declaration-merge.test.ts"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
     }
   },
   {
@@ -234,6 +268,93 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
   },
   {
+    "id": "core-context-emit-selector-contract",
+    "kind": "semantic-runtime",
+    "surface": "retained Context, emit, selector-match, sequence, callable, and serializer type contracts",
+    "files": [
+      "packages/core/src/context.ts",
+      "packages/core/src/tree/extend/extend-index.ts",
+      "packages/core/src/tree/sequence.ts",
+      "packages/core/src/tree/util/callable-candidate-output.ts",
+      "packages/core/src/tree/util/emit-walk.ts",
+      "packages/core/src/tree/util/selector-match-core.ts",
+      "packages/core/src/tree/util/serialize-helper.ts"
+    ],
+    "semanticRuntime": {
+      "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+      "scope": "This bounded type-contract slice makes existing runtime facts truthful without adding a bridge, parser host, resolver, alternate evaluator, or output policy. Context keeps plugin-based source/parser/module dispatch; emit-walk reads the existing Context output option and passes Ruleset facts to the existing selector helper; selector matching exposes the string-or-node combinator surface it already filters; extend-index uses tagged IR facts instead of narrowing assertions; Sequence preserves its concrete subclass through a checked constructor boundary; callable output and serializer helpers use existing node discriminants for declaration, rules, at-rule, and selector surfaces.",
+      "cases": [
+        "Context-plugin-source-parser-dispatch",
+        "emit-walk-context-output-option",
+        "Ruleset-interpolated-selector-boundary",
+        "selector-match-string-and-node-combinators",
+        "extend-index-tagged-graft-atoms",
+        "Sequence-subclass-preserving-evaluation",
+        "callable-output-root-property-guard",
+        "serializer-at-rule-and-selector-surface"
+      ],
+      "performanceClaim": "none",
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "evidence": {
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
+    }
+  },
+  {
+    "id": "legacy-tree-strict-contract-drain",
+    "kind": "semantic-runtime",
+    "surface": "retained legacy tree strict runtime contracts",
+    "files": [
+      "packages/core/src/tree/ampersand.ts",
+      "packages/core/src/tree/declaration.ts",
+      "packages/core/src/tree/default-guard.ts",
+      "packages/core/src/tree/extend.ts",
+      "packages/core/src/tree/mixin.ts",
+      "packages/core/src/tree/rules.ts",
+      "packages/core/src/tree/scope-frame.ts",
+      "packages/core/src/tree/reference.ts",
+      "packages/core/src/tree/ruleset.ts",
+      "packages/core/src/tree/selector-list.ts",
+      "packages/core/src/tree/util/bitset.ts",
+      "packages/core/src/tree/util/combinator.ts",
+      "packages/core/src/tree/util/extend.ts",
+      "packages/core/src/tree/util/extend-roots.ts",
+      "packages/core/src/tree/util/extend-walk.ts",
+      "packages/core/src/tree/util/render-buffer.ts",
+      "packages/core/src/tree/util/selector-analysis.ts"
+    ],
+    "semanticRuntime": {
+      "owner": "the fifteen retained tree value, guard, selector-surface, registration, rendering, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior, and rules/ruleset/ampersand consumers accept the parser-delivered string-or-array selector surface they already receive. Ampersand only materializes an array where append or resolved-selector node behavior requires a node; key-set analysis consumes the raw array directly. A mixin's invisible render is synchronously empty when it has no effect to await, and interpolated-name registration truthfully returns Mixin rather than promising the receiver subtype because preparation may return a distinct withParts result. Extend registration, root composition, and composed-match walking now admit the same selector surface and materialize it only at APIs that require Selector node behavior. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
+      "cases": [
+        "declaration-sync-and-async-render-result",
+        "declaration-merge-source-span-exclusion",
+        "default-guard-owned-value",
+        "bitset-inversion-and-disjointness",
+        "string-and-node-combinator-recognition",
+        "selector-list-singleton-collapse",
+        "selector-list-array-or-node-inheritance",
+        "parser-delivered-selector-array-ampersand",
+        "selector-array-ruleset-callable-registration",
+        "selector-array-key-set-analysis",
+        "selector-compose-cache-node-boundary",
+        "ordered-registration-context-restoration",
+        "property-merge-container-scope",
+        "mixin-invisible-sync-render-and-registration-result",
+        "extend-record-selector-surface",
+        "extend-root-composition-selector-surface",
+        "extend-walk-composed-match-selector-surface"
+      ],
+      "performanceClaim": "none",
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "evidence": {
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/tree/__tests__/declaration.test.ts", "src/tree/__tests__/declaration-merge.test.ts"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
+    }
+  },
+  {
     "id": "legacy-tree-visitor-abi-removal",
     "kind": "neutral-or-negative",
     "surface": "legacy tree Node.accept and per-node Visitor ABI removal",
@@ -245,6 +366,71 @@ a blanket optimization exemption or a new active architecture queue.
     },
     "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 80.056, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run"]}
+  },
+  {
+    "id": "legacy-tree-style-import-executor-removal",
+    "kind": "neutral-or-negative",
+    "surface": "legacy tree StyleImport executor and spine integration removal",
+    "files": ["packages/core/src/tree/import-style.ts"],
+    "supportFiles": [
+      "packages/core/src/tree/index.ts",
+      "packages/core/src/tree/mixin.ts",
+      "packages/core/src/tree/node-base.ts",
+      "packages/core/src/tree/rules.ts",
+      "packages/core/src/tree/tree.ts",
+      "packages/core/src/tree/extend/spine-extend.ts",
+      "packages/core/src/tree/util/emit-walk.ts",
+      "packages/core/src/tree/util/print.ts",
+      "packages/core/src/tree/util/serialize-helper.ts"
+    ],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "neutralRefactor": {
+      "costDelta": "decrease",
+      "allowsProsecutedDangerTokens": true,
+      "why": "The deleted legacy StyleImport class and its Rules/spine consumers duplicated the canonical AST-v2 serializer's typed import execution. This cut removes the tree resolver, retry queue, placement construction, import-body scans, registration wiring, caches, dedupe ledger, imported-extend re-gate, public tree export, and abort sentinel. Context/plugin loading and AST StyleImport execution remain unchanged, and no replacement bridge, traversal, allocation, or output policy is introduced.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+    }
+  },
+  {
+    "id": "ast-extend-emit-lint-only-normalization",
+    "kind": "neutral-or-negative",
+    "surface": "mechanical ESLint normalization in the existing AST extend emitter",
+    "files": ["packages/core/src/ast/extend/emit.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "This slice changes only ESLint-required braces, operator layout, arrow-parameter style, and trailing commas in the existing AST extend emitter. It adds no planner, selector traversal, allocation, or output policy; the emitted extend facts and dispatch path are unchanged.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+    }
+  },
+  {
+    "id": "bounded-core-tree-lint-guards",
+    "kind": "semantic-runtime",
+    "surface": "bounded core tree list and validation helper type-safety cleanup",
+    "files": [
+      "packages/core/src/tree/list.ts",
+      "packages/core/src/tree/util/check-valid-nodes.ts",
+      "packages/core/src/tree/util/evaluate-node-array.ts",
+      "packages/core/src/tree/util/callable-candidate.ts",
+      "packages/core/src/tree/util/extend-helpers.ts"
+    ],
+    "semanticRuntime": {
+      "owner": "the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+      "scope": "This batch removes unsafe type assertions and a runtime class import cycle while preserving the existing List, node-validation, array-evaluation, callable-candidate, and extend-helper behavior. It truthfully models parser raw values at List boundaries and uses the existing coercer only where node-only consumers require it; this is semantic/type-safety work with no claimed speed, neutrality, byte identity, or cost decrease.",
+      "cases": [
+        "List raw NodeArrayItem normalization",
+        "canonical node-array prefix guard",
+        "root node validation narrowing",
+        "callable candidate record narrowing",
+        "extend helper lint-safe syntax"
+      ],
+      "performanceClaim": "none",
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "evidence": {
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "exec", "vitest", "run", "src/tree/__tests__/list.test.ts", "src/tree/util/__tests__/callable-candidate.test.ts", "src/tree/util/__tests__/callable-candidate-execution.test.ts", "src/tree/util/__tests__/callable-candidate-loop.test.ts", "src/tree/util/__tests__/callable-candidate-match.test.ts", "src/tree/util/__tests__/callable-candidate-output.test.ts", "src/tree/util/__tests__/callable-candidate-state.test.ts", "src/tree/util/__tests__/check-valid-nodes.test.ts", "src/tree/util/__tests__/find-extendable-locations.test.ts"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "run", "compile"]
+    }
   }
 ]
 ```

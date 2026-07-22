@@ -9,6 +9,13 @@ import tan from '../tan.js';
 import pow from '../pow.js';
 import mod from '../mod.js';
 
+function invoke(fn: unknown, ...args: unknown[]): unknown {
+  if (typeof fn !== 'function') {
+    throw new TypeError('Expected a callable function.');
+  }
+  return Reflect.apply(fn, undefined, args);
+}
+
 describe('canonical Less trigonometric callables', () => {
   it('returns exact typed dimension nodes', () => {
     expect(asin(makeDimension(0.5))).toEqual({ type: 'Dimension', number: Math.asin(0.5), unit: 'rad', bytes: '0.52359878rad' });
@@ -23,6 +30,6 @@ describe('canonical Less trigonometric callables', () => {
 
   it('exposes callable metadata and rejects legacy/plain inputs', () => {
     expect(asin.params).toEqual([{ name: 'value', kinds: ['Dimension'] }]);
-    expect(() => asin(0.5 as never)).toThrow('typed ValueObj');
+    expect(() => invoke(asin, 0.5)).toThrow('typed ValueObj');
   });
 });

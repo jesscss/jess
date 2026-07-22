@@ -38,7 +38,7 @@ describe('Mixin canonical AST emission', () => {
     const document = stylesheet([
       first,
       second,
-      rule('.out', [call('.same'), call('.same')]),
+      rule('.out', [call('.same'), call('.same')])
     ]);
 
     // The canonical engine keeps one exact declaration even when it was
@@ -112,13 +112,13 @@ describe('Mixin canonical AST emission', () => {
   it('does not select not(default()) when no ordinary overload matches', () => {
     const exact = mixin('.m', [{ pattern: dimension(1) }], [decl('case', dimension(1))]);
     const nonDefault = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], {
-      g: 'not', inner: { g: 'default' },
+      g: 'not', inner: { g: 'default' }
     });
     const document = stylesheet([
       exact,
       nonDefault,
       rule('.one', [call('.m', [{ value: dimension(1) }])]),
-      rule('.two', [call('.m', [{ value: dimension(2) }])]),
+      rule('.two', [call('.m', [{ value: dimension(2) }])])
     ]);
 
     expect(render(document)).toBe('.one {\n  case: 1;\n  default: 1;\n}\n');
@@ -128,32 +128,32 @@ describe('Mixin canonical AST emission', () => {
     const exact = mixin('.m', [{ pattern: dimension(1) }], [decl('case', dimension(1))]);
     const fallback = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], { g: 'default' });
     const document = stylesheet([exact, fallback, rule('.out', [call('.m', [{ value: dimension(1) }])])]);
-    const context = { withDocumentBody: <T>(_body: object, run: () => T): T => run() };
+    const context = new Context();
+    context.withDocumentBody = <T>(_body: object, run: () => T): T => run();
 
-    expect(serialize(document, { evaluator, context: context as never }).css)
+    expect(serialize(document, { evaluator, context }).css)
       .toBe('.out {\n  case: 1;\n}\n');
   });
 
   it('runs an asynchronous Context-owned default-guard body once', async () => {
     const fallback = mixin('.m', [{ name: 'x' }], [decl('default', variableReference('x', 'scoped'))], { g: 'default' });
     const document = stylesheet([fallback, rule('.out', [call('.m', [{ value: dimension(2) }])])]);
-    const context = {
-      withDocumentBody: <T>(_body: object, run: () => T): Promise<T> => Promise.resolve().then(run),
-    };
+    const context = new Context();
+    context.withDocumentBody = <T>(_body: object, run: () => T): Promise<T> => Promise.resolve().then(run);
 
-    await expect(Promise.resolve(serialize(document, { evaluator, context: context as never })))
+    await expect(Promise.resolve(serialize(document, { evaluator, context })))
       .resolves.toEqual({ css: '.out {\n  default: 2;\n}\n' });
   });
 
   it('carries a nested-output property merge through an inline ruleset mixin', () => {
     const document = stylesheet([
       rule('.base', [decl('box-shadow', keyword('first'), ',')]),
-      rule('.out', [call('.base'), decl('box-shadow', keyword('second'), ',')]),
+      rule('.out', [call('.base'), decl('box-shadow', keyword('second'), ',')])
     ]);
 
     expect(render(document, false)).toBe(
       '.base {\n  box-shadow: first;\n}\n'
-      + '.out {\n  box-shadow: first, second;\n}\n',
+      + '.out {\n  box-shadow: first, second;\n}\n'
     );
   });
 
@@ -268,12 +268,12 @@ describe('Mixin canonical AST emission', () => {
     const rulesetMixin = rule('.shell', [
       rule('.ordinary', [decl('state', keyword('literal'))]),
       rule('&-active', [decl('state', keyword('on'))]),
-      rule('&-later', [decl('state', keyword('literal'))]),
+      rule('&-later', [decl('state', keyword('literal'))])
     ]);
     const document = stylesheet([
       rulesetMixin,
       rule('.host', [call('.shell')]),
-      rule('.authored', [rule('&-local', [decl('state', keyword('literal'))])]),
+      rule('.authored', [rule('&-local', [decl('state', keyword('literal'))])])
     ]);
 
     expect(render(document, false)).toBe(
@@ -310,8 +310,8 @@ describe('Mixin canonical AST emission', () => {
   it('groups only adjacent equal evaluated root headers in nested output', () => {
     const evaluatedSame = selist(complexSelector([{
       compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
-        { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true },
-      ]))]),
+        { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true }
+      ]))])
     }]));
     const document = stylesheet([
       variableDeclaration('name', keyword('same'), { mode: 'declare' }),
@@ -319,7 +319,7 @@ describe('Mixin canonical AST emission', () => {
       rule(evaluatedSame, [decl('second', dimension(2))]),
       variableDeclaration('gap', dimension(0), { mode: 'declare' }),
       rule(evaluatedSame, [decl('third', dimension(3))]),
-      rule('.other', [decl('fourth', dimension(4))]),
+      rule('.other', [decl('fourth', dimension(4))])
     ]);
 
     expect(render(document, false)).toBe(
@@ -332,23 +332,23 @@ describe('Mixin canonical AST emission', () => {
   it('publishes an explicit mixin ruleset placement for a later namespaced call', () => {
     const namedPerson = rule(selist(complexSelector([{
       compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
-        { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true },
-      ]))]),
+        { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true }
+      ]))])
     }])), [
       variableDeclaration('gender', variableReference('gender', 'scoped'), { mode: 'declare' }),
-      mixin('.sayGender', [], [decl('gender', variableReference('gender', 'scoped'))]),
+      mixin('.sayGender', [], [decl('gender', variableReference('gender', 'scoped'))])
     ]);
     const person = mixin('.Person', [{ name: 'name' }, { name: 'gender' }], [namedPerson]);
     const sayGender: MixinCall = {
       type: 'MixinCall', name: '.sayGender', args: [],
-      path: [{ comb: ' ' as const, sel: '.person' }], important: false,
+      path: [{ comb: ' ' as const, sel: '.person' }], important: false
     };
     const document = stylesheet([
       person,
       rule('mi-test-d', [
         call('.Person', [{ value: keyword('person') }, { value: quoted('"Male"', 'Male', '"') }]),
-        sayGender,
-      ]),
+        sayGender
+      ])
     ]);
 
     expect(render(document, false)).toBe('mi-test-d {\n  gender: "Male";\n}\n');
@@ -362,11 +362,11 @@ describe('Mixin canonical AST emission', () => {
       explicit,
       rule('.host', [
         rule('&-one', [call('.source')]),
-        rule('&-two', [call('.source')]),
+        rule('&-two', [call('.source')])
       ]),
       rule('.authored', [rule('&-literal', [decl('x', dimension(3))])]),
       rule('.explicit-host', [rule('&-literal', [call('.explicit')])]),
-      rule('.multi', [rule('&-literal', [call('.source'), call('.source')])]),
+      rule('.multi', [rule('&-literal', [call('.source'), call('.source')])])
     ]);
 
     const nested = render(document, false)!;

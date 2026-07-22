@@ -3,7 +3,7 @@ import type { PluginInterface } from '../../plugin.js';
 import { resolve } from 'node:path';
 
 /**
- * Helper to create a context with test plugin support
+ * Helper to create a context with test plugin support.
  * The plugin checks sourceTrees first before trying to locate files
  */
 export function createTestContext(): Context {

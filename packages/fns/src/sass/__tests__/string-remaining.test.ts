@@ -7,6 +7,13 @@ import strSlice from '../str-slice.js';
 
 let context: Context;
 
+function expectDimension(value: unknown): Dimension {
+  if (!(value instanceof Dimension)) {
+    throw new TypeError('Expected a Dimension result.');
+  }
+  return value;
+}
+
 describe('Sass remaining string functions', () => {
   beforeAll(() => {
     context = new Context();
@@ -81,14 +88,14 @@ describe('Sass remaining string functions', () => {
       const substring = new Quoted('ll');
       const result = strIndex(str, substring);
       expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(3);
+      expect(expectDimension(result).number).toBe(3);
     });
 
     it('returns 1 for first character', () => {
       const str = new Quoted('Hello');
       const substring = new Quoted('H');
       const result = strIndex(str, substring);
-      expect((result as Dimension).number).toBe(1);
+      expect(expectDimension(result).number).toBe(1);
     });
 
     it('returns null when substring is not found', () => {
@@ -102,7 +109,7 @@ describe('Sass remaining string functions', () => {
       const str = new Quoted('Hello Hello');
       const substring = new Quoted('ll');
       const result = strIndex(str, substring);
-      expect((result as Dimension).number).toBe(3);
+      expect(expectDimension(result).number).toBe(3);
     });
   });
 

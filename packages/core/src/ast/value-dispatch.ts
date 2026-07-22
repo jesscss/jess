@@ -39,7 +39,7 @@ export function dispatchFn(fn: Fn, list: List, ctx: FnCtx): MaybePromise<ValueOb
 type NamedParam = ParamSpec & { readonly name: string };
 type DirectInput = ValueObj | LazyValue;
 
-function isRecord(value: DirectInput | FnRecord): value is FnRecord {
+function isRecord(value: unknown): value is FnRecord {
   return typeof value === 'object' && value !== null && !('type' in value);
 }
 
@@ -61,14 +61,63 @@ function isValueObj(value: unknown): value is ValueObj {
   return typeof value === 'object' && value !== null && 'type' in value;
 }
 
+function isLazyValue(value: unknown): value is LazyValue {
+  return typeof value === 'function';
+}
+
+function isValueForKinds<K extends ParamSpec['kinds']>(value: ValueObj, kinds: K): value is ValueForKinds<K> {
+  return kinds === 'any' || kinds.some(kind => kind === value.type);
+}
+
+function isFnCtx(value: unknown): value is FnCtx {
+  return typeof value === 'object'
+    && value !== null
+    && 'modes' in value
+    && 'stringify' in value
+    && typeof value.stringify === 'function';
+}
+
+function isParamSpec(value: unknown): value is ParamSpec {
+  return typeof value === 'object'
+    && value !== null
+    && 'kinds' in value
+    && (value.kinds === 'any' || Array.isArray(value.kinds));
+}
+
+function isNamedParam(value: unknown): value is NamedParam {
+  return isParamSpec(value) && 'name' in value && typeof value.name === 'string';
+}
+
+function isFnSpec(value: unknown): value is FnSpec {
+  return typeof value === 'object'
+    && value !== null
+    && 'params' in value
+    && Array.isArray(value.params)
+    && value.params.every(isParamSpec)
+    && 'body' in value
+    && typeof value.body === 'function';
+}
+
+function hasNamedParams(value: FnSpec): value is FnSpec & { readonly params: readonly NamedParam[] } {
+  return value.params.every(isNamedParam);
+}
+
+function toDirectInput(value: unknown): DirectInput | FnRecord {
+  if (isValueObj(value) || isRecord(value) || isLazyValue(value)) {
+    return value;
+  }
+  throw new TypeError('direct calls require typed ValueObj, named-record, or lazy arguments');
+}
+
 function validateValue<K extends ParamSpec['kinds']>(name: string, index: number, kinds: K, value: unknown): ValueForKinds<K> {
   if (!isValueObj(value)) {
     throw new TypeError(`${name}: direct calls require typed ValueObj arguments`);
   }
-  if (kinds !== 'any' && !kinds.includes(value.type)) {
-    throw new TypeError(`${name}: arg ${index} expected ${kinds.join('|')}, got ${value.type}`);
+  if (!isValueForKinds(value, kinds)) {
+    const expected = kinds === 'any' ? 'any' : kinds.join('|');
+    throw new TypeError(`${name}: arg ${index} expected ${expected}, got ${value.type}`);
   }
-  return value as ValueForKinds<K>;
+  return value;
 }
 
 function checkedLazy<K extends ParamSpec['kinds']>(
@@ -89,7 +138,7 @@ function checkedLazy<K extends ParamSpec['kinds']>(
   };
 }
 
-function bindDirect(name: string, params: readonly NamedParam[], inputs: readonly DirectInput[]): unknown[] {
+function bindDirect(name: string, params: readonly ParamSpec[], inputs: readonly (DirectInput | undefined)[]): unknown[] {
   const out: unknown[] = [];
   let offset = 0;
   for (let index = 0; index < params.length; index++) {
@@ -115,7 +164,7 @@ function bindDirect(name: string, params: readonly NamedParam[], inputs: readonl
         out.push(undefined);
         continue;
       }
-      throw new TypeError(`${name}: missing required argument ${param.name}`);
+      throw new TypeError(`${name}: missing required argument ${param.name ?? index}`);
     }
     out.push(param.lazy
       ? checkedLazy(name, index, param.kinds, input)
@@ -145,29 +194,38 @@ export function defineFunction(
   name: string,
   spec: unknown
 ): unknown {
-  const definition = spec as FnSpec & { readonly params: readonly NamedParam[] };
+  if (!isFnSpec(spec)) {
+    throw new TypeError(`${name}: function definition must contain params and a callable body`);
+  }
+  const definition = spec;
   const callable = (...args: readonly unknown[]): MaybePromise<ValueObj> => {
     const [first, second] = args;
-    if (isValueObj(first) && first.type === 'List' && second && typeof second === 'object' && 'modes' in second) {
-      const list = first as List;
-      const ctx = second as FnCtx;
+    if (isValueObj(first) && first.type === 'List' && isFnCtx(second)) {
+      const list: List = first;
+      const ctx: FnCtx = second;
       if (definition.variadic) {
-        return (definition as FnSpec & { readonly variadic: true }).body(list, ctx);
+        return definition.body(list, ctx);
       }
       const positional = definition.params.map((param, index) => param.lazy
         ? () => list.value[index]!
         : list.value[index]);
-      return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional)) as MaybePromise<ValueObj>;
+      return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
     }
-    const positional = positionalFromInputs(definition.params, args as readonly (DirectInput | FnRecord)[]);
+    const inputs = args.map(toDirectInput);
+    const named = hasNamedParams(definition);
+    if (inputs.some(isRecord) && !named) {
+      throw new TypeError(`${name}: named records require parameter names`);
+    }
+    const positional = named
+      ? positionalFromInputs(definition.params, inputs)
+      : inputs.filter((input): input is DirectInput => !isRecord(input));
     if (definition.variadic) {
       throw new TypeError(`${name}: direct calls to variadic functions require a List and FnCtx`);
     }
-    return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional)) as MaybePromise<ValueObj>;
+    return Reflect.apply(definition.body, undefined, bindDirect(name, definition.params, positional));
   };
-  const fn = callable as Fn;
+  const fn = Object.assign(callable, { params: definition.params, variadic: definition.variadic });
   Object.defineProperty(fn, 'name', { value: name, configurable: true });
-  Object.assign(fn, { params: definition.params, variadic: definition.variadic });
   return fn;
 }
 

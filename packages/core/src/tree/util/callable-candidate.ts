@@ -96,8 +96,9 @@ function valueContainsCallKey(value: unknown, key: string): boolean {
 }
 
 function nodeContainsCallKey(node: Node, key: string): boolean {
+  const value = isRecord(node) ? node.value : undefined;
   return getCallKey(node) === key
-    || valueContainsCallKey((node as { value?: unknown }).value, key);
+    || valueContainsCallKey(value, key);
 }
 
 function rulesContainCallKey(rules: Rules, key: string): boolean {

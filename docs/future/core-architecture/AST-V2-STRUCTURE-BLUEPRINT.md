@@ -7,9 +7,18 @@
 > reductions calling canonical AST constructors directly through each dialect's
 > `parse()` operation, producing `Stylesheet`; Context retains plugin dispatch.
 
-Status: PROPOSED (author agent a5f7844) → under adversarial vet → owner ratification of the open decisions → then executed as the Tier-6 atomic reorg (after content demolition). Full author output archived in the session task log.
+> **Archive boundary (2026-07-22).** Everything below is retained as historical
+> design evidence. The `parse-host/`, build-host, injected-construction, and
+> quarantined-bridge entries are not target directories or sequencing steps.
+> Do not interpret this blueprint as saying that AST v2 is private, test-only,
+> or waiting for later public wiring.
 
-The engine is a **projection serializer over a pure-data AST**: the parser build-host constructs immutable nodes; free functions walk them once and emit CSS bytes, forcing value evaluation lazily through an injected seam. Nothing in shipping `src/` imports it yet (pre-cutover, gated only by the byte-identity harness) — so the reorg can move freely.
+Status: ARCHIVED historical proposal (author agent a5f7844). It is superseded by
+the public direct `parse() -> Stylesheet` contract in `HANDOFF.md`.
+
+The historical engine description below is not a statement about the current
+shipping route. Current parser reductions construct canonical AST v2 directly;
+Context carries the resulting `Stylesheet` through plugin/import dispatch.
 
 ## Target `ast/` tree
 

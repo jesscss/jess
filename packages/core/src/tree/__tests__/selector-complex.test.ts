@@ -259,14 +259,14 @@ describe('Complex selector', () => {
       const sourceChild = selector.value[1]!;
       const sourceParent = sourceChild.parent;
       const sourceSpanStart = spanStartOf(sourceChild);
-    const sourceSpanEnd = spanEndOf(sourceChild);
+      const sourceSpanEnd = spanEndOf(sourceChild);
       const resolved = await selector.eval(context);
 
       expect(resolved.toTrimmedString()).toBe('.keep');
       expect(resolved).not.toBe(sourceChild);
       expect(sourceChild.parent).toBe(sourceParent);
       expect(spanStartOf(sourceChild)).toBe(sourceSpanStart);
-    expect(spanEndOf(sourceChild)).toBe(sourceSpanEnd);
+      expect(spanEndOf(sourceChild)).toBe(sourceSpanEnd);
       expect(selector.toTrimmedString()).toBe('&.keep');
     });
   });

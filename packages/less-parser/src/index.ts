@@ -25,7 +25,12 @@ function isStylesheet(value: unknown): value is Stylesheet {
 
 /** Parse Less directly into the canonical AST v2 document. */
 export function parse(input: string): Stylesheet {
-  const result = run(lessAstGrammar.LessAstDocument, input, { trivia: lessAstGrammar.whitespace });
+  const entry = lessAstGrammar.LessAstDocument;
+  const trivia = lessAstGrammar.whitespace;
+  if (entry === undefined || trivia === undefined) {
+    throw new TypeError('Less AST grammar is missing its public document entry.');
+  }
+  const result = run(entry, input, { trivia });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     const offset = result.ok
       ? result.unconsumedFrom ?? result.span.end

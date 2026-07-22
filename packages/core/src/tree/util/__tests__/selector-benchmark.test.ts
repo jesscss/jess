@@ -55,12 +55,12 @@ function findExtendableLocationsNoKeySetRejection(target: Selector, find: Select
     if (originalTargetKeySet) {
       Object.defineProperty(target, 'keySet', originalTargetKeySet);
     } else {
-      delete (target as any).keySet;
+      Reflect.deleteProperty(target, 'keySet');
     }
     if (originalFindKeySet) {
       Object.defineProperty(find, 'keySet', originalFindKeySet);
     } else {
-      delete (find as any).keySet;
+      Reflect.deleteProperty(find, 'keySet');
     }
   }
 }

@@ -13,7 +13,7 @@ export const enum UnitGroup { Length = 0, Duration = 1, Angle = 2 }
 const GROUP_FACTORS: readonly Readonly<Record<string, number>>[] = [
   { m: 1, cm: 0.01, mm: 0.001, in: 0.0254, px: 0.0254 / 96, pt: 0.0254 / 72, pc: (0.0254 / 72) * 12 },
   { s: 1, ms: 0.001 },
-  { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 },
+  { rad: 1 / (2 * Math.PI), deg: 1 / 360, grad: 1 / 400, turn: 1 }
 ];
 
 /** The canonical unit each group unifies TO (`Dimension.unify`): length→px, duration→s, angle→rad. */
@@ -24,7 +24,9 @@ const GROUP_CANONICAL_FACTOR = GROUP_FACTORS.map((f, g) => f[GROUP_CANONICAL[g]!
 
 const UNIT_TO_GROUP = new Map<string, UnitGroup>();
 for (let g = 0; g < GROUP_FACTORS.length; g++) {
-  for (const u in GROUP_FACTORS[g]!) UNIT_TO_GROUP.set(u, g as UnitGroup);
+  for (const u in GROUP_FACTORS[g]!) {
+    UNIT_TO_GROUP.set(u, g as UnitGroup);
+  }
 }
 
 /** The conversion group a unit belongs to, or `undefined` when it isn't convertible. */
@@ -42,7 +44,9 @@ export const unitFactor = (unit: string): number | undefined => {
  */
 export function unify(number: number, unit: string): { number: number; unit: string } {
   const g = UNIT_TO_GROUP.get(unit);
-  if (g === undefined) return { number, unit };
+  if (g === undefined) {
+    return { number, unit };
+  }
   return { number: number * (GROUP_FACTORS[g]![unit]! / GROUP_CANONICAL_FACTOR[g]!), unit: GROUP_CANONICAL[g] };
 }
 
@@ -53,9 +57,13 @@ export function unify(number: number, unit: string): { number: number; unit: str
  * then operates on the raw magnitudes (`1px + 1em` → `2px`).
  */
 export function convertValue(number: number, fromUnit: string, toUnit: string): number {
-  if (fromUnit === toUnit) return number;
+  if (fromUnit === toUnit) {
+    return number;
+  }
   const fg = UNIT_TO_GROUP.get(fromUnit);
   const tg = UNIT_TO_GROUP.get(toUnit);
-  if (fg === undefined || tg === undefined || fg !== tg) return number;
+  if (fg === undefined || tg === undefined || fg !== tg) {
+    return number;
+  }
   return number * (GROUP_FACTORS[fg]![fromUnit]! / GROUP_FACTORS[tg]![toUnit]!);
 }

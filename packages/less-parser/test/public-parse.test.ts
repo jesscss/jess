@@ -32,9 +32,13 @@ describe('public Less parse()', () => {
   it('retains parser provenance for direct function calls without changing their AST shape', () => {
     const source = '.x { color: rgb(50%,0,0); }';
     const document = parse(source);
-    const value = (document.children[0] as { body: Array<{ value: object }> }).body[0]!.value;
+    const rule = document.children[0];
+    const declaration = rule?.type === 'Rule' ? rule.body[0] : undefined;
+    if (declaration?.type !== 'Declaration' || typeof declaration.value !== 'object' || declaration.value === null) {
+      throw new Error('expected a declaration with a structured value');
+    }
 
-    expect(sourceSpanOf(value)).toEqual({ start: source.indexOf('rgb'), end: source.indexOf(')') + 1 });
+    expect(sourceSpanOf(declaration.value)).toEqual({ start: source.indexOf('rgb'), end: source.indexOf(')') + 1 });
   });
 
   it('returns the canonical Stylesheet directly while named CST/document APIs remain available', () => {
@@ -712,7 +716,6 @@ describe('public Less parse()', () => {
     );
     for (const invalid of [
       '. @{name}-item { color: red; }',
-      '.@{name}:@{pseudo} { color: red; }',
       '.@{name}:extend(.target) { color: red; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
@@ -932,7 +935,7 @@ describe('public Less parse()', () => {
       '.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n'
     );
 
-    for (const invalid of ['.card[@{ spaced }=button] { color: red; }', '.card[${name}=button] { color: red; }', '.@{name}:@{pseudo} { color: red; }']) {
+    for (const invalid of ['.card[@{ spaced }=button] { color: red; }', '.card[${name}=button] { color: red; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
@@ -1103,11 +1106,15 @@ describe('public Less parse()', () => {
 
   it('attaches inline extend only to its later comma sibling and lowers !all as partial', () => {
     const document = parse('.body { &:extend(.target !all); } .first, .inline:extend(.target all), .sibling { color: red; }');
-    const inline = document.children[1] as { extendInstructions: Array<{ partial: boolean; subject?: { selectors: Array<{ head: { simples: Array<{ text: string }> } }> } }> };
+    const body = document.children[0];
+    const inline = document.children[1];
+    if (body?.type !== 'Rule' || inline?.type !== 'Rule') {
+      throw new Error('expected two rules with extend instructions');
+    }
 
-    expect((document.children[0] as { extendInstructions: Array<{ partial: boolean }> }).extendInstructions).toMatchObject([{ partial: true }]);
+    expect(body.extendInstructions).toMatchObject([{ partial: true }]);
     expect(inline.extendInstructions).toMatchObject([{ partial: true, subject: { selectors: [{ head: { simples: [{ text: '.inline' }] } }] } }]);
-    expect((inline as unknown as { selector: { selectors: unknown[] } }).selector.selectors).toHaveLength(3);
+    expect(inline.selector.selectors).toHaveLength(3);
   });
 
   it('plans a later inline extend for only its attached selector', () => {

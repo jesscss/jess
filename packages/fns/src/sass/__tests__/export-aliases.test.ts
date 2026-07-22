@@ -6,10 +6,13 @@ import {
   fadeOut as globalFadeOut,
   grayscale as globalGrayscale,
   adjustHue as globalAdjustHue,
-  ieHexStr as globalIeHexStr
+  ieHexStr as globalIeHexStr,
+  ceil as globalCeil,
+  floor as globalFloor,
+  round as globalRound
 } from '../index.js';
 import { grayscale as colorModuleGrayscale, ieHexStr as colorModuleIeHexStr } from '../color/index.js';
-import { abs as mathModuleAbs } from '../math/index.js';
+import { abs as mathModuleAbs, ceil as mathModuleCeil, floor as mathModuleFloor, round as mathModuleRound } from '../math/index.js';
 import colorRed from '../color/red.js';
 import mathAbs from '../math/abs.js';
 
@@ -18,7 +21,13 @@ import fadeoutLess from '../../less/fadeout.js';
 import greyscaleLess from '../../less/greyscale.js';
 import spinLess from '../../less/spin.js';
 import argbLess from '../../less/argb.js';
-import { red as sharedRed, abs as sharedAbs } from '../../shared/index.js';
+import {
+  red as sharedRed,
+  abs as sharedAbs,
+  ceil as sharedCeil,
+  floor as sharedFloor,
+  round as sharedRound
+} from '../../shared/index.js';
 
 describe('Sass export aliases', () => {
   it('maps global Sass wrappers directly to Less implementations', () => {
@@ -39,6 +48,15 @@ describe('Sass export aliases', () => {
 
   it('maps math module exports to shared implementations', () => {
     expect(mathModuleAbs).toBe(sharedAbs);
+    expect(mathModuleCeil).toBe(sharedCeil);
+    expect(mathModuleFloor).toBe(sharedFloor);
+    expect(mathModuleRound).toBe(sharedRound);
     expect(mathAbs).toBe(sharedAbs);
+  });
+
+  it('maps global math exports to the same shared implementations', () => {
+    expect(globalCeil).toBe(sharedCeil);
+    expect(globalFloor).toBe(sharedFloor);
+    expect(globalRound).toBe(sharedRound);
   });
 });

@@ -16,6 +16,7 @@ export interface DefaultGuard extends Node<string> {
 
 export class DefaultGuard extends Node<string> {
   static override childKeys = null;
+  value: string;
 
   constructor(value: string, options?: NodeOptions, location?: LocationInfo) {
     super(value, options, location);

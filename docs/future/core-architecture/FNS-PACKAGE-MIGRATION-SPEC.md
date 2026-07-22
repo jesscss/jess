@@ -8,16 +8,25 @@
 > Status: DESIGN SURVEY (read-only). No code moved. This spec precedes an
 > adversarial review; nothing here is committed engineering until that review.
 >
-> Owner decision driving this doc: **fn implementations must live in
-> `@jesscss/fns` (`packages/fns/`), not in core.** Core ships ZERO fns and owns
-> only a registration seam; the consumer registers the built-in set into core
-> (the way `jess-plugin-less` already registers things today). The recent AST-v2
-> fn set landing *inside* core (`packages/core/src/ast/functions/`) was an
-> interim seam step in the **wrong location** — the right seam, wrong package.
+> Owner decision driving the corrected work: **fn implementations are converted
+> in their existing `@jesscss/fns` owners** (`packages/fns/src/shared`, `less`,
+> and `sass`) rather than moved to a new destination. Core owns the universal
+> value/`Fn` contract and registry seam; it does not acquire dialect function
+> bodies. The `builtins/` implementations remain comparison evidence until each
+> corresponding existing owner is proven equivalent and the duplicate is deleted.
 >
 > Relevant memory: `retire-legacy-value-adapter` ("we OWN `fns/` → CONVERT it to
 > the arena / AST-v2 value shape, don't adapt around it; converge to ONE shape,
 > gate native ≡ adapter byte-identical") and `ast-v2-unified-node-model`.
+
+> **Owner correction — function conversion (2026-07-22).** The move/relocation
+> plan and every instruction below that says to move bodies from `core/ast` into
+> a new `fns` destination is **STRUCK**. Function implementations are converted
+> in their existing public owners (`packages/fns/src/shared`, `less`, and
+> `sass`) and tested red-to-green against the legacy oracle before duplicate
+> implementations are deleted. `builtins/` is comparison evidence, not a
+> destination architecture. Do not create a relocation, wrapper, alias, or
+> second function registry to satisfy this historical survey.
 
 ---
 
@@ -295,8 +304,9 @@ interface; it must be minimal and append-only.
 
 ### 3c. The `Fn` authoring contract stays identical
 
-A fn in `@jesscss/fns` after the move looks **exactly** like `functions/lighten.ts`
-does today — a self-describing object, no `defineFunction`, no `Context`:
+A fn in `@jesscss/fns` after conversion looks **exactly** like the canonical
+`functions/lighten.ts` shape — a self-describing object, no `defineFunction`, no
+`Context`:
 
 ```ts
 import { hslAdjust } from './color-helper.js';   // now fns-local
@@ -310,8 +320,8 @@ export const lighten: Fn = {
 
 The contract is: **bodies operate on already-materialized `ValueObj`s and return a
 `ValueObj`, using core's `make*` constructors** — no legacy nodes, no `.operate`,
-no `.render`. This is precisely the shape the 68 modules already have, which is why
-the move is a *relocation*, not a rewrite.
+no `.render`. This is the shape to produce by converting each existing owner in
+place; it is not a relocation or a reason to duplicate the function library.
 
 ---
 
@@ -328,10 +338,10 @@ this must not collide with:
   `type: 'Dimension'`. This rewrites **every** `params: [{ kinds: ['color'] }]` and
   every `v.kind === 'quoted'` check in all 68 bodies.
 
-**Ordering rule: do NOT move fns across the node-model flip.** If the 68 bodies move
-to `packages/fns` *before* the flip, the flip then has to chase them into another
-package (double the churn, cross-package rebase). If they move *after*, they move
-once, already in final shape. So:
+**Historical ordering rule (STRUCK): do not use the move/relocation sequence below.**
+The current rule is to convert each existing `shared`/`less`/`sass` owner in place,
+with a focused legacy-vs-AST-v2 parity test, then delete only the proven duplicate.
+The table is retained as historical evidence of the rejected package move:
 
 | Step | Action | Gate |
 | --- | --- | --- |
@@ -438,11 +448,11 @@ Importers that break or must change, grouped by edge:
 
 ### 6c. Top-3 ways this breaks byte-identity
 
-1. **A body's private helper is subtly different after the move** (e.g. rounding
-   epsilon in `math-helper`, hsl-carry in `color-helper`). **Avoided:** helpers
-   **move verbatim** with the bodies (relocation, not reimplementation); the
-   `native-value-differential.test.ts` corpus (adapter = reference) gates every step,
-   and per-fn `fns/src/less/__tests__` gate the fn semantics.
+1. **A body's private helper is subtly different after conversion** (e.g. rounding
+   epsilon in `math-helper`, hsl-carry in `color-helper`). The historical
+   move-verbatim premise is struck: helpers are converted in their existing owner
+   and the `native-value-differential.test.ts` corpus (adapter = reference) gates
+   every step, with per-fn `fns/src/less/__tests__` covering semantics.
 2. **The node-model flip (`kind`→`type`) is applied to the moved copy but not the
    reference, or vice versa.** Divergent discriminants → silent kind-mismatch → wrong
    branch → wrong bytes. **Avoided by §4 ordering:** the flip lands in **core, before
@@ -474,20 +484,23 @@ Importers that break or must change, grouped by edge:
 
 ---
 
-## 8. Execution Plan (Wave 2 — re-surveyed against `origin/dev` @ `2a898e9db`)
+## 8. Execution Plan (Wave 2 — **ARCHIVED / STRUCK**)
+
+> This wave repeats the rejected relocation architecture, including the claim that
+> the AST-v2 render path is test-only and the destructive move of core function
+> bodies. It is retained for provenance only. Current work follows the in-place
+> conversion rule above and the public `parse() -> Stylesheet` route in `HANDOFF.md`.
 
 Concrete, staged, byte-identity-gated. Written so an executor cannot improvise the
 reference handling. **Read §8.0 first — three landed facts change the sequence vs §4.**
 
 ### 8.0 Landed-state deltas since §0/§4 (verified on `2a898e9db`)
 
-1. **The node-model flip (§4 S0) is DONE.** The value discriminant is now `.type`
+1. **Historical relocation note (STRUCK).** The value discriminant is now `.type`
    with PascalCase values: fn bodies read `arg.type === 'Color'`, params spell
    `kinds: ['Dimension']` / `kinds: 'any'`, and `functions/types.ts` defines
-   `Kind = ValueObj['type']`; `value-dispatch.ts` binds on `a.type`. **The 68 bodies
-   are already in final shape** — the move is a *pure relocation*, no flip to
-   sequence, no cross-package chase. §4's S0 and its "flip before move" concern are
-   retired.
+   `Kind = ValueObj['type']`; `value-dispatch.ts` binds on `a.type`. The old claim
+   that this authorizes a pure package relocation is not current architecture.
 
 2. **The AST-v2 render path is TEST-ONLY today.** No production code constructs
    `buildEvaluator` or calls `serialize(..., { evaluator })` / `composeStats` with an
@@ -497,12 +510,11 @@ reference handling. **Read §8.0 first — three landed facts change the sequenc
    renders via the **legacy tree path** and its `_registerFunctions` (index.ts:115)
    feeds `tree.setFunctionBinding(name, new JsFunction(...))` — the legacy eval path,
    NOT the registry. **Consequence:** the plugin's AST-v2 evaluator wiring is part of
-   the *spine render cutover*, not a blocker for the fns relocation. The relocation
-   lands behind the **test-exercised** evaluator + a `makeBuiltinRegistry()` helper;
-   the plugin adopts `builtinLessFns` when it adopts the AST-v2 render path (§8.6).
+   the *public parser/evaluator cutover*. Function conversion is independently
+   red-to-green in the existing owners; it is not a package-relocation blocker.
 
 3. **The value substrate has a narrow public import path:** `@jesscss/core/value`.
-   It is the only supported target for relocated function bodies that need value
+   It is the only supported target for converted function owners that need value
    constructors or value-domain types. Do not widen the package root or revive the
    deleted private `ast/index.ts` barrel to obtain those symbols; that would expose
    the full AST engine instead of the intentionally narrow substrate.

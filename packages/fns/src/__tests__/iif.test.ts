@@ -29,7 +29,10 @@ describe('iif', () => {
       () => new Dimension({ number: 3, unit: 'px' })
     );
     expect(result).toBeInstanceOf(Dimension);
-    expect((result as Dimension).compare(new Dimension({ number: 3, unit: 'px' }))).toBe(0);
+    if (!(result instanceof Dimension)) {
+      throw new TypeError('Expected iif() to return a Dimension.');
+    }
+    expect(result.compare(new Dimension({ number: 3, unit: 'px' }))).toBe(0);
   });
 
   test('iif (true)', async () => {

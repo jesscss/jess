@@ -33,7 +33,9 @@ export default function jessRollupPlugin(options: JessRollupPluginOptions = {}):
   return {
     name: 'jess',
     async transform(code, id) {
-      if (!id.endsWith('.jess')) return null;
+      if (!id.endsWith('.jess')) {
+        return null;
+      }
 
       const css = await compiler.renderString(code, {
         filePath: id,

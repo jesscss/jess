@@ -94,17 +94,19 @@ function cancel(u: UnitSet): void {
 }
 
 /**
- * less.js `Unit.genCSS` display rule (loose): a singular numerator emits that unit;
+ * less.js `Unit.genCSS` display rule: a singular numerator emits that unit;
  * else the `backupUnit`; else the first denominator; else empty (a pure number).
- * In `strict` a non-singular unit is an error.
+ * Strict-mode singularity is validated only when the final value is consumed;
+ * intermediate compound units must remain available for a later operation to
+ * cancel. A fully cancelled strict result is therefore a unitless number even
+ * when its intermediate `backupUnit` was authored (e.g. `1px / 1px` → `1`).
  */
 function displayUnit(u: UnitSet, isStrict: boolean): string {
-  // less.js `Unit.isSingular`: at most one numerator unit and no denominator.
-  if (isStrict && !(u.num.length <= 1 && u.den.length === 0)) {
-    throw new TypeError('Multiple units in dimension. Correct the units or use the unit function');
-  }
   if (u.num.length === 1) {
     return u.num[0]!;
+  }
+  if (isStrict && u.num.length === 0 && u.den.length === 0) {
+    return '';
   }
   if (u.backup) {
     return u.backup;
@@ -113,6 +115,35 @@ function displayUnit(u: UnitSet, isStrict: boolean): string {
     return u.den[0]!;
   }
   return '';
+}
+
+/**
+ * Validate unit singularity at a final typed-value boundary. Arithmetic keeps
+ * compound numerator/denominator facts through the whole operation chain so a
+ * later operation can cancel them; only final materialization/emission applies
+ * Less strict-units' singularity rule.
+ */
+export function validateFinalUnits(value: ValueObj, modes: EvalModes): void {
+  if (modes.unitMode !== 'strict') {
+    return;
+  }
+  if (value.type === 'Dimension') {
+    const numerator = value.numerator ?? (value.unit ? [value.unit] : []);
+    const denominator = value.denominator ?? [];
+    if (numerator.length > 1 || denominator.length > 0) {
+      throw new TypeError('Multiple units in dimension. Correct the units or use the unit function');
+    }
+    return;
+  }
+  if (value.type === 'List') {
+    for (const item of value.value) {
+      validateFinalUnits(item, modes);
+    }
+    return;
+  }
+  if (value.type === 'Block') {
+    validateFinalUnits(value.inner, modes);
+  }
 }
 
 /**

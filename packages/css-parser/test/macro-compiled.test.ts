@@ -9,11 +9,19 @@ test('grammar is macro-compiled (not interpreted) under vitest', () => {
   // compiled rules are plain functions; interpreted ones are Combinator objects
   expect(typeof G.Stylesheet).toBe('function');
   expect(typeof G.Ruleset).toBe('function');
-  /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-  expect((G.Stylesheet as any)._def).toBeUndefined();
-  expect((G.Stylesheet as any).parse).toBeUndefined();
-  /* eslint-enable @typescript-eslint/no-unsafe-type-assertion */
+  expect('_def' in G.Stylesheet).toBe(false);
+  expect('parse' in G.Stylesheet).toBe(false);
 });
+
+type CssAstGrammarModule = Pick<typeof import('../src/ast/grammar.js'), 'cssAstGrammar'>;
+
+function isCssAstGrammarModule(value: unknown): value is CssAstGrammarModule {
+  return typeof value === 'object'
+    && value !== null
+    && 'cssAstGrammar' in value
+    && typeof value.cssAstGrammar === 'object'
+    && value.cssAstGrammar !== null;
+}
 
 test('canonical AST grammar macro-fuses the recognition artifact with no runtime import', async () => {
   const server = await createServer({
@@ -24,7 +32,7 @@ test('canonical AST grammar macro-fuses the recognition artifact with no runtime
   try {
     const transformed = await server.transformRequest('/src/ast/grammar.ts');
     expect(transformed?.code).not.toContain('@jesscss/internal-css-recognition');
-    expect(transformed?.code).not.toContain("from '../grammar.js'");
+    expect(transformed?.code).not.toContain('from \'../grammar.js\'');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
   } finally {
     await server.close();
@@ -39,12 +47,19 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
     server: { middlewareMode: true }
   });
   try {
-    const covered = await server.ssrLoadModule('/packages/css-parser/src/ast/grammar.ts') as typeof import('../src/ast/grammar.js');
+    const covered: unknown = await server.ssrLoadModule('/packages/css-parser/src/ast/grammar.ts');
+    if (!isCssAstGrammarModule(covered)) {
+      throw new TypeError('expected the Vite module to expose cssAstGrammar');
+    }
+    const documentRule = covered.cssAstGrammar.CssAstDocument;
+    if (!documentRule) {
+      throw new TypeError('expected cssAstGrammar to expose CssAstDocument');
+    }
     const definitions = compiledGrammarCoverageDefinitions(covered.cssAstGrammar);
     const collector = createGrammarCoverageCollector(definitions);
     const fixtureRoot = join(import.meta.dirname, 'css');
     for (const filename of readdirSync(fixtureRoot).filter(name => name.endsWith('.css'))) {
-      const result = run(covered.cssAstGrammar.CssAstDocument, readFileSync(join(fixtureRoot, filename), 'utf8'), {
+      const result = run(documentRule, readFileSync(join(fixtureRoot, filename), 'utf8'), {
         trivia: covered.cssAstGrammar.whitespace,
         instrumentation: createGrammarInstrumentationContext({ collector })
       });
@@ -57,7 +72,7 @@ test('coverage-enabled macro CSS reports structural grammar coverage across publ
 
     // Keep the corpus proof separate from this focused probe: the concrete
     // import URL reaches exactly its two grammar-owned URL rules.
-    const importResult = run(covered.cssAstGrammar.CssAstDocument, '@import url(/* before */ theme.css /* after */);', {
+    const importResult = run(documentRule, '@import url(/* before */ theme.css /* after */);', {
       trivia: covered.cssAstGrammar.whitespace,
       instrumentation: createGrammarInstrumentationContext({ collector })
     });

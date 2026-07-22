@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { Color } from '@jesscss/core';
+import { makeColorRgb, RGB } from '@jesscss/core/value';
+import { builtinLessFns } from '../../builtins/index.js';
+import { overlay as builtinOverlay } from '../../builtins/overlay.js';
+import { softlight as builtinSoftlight } from '../../builtins/softlight.js';
+import { hardlight as builtinHardlight } from '../../builtins/hardlight.js';
 import overlay, { overlayBase } from '../overlay.js';
 import softlight, { softlightBase } from '../softlight.js';
 import hardlight, { hardLightBase } from '../hardlight.js';
@@ -23,11 +27,20 @@ describe('advanced blend modes', () => {
   });
 
   it('blend functions produce color outputs', () => {
-    const color1 = new Color({ rgb: [30, 120, 220], alpha: 1 });
-    const color2 = new Color({ rgb: [220, 80, 40], alpha: 1 });
+    const color1 = makeColorRgb([30, 120, 220], 1, RGB);
+    const color2 = makeColorRgb([220, 80, 40], 1, RGB);
 
-    expect(overlay(color1, color2)).toBeInstanceOf(Color);
-    expect(softlight(color1, color2)).toBeInstanceOf(Color);
-    expect(hardlight(color1, color2)).toBeInstanceOf(Color);
+    expect(overlay(color1, color2)).toMatchObject({ type: 'Color' });
+    expect(softlight(color1, color2)).toMatchObject({ type: 'Color' });
+    expect(hardlight(color1, color2)).toMatchObject({ type: 'Color' });
+  });
+
+  it('uses the canonical overlay implementation registered for Less', () => {
+    expect(overlay).toBe(builtinOverlay);
+    expect(softlight).toBe(builtinSoftlight);
+    expect(hardlight).toBe(builtinHardlight);
+    expect(builtinLessFns.find(fn => fn.name === 'overlay')).toBe(builtinOverlay);
+    expect(builtinLessFns.find(fn => fn.name === 'softlight')).toBe(builtinSoftlight);
+    expect(builtinLessFns.find(fn => fn.name === 'hardlight')).toBe(builtinHardlight);
   });
 });

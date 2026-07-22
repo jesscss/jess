@@ -18,24 +18,24 @@
  * `iscolor(@a)`) reach the evaluator.
  */
 
-import type { ValueNode } from './nodes.js';
+import type { ValueSlot } from './nodes.js';
 import type { EvalModes, List as ValueList, ValueEvaluator, ValueObj } from './value-eval.js';
 
 /** A guard condition tree. Never serialized to CSS — evaluated to a boolean. */
 export type GuardNode =
-  | { readonly g: 'cmp'; readonly op: string; readonly left: ValueNode; readonly right: ValueNode }
+  | { readonly g: 'cmp'; readonly op: string; readonly left: ValueSlot; readonly right: ValueSlot }
   | { readonly g: 'and'; readonly left: GuardNode; readonly right: GuardNode }
   | { readonly g: 'or'; readonly left: GuardNode; readonly right: GuardNode }
   | { readonly g: 'not'; readonly inner: GuardNode }
-  | { readonly g: 'truth'; readonly value: ValueNode }
-  | { readonly g: 'call'; readonly name: string; readonly args: ValueNode[] }
+  | { readonly g: 'truth'; readonly value: ValueSlot }
+  | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[] }
   | { readonly g: 'default' };
 
 /** Resolve a value node to its (variable-resolved, un-evaluated) source bytes. */
-export type ValueResolver = (v: ValueNode) => string;
+export type ValueResolver = (v: ValueSlot) => string;
 
 /** Resolve a value node to a materialized TYPED value object. */
-export type TypedResolver = (v: ValueNode) => ValueObj;
+export type TypedResolver = (v: ValueSlot) => ValueObj;
 
 export interface GuardEvalDeps {
   /** Typed resolver (comparison / type-fn leaves compare typed values). */
@@ -94,7 +94,10 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
  *  operand expression (`@x = default()` compares `@x` against the dispatch decision).
  *  Recurses the structural value shapes an operand can take so a nested/parenthesized
  *  `default()` is still detected. */
-function valueUsesDefault(v: ValueNode): boolean {
+function valueUsesDefault(v: ValueSlot): boolean {
+  if (!('type' in v)) {
+    return v.some(valueUsesDefault);
+  }
   switch (v.type) {
     case 'FunctionCall':
       return v.name.toLowerCase() === 'default' || v.args.some(valueUsesDefault);

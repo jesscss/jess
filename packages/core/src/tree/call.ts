@@ -632,7 +632,7 @@ export class Call extends Node<CallValue, CallOptions> {
     context.warn(WARN.unresolvedFunction({
       ctx: file ? { file } : undefined,
       filePath: file?.fullPath,
-      meta: { name: fnName, reason: (error instanceof Error ? error.message : String(error)).split('\n')[0] }
+      meta: { name: fnName, reason: (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '' }
     }));
   }
 
