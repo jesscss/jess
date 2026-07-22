@@ -2478,7 +2478,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(DirectLessPositionalMixinCallArgument, oneOrMore(sequence(literal(','), DirectLessPositionalMixinCallArgument))),
     (children) => {
       const args = children.filter(isMixinCallArgument);
-      return { value: list(args.map(argument => requireValueNode(argument.value)), ',') };
+      return { value: list(args.map(argument => requireValueSlot(argument.value)), ',') };
     }
   );
   const DirectLessMixinArguments = node<readonly MixinCallArgument[]>(

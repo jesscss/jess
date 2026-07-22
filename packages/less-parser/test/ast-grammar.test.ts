@@ -2197,6 +2197,37 @@ describe('Less AST grammar facts', () => {
     expect(serialize(stylesheet(result.value)).css).toBe('.out {\n  left: a, b, c;\n  right: a, b, c;\n}\n');
   });
 
+  it('keeps recursive value slots inside semicolon-terminated mixin argument groups', () => {
+    const source = [
+      '.multi-bg(@bgs...) { background: @bgs; }',
+      '.hero {',
+      '  .multi-bg(linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url("/images/hero.jpg") center/cover no-repeat);',
+      '}'
+    ].join('\n');
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'MixinDef' }, { type: 'Rule', body: [{
+        type: 'MixinCall',
+        name: '.multi-bg',
+        args: [
+          { value: { type: 'FunctionCall', name: 'linear-gradient' } },
+          { value: [
+            { type: 'Url' },
+            { type: 'SpacedValue' },
+            { type: 'Keyword', src: 'no-repeat' }
+          ] }
+        ]
+      }] }]
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      '.hero {\n  background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)) url("/images/hero.jpg") center/cover no-repeat;\n}\n'
+    );
+  });
+
   it('constructs public literal-pattern and variadic mixin parameters directly', () => {
     const source = '.badge(red, @gap, @rest...) { padding: @gap; } .card { .badge(red, 2px, 4px); }';
     const cst = parseLessCst(source);

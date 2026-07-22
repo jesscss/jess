@@ -2747,3 +2747,51 @@ or Context deletion lanes.
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded Less direct-AST mixin argument repair. The semicolon-group
+  reducer now preserves recursive `ValueSlot` arguments (including authored
+  adjacent terms) when constructing the canonical `List`; no bridge, source
+  reparse, parser host, fallback, or alternate evaluator was introduced.
+- Architecture surface: `packages/less-parser/src/ast/grammar.ts` remains the
+  parser-owned direct Parseman reduction boundary, and `@jesscss/core/ast`'s
+  existing recursive `ValueSlot`/`List.value` contract remains the sole public
+  representation. The fix changes only the reducer's input narrowing from
+  scalar `ValueNode` to the already-defined recursive slot contract.
+- Separation/duplication: no second list/value model or conversion helper was
+  added; the existing `requireValueSlot` boundary is reused for both scalar and
+  recursive argument values.
+- Cumulative node weight: no AST node, frame, map, side table, or render state
+  is added. The reducer retains the same `List` node and argument count.
+- New traversal: none. The existing comma-group `map` remains one pass over the
+  already-reduced argument facts; no source scan, lookahead, or reparse is added.
+- New node/materialization: none beyond the existing `List` construction; raw
+  recursive slots remain raw and are not flattened or copied.
+- Render path: unchanged. The canonical serializer/evaluator consumes the same
+  `MixinCall.args` shape; the repaired benchmark case now reaches that existing
+  path instead of throwing during parse reduction.
+- Helper/API surface: no public export, alias, shim, or compatibility helper was
+  added; `requireValueSlot` is the existing grammar-local narrowing boundary.
+- Metadata mutations: none.
+- Review-flagged diff tokens: `[array helper]` is the existing comma-group
+  `List` construction and `map`; no new loop, traversal, spread/materialization,
+  node construction, side map/set, or routine error path was introduced.
+- Behavior evidence: the complete Less parser suite passes 270/270, including
+  the new regression covering `linear-gradient(...), url(...) center/cover
+  no-repeat` in a semicolon-terminated variadic mixin call; the rebuilt public
+  parser now accepts `benchmark.less` and returns a 677-child `Stylesheet`.
+- Build evidence: `pnpm --filter @jesscss/less-parser build` passes and touched
+  source/test ESLint reports zero diagnostics. Direct package `tsc --noEmit`
+  has only the pre-existing published Parseman 0.28.0 `FusedRule` contract
+  diagnostic at `src/index.ts`; the code change introduces no new diagnostic.
+- Boundary evidence: public `parse()` and the Context/plugin `safeParse()` route
+  both consume the repaired direct grammar; the rebuilt compiler renders the
+  same fixture with 122,723 bytes / SHA-256
+  `2ab6d3fd8f322df0f0be7c1a481b528ec50a7fb035604b744c7543397d56b3fe`.
+- Evidence: matched current sanity measurements (not a performance claim) are
+  direct parse 63.53 ms round median under 20 warmups + 3×45 samples and public
+  Compiler 76.56 ms round median under the same fixture/options protocol; the
+  direct parser bundle is 1,827,807 bytes, SHA-256
+  `a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`.
+- Verdict: accepted bounded correctness repair; no performance claim.
