@@ -451,6 +451,12 @@ export interface Frame {
   /** Root rulesets spliced by already-executed imports, in import/source order. */
   importedRules?: Rule[] | null;
   /**
+   * Imported callable statements in their source order. Namespaced descent must
+   * see imported mixin definitions as well as rulesets; ordinary call lookup
+   * already receives the definitions through `mixins`.
+   */
+  importedCallables?: Array<MixinDef | Rule> | null;
+  /**
    * Source-ordered direct ruleset placements unlocked by executed explicit
    * mixins. They are visible only to later lookup in this caller frame.
    */
@@ -939,13 +945,16 @@ function publishSelectedMixinDefinition(frame: Frame, definition: MixinDef): voi
  * fact on the existing frame map rather than creating a wrapper document or a
  * second lookup path.
  */
-function publishImportedMixinDefinition(frame: Frame, definition: MixinDef): void {
+function publishImportedMixinDefinition(frame: Frame, definition: MixinDef, recordCallable = true): void {
   const mixins = frame.mixins ??= new Map();
   const candidates = mixins.get(definition.name);
   if (candidates) {
     candidates.push(definition);
   } else {
     mixins.set(definition.name, [definition]);
+  }
+  if (recordCallable) {
+    (frame.importedCallables ??= []).push(definition);
   }
 }
 
@@ -965,6 +974,7 @@ function publishImportedVariableDeclaration(frame: Frame, declaration: VariableD
  * splice order for an import that has executed at this point. */
 function publishImportedRuleset(frame: Frame, rule: Rule): void {
   (frame.importedRules ??= []).push(rule);
+  (frame.importedCallables ??= []).push(rule);
   // It may have been materialized before this import; rebuild lazily with the
   // newly published import prefix on the next namespace lookup.
   frame.rulesets = undefined;
@@ -1240,7 +1250,7 @@ function findPathInScope(
   // Imported root rules are lexical splices in this scope. They must take part
   // in element-value namespace descent just like authored rules, and are kept
   // ahead of the importing document's source facts in import execution order.
-  for (const s of scope.importedRules ?? []) {
+  for (const s of scope.importedCallables ?? scope.importedRules ?? []) {
     visit(s);
   }
   for (const s of st ?? []) {
@@ -4340,7 +4350,10 @@ function emitDocumentStatements(
         break;
       case 'MixinDef':
         if (imported) {
-          publishImportedMixinDefinition(frame, child);
+          // `emitImportAtRule` already published this definition in the import's
+          // source-order callable stream. Keep its existing ordinary-call
+          // publication, but do not record the same source statement twice.
+          publishImportedMixinDefinition(frame, child, false);
         } else {
           publishSelectedMixinDefinition(frame, child);
         }

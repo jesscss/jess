@@ -139,7 +139,6 @@ const expectedFailureFixtures = new Map<string, string>([
   // match the Less golden .css under the harness config.
   ['tests-unit/import/import-reference.less', 'reference import filtering leaves extra at-rules'],
   ['tests-unit/import/import.less', '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)'],
-  ['tests-config/namespacing/namespacing-5.less', 'nested namespace callable lookup does not match Less'],
   ['tests-config/namespacing/namespacing-8.less', 'each() custom-property value lookup inside detached map differs from Less'],
   ['tests-config/namespacing/namespacing-functions.less', 'detached ruleset callable lookup result differs from Less'],
   ['tests-config/namespacing/namespacing-media.less', 'namespace lookup inside media query expression differs from Less'],
@@ -156,7 +155,6 @@ const expectedFailureFixtures = new Map<string, string>([
   // still mismatch Less. Graduated from skip → expected-failure so they run.
   ['tests-unit/selectors/selectors.less', 'renders but throws mid-eval (currentArg.eval is not a function)'],
   ['tests-unit/detached-rulesets/detached-rulesets.less', 'detached-ruleset argument closure now matches Less; nested @media query merging still differs'],
-  ['tests-unit/functions-each/functions-each.less', 'renders but each() output differs from Less'],
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
   ['tests-unit/property-name-interp/property-name-interp.less', 'Less5 owner-set rejection of deprecated dash-only @- and @{-} variable names; Less4 deprecation is implemented in unpushed worktree commit db03543d'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],

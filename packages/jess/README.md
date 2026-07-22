@@ -24,7 +24,8 @@ Docs: [jesscss.github.io](https://jesscss.github.io/).
 npm install jess
 ```
 
-Requires Node 16+.
+Requires Node 18+. Jess verifies the current Node LTS line and the prior three
+LTS lines; this minimum advances when that rolling support window advances.
 
 ## CLI
 
