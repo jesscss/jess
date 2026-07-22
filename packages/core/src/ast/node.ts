@@ -37,6 +37,7 @@ import type {
   MixinCall,
   VariableDeclaration,
   Sequence,
+  Important,
   Operation,
   FunctionCall,
   Block,
@@ -61,7 +62,7 @@ export type NodeType =
   | 'Stylesheet' | 'Rule' | 'Declaration' | 'Comment' | 'SelectorList'
   | 'ComplexSelector' | 'CompoundSelector' | 'SimpleSelector' | 'Keyword' | 'Color' | 'Quoted' | 'Any' | 'Url' | 'SelectorCapture' | 'Dimension'
   | 'SpacedValue' | 'List' | 'VariableReference' | 'MixinDef' | 'MixinCall' | 'VariableDeclaration'
-  | 'Sequence' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
+  | 'Sequence' | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed' | 'VarIndirect'
   | 'DetachedRuleset' | 'Reference' | 'Range' | 'PropertyReference' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
 
@@ -84,7 +85,7 @@ export function renderCombinator(comb: Combinator): string {
 export type Node =
   | Stylesheet | Rule | Declaration | Comment | SelectorList | ComplexSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VariableReference | MixinDef | MixinCall
-  | VariableDeclaration | Sequence | Operation | FunctionCall | Block | Condition
+  | VariableDeclaration | Sequence | Important | Operation | FunctionCall | Block | Condition
   | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | VarIndirect | DetachedRuleset
   | Reference | Range | PropertyReference | For | If | StyleImport | ModuleImport | RawInline;
 
@@ -107,7 +108,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'Stylesheet', 'Rule', 'Declaration', 'Comment', 'SelectorList',
   'ComplexSelector', 'CompoundSelector', 'SimpleSelector', 'Keyword', 'Color', 'Quoted', 'Any', 'Url', 'SelectorCapture', 'Dimension',
   'SpacedValue', 'List', 'VariableReference', 'MixinDef', 'MixinCall', 'VariableDeclaration',
-  'Sequence', 'Operation', 'FunctionCall', 'Block', 'Condition',
+  'Sequence', 'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed', 'VarIndirect',
   'DetachedRuleset', 'Reference', 'Range', 'PropertyReference', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline'
 ]);

@@ -2050,6 +2050,15 @@ silently choose one language’s policy.
   map items now make the same scalar/call/array distinction before dispatch.
   `$apply` calls the existing source-owner scope with its actual three-argument
   contract; the removed fourth JavaScript argument was ignored at runtime.
+  Diagnostic subjects now admit canonical AST objects without pretending that
+  they own legacy inline location fields; two structural readers preserve
+  `spanStart`/`spanEnd` behavior only when those legacy fields are actually
+  present. The canonical serializer narrows recursive declaration slots before
+  recording scalar value positions, keeps nullable selected-mixin bindings
+  nullable through the existing call frame, and makes the existing synchronous
+  nested-selector contract explicit. `Important` is now included in `Node`,
+  `NodeType`, and `isNode`, matching its existing public `ValueNode` factory and
+  eliminating the prior internally contradictory union.
 - Separation/duplication: no second resolver or array-flattening policy was
   added. Existing core `evalBytes` remains the only byte-resolution owner.
 - Cumulative node weight: unchanged.
@@ -2065,6 +2074,10 @@ silently choose one language’s policy.
   [materialized array/object] A recognized calc slash group copies its shallow
   readonly slot into the pre-existing temporary `SpacedValue`; no-slash and
   nested-array inputs allocate nothing in this recognizer.
+  [materialized array/object] Recursive `@supports` slots assemble the one
+  existing `SupportsPreludePart[]` result required by the normalizer; the
+  recursive array was previously rejected by the scalar-only signature. No AST
+  node or persistent runtime surface is created.
 - Render path: unchanged direct emission. Scalar guard/logical behavior is
   identical; recursive slots now use the existing `evalTypedSlot` and
   `evalValueSlot` owners instead of being misclassified as scalar nodes.
@@ -2089,6 +2102,16 @@ silently choose one language’s policy.
   node, or provenance state is mutated. The new `type` checks distinguish a
   typed node from a recursive slot array before reading the discriminant; they
   allocate nothing and add no scan.
+  [array helper] and [array spread/materialization] in the supports-prelude
+  branch recursively preserve the already-authored slot boundaries while
+  producing the existing normalization input. [node construction] and
+  [routine error control] are the same exceptional synchronous-selector
+  boundary already owned by `resolveComplexSync`: an async plugin result cannot
+  resume an in-place extend preflight or synchronous nested-header probe, so an
+  `Error` is allocated only when that unsupported contract is violated, never
+  for a lookup miss or ordinary branch result. [side map/set] on the transparent
+  shell is only a truthful nullable type for the existing bindings map; it does
+  not allocate a map.
 - Behavior evidence: the focused core tests prove recursive authored and
   default mixin arguments; import, selected-mixin, and direct-function suites
   pass 101/101; the complete core suite passes; and the public Less parser suite
@@ -2102,6 +2125,10 @@ silently choose one language’s policy.
   source diagnostics from 241 to 204 and the full core config from 641 to 605.
   The following closure/call/iteration narrowing slice moves core source
   diagnostics from 204 to 158 and the full core config from 605 to 559.
+  The canonical serializer/diagnostic drain then moves core source diagnostics
+  from 158 to 127 and the full core config from 559 to 528; no diagnostics remain
+  in `ast/serialize.ts`, `ast/node.ts`, or the diagnostic files touched by this
+  pass. The remaining strict source diagnostics are confined to `tree/**`.
 - Boundary evidence: the Less public parser suite passes after rebuilding core,
   and package export verification confirms the entrypoint remains valid.
 - Evidence: focused and full behavior, build, export, and strict-type evidence
@@ -2113,11 +2140,11 @@ silently choose one language’s policy.
     "verdict":"accepted",
     "performanceClaim":"none",
     "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
-    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, recursive map-entry values, guard/logical/reference operands, closure aliases, and iteration inputs make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
-    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy; the existing alias-chain loop only gains a scalar guard. [array helper] The namespace flatMap already existed and only gains a Statement[] annotation. [materialized array/object] Only the recognized slash group copies into the existing scalar-part temporary SpacedValue; guard-call, namespace bodies, and binding maps are type annotations and ordinary arrays allocate nothing. [side map/set] The binding Map match is an existing parameter type widened to CallValue, not a new map. [parent/source mutation] Diagnostic source variables are only narrowed for read-only line lookup; no source or parent state changes. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
+    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, ruleset guard context, serializer narrowing, recursive map-entry values, guard/logical/reference operands, closure aliases, iteration inputs, canonical diagnostic subjects, and scalar position facts make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy. Important now participates in the public Node union it already semantically belonged to.",
+    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. [loop/traversal] The calc slash recognizer validates shallow parts without allocation before its rare recognized-slash copy; the existing alias-chain loop only gains a scalar guard. [array helper] The namespace flatMap already existed and only gains a Statement[] annotation; the supports flatMap recursively emits the existing prelude-part result. [array spread/materialization] and [materialized array/object] in that supports branch preserve authored recursive slot boundaries in the one transient SupportsPreludePart[] consumed immediately by the normalizer. The recognized slash group alone copies into the existing scalar-part temporary SpacedValue; guard-call, namespace bodies, and binding maps are type annotations. [side map/set] The binding Map matches are existing parameter/member types widened to CallValue or nullable, not new maps. [parent/source mutation] Diagnostic source variables are only narrowed for read-only line lookup; no source or parent state changes. [node construction] and [routine error control] identify exceptional Error construction when an async plugin result violates a pre-existing synchronous selector preflight/header contract; ordinary lookup misses and branch results do not throw. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
     "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
-    "behaviorEvidence":"The complete core suite and the public Less parser suite pass; focused recursive arguments, imports, selected mixins, direct-function, value-access, and recursive guard truth cases pass.",
-    "buildEvidence":"The core package build and package-export verification pass after the resolver contract correction.",
+    "behaviorEvidence":"The complete core suite passes 3318/3318; focused recursive arguments, imports, selected mixins, direct-function, value-access, recursive guard truth, at-rule, extend-preflight, nested mixin, and Node-union cases pass.",
+    "buildEvidence":"The core package build and package-export verification pass after the resolver and canonical serializer contract corrections.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```

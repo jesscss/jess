@@ -3109,6 +3109,16 @@ function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx)
   return step(0, '');
 }
 
+/** Synchronous selector-interpolation consumers cannot suspend and resume a
+ * partially mutated selector. Public emitted selectors retain the async path. */
+function resolveSimpleTextSync(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): string {
+  const value = resolveSimpleText(sim, frame, e);
+  if (isThenable(value)) {
+    throw new Error('async value in synchronous selector interpolation is unsupported');
+  }
+  return value;
+}
+
 function resolveCompound(c: CompoundSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   if (!compoundHasInterp(c)) {
     return compoundCanonical(c);
@@ -3171,6 +3181,14 @@ function compose(parents: string[], child: SelectorList, frame: Frame | null, e:
   return combineAll(parts, values => values.flat());
 }
 
+function composeSync(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
+  const value = compose(parents, child, frame, e);
+  if (isThenable(value)) {
+    throw new Error('async value in a synchronous nested selector composition is unsupported');
+  }
+  return value;
+}
+
 /**
  * [nesting] The EMITTED-header branches for `child` under `parents`. Identical to
  * `compose` EXCEPT an `&`-less child under MULTIPLE parents compacts to a single
@@ -3223,6 +3241,14 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Eval
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   return combineAll(list.selectors.map(c => expandComplex(c, frame, e)), values => values.flat());
+}
+
+function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
+  const value = ownStrings(list, frame, e);
+  if (isThenable(value)) {
+    throw new Error('async value in a synchronous nested selector header is unsupported');
+  }
+  return value;
 }
 
 /** [atrule-bubbling] Flat-mode own selectors at a ROOT context (no parent): like
@@ -3423,7 +3449,7 @@ function put(e: Emit, s: string): void {
  * `.m() !important` placement onto every declaration the body emits. */
 interface Leaf {
   node: Statement;
-  frame: Frame | null;
+  frame: Frame;
   important?: boolean;
   /** Produced by the core `$apply` expansion; its repeated output stays visible. */
   fromApply?: true;
@@ -3448,7 +3474,7 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
   for (let i = 0; i < comp.simples.length; i++) {
     const sim = comp.simples[i]!;
     if (sim.interp !== null) {
-      comp.simples[i] = simpleSelector(resolveSimpleText(sim, frame, e));
+      comp.simples[i] = simpleSelector(resolveSimpleTextSync(sim, frame, e));
     }
   }
   comp._hasInterp = false;
@@ -6125,7 +6151,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     const onNewLine = node.valueOnNewLine === true;
     put(e, onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
@@ -6428,7 +6454,7 @@ function emitImportAtRule(
 
 /** A missing typed interpolation reference is retryable only at an import boundary. */
 class ImportPathNotReady extends Error {
-  constructor(readonly cause: Error) {
+  constructor(override readonly cause: Error) {
     super(cause.message);
   }
 }
@@ -6798,8 +6824,15 @@ function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[]): string
  * deliberately local to the supports prelude; ordinary declaration values keep
  * their existing evaluation semantics.
  */
-function evalSupportsPreludeSync(node: ValueNode, frame: Frame | null, e: EvalCtx): SupportsPreludePart[] {
+function evalSupportsPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): SupportsPreludePart[] {
   const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
+  if (isValueSlotArray(node)) {
+    const authored = valueLayoutOf(node);
+    return node.flatMap((part, index) => [
+      ...(index === 0 ? [] : plain(authored?.[index - 1] ?? ' ')),
+      ...evalSupportsPreludeSync(part, frame, e)
+    ]);
+  }
   switch (node.type) {
     case 'GeneralEnclosed':
       // `<general-enclosed>` owns arbitrary CSS syntax. Its bytes must not pass
@@ -7577,9 +7610,11 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     put(e, onNewLine ? ':' : ': ');
     const valStart = e.off;
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
     if (e.positions) {
-      e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
+      if (!isValueSlotArray(node.value)) {
+        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
+      }
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
     put(e, ';\n');
@@ -7604,8 +7639,8 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
  */
 function nestedSourceStrings(source: NestedHeaderSource, e: EvalCtx): string[] {
   const parents = source.parent === null
-    ? ownStrings(source.selector, source.frame, e)
-    : compose(nestedSourceStrings(source.parent, e), source.selector, source.frame, e);
+    ? ownStringsSync(source.selector, source.frame, e)
+    : composeSync(nestedSourceStrings(source.parent, e), source.selector, source.frame, e);
   return parents;
 }
 
@@ -7613,7 +7648,7 @@ interface TransparentShell {
   readonly rule: Rule;
   readonly call: MixinCall;
   readonly def: MixinDef;
-  readonly bindings: Map<string, CallValue>;
+  readonly bindings: Map<string, CallValue> | null;
   readonly home: Frame;
 }
 
@@ -7772,8 +7807,8 @@ function emitNestedRule(
   const own = plan
     ? plan.header
     : placement === null
-      ? ownStrings(rule.selector, frame, e)
-      : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
+      ? ownStringsSync(rule.selector, frame, e)
+      : composeSync(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
   const header = idt ? own.join(',\n' + idt) : own.join(',\n');
   // Less only coalesces this nested-output root seam after an authored header
   // has been evaluated. Static same-selector root rules remain distinct.
@@ -8037,7 +8072,7 @@ function expandNestedApply(
       const emitted = withSourceOwner(e, applyFrame.sourceOwner, () => mapMaybe(
         prepareBodyPlugins(rule.body, applyFrame, e),
         () => emitNestedBody(rule.body, applyFrame, e, undefined, imp, source, null, sharedLeaves, true)
-      ), rule.body);
+      ));
       if (isThenable(emitted)) {
         return emitted.then(() => run(index + 1));
       }
@@ -8066,7 +8101,7 @@ function expandNestedReferenceCall(
   if (!resolved) {
     return;
   }
-  if (resolved.value.type === 'MixinCall') {
+  if (isMixinCallValue(resolved.value)) {
     return expandNestedCall(resolved.value, frame, e, imp, source, sharedLeaves, applyExpansion);
   }
   if (step.args.length !== 0) {

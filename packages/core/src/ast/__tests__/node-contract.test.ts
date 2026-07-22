@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isNode, type Node } from '../node.js';
 import {
   generalEnclosed,
+  important,
   interpolation,
   keyword,
   selectorCapture,
@@ -12,6 +13,12 @@ import {
 } from '../nodes.js';
 
 describe('AST node contract', () => {
+  it('admits the Important value wrapper through the exported Node union', () => {
+    const value: Node = important(keyword('red'));
+
+    expect(isNode(value)).toBe(true);
+  });
+
   it('admits SelectorCapture through the exported Node union', () => {
     const capture: Node = selectorCapture(
       ['.primary', '.secondary'],
