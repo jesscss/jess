@@ -4223,3 +4223,49 @@ or Context deletion lanes.
   mutation, or routine error-control path was added.
 - Verdict: accepted bounded direct-AST selector grammar correction; the fixture's
   remaining dynamic attribute form is a separate selector-family slice.
+
+## Aggressive Cutting Self-Prosecution — structural Less mixin rest arguments
+
+- Latest pass: `bindArgs` no longer serializes a mixin rest or synthetic
+  `@arguments` into an `Any` byte string. It preserves the existing typed
+  `ValueSlot` arguments in canonical `List` values, so a single authored
+  space-list remains one argument while comma and semicolon call groups remain
+  separate arguments for `length()` and `extract()`.
+- Architecture surface: `packages/core/src/ast/mixin-dispatch.ts` only. This is
+  the canonical evaluator binding boundary; no parser, renderer, plugin
+  policy, legacy tree, bridge, or dialect-specific evaluator branch was added.
+- Separation/duplication: the existing canonical `List` factory is used at the
+  one binding boundary that already owned both rest and `@arguments`; no
+  parallel byte serializer, alternate list model, or compatibility value is kept.
+- Cumulative node weight: at most two required existing `List` nodes per
+  accepted call (one named rest and one `@arguments`); the former path created
+  two `Any` byte leaves. No wrapper node, frame, map, side table, or copy exists.
+- New traversal: `[loop/traversal]` one direct bounded pass over already-selected
+  leftover arguments replaces `map` plus byte-flattening. It is not a source or
+  AST walk and never rediscovers call candidates.
+- New node/materialization: `[materialized array/object]` two local slot arrays
+  hold existing argument references until the required `List` values are made;
+  `[array spread/materialization]` appends those slots to the already-owned
+  `@arguments` sequence. Neither operation clones, resolves recursively, or
+  materializes a legacy node.
+- Render path: unchanged canonical evaluator/serializer route; it serializes
+  the resulting `List` exactly as it does every other canonical value. No output
+  policy, renderer traversal, or string staging was added.
+- Helper/API surface: one file-local `isValueSlot` type guard; no export or
+  public API. The renderer continues to serialize the canonical list shape.
+- Metadata mutations: none; source spans, parent/child ownership, frames, and
+  provenance stay with the existing AST facts.
+- Review-flagged diff tokens: `[loop/traversal]` is the one leftover-argument
+  pass; `[materialized array/object]` is the two local reference arrays;
+  `[array spread/materialization]` appends existing slots. No clone, side map,
+  source mutation, generic walker, or routine-error control path was added.
+- Evidence: focused core binding shapes pass 11/11; public Less `parse()` to
+  canonical render passes 72/72; the compiler plus `@jesscss/plugin-less` route
+  proves space/comma/semicolon call behavior. Core, Less-parser, and Less-plugin
+  builds pass; changed-file ESLint has no errors. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Rest and synthetic @arguments binding is semantic AST-v2 information preservation: recursive ValueSlot facts must stay structural for typed list functions instead of being lost in a byte leaf. The two required List values replace the former two Any leaves; this is not a speed or neutrality claim.","dangerTokensJustification":"[loop/traversal] is one bounded pass over the already-selected leftover call arguments; [materialized array/object] is two local arrays of existing ValueSlot references; [array spread/materialization] appends those references to the synthetic arguments sequence. No source/tree walk, clone, side map, bridge, parser reparse, or output staging is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"Focused mixin-dispatch shape tests, public Less parse-to-render tests, and the Jess compiler plus Less-plugin route all pass.","buildEvidence":"Core, Less-parser, and Less-plugin builds pass; changed-file ESLint has no errors.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
+  ```
+- Verdict: accepted structural repair. The discarded byte flattening was an
+  invalid bridge that lost recursive AST information; this pass removes it.

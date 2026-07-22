@@ -15,8 +15,8 @@ import { describe, it, expect } from 'vitest';
 import { bindArgs } from '../mixin-dispatch.js';
 import { isNode } from '../node.js';
 import {
-  mixinDef, mixinCall, any, isLiteralNode,
-  type MixinCall, type MixinDef, type Param, type ValueSlot
+  mixinDef, mixinCall, any, isLiteralNode, keyword,
+  type List, type MixinCall, type MixinDef, type Param, type ValueSlot
 } from '../nodes.js';
 
 // Caller-frame resolver for byte-literal args: our test args/defaults are plain
@@ -24,13 +24,27 @@ import {
 const resolve = (v: ValueSlot): string =>
   'type' in v ? (isLiteralNode(v) ? v.src : '') : v.map(resolve).join(' ');
 
-const argumentsOf = (def: MixinDef, call: MixinCall): string => {
+const argumentsOf = (def: MixinDef, call: MixinCall): List => {
   const bound = bindArgs(def, call, resolve);
   expect(bound).not.toBeNull();
   const a = bound!.get('arguments');
-  expect(isNode(a) && a.type).toBe('Any');
-  return isNode(a) && a.type === 'Any' ? a.src : '';
+  if (!isNode(a) || a.type !== 'List') {
+    throw new TypeError('Expected @arguments to retain a structural List.');
+  }
+  return a;
 };
+
+const slotText = (value: ValueSlot): string => {
+  if (Array.isArray(value)) {
+    return value.map(slotText).join(' ');
+  }
+  if (value.type === 'List') {
+    return value.value.map(slotText).join(value.sep === ',' ? ', ' : ' ');
+  }
+  return isLiteralNode(value) ? value.src : '';
+};
+
+const argumentsText = (def: MixinDef, call: MixinCall): string => slotText(argumentsOf(def, call));
 
 describe('mixin @arguments (vs less@4.6.3)', () => {
   const params: Param[] = [
@@ -45,17 +59,17 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
       { value: any('2px'), name: 'b' },
       { value: any('1px'), name: 'a' }
     ]);
-    expect(argumentsOf(def, call)).toBe('1px 2px 30px');
+    expect(argumentsText(def, call)).toBe('1px 2px 30px');
   });
 
   it('(b) call omitting a defaulted param includes the default-filled slot', () => {
     const call = mixinCall('.mixin', [any('1px'), any('2px')]);
-    expect(argumentsOf(def, call)).toBe('1px 2px 30px');
+    expect(argumentsText(def, call)).toBe('1px 2px 30px');
   });
 
   it('(c) mixed positional + named emits param order with defaults filled', () => {
     const call = mixinCall('.mixin', [any('1px'), { value: any('9px'), name: 'c' }]);
-    expect(argumentsOf(def, call)).toBe('1px 20px 9px');
+    expect(argumentsText(def, call)).toBe('1px 20px 9px');
   });
 
   it('keeps the final duplicate named value while positional/rest args fill their remaining slots', () => {
@@ -71,12 +85,12 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
       any('4px')
     ]);
 
-    expect(argumentsOf(restDef, call)).toBe('1px 3px 4px');
+    expect(argumentsText(restDef, call)).toBe('1px 3px 4px');
   });
 
   it('(d) all-positional call is unchanged (byte-identical regression guard)', () => {
     const call = mixinCall('.mixin', [any('1px'), any('2px'), any('3px')]);
-    expect(argumentsOf(def, call)).toBe('1px 2px 3px');
+    expect(argumentsText(def, call)).toBe('1px 2px 3px');
   });
 
   it('resolves a recursive value-slot argument without treating its array as a node', () => {
@@ -87,35 +101,46 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
       path: [],
       important: false
     };
-    expect(argumentsOf(def, call)).toBe('1px 2px 20px 30px');
+    expect(argumentsText(def, call)).toBe('1px 2px 20px 30px');
   });
 
   it('resolves a recursive default value slot through the bound-default resolver', () => {
     const nestedDefault = mixinDef('.nested', [
       { name: 'value', default: [[any('1px'), any('2px')]] }
     ], []);
-    expect(argumentsOf(nestedDefault, mixinCall('.nested'))).toBe('1px 2px');
+    expect(argumentsText(nestedDefault, mixinCall('.nested'))).toBe('1px 2px');
   });
 
   it('pattern-literal slots bind no variable and are excluded', () => {
     // .mixin(red, @a) called as .mixin(red, 5px) => "5px" (less@4.6.3)
     const patDef = mixinDef('.mixin', [{ pattern: any('red') }, { name: 'a' }], []);
     const call = mixinCall('.mixin', [any('red'), any('5px')]);
-    expect(argumentsOf(patDef, call)).toBe('5px');
+    expect(argumentsText(patDef, call)).toBe('5px');
   });
 
   it('a variadic rest expands each arg; an empty rest contributes nothing', () => {
     const restDef = mixinDef('.mixin', [{ name: 'a' }, { name: 'rest', rest: true }], []);
     // .mixin(1px, 2px, 3px, 4px) => "1px 2px 3px 4px"
     expect(
-      argumentsOf(restDef, mixinCall('.mixin', [any('1px'), any('2px'), any('3px'), any('4px')]))
+      argumentsText(restDef, mixinCall('.mixin', [any('1px'), any('2px'), any('3px'), any('4px')]))
     ).toBe('1px 2px 3px 4px');
     // .mixin(1px) => "1px" (no trailing space from the empty rest slot)
-    expect(argumentsOf(restDef, mixinCall('.mixin', [any('1px')]))).toBe('1px');
+    expect(argumentsText(restDef, mixinCall('.mixin', [any('1px')]))).toBe('1px');
   });
 
   it('an all-pattern mixin yields an empty @arguments', () => {
     const patOnly = mixinDef('.mixin', [{ pattern: any('red') }], []);
-    expect(argumentsOf(patOnly, mixinCall('.mixin', [any('red')]))).toBe('');
+    expect(argumentsText(patOnly, mixinCall('.mixin', [any('red')]))).toBe('');
+  });
+
+  it('keeps a sole authored space-list as one structural rest argument', () => {
+    const restDef = mixinDef('.mixin', [{ name: 'values', rest: true }], []);
+    const authored = [keyword('a'), keyword('b'), keyword('c')] as const;
+    const bound = bindArgs(restDef, mixinCall('.mixin', [{ value: authored }]), resolve);
+
+    expect(bound?.get('values')).toEqual({ type: 'List', sep: ' ', value: [authored] });
+    expect(argumentsOf(restDef, mixinCall('.mixin', [{ value: authored }]))).toEqual({
+      type: 'List', sep: ' ', value: [authored]
+    });
   });
 });
