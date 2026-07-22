@@ -3715,6 +3715,63 @@ or Context deletion lanes.
 - Verdict: accepted bounded in-place AST-v2 conversion; remaining Less math
   functions require their own behavior-parity batches.
 
+## Aggressive Cutting Self-Prosecution — bubbled @container child-rule order
+
+- Latest pass: the canonical AST-v2 serializer now stages only static children
+  of a bubbled conditional block when its propagated selector context is
+  non-null. Direct declarations/comments are emitted before those child rules,
+  matching Less for both `@media` and `@container`; dynamic mixin, loop, import,
+  and variable-bearing bodies retain the existing streaming path.
+- Architecture surface: `packages/core/src/ast/serialize.ts` only. This is a
+  render-order correction in the existing AST-v2 emitter; no parser host,
+  bridge, source reparse, scanner, compatibility path, or second evaluator was
+  introduced.
+- Separation/duplication: no duplicate selector or at-rule emitter. Deferred
+  callbacks invoke the existing `flatten`, `emitAtRuleBlock`, and
+  `emitAtRuleStatement` operations after the one existing direct-leaf flush.
+- Cumulative node weight: no AST nodes, frames, side maps, or copies are added.
+  One short-lived callback array is created only for a static bubbled body.
+- New traversal: `[loop/traversal]` one bounded pass over the already-owned
+  statement array to classify whether static staging is safe, plus one ordered
+  callback pass over deferred children. No source/tree rediscovery or recursive
+  walk is added.
+- New node/materialization: none. `[materialized array/object]` is the
+  short-lived deferred callback array for static child emitters only; it is not
+  a node/value materialization and the dynamic path allocates nothing new.
+- Render path: direct declarations still resolve through `flushBlock`; child
+  rules and nested at-rules still stringify through their existing emitters.
+  Nothing is rendered to an intermediate AST or string solely to reorder it.
+- Helper/API surface: no public helper or API. The local static-shape predicate
+  and callback queue are limited to this emitter and disappear after the body.
+- Metadata mutations: none. Existing frame, source, position, and import state
+  are threaded unchanged through the deferred callbacks.
+- Review-flagged diff tokens: `[loop/traversal]` is the bounded statement-array
+  classification and ordered callback loop; `[materialized array/object]` is
+  the static-only callback queue. No clone, side-map, source mutation, or
+  render-only value array was added.
+- Evidence: public Less integration lock in
+  `packages/jess/test/less/at-rule-bubbling-bugs.test.ts` passes 8/8, including
+  byte-equivalent nested `@media` and `@container` cases where a declaration
+  follows a child rule. The focused at-rule suite passes 11/12 (one pre-existing
+  skipped nesting case); core build and changed-file ESLint pass with existing
+  warnings. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the canonical AST-v2 serializer/evaluator owners listed by ast-semantic-runtime-cutover",
+    "why":"Static bubbled conditional bodies must match Less's declaration-before-child ordering. The existing dynamic streaming path is unchanged; only the already-owned statement array is classified and static child emitter callbacks are staged.",
+    "dangerTokensJustification":"[loop/traversal] is one bounded statement-array classification and one deferred-child callback loop; [materialized array/object] is a static-only callback queue. No source walk, clone, bridge, or parser reparse is added.",
+    "cases":["bubbled-media-direct-before-child","bubbled-container-direct-before-child","dynamic-bubble-body-streaming-preserved"],
+    "behaviorEvidence":"at-rule-bubbling-bugs.test.ts passes 8/8, with both @media and @container direct-after-child cases matching Less output.",
+    "buildEvidence":"pnpm --filter @jesscss/core build and pnpm --filter jess test -- --run test/less/at-rule-bubbling-bugs.test.ts pass."
+  }]
+  ```
+- Verdict: accepted bounded AST-v2 emitter correction; no performance claim is
+  made and no legacy route was retained.
+
 ## Aggressive Cutting Self-Prosecution — Less pow Fn conversion
 
 - Latest pass: Less `pow` now directly re-exports the canonical AST-v2
@@ -3788,3 +3845,37 @@ or Context deletion lanes.
   is made.
 - Verdict: accepted bounded in-place AST-v2 conversion; remaining Less math
   functions require their own behavior-parity batches.
+
+## Aggressive Cutting Self-Prosecution — bubbled @container child-rule order (current)
+
+- Latest pass: static bubbled conditional bodies now stage direct declarations
+  and comments before child rules, matching Less for both `@media` and
+  `@container`; dynamic mixin, loop, import, and variable-bearing bodies keep
+  the existing streaming route.
+- Architecture surface: `packages/core/src/ast/serialize.ts` only. No parser
+  host, bridge, source reparse, scanner, compatibility path, or second evaluator.
+- Separation/duplication: deferred callbacks invoke existing `flatten`,
+  `emitAtRuleBlock`, and `emitAtRuleStatement`; no duplicate emitter exists.
+- Cumulative node weight: no nodes, frames, side maps, or copies. One callback
+  array exists only for a static bubbled body.
+- New traversal: `[loop/traversal]` one bounded statement-array classification
+  and one ordered callback pass; no source/tree rediscovery or recursive walk.
+- New node/materialization: none. `[materialized array/object]` is only the
+  static callback queue, not a node/value materialization.
+- Render path: direct leaves still use `flushBlock`; child rules/at-rules still
+  stringify through existing emitters; no intermediate output tree/string.
+- Helper/API surface: no public helper or API; the predicate and queue are
+  local to this emitter.
+- Metadata mutations: none; existing frame/source/position/import state is
+  threaded unchanged.
+- Review-flagged diff tokens: `[loop/traversal]` is the bounded classification
+  and callback loop; `[materialized array/object]` is the static-only queue.
+  No clone, side-map, source mutation, or render-only value array was added.
+- Evidence: `at-rule-bubbling-bugs.test.ts` passes 8/8, including byte-equivalent
+  @media/@container direct-after-child cases; core build and changed-file ESLint
+  pass with existing warnings. No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Static bubbled conditional bodies must match Less declaration-before-child ordering while dynamic streaming remains unchanged; this is semantic runtime work, not a neutral or speed claim.","dangerTokensJustification":"[loop/traversal] is one bounded statement classification plus one callback pass; [materialized array/object] is a static-only callback queue; no source walk, clone, bridge, or parser reparse.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"at-rule-bubbling-bugs.test.ts 8/8 with both @media and @container Less-oracle cases.","buildEvidence":"core build and focused jess suite pass.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
+  ```
+- Verdict: accepted bounded AST-v2 emitter correction; no legacy route retained.
