@@ -8,6 +8,7 @@ import { lightness as builtinLightness } from '../../builtins/lightness.js';
 import { luma as builtinLuma } from '../../builtins/luma.js';
 import { hsvhue as builtinHsvhue } from '../../builtins/hsvhue.js';
 import { hsvsaturation as builtinHsvsaturation } from '../../builtins/hsvsaturation.js';
+import { hsvvalue as builtinHsvvalue } from '../../builtins/hsvvalue.js';
 import hue from '../hue.js';
 import saturation from '../saturation.js';
 import lightness from '../lightness.js';
@@ -46,7 +47,7 @@ describe('luma/luminance/hsv channels', () => {
     const typedColor = makeColorRgb(legacyColor._rgb, legacyColor.alpha, RGB);
     const hueResult = hsvhue(typedColor);
     const saturationResult = hsvsaturation(typedColor);
-    const value = hsvvalue(legacyColor);
+    const value = hsvvalue(typedColor);
 
     expect(hueResult.number).toBe(120);
     expect(saturationResult.number).toBe(100);
@@ -86,16 +87,20 @@ describe('luma/luminance/hsv channels', () => {
       const typedColor = makeColorRgb(legacyColor._rgb, legacyColor.alpha, RGB);
       const expectedHue = new Dimension({ number: expected.h }).toString();
       const expectedSaturation = new Dimension({ number: expected.s * 100, unit: '%' }).toString();
+      const expectedValue = new Dimension({ number: expected.v * 100, unit: '%' }).toString();
 
       expect(hsvhue(typedColor).bytes).toBe(expectedHue);
       expect(hsvsaturation(typedColor).bytes).toBe(expectedSaturation);
+      expect(hsvvalue(typedColor).bytes).toBe(expectedValue);
     }
   });
 
   it('registers the canonical HSV readers without a legacy wrapper', () => {
     expect(hsvhue).toBe(builtinHsvhue);
     expect(hsvsaturation).toBe(builtinHsvsaturation);
+    expect(hsvvalue).toBe(builtinHsvvalue);
     expect(builtinLessFns.find(fn => fn.name === 'hsvhue')).toBe(builtinHsvhue);
     expect(builtinLessFns.find(fn => fn.name === 'hsvsaturation')).toBe(builtinHsvsaturation);
+    expect(builtinLessFns.find(fn => fn.name === 'hsvvalue')).toBe(builtinHsvvalue);
   });
 });
