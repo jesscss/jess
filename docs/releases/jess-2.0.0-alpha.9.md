@@ -57,6 +57,13 @@ mismatches, 15 known errors, zero timeouts, and zero crashes. Seven of the
 output mismatches do not yet have dedicated fixture markers; they remain visible
 in the corpus report and are release-note follow-up work, not passing evidence.
 
+Oracle correction: `property-accessors`' v5 expected CSS was previously
+rewritten to match a Jess serializer state; Less 4.8's upstream fixture and live
+compiler retain one parent declaration block. In contrast,
+`at-rules-bubbling` deliberately has a primary v5 expected CSS and a separate
+`legacy/` Less 4.8 oracle. It remains visible primary-v5 serializer work; it is
+not a stale fixture and must not be hidden by selecting the legacy oracle.
+
 ### Public API changes
 
 - Use each dialect package's stable `parse(source)` API for a canonical

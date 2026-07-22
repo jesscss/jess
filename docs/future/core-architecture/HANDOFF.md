@@ -4351,15 +4351,20 @@ or Context deletion lanes.
 - Evidence: a focused core AST placement regression and public Less
   `parse()`-to-render regression pass; `Compiler.render()` is byte-identical to
   the upstream `tests-unit/operations/operations.css` oracle. Full core passes
-  200 files / 3196 tests. The full fixture gate has two deliberately unhidden
-  stale-golden discrepancies (`property-accessors.less`, `at-rules-bubbling.less`):
-  pinned `less@4.8.0` independently emits the corrected Jess order for both,
-  whereas their checked-in `.css` goldens retain the old split/order. No fixture
-  or expected-failure policy was changed in this slice. `measure:less:hotpath`
-  ran as a sanity check only; no performance claim is made.
+  200 files / 3196 tests. The two superficially similar corpus mismatches have
+  different authorities: `property-accessors.less` is a polluted **v5**
+  test-data golden (the Less 4.8 upstream golden and live 4.8 compiler keep the
+  direct declarations in one parent block); `at-rules-bubbling.less` has an
+  intentional primary v5 oracle and a separate `legacy/` 4.8 oracle. The latter
+  must remain an AST-v2 serializer parity task against the primary v5 output,
+  not be relabelled stale or masked by selecting `legacy/`. No fixture or
+  expected-failure policy was changed in this slice. `measure:less:hotpath` ran
+  as a sanity check only; no performance claim is made.
 - Hot-path cost contracts:
   ```json
-  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Flattened direct declaration placement is a canonical serializer semantic correction: nested rules are deferred, but direct declarations remain one parent block as the Less oracle emits. It deletes an invalid partition branch and does not make a speed or neutrality claim.","dangerTokensJustification":"The patch adds no danger-token machinery. It removes the declaration-to-deferred-buffer partition branch; existing body iteration, group ownership, and deferred nested emitters remain the sole placement path. No source/tree walk, clone, side map, bridge, parser reparse, or output staging is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"Focused core and public Less parser-to-render placement tests pass; the upstream operations fixture is byte-identical through the public compiler route; full core passes.","buildEvidence":"Core build and changed-file ESLint pass; full fixture gate is reported separately with two stale external golden mismatches.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
+  [{"id":"ast-semantic-runtime-cutover","verdict":"accepted","performanceClaim":"none","owner":"the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover","why":"Flattened direct declaration placement is a canonical serializer semantic correction: nested rules are deferred, but direct declarations remain one parent block as the Less oracle emits. It deletes an invalid partition branch and does not make a speed or neutrality claim.","dangerTokensJustification":"The patch adds no danger-token machinery. It removes the declaration-to-deferred-buffer partition branch; existing body iteration, group ownership, and deferred nested emitters remain the sole placement path. No source/tree walk, clone, side map, bridge, parser reparse, or output staging is introduced.","cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition","extend-composition-plan-and-fixpoint-solve","Less-eager-bare-slash-precedence-and-parens-division"],"behaviorEvidence":"Focused core and public Less parser-to-render placement tests pass; the upstream operations fixture is byte-identical through the public compiler route; full core passes.","buildEvidence":"Fixture authority is split: property-accessors has a polluted v5 golden; at-rules-bubbling remains a real primary-v5 serializer mismatch.","baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":79.823,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}}]
   ```
-- Verdict: accepted bounded canonical serializer correction. External stale
-  test-data goldens require their own follow-up; they are not rewritten here.
+- Verdict: accepted bounded canonical serializer correction. The
+  `property-accessors` v5 test-data pollution requires Less test-data ownership;
+  `at-rules-bubbling` remains a real primary-v5 serializer follow-up and is not
+  rewritten or hidden here.
