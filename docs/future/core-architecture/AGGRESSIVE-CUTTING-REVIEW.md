@@ -234,6 +234,20 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
   },
   {
+    "id": "ast-extend-ir-style-normalization",
+    "kind": "neutral-or-negative",
+    "surface": "canonical extend IR mechanical lint normalization",
+    "files": ["packages/core/src/ast/extend/ir.ts"],
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "ESLint's mechanical fix adds required braces and removes redundant single-parameter arrow parentheses and one trailing comma. The same loops, conditions, callback bodies, arrays, maps, recursion, and return values remain in the same order; no expression, branch, helper, type, allocation, or public surface changes.",
+      "byteIdentity": {"fixture": "benchmark.less", "collapseNesting": true, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390}
+    },
+    "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 85.86, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
+    "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/extend-direct-acceptance.test.ts", "src/ast/__tests__/extend-preflight-contract.test.ts"]}
+  },
+  {
     "id": "legacy-tree-strict-contract-drain",
     "kind": "semantic-runtime",
     "surface": "retained legacy tree strict runtime contracts",

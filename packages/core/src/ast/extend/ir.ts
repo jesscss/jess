@@ -54,13 +54,17 @@ export type Level = Branch[];
 /* ----------------------------------------------------------------- serialize */
 
 export function simpleText(s: Simple): string {
-  if (s.t === 'text') return s.text;
+  if (s.t === 'text') {
+    return s.text;
+  }
   return `:is(${s.branches.map(branchText).join(', ')})`;
 }
 
 export function compoundText(c: Compound): string {
   let out = '';
-  for (const s of c.simples) out += simpleText(s);
+  for (const s of c.simples) {
+    out += simpleText(s);
+  }
   return out;
 }
 
@@ -69,7 +73,9 @@ export function branchText(b: Branch): string {
   for (let i = 0; i < b.segs.length; i++) {
     const seg = b.segs[i]!;
     if (i === 0) {
-      if (seg.comb !== ' ') out += renderCombinator(seg.comb).trimStart();
+      if (seg.comb !== ' ') {
+        out += renderCombinator(seg.comb).trimStart();
+      }
       out += compoundText(seg.compound);
     } else {
       out += renderCombinator(seg.comb) + compoundText(seg.compound);
@@ -129,15 +135,19 @@ export function cloneBranch(b: Branch): Branch {
   // [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
   // every clone so a branch's visibility survives compose/solve/compaction unchanged.
   const out: Branch = { segs: b.segs.map(cloneSeg) };
-  if (b.hidden) out.hidden = true;
-  if (b.ext) out.ext = true;
+  if (b.hidden) {
+    out.hidden = true;
+  }
+  if (b.ext) {
+    out.ext = true;
+  }
   return out;
 }
 
 /* ------------------------------------------------------------------ from AST */
 
 function compoundFromSimples(texts: string[]): Compound {
-  return { simples: texts.map((text) => ({ t: 'text', text })) };
+  return { simples: texts.map(text => ({ t: 'text', text })) };
 }
 
 export function branchFromComplex(c: ComplexSelector): Branch {
@@ -149,10 +159,10 @@ export function branchFromComplex(c: ComplexSelector): Branch {
   // always a plain string and no downstream `.includes`/`.split` hits null.
   segs.push({
     comb: c.leadingComb ?? ' ',
-    compound: compoundFromSimples(c.head.simples.map((s) => s.text ?? '')),
+    compound: compoundFromSimples(c.head.simples.map(s => s.text ?? ''))
   });
   for (const seg of c.tail) {
-    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map((s) => s.text ?? '')) });
+    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map(s => s.text ?? '')) });
   }
   return segs.length === 0 ? { segs: [{ comb: ' ', compound: { simples: [] } }] } : { segs };
 }
@@ -166,7 +176,11 @@ export function levelFromSelectorList(list: SelectorList): Level {
 /** Multiset of a compound's plain-text simples (ignores `:is` grafts). */
 export function textSimples(c: Compound): string[] {
   const out: string[] = [];
-  for (const s of c.simples) if (s.t === 'text') out.push(s.text);
+  for (const s of c.simples) {
+    if (s.t === 'text') {
+      out.push(s.text);
+    }
+  }
   return out;
 }
 
@@ -183,8 +197,13 @@ export function textSimples(c: Compound): string[] {
 export function collectBranchAtoms(b: Branch, out: Set<string>): void {
   for (const seg of b.segs) {
     for (const s of seg.compound.simples) {
-      if (s.t === 'text') out.add(s.text);
-      else for (const inner of s.branches) collectBranchAtoms(inner, out);
+      if (s.t === 'text') {
+        out.add(s.text);
+      } else {
+        for (const inner of s.branches) {
+          collectBranchAtoms(inner, out);
+        }
+      }
     }
   }
 }
@@ -199,8 +218,10 @@ export function branchSharesAtom(b: Branch, atoms: Set<string>): boolean {
   for (const seg of b.segs) {
     for (const s of seg.compound.simples) {
       if (s.t === 'text') {
-        if (atoms.has(s.text)) return true;
-      } else if (s.branches.some((inner) => branchSharesAtom(inner, atoms))) {
+        if (atoms.has(s.text)) {
+          return true;
+        }
+      } else if (s.branches.some(inner => branchSharesAtom(inner, atoms))) {
         return true;
       }
     }
@@ -211,10 +232,14 @@ export function branchSharesAtom(b: Branch, atoms: Set<string>): boolean {
 /** True when `need` (multiset) ⊆ `have` (multiset). */
 export function multisetSubset(need: string[], have: string[]): boolean {
   const counts = new Map<string, number>();
-  for (const h of have) counts.set(h, (counts.get(h) ?? 0) + 1);
+  for (const h of have) {
+    counts.set(h, (counts.get(h) ?? 0) + 1);
+  }
   for (const n of need) {
     const c = counts.get(n) ?? 0;
-    if (c <= 0) return false;
+    if (c <= 0) {
+      return false;
+    }
     counts.set(n, c - 1);
   }
   return true;

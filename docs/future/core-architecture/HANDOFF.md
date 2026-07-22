@@ -2163,6 +2163,13 @@ silently choose one language’s policy.
     "behaviorEvidence":"The complete core suite passes 3319/3319, including the direct predicate regression proving ordinary selector strings are not combinators while literal and node combinators are. Focused retained-tree declaration, at-rule, ruleset, default-guard, bitset, reference, and selector-extend suites also pass.",
     "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73 and the full core config falls from 528 to 474 without suppression. The core package build and package-export verification pass.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"ast-extend-ir-style-normalization",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"ESLint's mechanical fix adds required braces and removes redundant single-parameter arrow parentheses and one trailing comma. The same extend-IR conditions, loops, recursion, callbacks, arrays, maps, and return values remain in the same order; no expression, branch, helper, type, allocation, or public surface changes.",
+    "dangerTokensJustification":"[loop/traversal] and [array helper] are textual additions only because braces and arrow-parenthesis normalization replace the same pre-existing one-line loop bodies and map callbacks. No loop, recursion, callback, array helper, allocation, or call is added or moved, so the transpiled control flow and cost are unchanged.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
 - Verdict: accepted type-contract correction with no compatibility shim.
