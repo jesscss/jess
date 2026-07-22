@@ -14,8 +14,15 @@ can tree-shake down to only the helpers you actually use.
 
 ```
 @jesscss/fns          → the Less function set (the alpha surface)
-@jesscss/fns/<name>   → import a single function directly
+@jesscss/fns/builtins → the canonical AST-v2 value-function registry
 ```
+
+Only the two entry points above are published in the current alpha. The
+`src/less`, `src/shared`, and `src/sass` folders are implementation ownership
+boundaries, not package subpaths: their declaration-only build artifacts are
+not runtime modules and must not be imported by consumers. Future dialect
+module entry points will be added only together with a real runtime build and
+an explicit export contract.
 
 The Sass-side helpers exist in the source tree as part of the roadmap **Sass+**
 work, but SCSS is not the focus of the Less-focused alpha — treat that surface as

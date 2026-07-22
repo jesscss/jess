@@ -113,6 +113,20 @@ wildcard only after either generating the documented subpaths or explicitly
 withdrawing and testing them; `plugin-js` currently treats all
 `@jesscss/fns/*` paths as trusted.
 
+**Bounded package cut (2026-07-22).** The first safe export correction removes
+the `@jesscss/fns` `./*` wildcard. A workspace consumer search found only the
+root `@jesscss/fns` import and the explicit `@jesscss/fns/builtins` import; no
+production or test consumer imports a Less/Sass/shared/util subpath. The fns
+build emits runtime entries only for `index` and `builtins`; the former
+wildcard therefore advertised declaration-only paths whose corresponding
+`.js`/`.cjs` files do not exist. The README and Sass export-structure note now
+state that those folders are source ownership boundaries, not published
+entrypoints. `plugin-js`'s filesystem trust rule remains a separate sandbox
+boundary for resolved built-in files and is not used to justify package
+subpaths. The core root tree barrel is intentionally not cut in this batch:
+`Context`, the legacy fns implementation, and compat consumers still import
+its classes, so the prerequisite migration remains the next required slice.
+
 The minimal cut sequence is:
 
 **A.** Finish the remaining legacy `@jesscss/fns` Less/Sass function and test

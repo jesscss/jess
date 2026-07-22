@@ -19,11 +19,6 @@
       "import": "./lib/builtins.js",
       "require": "./lib/builtins.cjs"
     },
-    "./*": {
-      "types": "./lib/*.d.ts",
-      "import": "./lib/*.js",
-      "require": "./lib/*.cjs"
-    },
     "./package.json": "./package.json"
   },
   "files": [

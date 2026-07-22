@@ -6,6 +6,7 @@ import { hue as builtinHue } from '../../builtins/hue.js';
 import { saturation as builtinSaturation } from '../../builtins/saturation.js';
 import { lightness as builtinLightness } from '../../builtins/lightness.js';
 import { luma as builtinLuma } from '../../builtins/luma.js';
+import { luminance as builtinLuminance } from '../../builtins/luminance.js';
 import { hsvhue as builtinHsvhue } from '../../builtins/hsvhue.js';
 import { hsvsaturation as builtinHsvsaturation } from '../../builtins/hsvsaturation.js';
 import { hsvvalue as builtinHsvvalue } from '../../builtins/hsvvalue.js';
@@ -19,22 +20,44 @@ import hsvsaturation from '../hsvsaturation.js';
 import hsvvalue from '../hsvvalue.js';
 import { toHSV } from '../../util/to-hsv.js';
 
+function legacyLuminanceOracle(color: Color): { number: number; bytes: string } {
+  const luminance =
+    (0.2126 * color.rgb[0]! / 255)
+    + (0.7152 * color.rgb[1]! / 255)
+    + (0.0722 * color.rgb[2]! / 255);
+  const result = new Dimension({
+    number: luminance * color.alpha * 100,
+    unit: '%'
+  });
+  return { number: result.number, bytes: result.toString() };
+}
+
+function toCanonicalColor(color: Color) {
+  // The old reader consumes the public rounded/clamped `rgb` and `alpha`
+  // views. Preserve those exact source facts in the canonical value without
+  // invoking the removed legacy function wrapper.
+  return makeColorRgb(color._rgb, color.alpha, RGB);
+}
+
 describe('luma/luminance/hsv channels', () => {
   it('computes luma and luminance as percentages', () => {
     const legacyColor = new Color({
       rgb: [255, 0, 0],
       alpha: 0.5
     });
-    const color = makeColorRgb([255, 0, 0], 0.5, RGB);
+    const color = toCanonicalColor(legacyColor);
 
     const lumaResult = luma(color);
-    const luminanceResult = luminance(legacyColor);
+    const luminanceResult = luminance(color);
+    const expected = legacyLuminanceOracle(legacyColor);
 
     expect(lumaResult.unit).toBe('%');
     expect(luminanceResult.unit).toBe('%');
     expect(lumaResult.number).toBeGreaterThan(0);
     expect(luminanceResult.number).toBeGreaterThan(0);
     expect(lumaResult.number).toBeCloseTo(luminanceResult.number, 10);
+    expect(luminanceResult.number).toBe(expected.number);
+    expect(luminanceResult.bytes).toBe(expected.bytes);
   });
 
   it('extracts hsv hue/saturation/value channels', () => {
@@ -65,10 +88,56 @@ describe('luma/luminance/hsv channels', () => {
     expect(saturation).toBe(builtinSaturation);
     expect(lightness).toBe(builtinLightness);
     expect(luma).toBe(builtinLuma);
+    expect(luminance).toBe(builtinLuminance);
     expect(builtinLessFns.find(fn => fn.name === 'hue')).toBe(builtinHue);
     expect(builtinLessFns.find(fn => fn.name === 'saturation')).toBe(builtinSaturation);
     expect(builtinLessFns.find(fn => fn.name === 'lightness')).toBe(builtinLightness);
     expect(builtinLessFns.find(fn => fn.name === 'luma')).toBe(builtinLuma);
+    expect(builtinLessFns.find(fn => fn.name === 'luminance')).toBe(builtinLuminance);
+  });
+
+  it('matches the legacy luminance oracle across source shapes and channel bounds', () => {
+    const vectors = [
+      new Color({ rgb: [255, 0, 0], alpha: 0.5 }),
+      new Color({ rgb: [64.4, 127.6, 0.2], alpha: 0.5 }),
+      new Color({ hsl: [210, 0.333333, 0.444444], alpha: 0.7 }),
+      new Color({ rgb: [-10, 300, 128.9], alpha: 1.1 }),
+      new Color({ hsl: [-20, 0.2, 0.8], alpha: 0.25 }),
+      new Color({ rgb: [0, 0, 0], alpha: -0.5 }),
+      new Color({ rgb: [255, 255, 255], alpha: 2 })
+    ];
+
+    for (const legacyColor of vectors) {
+      const expected = legacyLuminanceOracle(legacyColor);
+      const result = luminance(toCanonicalColor(legacyColor));
+      expect(result.number).toBe(expected.number);
+      expect(result.bytes).toBe(expected.bytes);
+      expect(result.unit).toBe('%');
+    }
+  });
+
+  it('matches the legacy luminance oracle over deterministic random RGB/HSL vectors', () => {
+    let seed = 0x12345678;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+
+    for (let index = 0; index < 1024; index++) {
+      const legacyColor = index % 2 === 0
+        ? new Color({
+          rgb: [random() * 400 - 100, random() * 400 - 100, random() * 400 - 100],
+          alpha: random() * 2 - 0.5
+        })
+        : new Color({
+          hsl: [random() * 900 - 450, random() * 2 - 0.5, random() * 2 - 0.5],
+          alpha: random() * 2 - 0.5
+        });
+      const expected = legacyLuminanceOracle(legacyColor);
+      const result = luminance(toCanonicalColor(legacyColor));
+      expect(result.number).toBe(expected.number);
+      expect(result.bytes).toBe(expected.bytes);
+    }
   });
 
   it('matches the pre-cutover HSV oracle byte-for-byte across source shapes', () => {
