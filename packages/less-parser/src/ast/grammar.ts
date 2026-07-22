@@ -1847,7 +1847,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessFunction = node<FunctionCall>(
     'DirectLessFunction',
-    parser({ trivia: functionTrivia }, sequence(noTrivia(sequence(directFunctionName, literal('('))), optional(choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)), many(noTrivia(sequence(field('separator', regex(/,[ \t]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)))), literal(')'))),
+    parser({ trivia: functionTrivia }, sequence(noTrivia(sequence(directFunctionName, literal('('))), optional(choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)), many(noTrivia(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)))), literal(')'))),
     (children, fields, span) => {
       const name = requireToken(children[0]).value;
       const args: ValueSlot[] = [];
@@ -1871,7 +1871,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // so a declaration value cannot acquire the call-only `{ … }` first set.
   const DirectLessCallArgumentFunction = node<FunctionCall>(
     'DirectLessCallArgumentFunction',
-    sequence(noTrivia(sequence(directFunctionName, literal('('))), optional(g.DirectLessCallArgumentValue), many(noTrivia(sequence(regex(/,[ \t]*/), g.DirectLessCallArgumentValue))), literal(')')),
+    sequence(noTrivia(sequence(directFunctionName, literal('('))), optional(g.DirectLessCallArgumentValue), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), g.DirectLessCallArgumentValue))), literal(')')),
     (children) => {
       const name = requireToken(children[0]).value;
       return funcCall(name, children.slice(1, -1).filter(isValueSlotValue));
@@ -1881,7 +1881,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
   const DirectLessFormatFunction = node<FunctionCall>(
     'DirectLessFormatFunction',
-    sequence(noTrivia(literal('%(')), optional(sequence(not(literal('{')), g.DirectLessValueTerm)), many(noTrivia(sequence(regex(/,[ \t]*/), not(literal('{')), g.DirectLessValueTerm))), literal(')')),
+    sequence(noTrivia(literal('%(')), optional(sequence(not(literal('{')), g.DirectLessValueTerm)), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.DirectLessValueTerm))), literal(')')),
     children => funcCall('%', children.slice(1, -1).filter(isValueSlotValue))
   );
   // A bare call is a Less statement only with its terminator.  Keep this

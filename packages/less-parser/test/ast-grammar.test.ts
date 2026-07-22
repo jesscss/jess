@@ -2147,6 +2147,32 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('parses multiline svg-gradient values inside a mixin definition directly', () => {
+    const source = '.gradient-mixin(@color) {\n  background: svg-gradient(to bottom,\n    fade(@color, 0%) 0%,\n    fade(@color, 5%) 60%\n  );\n}';
+    for (const candidate of [
+      '.gradient-mixin(@color) { background: red; }',
+      '.gradient-mixin(@color) { background: svg-gradient(red); }',
+      '.gradient-mixin(@color) { background: svg-gradient(to bottom); }',
+      '.gradient-mixin(@color) { background: svg-gradient(to bottom, fade(@color, 0%)); }',
+      '.gradient-mixin(@color) { background: svg-gradient(to bottom, fade(@color, 0%) 0%); }',
+      source
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, candidate, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok, candidate).toBe(true);
+      expect(result.unconsumedFrom, candidate).toBeNull();
+    }
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{
+        type: 'MixinDef',
+        name: '.gradient-mixin',
+        params: [{ name: 'color' }],
+        body: [{ type: 'Declaration', name: 'background', value: { type: 'FunctionCall', name: 'svg-gradient' } }]
+      }]
+    });
+  });
+
   it('keeps CSS-escaped mixin names as direct canonical calls', () => {
     const source = '.mixin\\!tUp() { color: red; } .card { .mixin\\!tUp(); }';
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
@@ -2891,7 +2917,7 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('retains outer list separators, rejects newline function separators, and retains value comments', () => {
+  it('retains outer list separators, accepts newline function separators, and retains value comments', () => {
     const directList = run(lessAstGrammar.LessAstDocument, 'shadow: 0,\n  1px;', { trivia: lessAstGrammar.whitespace });
     expect(directList.ok).toBe(true);
     expect(directList.unconsumedFrom).toBeNull();
