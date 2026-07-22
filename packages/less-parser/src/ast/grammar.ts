@@ -38,7 +38,7 @@ type LessAstLocalRules = {
   DirectLessDetachedRulesetDeclaration: Combinator<VariableDeclaration>;
   DirectLessDetachedRuleset: Combinator<ValueNode>;
   DirectLessVarIndirect: Combinator<VarIndirect>;
-  DirectLessVarReferenceChain: Combinator<Reference>;
+  DirectLessVarReferenceChain: Combinator<ValueNode>;
   DirectLessVarReference: Combinator<VariableReference>;
   DirectLessPropReference: Combinator<ValueNode>;
   DirectLessVariableInterpolation: Combinator<InterpolationFact>;
@@ -1413,12 +1413,20 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       }
     )
   );
-  const DirectLessVarReferenceChain = node<Reference>(
+  // Left-factored `@`+name so the ubiquitous plain `@var` is parsed ONCE: the
+  // accessor tails are optional, so a bare variable reference no longer parses
+  // `@name`, fails a required tail, backtracks, and re-parses `@name` through a
+  // separate plain-reference production. With tails this reduces to the tailed
+  // Reference node; without, to the plain VariableReference (identical shapes).
+  const DirectLessVarReferenceChain = node<ValueNode>(
     'DirectLessVarReferenceChain',
-    noTrivia(sequence(literal('@'), g.LessAstSyntaxVariableName, oneOrMore(g.DirectLessReferenceTail))),
-    (children) => {
+    noTrivia(sequence(literal('@'), g.LessAstSyntaxVariableName, optional(oneOrMore(g.DirectLessReferenceTail)))),
+    (children, _fields, span) => {
       const name = requireToken(children[1]).value;
-      return referenceWithTails(variableReference(name, 'scoped'), `@${name}`, children.slice(2));
+      const base = variableReference(name, 'scoped');
+      return children.length > 2
+        ? referenceWithTails(base, `@${name}`, children.slice(2))
+        : withSourceSpan(base, span);
     }
   );
   const DirectLessMixinPathTail = node<MixinPathTailFact>(
@@ -2014,7 +2022,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessValueAtom = node<ValueNode>(
     'DirectLessValueAtom',
-    choice(attempt(g.DirectLessMixinReference), g.DirectLessInterpolatedValue, g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessVarIndirect, g.DirectLessVarReferenceChain, g.DirectLessVarReference, g.DirectLessPropReference, g.DirectLessCssCustomPropertyValue, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessDynamicUrl, g.DirectLessStaticUrl, g.DirectLessCalcFunction, g.DirectLessFormatFunction, g.DirectLessFunction, g.DirectLessSelectorCapture, g.DirectLessEscapedParen, g.DirectLessQueryColonFeature, g.DirectLessParen, DirectLessGridLineName, g.DirectLessCssEscapeValue, DirectLessPercentEscape, DirectLessKeywordOrInterpolatedValue),
+    choice(attempt(g.DirectLessMixinReference), g.DirectLessInterpolatedValue, g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessVarIndirect, g.DirectLessVarReferenceChain, g.DirectLessPropReference, g.DirectLessCssCustomPropertyValue, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessDynamicUrl, g.DirectLessStaticUrl, g.DirectLessCalcFunction, g.DirectLessFormatFunction, g.DirectLessFunction, g.DirectLessSelectorCapture, g.DirectLessEscapedParen, g.DirectLessQueryColonFeature, g.DirectLessParen, DirectLessGridLineName, g.DirectLessCssEscapeValue, DirectLessPercentEscape, DirectLessKeywordOrInterpolatedValue),
     children => requireValueNode(children[0])
   );
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
@@ -2824,7 +2832,6 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
           // namespace branch must backtrack for ordinary non-accessor colors.
           attempt(g.DirectLessMixinReference),
           g.DirectLessVarReferenceChain,
-          g.DirectLessVarReference,
           g.DirectLessQuoted,
           g.DirectLessEscapedQuoted,
           g.DirectLessDimension,
@@ -3169,7 +3176,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // text or run a second scanner over it.
   const DirectLessQueryValue = node<ValueNode>(
     'DirectLessQueryValue',
-    choice(g.DirectLessPreservedDivision, g.DirectLessVarReferenceChain, g.DirectLessVarReference, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessStaticQuoted, g.DirectLessCalcFunction, g.DirectLessFunction, g.DirectLessKeyword),
+    choice(g.DirectLessPreservedDivision, g.DirectLessVarReferenceChain, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessStaticQuoted, g.DirectLessCalcFunction, g.DirectLessFunction, g.DirectLessKeyword),
     children => requireValueNode(children[0])
   );
   const DirectLessQueryBareFeature = node<ValueNode>(
@@ -4266,9 +4273,17 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return { selector: subject, extensions };
     }
   );
+  // Cheap superset lookahead so an ordinary `.foo { }` ruleset does not fully
+  // parse its selector as an extend subject, fail the required `:extend(`, and
+  // backtrack a whole selector re-parse. Skip this arm unless a `:extend(`
+  // actually precedes the next statement terminator/brace. Selector text never
+  // contains `{`, `}`, or `;`, so the predicate is a strict superset: a real
+  // inline extend is never skipped.
+  const directInlineExtendAhead = not(not(regex(/[^{};]*:extend\(/)));
   const DirectLessInlineExtendRule = node<Rule>(
     'DirectLessInlineExtendRule',
     sequence(
+      directInlineExtendAhead,
       // A selector list may carry an inline extend on more than one branch:
       // `.a:extend(.x), .b:extend(.y) {}`.  Keep every branch as a typed
       // fact so each instruction retains its own subject rather than folding
