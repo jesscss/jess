@@ -398,8 +398,8 @@ running integration tests.
 The following is retained as evidence for the `564b65615` alpha rehearsal. It
 was verified before `731319892` moved every parser package from
 `parseman@0.28.1` to `parseman@0.29.0`; it is not evidence for the current
-`dev` release candidate. Current post-`731319892` Parseman `0.29.0` release
-gates are pending.
+`dev` release candidate. Current post-`731319892` Parseman `0.29.0` evidence
+appears below.
 
 - The complete `@jesscss/core` suite is 3,194 passed, 9 skipped, and 2 todo.
   The skipped/todo cases remain visible and are not converted into passing
@@ -439,17 +439,25 @@ AST-v2 ratchet, baseline, release-mode cutting review, 18-package closure,
 packed consumer, and alpha.9 dry-run publish. The snapshot is clean and the
 dry-run resolves `2.0.0-alpha.9` ahead of the published alpha.8 tag.
 
-Nothing was pushed or published from that snapshot. It cannot be reused after
-the `731319892` Parseman `0.29.0` merge: the local alpha candidate is not
-descended from current `dev`, and pre-merge builds, parser tests, packed
-consumer results, or dry-run publication do not validate the new generated
-parser artifacts. After the final current-`dev` gates pass, create a fresh
-isolated alpha snapshot with the two-tree procedure above, retain only the
-recovery versions, and rerun the entire `release:alpha` preflight. Only then
-may owner approval be sought for a full `pnpm run release:alpha` invocation
-from `alpha`; that command re-resolves the registry candidate, repeats the
-preflight, then tags, pushes, and publishes. Do not substitute the
-publish-only command for that release flow. The external
+Nothing was pushed or published from that snapshot. It remains historical
+because it predates the `731319892` Parseman `0.29.0` merge; its builds,
+parser tests, packed-consumer result, and dry-run publication cannot validate
+the newly generated parser artifacts.
+
+### Current alpha.9 candidate evidence (2026-07-22; not authorized to publish)
+
+The final `dev` endpoint is `338801372`. The corrected alpha snapshot is
+`8bcc31516`, descends from that endpoint, retains the intended
+`2.0.0-alpha.9` manifests, and has a clean alpha worktree. Its full
+`pnpm run release:alpha:check` preflight passed with Parseman `0.29.0`,
+including the packed-consumer proof and its nested alpha.9 publish dry-run.
+The 18-package allowlist validates at `2.0.0-alpha.9`.
+
+Neither `alpha` nor any tag has been pushed and no package has been published
+from this candidate. **There is no publication authorization.** A later,
+explicit owner authorization is required before the full
+`pnpm run release:alpha` invocation, which re-resolves the registry candidate,
+repeats the preflight, then tags, pushes, and publishes. The external
 `less@5.0.0-alpha.1` release remains a separate future action after Jess
 alpha.9 is actually available from npm.
 
@@ -459,10 +467,10 @@ alpha.9 is actually available from npm.
   documentation-only evidence reconciliation.
 - **Helper/API surface and metadata mutations:** none; no runtime or package
   metadata changes are claimed here.
-- **Evidence:** the alpha command above was run at `564b65615`; the full log
-  records the named gates and the dry-run package closure. No performance claim
-  is derived from the release verification.
-  This is a historical baseline, not a matched-version performance claim.
+- **Evidence:** `564b65615` remains historical pre-Parseman-0.29 evidence;
+  current release evidence is `338801372` → `8bcc31516` and its full alpha
+  preflight/dry-run. This documentation records release state only; it makes no
+  performance claim.
 
 ### Aggressive Cutting Self-Prosecution — staged alpha-version recovery
 
