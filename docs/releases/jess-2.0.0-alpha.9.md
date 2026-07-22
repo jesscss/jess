@@ -1,10 +1,9 @@
 # Jess 2.0.0-alpha.9 — draft release notes
 
-> **Draft for owner review.** This is the user-facing changelog source for the
-> next Jess alpha cut. The `dev` candidate has passed its pre-cut gates, but it
-> is not publishable until the controlled `dev` → `alpha` snapshot has passed
-> those gates again. Keep this file in that snapshot and revise it only from
-> release-gate evidence.
+> **Draft for owner review.** The controlled alpha snapshot importing `dev`
+> endpoint `174011088` has
+> passed its full release preflight. It is not published: it awaits explicit
+> owner approval to run the full `pnpm run release:alpha` flow from `alpha`.
 
 ## Highlights
 
@@ -42,16 +41,17 @@ a separate compilation mode.
 
 ### Candidate verification snapshot
 
-The validated `dev` candidate resolves the next registry version as
-`2.0.0-alpha.9`. Its publishable runtime closure contains 18 packages; the
-closure validator and packed-consumer installation proof both pass.
+The validated `dev` endpoint `174011088` became the controlled alpha snapshot,
+which resolves the next registry version as `2.0.0-alpha.9`. Its
+publishable runtime closure contains 18 packages; the closure validator and
+packed-consumer installation proof both pass.
 
-The pre-cut gate run passed the release build, strict production types,
+The alpha-side gate run passed the release build, strict production types,
 production lint (no errors), Less-alpha public API and fixture gates, Jess
 parser/plugin/Rollup tests, AST-v2 production-route ratchet, baseline suite,
 aggressive-cutting release review, package-closure validation, and packed
-consumer proof. Parseman `0.28.1` is the published dependency used by that
-candidate.
+consumer proof. Its final dry-run publish also passed. Parseman `0.28.1` is the
+published dependency used by that snapshot.
 
 The complete Less corpus currently reports 84 byte-identical passes, 32 output
 mismatches, 15 known errors, zero timeouts, and zero crashes. Seven of the
@@ -109,15 +109,13 @@ This is a deliberately breaking alpha architecture change.
   classified corpus results rather than dialect-specific engine fallbacks.
 - It makes no parser-performance claim. The direct parser baseline and Parseman
   0.28 regression work remain release-gated and are measured separately.
-- It does not publish from local workspace links. Parseman 0.28 must be
-  published, consumed through a real package version, and proven in a clean
-  consumer install before this Jess alpha can ship.
+- It does not publish from local workspace links. Parseman `0.28.1` is already
+  published, consumed through a real package version, and proven through the
+  alpha packed-consumer check.
 
 ## Before publishing
 
-The release owner must verify the exact candidate on `dev`, update these notes
-from the resulting evidence, then squash that validated snapshot onto `alpha`.
-Do not ordinary-merge or rebase `dev` into `alpha`. From the squashed `alpha`
-snapshot, run the documented package, parser/plugin, Less-alpha, baseline,
-cutting-review, CLI, and clean-consumer gates before `release:alpha` resolves
-and publishes `2.0.0-alpha.9`.
+The release owner has verified the exact alpha snapshot. Do not ordinary-merge
+or rebase `dev` into `alpha`. With explicit owner approval, run
+`pnpm run release:alpha` from the clean `alpha` snapshot; it revalidates the
+candidate before tagging, pushing, and publishing `2.0.0-alpha.9`.

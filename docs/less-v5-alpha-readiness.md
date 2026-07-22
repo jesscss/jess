@@ -32,23 +32,21 @@ baseline only and never as a performance acceptance claim.
 
 ## Current verification snapshot (2026-07-22)
 
-- Core behavior: the complete `@jesscss/core` suite is **3,192 passed, 9
+- Core behavior: the complete `@jesscss/core` suite is **3,194 passed, 9
   skipped, and 2 todo**. The skipped/todo cases remain visible and are not
   converted into passing evidence.
 - Source quality: the repository-wide production ESLint audit reports **0
-  errors and 317 warnings**. The warnings are tracked lint debt; there is no
+  errors and 319 warnings**. The warnings are tracked lint debt; there is no
   current ESLint-error blocker.
-- Strict types: `pnpm run verify:types` reports **4 diagnostics**, all four
-  parser-entry `FusedRule` declaration mismatches against published Parseman
-  `0.28.0`. The prepared Parseman `0.28.1` release-branch fix removes these
-  four diagnostics, but it is not yet published or consumed here. No claim of
-  an all-package strict-type pass is valid until that package is published,
-  installed, and the parser packages are rebuilt.
+- Strict types: published `parseman@0.28.1` is consumed through real package
+  versions, and `pnpm run verify:types` passes **22/22** configurations after
+  the parser packages rebuild against it.
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
   allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
   excluded because it depends on `jess` and is not part of the runtime closure.
-  The allowlist and packed-consumer checks must still pass on the final
-  `2.0.0-alpha.9` snapshot.
+  The controlled alpha snapshot importing `dev` endpoint `174011088` passes the allowlist,
+  packed-consumer, and alpha.9 dry-run publish checks. It awaits explicit owner
+  approval for the full `pnpm run release:alpha` command; it is not published.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
 instrumentation. Diagnostic coverage/trace uses a separate macro transform and
@@ -144,15 +142,11 @@ The alpha blocks only on these advertised correctness and release-safety gates:
   smoke/compatibility tests; and
 - a release-note known-limitations section that links the complete inventory and
   states the unsupported or divergent behavior honestly.
-- `[~]` **Strict source quality is blocking until the Parseman fix is
-  published.** The current integration candidate with published Parseman
-  `0.28.0` reports four strict parser-entry `FusedRule` diagnostics and no
-  core strict-type diagnostics. Prepared but unpublished Parseman `0.28.1`
-  removes those four declaration mismatches; after publication Jess must
-  install it, rebuild the parser packages, and rerun `verify:types`. The
-  production ESLint audit currently reports 0 errors and 317 warnings. The
-  warnings are tracked debt, not an ESLint-error gate, and neither the type
-  diagnostics nor warnings may be hidden by bundlers' `--noCheck` builds.
+- `[x]` **Strict source quality.** Published `parseman@0.28.1` removes the
+  parser-entry `FusedRule` declaration mismatch; the alpha snapshot's forced
+  frozen install and `verify:types` pass 22/22 configurations. Production
+  ESLint reports 0 errors and 319 warnings. Warnings remain tracked debt and
+  neither types nor lint errors may be hidden by bundlers' `--noCheck` builds.
 - `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
   CSS-shaped `rgb()`/`rgba()`/`hsl()`/`hsla()` calls with three or more argument
   slots remain authored, verbatim CSS calls even under `functionMode: 'error'`;
@@ -432,6 +426,12 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
+- 2026-07-22: `parseman@0.28.1` was published and consumed by Jess. The
+  controlled alpha snapshot importing `dev` endpoint `174011088` passed the full
+  `release:alpha:check` chain with its 18-package packed-consumer proof and
+  alpha.9 dry-run publish. It is awaiting explicit owner approval for the full
+  `pnpm run release:alpha` command; this does not publish the separate external
+  Less alpha.
 - 2026-07-21 (historical baseline, superseded below): Made source quality an
   explicit blocking alpha gate rather than inferring it from release builds
   that use `--noCheck`. The dependency-ordered `verify:types` audit on the
@@ -439,12 +439,9 @@ earlier, before a manual publish attempt.
   245 diagnostics: 241 in core plus four parser-entry `FusedRule` diagnostics.
   The bounded `lint:production` audit reported 1,357 findings. Those counts are
   retained as historical burn-down evidence only.
-- 2026-07-22: Reconciled the current source-quality audit: core strict types
-  are clean, four parser-entry `FusedRule` diagnostics remain solely because
-  published Parseman 0.28.0 predates the prepared 0.28.1 declaration fix, and
-  production ESLint reports 0 errors and 317 warnings. The 18-package alpha
-  allowlist and intentionally excluded `rollup-plugin-jess` are now recorded
-  with the current package-closure evidence. The benchmark remains a baseline
+- 2026-07-22 (historical snapshot, superseded by the published-0.28.1 entry
+  above): Core strict types were clean, but four parser-entry `FusedRule`
+  diagnostics remained under Parseman 0.28.0. The benchmark remains a baseline
   investigation with no valid matched 0.27/0.28 performance A/B yet.
 - 2026-07-22: Re-audited the sibling Less `alpha` worktree. `less@5.0.0-alpha.1`
   packs, built-artifact `lessc` smoke tests pass, and the five publish helper

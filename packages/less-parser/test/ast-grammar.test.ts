@@ -578,6 +578,31 @@ describe('Less AST grammar facts', () => {
     expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
   });
 
+  it('admits comments around unambiguous product operators but not sign-ambiguous +/- (CSS rule)', () => {
+    // `*` / `%` are unambiguous — like CSS `calc()` (where `*`/`/` need no
+    // whitespace) block and line comments count as separating trivia.
+    const product = run(lessAstGrammar.LessAstDocument, '.m { star: 1/**/*/**/2; mod: 7 /* x */ % /* y */ 3; }', { trivia: lessAstGrammar.whitespace });
+    expect(product.ok && product.unconsumedFrom === null).toBe(true);
+    expect(product.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', body: [
+        { type: 'Declaration', name: 'star', value: { type: 'Operation', operator: '*', left: { type: 'Dimension', src: '1' }, right: { type: 'Dimension', src: '2' } } },
+        { type: 'Declaration', name: 'mod', value: { type: 'Operation', operator: '%', left: { type: 'Dimension', src: '7' }, right: { type: 'Dimension', src: '3' } } }
+      ] }]
+    });
+
+    // `+` / `-` are sign-ambiguous — like CSS `calc()`, comments do NOT satisfy
+    // the required whitespace, so a comment-separated `-` is not a subtraction.
+    const commentSum = run(lessAstGrammar.LessAstDocument, '.m { x: 1/**/-/**/2; }', { trivia: lessAstGrammar.whitespace });
+    expect(JSON.stringify(commentSum.value ?? {}).includes('"operator":"-"')).toBe(false);
+
+    // Real whitespace around `-` still IS a subtraction (unchanged).
+    const spacedSum = run(lessAstGrammar.LessAstDocument, '.m { x: 1 - 2; }', { trivia: lessAstGrammar.whitespace });
+    expect(spacedSum.value).toMatchObject({
+      children: [{ body: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }]
+    });
+  });
+
   it('keeps the comments2 variable/parens product on the same math route', () => {
     const source = '@column-width: @base * 6em; @columns: 12; @gridsystem-width: (@column-width * // total columns */\n @columns) + ( // width */\n @gutter-width * // gutters */\n @columns);';
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
@@ -3494,6 +3519,30 @@ describe('Less AST grammar facts', () => {
             ] } }]
           }] }
         }]
+      }]
+    });
+  });
+
+  it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
+    const source = '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{}, {}, {}, {}, {
+        type: 'Rule', selector: { type: 'SelectorList', selectors: [{
+          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'cap-a', lookup: 'scoped' }, unquote: true },
+            { ref: { type: 'VariableReference', name: 'cap-b', lookup: 'scoped' }, unquote: true }
+          ] } }] }
+        }, {
+          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+            { ref: { type: 'VariableReference', name: 'quoted-a', lookup: 'scoped' }, unquote: true },
+            { ref: { type: 'VariableReference', name: 'quoted-b', lookup: 'scoped' }, unquote: true }
+          ] } }] }
+        }] }
       }]
     });
   });

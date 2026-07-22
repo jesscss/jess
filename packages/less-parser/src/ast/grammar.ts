@@ -182,6 +182,8 @@ type LessAstLocalRules = {
   DirectLessInterpolatedAttribute: Combinator<SimpleSelector>;
   DirectLessInterpolatedSimpleSelector: Combinator<SimpleSelector>;
   DirectLessBareInterpolatedSelector: Combinator<SimpleSelector>;
+  DirectLessAdjacentInterpolatedSelector: Combinator<SimpleSelector>;
+  DirectLessBareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
   DirectLessInterpolatedParentSuffix: Combinator<SimpleSelector>;
   DirectLessCompound: Combinator<CompoundSelector>;
   DirectLessComplexTail: Combinator<ComplexTailFact>;
@@ -1162,6 +1164,20 @@ const whitespace = trivia(oneOrMore(choice(
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+// Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
+// whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
+// where `*` and `/` need no whitespace and comments are freely allowed around
+// them (`1/**/*/**/2`, `1 // c\n * 2`). It is deliberately NOT used by the sum
+// terminal: `+`/`-` are sign-ambiguous, so — like CSS `calc()` — they require
+// real whitespace and comments do NOT count (see `directSumOperator`). In
+// operator position this trivia is a separator the arithmetic consumes; a comment
+// in value-LIST position (`1 /* c */ 2`, no operator char follows) makes the
+// operator loop backtrack and is left as preserved value syntax.
+const mathTrivia = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  regex(/\/\/[^\n\r]*/),
+  blockComment
+)));
 // Line comments are separator trivia in function arguments. Block comments are
 // CSS value syntax and must reach DirectLessFunctionValueTerm so they remain in
 // the typed AST (including immediately before a comma).
@@ -1247,11 +1263,11 @@ const directCalcFunctionName = regex(/calc(?=\()/i);
 // post-parse text recovery. Keep the sum terminal below unchanged: its glued
 // numeric-sign lookahead is intentional Less syntax, not an operator gap.
 const directProductOperator = leaf(
-  noTrivia(sequence(optional(whitespace), choice(literal('*'), literal('/'), literal('%')), optional(whitespace))),
+  noTrivia(sequence(optional(mathTrivia), choice(literal('*'), literal('/'), literal('%')), optional(mathTrivia))),
   children => children[1] as string
 );
 const directTopProductOperator = leaf(
-  noTrivia(sequence(optional(whitespace), choice(literal('*'), literal('%')), optional(whitespace))),
+  noTrivia(sequence(optional(mathTrivia), choice(literal('*'), literal('%')), optional(mathTrivia))),
   children => children[1] as string
 );
 // A preserved top-level Less slash is not arithmetic in parens-division mode,
@@ -1263,6 +1279,12 @@ const directPreservedSlashBoundary = sequence(
   literal('/'),
   optional(regex(/[ \t\n\r\f]+/))
 );
+// CSS rule (kept, NOT widened for comments): `+`/`-` are ambiguous between a
+// binary operator and a leading sign, so — like CSS `calc()` — they require REAL
+// whitespace on both sides (or Less's glued-to-a-number form `1-2`). Comments do
+// NOT count as that whitespace (`1/**/-/**/2` is NOT math), unlike the unambiguous
+// `*`/`/`/`%` product operators above, which DO admit comment trivia. The three
+// arms are symmetric-ws | glued-to-number | asymmetric-reject guard.
 const directSumOperator = regex(/(?:[ \t\n\r\f]+[-+][ \t\n\r\f]+|[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*)/);
 // CSS unicode-range is one opaque CSS token, not Less arithmetic.  Keep this
 // terminal byte-for-byte equivalent to the public CST grammar.  It belongs in
@@ -3939,6 +3961,22 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return interpolatedSimpleSelector(interpolation([{ ref: fact.ref, unquote: true }]));
     }
   );
+  // Adjacent selector interpolations are one compound simple, not two selector
+  // branches. Keep this arm separate from literal suffixes so Parseman's
+  // generated choice commits on the second `@{…}` without treating it as a
+  // static selector-tail byte sequence.
+  const DirectLessAdjacentInterpolatedSelector = node<SimpleSelector>(
+    'DirectLessAdjacentInterpolatedSelector',
+    noTrivia(sequence(g.DirectLessVariableInterpolation, oneOrMore(g.DirectLessVariableInterpolation))),
+    (children) => {
+      const parts: Interpolation['parts'] = [];
+      for (const child of children) {
+        const fact = requireInterpolationFact(child);
+        parts.push({ ref: fact.ref, unquote: true });
+      }
+      return interpolatedSimpleSelector(interpolation(parts));
+    }
+  );
   // A bare interpolation may be followed by a glued selector simple, such as
   // `@{base}.bbb`. Keep that suffix as an interpolation literal segment rather
   // than recovering a completed selector string after parse.
@@ -3998,7 +4036,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const directLessNonCommentCompoundSimple = choice(
     g.DirectLessInterpolatedParentSuffix,
     g.DirectLessInterpolatedSimpleSelector,
-    DirectLessBareInterpolatedSelectorWithSuffix,
+    g.DirectLessAdjacentInterpolatedSelector,
+    g.DirectLessBareInterpolatedSelectorWithSuffix,
     g.DirectLessBareInterpolatedSelector,
     g.DirectLessStaticNamespaceType,
     staticSimpleSelector,
@@ -4394,6 +4433,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessInterpolatedAttribute,
     DirectLessInterpolatedSimpleSelector,
     DirectLessBareInterpolatedSelector,
+    DirectLessAdjacentInterpolatedSelector,
+    DirectLessBareInterpolatedSelectorWithSuffix,
     DirectLessInterpolatedParentSuffix,
     DirectLessCompound,
     DirectLessComplexTail,
