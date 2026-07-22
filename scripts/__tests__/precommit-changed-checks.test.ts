@@ -45,7 +45,7 @@ describe('pre-commit aggressive-review mode', () => {
         '--mode=staged'
       ], { cwd: sandbox, env, encoding: 'utf8' });
 
-      execFileSync('git', ['switch', '--quiet', '-c', 'dev'], { cwd: sandbox });
+      execFileSync('git', ['switch', '--quiet', 'dev'], { cwd: sandbox });
       execFileSync(process.execPath, [
         'scripts/precommit-changed-checks.mjs',
         '--mode=staged'
