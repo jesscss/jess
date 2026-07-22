@@ -151,6 +151,37 @@ exports from `core/src/index.ts`; expose only the stable Context/plugin/error,
 `fns` wildcard with explicit, runtime-backed subpath exports. Verify packed
 install imports and type resolution before alpha publication.
 
+**No-op consumer audit (2026-07-22).** A bounded audit of the remaining
+`@jesscss/core` imports in `packages/fns` found no honest pure cut to land
+without first resolving function-owner semantics. The remaining consumers are
+clustered as follows:
+
+- Less color functions (`contrast`, `fade*`, HSL adjusters, `shade`/`tint`,
+  `color`, and constructors) still depend on legacy `Color` source-format and
+  raw-channel metadata, `Context`, or the legacy `mix` contract. Their
+  canonical `builtins/` counterparts are comparison evidence, not an approved
+  destination or compatibility alias.
+- Less structural/context functions (`each`, `isruleset`, `iif`/logical,
+  format/replace, data-URI/image/SVG helpers) consume `Node`/`Rules`,
+  lazy-thunk, or Context/IO capabilities and require their own behavior
+  migrations.
+- Sass map/list/string functions consume legacy `Collection`, `Declaration`,
+  `Any`, and Context contracts. They need typed map/list semantics and direct
+  tests before tree imports can be removed.
+- Shared `math/max` and `math/min` still use legacy `Node.compare`; Less's
+  canonical `min-max` policy and Sass's unit/error behavior have not been
+  proven identical, so they must not be ported by assumption.
+- `less/types` mixes value predicates with legacy `isurl`; a partial rewrite
+  would leave the same root-tree consumer and would not advance the deletion
+  gate.
+
+The next owner decision is explicit: either rewrite each existing dialect owner
+in place and move the canonical color/list kernels to an approved shared value
+owner, or approve an ownership inversion in which the current `builtins/`
+implementations become direct registry consumers of the rewritten `less/` or
+`sass/` owners. Until that decision and the corresponding red-to-green oracle
+tests exist, do not delete the tree barrel or land a partial alias/bridge.
+
 ### `plugin-js` bridge disposition
 
 The `packages/jess-plugin-js/src/bridge.ts` audit does not identify another
