@@ -137,6 +137,37 @@ exports from `core/src/index.ts`; expose only the stable Context/plugin/error,
 `fns` wildcard with explicit, runtime-backed subpath exports. Verify packed
 install imports and type resolution before alpha publication.
 
+### `plugin-js` bridge disposition
+
+The `packages/jess-plugin-js/src/bridge.ts` audit does not identify another
+parser/compiler AST bridge. It is the external Deno-process transport for the
+legacy Less JavaScript runtime ABI: host-side legacy `Any`, `Color`,
+`Dimension`, `List`, `Quoted`, `Sequence`, `Rules`, and `Declaration` values
+are encoded as tagged JSON, while `runtime-worker.ts` decodes them into its
+own `less.tree` classes (`Dimension`, `Color`, `Quoted`, `Keyword`,
+`Anonymous`, `Value`, `Expression`, and `DetachedRuleset`).
+
+That ABI is observable and tested by
+`packages/jess-plugin-js/test/plugin-js-security.test.ts` (the
+`less.tree`/`less.dimension`/`less.value` `instanceof` and legacy `@plugin`
+cases), by `packages/jess/test/less/wall8-repro.test.ts`, and by the
+`plugin-js` README's typed-bridge guarantee. AST-v2 `@jesscss/core/value` is
+not a 1:1 replacement: it has structural `Dimension`/`Color`/`Quoted`/
+`Keyword`/`List`/`Block`/`Bool`/`Nil`, but no anonymous-vs-keyword `Any`,
+`Sequence`/Expression value, detached Rules/Declaration map, or class identity;
+it also carries different color source-format metadata. Substituting those
+shapes now would silently break external modules and Less map/plugin behavior.
+
+Do not add a dual canonical/legacy branch and do not delete this transport in
+the alpha. Its future cut requires an owner-approved canonical cross-process
+protocol covering raw/anonymous values, sequence/layout facts, detached
+rules/map semantics, and color source metadata; a new worker API and facade;
+migration of the bridge tests, README, legacy plugin fixtures, and callers; and
+only then removal of the legacy Less facade plus all core-tree imports from
+`bridge.ts`. Until that protocol is approved and proven, this is a legitimate
+external runtime compatibility seam, not evidence that the public parser or
+compiler still uses a tree-to-AST bridge.
+
 ## Active orchestrator goal
 
 Drive the public AST-v2 cutover, Less alpha readiness, Parseman release,
