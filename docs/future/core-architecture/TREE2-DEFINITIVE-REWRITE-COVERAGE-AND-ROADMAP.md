@@ -6,9 +6,15 @@
 > canonical AST v2 `Stylesheet` through each dialect's `parse()` operation;
 > Context keeps plugin dispatch and no AST bridge is permitted.
 
+> **Archive boundary (2026-07-22).** The owner-ratified tree2 destination and
+> front-end-flip statements in the preserved note below are **STRUCK**. They are
+> historical evidence from the rejected route, not a second AST destination,
+> interim shipping architecture, or release prerequisite. New work follows
+> `HANDOFF.md` and the public direct `parse() -> Stylesheet` contract.
+
 > **RATIFIED 2026-07-15 (owner).**
 >
-> 1. **tree2 IS THE DESTINATION representation.** The `origin/dev` spine / eval-cutover
+> 1. **[STRUCK historical claim] tree2 IS THE DESTINATION representation.** The `origin/dev` spine / eval-cutover
 >    work — the D-EVAL flip, field-slim levers, and reuse-gate deletions — is **MOOT
 >    under tree2** (stop investing in it as a destination). The spine remains the
 >    **interim shipping alpha ONLY**. There is **NO second parallel cutover** on the old
@@ -19,9 +25,8 @@
 >    monolithic in-place delete), gated on byte-identity vs the **intended-v5 expected `.css`**.
 > 2. **R0-FIRST:** build `collapseNesting:false` **nested-output** mode **BEFORE** extend.
 >
-> This doc is the governing coverage + roadmap plan for the tree2 core rewrite. The
-> living experiment log stays in `AST-ARENA-EXPERIMENT-HANDOFF.md` (which now points
-> here as the governing plan).
+> This doc is a historical coverage/roadmap record for the tree2 rewrite. It is not
+> the governing plan; current work and evidence live in `HANDOFF.md`.
 
 Branch of record: `experiment/tree2-cleanroom-20260715`. Code/doc citations are on that
 branch unless marked `origin/dev`.

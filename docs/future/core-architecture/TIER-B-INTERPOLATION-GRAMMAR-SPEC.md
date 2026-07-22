@@ -1,5 +1,13 @@
 # Tier-B — Interpolation / Quoted / Prelude / List in the Grammar (Spec)
 
+> **Historical design evidence — superseded as an execution plan (2026-07-22).**
+> This survey's tree2 build-host, bridge-lifetime, and staged host-side deletion
+> assumptions are not current architecture. Preserve independently verified
+> grammar observations, but do not implement or revive a host, bridge, or
+> private/test-only AST route. The public contract is direct dialect
+> `parse() -> Stylesheet` reduction with Context/plugin dispatch; use `HANDOFF.md`
+> for current sequencing.
+
 > Status: **DESIGN SURVEY (read-only).** No grammar code changed. This spec precedes an
 > adversarial review; nothing here is committed engineering until that review passes. It plans
 > the grammar work that unblocks the **Tier-0b** deletions tracked in

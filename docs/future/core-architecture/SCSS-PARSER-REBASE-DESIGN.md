@@ -6,8 +6,16 @@
 > through public `parse()`; retain only independently verified recognition
 > observations from this document.
 
-DESIGN/SCOUT spec — no code this pass. Base: `origin/dev`. Owns task **#34** and the
-cutover prerequisite that unblocks deleting `builders.ts`/`BuilderHost`.
+> **Archive boundary (2026-07-22).** The BuilderHost inheritance, shared-host
+> migration, and “unblocks BuilderHost deletion” language below describes a
+> superseded implementation snapshot. It is not a current blocker or a request
+> to add a host, bridge, or deferred public-wiring stage. Current SCSS work uses
+> its own direct Parseman grammar reductions and the retained Context/plugin
+> dispatch.
+
+Archived DESIGN/SCOUT survey — no current implementation plan. Base: `origin/dev`.
+Task **#34** and any BuilderHost deletion sequencing below are historical evidence
+only; the public direct-parser contract in `HANDOFF.md` is authoritative.
 
 This doc is the engineering spec for work items **W1, W5, W6, W7** of the owner-directed
 program in `../parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` (the
