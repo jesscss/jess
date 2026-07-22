@@ -175,7 +175,7 @@ export function isDisjoint(a: BitSet, b: BitSet): boolean {
     throw new Error('Bitsets must be from the same library');
   }
 
-  if (a._ === 0 && b._ === 0) {
+  if (!isInverted(a) && !isInverted(b)) {
     const aData = dataOf(a);
     const bData = dataOf(b);
     if (aData && bData) {

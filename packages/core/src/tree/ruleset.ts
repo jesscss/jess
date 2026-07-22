@@ -36,7 +36,7 @@ import {
 import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
 import type { AtRule } from './at-rule.js';
 import { serializeRulesContainer, normalizeIndent, normalizeLeadingBlockTrivia, indent } from './util/serialize-helper.js';
-import { isRenderBuffer, prepareBufferPrintState, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
+import { isRenderBuffer, prepareBufferPrintState, writeRenderText, writeRenderTextResult, type RenderBuffer } from './util/render-buffer.js';
 import { registerRulesetWithRoot } from './util/extend-roots.js';
 import { createTriviaMap } from './util/trivia.js';
 import { copyOwnedWithReusableLeaves, copyWithReusableLeavesPreservingComments, copyNodesForOwnership, reuseLeaf } from './util/cloning.js';
@@ -924,7 +924,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
       const spineOptions = getPrintOptions(spinePrintOptions);
       const rendered = serializeRulesContainer(this, spineOptions);
       return isRenderBuffer(bufferOrOptions)
-        ? writeRenderText(bufferOrOptions, rendered)
+        ? writeRenderTextResult(bufferOrOptions, rendered)
         : rendered;
     }
     const finishNilSelectorBodyRender = (rendered: string): string => {
@@ -938,7 +938,7 @@ export class Ruleset extends Rules<RulesetValue, RulesetOptions> {
     };
     const renderEvaluatedRuleset = (node: Ruleset) => {
       if (isRenderBuffer(bufferOrOptions)) {
-        return writeRenderText(
+        return writeRenderTextResult(
           bufferOrOptions,
           serializeRulesContainer(node, prepareBufferPrintState(context, options))
         );

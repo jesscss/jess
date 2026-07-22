@@ -6,7 +6,7 @@ import { lineColAt } from './code-frame.js';
 type JessFile = TreeContext['file'];
 
 /** Minimal shape for passing context and a node to helpers. */
-export type TreeContextLike = { file: JessFile };
+export type TreeContextLike = { file?: JessFile };
 
 /** Any source subject a diagnostic may retain. Legacy nodes can carry inline
  * offsets; canonical AST nodes keep their spans in provenance side state and

@@ -109,7 +109,7 @@
  */
 
 import type { Rules } from '../rules.js';
-import type { Selector } from '../selector.js';
+import type { Selector, SelectorLike } from '../selector.js';
 import type { SimpleSelector } from '../selector-simple.js';
 import {
   SelectorList,
@@ -124,7 +124,7 @@ import { ComplexSelector, type ComplexSelectorComponent } from '../selector-comp
 import { CompoundSelector } from '../selector-compound.js';
 import { PseudoSelector, is as isSelectorPseudo } from '../selector-pseudo.js';
 import { Ampersand } from '../ampersand.js';
-import { Combinator } from '../combinator.js';
+import { Combinator, type Combinators } from '../combinator.js';
 import { isNode } from './is-node.js';
 import { isCombinator, combinatorValue } from './combinator.js';
 import type { Node } from '../node.js';
@@ -1168,10 +1168,12 @@ function sameArrayItems<T>(left: readonly T[], right: readonly T[]): boolean {
  * @param inheritFrom - Optional selector to inherit from
  * @returns A new SelectorList with deduplicated and flattened value
  */
+function createExtendedSelectorList(value: Selector[], inheritFrom: Selector): Selector | ExtendErrorType;
+function createExtendedSelectorList(value: Selector[], inheritFrom?: SelectorListLike): SelectorLike | ExtendErrorType;
 function createExtendedSelectorList(
   value: Selector[],
-  inheritFrom?: SelectorListLike
-): SelectorListLike | ExtendErrorType {
+  inheritFrom?: Selector | SelectorListItem[]
+): SelectorLike | ExtendErrorType {
   // Extract value from any :is() wrappers in the array
   const extractedSelectors: Selector[] = [];
   for (const selector of value) {
@@ -2512,7 +2514,7 @@ function extendSelectorList(
         selector: ComplexSelector;
         left: Selector;
         right: Selector;
-        combinator: Combinator;
+        combinator: Combinator | Combinators;
       };
       const byCombinator = new Map<string, ExplicitCandidate[]>();
       for (let i = 0; i < finalSelectors.length; i++) {

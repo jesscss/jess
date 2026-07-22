@@ -2129,6 +2129,12 @@ silently choose one language’s policy.
   from 158 to 127 and the full core config from 559 to 528; no diagnostics remain
   in `ast/serialize.ts`, `ast/node.ts`, or the diagnostic files touched by this
   pass. The remaining strict source diagnostics are confined to `tree/**`.
+  The following retained-tree contract batch moves that isolated source count
+  from 127 to 73 on a fresh compiler run. It removes no tree compatibility
+  surface: it makes existing async render results, source spans, guard fields,
+  bitset inversion state, combinator recognition, and selector-list result
+  shapes truthful so the remaining consumers can be deleted or migrated from a
+  sound baseline rather than hidden behind assertions.
 - Boundary evidence: the Less public parser suite passes after rebuilding core,
   and package export verification confirms the entrypoint remains valid.
 - Evidence: focused and full behavior, build, export, and strict-type evidence
@@ -2145,6 +2151,17 @@ silently choose one language’s policy.
     "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
     "behaviorEvidence":"The complete core suite passes 3318/3318; focused recursive arguments, imports, selected mixins, direct-function, value-access, recursive guard truth, at-rule, extend-preflight, nested mixin, and Node-union cases pass.",
     "buildEvidence":"The core package build and package-export verification pass after the resolver and canonical serializer contract corrections.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },{
+    "id":"legacy-tree-strict-contract-drain",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the six retained legacy tree value, guard, selector, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+    "why":"The retained tree already permits async container/declaration rendering, optional Context files, source-span accessor reads, DefaultGuard-owned text, inverted bitsets, raw-string or node combinators, and singleton-collapsing selector-list results. This pass states those existing runtime facts exactly while legacy consumers are being removed; it does not preserve them with a shim or add another evaluator, traversal, resolver, or output policy.",
+    "dangerTokensJustification":"[materialized array/object] appears only in type signatures for the existing optional Context file and selector-array surfaces. The selector arrays, overloads, and nullable/optional facts already exist at runtime; this pass allocates no array, object, node, map, side table, error, or output buffer. The combinator predicate keeps the same runtime checks and narrows only the exact Combinators string-literal union or Combinator node, leaving ordinary selector strings in the false branch.",
+    "cases":["declaration-sync-and-async-render-result","declaration-merge-source-span-exclusion","default-guard-owned-value","bitset-inversion-and-disjointness","string-and-node-combinator-recognition","selector-list-singleton-collapse","selector-list-array-or-node-inheritance"],
+    "behaviorEvidence":"The complete core suite passes 3319/3319, including the direct predicate regression proving ordinary selector strings are not combinators while literal and node combinators are. Focused retained-tree declaration, at-rule, ruleset, default-guard, bitset, reference, and selector-extend suites also pass.",
+    "buildEvidence":"Fresh strict core source diagnostics fall from 127 to 73 and the full core config falls from 528 to 474 without suppression. The core package build and package-export verification pass.",
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```

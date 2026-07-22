@@ -1442,7 +1442,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     state: DeclarationRenderState,
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
-  ): string {
+  ): MaybePromise<string> {
     if (state.nil && state.output) {
       const output = state.output;
       return isRenderBuffer(bufferOrOptions)
@@ -1884,7 +1884,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                 && n !== this
                 && source !== (outputNode?.sourceNode ?? outputNode)
                 && source !== (this.sourceNode ?? this)
-                && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
+                && !sameConcreteLocation(sourceSpanOf(n), outputNode ? sourceSpanOf(outputNode) : undefined)
                 && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
             },
             requiredDeclarationAssignments: [
@@ -1938,7 +1938,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && n !== this
                   && source !== (outputNode?.sourceNode ?? outputNode)
                   && source !== (this.sourceNode ?? this)
-                  && !sameConcreteLocation(sourceSpanOf(n), outputNode?.location)
+                  && !sameConcreteLocation(sourceSpanOf(n), outputNode ? sourceSpanOf(outputNode) : undefined)
                   && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
               }
             }, undefined);

@@ -234,6 +234,38 @@ a blanket optimization exemption or a new active architecture queue.
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run", "src/ast/__tests__/import-at-rule.test.ts"]}
   },
   {
+    "id": "legacy-tree-strict-contract-drain",
+    "kind": "semantic-runtime",
+    "surface": "retained legacy tree strict runtime contracts",
+    "files": [
+      "packages/core/src/tree/declaration.ts",
+      "packages/core/src/tree/default-guard.ts",
+      "packages/core/src/tree/selector-list.ts",
+      "packages/core/src/tree/util/bitset.ts",
+      "packages/core/src/tree/util/combinator.ts",
+      "packages/core/src/tree/util/extend.ts"
+    ],
+    "semanticRuntime": {
+      "owner": "the six retained legacy tree value, guard, selector, bitset, combinator, and extend owners listed by legacy-tree-strict-contract-drain",
+      "scope": "This bounded strict-contract drain makes existing runtime facts truthful while the retained tree consumers are removed: declaration rendering propagates existing MaybePromise results and reads provenance only through its accessor, DefaultGuard owns the value its constructor already writes, bitsets use their existing inversion reader instead of an undeclared dependency field, the shared combinator recognizer exposes the exact string-literal-or-node type it already recognizes, and selector-list/extend helpers state their existing singleton-collapse and array-or-node inheritance behavior through overloads. It adds no compatibility shim, alternate evaluator, traversal, output policy, or performance claim.",
+      "cases": [
+        "declaration-sync-and-async-render-result",
+        "declaration-merge-source-span-exclusion",
+        "default-guard-owned-value",
+        "bitset-inversion-and-disjointness",
+        "string-and-node-combinator-recognition",
+        "selector-list-singleton-collapse",
+        "selector-list-array-or-node-inheritance"
+      ],
+      "performanceClaim": "none",
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "evidence": {
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "build"]
+    }
+  },
+  {
     "id": "legacy-tree-visitor-abi-removal",
     "kind": "neutral-or-negative",
     "surface": "legacy tree Node.accept and per-node Visitor ABI removal",
