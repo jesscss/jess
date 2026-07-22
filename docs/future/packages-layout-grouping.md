@@ -101,11 +101,18 @@ groupable but is a trap; the rest stay flat.
   Cohesive, consumed together, no name collision. Cross-syntax by nature
   (consumes every parser), so it belongs at top level, not under `syntax/`.
 
-- **docs (clean cohesion, but collides).** `docs` (jess-docs), `docs-content`,
-  `docs-less` are all documentation — but a `docs/` group dir collides with the
-  existing `docs` package dir (same problem `jess/` had). Needs nesting or a
-  rename (`sites/`, or `docs/` with the site packages renamed). Lower priority
-  than `editor/`.
+- **`docs/` (clean — the collision is resolvable by a folder rename).**
+  `docs-content`, `docs-less`, and the jess-docs site are all documentation:
+  ```
+  docs/
+    docs-jess/       # was packages/docs — rename the FOLDER to free the group name
+    docs-content/
+    docs-less/
+  ```
+  The only snag is the site package's folder is currently named `docs` (npm name
+  `jess-docs`) — same as the group. Rename that folder to `docs-jess`. This is a
+  **folder-basename change only**; the npm name stays `jess-docs`, so imports
+  don't move. Clean third group.
 
 - **Capability plugins — deliberately NOT grouped.** `jess-plugin`,
   `jess-plugin-js`, `jess-plugin-node-modules` look like a `plugins/` group, but
@@ -123,8 +130,8 @@ groupable but is a trap; the rest stay flat.
 
 ## Tooling to update when landing
 
-- `pnpm-workspace.yaml` — `packages/*` → add `packages/syntax/*` and
-  `packages/editor/*` (nested), or switch to `packages/**`.
+- `pnpm-workspace.yaml` — `packages/*` → add `packages/syntax/*`,
+  `packages/editor/*`, and `packages/docs/*` (nested), or switch to `packages/**`.
 - `tsconfig.json` — the `@jess/*` → `./packages/*/src` wildcard becomes
   `./packages/**/src` (or explicit); update the ~8 explicit per-package `paths`
   entries for moved packages.
@@ -136,7 +143,9 @@ groupable but is a trap; the rest stay flat.
 
 ## Do NOT include in the move
 
-- No package renames (`@jesscss/*` names are stable).
+- No **npm-name** renames (`@jesscss/*` names are stable). Folder-basename
+  changes are fine where a group needs them (e.g. `packages/docs` → `docs/docs-jess`
+  keeps npm name `jess-docs`).
 - No dependency-graph changes — the parser/plugin split stays as-is (see the
   reverse-dependency analysis: `less-parser` is consumed by `scss-parser`,
   `language-service`, and `plugin-less-compat`; `scss-parser` by
