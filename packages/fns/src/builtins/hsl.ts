@@ -1,6 +1,7 @@
-import type { Color, Dimension, List, Fn } from '@jesscss/core/value';
+import type { Color, List, Fn } from '@jesscss/core/value';
 import { colorHsl, defineFunction, makeColorHsl, makeColorRgb, hslToRgb, HSL } from '@jesscss/core/value';
 import { clamp01, isColor, isModern, normalizeHue, percentOf } from './color-ctor-helper.js';
+import { requireDimension } from './math-helper.js';
 
 /**
  * `hsl` / `hsla` (alias) — CONSTRUCT an HSL-format color, or REFORMAT a color to
@@ -20,11 +21,11 @@ export function makeHsl(list: List): Color {
   const modernSyntax = isModern(list);
   const first = items[0];
   if (items.length >= 3 && !isColor(first)) {
-    const h = normalizeHue(items[0] as Dimension);
-    const s = clamp01(percentOf(items[1] as Dimension, 1));
-    const l = clamp01(percentOf(items[2] as Dimension, 1));
-    const a = items[3] !== undefined ? percentOf(items[3] as Dimension, 1) : 1;
-    const alphaD = items[3] as Dimension | undefined;
+    const h = normalizeHue(requireDimension(items[0]));
+    const s = clamp01(percentOf(requireDimension(items[1]), 1));
+    const l = clamp01(percentOf(requireDimension(items[2]), 1));
+    const a = items[3] !== undefined ? percentOf(requireDimension(items[3]), 1) : 1;
+    const alphaD = items[3] !== undefined ? requireDimension(items[3]) : undefined;
     const alphaPct = alphaD?.unit === '%' ? alphaD.number : undefined;
     // ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result
     // (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it
@@ -40,13 +41,13 @@ export function makeHsl(list: List): Color {
     }
     // SOURCE-FORMAT preservation (verbatim rule): keep the authored hue unit
     // (`0deg` → `deg`) + a `%` alpha spelling; an operated result drops them.
-    const hueUnit = (items[0] as Dimension).unit || undefined;
+    const hueUnit = requireDimension(items[0]).unit || undefined;
     const fmtOpts = { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) };
     return makeColorHsl([h, s, l], a, HSL, modernSyntax, fmtOpts);
   }
   if (isColor(first)) {
-    const c = first as Color;
-    const a = items[1] !== undefined ? clamp01(percentOf(items[1] as Dimension, 1)) : c.alpha;
+    const c = first;
+    const a = items[1] !== undefined ? clamp01(percentOf(requireDimension(items[1]), 1)) : c.alpha;
     return makeColorHsl(colorHsl(c), a, HSL, modernSyntax);
   }
   throw new Error('Invalid arguments for hsl function');

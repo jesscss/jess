@@ -6,7 +6,7 @@
  *
  * HARD MODULE BOUNDARY: value domain only.
  */
-import type { Dimension, List, ValueObj } from '@jesscss/core/value';
+import type { Color, Dimension, List, ValueObj } from '@jesscss/core/value';
 
 /** Clamp to the 0-1 range (alpha / saturation / lightness). */
 export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
@@ -52,7 +52,7 @@ export function alphaToNumber(d: Dimension): number {
 }
 
 /** Whether an arg-list item is a materialized color operand. */
-export const isColor = (v: ValueObj | undefined): boolean => v?.type === 'Color';
+export const isColor = (v: ValueObj | undefined): v is Color => v?.type === 'Color';
 
 /** Modern color syntax is signalled by a space / slash separated call. */
 export const isModern = (list: List): boolean => list.sep === ' ' || list.sep === '/';
