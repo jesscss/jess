@@ -4108,3 +4108,45 @@ or Context deletion lanes.
   ]
   ```
 - Verdict: accepted bounded semantic correction; no legacy route retained.
+
+## Aggressive Cutting Self-Prosecution — Less interpolated selector pseudos
+
+- Latest pass: the public direct Less AST grammar now reduces interpolated pseudo
+  names (`:@{name}` / `::@{name}`), interpolated `:nth-*` arguments
+  (`:nth-child(@{index})`), and quoted interpolation after the CSS `|=`
+  attribute operator as typed selector facts. The namespace-prefix arm now
+  proves it is not consuming `|=`. No selector text is rescanned or reparsed,
+  and no compatibility bridge is added.
+- Architecture surface: `packages/less-parser/src/ast/grammar.ts` direct
+  Parseman reductions and the existing canonical AST selector factories.
+- Separation/duplication: the grammar reuses the existing interpolation and
+  selector-simple factories; no alternate selector parser or renderer exists.
+- Cumulative node weight: one existing `SimpleSelector` containing one
+  `Interpolation` payload per authored dynamic pseudo/attribute; no wrapper
+  nodes.
+- New traversal: none; the existing compound-selector reduction consumes the
+  new atom in its ordinary one-or-more simple-selector sequence.
+- New node/materialization: none beyond the existing interpolation parts.
+- Render path: unchanged canonical selector serialization/evaluation; the
+  interpolation is materialized only when the selector is evaluated/rendered.
+- Helper/API surface: no public helper or package export; two parser-local
+  reductions are added to the direct grammar rule map.
+- Metadata mutations: none; source spans and parent/child relationships remain
+  those produced by the canonical AST factories.
+- Behavior evidence: `packages/less-parser/test/ast-grammar.test.ts` passes
+  151/151 and `packages/less-parser/test/public-parse.test.ts` passes 70/70;
+  `selectors.less` advances past the repaired line 121, line 127, and line 139
+  forms and reaches the next independent relative-combinator pseudo gap at line
+  221 (`:has(>.foo)`).
+- Build evidence: `pnpm --filter @jesscss/less-parser build` passes; changed
+  parser/test files pass ESLint.
+- Boundary evidence: the existing public `parse()` route returns canonical
+  `Stylesheet`/`SimpleSelector`/`Interpolation` nodes directly; only the
+  direct Less grammar and its AST-contract tests changed, with no new host,
+  bridge, scanner, resolver, or package API.
+- Evidence: the focused parser suites and package build above are the complete
+  behavior/build boundary evidence for this bounded selector-family change.
+- Review-flagged diff tokens: none. No traversal, clone, side map, metadata
+  mutation, or routine error-control path was added.
+- Verdict: accepted bounded direct-AST selector grammar correction; the fixture's
+  remaining dynamic attribute form is a separate selector-family slice.

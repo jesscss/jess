@@ -3397,15 +3397,35 @@ describe('Less AST grammar facts', () => {
     expect(serialize(result.value)).toEqual({ css: '.button-active,\n.buttonx-y {\n  color: red;\n}\n' });
   });
 
-  it('keeps malformed, whitespace-split, dynamic pseudo, and extend selector interpolation out of the direct route', () => {
+  it('keeps malformed, whitespace-split, and extend selector interpolation out of the direct route', () => {
     for (const source of [
       '. @{name}-item { color: red; }',
-      '.@{name}:@{pseudo} { color: red; }',
       '.@{name}:extend(.target) { color: red; }'
     ]) {
       const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
+  });
+
+  it('constructs interpolated Less pseudo names as selector interpolation atoms', () => {
+    const source = '@pseudo: hover; .card:@{pseudo} { color: black; }';
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'VariableDeclaration' }, {
+        type: 'Rule',
+        selector: { selectors: [{ head: { simples: [
+          { type: 'SimpleSelector', text: '.card' },
+          { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':' }, { ref: { type: 'VariableReference', name: 'pseudo' } }] } }
+        ] } }] }
+      }]
+    });
   });
 
   it('constructs static single- and double-colon pseudos as existing SimpleSelector text in compounds and lists', () => {
@@ -3770,5 +3790,24 @@ describe('Less AST grammar facts', () => {
       throw new TypeError('Expected a direct Less Stylesheet.');
     }
     expect(serialize(result.value).css).toBe('.card[data="test3"] {\n  color: red;\n}\n');
+  });
+
+  it('keeps the |= attribute operator distinct from a namespace prefix with interpolation', () => {
+    const source = '@num: 3; [prop|="value@{num}"] { attributes: yes; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'VariableDeclaration', name: 'num' }, {
+        type: 'Rule',
+        selector: { selectors: [{ head: { simples: [{
+          type: 'SimpleSelector',
+          text: null,
+          interp: { parts: [{ lit: '[prop|="value' }, { ref: { type: 'VariableReference', name: 'num' }, unquote: true }, { lit: '"]' }] }
+        }] } }] }
+      }]
+    });
   });
 });

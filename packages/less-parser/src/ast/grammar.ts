@@ -156,6 +156,8 @@ type LessAstLocalRules = {
   DirectLessAtRuleBlock: Combinator<AtRuleBlock>;
   DirectLessAtRuleStatement: Combinator<AtRuleStatement>;
   DirectLessStaticPseudo: Combinator<SimpleSelector>;
+  DirectLessInterpolatedPseudo: Combinator<SimpleSelector>;
+  DirectLessInterpolatedNthPseudo: Combinator<SimpleSelector>;
   DirectLessStaticNthPseudo: Combinator<SimpleSelector>;
   DirectLessStaticNthArgument: Combinator<string>;
   DirectLessStaticNonSelectorPseudoArgument: Combinator<string>;
@@ -3498,6 +3500,30 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       children => simpleSelector(children.map(requireToken).map(token => token.value).join(''))
     )
   );
+  // Less permits a variable interpolation as an An+B argument (`:nth-child(@{n})`).
+  // Keep the pseudo delimiter/name, variable reference, and closing delimiter as
+  // typed interpolation segments; no raw selector recovery or second parse is
+  // needed when the value is substituted during evaluation.
+  const DirectLessInterpolatedNthPseudo = node<SimpleSelector>(
+    'DirectLessInterpolatedNthPseudo',
+    parser({ trivia: staticSelectorTrivia }, sequence(
+      choice(literal('::'), literal(':')),
+      directStaticNthPseudoName,
+      literal('('),
+      g.DirectLessVariableInterpolation,
+      literal(')')
+    )),
+    (children) => {
+      const delimiter = requireTerminalText(children[0]);
+      const name = requireTerminalText(children[1]);
+      const interpolationFact = requireInterpolationFact(children[3]);
+      return interpolatedSimpleSelector(interpolation([
+        { lit: `${delimiter}${name}(` },
+        { ref: interpolationFact.ref, unquote: true },
+        { lit: ')' }
+      ]));
+    }
+  );
   const DirectLessStaticPseudoQuoted = node<string>(
     'DirectLessStaticPseudoQuoted',
     choice(
@@ -3645,10 +3671,29 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       }
     )
   );
+  // A Less pseudo name may itself be interpolated (`:@{pseudo}` / `::@{pseudo}`)
+  // and remains one interpolation-backed selector atom. Keep the delimiter and
+  // interpolation structural so evaluation can substitute the name without a
+  // selector-string reparse.
+  const DirectLessInterpolatedPseudo = node<SimpleSelector>(
+    'DirectLessInterpolatedPseudo',
+    noTrivia(sequence(choice(literal('::'), literal(':')), g.DirectLessVariableInterpolation)),
+    (children) => {
+      const delimiter = requireTerminalText(children[0]);
+      const interpolationFact = requireInterpolationFact(children[1]);
+      return interpolatedSimpleSelector(interpolation([
+        { lit: delimiter },
+        { ref: interpolationFact.ref, unquote: true }
+      ]));
+    }
+  );
   const DirectLessStaticAttributeNamespace = node<string>(
     'DirectLessStaticAttributeNamespace',
     choice(
-      sequence(directStaticIdentifier, literal('|')),
+      // `|=` is the CSS attribute operator, not a namespace separator. Guard
+      // the namespace arm before consuming `|` so a quoted interpolation after
+      // `prop|=` remains on the ordinary attribute-value route.
+      sequence(directStaticIdentifier, literal('|'), not(literal('='))),
       literal('*|'),
       literal('|')
     ),
@@ -3887,7 +3932,9 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     g.DirectLessStaticNamespaceType,
     staticSimpleSelector,
     staticAmpersand,
+    g.DirectLessInterpolatedNthPseudo,
     g.DirectLessStaticNthPseudo,
+    g.DirectLessInterpolatedPseudo,
     g.DirectLessStaticPseudo,
     g.DirectLessStaticAttribute,
     g.DirectLessInterpolatedAttribute
@@ -4250,6 +4297,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessAtRuleBlock,
     DirectLessAtRuleStatement,
     DirectLessStaticPseudo,
+    DirectLessInterpolatedPseudo,
+    DirectLessInterpolatedNthPseudo,
     DirectLessStaticNthPseudo,
     DirectLessStaticNthArgument,
     DirectLessStaticNonSelectorPseudoArgument,

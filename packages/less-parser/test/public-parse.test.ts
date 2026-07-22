@@ -716,7 +716,6 @@ describe('public Less parse()', () => {
     );
     for (const invalid of [
       '. @{name}-item { color: red; }',
-      '.@{name}:@{pseudo} { color: red; }',
       '.@{name}:extend(.target) { color: red; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
@@ -936,7 +935,7 @@ describe('public Less parse()', () => {
       '.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n'
     );
 
-    for (const invalid of ['.card[@{ spaced }=button] { color: red; }', '.card[${name}=button] { color: red; }', '.@{name}:@{pseudo} { color: red; }']) {
+    for (const invalid of ['.card[@{ spaced }=button] { color: red; }', '.card[${name}=button] { color: red; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
   });
