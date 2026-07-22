@@ -296,6 +296,16 @@ dispatch symbol remains in the parser packages or core. Parseman `BuildHost`
 references are confined to the explicit CSS CST/document-language-service
 builder API. Do not invent a replacement host to remove that name.
 
+The old core `Visitor`/`Node.accept()` ABI is also no longer reachable: a
+workspace search found no production or test consumer after the
+`jess-plugin-less-compat` bridge cutover. Core no longer exports
+`visitor/index.ts`, and `tree/Node` no longer carries the Less-style
+`accept()`/`ABORT`/`REMOVE` machinery. This is distinct from the retained
+Context-owned `SpineVisitor` hook, which is a separate render lifecycle seam
+and does not expose legacy per-node visitor dispatch. The separate
+`packages/jess/src/visitor/index.ts` identity wrapper was likewise unimported,
+unexported, and deleted; it was not a second valid visitor implementation.
+
 The public core barrel still exports the legacy tree corpus, and the root
 `@jesscss/fns` barrel still exposes `packages/fns/src/less/*`; Context, the
 legacy function barrel, compat type declarations, and visitor/language-service
@@ -382,12 +392,13 @@ closure is still in progress.
 
 All four dialect packages now expose their stable public `parse()` operation as
 a direct Parseman-to-`Stylesheet` route; explicitly named CST/document APIs remain
-for language-service consumers. The direct grammars are still incomplete, and
-the SCSS plugin still reports `parse/unavailable`; therefore no dialect has
-completed feature-complete parser closure, no plugin/Context migration has
-begun, and no parser/eval/render benchmark may be claimed. The reductions below
-are incomplete implementation toward that public route, not a second
-architecture or a completion milestone.
+for language-service consumers. The direct grammars are still incomplete, so no
+dialect has completed feature-complete parser closure. The public CSS/Less/SCSS/
+Jess plugin adapters now call those direct parser operations and return the
+canonical `Stylesheet` through Context; that integration is verified below but
+does not claim parser or evaluator feature completion. The reductions below are
+incomplete implementation toward that public route, not a second architecture
+or a completion milestone.
 
 - CSS public `parse()` directly returns `Stylesheet`. The current verified
   closure includes structured selectors and selector-to-block comment trivia,
@@ -527,17 +538,19 @@ architecture or a completion milestone.
   Direct `$if` conditions also carry the existing strict `not`/`and`/`or` guard
   tree, including both adjacent and spaced comparisons; mixin-only guard forms
   remain excluded. Existing direct `MixinCall`, `VariableCall`, `$apply`, and
-  `$for` statements execute through the ordinary selected-body walker; imports
-  remain held until their ordered plugin/Context model work lands. The remaining
+  `$for` statements execute through the ordinary selected-body walker; typed Jess
+  style/module imports are emitted as facts while their plugin-owned loading and
+  resolution remains a separate follow-up. The remaining
   documented Jess direct-route blockers are canonical AST/evaluator model work,
   not parser-host, Context, or import-resolution work: `$while` has no canonical
   AST/evaluation model; member/dynamic references and module calls need the
   owner-reviewed access/call model; and
   `@-compose` modifiers/configuration plus anonymous mixin/function forms need
   typed source-fact/callable models. Do not paper over any of those forms with
-  raw source, a legacy tree, or a parser-side resolver. Do not migrate
-  plugins, Context results, or Jess rendering until all four dialects have
-  complete public direct-`Stylesheet` parsers.
+  raw source, a legacy tree, or a parser-side resolver. Do not migrate plugins or
+  Context results back onto a legacy tree route. Keep the existing direct
+  `Stylesheet` plugin/render route while completing the remaining dialect-specific
+  grammar and evaluator coverage.
 
 For the approved parser-only slices above: new node materialization is only
 parser-owned canonical AST construction; no eval/render traversal, resolver,
@@ -1721,13 +1734,23 @@ protocol, and byte identity before it may claim neutral/decrease.
     "dangerTokensJustification":"The added loop runs only at the cold import boundary and stops at the first explicit claim. It allocates no node, source buffer, cache, parser result, or network request. The unclaimed path returns before resolve/locate/source/parse; a claimed path delegates to the existing Context work that was already required for a local stylesheet import.",
     "cases":["claimed-external-import","unclaimed-external-terminal","ordinary-local-import"],
     "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":78.4,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  },
+  {
+    "id":"legacy-tree-visitor-abi-removal",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "costDelta":"neutral",
+    "why":"The Less-style core Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate SpineVisitor lifecycle hook remains, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390},
+    "benchmark":{"fixture":"benchmark.less","phase":"render","currentMedianMs":80.056,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
   }]
   ```
 - **Verdict:** accepted semantic-preflight, evaluator/value semantic-boundary,
-  and the explicit seven-file `ast-semantic-runtime-cutover` record. Behavior,
+  the neutral legacy Visitor ABI deletion, and the explicit seven-file
+  `ast-semantic-runtime-cutover` record. Behavior,
   focused package build, and current benchmark/output baselines are proved;
-  none of these records makes a performance, neutrality, or byte-identity
-  claim. The wider release build remains a separate alpha gate.
+  none of these records makes a wall-clock performance claim. The wider
+  release build remains a separate alpha gate.
 ### Rejected nested Less `@media` conjunction assumption (2026-07-21)
 
 Commit `81e2f7ffc` assumed nested singleton `@media` groups should be emitted

@@ -97,4 +97,3 @@ export {
   type PreprocessParams
 } from './conversions.js';
 export * from './types/index.js';
-export * from './visitor/index.js';

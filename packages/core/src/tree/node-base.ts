@@ -2,7 +2,6 @@ import {
   type Context
 } from '../context.js';
 import type { TriviaMap } from '../types/index.js';
-import { type Visitor } from '../visitor/index.js';
 import { type Operator } from './util/calculate.js';
 import type { AbstractClass, Tagged } from 'type-fest';
 import {
@@ -61,9 +60,6 @@ type AllNodeOptions = {
 export type Primitive = undefined | boolean | string | number;
 export type PrimitiveOrFunc = Primitive | ((...args: any[]) => any);
 
-export const ABORT: unique symbol = Symbol('ABORT');
-export const REMOVE: unique symbol = Symbol('REMOVE');
-export type NodeVisitReturn = void | Node | symbol;
 export type NodeOptions = Record<string, any> & AllNodeOptions;
 export type RegistrationOptions = {
   reuseCanonical?: boolean;
@@ -159,47 +155,6 @@ function sourceRootOf(node: Node): Rules | undefined {
     current = current.parent;
   }
   return undefined;
-}
-
-type TreeVisitMethod = (node: Node, ctx?: unknown) => NodeVisitReturn;
-type VisitMethod = (node: Node) => Node;
-type TypeVisitMethod = (node: Node) => NodeVisitReturn;
-
-function getTreeVisitMethod(visitor: unknown): TreeVisitMethod | undefined {
-  if (typeof visitor !== 'object' || visitor === null) {
-    return undefined;
-  }
-  const method = (visitor as { _visit?: unknown })._visit;
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return typeof method === 'function' ? method as TreeVisitMethod : undefined;
-}
-
-function hasVisitedNodeSet(visitor: unknown): boolean {
-  return typeof visitor === 'object'
-    && visitor !== null
-    && (visitor as { visitedNodes?: unknown }).visitedNodes instanceof Set;
-}
-
-function getVisitMethod(visitor: unknown): VisitMethod | undefined {
-  if (typeof visitor !== 'object' || visitor === null) {
-    return undefined;
-  }
-  const method = (visitor as { visit?: unknown }).visit;
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return typeof method === 'function' ? method as VisitMethod : undefined;
-}
-
-function isStringKeyRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function getTypeVisitMethod(visitor: unknown, methodName: string): TypeVisitMethod | undefined {
-  if (!isStringKeyRecord(visitor)) {
-    return undefined;
-  }
-  const method = visitor[methodName];
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return typeof method === 'function' ? method as TypeVisitMethod : undefined;
 }
 
 export const defineType = <
@@ -1138,58 +1093,6 @@ export abstract class Node<
     const out: Node[] = [];
     this._walkInto(out, deep, reverse);
     return out;
-  }
-
-  /**
-   * Accept a visitor (classic visitor pattern).
-   *
-   * Visits the node itself first, then recursively visits children.
-   * This matches the Less.js visitor pattern and allows nodes to control
-   * their own traversal if needed by overriding this method.
-   *
-   * @param visitor - The visitor to accept
-   * @returns The result from visiting this node (may be a replacement node)
-   */
-  accept(visitor: Visitor): Node {
-    // Visit self first (like Less.js pattern).
-    // Support both Visitor class instances (visit()) and plain visitor objects.
-    let result: Node | NodeVisitReturn = this;
-    const treeVisitMethod = getTreeVisitMethod(visitor);
-    const visitMethod = getVisitMethod(visitor);
-    if (treeVisitMethod && hasVisitedNodeSet(visitor)) {
-      result = treeVisitMethod.call(visitor, this, {});
-    } else if (visitMethod) {
-      result = visitMethod.call(visitor, this);
-    } else {
-      const maybeAbort = visitor.enter?.(this);
-      if (maybeAbort === ABORT) {
-        return this;
-      }
-      const methodName = this.type.charAt(0).toLowerCase() + this.type.slice(1);
-      const typeMethod = getTypeVisitMethod(visitor, methodName);
-      if (typeMethod) {
-        const visited = typeMethod.call(visitor, this);
-        if (visited) {
-          result = visited;
-        }
-      }
-      result = visitor.exit?.(result) ?? result;
-    }
-
-    // Visit children recursively (Less.js pattern)
-    // Note: a visitor that drives traversal via accept() skips auto-visiting
-    // children here to avoid double-visiting.
-    for (const child of this.walk()) {
-      if (child.accept) {
-        child.accept(visitor);
-      } else {
-        // Fallback: if child doesn't have accept, visit directly
-        visitor.visit(child);
-      }
-    }
-
-    // Return the result (may be a replacement node)
-    return result instanceof Node ? result : this;
   }
 
   cloneValue(value: unknown): unknown {
