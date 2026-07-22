@@ -329,14 +329,34 @@ Do not ordinary-merge or rebase `dev` into `alpha`.
 For the refresh, first create a recovery ref such as
 `git branch alpha-pre-alpha9-cut alpha` and work in an isolated `alpha`
 worktree. Import the endpoint tree with a two-tree patch
-(`git diff --binary alpha..dev` and `git apply --index`), then restore only
-`packages/*/package.json` from the recovery ref. The verified manifest delta
-contains only lockstep package-version fields and `pnpm-lock.yaml` is
-unchanged, so this retains the alpha package versions while preserving the
-current `dev` root scripts. Keep `dev`'s root quality gates (`verify:types` and
-bounded production lint) and its newer HANDOFF/readiness/release evidence;
-reconcile the alpha release note from final gate evidence instead of restoring
-the older alpha docs wholesale.
+(`git diff --binary alpha..dev` and `git apply --index`), then run
+`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut`.
+That tool restores only each `packages/*/package.json` `.version` field from the
+recovery ref; it must not restore whole manifest files. The alpha snapshot takes
+all current `dev` manifest fields (including runtime/peer/dev dependencies,
+exports, and publish configuration) and retains only recovery alpha versions
+until the registry-aware release step selects the next version. `pnpm-lock.yaml`
+is unchanged. Keep `dev`'s root quality gates (`verify:types` and bounded
+production lint) and its newer HANDOFF/readiness/release evidence; reconcile
+the alpha release note from final gate evidence instead of restoring the older
+alpha docs wholesale.
+
+## Aggressive Cutting Self-Prosecution
+
+- **New traversal:** none in the compiler/runtime. The release helper scans the
+  existing workspace manifest list once, a cold release-only path.
+- **New node/materialization:** none; JSON manifests are release metadata, not
+  AST/runtime nodes.
+- **Render path:** untouched.
+- **Helper/API surface:** one release-only helper replaces the unsafe documented
+  whole-manifest restore. It retains a single field instead of preserving a
+  broader compatibility copy operation.
+- **Metadata mutations:** the helper writes only package manifest `version`
+  fields after the source-tree import. It reads recovery manifests through Git
+  solely to retain the alpha snapshot version.
+- **Evidence:** the focused release unit test proves imported dependency,
+  peer-dependency, and export fields survive while only the recovery version is
+  used. This is release correctness evidence, not a performance claim.
 
 Commit one controlled refresh on `alpha`, confirm a clean source tree, and run
 the full `release:alpha` chain before owner-approved publication. The
