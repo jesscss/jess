@@ -160,6 +160,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
   ['tests-unit/property-name-interp/property-name-interp.less', 'Less5 owner-set rejection of deprecated dash-only @- and @{-} variable names; Less4 deprecation is implemented in unpushed worktree commit db03543d'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
+  ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'Less5 rejects dynamic @charset interpolation; static charset remains on the generic statement route pending the public Charset node decision'],
   ['tests-unit/plugin/plugin.less', '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)'],
   ['tests-unit/parse-interpolation/parse-interpolation.less', 'renders but interpolation formatting differs from Less'],
   ['tests-unit/parser-slashed-combinator/parser-slashed-combinator.less', 'slashed combinator not yet supported'],

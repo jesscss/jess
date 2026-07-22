@@ -1275,7 +1275,6 @@ const directUnicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/
 // Imports are typed facts with stricter target validation. Excluding their names
 // here prevents a malformed import from falling through as a generic at-rule.
 const directLayerAtRuleName = regex(/@layer(?![-\w])/i);
-const directCharsetAtRuleName = regex(/@charset(?![-\w])/i);
 const directNamespaceAtRuleName = regex(/@namespace(?![-\w])/i);
 const directAtRuleName = regex(/@(?!(?:-import|-export|import|layer|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
 const directMixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
@@ -3534,7 +3533,6 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessAtRuleStatement = node<AtRuleStatement>(
     'DirectLessAtRuleStatement',
     choice(
-      sequence(directCharsetAtRuleName, g.DirectLessQuoted, literal(';')),
       sequence(directNamespaceAtRuleName, g.DirectLessNamespacePrelude, literal(';')),
       sequence(directLayerAtRuleName, not(noTrivia(literal('('))), optional(choice(g.DirectLessInterpolatedValue, g.DirectLessStaticAtRulePrelude)), literal(';')),
       sequence(directAtRuleName, not(noTrivia(literal('('))), optional(g.DirectLessStaticAtRulePrelude), literal(';'))

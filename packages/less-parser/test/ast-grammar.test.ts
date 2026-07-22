@@ -1658,8 +1658,8 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('constructs interpolated charset and namespace statements without widening generic headers', () => {
-    const source = '@Eight: 8; @charset "UTF-@{Eight}"; @ns: less; @namespace @{ns} "http://lesscss.org";';
+  it('keeps charset on the static generic route while retaining typed namespace interpolation', () => {
+    const source = '@charset "UTF-8"; @ns: less; @namespace @{ns} "http://lesscss.org";';
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
 
     expect(result.ok).toBe(true);
@@ -1667,15 +1667,9 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'VariableDeclaration', name: 'Eight' },
         {
           type: 'AtRuleStatement', name: '@charset', prelude: {
-            type: 'Interpolation',
-            parts: [
-              { lit: '"UTF-' },
-              { ref: { type: 'VariableReference', name: 'Eight', lookup: 'scoped' }, unquote: true },
-              { lit: '"' }
-            ]
+            type: 'Quoted', src: '"UTF-8"', value: 'UTF-8'
           }
         },
         { type: 'VariableDeclaration', name: 'ns' },
@@ -1690,8 +1684,14 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    const generic = run(lessAstGrammar.LessAstDocument, '@custom foo@{name};', { trivia: lessAstGrammar.whitespace });
-    expect(generic.ok && generic.unconsumedFrom === null && isStylesheet(generic.value)).toBe(false);
+    for (const rejectedSource of [
+      '@Eight: 8; @charset "UTF-@{Eight}";',
+      '@charset @{encoding};',
+      '@custom foo@{name};'
+    ]) {
+      const rejected = run(lessAstGrammar.LessAstDocument, rejectedSource, { trivia: lessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), rejectedSource).toBe(false);
+    }
   });
 
   it('constructs interpolated and dotted layer headers through canonical at-rule nodes', () => {
