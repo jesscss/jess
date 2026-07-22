@@ -166,7 +166,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     expect(root).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font', value: [], nested: { type: 'DetachedRuleset', body: [
+        { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [
           { type: 'Declaration', name: 'family', value: { src: 'fantasy' } },
           { type: 'Declaration', name: 'weight', value: { src: 'bold' } }
         ] } }
@@ -178,7 +178,7 @@ describe('@jesscss/scss-parser public parse API', () => {
 
     const empty = parse('.empty { font: {}; }');
     expect(empty).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', body: [
-      { type: 'Declaration', name: 'font', nested: { type: 'DetachedRuleset', body: [] } }
+      { type: 'Declaration', name: 'font', value: { type: 'Collection', entries: [] } }
     ] }] });
     expect(serialize(empty)).toEqual({ css: '' });
 
@@ -187,13 +187,13 @@ describe('@jesscss/scss-parser public parse API', () => {
     const dynamic = parse(interpolated);
     expect(dynamic).toMatchObject({
       children: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'Rule', body: [
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, nested: { type: 'DetachedRuleset', body: [
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
           { name: 'color', value: { src: 'red' } }
         ] } },
-        { name: 'font', nested: { type: 'DetachedRuleset', body: [
+        { name: 'font', value: { type: 'Collection', entries: [
           { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: 'bold' } }
         ] } },
-        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, nested: { type: 'DetachedRuleset', body: [
+        { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'prefix' } }] }, value: { type: 'Collection', entries: [
           { name: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'part' } }] }, value: { src: '700' } }
         ] } }
       ] }]
@@ -206,7 +206,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parseScssCst(important).errors).toHaveLength(0);
     expect(parse(important)).toMatchObject({
       children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font', important: true, nested: { type: 'DetachedRuleset', body: [
+        { type: 'Declaration', name: 'font', important: true, value: { type: 'Collection', entries: [
           { type: 'Declaration', name: 'size', important: false }
         ] } }
       ] }]
