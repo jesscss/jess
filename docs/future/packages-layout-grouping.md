@@ -84,10 +84,47 @@ Two things to know before doing it:
   exactly why the packages must stay separate rather than merge (see
   "Grouping ≠ merging").
 
+## Other groups that cluster cleanly
+
+Beyond `syntax/`, two more clusters are cohesive enough to co-locate; one looks
+groupable but is a trap; the rest stay flat.
+
+- **`editor/` (clean — recommended as the second group).** The editor / LSP
+  integration subsystem:
+  ```
+  editor/
+    language-service/
+    vscode/
+    extension/
+    language-service-tests/   # where present
+  ```
+  Cohesive, consumed together, no name collision. Cross-syntax by nature
+  (consumes every parser), so it belongs at top level, not under `syntax/`.
+
+- **docs (clean cohesion, but collides).** `docs` (jess-docs), `docs-content`,
+  `docs-less` are all documentation — but a `docs/` group dir collides with the
+  existing `docs` package dir (same problem `jess/` had). Needs nesting or a
+  rename (`sites/`, or `docs/` with the site packages renamed). Lower priority
+  than `editor/`.
+
+- **Capability plugins — deliberately NOT grouped.** `jess-plugin`,
+  `jess-plugin-js`, `jess-plugin-node-modules` look like a `plugins/` group, but
+  the *syntax* plugins now live under `syntax/*/`. Grouping the rest under
+  `plugins/` would split "plugins" across two homes and hurt discoverability.
+  Leave them flat — or treat it as a signal to reconsider the whole axis (ALL
+  plugins under `plugins/` vs. plugin-beside-parser under `syntax/`), which is a
+  bigger either/or, out of scope here.
+
+- **Foundation stays flat.** `core`/`fns`/`style-resolver` (engine core) and
+  `awaitable-pipe`/`_shared`/`config`/`patch-css` (utils) are heterogeneous — no
+  cohesive subsystem worth a directory. (`parser`/`parser-runtime`/
+  `internal-css-recognition`, if they become real packages, would form a shared
+  parser-runtime group.)
+
 ## Tooling to update when landing
 
-- `pnpm-workspace.yaml` — `packages/*` → add `packages/syntax/*` (nested), or
-  switch to `packages/**`.
+- `pnpm-workspace.yaml` — `packages/*` → add `packages/syntax/*` and
+  `packages/editor/*` (nested), or switch to `packages/**`.
 - `tsconfig.json` — the `@jess/*` → `./packages/*/src` wildcard becomes
   `./packages/**/src` (or explicit); update the ~8 explicit per-package `paths`
   entries for moved packages.
