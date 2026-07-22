@@ -59,7 +59,7 @@ describe('parser runtime boundary', () => {
 
   it('detects handwritten character recognition, aliases, and source indexing', () => {
     const findings = scanParserSource('/tmp/builders.ts', [
-      "const source = 'source'; const pattern = getPattern();",
+      'const source = \'source\'; const pattern = getPattern();',
       'source.charCodeAt(0);',
       'source.codePointAt(0);',
       'pattern.exec(source);',
@@ -121,7 +121,9 @@ describe('parser runtime boundary', () => {
       'const token: { value: string } = getLeaf(); token.value.startsWith("@");'
     ].join('\n');
     const expected = scanParserSource('/tmp/builders.ts', text);
-    const unavailableChecker = { getTypeAtLocation() { throw new Error('TypeChecker must not run'); } };
+    const unavailableChecker = { getTypeAtLocation() {
+      throw new Error('TypeChecker must not run');
+    } };
     assert.deepEqual(scanParserSource('/tmp/builders.ts', text, undefined, unavailableChecker), expected);
   });
 
@@ -139,7 +141,7 @@ describe('parser runtime boundary', () => {
     const findings = scanParserSource('/tmp/builders.ts', [
       'const host = { again: parseLessFn }; host.again(text);',
       'const { again: destructuredAgain } = host; destructuredAgain(text);',
-      "const input = 'source';",
+      'const input = \'source\';',
       'let copied; copied = input; copied[0]; copied.includes("@{");',
       'const payload = { source: input }; const { source: destructured } = payload; destructured[0]; destructured.startsWith("@{");',
       'const { includes: hasInterpolation } = input; hasInterpolation("@{");'
