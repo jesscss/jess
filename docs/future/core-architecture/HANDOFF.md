@@ -268,14 +268,24 @@ section is the authoritative full-scope companion to the compact task goal.
 - The committed Less `alpha` branch is exactly `5.0.0-alpha.1`; its guarded
   release dry-run and release-guard unit tests pass. This proves the release
   shape only, not package readiness.
-- The external Less `alpha` worktree is not yet a release candidate. It is one
-  unpushed commit ahead of `origin/alpha` and has uncommitted implementation
-  and test changes: the explicit `collapseNesting` option and
-  `lessc --collapse-nesting` route, their source-order regressions, and the
-  clean packed-consumer verifier. Those changes need review, a clean commit,
-  and their relevant built-artifact gates before the external release branch
-  can be pushed or treated as release evidence. Do not substitute a historical
-  raw test-runner count for those release gates.
+- The external Less `alpha` tip is `0f78066e`, three committed but unpushed
+  changes ahead of `origin/alpha`: source-order collapsed-output fixtures
+  (`fbea7e3e`), the explicit `collapseNesting` / `lessc --collapse-nesting`
+  public route and its tests (`6ebb0784`), and the packed-consumer verifier
+  (`0f78066e`). At that tip, `npm run test:lessc` and
+  `npm run verify:alpha:packed-consumer` pass. The latter packs a temporary
+  Less tarball with the 18-package local Jess alpha closure, rejects a Jess
+  `lessc` bin, and proves clean-install `lessc` file, stdin, import, and error
+  behavior. This is real built-artifact evidence; it does not publish.
+- A guarded real Less release still cannot start: generated benchmark archives,
+  result files, and a tarball remain untracked, so its clean-worktree guard
+  rejects the checkout; local `alpha` is three commits ahead of `origin/alpha`,
+  while the release guard requires an exact remote match; and
+  `jess@2.0.0-alpha.9` is not yet available from npm. The external `alpha` tip
+  is currently zero commits behind `origin/master`. Once those prerequisites
+  are met, Less's own `prepublishOnly` runs typecheck, distribution build, and
+  the built `lessc` alpha test. Do not substitute a historical raw test-runner
+  count for those release gates.
 - Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
   publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
   against that exact package, and a publish-shaped clean-consumer install has
