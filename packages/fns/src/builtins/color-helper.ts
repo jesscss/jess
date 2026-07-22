@@ -6,10 +6,22 @@
  *
  * HARD MODULE BOUNDARY: value domain only (no `../tree`, no legacy node).
  */
-import type { Color, Dimension, Keyword, Quoted, ValueObj } from '@jesscss/core/value';
-import { HEX, RGB, round, serializeColor } from '@jesscss/core/value';
-import { colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, textOf } from '@jesscss/core/value';
+import { HEX, RGB, colorHsl, colorRawRgb, colorRgbRounded, makeColorHsl, makeColorRgb, round, serializeColor, textOf, type Color, type Dimension, type ValueObj } from '@jesscss/core/value';
 import { clamp01 } from './color-ctor-helper.js';
+
+function requireColor(value: ValueObj): Color {
+  if (value.type !== 'Color') {
+    throw new TypeError('Expected a color value.');
+  }
+  return value;
+}
+
+function requireDimension(value: ValueObj): Dimension {
+  if (value.type !== 'Dimension') {
+    throw new TypeError('Expected a dimension value.');
+  }
+  return value;
+}
 
 /**
  * Rebuild `c` re-tagged to `format`, recomputing its serialized bytes (mirrors
@@ -48,10 +60,12 @@ export function withAlpha(color: Color, newAlpha: number): Color {
  */
 export function hslAdjust(channel: 1 | 2, sign: 1 | -1): (...args: ValueObj[]) => ValueObj {
   return (c, amt, m) => {
-    const color = c as Color;
+    const color = requireColor(c);
     const hsl = colorHsl(color);
-    let adjust = (amt as Dimension).number / 100;
-    if (m !== undefined && textOf(m as Keyword | Quoted) === 'relative') adjust = hsl[channel] * adjust;
+    let adjust = requireDimension(amt).number / 100;
+    if (m !== undefined && (m.type === 'Keyword' || m.type === 'Quoted') && textOf(m) === 'relative') {
+      adjust = hsl[channel] * adjust;
+    }
     const out: [number, number, number] = [hsl[0], hsl[1], hsl[2]];
     out[channel] += sign * adjust;
     return makeColorHsl(out, color.alpha, color.format);
@@ -77,7 +91,7 @@ export function mixColors(c1: Color, c2: Color, weightPct: number): Color {
   const rgb: [number, number, number] = [
     r1[0] * w1 + r2[0] * w2,
     r1[1] * w1 + r2[1] * w2,
-    r1[2] * w1 + r2[2] * w2,
+    r1[2] * w1 + r2[2] * w2
   ];
   const alpha = a1 * p + a2 * (1 - p);
   return makeColorRgb(rgb, alpha, alpha < 1 ? RGB : c1.format);
@@ -139,9 +153,15 @@ export function toHsv(c: Color): [number, number, number] {
     h = 0;
   } else {
     switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      default: h = (r - g) / d + 4; break;
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      default:
+        h = (r - g) / d + 4;
+        break;
     }
     h /= 6;
   }
