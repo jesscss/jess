@@ -6,9 +6,7 @@
  *
  * HARD MODULE BOUNDARY: value domain + factory only.
  */
-import type { Dimension } from '@jesscss/core/value';
-import { makeDimension } from '@jesscss/core/value';
-import type { FnSpec } from '@jesscss/core/value';
+import { makeDimension, type Dimension, type FnSpec, type ValueObj } from '@jesscss/core/value';
 
 /**
  * Angle → radians normalization (`deg`/`grad`/`turn`), else the raw number.
@@ -35,15 +33,24 @@ const normalizeAngle = (d: Dimension): number => {
 export function applyMath(
   fn: (...n: number[]) => number,
   outUnit: string | null | undefined,
-  args: readonly Dimension[],
+  args: readonly Dimension[]
 ): Dimension {
   const first = args[0]!;
-  if (outUnit === null) return makeDimension(fn(...args.map((a) => a.number)), first.unit);
+  if (outUnit === null) {
+    return makeDimension(fn(...args.map(a => a.number)), first.unit);
+  }
   return makeDimension(fn(...args.map(normalizeAngle)), outUnit ?? first.unit);
+}
+
+function requireDimension(value: ValueObj): Dimension {
+  if (value.type !== 'Dimension') {
+    throw new TypeError('Expected a dimension value');
+  }
+  return value;
 }
 
 /** Spec builder for a unary `dimension → dimension` math fn. Centralizes the bind-guaranteed cast. */
 export const unaryMath = (fn: (n: number) => number, outUnit: string | null | undefined): FnSpec => ({
   params: [{ kinds: ['Dimension'] }],
-  body: (v) => applyMath(fn, outUnit, [v as Dimension]),
+  body: v => applyMath(fn, outUnit, [requireDimension(v)])
 });
