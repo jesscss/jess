@@ -1999,6 +1999,37 @@ diagnostic isolation. Any production change must preserve authored trivia
 semantics and repeat this test under the canonical Node/round protocol before
 claiming a performance result.
 
+### Current matched Less trivia isolation (2026-07-22; diagnostic, no speed claim)
+
+The same diagnostic was rerun against the current clean `dev` parser artifact
+after the latest Less/fns changes. Side A is the committed
+`packages/less-parser/lib/index.js`; side B is a temporary copy with exactly
+one textual substitution in the public parser wrapper:
+`run(entry, input, { trivia })` → `run(entry, input, {})`. No grammar source,
+generated reducer, Parseman dependency, or fixture changed between sides. A is
+1,827,807 bytes (SHA-256
+`a08118e3232766447c327950eda1909ac11b0e6b35051acabdfab21ae03438a1`); B is
+1,827,799 bytes (SHA-256
+`1a9798a7ddf712b480b58abc5a1ae3b8d15bf1fade467e28312bcaad82f6e868`).
+
+The fixture is `packages/jess/benchmark/benchmark.less`, 106,802 bytes,
+SHA-256 `abe392656c8a50e9d175c3b0e60415893a8eb7bfe9050518227391430d3a3d48`.
+On Node `v24.11.1` arm64, the paired protocol used 20 warmups per side and
+three 45-pair rounds with alternating A/B order. Both sides returned a
+677-child `Stylesheet`; stable JSON was 946,987 bytes, SHA-256
+`8e3a371bd286ff2682ee08d56c451274a94b14203dbe8de68ad2057aa6cc13c`, byte
+identical across A and B. A's round medians were 58.4782, 59.0490, and
+59.6915 ms (sample median 59.0490 ms, mean 60.1277 ms); B's were 59.1712,
+59.1683, and 59.5038 ms (sample median 59.2237 ms, mean 60.6329 ms). The
+paired B−A delta median was +0.2384 ms and mean +0.5053 ms; B won 57/135
+pairs and lost 78/135, with a −27.5054 to +26.6878 ms range.
+
+This is a valid current generated-bundle isolation, but it is noisy and does
+not support a production speed claim: disabling trivia in the diagnostic copy
+was directionally slower in this run. It supersedes neither the public trivia
+semantics nor the requirement for an accepted production optimization. The
+temporary B artifact was deleted after measurement.
+
 `verify:aggressive-cutting-review` compares the working `dev` tip with
 `origin/dev`; this is a 96-commit, 237-file integration delta (+12,490/-40,189
 lines), not a small release patch. `6734da512` alone changes 34 production
