@@ -2035,7 +2035,10 @@ silently choose one language’s policy.
   `MixinCall.args` data contract. Context import loading retains its narrowed
   `Stylesheet` fact across the document callback, selected-mixin events retain
   their declared candidate map type, and direct function binding admits the
-  already-supported absent optional input.
+  already-supported absent optional input. Detached binding, variable
+  activation, property lookup, value-position binding, and ruleset guards now
+  accept their already-declared recursive value/eval-context inputs without
+  pretending arrays are nodes or requiring the full output emitter.
 - Separation/duplication: no second resolver or array-flattening policy was
   added. Existing core `evalBytes` remains the only byte-resolution owner.
 - Cumulative node weight: unchanged.
@@ -2056,9 +2059,10 @@ silently choose one language’s policy.
 - Behavior evidence: the focused core tests prove recursive authored and
   default mixin arguments; import, selected-mixin, and direct-function suites
   pass 101/101; the complete core suite passes; and the public Less parser suite
-  passes 269/269.
+  passes 269/269. Detached ruleset, property access, and ruleset-guard coverage
+  adds 36/36 focused passing cases.
 - Build evidence: core package build and `verify:package-exports` pass. Strict
-  core source diagnostics fall from 339 to 318 without suppression.
+  core source diagnostics fall from 339 to 310 without suppression.
 - Boundary evidence: the Less public parser suite passes after rebuilding core,
   and package export verification confirms the entrypoint remains valid.
 - Evidence: focused and full behavior, build, export, and strict-type evidence
@@ -2070,7 +2074,7 @@ silently choose one language’s policy.
     "verdict":"accepted",
     "performanceClaim":"none",
     "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
-    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, node-type imports, and optional direct inputs make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
+    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. Context import narrowing, selected-event map inference, optional direct inputs, detached/property/value bindings, and ruleset guard context make existing canonical runtime contracts explicit; none creates a new resolver, evaluator, or output policy.",
     "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. Capturing an already-loaded Stylesheet and typing existing maps/optional slots add no node, traversal, side table, fallback call, or output buffer, and this record makes no neutrality or speed claim.",
     "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
     "behaviorEvidence":"The complete core suite and the public Less parser suite pass; focused recursive arguments, imports, selected mixins, and direct-function cases pass.",

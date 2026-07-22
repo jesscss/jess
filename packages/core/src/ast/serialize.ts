@@ -486,7 +486,7 @@ function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: (
 }
 
 function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
-  if (Array.isArray(value) || value.type !== 'DetachedRuleset') {
+  if (!('type' in value) || value.type !== 'DetachedRuleset') {
     return;
   }
   (frame.detachedBindings ??= new Map()).set(value, { lexicalFrame, sourceOwner });
@@ -1398,7 +1398,7 @@ function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scop
 
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
   bindDetached(frame, node.value, frame, sourceOwnerForBody(
-    !Array.isArray(node.value) && node.value.type === 'DetachedRuleset' ? node.value.body : node,
+    'type' in node.value && node.value.type === 'DetachedRuleset' ? node.value.body : node,
     frame,
     e
   ));
@@ -1458,7 +1458,7 @@ function resolvePropRef(
   frame: Frame | null,
   name: string,
   e: EvalCtx
-): { value: ValueNode; frame: Frame; important: boolean; merged?: readonly PropertyDeclarationFact[] } | undefined {
+): { value: ValueSlot; frame: Frame; important: boolean; merged?: readonly PropertyDeclarationFact[] } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const timeline = f.propertyTimeline;
@@ -1560,7 +1560,7 @@ function withExcluded<T>(e: EvalCtx, node: Binding, run: () => T): T {
  * `@p()`), so like a detached ruleset reaching a value position it folds to empty
  * bytes; every other binding is an ordinary value node. */
 function evalBinding(b: Binding, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
-  return b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e);
+  return 'type' in b && b.type === 'MixinCall' ? literal('') : evalValueSlot(b, frame, e);
 }
 
 function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
@@ -4154,7 +4154,7 @@ function emitDocumentStatements(
  * is defined (`frame`). An unguarded rule always emits; a CSS ruleset guard never
  * uses `default()` (that is a mixin-dispatch decision), so `isDefault` is `false`.
  */
-function ruleGuardPasses(rule: Rule, frame: Frame, e: Emit): boolean {
+function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): boolean {
   if (!rule.guard) {
     return true;
   }
