@@ -236,7 +236,7 @@ if (options.tag === 'alpha') {
   // partially-completed publish resumable, while `isAlphaClobber`'s `<=` also
   // refuses an already-published equal version (a code refresh must bump above
   // it). A matching-base check leaves legitimate minor/major bumps alone.
-  const minAlphaTag = computeMinAlphaTag(plan.publishOrder, (pkgName) =>
+  const minAlphaTag = computeMinAlphaTag(plan.publishOrder, pkgName =>
     getTaggedVersion(pkgName, 'alpha')
   );
   const manifestVersion = resolution.intended;

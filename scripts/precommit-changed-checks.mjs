@@ -281,7 +281,7 @@ function runStagedLintForFiles(packageDir, files) {
     failures.push({ packageDir, command: rendered, status: result.status ?? 1, output: [stdout, stderr].filter(Boolean).join('\n').trim() });
     process.exit(result.status ?? 1);
   }
-  const actionable = reports.flatMap(report => {
+  const actionable = reports.flatMap((report) => {
     const relative = path.relative(ROOT, report.filePath).split(path.sep).join('/');
     return stagedLintMessages(report.messages ?? [], stagedHunkLines(relative)).map(message => ({
       filePath: relative,

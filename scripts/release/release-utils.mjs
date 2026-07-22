@@ -122,7 +122,9 @@ function topoSortAllowlist(allowlist, byName) {
 
 export function parseAlphaVersion(version) {
   const match = version.match(/^(.+)-alpha\.(\d+)$/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   return { base: match[1], num: parseInt(match[2], 10) };
 }
 
@@ -146,8 +148,12 @@ export function computeMinAlphaTag(pkgNames, getTagged) {
   let min = null;
   for (const pkgName of pkgNames) {
     const tagged = getTagged(pkgName);
-    if (!tagged) continue;
-    if (!parseAlphaVersion(tagged)) continue;
+    if (!tagged) {
+      continue;
+    }
+    if (!parseAlphaVersion(tagged)) {
+      continue;
+    }
     if (min === null || compareSemver(tagged, min) < 0) {
       min = tagged;
     }
@@ -177,11 +183,17 @@ export function computeMinAlphaTag(pkgNames, getTagged) {
  *   - Non-alpha / unparseable inputs (e.g. a stable `X.Y.Z`) never flag.
  */
 export function isAlphaClobber({ manifestVersion, minTag }) {
-  if (!manifestVersion || !minTag) return false;
+  if (!manifestVersion || !minTag) {
+    return false;
+  }
   const manifest = parseAlphaVersion(manifestVersion);
   const laggard = parseAlphaVersion(minTag);
-  if (!manifest || !laggard) return false;
-  if (manifest.base !== laggard.base) return false;
+  if (!manifest || !laggard) {
+    return false;
+  }
+  if (manifest.base !== laggard.base) {
+    return false;
+  }
   return manifest.num <= laggard.num;
 }
 
@@ -194,9 +206,15 @@ export function isAlphaClobber({ manifestVersion, minTag }) {
  * The gate checks SOURCE cleanliness, not build artifacts.
  */
 export function isReleaseArtifactPath(file) {
-  if (file.startsWith('.cursor/')) return true;
-  if (file === 'lib' || file.startsWith('lib/') || file.includes('/lib/')) return true;
-  if (/(^|\/)etc\/[^/]+\.api\.md$/.test(file)) return true;
+  if (file.startsWith('.cursor/')) {
+    return true;
+  }
+  if (file === 'lib' || file.startsWith('lib/') || file.includes('/lib/')) {
+    return true;
+  }
+  if (/(^|\/)etc\/[^/]+\.api\.md$/.test(file)) {
+    return true;
+  }
   return false;
 }
 
@@ -208,7 +226,9 @@ function parseSemver(version) {
   const match = String(version)
     .trim()
     .match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   return {
     major: parseInt(match[1], 10),
     minor: parseInt(match[2], 10),
@@ -226,28 +246,44 @@ export function compareSemver(a, b) {
   const pa = parseSemver(a);
   const pb = parseSemver(b);
   if (!pa || !pb) {
-    if (a === b) return 0;
+    if (a === b) {
+      return 0;
+    }
     return a < b ? -1 : 1;
   }
   for (const key of ['major', 'minor', 'patch']) {
-    if (pa[key] !== pb[key]) return pa[key] < pb[key] ? -1 : 1;
+    if (pa[key] !== pb[key]) {
+      return pa[key] < pb[key] ? -1 : 1;
+    }
   }
   // A version with a prerelease has LOWER precedence than one without.
-  if (pa.pre.length === 0 && pb.pre.length === 0) return 0;
-  if (pa.pre.length === 0) return 1;
-  if (pb.pre.length === 0) return -1;
+  if (pa.pre.length === 0 && pb.pre.length === 0) {
+    return 0;
+  }
+  if (pa.pre.length === 0) {
+    return 1;
+  }
+  if (pb.pre.length === 0) {
+    return -1;
+  }
   const len = Math.max(pa.pre.length, pb.pre.length);
   for (let i = 0; i < len; i += 1) {
     const x = pa.pre[i];
     const y = pb.pre[i];
-    if (x === undefined) return -1;
-    if (y === undefined) return 1;
+    if (x === undefined) {
+      return -1;
+    }
+    if (y === undefined) {
+      return 1;
+    }
     const xNum = /^\d+$/.test(x);
     const yNum = /^\d+$/.test(y);
     if (xNum && yNum) {
       const nx = parseInt(x, 10);
       const ny = parseInt(y, 10);
-      if (nx !== ny) return nx < ny ? -1 : 1;
+      if (nx !== ny) {
+        return nx < ny ? -1 : 1;
+      }
     } else if (xNum && !yNum) {
       return -1; // numeric identifiers have lower precedence than alphanumeric
     } else if (!xNum && yNum) {
@@ -390,10 +426,14 @@ export function applyLockstepVersion(rootDir, version) {
   const allPackages = listWorkspacePackages(rootDir);
   const originals = [];
   for (const [, pkg] of allPackages) {
-    if (pkg.manifest.private) continue;
+    if (pkg.manifest.private) {
+      continue;
+    }
     const raw = readFileSync(pkg.packageJsonPath, 'utf8');
     const pkgJson = JSON.parse(raw);
-    if (pkgJson.version === version) continue;
+    if (pkgJson.version === version) {
+      continue;
+    }
     originals.push({ path: pkg.packageJsonPath, raw });
     pkgJson.version = version;
     writeFileSync(pkg.packageJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
@@ -426,7 +466,9 @@ export function incrementAlphaVersions({ rootDir = process.cwd(), allowlistPath 
 
   const allPackages = listWorkspacePackages(rootDir);
   for (const [, pkg] of allPackages) {
-    if (pkg.manifest.private) continue;
+    if (pkg.manifest.private) {
+      continue;
+    }
     const pkgJson = JSON.parse(readFileSync(pkg.packageJsonPath, 'utf8'));
     pkgJson.version = nextVersion;
     writeFileSync(pkg.packageJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
