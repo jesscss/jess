@@ -18,7 +18,12 @@ function isStylesheet(value: unknown): value is Stylesheet {
 
 /** Parse CSS directly into the canonical AST v2 document. */
 export function parse(input: string): Stylesheet {
-  const result = run(cssAstGrammar.CssAstDocument, input, { trivia: cssAstGrammar.whitespace });
+  const entry = cssAstGrammar.CssAstDocument;
+  const trivia = cssAstGrammar.whitespace;
+  if (entry === undefined || trivia === undefined) {
+    throw new TypeError('CSS AST grammar is missing its public document entry.');
+  }
+  const result = run(entry, input, { trivia });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     throw new SyntaxError('CSS parse did not produce a complete Stylesheet document.');
   }
