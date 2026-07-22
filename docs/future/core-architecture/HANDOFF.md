@@ -306,6 +306,14 @@ and does not expose legacy per-node visitor dispatch. The separate
 `packages/jess/src/visitor/index.ts` identity wrapper was likewise unimported,
 unexported, and deleted; it was not a second valid visitor implementation.
 
+The AST serializer's `withSourceOwner` seam no longer carries its dead
+`legacyBody` fallback into `Context.withDocumentBody`. The public AST route
+always supplies the real `Context.withSourceOwner` capability; the fallback
+accepted a context-shaped object that could not implement the typed source-owner
+operation and was not reachable from the public compiler/plugin route. The
+Context `withDocumentBody` method remains valid for its direct document-body
+provenance tests and is not removed or repurposed by this cleanup.
+
 The public core barrel still exports the legacy tree corpus, and the root
 `@jesscss/fns` barrel still exposes `packages/fns/src/less/*`; Context, the
 legacy function barrel, compat type declarations, and visitor/language-service

@@ -478,11 +478,8 @@ function sourceOwnerForBody(body: object, frame: Frame, e: EvalCtx): object | nu
   return e.context?.sourceOwnerForBody?.(body) ?? frame.sourceOwner ?? null;
 }
 
-function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T | Promise<T>, legacyBody?: object): T | Promise<T> {
-  if (e.context?.withSourceOwner) {
-    return e.context.withSourceOwner(owner, run);
-  }
-  return legacyBody && e.context?.withDocumentBody ? e.context.withDocumentBody(legacyBody, run) : run();
+function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: () => T | Promise<T>): T | Promise<T> {
+  return e.context?.withSourceOwner ? e.context.withSourceOwner(owner, run) : run();
 }
 
 function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
@@ -4413,7 +4410,7 @@ function flattenWithHeader(
   // as a ruleset-mixin. Its canonical body owns the imported document's source
   // identity in both placements, so nested `(inline)` imports resolve from that
   // document rather than the caller/root document.
-  return mapMaybe(withSourceOwner(e, childFrame.sourceOwner, executeBody, rule.body), finish);
+  return mapMaybe(withSourceOwner(e, childFrame.sourceOwner, executeBody), finish);
 }
 
 /** [partition] Move any buffered trailing-leaf run into `trailing` as one block. */
@@ -4908,7 +4905,7 @@ function expandCall(
       prepareBodyPlugins(def.body, callFrame, e),
       () => walkBody(def.body, bodyComposed, ancestor, callFrame, group, flush, partition, e, bodyImp, bodyForceLeading, propertyScope, applyExpansion)
     );
-    const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody, def.body);
+    const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
     return mapMaybe(emitted, () => {
       // [scope-leak] after expansion the mixin's own `@x:` declarations unlock into
       // the caller scope (visible to later siblings), matching less@4.
@@ -5327,7 +5324,7 @@ function expandReferenceCall(
     prepareBodyPlugins(r.dr.body, r.callFrame, e),
     () => walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope, applyExpansion)
   );
-  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody, r.dr.body);
+  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
 }
 
 /* --------------------------------------------------------------- [each/For] */
@@ -7891,7 +7888,7 @@ function expandNestedCall(
           return emitNestedBody(def.body, callFrame, e, undefined, bodyImp, source, placement, sharedLeaves, applyExpansion);
         }
       );
-      const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody, def.body);
+      const emitted = withSourceOwner(e, callFrame.sourceOwner, executeBody);
       if (isThenable(emitted)) {
         return emitted.then(() => {
           leakBodyVars(frame, def.body, callFrame, e);
@@ -8011,7 +8008,7 @@ function expandNestedReferenceCall(
     prepareBodyPlugins(r.dr.body, r.callFrame, e),
     () => emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion)
   );
-  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody, r.dr.body);
+  return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
 }
 
 /** Expand an `each()` loop in nested mode: splice the callback body once per item
