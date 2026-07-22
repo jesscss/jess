@@ -2039,7 +2039,44 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // Value pieces are separated by grammar-owned whitespace. Keeping that token
   // here is what lets canonical SpacedValue retain multiline CSS layout without
   // scanning/re-splitting a completed declaration value later.
-  const DirectLessValuePiece = choice(g.DirectLessUnicodeRange, g.DirectLessPreservedDivision, g.DirectLessTopSum, g.DirectLessValueComment, literal('/'), literal('-'), literal('%'));
+  // Left-factored `TopSum (/ TopSum)*`: the value-piece choice used to try
+  // `PreservedDivision` (a full `TopSum` + REQUIRED slash tail) and, on the
+  // no-slash majority, fail the tail, backtrack, and re-parse `TopSum` from the
+  // same position (the two arms share `TopSum`'s first-set, so the `choice` is
+  // not disjoint and cannot dispatch past the redundant descent). Parsing
+  // `TopSum` once and taking an OPTIONAL slash tail yields byte-identical values
+  // — a bare `TopSum` when no slash follows, the same `SpacedValue` when one
+  // does — without the second full value descent per non-slash piece.
+  const DirectLessTopSumMaybeDivision = node<ValueNode>(
+    'DirectLessTopSumMaybeDivision',
+    noTrivia(sequence(g.DirectLessTopSum, many(sequence(field('separator', directPreservedSlashBoundary), g.DirectLessTopSum)))),
+    (children, fields) => {
+      if (fields?.separator === undefined) {
+        return requireValueNode(children[0]);
+      }
+      const parts: ValueNode[] = [];
+      for (const child of children) {
+        if (isValueNode(child)) {
+          parts.push(child);
+        } else if (isTerminalText(child, '/')) {
+          parts.push(keyword('/'));
+        }
+      }
+      const slashBoundaries = requireFields(fields, 'separator').map(separator => staticText(separator.value));
+      const separators = slashBoundaries.flatMap((boundary) => {
+        const slash = boundary.indexOf('/');
+        return slash < 0 ? [boundary] : [boundary.slice(0, slash), boundary.slice(slash + 1)];
+      });
+      return {
+        type: 'SpacedValue',
+        parts,
+        separators: separators.length === parts.length - 1
+          ? separators
+          : Array.from({ length: parts.length - 1 }, () => '')
+      };
+    }
+  );
+  const DirectLessValuePiece = choice(g.DirectLessUnicodeRange, DirectLessTopSumMaybeDivision, g.DirectLessValueComment, literal('/'), literal('-'), literal('%'));
   const DirectLessValueTerm = node<ValueSlot>(
     'DirectLessValueTerm',
     noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), DirectLessValuePiece)), many(noTrivia(g.DirectLessValueComment)))),
@@ -2062,8 +2099,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // above leaves a completed argument's trailing trivia to `functionTrivia`.
   const DirectLessFunctionValuePiece = choice(
     g.DirectLessUnicodeRange,
-    g.DirectLessPreservedDivision,
-    g.DirectLessTopSum,
+    DirectLessTopSumMaybeDivision,
     g.DirectLessValueComment,
     literal('/'),
     literal('-'),
