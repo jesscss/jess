@@ -324,6 +324,52 @@ resolver:
    cancellation. Incompatible `+`/`-` unit checks remain strict errors. This is
    a value-domain timing fix, not a parser change.
 
+### Bounded bare-slash fold design (designed, not implemented)
+
+The remaining eager-math slash mismatch has a bounded evaluator-only design;
+the design is recorded here so it is not rediscovered as a parser or bridge
+proposal. `DirectLessValueTerm` already provides the typed top-level
+`ValueSlot[]` and its authored boundaries. A future `promoteBareSlashValue`
+step may run immediately before `evalValueSlot` joins that array, but only when
+`mathMode === 'always'`:
+
+1. Reject nested arrays, non-arithmetic `Operation` operators, and any
+   top-level run containing more than one scalar. This preserves ordinary
+   space/slash lists such as `normal small/20px` rather than treating a list as
+   one arithmetic operand.
+2. Treat each remaining top-level scalar `Operation` as one existing typed
+   spine. Flatten only its `+`, `-`, `*`, `/`, and `%` nodes into infix tokens;
+   never inspect or reconstruct source bytes.
+3. Require a slash leaf between one-expression runs. A slash leaf is the
+   grammar-owned `Keyword('/')` (or the historical opaque `Any('/')` fact),
+   not a byte search. Reject `Keyword`/`Any` leaves other than that slash, and
+   reject `Quoted`, `SpacedValue`, and `List` operands. Numeric `Dimension` and
+   `Color` leaves are the static operands; variable/property references,
+   function calls, and parenthesized `Block` values may be admitted only if the
+   typed evaluator already owns their value contract.
+4. Fold the resulting tokens in two existing precedence passes (`* / %`, then
+   `+ -`) into temporary `Operation` values using the canonical constructor,
+   then send that temporary value through the existing evaluator. The authored
+   AST is unchanged; no parser host, source reparse, bridge, side table, or
+   broad declaration-value walk is introduced.
+
+The Less 4.6.3 oracle for `math: 0` is:
+
+```text
+4 / 2 + 5em  -> 7em
+4+2 / 5em    -> 4.4em
+2em/1em      -> 2em
+```
+
+The corresponding `math: 2`/parens-only route preserves all three authored
+values. Parenthesized division (`(10px / 2)`) remains the existing `5px` path,
+while a bare `10px / 2` under `parens-division` remains authored. This design
+has deliberately not been implemented: the isolated worktree's installed
+Parseman is `0.28.0`, whose runtime/build rejects the current grammar's
+`composeLeaf()` without macro lowering. A direct parser build therefore cannot
+provide valid implementation evidence until the compatible Parseman release is
+available; no production change should be started from this audit alone.
+
 The two fixes can be tested and reviewed independently: direct evaluator tests
 cover slash promotion and strict cancellation separately. The nested units
 fixtures are discovered by `scripts/less-corpus-report.mjs` (report-only); the
