@@ -3061,6 +3061,43 @@ or Context deletion lanes.
   `less/`/`sass/` function files require their own behavior-parity batches and
   are not deleted or hidden by this slice.
 
+## Aggressive Cutting Self-Prosecution — Less e/escape Fn conversion
+
+- Latest pass: Less `e` and `escape` public subpaths now directly re-export the
+  canonical AST-v2 value-domain implementations from `builtins/`; no legacy
+  `Node`, `Quoted`, `Any`, `serializeNodeValue`, or Context wrapper remains in
+  either public module. The registry and public Less paths are asserted to use
+  the same callable objects.
+- Architecture surface: existing `defineFunction`, `FnCtx`, and `makeKeyword`
+  value contracts only. `escape` remains context-sensitive through its existing
+  typed `List`/`FnCtx.stringify` contract; this slice does not alter logical or
+  Context-dependent function semantics.
+- Separation/duplication: one implementation per function. The Less files are
+  intentional public entrypoint re-exports, not compatibility shims or duplicate
+  implementations.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. Only canonical `Keyword` values are returned where the function's
+  existing behavior requires a transformed string.
+- New traversal: none. `e` performs one typed-value check; `escape` serializes
+  the supplied typed argument list through the existing host hook and applies its
+  existing URL encoding.
+- New node/materialization: no legacy tree nodes or AST nodes. `makeKeyword`
+  creates the required canonical value result; raw legacy direct calls are no
+  longer accepted by these public paths.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, fallback evaluator, or output-policy seam was introduced.
+- Helper/API surface: no helper or public name was added. Existing Less `e` and
+  `escape` entrypoints remain available with the canonical value contract.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused e/escape, registry, and re-export tests pass 4 files / 12
+  tests; full fns suite and package build are required batch gates. No
+  performance claim is made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.
+
 ## Aggressive Cutting Self-Prosecution — shared math Fn conversion
 
 - Latest pass: shared `ceil`, `floor`, and `round` now define the canonical
