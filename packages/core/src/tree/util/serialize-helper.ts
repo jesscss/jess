@@ -24,7 +24,7 @@ import { Selector, type SelectorLike } from '../selector.js';
 import { consumeTriviaText, printableTriviaText, triviaHasBlockComment } from './trivia.js';
 import { keepsDuplicateMixinOutputDeclaration } from './mixin-output-slot.js';
 import { assignSpineChildIndices, isSpineEligibleMixinCall, isSpineFoldableStatementCall, resolveSpineMixinCall, type SpineMixinCallResolution, isSpineFoldableImport, isSpineFoldableImportBody, wireSpineContainerImports, spineImportDedupeVerdict } from './emit-walk.js';
-import type { StyleImport, SpineImportResolution } from '../import-style.js';
+import type { SpineImportResolution } from '../import-style.js';
 import { planBodyMerges, planEntrySequenceMerges, type SpineMergeEntry, type SpineMergePlan } from './spine-merge.js';
 import { planBodyConditionals, type SpineCondPlan } from './spine-cond.js';
 import { applyBodySetDefined, type SetDefinedApplyResult } from './spine-setdefined.js';
@@ -1064,8 +1064,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         }
         if (isThenable(resolved)) {
           return resolved.then(
-            (text: string) => { restore(); return withSemi(text); },
-            (error: unknown) => { restore(); throw error; }
+            (text: string) => {
+              restore();
+              return withSemi(text);
+            },
+            (error: unknown) => {
+              restore();
+              throw error;
+            }
           );
         }
         restore();
@@ -1277,7 +1283,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           if (!isSpineFoldableImport(entryNode)) {
             continue;
           }
-          const importNode = entryNode as unknown as StyleImport;
+          const importNode = entryNode;
           const dropEntry = (): MaybePromise<void> => {
             // Emit nothing inline — CSS-passthrough (queued top-of-doc) or a `dedupe`
             // re-import (scope already registered, `once` suppresses output).
@@ -1449,523 +1455,523 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     };
 
     const proceed = (): MaybePromise<string> => {
-    const hoisted = node.isHoisted(options);
-    // const isRuleset = isNode(node, 'Ruleset');
-    const treeFrames = options.treeFrames!;
-    const renderRulesBody = () => {
-      if (isTransparentWrapper) {
-      // Transparent `&` wrapper: don't add self as a frame, just render children
-      // using the parent frame context.
-        options.inFrames = inFrames = treeFrames!;
-      } else if (!hoisted) {
-        options.inFrames = inFrames = treeFrames!;
-        inFrames.push(node);
-      }
-      // Note: in the hoisted branch above, `node` is already included.
+      const hoisted = node.isHoisted(options);
+      // const isRuleset = isNode(node, 'Ruleset');
+      const treeFrames = options.treeFrames!;
+      const renderRulesBody = () => {
+        if (isTransparentWrapper) {
+          // Transparent `&` wrapper: don't add self as a frame, just render children
+          // using the parent frame context.
+          options.inFrames = inFrames = treeFrames!;
+        } else if (!hoisted) {
+          options.inFrames = inFrames = treeFrames!;
+          inFrames.push(node);
+        }
+        // Note: in the hoisted branch above, `node` is already included.
 
-      let lastRenderedFrames = options.lastRenderedFrames;
-      const hoistedParent = getHoistedParent(node, options);
-      const ensureRenderedFrames = (leafFrames: Array<AtRule | Ruleset>) => {
-        let matches = -1;
-        for (let i = 0; i < lastRenderedFrames.length; i++) {
-          const currentFrame = leafFrames[i];
-          const priorHeader = frameHeaders[i];
-          if (!currentFrame || priorHeader === undefined) {
-            break;
-          }
-          const priorFrame = lastRenderedFrames[i];
-          if (!priorFrame) {
-            break;
-          }
-          options.depth = i;
-          const [currentHeader, recomputedPriorHeader] = withScratchEmittedTrivia(options, () => [
-            (
-              hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
-            )
-              ? renderHoistedParentComparableHeader(hoistedParent, options)
-              : currentFrame.getComparableHeaderString(options),
-            (
-              hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
-            )
-              ? renderHoistedParentComparableHeader(hoistedParent, options)
-              : priorFrame.getComparableHeaderString(options)
-          ]);
-          // For a frame shared across call sites (same object, different emission),
-          // the recompute reflects the CURRENT site. Prefer the header the prior
-          // frame actually emitted last so distinct call-site blocks stay closed.
-          const priorComparableHeader = (
-            currentFrame === priorFrame
-              ? lastEmittedComparableHeader.get(priorFrame) ?? recomputedPriorHeader
-              : recomputedPriorHeader
-          );
-          const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
-            && isNode(priorFrame, N.Ruleset)
-            && (
+        let lastRenderedFrames = options.lastRenderedFrames;
+        const hoistedParent = getHoistedParent(node, options);
+        const ensureRenderedFrames = (leafFrames: Array<AtRule | Ruleset>) => {
+          let matches = -1;
+          for (let i = 0; i < lastRenderedFrames.length; i++) {
+            const currentFrame = leafFrames[i];
+            const priorHeader = frameHeaders[i];
+            if (!currentFrame || priorHeader === undefined) {
+              break;
+            }
+            const priorFrame = lastRenderedFrames[i];
+            if (!priorFrame) {
+              break;
+            }
+            options.depth = i;
+            const [currentHeader, recomputedPriorHeader] = withScratchEmittedTrivia(options, () => [
+              (
+                hoistedParent && i === leafFrames.length - 1 && currentFrame === hoistedParent.frame
+              )
+                ? renderHoistedParentComparableHeader(hoistedParent, options)
+                : currentFrame.getComparableHeaderString(options),
+              (
+                hoistedParent && i === leafFrames.length - 1 && priorFrame === hoistedParent.frame
+              )
+                ? renderHoistedParentComparableHeader(hoistedParent, options)
+                : priorFrame.getComparableHeaderString(options)
+            ]);
+            // For a frame shared across call sites (same object, different emission),
+            // the recompute reflects the CURRENT site. Prefer the header the prior
+            // frame actually emitted last so distinct call-site blocks stay closed.
+            const priorComparableHeader = (
               currentFrame === priorFrame
-              || isAncestorFrame(priorFrame, currentFrame)
-              || isAncestorFrame(currentFrame, priorFrame)
-              || canMergeSameHeaderRuleset(currentFrame, priorFrame)
+                ? lastEmittedComparableHeader.get(priorFrame) ?? recomputedPriorHeader
+                : recomputedPriorHeader
             );
-          const sameHeader = (
-            currentHeader === priorComparableHeader
-            && (
-              currentFrame === priorFrame
-              || sameRenderedRulesetFrame
-            )
-          );
-          if (!sameHeader) {
-            break;
+            const sameRenderedRulesetFrame = isNode(currentFrame, N.Ruleset)
+              && isNode(priorFrame, N.Ruleset)
+              && (
+                currentFrame === priorFrame
+                || isAncestorFrame(priorFrame, currentFrame)
+                || isAncestorFrame(currentFrame, priorFrame)
+                || canMergeSameHeaderRuleset(currentFrame, priorFrame)
+              );
+            const sameHeader = (
+              currentHeader === priorComparableHeader
+              && (
+                currentFrame === priorFrame
+                || sameRenderedRulesetFrame
+              )
+            );
+            if (!sameHeader) {
+              break;
+            }
+            matches = i;
           }
-          matches = i;
-        }
-        for (let i = lastRenderedFrames.length - 1; i > matches; i--) {
-          w.add(indent(i) + '}\n');
-          frameHeaders.pop();
-          lastRenderedFrames.pop();
-          options.depth = i;
-        }
-
-        for (let i = matches + 1; i < leafFrames.length; i++) {
-          let s = frameHeaders[i];
-          const f = leafFrames[i]!;
-          lastRenderedFrames.push(f);
-          options.depth = i;
-          if (s === undefined || s === DIRECT_RULESET_HEADER) {
-            s = (
-              hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
-            )
-              ? renderHoistedParentHeader(hoistedParent, options, i)
-              : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
-                  ? (f.writeHeader(options) ? DIRECT_RULESET_HEADER : '')
-                  : leafFrames[i]!.getHeaderString(options);
-            frameHeaders[i] = s;
-          } else if (s === '') {
-            s = (
-              hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
-            )
-              ? renderHoistedParentHeader(hoistedParent, options, i)
-              : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
-                  ? (f.writeHeader(options, true) ? DIRECT_RULESET_HEADER : '')
-                  : leafFrames[i]!.getHeaderString(options, true);
-            frameHeaders[i] = s;
-          }
-          if (s === '') {
+          for (let i = lastRenderedFrames.length - 1; i > matches; i--) {
+            w.add(indent(i) + '}\n');
             frameHeaders.pop();
             lastRenderedFrames.pop();
-            continue;
+            options.depth = i;
           }
-          // Record the header this frame just emitted, so a later render of the
-          // SAME (shared, hoisted) frame at a different call site compares against
-          // what was actually written rather than a fresh recompute.
-          lastEmittedComparableHeader.set(
-            f,
-            withScratchEmittedTrivia(options, () => f.getComparableHeaderString(options))
-          );
-          if (s !== DIRECT_RULESET_HEADER) {
-            w.add(s!);
-          }
-        }
-      };
 
-      /** Don't output selector yet. Let's see if any child rules need hoisting. */
-      // Per-node emit. Returns MaybePromise<void>: sync unless a spine-mode leaf
-      // or a nested container resolves ASYNC (a `calc()`/function value), in which
-      // case the promise is threaded up through `processFrom` → `renderRulesBody`.
-      // `continue` in the original loop maps to `return` here; the trivia/indent
-      // side-effect tails stay synchronous (only value resolution is async).
-      const processNodeInner = (idx: number): MaybePromise<void> => {
-        const entry = rulesToRender[idx]!;
-        let n = entry.node;
-        const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
-
-        if (!n.visible && !hasPrintableTrivia(n, options)) {
-          return;
-        }
-        // `+:`/`+_:` merge (P1): a suppressed member is coalesced into a later
-        // anchor — skip it entirely (like a hidden decl), unless it carries
-        // printable trivia to preserve.
-        if (options.spineMergePlan?.get(n)?.kind === 'suppress' && !hasPrintableTrivia(n, options)) {
-          return;
-        }
-        // A `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top — it
-        // never emits inline. Register the first as `currentCharset` (prepended by
-        // `renderRootViaSpine`) and skip it, mirroring eval's charset→Nil hoist. In
-        // practice a charset is a root child; handled here too so a nested body that
-        // somehow carries one does not emit it mid-block.
-        if (isNode(n, N.Any) && n.role === 'charset') {
-          if (options.context && !options.context.currentCharset) {
-            options.context.currentCharset = n;
-          }
-          return;
-        }
-        if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
-          return;
-        }
-        if (inReferenceMode && !renderEnabled && !isContainer) {
-          return;
-        }
-        if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations?.has(idx)) {
-          return;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const isLeafAtRule = isNode(n, N.AtRule) && !getContainerRules(n as AtRule, options);
-        if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
-          const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
-          options.depth = options.depth + 1;
-          options.referenceMode = inReferenceMode;
-          options.referenceRenderEnabled = renderEnabled;
-          const leading = captureNodeTrivia(n, 'before', options);
-          restorePrintState(options, leadingSaved);
-          if (!/^\s*$/.test(leading)) {
-            let leafFrames = inFrames;
-            if (hoistedParent) {
-              leafFrames = [...inFrames, hoistedParent.frame];
+          for (let i = matches + 1; i < leafFrames.length; i++) {
+            let s = frameHeaders[i];
+            const f = leafFrames[i]!;
+            lastRenderedFrames.push(f);
+            options.depth = i;
+            if (s === undefined || s === DIRECT_RULESET_HEADER) {
+              s = (
+                hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
+              )
+                ? renderHoistedParentHeader(hoistedParent, options, i)
+                : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
+                    ? (f.writeHeader(options) ? DIRECT_RULESET_HEADER : '')
+                    : leafFrames[i]!.getHeaderString(options);
+              frameHeaders[i] = s;
+            } else if (s === '') {
+              s = (
+                hoistedParent && i === leafFrames.length - 1 && f === hoistedParent.frame
+              )
+                ? renderHoistedParentHeader(hoistedParent, options, i)
+                : (isNode(f, N.Ruleset) || isNode(f, N.AtRule)) && !options.trivia
+                    ? (f.writeHeader(options, true) ? DIRECT_RULESET_HEADER : '')
+                    : leafFrames[i]!.getHeaderString(options, true);
+              frameHeaders[i] = s;
             }
-            ensureRenderedFrames(leafFrames);
-            const idt = indent(lastRenderedFrames.length);
-            const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
-            w.add(normalized);
-            if (/\/\*/u.test(leading) && normalized && !normalized.endsWith('\n')) {
-              w.add('\n');
+            if (s === '') {
+              frameHeaders.pop();
+              lastRenderedFrames.pop();
+              continue;
+            }
+            // Record the header this frame just emitted, so a later render of the
+            // SAME (shared, hoisted) frame at a different call site compares against
+            // what was actually written rather than a fresh recompute.
+            lastEmittedComparableHeader.set(
+              f,
+              withScratchEmittedTrivia(options, () => f.getComparableHeaderString(options))
+            );
+            if (s !== DIRECT_RULESET_HEADER) {
+              w.add(s!);
             }
           }
-          const childFrameSnapshot = saveArrayState(lastRenderedFrames);
-          const childHeaderSnapshot = saveArrayState(frameHeaders);
-          const childPositionBaseline = w.position();
+        };
+
+        /** Don't output selector yet. Let's see if any child rules need hoisting. */
+        // Per-node emit. Returns MaybePromise<void>: sync unless a spine-mode leaf
+        // or a nested container resolves ASYNC (a `calc()`/function value), in which
+        // case the promise is threaded up through `processFrom` → `renderRulesBody`.
+        // `continue` in the original loop maps to `return` here; the trivia/indent
+        // side-effect tails stay synchronous (only value resolution is async).
+        const processNodeInner = (idx: number): MaybePromise<void> => {
+          const entry = rulesToRender[idx]!;
+          let n = entry.node;
+          const isContainer = isNode(n, N.Ruleset | N.AtRule | N.Rules);
+
+          if (!n.visible && !hasPrintableTrivia(n, options)) {
+            return;
+          }
+          // `+:`/`+_:` merge (P1): a suppressed member is coalesced into a later
+          // anchor — skip it entirely (like a hidden decl), unless it carries
+          // printable trivia to preserve.
+          if (options.spineMergePlan?.get(n)?.kind === 'suppress' && !hasPrintableTrivia(n, options)) {
+            return;
+          }
+          // A `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top — it
+          // never emits inline. Register the first as `currentCharset` (prepended by
+          // `renderRootViaSpine`) and skip it, mirroring eval's charset→Nil hoist. In
+          // practice a charset is a root child; handled here too so a nested body that
+          // somehow carries one does not emit it mid-block.
+          if (isNode(n, N.Any) && n.role === 'charset') {
+            if (options.context && !options.context.currentCharset) {
+              options.context.currentCharset = n;
+            }
+            return;
+          }
+          if (isNode(n, N.Comment) && originatesFromReferenceImport(n) && !originatesFromCall(n)) {
+            return;
+          }
+          if (inReferenceMode && !renderEnabled && !isContainer) {
+            return;
+          }
+          if (isNode(n, N.Declaration) && !isNode(n, N.VarDeclaration) && skippedDuplicateDeclarations?.has(idx)) {
+            return;
+          }
+
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-          const childOutResult = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
-          const finishChild = (childOut: string): void => {
-            if (!childOut && !w.hasContentSince(childPositionBaseline) && !hasPrintableTrivia(n, options)) {
-              w.restore(childPositionBaseline);
-              restoreArrayState(lastRenderedFrames, childFrameSnapshot);
-              restoreArrayState(frameHeaders, childHeaderSnapshot);
+          const isLeafAtRule = isNode(n, N.AtRule) && !getContainerRules(n as AtRule, options);
+          if (isNode(n, N.Ruleset) || (isNode(n, N.AtRule) && !isLeafAtRule)) {
+            const leadingSaved = savePrintState(options, ['depth', 'referenceMode', 'referenceRenderEnabled']);
+            options.depth = options.depth + 1;
+            options.referenceMode = inReferenceMode;
+            options.referenceRenderEnabled = renderEnabled;
+            const leading = captureNodeTrivia(n, 'before', options);
+            restorePrintState(options, leadingSaved);
+            if (!/^\s*$/.test(leading)) {
+              let leafFrames = inFrames;
+              if (hoistedParent) {
+                leafFrames = [...inFrames, hoistedParent.frame];
+              }
+              ensureRenderedFrames(leafFrames);
+              const idt = indent(lastRenderedFrames.length);
+              const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
+              w.add(normalized);
+              if (/\/\*/u.test(leading) && normalized && !normalized.endsWith('\n')) {
+                w.add('\n');
+              }
             }
-          };
-          return isThenable(childOutResult) ? childOutResult.then(finishChild) : finishChild(childOutResult);
-        }
+            const childFrameSnapshot = saveArrayState(lastRenderedFrames);
+            const childHeaderSnapshot = saveArrayState(frameHeaders);
+            const childPositionBaseline = w.position();
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+            const childOutResult = serializeRulesContainerInternal(n as AtRule | Ruleset, options, false);
+            const finishChild = (childOut: string): void => {
+              if (!childOut && !w.hasContentSince(childPositionBaseline) && !hasPrintableTrivia(n, options)) {
+                w.restore(childPositionBaseline);
+                restoreArrayState(lastRenderedFrames, childFrameSnapshot);
+                restoreArrayState(frameHeaders, childHeaderSnapshot);
+              }
+            };
+            return isThenable(childOutResult) ? childOutResult.then(finishChild) : finishChild(childOutResult);
+          }
 
-        /** Re-widen type after accumulated isNode narrowing above */
-        const nn = n as Node;
-        let leafFrames = inFrames;
-        if (hoistedParent) {
-          leafFrames = [...inFrames, hoistedParent.frame];
-        }
-        const renderedFrameSnapshot = saveArrayState(lastRenderedFrames);
-        const frameHeaderSnapshot = saveArrayState(frameHeaders);
-        const renderedPositionBaseline = w.position();
-        if (isNode(nn, N.Rules) && !isLeafAtRule) {
-          const hasRenderableChild = nn.rules.some(child =>
-            child.visible || hasPrintableTrivia(child, options)
-          );
-          if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
-            return;
+          /** Re-widen type after accumulated isNode narrowing above */
+          const nn = n as Node;
+          let leafFrames = inFrames;
+          if (hoistedParent) {
+            leafFrames = [...inFrames, hoistedParent.frame];
           }
-        }
-        ensureRenderedFrames(leafFrames);
+          const renderedFrameSnapshot = saveArrayState(lastRenderedFrames);
+          const frameHeaderSnapshot = saveArrayState(frameHeaders);
+          const renderedPositionBaseline = w.position();
+          if (isNode(nn, N.Rules) && !isLeafAtRule) {
+            const hasRenderableChild = nn.rules.some(child =>
+              child.visible || hasPrintableTrivia(child, options)
+            );
+            if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
+              return;
+            }
+          }
+          ensureRenderedFrames(leafFrames);
 
-        // if (isNode(n, N.Declaration)) {
-        const leafDepth = lastRenderedFrames.length;
-        let idt = indent(leafDepth);
-        const ownReferenceMode = isNode(nn, N.Rules)
-          && (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
-        const childReferenceMode = isNode(nn, N.Rules)
-          ? (inReferenceMode || ownReferenceMode)
-          : inReferenceMode;
-        const enteringChildReferenceMode = isNode(nn, N.Rules)
-          ? (!inReferenceMode && ownReferenceMode)
-          : false;
-        const childReferenceRenderEnabled = isNode(nn, N.Rules)
-          ? (
-              childReferenceMode
-                ? (enteringChildReferenceMode ? false : renderEnabled)
-                : true
-            )
-          : renderEnabled;
-        const leafSaved = savePrintState(options, [
-          'depth',
-          'referenceMode',
-          'referenceRenderEnabled'
-        ]);
-        options.depth = leafDepth;
-        options.referenceMode = childReferenceMode;
-        options.referenceRenderEnabled = childReferenceRenderEnabled;
-        const isHiddenStructuralNode = !nn.visible;
-        const leading = captureNodeTrivia(nn, 'before', options);
-        if (isNode(nn, N.Rules)) {
-          if (!/^\s*$/.test(leading)) {
-            w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
-          }
-          const before = w.position();
-          nn.writeSyntax(getPrintOptions(options));
-          const wrote = w.position() !== before;
-          restorePrintState(options, leafSaved);
-          if (!wrote && !leading.trim() && !hasPrintableTrivia(nn, options)) {
-            w.restore(renderedPositionBaseline);
-            restoreArrayState(lastRenderedFrames, renderedFrameSnapshot);
-            restoreArrayState(frameHeaders, frameHeaderSnapshot);
-            return;
-          }
-          w.add('\n');
-          const trailing = captureNodeTrivia(nn, 'after', options);
-          if (!/^\s*$/.test(trailing)) {
-            w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
-          }
-          return;
-        }
-        // Leaf value resolution. In spineMode a declaration resolves LIVE against
-        // the pushed frame (`resolveSpineLeafText`, MaybePromise for `calc()`/
-        // functions); otherwise it is the static/eval-tree serializer. The
-        // sync trivia/indent tail below runs in `finishLeaf` once `out` is known.
-        const outResult: MaybePromise<string> = isHiddenStructuralNode
-          ? ''
-          : options.spineMode && options.context && isNode(nn, N.Declaration)
-            ? resolveSpineLeafText(nn, options)
-            : isNode(nn, N.Declaration)
-              ? renderNodeText(nn, options, 'declaration-fallback')
-              // Bare statement-position built-in FUNCTION call (`if((false), {g: 7});`):
-              // evaluate + serialize inline (void → ''), byte-identical to the eval
-              // call-lane. See `isSpineFoldableStatementCall`.
-              : options.spineMode && options.context && isSpineFoldableStatementCall(nn)
-                ? resolveSpineStatementCallText(nn, options)
-                : renderNodeText(nn, options);
-        const finishLeaf = (out: string): void => {
-          restorePrintState(options, leafSaved);
-          // Suppress pure-void Any nodes from generating blank output lines.
-          if (
-            isNode(nn, N.Any)
-            && !nn.requiredSemi
-            && !out.trim()
-            && !leading.trim()
-          ) {
-            return;
-          }
-          // A bare statement-position function call (`if((false), {g: 7});`,
-          // `e('…')`) resolved inline. Reproduce the eval call-lane exactly: a VOID
-          // result (empty) emits NO statement line (the `if`-false-no-else shape); a
-          // value result emits its serialized value as its own line. In BOTH cases
-          // the source `requiredSemi` `;` is dropped (eval emits the value/void with
-          // no trailing `;`), and the surrounding trivia (the `/* results in void */`
-          // comment) is preserved. Byte-identical to eval.
-          if (isSpineFoldableStatementCall(nn)) {
+          // if (isNode(n, N.Declaration)) {
+          const leafDepth = lastRenderedFrames.length;
+          let idt = indent(leafDepth);
+          const ownReferenceMode = isNode(nn, N.Rules)
+            && (nn.options as { referenceMode?: boolean } | undefined)?.referenceMode === true;
+          const childReferenceMode = isNode(nn, N.Rules)
+            ? (inReferenceMode || ownReferenceMode)
+            : inReferenceMode;
+          const enteringChildReferenceMode = isNode(nn, N.Rules)
+            ? (!inReferenceMode && ownReferenceMode)
+            : false;
+          const childReferenceRenderEnabled = isNode(nn, N.Rules)
+            ? (
+                childReferenceMode
+                  ? (enteringChildReferenceMode ? false : renderEnabled)
+                  : true
+              )
+            : renderEnabled;
+          const leafSaved = savePrintState(options, [
+            'depth',
+            'referenceMode',
+            'referenceRenderEnabled'
+          ]);
+          options.depth = leafDepth;
+          options.referenceMode = childReferenceMode;
+          options.referenceRenderEnabled = childReferenceRenderEnabled;
+          const isHiddenStructuralNode = !nn.visible;
+          const leading = captureNodeTrivia(nn, 'before', options);
+          if (isNode(nn, N.Rules)) {
             if (!/^\s*$/.test(leading)) {
               w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
             }
-            if (out.trim()) {
-              w.add(idt);
-              w.add(out, nn);
-              w.add('\n');
+            const before = w.position();
+            nn.writeSyntax(getPrintOptions(options));
+            const wrote = w.position() !== before;
+            restorePrintState(options, leafSaved);
+            if (!wrote && !leading.trim() && !hasPrintableTrivia(nn, options)) {
+              w.restore(renderedPositionBaseline);
+              restoreArrayState(lastRenderedFrames, renderedFrameSnapshot);
+              restoreArrayState(frameHeaders, frameHeaderSnapshot);
+              return;
             }
+            w.add('\n');
             const trailing = captureNodeTrivia(nn, 'after', options);
             if (!/^\s*$/.test(trailing)) {
               w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
             }
             return;
           }
-          if (
-            isNode(nn, N.Rules)
-            && !out
-            && !leading.trim()
-            && !hasPrintableTrivia(nn, options)
-          ) {
-            return;
-          }
-          if (isHiddenStructuralNode) {
-            if (!/^\s*$/.test(leading)) {
-              const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
-              const trimmed = normalized.replace(/[ \t]+$/u, '');
-              w.add(trimmed);
-              if (/\/\*/u.test(leading) && trimmed && !trimmed.endsWith('\n')) {
+          // Leaf value resolution. In spineMode a declaration resolves LIVE against
+          // the pushed frame (`resolveSpineLeafText`, MaybePromise for `calc()`/
+          // functions); otherwise it is the static/eval-tree serializer. The
+          // sync trivia/indent tail below runs in `finishLeaf` once `out` is known.
+          const outResult: MaybePromise<string> = isHiddenStructuralNode
+            ? ''
+            : options.spineMode && options.context && isNode(nn, N.Declaration)
+              ? resolveSpineLeafText(nn, options)
+              : isNode(nn, N.Declaration)
+                ? renderNodeText(nn, options, 'declaration-fallback')
+              // Bare statement-position built-in FUNCTION call (`if((false), {g: 7});`):
+              // evaluate + serialize inline (void → ''), byte-identical to the eval
+              // call-lane. See `isSpineFoldableStatementCall`.
+                : options.spineMode && options.context && isSpineFoldableStatementCall(nn)
+                  ? resolveSpineStatementCallText(nn, options)
+                  : renderNodeText(nn, options);
+          const finishLeaf = (out: string): void => {
+            restorePrintState(options, leafSaved);
+            // Suppress pure-void Any nodes from generating blank output lines.
+            if (
+              isNode(nn, N.Any)
+              && !nn.requiredSemi
+              && !out.trim()
+              && !leading.trim()
+            ) {
+              return;
+            }
+            // A bare statement-position function call (`if((false), {g: 7});`,
+            // `e('…')`) resolved inline. Reproduce the eval call-lane exactly: a VOID
+            // result (empty) emits NO statement line (the `if`-false-no-else shape); a
+            // value result emits its serialized value as its own line. In BOTH cases
+            // the source `requiredSemi` `;` is dropped (eval emits the value/void with
+            // no trailing `;`), and the surrounding trivia (the `/* results in void */`
+            // comment) is preserved. Byte-identical to eval.
+            if (isSpineFoldableStatementCall(nn)) {
+              if (!/^\s*$/.test(leading)) {
+                w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+              }
+              if (out.trim()) {
+                w.add(idt);
+                w.add(out, nn);
                 w.add('\n');
               }
+              const trailing = captureNodeTrivia(nn, 'after', options);
+              if (!/^\s*$/.test(trailing)) {
+                w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
+              }
+              return;
             }
-            return;
-          }
-          if (isNode(nn, N.Declaration)) {
-            const hasLeadingDeclarationBlockComment = /\/\*/u.test(leading.trimStart());
-            if (hasLeadingDeclarationBlockComment) {
-              const normalizedStandaloneLeading = normalizeBlockTrivia(leading, idt).replace(/[ \t]+$/u, '');
-              if (normalizedStandaloneLeading) {
-                w.add(normalizedStandaloneLeading);
-                if (!normalizedStandaloneLeading.endsWith('\n')) {
+            if (
+              isNode(nn, N.Rules)
+              && !out
+              && !leading.trim()
+              && !hasPrintableTrivia(nn, options)
+            ) {
+              return;
+            }
+            if (isHiddenStructuralNode) {
+              if (!/^\s*$/.test(leading)) {
+                const normalized = /\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt);
+                const trimmed = normalized.replace(/[ \t]+$/u, '');
+                w.add(trimmed);
+                if (/\/\*/u.test(leading) && trimmed && !trimmed.endsWith('\n')) {
                   w.add('\n');
                 }
               }
+              return;
             }
-            const normalizedLeading = hasLeadingDeclarationBlockComment
-              ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
-              : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-            // `out` already carries continuation indentation relative to the
-            // property line (see `formatNonCustomValue`), so measure the relative
-            // baseline from `out` itself (first line at column 0) — not from any
-            // authored leading indent, which is empty for non-first declarations
-            // and would otherwise re-base multi-line values inconsistently.
-            const hasEmptyValue = /:\s*$/.test(out);
-            // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
-            // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
-            const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
-              ? `${idt}${out}`
-              : normalizeIndent(out, idt, true);
-            if (nn.name.valueOf().startsWith('--')) {
-              w.add(idt);
-              w.add(out, nn);
-            } else {
-              w.add(declNormalized, nn);
-            }
-          } else if (isNode(nn, N.Rules)) {
-            if (!/^\s*$/.test(leading)) {
-              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
-            }
-            /**
+            if (isNode(nn, N.Declaration)) {
+              const hasLeadingDeclarationBlockComment = /\/\*/u.test(leading.trimStart());
+              if (hasLeadingDeclarationBlockComment) {
+                const normalizedStandaloneLeading = normalizeBlockTrivia(leading, idt).replace(/[ \t]+$/u, '');
+                if (normalizedStandaloneLeading) {
+                  w.add(normalizedStandaloneLeading);
+                  if (!normalizedStandaloneLeading.endsWith('\n')) {
+                    w.add('\n');
+                  }
+                }
+              }
+              const normalizedLeading = hasLeadingDeclarationBlockComment
+                ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
+                : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
+              // `out` already carries continuation indentation relative to the
+              // property line (see `formatNonCustomValue`), so measure the relative
+              // baseline from `out` itself (first line at column 0) — not from any
+              // authored leading indent, which is empty for non-first declarations
+              // and would otherwise re-base multi-line values inconsistently.
+              const hasEmptyValue = /:\s*$/.test(out);
+              // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
+              // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
+              const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
+                ? `${idt}${out}`
+                : normalizeIndent(out, idt, true);
+              if (nn.name.valueOf().startsWith('--')) {
+                w.add(idt);
+                w.add(out, nn);
+              } else {
+                w.add(declNormalized, nn);
+              }
+            } else if (isNode(nn, N.Rules)) {
+              if (!/^\s*$/.test(leading)) {
+                w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+              }
+              /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
        * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
        * provided depth, so do not prefix another `idt` here (that would double-indent).
        */
-            w.add(out, nn);
-          } else if (isLeafAtRule) {
-            if (!/^\s*$/.test(leading)) {
-              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+              w.add(out, nn);
+            } else if (isLeafAtRule) {
+              if (!/^\s*$/.test(leading)) {
+                w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+              }
+              w.add(idt);
+              w.add(out, nn);
+            } else {
+              if (!/^\s*$/.test(leading)) {
+                w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+              }
+              w.add(idt);
+              w.add(out, nn);
             }
-            w.add(idt);
-            w.add(out, nn);
-          } else {
-            if (!/^\s*$/.test(leading)) {
-              w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
+            /** @todo - optionally add semi-colon for compression */
+            // if (n.requiredSemi && next) {
+            //   w.add(';');
+            // }
+            if (nn.requiredSemi) {
+              w.add(';');
             }
-            w.add(idt);
-            w.add(out, nn);
-          }
-          /** @todo - optionally add semi-colon for compression */
-          // if (n.requiredSemi && next) {
-          //   w.add(';');
-          // }
-          if (nn.requiredSemi) {
-            w.add(';');
-          }
 
-          w.add('\n');
-          const trailing = captureNodeTrivia(nn, 'after', options);
+            w.add('\n');
+            const trailing = captureNodeTrivia(nn, 'after', options);
 
-          if (!/^\s*$/.test(trailing)) {
-            w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
+            if (!/^\s*$/.test(trailing)) {
+              w.add(/\/\*/u.test(trailing) ? normalizeBlockTrivia(trailing, idt) : normalizeIndent(trailing, idt));
+            }
+          };
+          return isThenable(outResult) ? outResult.then(finishLeaf) : finishLeaf(outResult);
+        };
+        // Spine mixin-fold (cutover increment 2): a FOLDED entry (`entry.spineFrame`
+        // set — a bound mixin surface) is processed with `context.rulesContext`
+        // pushed to that surface, so a body reference resolves against the mixin's
+        // DEFINITION scope (the surface's wired lexical/closure/param frame), not the
+        // enclosing caller frame (the B1s frame-threading discipline, §2, applied to
+        // a shared mixin body — no copy). The pop chains on the async result (never a
+        // sync `finally` that would pop before an async leaf resolves — the B1s
+        // early-pop guard). Authored entries (no `spineFrame`) run unwrapped.
+        const processNode = (idx: number): MaybePromise<void> => {
+          const spineFrame = rulesToRender[idx]!.spineFrame;
+          if (!spineFrame || !options.context) {
+            return processNodeInner(idx);
+          }
+          const ctx = options.context;
+          const savedRulesContext = ctx.rulesContext;
+          ctx.rulesContext = spineFrame;
+          const restore = <T>(value: T): T => {
+            ctx.rulesContext = savedRulesContext;
+            return value;
+          };
+          try {
+            const step = processNodeInner(idx);
+            return isThenable(step)
+              ? step.then(restore, (error: unknown) => {
+                  restore(undefined);
+                  throw error;
+                })
+              : restore(step);
+          } catch (error) {
+            restore(undefined);
+            throw error;
           }
         };
-        return isThenable(outResult) ? outResult.then(finishLeaf) : finishLeaf(outResult);
-      };
-      // Spine mixin-fold (cutover increment 2): a FOLDED entry (`entry.spineFrame`
-      // set — a bound mixin surface) is processed with `context.rulesContext`
-      // pushed to that surface, so a body reference resolves against the mixin's
-      // DEFINITION scope (the surface's wired lexical/closure/param frame), not the
-      // enclosing caller frame (the B1s frame-threading discipline, §2, applied to
-      // a shared mixin body — no copy). The pop chains on the async result (never a
-      // sync `finally` that would pop before an async leaf resolves — the B1s
-      // early-pop guard). Authored entries (no `spineFrame`) run unwrapped.
-      const processNode = (idx: number): MaybePromise<void> => {
-        const spineFrame = rulesToRender[idx]!.spineFrame;
-        if (!spineFrame || !options.context) {
-          return processNodeInner(idx);
-        }
-        const ctx = options.context;
-        const savedRulesContext = ctx.rulesContext;
-        ctx.rulesContext = spineFrame;
-        const restore = <T>(value: T): T => {
-          ctx.rulesContext = savedRulesContext;
-          return value;
-        };
-        try {
-          const step = processNodeInner(idx);
-          return isThenable(step)
-            ? step.then(restore, (error: unknown) => {
-                restore(undefined);
-                throw error;
-              })
-            : restore(step);
-        } catch (error) {
-          restore(undefined);
-          throw error;
-        }
-      };
-      // Expansion is complete before the body driver starts. When no frame-bearing
-      // expansion occurred, every entry is authored in this container and cannot
-      // carry a frame; select the direct processor once instead of rechecking that
-      // fact for every entry. Expanded bodies retain the frame-aware wrapper.
-      const processEntry = frameAwareEntriesOccurred ? processNode : processNodeInner;
-      // Drive the per-node processor in source order, threading a promise only if
-      // a node resolved async (spine-mode `calc()`/function leaf or nested async
-      // container). The common all-sync case never allocates a promise.
-      const processFrom = (idx: number): MaybePromise<void> => {
-        for (let i = idx; i < rulesToRender.length; i++) {
-          const step = processEntry(i);
-          if (isThenable(step)) {
-            return step.then(() => processFrom(i + 1));
+        // Expansion is complete before the body driver starts. When no frame-bearing
+        // expansion occurred, every entry is authored in this container and cannot
+        // carry a frame; select the direct processor once instead of rechecking that
+        // fact for every entry. Expanded bodies retain the frame-aware wrapper.
+        const processEntry = frameAwareEntriesOccurred ? processNode : processNodeInner;
+        // Drive the per-node processor in source order, threading a promise only if
+        // a node resolved async (spine-mode `calc()`/function leaf or nested async
+        // container). The common all-sync case never allocates a promise.
+        const processFrom = (idx: number): MaybePromise<void> => {
+          for (let i = idx; i < rulesToRender.length; i++) {
+            const step = processEntry(i);
+            if (isThenable(step)) {
+              return step.then(() => processFrom(i + 1));
+            }
           }
-        }
-        return undefined;
-      };
-      const bodyResult = processFrom(0);
-      const finishBody = (): string => {
-        if (
-          hoistedParent
-          && !closeFramesOnExit
-          && lastRenderedFrames[lastRenderedFrames.length - 1] === hoistedParent.frame
-        ) {
-          const parentDepth = lastRenderedFrames.length - 1;
-          w.add(indent(parentDepth) + '}\n');
-          frameHeaders.pop();
-          lastRenderedFrames.pop();
-        }
-        if (!isTransparentWrapper) {
-          inFrames.pop();
-          if (closeFramesOnExit) {
+          return undefined;
+        };
+        const bodyResult = processFrom(0);
+        const finishBody = (): string => {
+          if (
+            hoistedParent
+            && !closeFramesOnExit
+            && lastRenderedFrames[lastRenderedFrames.length - 1] === hoistedParent.frame
+          ) {
+            const parentDepth = lastRenderedFrames.length - 1;
+            w.add(indent(parentDepth) + '}\n');
             frameHeaders.pop();
-          }
-        }
-        if (closeFramesOnExit) {
-          let renderedLength = lastRenderedFrames.length;
-          while (treeFrames.length < renderedLength) {
-            w.add(indent(renderedLength - 1) + '}\n');
-            options.depth--;
             lastRenderedFrames.pop();
-            // Pop the matching cached header (positional, keyed by frame depth) too —
-            // otherwise a stale header (e.g. `@media screen`) survives at this depth and
-            // a LATER root sibling at the same depth (a second `@media print`, a plain
-            // ruleset) reuses it instead of composing its own. The header stack must
-            // stay in lockstep with `lastRenderedFrames`.
-            if (frameHeaders.length > lastRenderedFrames.length) {
+          }
+          if (!isTransparentWrapper) {
+            inFrames.pop();
+            if (closeFramesOnExit) {
               frameHeaders.pop();
             }
-            renderedLength = lastRenderedFrames.length;
+          }
+          if (closeFramesOnExit) {
+            let renderedLength = lastRenderedFrames.length;
+            while (treeFrames.length < renderedLength) {
+              w.add(indent(renderedLength - 1) + '}\n');
+              options.depth--;
+              lastRenderedFrames.pop();
+              // Pop the matching cached header (positional, keyed by frame depth) too —
+              // otherwise a stale header (e.g. `@media screen`) survives at this depth and
+              // a LATER root sibling at the same depth (a second `@media print`, a plain
+              // ruleset) reuses it instead of composing its own. The header stack must
+              // stay in lockstep with `lastRenderedFrames`.
+              if (frameHeaders.length > lastRenderedFrames.length) {
+                frameHeaders.pop();
+              }
+              renderedLength = lastRenderedFrames.length;
+            }
+          }
+          return w.getSince(mark);
+        };
+        return isThenable(bodyResult) ? bodyResult.then(finishBody) : finishBody();
+      };
+      if (hoisted && !isTransparentWrapper) {
+        const savedFrames = saveArrayState(treeFrames);
+        // When hoisting, we must reset the active frame stack to at-rules only.
+        // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
+        // in `treeFrames` and cause nested output like:
+        //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
+        // even though the current node is hoisted to root.
+        let atRuleCount = 0;
+        for (let i = 0; i < treeFrames.length; i++) {
+          const frame = treeFrames[i]!;
+          if (isNode(frame, N.AtRule)) {
+            treeFrames[atRuleCount++] = frame;
           }
         }
-        return w.getSince(mark);
-      };
-      return isThenable(bodyResult) ? bodyResult.then(finishBody) : finishBody();
-    };
-    if (hoisted && !isTransparentWrapper) {
-      const savedFrames = saveArrayState(treeFrames);
-      // When hoisting, we must reset the active frame stack to at-rules only.
-      // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
-      // in `treeFrames` and cause nested output like:
-      //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
-      // even though the current node is hoisted to root.
-      let atRuleCount = 0;
-      for (let i = 0; i < treeFrames.length; i++) {
-        const frame = treeFrames[i]!;
-        if (isNode(frame, N.AtRule)) {
-          treeFrames[atRuleCount++] = frame;
-        }
+        treeFrames.length = atRuleCount;
+        treeFrames.push(node);
+        options.inFrames = inFrames = treeFrames;
+        const out = renderRulesBody();
+        const restoreFrames = (text: string): string => {
+          restoreArrayState(treeFrames, savedFrames);
+          return text;
+        };
+        return isThenable(out) ? out.then(restoreFrames) : restoreFrames(out);
       }
-      treeFrames.length = atRuleCount;
-      treeFrames.push(node);
-      options.inFrames = inFrames = treeFrames;
-      const out = renderRulesBody();
-      const restoreFrames = (text: string): string => {
-        restoreArrayState(treeFrames, savedFrames);
-        return text;
-      };
-      return isThenable(out) ? out.then(restoreFrames) : restoreFrames(out);
-    }
-    return renderRulesBody();
+      return renderRulesBody();
     };
     // Expand spine-foldable imports FIRST (their imported body may itself contain
     // mixin calls the mixin pass then expands), then spine-eligible mixin calls,
@@ -2273,7 +2279,10 @@ function serializeSpineFrameContainerUnguarded(
     // no-op (sync undefined) when the body has no import (the common case).
     const wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
     return isThenable(wired)
-      ? wired.then(renderBody, (error: unknown) => { restore(''); throw error; })
+      ? wired.then(renderBody, (error: unknown) => {
+          restore('');
+          throw error;
+        })
       : renderBody();
   };
   // Resolve the selector against the live frame. A Selector node carries either
@@ -2383,7 +2392,10 @@ function serializeSpineFrameAtRule(
     // no-op (sync undefined) when the body has no import.
     const wired = wireSpineContainerImports(node.rules, node.getScopeFrame(), context, options);
     return isThenable(wired)
-      ? wired.then(renderBody, (error: unknown) => { restore(''); throw error; })
+      ? wired.then(renderBody, (error: unknown) => {
+          restore('');
+          throw error;
+        })
       : renderBody();
   };
   const rawPrelude = node.prelude;

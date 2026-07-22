@@ -173,7 +173,7 @@ export function isSpineFoldableStatementAtRule(node: Node): boolean {
  * interpolated-path / multiple / optional / postlude / with / compose — each a
  * REQUIRED P4 item) keeps its enclosing body OFF the spine.
  */
-export function isSpineFoldableImport(node: Node): boolean {
+export function isSpineFoldableImport(node: Node): node is StyleImport {
   return isStyleImportNode(node) && node.isSpineFoldableStyleImport();
 }
 
@@ -2919,7 +2919,10 @@ function wireSpineImportsInBody(
   const pending: number[] = [];
   const wireOne = (i: number, allowDefer: boolean): MaybePromise<void> => {
     const child = children[i]!;
-    const importNode = child as StyleImport;
+    if (!isStyleImportNode(child)) {
+      return undefined;
+    }
+    const importNode = child;
     // ISOLATE per-import context (design §2 async discipline). Each import's
     // resolve + registration transiently mutates `context.treeContext`/`depth`
     // (relative-path resolution + registration setup). Sequentially wiring
@@ -2992,7 +2995,7 @@ function wireSpineImportsInBody(
     }
     if (isThenable(step)) {
       return step.then(
-        (value) => restoreImportContext(value),
+        value => restoreImportContext(value),
         (error: unknown) => {
           restoreImportContext(undefined);
           return onResolveError(error);

@@ -2122,3 +2122,48 @@ silently choose one language’s policy.
   }]
   ```
 - Verdict: accepted type-contract correction with no compatibility shim.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: mechanical serializer/import-walk ESLint normalization and a
+  truthful StyleImport type predicate.
+- Architecture surface: `serialize-helper.ts` and `emit-walk.ts` keep the same
+  canonical serializer/import ownership. The edits do not add a parser host,
+  bridge, resolver, output tree, or compatibility surface.
+- Separation/duplication: none. The existing serializer and import-walk owners
+  remain the only implementations of these paths; the predicate shares the
+  existing discriminant fact rather than introducing a second resolver.
+- Cumulative node weight: unchanged. No canonical AST or render placement
+  object is added.
+- New traversal: none. The added type predicate is the existing
+  `node.type === 'StyleImport'` check expressed as a TypeScript narrowing; all
+  loops and promise continuations are existing execution paths.
+- New node/materialization: none. No node, array, map, frame, or writer is
+  created by this pass.
+- Render path: unchanged direct string emission; formatting changes cannot alter
+  the emitted bytes, and the type predicate preserves the existing branch.
+- Helper/API surface: no public API. `isSpineFoldableImport` only exposes the
+  type fact already established by its existing discriminant guard.
+- Metadata mutations: none.
+- Review-flagged diff tokens: [loop/traversal] and [array spread/materialization]
+  are diff-line artifacts from reindenting existing loops/spreads, not new
+  runtime constructs; [routine error control] is likewise an existing
+  try/catch continuation whose braces were normalized. No new loop, spread, or
+  exceptional control path was introduced.
+- Evidence: core build passed; the complete core suite passed 3317 tests with
+  14 skipped and two deferred cases; targeted ESLint is clean for both changed files; the
+  benchmark oracle remains `benchmark.less`, collapseNesting=true, 122390 bytes,
+  SHA-256 `ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6`.
+  No performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"serializer-lint-only-normalization",
+    "verdict":"accepted",
+    "costDelta":"neutral",
+    "why":"The changed lines are mechanical lint normalization plus a type predicate that preserves the existing StyleImport discriminant branch. No runtime work, allocation, traversal, or output policy is added.",
+    "dangerTokensJustification":"[loop/traversal] and [array spread/materialization] are only reindented existing constructs; [routine error control] is only an existing try/catch continuation with braces normalized. The benchmark path therefore retains the registered byte oracle and no new cost-bearing operation.",
+    "byteIdentity":{"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted mechanical quality cleanup; no performance claim.

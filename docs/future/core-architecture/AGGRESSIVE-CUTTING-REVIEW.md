@@ -245,6 +245,20 @@ a blanket optimization exemption or a new active architecture queue.
     },
     "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 80.056, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
     "evidence": {"command": ["pnpm", "--filter", "@jesscss/core", "test", "--", "--run"]}
+  },
+  {
+    "id": "serializer-lint-only-normalization",
+    "kind": "neutral-or-negative",
+    "surface": "mechanical ESLint normalization in the existing serializer/import walk",
+    "files": ["packages/core/src/tree/util/serialize-helper.ts"],
+    "supportFiles": ["packages/core/src/tree/util/emit-walk.ts"],
+    "coverage": "owner-plus-named-carry-forward-support",
+    "neutralRefactor": {
+      "costDelta": "neutral",
+      "allowsProsecutedDangerTokens": true,
+      "why": "This slice changes only ESLint-required indentation/control-bracing and upgrades an existing StyleImport discriminant check into a truthful TypeScript type predicate. It adds no runtime branch, traversal, allocation, resolver, or output policy; the predicate preserves the existing type check and the serializer/import walk remains the same execution path.",
+      "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+    }
   }
 ]
 ```
