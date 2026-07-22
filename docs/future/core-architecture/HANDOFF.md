@@ -39,18 +39,18 @@ after those Less-alpha gates are genuinely green.
 
 ### Less corpus truthfulness gate
 
-`packages/jess/test/less/all-less.test.ts` currently contains 30 runnable
-expected-failure markers. They remain complete, visible compatibility evidence:
-the harness passes when a named fixture fails, so none is passing-parity proof.
-The owner decision for the first alpha is to classify—not drain or hide—them.
-The maintained symptom/scope/follow-up inventory and alpha safety gates are in
-[`../../less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md), and the
-release notes must link it. The six groups are callable/reference and scope
-semantics (9); imports/conditional at-rule execution (6); direct
-parser/evaluator correctness (7); F5 lazy color calls (2); URL options (2);
-and source-map artifacts (4). These add to 30. In particular, a missing mixin remains an error; only an
-ordinary function call with an optional function reference may fall back to a
-CSS `Call` when lookup misses.
+`packages/jess/test/less/all-less.test.ts` has 32 registered expected-failure
+cases, but only 21 are selected by the current alpha fixture glob and filters.
+The public alpha lane runs 107 cases (78 unit, 29 config): 86 ordinary
+byte-identical checks plus 21 active expected-failure checks. The harness passes
+when a named fixture still fails, so none is passing-parity proof. The owner
+decision for the first alpha is to classify—not drain or hide—them. The
+reproducible selection accounting, exact active cases, inactive registry
+entries, symptoms, scope, and follow-up rule are in
+[`../../less-v5-corpus-inventory.md`](../../less-v5-corpus-inventory.md); the
+readiness tracker and release notes must link that inventory. In particular, a
+missing mixin remains an error; only an ordinary function call with an optional
+function reference may fall back to a CSS `Call` when lookup misses.
 
 ### `callWithContext` deletion prerequisite
 
@@ -485,16 +485,18 @@ the newly generated parser artifacts.
 
 ### Current alpha.9 candidate evidence (2026-07-22; not authorized to publish)
 
-The current local alpha snapshot is `dd70d6b2f`. It is a controlled two-tree
+The current local alpha snapshot is `6be731a5e`. It is a controlled two-tree
 refresh on the isolated `alpha` worktree, retaining the intended
 `2.0.0-alpha.9` package manifests rather than an ordinary merge or rebase of
-shared alpha history. The alpha worktree is clean. The recorded full
-`pnpm run release:alpha:check` run passed with Parseman `0.29.0`: release
-build, config syntax, 22 strict type configurations, production lint with no
-errors, Less-alpha route, direct Jess parser/plugin/Rollup tests, AST-v2
-ratchet, baseline, release-mode cutting review, the 18-package allowlist,
-packed consumer, and nested alpha.9 publish dry-run. The latter resolved
-`2.0.0-alpha.9` ahead of the published alpha.8 tag; it did not publish.
+shared alpha history. The alpha worktree is clean. The repaired alpha push gate
+ran `pnpm run prepush:changed-packages`, which dispatches on `alpha` to the
+full `pnpm run release:alpha:check` chain. It passed with Parseman `0.29.0`:
+release build, config syntax, 22 strict type configurations, production lint
+with no errors, Less-alpha route, direct Jess parser/plugin/Rollup tests,
+AST-v2 ratchet, baseline, release-mode cutting review, the 18-package
+allowlist, packed consumer, and nested alpha.9 publish dry-run. The latter
+resolved `2.0.0-alpha.9` ahead of the published alpha.8 tag; it did not
+publish.
 
 The current source and snapshot use the rolling Node-LTS policy above; the
 manifest's `>=18` is its present floor, not a promise to support only Node 18.
@@ -514,9 +516,9 @@ clean and independently proven.
 - **Helper/API surface and metadata mutations:** none; no runtime or package
   metadata changes are claimed here.
 - **Evidence:** `564b65615` remains historical pre-Parseman-0.29 evidence;
-  current release evidence is `338801372` → `8bcc31516` and its full alpha
-  preflight/dry-run. This documentation records release state only; it makes no
-  performance claim.
+  `6be731a5e` is the current controlled alpha snapshot and its branch-aware
+  `prepush:changed-packages` release chain passed. This documentation records
+  release state only; it makes no performance claim.
 
 ### Aggressive Cutting Self-Prosecution — staged alpha-version recovery
 

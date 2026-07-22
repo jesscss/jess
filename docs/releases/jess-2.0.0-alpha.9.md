@@ -1,8 +1,9 @@
 # Jess 2.0.0-alpha.9 — draft release notes
 
-> **Draft for owner review.** The controlled alpha snapshot at `564b65615` has
-> passed its full release preflight. It is not published: it awaits explicit
-> owner approval to run the full `pnpm run release:alpha` flow from `alpha`.
+> **Draft for owner review.** The controlled alpha snapshot at `6be731a5e` has
+> passed its full release preflight through the repaired alpha push gate. It is
+> not published: it awaits explicit owner approval to run the full
+> `pnpm run release:alpha` flow from `alpha`.
 
 ## Highlights
 
@@ -41,7 +42,7 @@ a separate compilation mode.
 ### Candidate verification snapshot
 
 The validated `dev` candidate became the controlled alpha snapshot
-`564b65615`, which resolves the next registry version as `2.0.0-alpha.9`. Its
+`6be731a5e`, which resolves the next registry version as `2.0.0-alpha.9`. Its
 publishable runtime closure contains 18 packages; the closure validator and
 packed-consumer installation proof both pass.
 
@@ -49,13 +50,17 @@ The alpha-side gate run passed the release build, strict production types,
 production lint (no errors), Less-alpha public API and fixture gates, Jess
 parser/plugin/Rollup tests, AST-v2 production-route ratchet, baseline suite,
 aggressive-cutting release review, package-closure validation, and packed
-consumer proof. Its final dry-run publish also passed. Parseman `0.28.1` is the
-published dependency used by that snapshot.
+consumer proof. Its final dry-run publish also passed. The repaired alpha push
+gate runs `pnpm run prepush:changed-packages`, which dispatches to that full
+release chain only on `alpha`. Published Parseman `0.29.0` is the dependency
+used by the current candidate.
 
-The complete Less corpus currently reports 84 byte-identical passes, 32 output
-mismatches, 15 known errors, zero timeouts, and zero crashes. Seven of the
-output mismatches do not yet have dedicated fixture markers; they remain visible
-in the corpus report and are release-note follow-up work, not passing evidence.
+The public Less alpha fixture lanes currently exercise 107 cases: 86 ordinary
+byte-identical checks and 21 active expected-failure checks. The latter retain
+their observed mismatch/error as compatibility evidence; they are not passing
+Less-parity proof. The complete 32-entry registry, its 11 intentionally
+unselected entries, and each limitation's scope are in the
+[Less v5 corpus inventory](../less-v5-corpus-inventory.md).
 
 Oracle correction: `property-accessors`' v5 expected CSS was previously
 rewritten to match a Jess serializer state; Less 4.8's upstream fixture and live
@@ -96,12 +101,12 @@ This is a deliberately breaking alpha architecture change.
   alpha.9 must be published first; the Less release script then receives
   `JESS_VERSION=2.0.0-alpha.9` so its local workspace links are rewritten to
   registry dependencies only for the publish window.
-- It does not claim complete Less 4.x corpus parity. The current full-corpus
-  result is 84 byte-identical passes, 32 output mismatches, and 15 known
-  errors; seven output mismatches still need dedicated fixture markers. These
-  remain visible compatibility work, not hidden passing evidence. See
-  [Less v5 alpha readiness](../less-v5-alpha-readiness.md) for the tracked
-  inventory and follow-up.
+- It does not claim complete Less 4.x corpus parity. The selected alpha fixture
+  lane has 21 active expected-failure checks, while the 32-entry registry also
+  records 11 intentionally unselected cases. These remain visible compatibility
+  work, not hidden passing evidence. See the [Less v5 corpus
+  inventory](../less-v5-corpus-inventory.md) for the exact selection and
+  follow-up.
 - Less v5 intentionally removes backtick JavaScript evaluation, IE
   `progid:DXImageTransform` filters, the legacy fixture's non-Less `$list`
   parameter/reference syntax, legacy `@plugin` tree visitor hooks
@@ -114,8 +119,8 @@ This is a deliberately breaking alpha architecture change.
   documented rendering differences such as media-query merging. They remain
   classified corpus results rather than dialect-specific engine fallbacks.
 - It makes no parser-performance claim. The direct parser baseline and Parseman
-  0.28 regression work remain release-gated and are measured separately.
-- It does not publish from local workspace links. Parseman `0.28.1` is already
+  regression work remain release-gated and are measured separately.
+- It does not publish from local workspace links. Parseman `0.29.0` is already
   published, consumed through a real package version, and proven through the
   alpha packed-consumer check.
 
