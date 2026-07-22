@@ -110,10 +110,19 @@ the [Core Architecture Handoff](future/core-architecture/HANDOFF.md):
    worktree.
 2. Import the endpoint tree with a binary two-tree patch, using
    `git diff --binary alpha..dev` followed by `git apply --index`.
-3. Restore only `packages/*/package.json` from the recovery ref. This retains
-   the alpha package versions while preserving `dev`'s current root scripts,
-   release/readiness evidence, and handoff documentation; `pnpm-lock.yaml`
-   remains unchanged.
+3. Preserve **only each package manifest's `version` field** from the recovery
+   ref, after the patch has imported the current `dev` manifests:
+
+   ```bash
+   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut
+   ```
+
+   Do not restore whole `packages/*/package.json` files. The snapshot must keep
+   every current `dev` manifest field—especially dependencies, peer ranges,
+   exports, and publish configuration—and retain only the recovery alpha
+   versions until the registry-aware release step selects the next version.
+   This also preserves `dev`'s root scripts, release/readiness evidence, and
+   handoff documentation; `pnpm-lock.yaml` remains unchanged.
 4. Reconcile the owner-reviewed release notes from the final gate evidence,
    commit one controlled refresh on `alpha`, and confirm a clean source tree.
 

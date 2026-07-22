@@ -448,6 +448,26 @@ export function applyLockstepVersion(rootDir, version) {
   };
 }
 
+/**
+ * Keep every field from a freshly imported manifest while taking the version
+ * from the alpha recovery manifest. Alpha snapshots intentionally preserve the
+ * previous alpha version until the registry-aware release step chooses a new
+ * one; restoring an entire old manifest would silently discard dependency,
+ * peer-dependency, export, and publish-config changes from dev.
+ */
+export function preserveRecoveryManifestVersion(importedManifest, recoveryManifest) {
+  if (!importedManifest || typeof importedManifest !== 'object' || Array.isArray(importedManifest)) {
+    throw new Error('Imported package manifest must be a JSON object.');
+  }
+  if (!recoveryManifest || typeof recoveryManifest !== 'object' || Array.isArray(recoveryManifest)) {
+    throw new Error('Recovery package manifest must be a JSON object.');
+  }
+  if (typeof recoveryManifest.version !== 'string' || recoveryManifest.version.length === 0) {
+    throw new Error('Recovery package manifest must contain a non-empty string version.');
+  }
+  return { ...importedManifest, version: recoveryManifest.version };
+}
+
 export function incrementAlphaVersions({ rootDir = process.cwd(), allowlistPath } = {}) {
   allowlistPath ??= path.join(rootDir, 'scripts', 'release', 'alpha-allowlist.json');
   const plan = getAlphaReleasePlan({ rootDir, allowlistPath });
