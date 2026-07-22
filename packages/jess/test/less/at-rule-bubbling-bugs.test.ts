@@ -169,6 +169,29 @@ describe('At-rule bubbling selector bugs', () => {
     `));
   });
 
+  it.each(['@media', '@container'])('hoists direct declarations before child rules in bubbled %s blocks', async (atRule) => {
+    const css = await render(`
+.container {
+  ${atRule} (min-width: 500px) {
+    .child {
+      color: blue;
+    }
+    color: red;
+  }
+}
+    `);
+    expect(trimLines(css)).toBe(trimLines(`
+${atRule} (min-width: 500px) {
+  .container {
+    color: red;
+  }
+  .container .child {
+    color: blue;
+  }
+}
+    `));
+  });
+
   /**
    * Bug 5: Mixin body at-rule bubbling loses caller's selector
    * Source: at-rules-bubbling.less lines 113-126

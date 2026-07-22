@@ -7410,6 +7410,21 @@ function emitBubbleBody(
   // [nesting] opaque ancestor for `&`-less rules composed inside the bubbled context.
   const ctxAncestor = ctx === null ? null : wrapIsList(ctx);
   const group: Leaf[] = [];
+  // Less hoists direct declarations in a bubbled conditional block ahead of
+  // nested rules, even when those declarations occur after a child rule in
+  // authored order (`.a { @media/@container { .b { … } color: blue; } }`).
+  // Keep this narrow: only a static declaration/comment/rule/at-rule body can
+  // be safely staged without executing dynamic mixin/loop/import expansion
+  // twice or changing live-binding activation order. Dynamic bodies retain the
+  // existing streaming path below.
+  const deferStaticChildren = ctx !== null && statements.every(statement =>
+    statement.type === 'Declaration'
+    || statement.type === 'Comment'
+    || statement.type === 'Rule'
+    || statement.type === 'AtRuleBlock'
+    || statement.type === 'AtRuleStatement'
+  );
+  const deferredChildren: Array<() => MaybePromise<void>> | null = deferStaticChildren ? [] : null;
   const flushDirect = (): void => {
     if (group.length === 0) {
       return;
@@ -7442,12 +7457,62 @@ function emitBubbleBody(
           group.push({ node, frame });
           break;
         case 'Rule':
-          flushDirect();
-          e.depth++;
-          {
-            const emitted = flatten(node, ctx, ctxAncestor, frame, e);
-            if (isThenable(emitted)) {
-              return emitted.then(
+          if (deferStaticChildren) {
+            deferredChildren!.push(() => {
+              e.depth++;
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              if (isThenable(emitted)) {
+                return emitted.then(() => {
+                  e.depth--;
+                }, (error) => {
+                  e.depth--;
+                  throw error;
+                });
+              }
+              e.depth--;
+            });
+          } else {
+            flushDirect();
+            e.depth++;
+            {
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              if (isThenable(emitted)) {
+                return emitted.then(
+                  () => {
+                    e.depth--;
+                    return run(index + 1);
+                  },
+                  (error) => {
+                    e.depth--;
+                    throw error;
+                  }
+                );
+              }
+            }
+            e.depth--;
+          }
+          break;
+        case 'AtRuleBlock':
+          if (deferStaticChildren) {
+            deferredChildren!.push(() => {
+              e.depth++;
+              const nested = emitAtRuleBlock(node, frame, e, ctx);
+              if (isThenable(nested)) {
+                return nested.then(() => {
+                  e.depth--;
+                }, (error) => {
+                  e.depth--;
+                  throw error;
+                });
+              }
+              e.depth--;
+            });
+          } else {
+            flushDirect();
+            e.depth++;
+            const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
+            if (isThenable(nested)) {
+              return nested.then(
                 () => {
                   e.depth--;
                   return run(index + 1);
@@ -7458,32 +7523,22 @@ function emitBubbleBody(
                 }
               );
             }
+            e.depth--;
           }
-          e.depth--;
-          break;
-        case 'AtRuleBlock':
-          flushDirect();
-          e.depth++;
-          const nested = emitAtRuleBlock(node, frame, e, ctx); // directly-nested at-rule inherits ctx
-          if (isThenable(nested)) {
-            return nested.then(
-              () => {
-                e.depth--;
-                return run(index + 1);
-              },
-              (error) => {
-                e.depth--;
-                throw error;
-              }
-            );
-          }
-          e.depth--;
           break;
         case 'AtRuleStatement':
-          flushDirect();
-          e.depth++;
-          emitAtRuleStatement(node, frame, e);
-          e.depth--;
+          if (deferStaticChildren) {
+            deferredChildren!.push(() => {
+              e.depth++;
+              emitAtRuleStatement(node, frame, e);
+              e.depth--;
+            });
+          } else {
+            flushDirect();
+            e.depth++;
+            emitAtRuleStatement(node, frame, e);
+            e.depth--;
+          }
           break;
         case 'ImportAtRule':
           flushDirect();
@@ -7601,6 +7656,18 @@ function emitBubbleBody(
       }
     }
     flushDirect();
+    if (deferredChildren === null) {
+      return;
+    }
+    const runDeferred = (childIndex: number): MaybePromise<void> => {
+      for (let i = childIndex; i < deferredChildren.length; i++) {
+        const emitted = deferredChildren[i]!();
+        if (isThenable(emitted)) {
+          return emitted.then(() => runDeferred(i + 1));
+        }
+      }
+    };
+    return runDeferred(0);
   };
   return run(0);
 }
