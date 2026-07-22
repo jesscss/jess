@@ -1601,7 +1601,7 @@ function unresolvedMixinCall(call: MixinCall, e: EvalCtx): never {
  * a stray async value there raises rather than being silently mis-dispatched.
  */
 function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
-  return (v: ValueNode) => {
+  return (v: ValueSlot) => {
     const b = evalBytes(v, frame, e);
     if (isThenable(b)) {
       throw new Error('async value in a synchronous dispatch position');
@@ -5752,7 +5752,7 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
     if (!a.spread) {
       args.push(a); continue;
     }
-    if (a.value.type === 'MixinCall') {
+    if ('type' in a.value && a.value.type === 'MixinCall') {
       throw new Error('A deferred mixin call cannot be used as a spread argument.');
     }
     const bytes = resolveCaller(a.value).trim();
@@ -5782,7 +5782,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
     // A mixin call passed directly as an arg value (`.wrapper(.something(foo))`):
     // wrap it as a detached ruleset whose body is that call, so `@another-mixin()`
     // dispatches it (its args resolve in the caller frame's runtime binding).
-    if (a.value.type === 'VariableReference') {
+    if ('type' in a.value && a.value.type === 'VariableReference') {
       const bound = lookupVar(frame, a.value.name);
       if (bound?.type === 'DetachedRuleset') {
         changed = true;

@@ -2027,3 +2027,47 @@ silently choose one language’s policy.
   above; no benchmark was run because this pass makes no performance claim.
 - Verdict: accepted correctness fix. Performance was not measured and no speed
   claim is made.
+
+### Current pass: recursive mixin argument resolution
+
+- Architecture surface: the private mixin byte/default resolver now accepts
+  canonical recursive `ValueSlot`, matching `evalBytes` and the existing
+  `MixinCall.args` data contract.
+- Separation/duplication: no second resolver or array-flattening policy was
+  added. Existing core `evalBytes` remains the only byte-resolution owner.
+- Cumulative node weight: unchanged.
+- New traversal: none in production. Recursive value evaluation remains in the
+  existing evaluator path.
+- New node/materialization: no new node type, copy, wrapper layer, or side map.
+- Render path: unchanged direct emission; this pass only makes the existing
+  evaluator input type truthful.
+- Helper/API surface: no helper or public API was added or changed.
+- Metadata mutations: none.
+- Review-flagged diff tokens: the new `type` checks distinguish a typed node
+  from a recursive slot array before reading the discriminant; they allocate
+  nothing and add no scan.
+- Behavior evidence: the focused core tests prove recursive authored and
+  default mixin arguments, the complete core suite passes, and the public Less
+  parser suite passes 269/269.
+- Build evidence: core package build and `verify:package-exports` pass. Strict
+  core source diagnostics fall from 339 to 324 without suppression.
+- Boundary evidence: the Less public parser suite passes after rebuilding core,
+  and package export verification confirms the entrypoint remains valid.
+- Evidence: focused and full behavior, build, export, and strict-type evidence
+  are listed above. No benchmark was run because no performance claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"ast-semantic-runtime-cutover",
+    "verdict":"accepted",
+    "performanceClaim":"none",
+    "owner":"the seven canonical AST-v2 evaluator/value owners listed by ast-semantic-runtime-cutover",
+    "why":"The mixin resolver now admits the recursive ValueSlot contract that its existing evalBytes callee already owns. This is the mixin-dispatch ValueSlot argument-resolution case within the coordinated semantic runtime cutover, not a new resolver, optimization, or byte-flattening policy.",
+    "dangerTokensJustification":"The discriminant checks prevent arrays from being treated as nodes, while recursive byte work remains in the existing evalBytes path. No node, wrapper, traversal, side table, fallback call, or output buffer is added, and this record makes no neutrality or speed claim.",
+    "cases":["ValueSlot-array-evaluation-and-authored-layout","List-value-separator-and-Block-delimiter-facts","reference-index-and-For-array-access","Less-lazy-color-call-demand-boundary","defineFunction-typed-positional-named-and-lazy-binding","mixin-dispatch-ValueSlot-argument-resolution","ValueLayout-provenance-side-table","preserve-mode-calc-result-composition"],
+    "behaviorEvidence":"The complete core suite and the public Less parser suite pass; focused recursive authored/default mixin argument tests pass 12/12 with the nested guard cases.",
+    "buildEvidence":"The core package build and package-export verification pass after the resolver contract correction.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":85.86,"parseRenderMedianMs":68.38,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted type-contract correction with no compatibility shim.

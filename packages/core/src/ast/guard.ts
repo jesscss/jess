@@ -32,7 +32,7 @@ export type GuardNode =
   | { readonly g: 'default' };
 
 /** Resolve a value node to its (variable-resolved, un-evaluated) source bytes. */
-export type ValueResolver = (v: ValueNode) => string;
+export type ValueResolver = (v: ValueSlot) => string;
 
 /** Resolve a value node to a materialized TYPED value object. */
 export type TypedResolver = (v: ValueNode) => ValueObj;

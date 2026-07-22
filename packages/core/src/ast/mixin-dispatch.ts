@@ -61,7 +61,7 @@ export class DefaultGuardAmbiguityError extends Error {
  * caller resolver.
  */
 export type DefaultResolver = (
-  v: ValueNode,
+  v: ValueSlot,
   boundSoFar: Map<string, CallValue>,
   def: MixinDef,
 ) => string;
@@ -170,7 +170,7 @@ export function bindArgs(
 function resolveEager(v: CallValue, resolveCaller: ValueResolver): CallValue {
   // a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
   // body + closure survive to the call site.
-  if (v.type === 'DetachedRuleset' || v.type === 'MixinCall') {
+  if ('type' in v && (v.type === 'DetachedRuleset' || v.type === 'MixinCall')) {
     return v;
   }
   // A fully typed list carries comparison-relevant item tags (notably compatible
@@ -184,8 +184,11 @@ function resolveEager(v: CallValue, resolveCaller: ValueResolver): CallValue {
 }
 
 function isTypedGuardValue(v: CallValue): v is ValueSlot {
-  if (Array.isArray(v)) {
+  if (!('type' in v)) {
     return v.every(isTypedGuardValue);
+  }
+  if (v.type === 'MixinCall') {
+    return false;
   }
   if (isTypedLiteral(v)) {
     return true;
@@ -201,16 +204,16 @@ function isTypedGuardValue(v: CallValue): v is ValueSlot {
  * survive exactly as a call arg does; everything else byte-flattens through the
  * default resolver (falling back to the caller resolver when none is supplied). */
 function resolveEagerDefault(
-  v: ValueNode,
+  v: ValueSlot,
   boundSoFar: Map<string, CallValue>,
   def: MixinDef,
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver
 ): CallValue {
-  if (v.type === 'DetachedRuleset') {
+  if ('type' in v && v.type === 'DetachedRuleset') {
     return v;
   }
-  if (isTypedLiteral(v)) {
+  if (isTypedGuardValue(v)) {
     return v;
   }
   return any(resolveDefault ? resolveDefault(v, boundSoFar, def) : resolveCaller(v));
@@ -218,7 +221,7 @@ function resolveEagerDefault(
 
 function valueBytes(v: CallValue): string {
   // After eager resolution every arg is a literal leaf carrying its bytes in `src`.
-  return isLiteralNode(v) ? v.src : '';
+  return 'type' in v && v.type !== 'MixinCall' && isLiteralNode(v) ? v.src : '';
 }
 
 /**

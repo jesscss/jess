@@ -16,12 +16,13 @@ import { bindArgs } from '../mixin-dispatch.js';
 import { isNode } from '../node.js';
 import {
   mixinDef, mixinCall, any, isLiteralNode,
-  type MixinCall, type MixinDef, type Param, type ValueNode
+  type MixinCall, type MixinDef, type Param, type ValueSlot
 } from '../nodes.js';
 
 // Caller-frame resolver for byte-literal args: our test args/defaults are plain
 // `Any` leaves, so their bytes are their `src` (mirrors the pipeline's eval-to-bytes).
-const resolve = (v: ValueNode): string => (isLiteralNode(v) ? v.src : '');
+const resolve = (v: ValueSlot): string =>
+  'type' in v ? (isLiteralNode(v) ? v.src : '') : v.map(resolve).join(' ');
 
 const argumentsOf = (def: MixinDef, call: MixinCall): string => {
   const bound = bindArgs(def, call, resolve);
@@ -76,6 +77,24 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
   it('(d) all-positional call is unchanged (byte-identical regression guard)', () => {
     const call = mixinCall('.mixin', [any('1px'), any('2px'), any('3px')]);
     expect(argumentsOf(def, call)).toBe('1px 2px 3px');
+  });
+
+  it('resolves a recursive value-slot argument without treating its array as a node', () => {
+    const call: MixinCall = {
+      type: 'MixinCall',
+      name: '.mixin',
+      args: [{ value: [[any('1px'), any('2px')]] }],
+      path: [],
+      important: false
+    };
+    expect(argumentsOf(def, call)).toBe('1px 2px 20px 30px');
+  });
+
+  it('resolves a recursive default value slot through the bound-default resolver', () => {
+    const nestedDefault = mixinDef('.nested', [
+      { name: 'value', default: [[any('1px'), any('2px')]] }
+    ], []);
+    expect(argumentsOf(nestedDefault, mixinCall('.nested'))).toBe('1px 2px');
   });
 
   it('pattern-literal slots bind no variable and are excluded', () => {
