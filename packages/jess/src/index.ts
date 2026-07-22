@@ -18,8 +18,8 @@ import {
   type WarningsConfigInput,
   type ErrorsConfigInput,
   serialize,
-  buildEvaluator
-} from '@jesscss/core';
+  buildEvaluator,
+  PluginInterface } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
@@ -27,7 +27,6 @@ import {
   type StylesConfig,
   type OutputOptions
 } from 'styles-config';
-import type { PluginInterface } from '@jesscss/core';
 import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin from '@jesscss/plugin-less';
 import nodeModulesPlugin from '@jesscss/plugin-node-modules';
@@ -549,7 +548,9 @@ export class Compiler {
           }
           const pattern = String(entry.file ?? '{name}.css');
           if (path.join(dir, pattern.replace('{name}', name)) === resolvedOutputFilePath) {
-            if ('collapseNesting' in entry) return entry.collapseNesting;
+            if ('collapseNesting' in entry) {
+              return entry.collapseNesting;
+            }
             return defaults?.collapseNesting;
           }
         }
@@ -891,12 +892,12 @@ export class Compiler {
             ? pluginInstance.opts
             : {};
           const resolvedLessOptions = Object.fromEntries(
-            Object.entries(resolved.lessOptions).filter(([, value]) => value !== undefined),
+            Object.entries(resolved.lessOptions).filter(([, value]) => value !== undefined)
           );
           const nativePlugins = Array.isArray(pluginOptions.plugins) ? pluginOptions.plugins : [];
           pluginMap.set('less', this.getOrCreateLessPlugin({
             ...pluginOptions,
-            ...resolvedLessOptions,
+            ...resolvedLessOptions
           }, nativePlugins));
           continue;
         }
@@ -958,10 +959,10 @@ export class Compiler {
         return autoWireJsPlugin(extension);
       }
       const fromUser = userLoadPluginForExtension(extension);
-      if (fromUser && typeof (fromUser as Promise<unknown>).then === 'function') {
+      if (fromUser instanceof Promise) {
         return Promise.resolve(fromUser).then(resolvedPlugin => resolvedPlugin ?? autoWireJsPlugin(extension));
       }
-      return (fromUser as PluginInterface | undefined) ?? autoWireJsPlugin(extension);
+      return fromUser ?? autoWireJsPlugin(extension);
     };
 
     // `breakOnError` is a top-level render option (consumed by outputDiagnostics for
@@ -1067,42 +1068,43 @@ export class Compiler {
         })
       );
       return parsed.node;
-    } else {
-      const loaded = shouldPrepareRootLessSource
-        ? await measureProfileAsync(profile, 'getPreparedRootTree', async () => {
-            const { resolvedPath } = await context.resolveImportPath(filePath!);
-            const sourceGetter = context.plugins.find(plugin => plugin.getSource);
-            if (!sourceGetter?.getSource) {
-              throw new Error('No source getter found');
-            }
-            const rootSource = await sourceGetter.getSource(resolvedPath);
-            const preparedSource = prepareRootLessSource(rootSource, rootLessSourceOptions);
-            const parsed = await context.parseString(preparedSource, {
-              filePath: resolvedPath,
-              type: language,
-              extension
-            });
-            if (parsed.node) {
-              context.sourceTrees.set(resolvedPath, parsed.node);
-            }
-            return parsed;
-          })
-        : await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
-      if (!loaded.node) {
-        throw new Error(`Failed to load ${filePath!}`);
-      }
-      return loaded.node;
     }
+    const loaded = shouldPrepareRootLessSource
+      ? await measureProfileAsync(profile, 'getPreparedRootTree', async () => {
+          const { resolvedPath } = await context.resolveImportPath(filePath!);
+          const sourceGetter = context.plugins.find(plugin => plugin.getSource);
+          if (!sourceGetter?.getSource) {
+            throw new Error('No source getter found');
+          }
+          const rootSource = await sourceGetter.getSource(resolvedPath);
+          const preparedSource = prepareRootLessSource(rootSource, rootLessSourceOptions);
+          const parsed = await context.parseString(preparedSource, {
+            filePath: resolvedPath,
+            type: language,
+            extension
+          });
+          if (parsed.node) {
+            context.sourceTrees.set(resolvedPath, parsed.node);
+          }
+          return parsed;
+        })
+      : await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
+    if (!loaded.node) {
+      throw new Error(`Failed to load ${filePath!}`);
+    }
+    return loaded.node;
   }
 
   private async renderStylesheet(document: Stylesheet, context: Context, profile?: RenderProfile): Promise<string> {
-    for (const plugin of context.plugins) plugin.setContext?.(context);
+    for (const plugin of context.plugins) {
+      plugin.setContext?.(context);
+    }
     const result = await measureProfileAsync(profile, 'renderAstStylesheet', () =>
       Promise.resolve(context.withDocument(document, () => serialize(document, {
         collapseNesting: context.opts.output?.collapseNesting ?? false,
         context,
         pluginHost: context.pluginHost,
-        io: { readFile: specifier => context.readBinary(specifier).catch(() => null) },
+        io: { readFile: specifier => context.readBinary(specifier).catch(() => null) }
       })))
     );
     let css = result.css;
