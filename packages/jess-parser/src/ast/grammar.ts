@@ -4,12 +4,12 @@
  * It never composes the CST grammar: Parseman reductions construct canonical
  * core facts directly.
  */
-import { attempt, choice, composeLeaf, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { attempt, choice, composeLeaf, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
 import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, DetachedRuleset, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, DetachedRuleset, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -39,7 +39,7 @@ type JessAstRules = {
   DirectJessUnwrappedProduct: Combinator<ExpressionFact>;
   DirectJessUnwrappedProductRest: Combinator<ExpressionFact>;
   DirectJessUnwrappedArithmetic: Combinator<ValueNode>;
-  DirectJessUnwrappedSlashValue: Combinator<SpacedValue>;
+  DirectJessUnwrappedSlashValue: Combinator<ValueNode>;
   DirectJessGuardValue: Combinator<GuardNode>;
   DirectJessGuardCompare: Combinator<GuardNode>;
   DirectJessGuardCall: Combinator<GuardNode>;
@@ -62,7 +62,7 @@ type JessAstRules = {
   DirectJessCollection: Combinator<DetachedRuleset>;
   DirectJessValueAtom: Combinator<ValueNode>;
   DirectJessValueTerm: Combinator<ValueSlot>;
-  DirectJessValue: Combinator<ValueNode>;
+  DirectJessValue: Combinator<ValueSlot>;
   DirectJessImportant: Combinator<true>;
   DirectJessDeclaration: Combinator<Declaration>;
   DirectJessMixinParam: Combinator<Param>;
@@ -140,7 +140,7 @@ type JessAstRules = {
   DirectJessPropertyName: Combinator<Keyword>;
   DirectJessStaticPropertyValueAtom: Combinator<ValueNode>;
   DirectJessStaticPropertyValue: Combinator<ValueSlot>;
-  DirectJessStaticPropertyCallArgument: Combinator<ValueNode>;
+  DirectJessStaticPropertyCallArgument: Combinator<ValueSlot>;
   DirectJessStaticPropertyCall: Combinator<FunctionCall>;
   DirectJessStaticPropertyDescriptor: Combinator<Declaration>;
   DirectJessPropertyAtRule: Combinator<AtRuleBlock>;
@@ -176,6 +176,11 @@ type SharedCssAstSyntax = {
   CssAstSyntaxUrlInner: Combinator<string>;
   CssAstSyntaxStaticUrlInner: Combinator<string>;
   CssAstSyntaxGenericAtRuleName: Combinator<string>;
+  CssAstSyntaxSimple: Combinator<string>;
+  CssAstSyntaxPseudoColon: Combinator<string>;
+  CssAstSyntaxMediaAtKeyword: Combinator<string>;
+  JessAstOpaqueStaticPrelude: Combinator<string | null>;
+  JessAstOpaqueBody: Combinator<string>;
 };
 
 function requireToken(value: unknown): Token {
@@ -266,10 +271,14 @@ function valueSlot(value: ValueNode): ValueSlot {
   if (value.type === 'SpacedValue') {
     return value.parts;
   }
-  if (value.type === 'Block' && value.inner.type === 'SpacedValue') {
+  if (value.type === 'Block' && isSpacedValue(value.inner)) {
     return { ...value, inner: value.inner.parts };
   }
   return value;
+}
+
+function isSpacedValue(value: ValueSlot): value is SpacedValue {
+  return isValueNode(value) && value.type === 'SpacedValue';
 }
 
 function isValueSlotValue(value: unknown): value is ValueSlot {
@@ -296,9 +305,13 @@ function isInterpolation(value: unknown): value is Interpolation {
     && value.type === 'Interpolation' && 'parts' in value && Array.isArray(value.parts);
 }
 
+function isInterpolationLiteral(part: InterpPart): part is { readonly lit: string } {
+  return 'lit' in part;
+}
+
 function appendInterpolationLiteral(parts: Interpolation['parts'], text: string): void {
   const previous = parts[parts.length - 1];
-  if (previous !== undefined && 'lit' in previous) {
+  if (previous !== undefined && isInterpolationLiteral(previous)) {
     parts[parts.length - 1] = { lit: previous.lit + text };
   } else {
     parts.push({ lit: text });
@@ -328,7 +341,7 @@ function requireExpressionFact(value: unknown): ExpressionFact {
     || typeof value.src !== 'string' || !isValueNode(value.value)) {
     throw new TypeError('Direct Jess AST grammar produced an invalid expression fact.');
   }
-  return value;
+  return { value: value.value, src: value.src };
 }
 
 function foldExpression(children: readonly unknown[]): ExpressionFact {
@@ -1028,8 +1041,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     (children) => {
       const parts: Interpolation['parts'] = [];
       const append = (part: Interpolation['parts'][number]): void => {
-        if ('lit' in part && parts.length > 0 && 'lit' in parts[parts.length - 1]!) {
-          const previous = parts[parts.length - 1]!;
+        const previous = parts[parts.length - 1];
+        if (isInterpolationLiteral(part) && previous !== undefined && isInterpolationLiteral(previous)) {
           parts[parts.length - 1] = { lit: previous.lit + part.lit };
         } else {
           parts.push(part);
