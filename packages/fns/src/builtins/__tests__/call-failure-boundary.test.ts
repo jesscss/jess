@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '@jesscss/core';
-import { makeDimension, makeKeyword, makeList } from '@jesscss/core/value';
+import { makeDimension, makeKeyword, makeList, type ValueObj } from '@jesscss/core/value';
 import { makeBuiltinRegistry } from '../registry.js';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
@@ -21,7 +21,10 @@ describe('built-in call failures', () => {
 
     const preserved = evaluator.call('rgb', args, { unitMode: 'preserve' });
     expect(preserved).not.toBeInstanceOf(Promise);
-    expect((preserved as { bytes: string }).bytes).toBe('rgb(not-a-color)');
+    if (preserved instanceof Promise) {
+      throw new Error('Expected preserved rgb() to resolve synchronously.');
+    }
+    expect(preserved.bytes).toBe('rgb(not-a-color)');
 
     expect(() => evaluator.call('rgb', args, {
       unitMode: 'preserve',
@@ -33,10 +36,10 @@ describe('built-in call failures', () => {
     const registry = makeBuiltinRegistry();
     const args = makeList([makeDimension(1, 'px'), makeDimension(1, 's')], ',');
 
-    expect((registry.dispatch('min', args, {
+    expect(registry.dispatch('min', args, {
       modes: { unitMode: 'preserve' },
       stringify: value => value.bytes
-    }) as { bytes: string }).bytes).toBe('min(1px, 1s)');
+    }).bytes).toBe('min(1px, 1s)');
 
     expect(() => registry.dispatch('min', args, {
       modes: { unitMode: 'strict' },
@@ -46,18 +49,18 @@ describe('built-in call failures', () => {
 
   it('reduces each compatible min/max unit group before producing CSS survivors', () => {
     const registry = makeBuiltinRegistry();
-    const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: { bytes: string }) => value.bytes };
+    const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: ValueObj) => value.bytes };
 
     const minResult = registry.dispatch('min', makeList([
       makeDimension(6, 'em'), makeDimension(5), makeDimension(4, 'ex'),
       makeDimension(3), makeDimension(2, 'pt'), makeDimension(1)
-    ], ','), ctx) as { bytes: string };
+    ], ','), ctx);
     expect(minResult.bytes).toBe('min(1, 4ex, 2pt)');
 
     const maxResult = registry.dispatch('max', makeList([
       makeDimension(1, 'px'), makeDimension(2), makeDimension(3, 'em'),
       makeDimension(4), makeDimension(5, 'm'), makeDimension(6)
-    ], ','), ctx) as { bytes: string };
+    ], ','), ctx);
     expect(maxResult.bytes).toBe('max(5m, 3em)');
   });
 
@@ -67,13 +70,18 @@ describe('built-in call failures', () => {
     const emptyArgs = makeList([], ',');
     const context = {
       modes: { unitMode: 'preserve' as const },
-      stringify: (value: { bytes: string }) => value.bytes
+      stringify: (value: ValueObj) => value.bytes
     };
 
     expect(() => registry.dispatch('extract', extractArgs, context)).toThrow('extract() index 2 out of range for length 1');
     expect(() => registry.dispatch('data-uri', emptyArgs, context)).toThrow('data-uri() requires a path');
-    expect((evaluator.call('extract', extractArgs, context.modes) as { bytes: string }).bytes).toBe('extract(one, 2)');
-    expect((evaluator.call('data-uri', emptyArgs, context.modes) as { bytes: string }).bytes).toBe('data-uri()');
+    const extractResult = evaluator.call('extract', extractArgs, context.modes);
+    const dataUriResult = evaluator.call('data-uri', emptyArgs, context.modes);
+    if (extractResult instanceof Promise || dataUriResult instanceof Promise) {
+      throw new Error('Expected preserved calls to resolve synchronously.');
+    }
+    expect(extractResult.bytes).toBe('extract(one, 2)');
+    expect(dataUriResult.bytes).toBe('data-uri()');
   });
 
   it('keeps Less singleton extract semantics for a non-finite index through the registry', () => {
@@ -83,7 +91,7 @@ describe('built-in call failures', () => {
     ], ','), {
       modes: { unitMode: 'preserve' },
       stringify: value => value.bytes
-    }) as { bytes: string };
+    });
 
     expect(result.bytes).toBe('only');
   });
