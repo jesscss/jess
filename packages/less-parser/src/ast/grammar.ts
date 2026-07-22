@@ -3,7 +3,7 @@ import { attempt, choice, composeLeaf, field, leaf, literal, many, noTrivia, nod
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax, lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Comment, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Comment, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
@@ -364,11 +364,11 @@ function isPropRef(value: unknown): value is ValueNode & { readonly type: 'Prope
     && typeof value.raw === 'string';
 }
 
-function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: readonly unknown[]): Reference {
+function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: readonly unknown[]): ValueNode {
   if (accessors.length === 0) {
     return base;
   }
-  const steps: Reference['steps'] = [];
+  const steps: ReferenceStep[] = [];
   for (const child of accessors) {
     const accessor = child as InterpolationAccessorFact;
     if (typeof accessor !== 'object' || accessor === null || !('key' in accessor) || !('keyKind' in accessor) || !('src' in accessor)) {
@@ -401,7 +401,7 @@ function mixinArgumentSource(value: ValueNode): string {
 }
 
 function mixinReferenceWithBracketLookups(base: MixinCall, baseRaw: string, accessors: readonly unknown[]): Reference {
-  const steps: Reference['steps'] = [];
+  const steps: ReferenceStep[] = [];
   let raw = baseRaw;
   for (const child of accessors) {
     const accessor = child as InterpolationAccessorFact;
@@ -419,7 +419,7 @@ function mixinReferenceWithBracketLookups(base: MixinCall, baseRaw: string, acce
  * particular, this never re-reads the source to discover chain structure.
  */
 function referenceWithTails(base: ValueNode | MixinCall, baseRaw: string, tails: readonly unknown[]): Reference {
-  const steps: Reference['steps'] = [];
+  const steps: ReferenceStep[] = [];
   let raw = baseRaw;
   for (const child of tails) {
     if (typeof child !== 'object' || child === null || !('step' in child) || !('src' in child)) {
@@ -2365,7 +2365,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     ),
     children => mixinArgumentsFromChildren(children)
   );
-  const DirectLessReferenceTail = choice<ReferenceTailFact>(
+  const DirectLessReferenceTail = choice(
     node<ReferenceTailFact>(
       'DirectLessReferenceBracketTail',
       g.DirectLessInterpolationAccessor,
