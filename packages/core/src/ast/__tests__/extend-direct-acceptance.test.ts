@@ -18,7 +18,7 @@ describe('direct canonical extend', () => {
     const overlaySubject = collectPlan(overlaySource).subjects[0]!;
     const overlay = {
       subjects: new Array(150_000).fill(overlaySubject),
-      instructions: [],
+      instructions: []
     };
     const plan = collectPlan(stylesheet([rule('.root', [])]), undefined, undefined, overlay);
 

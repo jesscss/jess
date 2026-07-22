@@ -80,8 +80,10 @@ describe('Num operations', () => {
     const n3 = new Num(3);
 
     // Complex operation: (10 + 2) * 3
-    const step1 = n1.operate(n2, '+') as Num;
-    expect(step1).toBeInstanceOf(Num);
+    const step1 = n1.operate(n2, '+');
+    if (!(step1 instanceof Num)) {
+      throw new TypeError('Expected numeric operation result.');
+    }
     expect(step1.number).toBe(12);
 
     const step2 = step1.operate(n3, '*');

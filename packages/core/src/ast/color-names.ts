@@ -27,7 +27,9 @@ export interface NamedColor {
  */
 export function namedColor(name: string): NamedColor | undefined {
   const key = name.toLowerCase();
-  if (key === 'transparent') return { rgb: [0, 0, 0], alpha: 0 };
+  if (key === 'transparent') {
+    return { rgb: [0, 0, 0], alpha: 0 };
+  }
   const rgb = NAMED_RGB[key];
   return rgb ? { rgb: [rgb[0], rgb[1], rgb[2]], alpha: 1 } : undefined;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { IRecognitionException } from 'chevrotain';
+import { createToken, createTokenInstance, NoViableAltException } from 'chevrotain';
 import {
   getErrorFromParser,
   makeJessErrorFromDiagnostic,
@@ -72,23 +72,18 @@ describe('JessError diagnostics', () => {
   });
 
   it('normalizes non-finite Chevrotain parse positions before diagnostics', () => {
-    const parseError = {
-      name: 'NoViableAltException',
-      message: 'Expecting token but found EOF',
-      token: {
-        image: '',
-        startOffset: Number.NaN,
-        endOffset: Number.NaN,
-        startLine: Number.NaN,
-        startColumn: Number.NaN,
-        endLine: Number.NaN,
-        endColumn: Number.NaN
-      },
-      context: {
-        ruleStack: [],
-        ruleOccurrenceStack: []
-      }
-    } as unknown as IRecognitionException;
+    const tokenType = createToken({ name: 'SyntheticEof', pattern: /./u });
+    const token = createTokenInstance(
+      tokenType,
+      '',
+      Number.NaN,
+      Number.NaN,
+      Number.NaN,
+      Number.NaN,
+      Number.NaN,
+      Number.NaN
+    );
+    const parseError = new NoViableAltException('Expecting token but found EOF', token, token);
 
     const diagnostic = toDiagnostic(getErrorFromParser(
       [parseError],

@@ -115,10 +115,8 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */
 export function isNode(x: unknown): x is Node {
-  return (
-    typeof x === 'object'
-    && x !== null
-    && typeof (x as { type?: unknown }).type === 'string'
-    && AST_NODE_TYPES.has((x as { type: string }).type)
-  );
+  if (typeof x !== 'object' || x === null || !('type' in x) || typeof x.type !== 'string') {
+    return false;
+  }
+  return AST_NODE_TYPES.has(x.type);
 }

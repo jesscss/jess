@@ -20,7 +20,6 @@ class CountingWriter extends OutputWriter {
 }
 
 describe('Any and Keyword', () => {
-
   it('renders Any syntax through toTrimmedString()', () => {
     expect(any('foo').toTrimmedString()).toBe('foo');
   });

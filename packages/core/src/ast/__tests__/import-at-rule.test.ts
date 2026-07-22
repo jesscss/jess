@@ -422,7 +422,8 @@ describe('ImportAtRule', () => {
 
     await expect(Promise.resolve(serialize(document, {
       importDocument: () => {
-        loads++; return { document: null };
+        loads++;
+        return { document: null };
       }
     }))).rejects.toMatchObject({
       code: 'resolve/name-not-found',
