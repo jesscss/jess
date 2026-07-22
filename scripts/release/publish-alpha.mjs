@@ -167,6 +167,14 @@ const options = parseArgs(process.argv);
 const rootDir = process.cwd();
 const allowlistPath = path.join(rootDir, 'scripts/release/alpha-allowlist.json');
 const branch = currentBranch();
+const preflightVersion = process.env.ALPHA_PREFLIGHT_VERSION?.trim() || null;
+
+if (preflightVersion && !/^\d+\.\d+\.\d+-alpha\.\d+$/.test(preflightVersion)) {
+  console.error(
+    `Refusing preflight: ALPHA_PREFLIGHT_VERSION '${preflightVersion}' is not an alpha semver.`
+  );
+  process.exit(1);
+}
 
 if (!options.dryRun) {
   assertNpmAuth();
@@ -210,6 +218,13 @@ let restoreVersions = null;
 if (options.tag === 'alpha') {
   const resolution = resolveAlphaPublishVersion({ rootDir, allowlistPath, plan });
   publishVersion = resolution.resolved;
+  if (preflightVersion && preflightVersion !== resolution.resolved) {
+    console.error(
+      `Refusing preflight: candidate ${preflightVersion} is stale; registry resolution now selects `
+      + `${resolution.resolved}. Re-run the release preflight.`
+    );
+    finish(1);
+  }
   console.log(
     `Resolved lockstep alpha version: ${publishVersion} `
     + `(intended ${resolution.intended}, publishedMax ${resolution.publishedMax ?? '(none)'}, ${resolution.reason}).`
@@ -230,16 +245,18 @@ if (options.tag === 'alpha') {
   // on BOTH --dry-run and real publish, so `release:alpha:check` (which invokes
   // this script with --dry-run) catches it before anything is published.
   //
-  // We compare the BRANCH MANIFEST version (`resolution.intended` -- the thing
-  // that gets clobbered) against `minTag`, the MINIMUM (laggard) `alpha`
-  // dist-tag across the allowlisted publish set. Using the min keeps a
-  // partially-completed publish resumable, while `isAlphaClobber`'s `<=` also
-  // refuses an already-published equal version (a code refresh must bump above
-  // it). A matching-base check leaves legitimate minor/major bumps alone.
+  // We compare the branch candidate against `minTag`, the MINIMUM (laggard)
+  // `alpha` dist-tag across the allowlisted publish set. During the orchestrated
+  // preflight the candidate is passed through ALPHA_PREFLIGHT_VERSION because
+  // the snapshot still has the previous manifest version until checks pass.
+  // Using the min keeps a partially-completed publish resumable, while
+  // `isAlphaClobber`'s `<=` also refuses an already-published equal version (a
+  // code refresh must bump above it). A matching-base check leaves legitimate
+  // minor/major bumps alone.
   const minAlphaTag = computeMinAlphaTag(plan.publishOrder, pkgName =>
     getTaggedVersion(pkgName, 'alpha')
   );
-  const manifestVersion = resolution.intended;
+  const manifestVersion = preflightVersion ?? resolution.intended;
   if (isAlphaClobber({ manifestVersion, minTag: minAlphaTag })) {
     console.error(
       `Refusing: alpha branch manifest is ${manifestVersion} but the npm 'alpha' tag already `

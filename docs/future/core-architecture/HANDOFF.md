@@ -339,10 +339,16 @@ reconcile the alpha release note from final gate evidence instead of restoring
 the older alpha docs wholesale.
 
 Commit one controlled refresh on `alpha`, confirm a clean source tree, and run
-the full `release:alpha:check` chain before owner-approved publication. That
-chain is the release build, strict types, production lint, Less-alpha route,
-AST-v2 production ratchet, baseline, release-mode aggressive-cutting review,
-allowlist validation, packed-consumer proof, and publish dry-run.
+the full `release:alpha` chain before owner-approved publication. The
+orchestrator resolves the fresh registry candidate before preflight, passes it
+to the nested publish dry-run without mutating manifests, and writes the
+lockstep versions only after checks pass; this avoids treating the previous
+alpha manifest left by the squash as the publish candidate while retaining the
+alpha-clobber guard. A direct `release:alpha:check` invocation still expects
+the alpha manifests to already carry a fresh candidate. The chain is the
+release build, strict types, production lint, Less-alpha route, AST-v2
+production ratchet, baseline, release-mode aggressive-cutting review, allowlist
+validation, packed-consumer proof, and publish dry-run.
 
 ### Current Less-alpha gate status (2026-07-22; public route and F5 gate green)
 
