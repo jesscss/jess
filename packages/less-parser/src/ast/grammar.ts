@@ -747,6 +747,14 @@ function variableValueWithoutComments(value: ValueSlot): ValueSlot {
   }
   if (value.type === 'List') {
     const items = value.value.map(variableValueWithoutComments);
+    // Direct parser reductions only construct explicit comma lists.  Keep the
+    // parser boundary honest if a broad-core List reaches this cleanup helper:
+    // ordinary adjacency is the raw recursive ValueSlot array, never a List
+    // with a space/undecided separator.
+    if (value.sep !== ',' && value.sep !== '/') {
+      const layout = valueLayoutOf(value);
+      return layout === undefined ? items : withValueLayout(items, layout);
+    }
     if (items.every((item, index) => item === value.value[index])) {
       return value;
     }
@@ -3814,16 +3822,15 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     children => children.map(requireToken).map(token => token.value).join('')
   );
   // Less's attribute name/value interpolation is one complete selector token.
-  // Keep every literal delimiter and every `@{…}` reference as an
-  // `Interpolation` part rather than recovering the bracket text after parsing.
-  // This deliberately admits only the existing Less variable interpolation
-  // spelling; dynamic pseudos and extend headers remain separate, rejected forms.
+  // Keep every literal delimiter and every interpolation reference (`@{…}` and
+  // `${…}`) as an `Interpolation` part rather than recovering the bracket text
+  // after parsing. Dynamic pseudos and extend headers remain separate, rejected forms.
   const DirectLessInterpolatedAttributeToken = node<Interpolation>(
     'DirectLessInterpolatedAttributeToken',
     noTrivia(sequence(
       optional(choice(g.LessAstSyntaxInterpolatedValueStart, g.LessAstSyntaxInterpolatedValueDash)),
-      g.DirectLessVariableInterpolation,
-      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessVariableInterpolation))
+      g.DirectLessInterpolation,
+      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -3845,8 +3852,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'DirectLessInterpolatedAttributeValueToken',
     noTrivia(sequence(
       optional(choice(g.LessAstSyntaxInterpolatedValueStart, g.LessAstSyntaxInterpolatedValueDash)),
-      g.DirectLessVariableInterpolation,
-      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessVariableInterpolation))
+      g.DirectLessInterpolation,
+      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];

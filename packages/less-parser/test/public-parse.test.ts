@@ -93,6 +93,28 @@ describe('public Less parse()', () => {
     );
   });
 
+  it('parses and renders attribute-targeted extends through the canonical AST', () => {
+    const document = parse(`
+.attributes {
+  [data="test"] { extend: attributes; }
+  .attribute-test { &:extend([data="test"] all); }
+}
+`);
+
+    expect(document).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', body: [{ type: 'Rule' }, { type: 'Rule' }] }]
+    });
+    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()), collapseNesting: false }).css).toBe(
+      '.attributes {\n'
+      + '  [data="test"],\n'
+      + '  .attribute-test {\n'
+      + '    extend: attributes;\n'
+      + '  }\n'
+      + '}\n'
+    );
+  });
+
   it('keeps direct declarations in one flattened parent block across a nested rule', () => {
     const document = parse('.parent { before: one; .child { inside: two; } after: three; }');
 
@@ -1005,9 +1027,11 @@ describe('public Less parse()', () => {
       '.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n'
     );
 
-    for (const invalid of ['.card[@{ spaced }=button] { color: red; }', '.card[${name}=button] { color: red; }']) {
+    for (const invalid of ['.card[@{ spaced }=button] { color: red; }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+    // `${…}` property interpolation is admitted in attribute selectors just like `@{…}`.
+    expect(() => parse('.card[${name}=button] { color: red; }')).not.toThrow();
   });
 
   it('returns static namespace type selectors as one SimpleSelector from the public Stylesheet route', () => {
