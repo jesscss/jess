@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { Color } from '@jesscss/core';
+import { makeColorRgb, RGB } from '@jesscss/core/value';
+import { builtinLessFns } from '../../builtins/index.js';
+import { difference as builtinDifference } from '../../builtins/difference.js';
 import average from '../average.js';
 import difference from '../difference.js';
 import exclusion from '../exclusion.js';
@@ -13,7 +16,12 @@ describe('less blend modes', () => {
     const white = new Color({ rgb: [255, 255, 255], alpha: 1 });
 
     expect(average(black, white)._rgb).toEqual([127.5, 127.5, 127.5]);
-    expect(difference(black, white).rgb).toEqual([255, 255, 255]);
+    const blackValue = makeColorRgb([0, 0, 0], 1, RGB);
+    const whiteValue = makeColorRgb([255, 255, 255], 1, RGB);
+    expect(difference(blackValue, whiteValue)).toMatchObject({
+      type: 'Color',
+      bytes: 'rgb(255, 255, 255)'
+    });
     expect(exclusion(black, white).rgb).toEqual([255, 255, 255]);
     expect(multiply(black, white).rgb).toEqual([0, 0, 0]);
     expect(negation(black, white).rgb).toEqual([255, 255, 255]);
@@ -25,5 +33,10 @@ describe('less blend modes', () => {
     const transparentWhite = new Color({ rgb: [255, 255, 255], alpha: 0 });
     const result = average(transparentBlack, transparentWhite);
     expect(result.alpha).toBe(0);
+  });
+
+  it('uses the canonical implementation registered for Less', () => {
+    expect(difference).toBe(builtinDifference);
+    expect(builtinLessFns.find(fn => fn.name === 'difference')).toBe(builtinDifference);
   });
 });

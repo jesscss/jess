@@ -3107,6 +3107,40 @@ or Context deletion lanes.
   `less/`/`sass/` function files require their own behavior-parity batches and
   are not deleted or hidden by this slice.
 
+## Aggressive Cutting Self-Prosecution — Less argb/difference Fn conversion
+
+- Latest pass: Less `argb` and `difference` public paths now directly re-export
+  the existing canonical AST-v2 value-domain implementations from `builtins/`.
+  Focused tests use typed `Color` facts and assert that the Less entrypoint and
+  registry contain the same callable object.
+- Architecture surface: existing value-domain `defineFunction`, color factories,
+  `colorRgbRounded`, `colorRawRgb`, and `colorBlend` only. No legacy `Color`, tree
+  utility, parser host, bridge, fallback evaluator, or duplicate resolver remains
+  in these public modules.
+- Separation/duplication: one implementation per function. The Less files are
+  intentional public entrypoint re-exports, not compatibility shims or duplicate
+  implementations. `argb` preserves rounded display channels plus raw channels;
+  `difference` uses the shared alpha-aware blend kernel.
+- Cumulative node weight: zero AST nodes, frames, maps, side tables, or render
+  state. The functions return only their required canonical `Color` value.
+- New traversal: none. `argb` reads typed color channels once; `difference` uses
+  the existing three-channel blend loop already owned by the shared kernel.
+- New node/materialization: no legacy tree nodes or AST nodes. Color factories
+  create the required canonical value result once.
+- Render path: unchanged typed evaluator/serializer route. No tree conversion,
+  source reparse, output-policy seam, or alternate evaluator was introduced.
+- Helper/API surface: no helper or public name was added. Existing Less `argb`
+  and `difference` entrypoints remain available with the canonical value contract.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none. No traversal, clone, node, spread,
+  side-map, metadata mutation, or routine error-control machinery was added.
+- Evidence: focused argb/blend/serialization tests pass 3 files / 12 tests; full
+  fns suite and package build are required batch gates. No performance claim is
+  made.
+- Verdict: accepted bounded in-place AST-v2 conversion; remaining legacy
+  `less/`/`sass/` function files require their own behavior-parity batches and
+  are not deleted or hidden by this slice.
+
 ## Aggressive Cutting Self-Prosecution — Less e/escape Fn conversion
 
 - Latest pass: Less `e` and `escape` public subpaths now directly re-export the

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { describe, it, expect } from 'vitest';
 import { defineFunction, Color, ColorFormat, Dimension, Context, callWithContext, Sequence, List, Any, Call, Operation } from '@jesscss/core';
+import { makeColorRgb, RGB } from '@jesscss/core/value';
 import {
   percentOf,
   normalizeHue,
@@ -386,42 +387,19 @@ describe('Color Functions', () => {
   });
 
   describe('ARGB Function', () => {
-    it('should serialize argb output as an ARGB hex string', async () => {
-      const context = new Context();
-      const result = await callWithContext(context, argb, new Color({
-        rgb: [255, 238, 170],
-        alpha: 0.1
-      }, { format: ColorFormat.RGB }));
+    it('should serialize argb output as an ARGB hex string', () => {
+      const result = argb(makeColorRgb([255, 238, 170], 0.1, RGB));
 
-      expect(result.toTrimmedString()).toBe('#1affeeaa');
+      expect(result.bytes).toBe('#1affeeaa');
     });
 
-    it('should generate argb output without cloning the input color', async () => {
-      const originalClone = Color.prototype.clone;
-      let cloneCalls = 0;
-      Color.prototype.clone = function countCloneCalls(
-        this: Color,
-        ...args: Parameters<typeof originalClone>
-      ): ReturnType<typeof originalClone> {
-        cloneCalls++;
-        return originalClone.apply(this, args);
-      };
+    it('does not mutate the input color', () => {
+      const input = makeColorRgb([255, 238, 170], 0.1, RGB);
+      const before = input.bytes;
+      const result = argb(input);
 
-      try {
-        const context = new Context();
-        const input = new Color({
-          rgb: [255, 238, 170],
-          alpha: 0.1
-        });
-        const before = input.toTrimmedString();
-        const result = await callWithContext(context, argb, input);
-
-        expect(result.toTrimmedString()).toBe('#1affeeaa');
-        expect(input.toTrimmedString()).toBe(before);
-        expect(cloneCalls).toBe(0);
-      } finally {
-        Color.prototype.clone = originalClone;
-      }
+      expect(result.bytes).toBe('#1affeeaa');
+      expect(input.bytes).toBe(before);
     });
 
     it('should force functional hsla output when passed a hex color', async () => {
