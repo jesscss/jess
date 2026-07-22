@@ -13,6 +13,13 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && Array.isArray(value.children);
 }
 
+function requireStylesheet(value: unknown): Stylesheet {
+  if (!isStylesheet(value)) {
+    throw new Error('Expected a Stylesheet AST value.');
+  }
+  return value;
+}
+
 describe('Less AST grammar facts', () => {
   it('retains a standalone root block comment before an escaped selector in source order', () => {
     const result = run(
@@ -80,7 +87,7 @@ describe('Less AST grammar facts', () => {
         prelude: { type: 'FunctionCall', name: 'url-prefix', args: [{ type: 'Any', src: '""github.com""' }] }
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@-x-document url-prefix(""github.com"") {\n  h1 {\n    color: red;\n  }\n}\n'
     );
 
@@ -135,7 +142,7 @@ describe('Less AST grammar facts', () => {
         }]
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('.x {\n  background-color: #000 \\9;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('.x {\n  background-color: #000 \\9;\n}\n');
   });
 
   it('keeps a generic at-rule parenthesized group structural after ordinary terms', () => {
@@ -159,7 +166,7 @@ describe('Less AST grammar facts', () => {
         }
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@unknown foo 42 (bar) {\n  x {\n    y: z;\n  }\n}\n'
     );
   });
@@ -174,7 +181,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet',
       children: [{ type: 'AtRuleBlock', name: '@page', prelude: { type: 'Any', src: ':first' } }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('@page :first {\n  margin: 3cm;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('@page :first {\n  margin: 3cm;\n}\n');
   });
 
   it('constructs static Less selector captures as existing selector-valued facts', () => {
@@ -746,7 +753,7 @@ describe('Less AST grammar facts', () => {
         ]
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('.subject {\n  color: black;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('.subject {\n  color: black;\n}\n');
   });
 
   it('uses the ordinary direct statement body inside an inline extend rule', () => {
@@ -1269,7 +1276,7 @@ describe('Less AST grammar facts', () => {
     const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
     expect(serializable.ok).toBe(true);
     expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(serializable.value as Stylesheet).css).toBe('.test {\n  size: unit(100, %);\n}\n');
+    expect(serialize(requireStylesheet(serializable.value)).css).toBe('.test {\n  size: unit(100, %);\n}\n');
   });
 
   it('constructs a comparison condition in a Less function argument', () => {
@@ -1312,7 +1319,7 @@ describe('Less AST grammar facts', () => {
     const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
     expect(serializable.ok).toBe(true);
     expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(serializable.value as Stylesheet).css).toBe('.test {\n  x: mix(blue, #FFF /* explanation */, 50%);\n}\n');
+    expect(serialize(requireStylesheet(serializable.value)).css).toBe('.test {\n  x: mix(blue, #FFF /* explanation */, 50%);\n}\n');
   });
 
   it('keeps a generic function argument as one space-separated value slot after its comma boundary', () => {
@@ -1334,7 +1341,7 @@ describe('Less AST grammar facts', () => {
     const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
     expect(serializable.ok).toBe(true);
     expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(serializable.value as Stylesheet).css).toBe('.test {\n  grid-template-columns: repeat(14, 10px /* gap */ 60px);\n}\n');
+    expect(serialize(requireStylesheet(serializable.value)).css).toBe('.test {\n  grid-template-columns: repeat(14, 10px /* gap */ 60px);\n}\n');
   });
 
   it('keeps variable-initializer comments out of later typed call arguments', () => {
@@ -1500,7 +1507,7 @@ describe('Less AST grammar facts', () => {
         { type: 'Declaration', name: 'border', merge: null, value: [{ type: 'Comment', text: '/* value */' }, { type: 'Keyword', src: 'solid' }, { type: 'Color', src: 'black' }] }
       ] }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('.card {\n  color/* property */: grey;\n  margin /* before merge */  /* before colon */: 0;\n  border: /* value */ solid black;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('.card {\n  color/* property */: grey;\n  margin /* before merge */  /* before colon */: 0;\n  border: /* value */ solid black;\n}\n');
   });
 
   it('constructs Less declaration merge and importance modifiers without flattening them into value text', () => {
@@ -1651,7 +1658,7 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@keyframes fade {\n  from,\n  50% {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}\n@-webkit-keyframes "slide" {\n  0%,\n  100% {\n    left: 0;\n  }\n}\n@keyframes spin {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
@@ -1678,7 +1685,7 @@ describe('Less AST grammar facts', () => {
         }]
       }]
     });
-    expect(serialize(direct.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(direct.value)).css).toBe(
       '@keyframes fade {\n  from {\n    /* body note */\n    opacity: 0;\n  }\n}\n'
     );
 
@@ -1822,7 +1829,7 @@ describe('Less AST grammar facts', () => {
         body: [{ type: 'Rule' }]
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@media (tv) {\n  .card {\n    color: red;\n  }\n}\n'
     );
   });
@@ -1849,7 +1856,7 @@ describe('Less AST grammar facts', () => {
         { type: 'AtRuleBlock', name: '@media' }
       ]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@media (min-width: 640px) {\n  .card {\n    color: red;\n  }\n}\n'
     );
 
@@ -1914,7 +1921,7 @@ describe('Less AST grammar facts', () => {
         ] }
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@container (width > 760px) and (not (height > 670px)) {\n  .card {\n    color: red;\n  }\n}\n'
     );
   });
@@ -1937,7 +1944,7 @@ describe('Less AST grammar facts', () => {
         }]
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@container card (inline-size > 30em) {\n  @container style(--responsive: true) {\n    .card {\n      color: red;\n    }\n  }\n}\n'
     );
   });
@@ -1959,7 +1966,7 @@ describe('Less AST grammar facts', () => {
         ] } }
       ]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe(
+    expect(serialize(requireStylesheet(result.value)).css).toBe(
       '@container card (inline-size > 30em) {\n  .card {\n    color: red;\n  }\n}\n'
     );
   });
@@ -2131,7 +2138,7 @@ describe('Less AST grammar facts', () => {
         { type: 'Rule', body: [{ type: 'MixinCall', name: '.wrap', args: [{ value: { type: 'Color', src: 'red' } }] }] }
       ]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('.card {\n  color: red;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('.card {\n  color: red;\n}\n');
   });
 
   it('constructs semicolon-separated mixin parameters with detached-ruleset defaults', () => {
@@ -2187,7 +2194,7 @@ describe('Less AST grammar facts', () => {
         ]
       }] }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('.out {\n  left: a, b, c;\n  right: a, b, c;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('.out {\n  left: a, b, c;\n  right: a, b, c;\n}\n');
   });
 
   it('constructs public literal-pattern and variadic mixin parameters directly', () => {
@@ -2242,7 +2249,7 @@ describe('Less AST grammar facts', () => {
         }] }
       ]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('.card {\n  first: one;\n  second: two;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('.card {\n  first: one;\n  second: two;\n}\n');
   });
 
   it('constructs static namespaced mixin calls through the existing path contract', () => {
@@ -2293,7 +2300,7 @@ describe('Less AST grammar facts', () => {
       { trivia: lessAstGrammar.whitespace }
     );
     expect(lexical.ok).toBe(true);
-    expect(serialize(lexical.value as Stylesheet).css).toBe('.x {\n  width: 10px;\n  height: 10px;\n}\n');
+    expect(serialize(requireStylesheet(lexical.value)).css).toBe('.x {\n  width: 10px;\n  height: 10px;\n}\n');
   });
 
   it('constructs static namespace/map reads as References over the existing MixinCall path base', () => {
@@ -2640,7 +2647,7 @@ describe('Less AST grammar facts', () => {
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    const children = (result.value as Stylesheet).children;
+    const children = requireStylesheet(result.value).children;
     expect([children[2], children[3], children[7]]).toMatchObject([
       {
         type: 'Rule',
@@ -2703,7 +2710,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ type: 'Stylesheet' });
-    expect((result.value as Stylesheet).children[0]).toMatchObject({
+    expect(requireStylesheet(result.value).children[0]).toMatchObject({
       type: 'MixinDef', name: '.match',
       guard: {
         g: 'cmp', op: '=',
@@ -2851,7 +2858,7 @@ describe('Less AST grammar facts', () => {
     const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
     expect(serializable.ok).toBe(true);
     expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(serializable.value as Stylesheet).css).toBe('.test {\n  shadow: rgb(1, /* note */ 2);\n}\n');
+    expect(serialize(requireStylesheet(serializable.value)).css).toBe('.test {\n  shadow: rgb(1, /* note */ 2);\n}\n');
   });
 
   it('keeps escaped and legacy-hack spelling confined to declaration names and CSS-escaped mixins', () => {
@@ -3064,7 +3071,7 @@ describe('Less AST grammar facts', () => {
         }]
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('.x {\n  color: pre-red;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('.x {\n  color: pre-red;\n}\n');
   });
 
   it('constructs child-combinator and comma-list selectors structurally', () => {
@@ -3118,7 +3125,7 @@ describe('Less AST grammar facts', () => {
         ] }
       }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('#a /* first */,\n/* second */ .b {\n  x: y;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('#a /* first */,\n/* second */ .b {\n  x: y;\n}\n');
   });
 
   it('constructs repeated static combinators as canonical complex segments', () => {
@@ -3248,7 +3255,7 @@ describe('Less AST grammar facts', () => {
         }]
       }] }]
     });
-    expect(serialize(result.value as Stylesheet).css).toBe('#first > .second + #third {\n  color: purple;\n}\n');
+    expect(serialize(requireStylesheet(result.value)).css).toBe('#first > .second + #third {\n  color: purple;\n}\n');
   });
 
   it('constructs descendant selectors as canonical space-combinator segments', () => {
