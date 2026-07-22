@@ -42,7 +42,9 @@ function currentBranchName() {
 function aggressiveReviewMode() {
   return MODE === 'staged' && currentBranchName() === 'alpha'
     ? 'release'
-    : MODE;
+    : MODE === 'upstream'
+      ? undefined
+      : MODE;
 }
 
 function run(command, args, packageDir, options = {}) {
@@ -325,7 +327,13 @@ function runVerifyBaseline() {
 
 function runAggressiveCuttingReview({ mode, skipExecutableEvidence = false } = {}) {
   console.log('\n==> Running verify:aggressive-cutting-review (hot-path cost/admission contracts)');
-  const args = ['run', 'verify:aggressive-cutting-review', '--', `--mode=${mode}`];
+  const args = ['run', 'verify:aggressive-cutting-review'];
+  if (mode || skipExecutableEvidence) {
+    args.push('--');
+  }
+  if (mode) {
+    args.push(`--mode=${mode}`);
+  }
   if (skipExecutableEvidence) {
     args.push('--skip-executable-evidence');
   }
