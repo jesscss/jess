@@ -1,1 +1,1 @@
-export * from "./selector-match-core.js";
+export * from './selector-match-core.js';

@@ -376,6 +376,35 @@ a blanket optimization exemption or a new active architecture queue.
       "why": "This slice changes only ESLint-required braces, operator layout, arrow-parameter style, and trailing commas in the existing AST extend emitter. It adds no planner, selector traversal, allocation, or output policy; the emitted extend facts and dispatch path are unchanged.",
       "byteIdentity": {"fixture":"benchmark.less","collapseNesting":true,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
     }
+  },
+  {
+    "id": "bounded-core-tree-lint-guards",
+    "kind": "semantic-runtime",
+    "surface": "bounded core tree list and validation helper type-safety cleanup",
+    "files": [
+      "packages/core/src/tree/list.ts",
+      "packages/core/src/tree/util/check-valid-nodes.ts",
+      "packages/core/src/tree/util/evaluate-node-array.ts",
+      "packages/core/src/tree/util/callable-candidate.ts",
+      "packages/core/src/tree/util/extend-helpers.ts"
+    ],
+    "semanticRuntime": {
+      "owner": "the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+      "scope": "This batch removes unsafe type assertions and a runtime class import cycle while preserving the existing List, node-validation, array-evaluation, callable-candidate, and extend-helper behavior. It truthfully models parser raw values at List boundaries and uses the existing coercer only where node-only consumers require it; this is semantic/type-safety work with no claimed speed, neutrality, byte identity, or cost decrease.",
+      "cases": [
+        "List raw NodeArrayItem normalization",
+        "canonical node-array prefix guard",
+        "root node validation narrowing",
+        "callable candidate record narrowing",
+        "extend helper lint-safe syntax"
+      ],
+      "performanceClaim": "none",
+      "baseline": {"fixture": "benchmark.less", "phase": "render"}
+    },
+    "evidence": {
+      "behaviorCommand": ["pnpm", "--filter", "@jesscss/core", "exec", "vitest", "run", "src/tree/__tests__/list.test.ts", "src/tree/util/__tests__/callable-candidate.test.ts", "src/tree/util/__tests__/callable-candidate-execution.test.ts", "src/tree/util/__tests__/callable-candidate-loop.test.ts", "src/tree/util/__tests__/callable-candidate-match.test.ts", "src/tree/util/__tests__/callable-candidate-output.test.ts", "src/tree/util/__tests__/callable-candidate-state.test.ts", "src/tree/util/__tests__/check-valid-nodes.test.ts", "src/tree/util/__tests__/find-extendable-locations.test.ts"],
+      "buildCommand": ["pnpm", "--filter", "@jesscss/core", "run", "compile"]
+    }
   }
 ]
 ```

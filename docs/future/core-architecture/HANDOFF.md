@@ -2452,3 +2452,86 @@ silently choose one language’s policy.
   ```
 - Verdict: accepted deletion. It removes a duplicate import executor and its
   public tree surface while retaining the canonical AST-v2 import contract.
+
+### Addendum: bounded core tree lint guards (2026-07-21)
+
+This bounded cleanup covers only `tree/list.ts`,
+`tree/util/check-valid-nodes.ts`, `tree/util/evaluate-node-array.ts`,
+`tree/util/callable-candidate.ts`, and `tree/util/extend-helpers.ts`. It does
+not touch the import-style, emit-walk, serialize-helper, extend-index, spine,
+or Context deletion lanes.
+
+- **Review-flagged diff tokens:** `[loop/traversal]`, `[array helper]`,
+  `[node construction]`, and `[materialized array/object]` are accounted for
+  below; no performance claim is made.
+- **New traversal:** `isNodeArray` checks the already-materialized prefix only
+  when a raw parser value segment first appears. Existing list loops remain
+  source-order emission/evaluation loops; this adds no new render walk.
+- **New materialization:** `coerceNodeArray` is reused at list boundaries so
+  parser raw strings/arrays are normalized once before node-only helpers. Its
+  all-Node fast path returns the original array; the raw-shape path is the
+  existing cold normalization contract, not a second tree.
+- **Node/error path:** the new `TypeError` is an exceptional invariant guard for
+  an impossible raw prefix, not routine control flow or node materialization.
+- **Evidence:** List 26/26; callable-candidate 18/18; check-valid-nodes 6/6;
+  find-extendable-locations 14/14; core compile and staged aggressive review
+  pass. The optional test’s deliberate `as never` call remains untouched as an
+  API-contract follow-up.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: bounded core tree lint/type-safety cleanup across five source
+  files; no import-style, emit-walk, serialize-helper, extend-index, spine, or
+  Context deletion lane was changed.
+- Architecture surface: existing List and validation helpers retain their
+  runtime responsibilities. Unsafe assertions were replaced with truthful
+  `NodeArrayItem` typing, `isNode`/`N` narrowing, and the existing
+  `coerceNodeArray` boundary; no parser host, bridge, visitor ABI, resolver, or
+  construction host was introduced.
+- Separation/duplication: parser raw values remain representable at the List
+  boundary, while node-only consumers reuse the one existing coercer; no second
+  list model or conversion bridge was added.
+- Cumulative node weight: no AST node class, source node, parent link, frame
+  state, or render-session map is allocated by this cleanup.
+- New traversal: `isNodeArray` inspects only the existing prefix after a raw
+  segment; existing source-order List loops are unchanged.
+- New traversal/materialization: `isNodeArray` inspects only the existing
+  prefix after a raw segment; `coerceNodeArray` returns all-Node arrays as-is
+  and normalizes only the existing raw parser shape at node-only boundaries.
+- New node/materialization: the existing coercer returns its input for all-Node
+  arrays and normalizes only the documented raw parser shape; no second tree is
+  created.
+- Render path: List render/evaluate/compare behavior and output order are
+  unchanged.
+- Helper/API surface: no public API was added; the List input shape and helper
+  narrowing now state the runtime facts truthfully.
+- Metadata mutations: no AST parent/source/provenance mutation or side table
+  was added.
+- Review-flagged diff tokens: `[loop/traversal]` existing source-order walk;
+  `[array helper]` existing coercion boundary; `[array spread/materialization]`
+  existing spread contract; `[node construction]` unchanged direct
+  construction; `[side map/set]` unchanged; `[routine error control]` only
+  exceptional invariant `TypeError`; `[materialized array/object]` unchanged
+  render-time work.
+- Evidence: focused tests pass List 26/26, callable-candidate 18/18,
+  check-valid-nodes 6/6, and find-extendable-locations 14/14; all five changed
+  production files report zero ESLint errors; core compile passes. No speed,
+  neutrality, byte-identity, or memory claim is made.
+- Hot-path cost contracts:
+  ```json
+  [{
+    "id":"bounded-core-tree-lint-guards",
+    "verdict":"accepted",
+    "owner":"the five bounded core tree helper owners listed by bounded-core-tree-lint-guards",
+    "cases":["List raw NodeArrayItem normalization","canonical node-array prefix guard","root node validation narrowing","callable candidate record narrowing","extend helper lint-safe syntax"],
+    "performanceClaim":"none",
+    "why":"This is bounded type-safety and initialization-cycle repair over existing helpers. It preserves established List, validation, array evaluation, callable candidate, and extend-helper behavior.",
+    "dangerTokensJustification":"Checked raw-prefix narrowing and reuse of the existing coercer add no render/tree traversal, node construction, side map, cloning path, or routine exception control; the invariant TypeError is exceptional and the all-node path returns the original array.",
+    "behaviorEvidence":"Focused Vitest suites pass List 26/26, callable-candidate 18/18, check-valid-nodes 6/6, and find-extendable-locations 14/14.",
+    "buildEvidence":"The five changed production files report zero ESLint errors and core compile completes successfully.",
+    "baseline":{"fixture":"benchmark.less","phase":"render","currentMedianMs":74.0,"outputSha256":"ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6","outputBytes":122390}
+  }]
+  ```
+- Verdict: accepted bounded semantic/type-safety cleanup; the optional test
+  assertion is a deliberate API-contract follow-up, not a suppressed lint
+  error.

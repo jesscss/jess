@@ -17,7 +17,7 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import { coerceValueNode, evaluateNodeArrayMaybe, type NodeArrayItem } from './util/evaluate-node-array.js';
+import { coerceNodeArray, coerceValueNode, evaluateNodeArrayMaybe, type NodeArrayItem } from './util/evaluate-node-array.js';
 
 function emitListItem<T extends Node>(
   item: T,
@@ -33,8 +33,8 @@ function emitListItem<T extends Node>(
   }
 }
 
-function emitListItemSyntax<T extends Node>(
-  item: T,
+function emitListItemSyntax(
+  item: NodeArrayItem,
   options: FinalPrintOptions,
   suppressPre = false
 ): void {
@@ -45,7 +45,7 @@ function emitListItemSyntax<T extends Node>(
   // stays node-only. Eval-time coercion covers the render path; this covers the
   // static-serialize path (`Paren` → `List.writeSyntax`) without perturbing the
   // stored value (which round-trips preserved passthroughs).
-  const node = item instanceof Node ? item : coerceValueNode(item as unknown as NodeArrayItem);
+  const node = item instanceof Node ? item : coerceValueNode(item);
   try {
     node.writeSyntax(options);
   } finally {
@@ -78,7 +78,7 @@ function emitRenderedListItemMaybe<T extends Node>(
     throw error;
   }
   if (isThenable(rendered)) {
-    return (rendered as Promise<void>).then(
+    return Promise.resolve(rendered).then(
       () => {
         options.suppressBoundaryTrivia = saved;
       },
@@ -183,7 +183,7 @@ function renderListValueDirectMaybe<T extends Node>(
   let item = value[0]!;
   const first = emitRenderedListItemMaybe(item, context, printOptions);
   if (isThenable(first)) {
-    return (first as Promise<void>).then(() => renderRest(1, item));
+    return Promise.resolve(first).then(() => renderRest(1, item));
   }
   for (let i = 1; i < value.length; i++) {
     const prev = item;
@@ -191,7 +191,7 @@ function renderListValueDirectMaybe<T extends Node>(
     emitListSeparator(prev, item, printOptions, sep);
     const rendered = emitRenderedListItemMaybe(item, context, printOptions, true);
     if (isThenable(rendered)) {
-      return (rendered as Promise<void>).then(() => renderRest(i + 1, item));
+      return Promise.resolve(rendered).then(() => renderRest(i + 1, item));
     }
   }
   return w.getSince(mark);
@@ -207,7 +207,7 @@ export type ListOptions = {
   sep?: ',' | ';' | '/';
 };
 
-export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
+export interface List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions> {
   eval(context: Context): Promise<this>;
 }
 
@@ -218,16 +218,16 @@ export interface List<T extends Node = Node> extends Node<T[], ListOptions> {
  * or .sel, #id.class, [attr]
  * or one / two / three
  */
-export class List<T extends Node = Node> extends Node<T[], ListOptions> {
+export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions> {
   static override childKeys = ['value'] as const;
 
   readonly value: T[];
   readonly sep: ListOptions['sep'];
 
-  constructor(value: NodeArrayItem[], options?: ListOptions, location?: NodeLocation) {
-    super(value as T[], options, location);
+  constructor(value: T[], options?: ListOptions, location?: NodeLocation) {
+    super(value, options, location);
     // Invariant 7: each node owns its value; the base stores nothing.
-    this.value = value as T[];
+    this.value = value;
     this.sep = options?.sep;
   }
 
@@ -249,8 +249,9 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   private deriveAdditionList(): List<Node> {
     const values = new Array<Node>(this.value.length);
+    const nodes = coerceNodeArray(this.value);
     for (let i = 0; i < this.value.length; i++) {
-      values[i] = this.value[i]!.cloneForPlacement();
+      values[i] = nodes[i]!.cloneForPlacement();
     }
     return new List<Node>(
       values,
@@ -259,8 +260,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     ).inherit(this);
   }
 
-  private renderListSyntax(value = this.value, options?: PrintOptions): string {
-    return renderListValueSyntax(value, getPrintOptions(options), this.sep ?? ',');
+  private renderListSyntax(value: NodeArrayItem[] = this.value, options?: PrintOptions): string {
+    return renderListValueSyntax(coerceNodeArray(value), getPrintOptions(options), this.sep ?? ',');
   }
 
   get length() {
@@ -283,14 +284,15 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
 
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
-    if (this.value.length === 0) {
+    const value = coerceNodeArray(this.value);
+    if (value.length === 0) {
       return;
     }
-    let item = this.value[0]!;
+    let item = value[0]!;
     emitListItemSyntax(item, options);
-    for (let i = 1; i < this.value.length; i++) {
+    for (let i = 1; i < value.length; i++) {
       const prev = item;
-      item = this.value[i]!;
+      item = value[i]!;
       emitListSeparator(prev, item, options, this.sep ?? ',');
       emitListItemSyntax(item, options, true);
     }
@@ -300,7 +302,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     if (this.hasFlag(F_STATIC)) {
-      return this.renderResolvedListValue(context, this.value, bufferOrOptions, options);
+      return this.renderResolvedListValue(context, coerceNodeArray(this.value), bufferOrOptions, options);
     }
     return this.renderDirectListValueMaybe(context, bufferOrOptions, options);
   }
@@ -308,7 +310,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   override compare(other: Node) {
     if (other instanceof List) {
       const equalityMode = this.sourceRoot?._treeContext?.options.equalityMode ?? 'less';
-      const result = compareNodeArray(this.value, other.value, equalityMode);
+      const result = compareNodeArray(coerceNodeArray(this.value), coerceNodeArray(other.value), equalityMode);
       return result;
     }
     if (other.type === 'Any') {
@@ -349,10 +351,8 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const out = this.renderListSyntax(value as T[], prepared);
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
+    const out = this.renderListSyntax(value, prepared);
     return buffer
       ? writeRenderText(buffer, out)
       : out;
@@ -367,15 +367,12 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      : prepareRenderPrintState(context, bufferOrOptions as PrintOptions | undefined);
-    const out = renderListValueDirectMaybe(context, this.value, prepared, this.sep ?? ',');
+      : prepareRenderPrintState(context, isRenderBuffer(bufferOrOptions) ? undefined : bufferOrOptions);
+    const out = renderListValueDirectMaybe(context, coerceNodeArray(this.value), prepared, this.sep ?? ',');
     if (isThenable(out)) {
-      return (out as Promise<string>).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);
+      return Promise.resolve(out).then(rendered => buffer ? writeRenderText(buffer, rendered) : rendered);
     }
-    return buffer
-      ? writeRenderText(buffer, out as string)
-      : out;
+    return buffer ? writeRenderText(buffer, out) : out;
   }
 
   protected override evalNode(context: Context): MaybePromise<List<Node>> {
@@ -385,7 +382,7 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
     const source = this.value;
     const values = evaluateNodeArrayMaybe(context, source);
     if (isThenable(values)) {
-      return (values as Promise<Node[]>).then((resolvedValues) => {
+      return Promise.resolve(values).then((resolvedValues) => {
         if (resolvedValues === source) {
           return this;
         }
@@ -449,10 +446,4 @@ export class List<T extends Node = Node> extends Node<T[], ListOptions> {
   // }
 }
 
-type Params = ConstructorParameters<typeof List>;
-
-export const list = defineType(List, 'List') as (
-  value: Params[0],
-  options?: Params[1],
-  location?: Params[2]
-) => List;
+export const list = defineType(List, 'List');
