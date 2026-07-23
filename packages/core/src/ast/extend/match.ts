@@ -22,6 +22,7 @@ import {
   textSimples
 } from './ir.js';
 import type { Branch, Compound, Seg, Simple } from './ir.js';
+import { wouldConflict } from './conflict.js';
 import { recordAstExtendProfile } from './plan.js';
 
 /**
@@ -37,12 +38,29 @@ export function applyInstruction(
   partial: boolean,
   extenderKeys: Set<string>,
   targetAtoms: Set<string>,
-  extenderHidden = false
+  extenderHidden = false,
+  // The plain-text simples of the ENCLOSING compound(s) this list sits inside — non-empty
+  // only when the fixpoint re-enters an instruction into an `:is()` graft (`div:is(<list>)`
+  // threads `['div']`). The element/id conflict guard unions it so a wrap decided INSIDE a
+  // graft still sees the full outer compound context (an extender that would form
+  // `div ∧ span` is rejected even when `span` is re-tried transitively through the graft).
+  outerSurrounding: readonly string[] = []
 ): Branch[] | null {
   const targetKey = branchText(target);
   const out: Branch[] = [];
   const appends: Branch[] = [];
   let changed = false;
+
+  // When this list sits INSIDE an `:is()` graft (`outerSurrounding` non-empty), a
+  // whole-branch append adds a NEW `:is()` arm that distributes over the enclosing
+  // compound — so an extender forming an invalid two-type / two-id compound with
+  // `outerSurrounding` must be dropped here as well (the append path, unlike the
+  // sub-wrap, has no matched compound of its own to reason about). At the top level
+  // (`outerSurrounding` empty) an append is a rule-level comma sibling that can never
+  // conflict, so the input array is used verbatim — byte-identical, no allocation.
+  const appendExtenders = outerSurrounding.length > 0
+    ? nonConflictingExtenders(outerSurrounding, extenders)
+    : extenders;
 
   for (const b of list) {
     // Core matcher comparison: one candidate branch tested against the target.
@@ -67,7 +85,7 @@ export function applyInstruction(
     // `:is(.replace.replace, …) .replace`).
     if (branchExactEquivalent(b, target) || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
       out.push(b);
-      for (const e of extenders) {
+      for (const e of appendExtenders) {
         pushExtender(appends, e, chainHidden);
       }
       continue;
@@ -90,7 +108,7 @@ export function applyInstruction(
       // matches with surrounding combinator context (see `substituteMultiCompound`).
       if (matchesWholeBranchSubset(b, target)) {
         out.push(b);
-        for (const e of extenders) {
+        for (const e of appendExtenders) {
           pushExtender(appends, e, chainHidden);
         }
         continue;
@@ -102,7 +120,7 @@ export function applyInstruction(
       // the hidden extender's text). Skip the in-place substitution for this branch;
       // the net visible effect of a hidden extender's sub-match is nothing.
       if (!effHidden) {
-        const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys, targetAtoms);
+        const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys, targetAtoms, outerSurrounding);
         if (rewritten) {
           out.push(rewritten);
           changed = true;
@@ -267,17 +285,18 @@ function rewriteBranchPartial(
   extenders: Branch[],
   partial: boolean,
   extenderKeys: Set<string>,
-  targetAtoms: Set<string>
+  targetAtoms: Set<string>,
+  outerSurrounding: readonly string[]
 ): Branch | null {
   const before = branchText(b);
   let work = cloneBranch(b);
 
   // (1) recurse into `:is()` grafts (transitive chaining lives inside them).
-  work = recurseIntoGrafts(work, target, extenders, partial, extenderKeys, targetAtoms);
+  work = recurseIntoGrafts(work, target, extenders, partial, extenderKeys, targetAtoms, outerSurrounding);
 
   // (2) span substitution against the (possibly graft-updated) branch.
   if (target.segs.length === 1) {
-    work = substituteSingleCompound(work, target.segs[0]!.compound, extenders);
+    work = substituteSingleCompound(work, target.segs[0]!.compound, extenders, outerSurrounding);
   } else {
     work = substituteMultiCompound(work, target, extenders);
   }
@@ -285,33 +304,87 @@ function rewriteBranchPartial(
   return branchText(work) !== before ? work : null;
 }
 
-/** Recurse an instruction into every `:is()` graft simple in the branch. */
+/** Recurse an instruction into every `:is()` graft simple in the branch. A graft
+ * `:is(<inner>)` distributes back over its compound's BARE text simples, so those
+ * simples (unioned with the inherited `outerSurrounding`) become the outer conflict
+ * context threaded into the inner apply — keeping the element/id guard aware of the
+ * full enclosing compound one level down. */
 function recurseIntoGrafts(
   b: Branch,
   target: Branch,
   extenders: Branch[],
   partial: boolean,
   extenderKeys: Set<string>,
-  targetAtoms: Set<string>
+  targetAtoms: Set<string>,
+  outerSurrounding: readonly string[]
 ): Branch {
   return mkBranch(
-    b.segs.map(seg => ({
-      comb: seg.comb,
-      compound: {
-        simples: seg.compound.simples.map((s): Simple => {
-          if (s.t !== 'is') {
-            return s;
-          }
-          const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms);
-          return inner ? { t: 'is', branches: inner } : s;
-        })
+    b.segs.map((seg) => {
+      let graftOuter = outerSurrounding;
+      for (const s of seg.compound.simples) {
+        if (s.t === 'text') {
+          graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
+        }
       }
-    }))
+      return {
+        comb: seg.comb,
+        compound: {
+          simples: seg.compound.simples.map((s): Simple => {
+            if (s.t !== 'is') {
+              return s;
+            }
+            const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
+            return inner ? { t: 'is', branches: inner } : s;
+          })
+        }
+      };
+    })
   );
 }
 
+/**
+ * ELEMENT/ID CONFLICT GUARD. The matched compound is about to be wrapped as
+ * `<surrounding>:is(<matched>, <extenders…>)`; on serialization each extender
+ * distributes back over `surrounding`, so an extender whose TERMINAL compound would
+ * place a SECOND distinct element type or a SECOND distinct id alongside `surrounding`
+ * forms invalid CSS and must NOT be wrapped. Returns the extenders that survive.
+ *
+ * The rejection is PER EXTENDER, not all-or-nothing: a folded group can pair a benign
+ * extender (`.b`) with a conflicting one (`span`), and only the conflicting one is
+ * dropped — the tree-v1 `partialWrapMayConflict` reject applied at extender
+ * granularity. When nothing conflicts the input array is returned as-is (no
+ * allocation on the common path). See `./conflict.ts`.
+ */
+function nonConflictingExtenders(surrounding: readonly string[], extenders: Branch[]): Branch[] {
+  let kept: Branch[] | null = null;
+  for (let i = 0; i < extenders.length; i++) {
+    const e = extenders[i]!;
+    const lastSeg = e.segs[e.segs.length - 1];
+    if (lastSeg && wouldConflict(surrounding, textSimples(lastSeg.compound))) {
+      // First conflict: materialize the survivors seen so far, then skip this one.
+      kept ??= extenders.slice(0, i);
+    } else if (kept !== null) {
+      kept.push(e);
+    }
+  }
+  return kept ?? extenders;
+}
+
+/** The matched compound's simples left OUTSIDE the `:is()` wrap (bare text simples not
+ * pulled in by `needSet`), unioned with the enclosing-graft `outerSurrounding`. This is
+ * the full compound context an extender must not conflict with. */
+function surroundingOf(compound: Compound, needSet: Set<string>, outerSurrounding: readonly string[]): string[] {
+  const out: string[] = outerSurrounding.length > 0 ? [...outerSurrounding] : [];
+  for (const s of compound.simples) {
+    if (s.t === 'text' && !needSet.has(s.text)) {
+      out.push(s.text);
+    }
+  }
+  return out;
+}
+
 /** Substitute a single-compound target inside every matching compound. */
-function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders: Branch[]): Branch {
+function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders: Branch[], outerSurrounding: readonly string[]): Branch {
   const need = textSimples(targetCompound);
   const needSet = new Set(need);
   const segs = b.segs.map((seg) => {
@@ -319,8 +392,15 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
     if (!multisetSubset(need, have)) {
       return seg;
     }
+    // Drop any extender whose wrap would form an invalid two-type / two-id compound
+    // with the surrounding context (graft-inherited outer context included). If none
+    // survive, leave this segment — and, if nothing else changes, the branch — as authored.
+    const kept = nonConflictingExtenders(surroundingOf(seg.compound, needSet, outerSurrounding), extenders);
+    if (kept.length === 0) {
+      return seg;
+    }
     if (need.length > 1) {
-      return { comb: seg.comb, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, extenders) };
+      return { comb: seg.comb, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, kept) };
     }
     // single-simple target: wrap each matched slot individually (deduping a
     // self-extend's `:is(x, x)` down to `x`).
@@ -329,7 +409,7 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
       compound: {
         simples: seg.compound.simples.flatMap((s): Simple[] =>
           s.t === 'text' && needSet.has(s.text)
-            ? isOrPlainSimples([descendantBranch([cloneSimple(s)]), ...extenders])
+            ? isOrPlainSimples([descendantBranch([cloneSimple(s)]), ...kept])
             : [cloneSimple(s)]
         )
       }
