@@ -8,8 +8,8 @@ import { attempt, choice, composeLeaf, field, literal, many, noTrivia, node, not
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
-import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -76,8 +76,8 @@ type JessAstRules = {
   DirectJessSimple: Combinator<SimpleSelector>;
   DirectJessInterpolatedSimple: Combinator<SimpleSelector>;
   DirectJessAttribute: Combinator<SimpleSelector>;
-  DirectJessPseudo: Combinator<SimpleSelector>;
-  DirectJessStaticPseudoArgument: Combinator<string>;
+  DirectJessPseudo: Combinator<SimpleToken>;
+  DirectJessStaticPseudoArgument: Combinator<SelectorList | string>;
   DirectJessCompound: Combinator<CompoundSelector>;
   DirectJessStaticCompound: Combinator<CompoundSelector>;
   DirectJessStaticComplexTail: Combinator<JessComplexTail>;
@@ -267,9 +267,18 @@ function isJessReferenceTail(value: unknown): value is JessReferenceTail {
     && 'step' in value && 'src' in value && typeof value.src === 'string';
 }
 
-function requireSimpleSelector(value: unknown): SimpleSelector {
-  if (!isSimpleSelector(value)) {
-    throw new TypeError('Direct Jess AST grammar produced a non-simple selector child.');
+function isPseudoSelector(value: unknown): value is PseudoSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'PseudoSelector';
+}
+
+function isSimpleToken(value: unknown): value is SimpleToken {
+  return isSimpleSelector(value) || isPseudoSelector(value);
+}
+
+function requireSimpleToken(value: unknown): SimpleToken {
+  if (!isSimpleToken(value)) {
+    throw new TypeError('Direct Jess AST grammar produced a non-simple-token child.');
   }
   return value;
 }
@@ -333,6 +342,13 @@ function requireKeyword(value: unknown): Keyword {
 function staticSelectorText(selector: SelectorList): string {
   return selector.selectors.map(complexCanonical).join(', ');
 }
+
+// Selector-function pseudos whose argument is retained as a structured
+// `SelectorList` rather than collapsed to text. Gated on the pseudo NAME
+// (lowercased, colon-stripped), never on colon count — `::slotted()` takes a
+// selector argument but is absent here, so it stays opaque text. `crossable`
+// (a narrower set) is decided in core. Mirrors the CSS grammar's set.
+const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
 function isExtendInstruction(value: unknown): value is ExtendInstruction {
   return typeof value === 'object' && value !== null
@@ -1320,7 +1336,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     children => simpleSelector(children.map(requireToken).map(token => token.value).join(''))
   );
-  const DirectJessPseudo = node<SimpleSelector>(
+  const DirectJessPseudo = node<SimpleToken>(
     'DirectJessPseudo',
     sequence(
       g.CssAstSyntaxPseudoColon,
@@ -1329,13 +1345,25 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     (children) => {
       const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
-      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${requireString(children[3])})`);
+      if (children.length === 2) {
+        return simpleSelector(head);
+      }
+      // Parser = STRUCTURE + trivia only. A whitelisted selector-function pseudo
+      // keeps the parsed `args` (SelectorList) and does NOT join: core serialize
+      // owns the inline `:is(a, b)` rule (`pseudoCanonical`). The nth/opaque path
+      // still collapses to canonical SimpleSelector text via `staticSelectorText`.
+      const arg = children[3];
+      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(requireToken(children[1]).value.toLowerCase())) {
+        return pseudoSelector(head, arg);
+      }
+      const argText = isSelectorList(arg) ? staticSelectorText(arg) : requireString(arg);
+      return simpleSelector(`${head}(${argText})`);
     }
   );
   const DirectJessStaticCompound = node<CompoundSelector>(
     'DirectJessStaticCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessSimple))),
-    children => compoundSelectorOf(children.map(requireSimpleSelector))
+    children => compoundSelectorOf(children.map(requireSimpleToken))
   );
   const directJessCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'));
   const DirectJessStaticComplexTail = node<JessComplexTail>(
@@ -1384,20 +1412,25 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     sequence(directJessStaticNthOfHead, parser({ trivia: whitespace }, g.DirectJessStaticSelector), regex(/(?=\))/)),
     sequence(g.CssAstSyntaxNth, regex(/(?=\))/))
   );
-  const DirectJessStaticPseudoArgument = node<string>(
+  // Retain the parsed `SelectorList` rather than collapsing it to text: a
+  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // `args` and never canonicalizes at parse (the inner `_canon` memos stay
+  // unpopulated). The typed An+B / `2n+1 of …` arm still yields scanned text;
+  // `DirectJessPseudo` derives opaque SimpleSelector text from either shape.
+  const DirectJessStaticPseudoArgument = node<SelectorList | string>(
     'DirectJessStaticPseudoArgument',
     choice(
       directJessStaticNthPseudoArgument,
       parser({ trivia: whitespace }, g.DirectJessStaticSelector)
     ),
     (children) => {
-      const selector = children.find((child): child is SelectorList => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SelectorList');
+      const selector = children.find(isSelectorList);
       const nth = children.find(isToken);
       if (nth === undefined) {
         if (selector === undefined) {
           throw new TypeError('Direct Jess static pseudo argument lost its selector.');
         }
-        return staticSelectorText(selector);
+        return selector;
       }
       return selector === undefined ? nth.value : `${nth.value}${staticSelectorText(selector)}`;
     }
@@ -2455,7 +2488,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessCompound = node<CompoundSelector>(
     'DirectJessCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessInterpolatedSimple, g.DirectJessSimple))),
-    children => compoundSelectorOf(children.map(requireSimpleSelector))
+    children => compoundSelectorOf(children.map(requireSimpleToken))
   );
   const DirectJessComplexTail = node<JessComplexTail>(
     'DirectJessComplexTail',

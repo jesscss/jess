@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import { sourceSpanOf, type Stylesheet, type Rule } from '@jesscss/core/ast';
+import { sourceSpanOf, type Stylesheet, type Rule, type SimpleToken } from '@jesscss/core/ast';
 import { JessError } from '@jesscss/core';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
@@ -590,6 +590,62 @@ describe('Jess AST grammar facts', () => {
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);
       expect(captured.value).toEqual(ordinary.value);
+    }
+  });
+
+  it('retains whitelisted selector-function pseudo arguments as structure, not baked text', () => {
+    const secondSimple = (source: string): SimpleToken => {
+      const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      const rule = stylesheet(result.value).children.find((child): child is Rule => isRecord(child) && child.type === 'Rule');
+      expect(rule, source).toBeDefined();
+      return rule!.selector.selectors[0]!.head.simples[1]!;
+    };
+
+    // `:is` keeps the parsed `SelectorList` as `args` (structure), forces `text`
+    // to null (core serialization owns the join), and is crossable.
+    const isPseudo = secondSimple('.x:is(.a, .b) { c: d; }');
+    expect(isPseudo).toMatchObject({
+      type: 'PseudoSelector',
+      name: ':is',
+      text: null,
+      crossable: true,
+      args: { type: 'SelectorList', selectors: [{ head: {} }, { head: {} }] }
+    });
+
+    // Parser stores STRUCTURE only: the inner complex `_canon` memo is never
+    // populated at parse (the earlier baked-text approach set it eagerly).
+    expect(isPseudo.type).toBe('PseudoSelector');
+    if (isPseudo.type === 'PseudoSelector') {
+      expect(isPseudo.args).not.toBeNull();
+      for (const complex of isPseudo.args!.selectors) {
+        expect(complex._canon).toBeUndefined();
+      }
+    }
+
+    // `:not` is structured too but SEALED — not a boundary extend forks through.
+    expect(secondSimple('.x:not(.a, .b) { c: d; }')).toMatchObject({
+      type: 'PseudoSelector',
+      name: ':not',
+      text: null,
+      crossable: false,
+      args: { type: 'SelectorList' }
+    });
+
+    // Core owns the inline `:is(a, b)` join, so authored spacing is normalized
+    // identically whether or not the source had a space after the comma.
+    for (const source of ['.x:is(.a,.b) { c: d; }', '.x:is(.a, .b) { c: d; }']) {
+      const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(serialize(stylesheet(result.value)).css).toBe('.x:is(.a, .b) {\n  c: d;\n}\n');
+    }
+
+    // An `$[…]`-interpolated pseudo argument is NOT a static `SelectorList`, so it
+    // never reaches the structured path: it stays opaque exactly as before (the
+    // Jess selector chain has no typed interpolation for pseudo args yet, so the
+    // rule does not fully parse).
+    for (const interpolated of ['.x:not(.a-$[t]) { c: d; }', '.x:is(.card-$[t]) { c: d; }']) {
+      const rejected = run(jessAstGrammar.JessAstDocument, interpolated, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, interpolated).toBe(false);
     }
   });
 
