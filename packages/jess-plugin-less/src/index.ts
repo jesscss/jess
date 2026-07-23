@@ -3,10 +3,9 @@ import {
   AbstractPlugin,
   type Context,
   type UrlTransformRequest,
-  extractRelevantLines,
+  parserDiagnostic,
   type ISafeParseResult,
-  type SafeParseOptions,
-  type ErrorDiagnostic
+  type SafeParseOptions
 } from '@jesscss/core';
 import {
   defineFunction,
@@ -174,16 +173,6 @@ function isLoadedPluginModule(value: unknown): value is LoadedPluginModule {
   return typeof value.functions === 'object'
     && value.functions !== null
     && Object.values(value.functions).every(fn => typeof fn === 'function');
-}
-
-function parseErrorLocation(source: string, error: unknown): { line: number; column: number } {
-  const offset = typeof error === 'object' && error !== null && 'offset' in error && typeof error.offset === 'number'
-    ? Math.max(0, Math.min(source.length, error.offset))
-    : 0;
-  const before = source.slice(0, offset);
-  const line = before.split('\n').length;
-  const column = offset - (before.lastIndexOf('\n') + 1) + 1;
-  return { line, column };
 }
 
 /**
@@ -502,20 +491,8 @@ export class LessPlugin extends AbstractPlugin {
     try {
       return { document: parseLess(source), errors: [], warnings: [] };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const location = parseErrorLocation(source, error);
       return {
-        errors: [{
-          code: 'parse/syntax-error',
-          phase: 'parse',
-          message,
-          reason: message,
-          fix: 'Check the Less source against the supported grammar.',
-          filePath,
-          line: location.line,
-          column: location.column,
-          lines: extractRelevantLines(source, location.line)
-        } satisfies ErrorDiagnostic],
+        errors: [parserDiagnostic({ dialect: 'Less', error, filePath, source })],
         warnings: []
       };
     }

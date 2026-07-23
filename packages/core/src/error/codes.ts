@@ -8,6 +8,7 @@ export type JessErrorCode =
   | 'parse/unterminated-string'
   | 'parse/unexpected-syntax'
   | 'parse/syntax-error'
+  | 'parse/dynamic-charset'
   | 'resolve/name-not-found'
   | 'import/circular-compose'
   | 'eval/bad-call-arity'
@@ -56,6 +57,11 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Syntax error',
     reason: '${message}',
     fix: 'Check surrounding tokens near this location.'
+  }],
+  ['parse/dynamic-charset', {
+    summary: 'Dynamic @charset is not supported in Less 5',
+    reason: 'Interpolation is not valid inside the CSS @charset token.',
+    fix: 'Use a static declaration such as @charset "UTF-8";.'
   }],
 
   // Resolve/Import

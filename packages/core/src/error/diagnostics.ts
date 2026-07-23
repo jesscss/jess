@@ -37,6 +37,73 @@ export interface ErrorDiagnostic {
 }
 
 /**
+ * The fact shape exposed by a direct parser when Parseman cannot produce the
+ * requested document. `offset` stays an internal recognition fact: the public
+ * diagnostic boundary derives the user-facing line, column, and code frame
+ * from the source that the plugin already owns.
+ */
+export interface ParserFailure {
+  readonly code?: 'parse/syntax-error' | 'parse/dynamic-charset';
+  readonly offset: number;
+  readonly expected?: readonly string[];
+}
+
+export type ParserDiagnosticOptions = {
+  dialect: string;
+  error: unknown;
+  filePath: string;
+  source: string;
+};
+
+function parserFailureFrom(error: unknown): ParserFailure | undefined {
+  if (typeof error !== 'object' || error === null || !('offset' in error)) {
+    return undefined;
+  }
+  const offset = error.offset;
+  if (typeof offset !== 'number' || !Number.isFinite(offset)) {
+    return undefined;
+  }
+  const expected =
+    'expected' in error && Array.isArray(error.expected)
+      ? error.expected.filter((value): value is string => typeof value === 'string')
+      : undefined;
+  const code = 'code' in error && (
+    error.code === 'parse/syntax-error' || error.code === 'parse/dynamic-charset'
+  )
+    ? error.code
+    : undefined;
+  return { code, offset, expected };
+}
+
+/**
+ * Convert a direct-parser failure into the compiler's source-backed diagnostic
+ * contract. Parser packages expose recognition facts only; plugins call this
+ * once with their source so every public parse diagnostic has a 1-based site
+ * and a code frame.
+ */
+export function parserDiagnostic({ dialect, error, filePath, source }: ParserDiagnosticOptions): ErrorDiagnostic {
+  const failure = parserFailureFrom(error);
+  const offset = Math.max(0, Math.min(source.length, failure?.offset ?? 0));
+  const { line, column } = lineColAt(source, offset);
+  const message = error instanceof Error ? error.message : `${dialect} parser error.`;
+  const expected = failure?.expected;
+  return {
+    code: failure?.code ?? 'parse/syntax-error',
+    phase: 'parse',
+    message,
+    reason: expected && expected.length > 0
+      ? `The parser expected ${expected.join(', ')}.`
+      : 'The parser could not continue at this source location.',
+    fix: `Check the ${dialect} source against the supported grammar.`,
+    file: { name: filePath, path: filePath, fullPath: filePath, source },
+    filePath,
+    line,
+    column,
+    lines: extractRelevantLines(source, line)
+  };
+}
+
+/**
  * Normalized warning format for all phases (lexing, parsing, evaluation).
  * This is the format returned by safeParse/safeRender methods.
  */

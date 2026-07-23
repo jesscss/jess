@@ -3,6 +3,7 @@ import type { Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../core/src/ast/serialize.js';
 import { parseLessCst } from '../src/cst.js';
 import { lessAstGrammar } from '../src/ast/grammar.js';
+import { LessDynamicCharsetError } from '../src/parse-error.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -1742,8 +1743,13 @@ describe('Less AST grammar facts', () => {
       ]
     });
 
-    for (const rejectedSource of [
+    expect(() => run(
+      lessAstGrammar.LessAstDocument,
       '@Eight: 8; @charset "UTF-@{Eight}";',
+      { trivia: lessAstGrammar.whitespace }
+    )).toThrow(LessDynamicCharsetError);
+
+    for (const rejectedSource of [
       '@charset @{encoding};',
       '@custom foo@{name};'
     ]) {

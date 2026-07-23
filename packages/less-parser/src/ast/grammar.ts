@@ -4,6 +4,7 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax, lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Comment, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import { LessDynamicCharsetError } from '../parse-error.js';
 
 type Token = { readonly value: string };
 type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
@@ -1306,6 +1307,7 @@ const directUnicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/
 // here prevents a malformed import from falling through as a generic at-rule.
 const directLayerAtRuleName = regex(/@layer(?![-\w])/i);
 const directNamespaceAtRuleName = regex(/@namespace(?![-\w])/i);
+const directCharsetAtRuleName = regex(/@charset(?![-\w])/i);
 const directAtRuleName = regex(/@(?!(?:-import|-export|import|layer|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
 const directMixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const directMixinPathCombinator = regex(/>/);
@@ -3634,14 +3636,32 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return atRuleBlock(requireToken(children[0]).value, prelude, body);
     }
   );
-  const DirectLessAtRuleStatement = node<AtRuleStatement>(
-    'DirectLessAtRuleStatement',
-    choice(
-      sequence(directNamespaceAtRuleName, g.DirectLessNamespacePrelude, literal(';')),
-      sequence(directLayerAtRuleName, not(noTrivia(literal('('))), optional(choice(g.DirectLessInterpolatedValue, g.DirectLessStaticAtRulePrelude)), literal(';')),
-      sequence(directAtRuleName, not(noTrivia(literal('('))), optional(g.DirectLessStaticAtRulePrelude), literal(';'))
-    ),
-    children => atRuleStatement(requireToken(children[0]).value, children.find(isValueNode) ?? null)
+  // CSS @charset is a single static token. Less 4 interpolated inside it, but
+  // Less 5 deliberately rejects that legacy form. Recognize the authored form
+  // here so the public diagnostic carries its exact grammar span instead of
+  // falling through the root repetition as generic trailing input.
+  const DirectLessCharset = node<AtRuleStatement>(
+    'DirectLessCharset',
+    sequence(directCharsetAtRuleName, g.DirectLessQuoted, literal(';')),
+    (children, _fields, span) => {
+      const prelude = requireValueNode(children[1]);
+      if (prelude.type === 'Interpolation') {
+        throw new LessDynamicCharsetError(span.start, span.end);
+      }
+      return atRuleStatement(requireToken(children[0]).value, prelude);
+    }
+  );
+  const DirectLessAtRuleStatement: Combinator<AtRuleStatement> = choice(
+    DirectLessCharset,
+    node<AtRuleStatement>(
+      'DirectLessStaticAtRuleStatement',
+      choice(
+        sequence(directNamespaceAtRuleName, g.DirectLessNamespacePrelude, literal(';')),
+        sequence(directLayerAtRuleName, not(noTrivia(literal('('))), optional(choice(g.DirectLessInterpolatedValue, g.DirectLessStaticAtRulePrelude)), literal(';')),
+        sequence(directAtRuleName, not(noTrivia(literal('('))), optional(g.DirectLessStaticAtRulePrelude), literal(';'))
+      ),
+      children => atRuleStatement(requireToken(children[0]).value, children.find(isValueNode) ?? null)
+    )
   );
   const DirectLessStaticNthArgument = node<string>(
     'DirectLessStaticNthArgument',

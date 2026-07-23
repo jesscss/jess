@@ -36,8 +36,11 @@ export {
 export {
   type ErrorDiagnostic,
   type WarningDiagnostic,
+  type ParserFailure,
+  type ParserDiagnosticOptions,
   makeJessError,
   makeJessErrorFromDiagnostic,
+  parserDiagnostic,
   getErrorFromParser,
   toDiagnostic,
   ERR,
