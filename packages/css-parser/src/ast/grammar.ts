@@ -1078,9 +1078,16 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         // route is selected at its opener; every other declaration value uses
         // the component-value route and cannot turn calc into a permissive
         // generic call.
+        // A calc-prefixed value routes through the strict CssAstValue math
+        // grammar; every other declaration value uses the component-value
+        // route. The non-calc arm needs no second `(?=calc\()` guard: a
+        // malformed calc that fails the first arm is already rejected inside
+        // CssAstDeclarationValueAtom, whose own guard forbids `calc` degrading
+        // into Keyword + paren. Dropping the duplicate lookahead removes one
+        // regex probe from every ordinary declaration.
         choice(
           sequence(regex(/(?=calc\()/i), g.CssAstValue),
-          sequence(not(regex(/(?=calc\()/i)), g.CssAstDeclarationExtendedValue)
+          g.CssAstDeclarationExtendedValue
         ),
         many(blockComment),
         not(literal('{')),
