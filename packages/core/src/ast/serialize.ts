@@ -6594,7 +6594,7 @@ function mergeFold(group: Leaf[], e: Emit, idt: string, emitOne: (l: Leaf, e: Em
 
 /** A declaration value that is an SCSS nested-property {@link Collection}. */
 function isCollectionValue(value: ValueSlot): value is Collection {
-  return !Array.isArray(value) && (value as ValueNode).type === 'Collection';
+  return !isValueSlotArray(value) && value.type === 'Collection';
 }
 
 /** Append literal text to an interpolation part list, coalescing adjacent literals. */
