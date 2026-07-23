@@ -3001,7 +3001,15 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // `DirectLessBodyStatement` deliberately keep their own ordered arm sets
   // because they legitimately differ (comment-first root ordering; the
   // punctuation-map arm and Each/Ruleset reordering in body statements).
-  const directLessBlockStatement = choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'));
+  // `@`-led statement dispatch. Every body context lists these ten arms in this
+  // exact contiguous order, so grouping them into one nested choice is
+  // byte-identical to the flat listing (a bare `choice` passes its winning arm's
+  // value through unchanged, and firstMatch order is preserved). This is the
+  // structural "one at-rule dispatch" grouping; parseman already first-set-gates
+  // the whole group behind a single `@` (codepoint 64) check, so a non-`@`
+  // statement skips all ten arms with one integer compare.
+  const directLessAtStatement = choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement);
+  const directLessBlockStatement = choice(directLessAtStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'));
   const directLessBlockBody = many(directLessBlockStatement);
   // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
@@ -3039,16 +3047,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // CST/tree conversion or an opaque body fallback.
   const DirectLessBodyStatement = choice(
     DirectLessPunctuationMapDeclaration,
-    g.DirectLessImport,
-    g.DirectLessPlugin,
-    g.DirectLessDetachedRulesetDeclaration,
-    g.DirectLessVarDeclaration,
-    g.DirectLessSupportsBlock,
-    g.DirectLessMediaContainerBlock,
-    g.DirectLessReferenceCall,
-    g.DirectLessKeyframes,
-    g.DirectLessAtRuleBlock,
-    g.DirectLessAtRuleStatement,
+    directLessAtStatement,
     g.DirectLessMixinDefinition,
     g.DirectLessMixinCall,
     g.DirectLessBareMixinCall,
@@ -4405,7 +4404,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'LessAstDocument',
     // A standalone root block comment must reduce before selector productions
     // may treat it as selector trivia for the following ruleset.
-    sequence(many(choice(g.DirectLessComment, g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessInlineExtendRule, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
+    sequence(many(choice(g.DirectLessComment, directLessAtStatement, g.DirectLessMixinDefinition, g.DirectLessInlineExtendRule, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
     children => stylesheet(requireStatements(children)),
     { trailingTrivia: true }
   );
