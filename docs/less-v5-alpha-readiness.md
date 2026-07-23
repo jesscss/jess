@@ -39,7 +39,7 @@ baseline only and never as a performance acceptance claim.
   errors and 319 warnings**. The warnings are tracked lint debt; there is no
   current ESLint-error blocker.
 - Strict types: the current local alpha candidate resolves the published
-  `parseman@0.29.0` package and its recorded `pnpm run release:alpha:check`
+  `parseman@0.30.0` package and its recorded `pnpm run release:alpha:check`
   passes all **22** strict type configurations. The current candidate evidence lives in
   [`HANDOFF.md`](./future/core-architecture/HANDOFF.md#current-alpha9-candidate-evidence-2026-07-22-not-authorized-to-publish).
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
@@ -152,7 +152,7 @@ The alpha blocks only on these advertised correctness and release-safety gates:
 - a release-note known-limitations section that links the complete
   [`less-v5-corpus-inventory.md`](./less-v5-corpus-inventory.md) and states the
   unsupported or divergent behavior honestly.
-- `[x]` **Strict source quality.** Published `parseman@0.29.0` is the current
+- `[x]` **Strict source quality.** Published `parseman@0.30.0` is the current
   parser dependency; the alpha snapshot's forced frozen install and
   `verify:types` pass 22/22 configurations. Production
   ESLint reports 0 errors and 319 warnings. Warnings remain tracked debt and

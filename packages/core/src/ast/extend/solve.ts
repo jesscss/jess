@@ -27,10 +27,6 @@ export interface Contrib {
 }
 export type ContribMap = Map<PlanInstruction, Contrib>;
 
-function instKey(inst: PlanInstruction): string {
-  return `${inst.partial ? 1 : 0}|${branchText(inst.target)}|${inst.order}`;
-}
-
 /** Precompute each instruction's composed extender branches (+ their text keys)
  * for the fixpoint. */
 export function buildContribs(instructions: PlanInstruction[]): ContribMap {
@@ -104,54 +100,117 @@ export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan):
   return runFixpoint(seed.map(cloneBranch), reachable, buildContribs(reachable));
 }
 
+/**
+ * A fold of every reachable instruction that shares an identical match condition —
+ * same `(partial, extenderHidden, targetKey)` — into ONE apply. All such
+ * instructions become applicable in the exact same round (identical target/flag),
+ * so folding their composed extenders (concatenated in document order) into a
+ * single `applyInstruction` call reproduces firing them one-by-one, and does the
+ * per-branch target comparison ONCE per group instead of once per instruction. */
+export interface InstGroup {
+  target: Branch;
+  partial: boolean;
+  extenderHidden: boolean;
+  targetKey: string;
+  extenders: Branch[];
+  keys: Set<string>;
+  targetAtoms: Set<string>;
+}
+
+/**
+ * Group reachable instructions by `(partial, extenderHidden, targetKey)`. Grouping
+ * on the FULL match condition — not `targetKey` alone — keeps `exact` vs `all` and
+ * visible vs hidden extends with the same target text in separate folds (they apply
+ * differently), per the reviewed plan (F2). Extenders concatenate in the incoming
+ * (document) order so a folded append list is byte-identical to the one-per-round
+ * append order. Insertion order of the returned array is each group's first-seen
+ * document position, so the fixpoint visits groups in document order. */
+export function groupInstructions(reachable: PlanInstruction[], contribs: ContribMap): InstGroup[] {
+  const byKey = new Map<string, InstGroup>();
+  for (const inst of reachable) {
+    const c = contribs.get(inst)!;
+    // A no-op instruction (no extenders and not a partial rewrite) never changes a
+    // subject — drop it from every group exactly as the old per-instruction guard did.
+    if (c.extenders.length === 0 && !inst.partial) {
+      continue;
+    }
+    const targetKey = branchText(inst.target);
+    const gkey = `${inst.partial ? 1 : 0}|${inst.extenderHidden ? 1 : 0}|${targetKey}`;
+    let g = byKey.get(gkey);
+    if (g === undefined) {
+      g = {
+        target: inst.target,
+        partial: inst.partial,
+        extenderHidden: inst.extenderHidden,
+        targetKey,
+        extenders: [],
+        keys: new Set<string>(),
+        // Identical target text ⇒ identical graft-recursive target atoms, so the
+        // first instruction's precomputed set is the group's set.
+        targetAtoms: c.targetAtoms
+      };
+      byKey.set(gkey, g);
+    }
+    for (const e of c.extenders) {
+      g.extenders.push(e);
+    }
+    for (const k of c.keys) {
+      g.keys.add(k);
+    }
+  }
+  return [...byKey.values()];
+}
+
 export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contribs: ContribMap): SolveResult {
   let list = seed;
 
-  // Fire-once GLOBALLY per instruction: an instruction that has already CHANGED
-  // the subject never fires again (re-appending an extender each round is
-  // impossible — the source of the transitive-chaining duplication). An
-  // instruction that does not yet match (its target not present) stays UNFIRED
-  // so a later chained change can still trigger it. The outer loop re-passes
-  // until a full pass changes nothing.
+  // FOLD: collapse instructions sharing a match condition into groups, then apply
+  // ALL currently-matching groups in ONE pass (no `break`), re-passing only for
+  // transitive chains. Firing one group per round and re-scanning the growing
+  // branch list is the source of the measured Θ(n²) (`Σk`); folding does the
+  // per-branch target comparison once per GROUP per pass instead of once per
+  // instruction per round, so the shared-target fixpoint is linear.
   //
-  // `applyInstruction` returns null EXACTLY when it changed nothing (an append
-  // only counts a genuinely-new branch key; a partial rewrite only returns
-  // non-null when `branchText` differs), so a non-null result IS the change
-  // signal — no per-round `listKey` serialization is needed to detect it. This is
-  // the single-materialization property: the IR is threaded through every step and
-  // only the final branch list is serialized to strings by the emit layer.
-  const fired = new Set<string>();
-  const guardMax = (reachable.length + 2) * (reachable.length + 2);
+  // Byte-identity to the old fire-one-per-round loop rests on TWO facts:
+  //   (1) every instruction in a group has the identical target/partial/hidden, so
+  //       they always become applicable together — folding never fires one early;
+  //   (2) extend application is CONFLUENT (branch-SET order independence, pinned by
+  //       tree/extend/__tests__/oqd-confluence-differential.test.ts), so applying
+  //       groups all-in-one-pass yields the same final branch set as one-at-a-time,
+  //       and document-ordered extender concatenation keeps the append order.
+  //
+  // Fire-once per GROUP: a group that has already CHANGED the subject never fires
+  // again. A group whose target is not yet present stays UNFIRED so a later chained
+  // change can still trigger it. `applyInstruction` returns null EXACTLY when it
+  // changed nothing, so a non-null result IS the change signal — the IR is threaded
+  // through every step and only the final list is serialized by the emit layer.
+  const groups = groupInstructions(reachable, contribs);
+  const fired = new Set<InstGroup>();
+  const guardMax = (groups.length + 2) * (groups.length + 2);
   let rounds = 0;
   let ever = false;
   let roundChanged = true;
   while (roundChanged && rounds <= guardMax) {
     roundChanged = false;
     rounds++;
-    for (const inst of reachable) {
-      const key = instKey(inst);
-      if (fired.has(key)) {
-        continue;
-      }
-      const c = contribs.get(inst)!;
-      if (c.extenders.length === 0 && !inst.partial) {
+    for (const g of groups) {
+      if (fired.has(g)) {
         continue;
       }
       const next = applyInstruction(
         list,
-        inst.target,
-        c.extenders,
-        inst.partial,
-        c.keys,
-        c.targetAtoms,
-        inst.extenderHidden
+        g.target,
+        g.extenders,
+        g.partial,
+        g.keys,
+        g.targetAtoms,
+        g.extenderHidden
       );
       if (next) {
         list = next;
-        fired.add(key);
+        fired.add(g);
         roundChanged = true;
         ever = true;
-        break;
       }
     }
   }

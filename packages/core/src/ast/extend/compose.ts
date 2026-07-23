@@ -10,7 +10,8 @@ import {
   cloneSeg,
   cloneSimple,
   descendantBranch,
-  isSimple
+  isSimple,
+  mkBranch
 } from './ir.js';
 import type { Branch, Level, Simple } from './ir.js';
 
@@ -66,7 +67,7 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
     }
     return { comb: seg.comb, compound: { simples } };
   });
-  return { segs };
+  return mkBranch(segs);
 }
 
 /** The parent token for composing a child under a multi-branch parent. */
@@ -83,7 +84,7 @@ function composeOne(parent: Branch, child: Branch): Branch {
     return substituteAmp(child, parent);
   }
   // Descendant: parent then space then child.
-  return { segs: [...parent.segs.map(cloneSeg), ...cloneBranch(child).segs] };
+  return mkBranch([...parent.segs.map(cloneSeg), ...cloneBranch(child).segs]);
 }
 
 /** Compose a child selector list under a parent selector list. */

@@ -54,9 +54,11 @@ afterEach(() => {
 
 /**
  * A matcher-exercising fixture: one shared target `.base` and `n` extender rules
- * each `:extend(.base)`. Every extender folds into `.base`'s branch list, so the
- * fixpoint re-scans a list that grows with `n` — the honest O(n) work-per-subject
- * that, summed over the fixpoint, is the extend cost surface.
+ * each `:extend(.base)`. All n instructions share the same `(partial, hidden,
+ * target)` match condition, so the fixpoint folds them into ONE apply and appends
+ * every extender in a single scan of `.base`'s seed. Before the fold each of the n
+ * instructions re-scanned the growing branch list (Σk = Θ(n²)); this fixture pins
+ * that the fold keeps the per-branch comparison count from re-growing with n.
  */
 const sharedTargetDoc = (n: number): ReturnType<CoreAst['stylesheet']> => {
   const rules = [ast.rule('.base', [ast.decl('color', ast.keyword('red'))])];
@@ -125,16 +127,16 @@ describe('extend operation-counter budgets', () => {
   }
 
   it('does not regress the matcher comparison complexity (#4 gate)', () => {
-    // CEILING pinned to the CURRENT implementation's measured growth. The shared-
-    // target fixpoint re-scans a list that grows with n, so today's growth is
-    // ~quadratic (doubling n ~4x the comparisons). The gate fails only on WORSE.
-    //
-    // TODO(extend-perf): the shared-target fixpoint is O(n^2) in the matcher's
-    // branch comparisons because each of n instructions re-scans the growing
-    // subject branch list. Phase B should index extenders by target key so a
-    // subject folds all its extenders in one pass (drives the exponent toward 1
-    // and this ceiling toward ~2x). See docs/perf V8 architecture #4.
-    const GROWTH_CEILING = 4.6; // measured ~4.0 (quadratic) + headroom below 5.
+    // The fixpoint folds every instruction sharing a `(partial, hidden, target)`
+    // match condition into ONE apply, so a shared-target subject does its per-branch
+    // target comparison ONCE per group per pass instead of once per instruction per
+    // round. That turns the old Θ(n²) re-scan (doubling n → ~4× comparisons) into
+    // linear-or-better: on this shared-target fixture the `.base` subject folds all n
+    // extenders in a single scan of its one-branch seed, so the comparison count is
+    // effectively CONSTANT in n (measured x1.0 at every doubling). The ceiling is
+    // pinned just above that: a regression back to per-instruction re-scanning would
+    // reintroduce ~4× growth and trip this gate.
+    const GROWTH_CEILING = 2.5; // measured ~1.0 (constant, post-fold); << the 4× quadratic signal.
 
     const base = comparisonsFor(80);
     const doubled = comparisonsFor(160);
@@ -144,8 +146,8 @@ describe('extend operation-counter budgets', () => {
     expect(
       ratio,
       `matcher comparison count grew x${ratio.toFixed(2)} from n=80 (${base}) to n=160 (${doubled}); `
-      + `ceiling is x${GROWTH_CEILING}. A larger factor means the extend fixpoint got `
-      + `MORE than quadratic — index extenders by target instead of re-scanning.`
+      + `ceiling is x${GROWTH_CEILING}. A larger factor means the extend fixpoint stopped `
+      + `folding same-target instructions and went back to re-scanning per instruction.`
     ).toBeLessThanOrEqual(GROWTH_CEILING);
   });
 });

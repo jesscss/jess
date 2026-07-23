@@ -39,6 +39,15 @@ export interface Seg {
  * branches of a mixed rule. */
 export interface Branch {
   segs: Seg[];
+  /**
+   * Memoized `branchText(this)`. PRE-DECLARED (initialized `undefined`) by the sole
+   * `mkBranch` factory so every branch is born with this field, and `branchText`'s
+   * `b.key = out` write is an in-place value store — never a `{segs}`→`{segs,key}`
+   * hidden-class transition (V8 invariant 1 / R4). Sound because branches are never
+   * mutated in place: every transform builds a FRESH branch, so a branch's `segs`
+   * (hence its text) is fixed for its lifetime. `hidden`/`ext` are provenance only
+   * and ignored by `branchText`, so stamping them after a text read cannot stale it. */
+  key?: string;
   hidden?: boolean;
   /** [import:reference] true when this branch was PRODUCED by an extend (a folded-in
    * extender), false/absent for an original seed branch. Chaining an extend off a
@@ -46,6 +55,15 @@ export interface Branch {
    * `visibilityInfo`), whereas an extend off an original hidden seed keeps the
    * extender's own visibility — so the two must be told apart. */
   ext?: boolean;
+}
+
+/**
+ * The SOLE Branch factory. Every branch is born `{ segs, key: undefined }` so the
+ * `branchText` memo write lands on a pre-declared field (one hidden class on the
+ * fixpoint's hot path). `hidden`/`ext` are stamped after construction by the
+ * provenance-carrying sites (`cloneBranch`, `buildContribs`), exactly as before. */
+export function mkBranch(segs: Seg[]): Branch {
+  return { segs, key: undefined };
 }
 
 /** A selector list level (a rule's own-local alternatives / an `:is()` arg). */
@@ -69,6 +87,9 @@ export function compoundText(c: Compound): string {
 }
 
 export function branchText(b: Branch): string {
+  if (b.key !== undefined) {
+    return b.key;
+  }
   let out = '';
   for (let i = 0; i < b.segs.length; i++) {
     const seg = b.segs[i]!;
@@ -81,6 +102,7 @@ export function branchText(b: Branch): string {
       out += renderCombinator(seg.comb) + compoundText(seg.compound);
     }
   }
+  b.key = out;
   return out;
 }
 
@@ -88,7 +110,7 @@ export function branchText(b: Branch): string {
 
 /** A single-segment descendant branch wrapping the given simples. */
 export function descendantBranch(simples: Simple[]): Branch {
-  return { segs: [{ comb: ' ', compound: { simples } }] };
+  return mkBranch([{ comb: ' ', compound: { simples } }]);
 }
 
 /** An `:is(...)` simple wrapping the given branches. */
@@ -134,7 +156,7 @@ export function cloneSeg(seg: Seg): Seg {
 export function cloneBranch(b: Branch): Branch {
   // [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
   // every clone so a branch's visibility survives compose/solve/compaction unchanged.
-  const out: Branch = { segs: b.segs.map(cloneSeg) };
+  const out: Branch = mkBranch(b.segs.map(cloneSeg));
   if (b.hidden) {
     out.hidden = true;
   }
@@ -164,7 +186,7 @@ export function branchFromComplex(c: ComplexSelector): Branch {
   for (const seg of c.tail) {
     segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map(s => s.text ?? '')) });
   }
-  return segs.length === 0 ? { segs: [{ comb: ' ', compound: { simples: [] } }] } : { segs };
+  return segs.length === 0 ? mkBranch([{ comb: ' ', compound: { simples: [] } }]) : mkBranch(segs);
 }
 
 export function levelFromSelectorList(list: SelectorList): Level {
