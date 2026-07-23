@@ -25,7 +25,7 @@ type JessAstRules = {
   DirectJessVarDeclaration: Combinator<VariableDeclaration>;
   DirectJessVarReference: Combinator<VariableReference>;
   DirectJessReferenceTail: Combinator<JessReferenceTail>;
-  DirectJessReference: Combinator<ValueNode>;
+  DirectJessDollarValue: Combinator<ValueNode>;
   DirectJessDollarInterp: Combinator<Interpolation>;
   DirectJessExpressionDollarInterp: Combinator<ExpressionFact>;
   DirectJessExpression: Combinator<Interpolation>;
@@ -35,11 +35,7 @@ type JessAstRules = {
   DirectJessExpressionProduct: Combinator<ExpressionFact>;
   DirectJessExpressionSum: Combinator<ExpressionFact>;
   DirectJessExpressionCompare: Combinator<ExpressionFact>;
-  DirectJessUnwrappedProductLead: Combinator<ExpressionFact>;
-  DirectJessUnwrappedProduct: Combinator<ExpressionFact>;
   DirectJessUnwrappedProductRest: Combinator<ExpressionFact>;
-  DirectJessUnwrappedArithmetic: Combinator<ValueNode>;
-  DirectJessUnwrappedSlashValue: Combinator<ValueNode>;
   DirectJessGuardValue: Combinator<GuardNode>;
   DirectJessGuardCompare: Combinator<GuardNode>;
   DirectJessGuardCall: Combinator<GuardNode>;
@@ -962,47 +958,14 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return { value: condition({ g: 'cmp', op: operatorText.trim(), left: left.value, right: right.value }, src), src };
     }
   );
-  // Value-position shorthand for the documented `$var + 1` form. The leading
-  // reference gate is semantic syntax, not a recovery trick: bare `word + 1`
-  // continues to be a literal space value. These reductions reuse the same
-  // ExpressionFact folding as `$(...)`, so the public AST has the identical
-  // left-associative Operation structure without constructing or converting a CST.
-  const DirectJessUnwrappedProductLead = node<ExpressionFact>(
-    'DirectJessUnwrappedProductLead',
-    noTrivia(sequence(g.DirectJessVarReference, many(sequence(jessUnwrappedProductOperator, g.DirectJessExpressionAtom)))),
-    (children) => {
-      const first = requireValueNode(children[0]);
-      return foldExpression([{ value: first, src: expressionSource(first) }, ...children.slice(1)]);
-    }
-  );
-  const DirectJessUnwrappedProduct = node<ExpressionFact>(
-    'DirectJessUnwrappedProduct',
-    noTrivia(sequence(g.DirectJessVarReference, oneOrMore(sequence(jessUnwrappedProductOperator, g.DirectJessExpressionAtom)))),
-    (children) => {
-      const first = requireValueNode(children[0]);
-      return foldExpression([{ value: first, src: expressionSource(first) }, ...children.slice(1)]);
-    }
-  );
+  // Shared sum-level operand for unwrapped arithmetic: an ExpressionAtom folded
+  // with any `*` product operators. `DirectJessDollarValue` reuses this for the
+  // products that follow the first (whitespace-flanked) sum operator; the first
+  // product is rebuilt there from the already-parsed leading reference.
   const DirectJessUnwrappedProductRest = node<ExpressionFact>(
     'DirectJessUnwrappedProductRest',
     noTrivia(sequence(g.DirectJessExpressionAtom, many(sequence(jessUnwrappedProductOperator, g.DirectJessExpressionAtom)))),
     foldExpression
-  );
-  const DirectJessUnwrappedArithmetic = node<ValueNode>(
-    'DirectJessUnwrappedArithmetic',
-    noTrivia(choice(
-      sequence(g.DirectJessUnwrappedProduct, many(sequence(jessUnwrappedSumOperator, g.DirectJessUnwrappedProductRest))),
-      sequence(g.DirectJessUnwrappedProductLead, oneOrMore(sequence(jessUnwrappedSumOperator, g.DirectJessUnwrappedProductRest)))
-    )),
-    children => requireExpressionFact(foldExpression(children)).value
-  );
-  // `/` is intentionally not an unwrapped Operation. Preserve the authored
-  // value boundary as an explicit slash List; `$( $w / 2 )` is the arithmetic
-  // spelling.
-  const DirectJessUnwrappedSlashValue = node<ValueNode>(
-    'DirectJessUnwrappedSlashValue',
-    noTrivia(sequence(g.DirectJessVarReference, optional(rawWhitespace), literal('/'), optional(rawWhitespace), g.DirectJessValueAtom)),
-    children => list([requireValueNode(children[0]), requireValueNode(children.at(-1))], '/')
   );
   // Mixin guards use the same structural GuardNode model as $if. Keep the
   // documented Jess condition rule strict: a comparison participating in an
@@ -1586,15 +1549,35 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       }
     )
   );
-  // Left-factored `$`/`$$`+name so the ubiquitous plain reference is parsed
-  // ONCE: the accessor tails are optional, so a bare `$name` no longer parses
-  // the reference, fails a required tail, backtracks, and re-parses `$name`
-  // through a separate plain-reference arm. With tails this reduces to the
-  // chained Reference node; without, to the plain VariableReference that the
-  // DirectJessVarReference child already built (identical shape).
-  const DirectJessReference = node<ValueNode>(
-    'DirectJessReference',
-    noTrivia(sequence(g.DirectJessVarReference, optional(oneOrMore(g.DirectJessReferenceTail)))),
+  // Left-factored `$`/`$$`+name so the ubiquitous dollar value is parsed ONCE.
+  // The leading `DirectJessVarReference` is shared across all four continuations
+  // — plain reference, accessor-tail chain, unwrapped `/` slash list, and
+  // unwrapped `+ - *` arithmetic — which are disjoint by their next token
+  // (`.`/`[` tails, `/` slash, whitespace-flanked operators). Previously each
+  // arm re-parsed `$name` (up to four VariableReference builds per plain ref,
+  // each allocating a discarded source-spanned node); this reduction preserves
+  // every prior AST shape while recognizing the reference exactly once.
+  const DirectJessDollarValue = node<ValueNode>(
+    'DirectJessDollarValue',
+    noTrivia(sequence(
+      g.DirectJessVarReference,
+      optional(choice(
+        // Slash list: `/` is intentionally not an unwrapped Operation. Preserve
+        // the authored value boundary as an explicit slash List; `$( $w / 2 )`
+        // is the arithmetic spelling.
+        sequence(optional(rawWhitespace), literal('/'), optional(rawWhitespace), g.DirectJessValueAtom),
+        // Unwrapped arithmetic. The documented `$var + 1` form folds with the
+        // same left-associative product-before-sum grouping as `$(...)`: at
+        // least one operator is required (else this is a plain reference), and
+        // `*` binds tighter than `+`/`-`.
+        choice(
+          sequence(oneOrMore(sequence(jessUnwrappedProductOperator, g.DirectJessExpressionAtom)), many(sequence(jessUnwrappedSumOperator, g.DirectJessUnwrappedProductRest))),
+          sequence(many(sequence(jessUnwrappedProductOperator, g.DirectJessExpressionAtom)), oneOrMore(sequence(jessUnwrappedSumOperator, g.DirectJessUnwrappedProductRest)))
+        ),
+        // Accessor-tail chain (`.name`, `[key]`).
+        oneOrMore(g.DirectJessReferenceTail)
+      ))
+    )),
     (children) => {
       const base = requireValueNode(children[0]);
       if (base.type !== 'VariableReference') {
@@ -1603,13 +1586,34 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       if (children.length === 1) {
         return base;
       }
-      const tails = children.slice(1).map(requireJessReferenceTail);
-      return reference(base, tails.map(tail => tail.step), `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`);
+      const rest = children.slice(1);
+      if (isJessReferenceTail(rest[0])) {
+        const tails = rest.map(requireJessReferenceTail);
+        return reference(base, tails.map(tail => tail.step), `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`);
+      }
+      if (rest.some(child => isToken(child) && child.value === '/')) {
+        return list([base, requireValueNode(rest.at(-1))], '/');
+      }
+      // Arithmetic: rebuild the first product (leading reference plus its `*`
+      // operators), then fold the whitespace-flanked sum operators over the
+      // remaining pre-folded products.
+      const firstProduct: unknown[] = [{ value: base, src: expressionSource(base) }];
+      let index = 0;
+      while (index < rest.length && isToken(rest[index]) && requireToken(rest[index]).value.trim() === '*') {
+        firstProduct.push(rest[index], rest[index + 1]);
+        index += 2;
+      }
+      const sumParts: unknown[] = [foldExpression(firstProduct)];
+      while (index < rest.length) {
+        sumParts.push(rest[index], rest[index + 1]);
+        index += 2;
+      }
+      return requireExpressionFact(foldExpression(sumParts)).value;
     }
   );
   const DirectJessValueAtom = node<ValueNode>(
     'DirectJessValueAtom',
-    choice(g.DirectJessCollection, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessUnwrappedSlashValue, g.DirectJessUnwrappedArithmetic, g.DirectJessReference, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
+    choice(g.DirectJessCollection, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessDollarValue, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
   const DirectJessValueTerm = node<ValueSlot>(
@@ -2574,7 +2578,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessVarDeclaration,
     DirectJessVarReference,
     DirectJessReferenceTail,
-    DirectJessReference,
+    DirectJessDollarValue,
     DirectJessDollarInterp,
     DirectJessExpressionDollarInterp,
     DirectJessExpression,
@@ -2584,11 +2588,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessExpressionProduct,
     DirectJessExpressionSum,
     DirectJessExpressionCompare,
-    DirectJessUnwrappedProductLead,
-    DirectJessUnwrappedProduct,
     DirectJessUnwrappedProductRest,
-    DirectJessUnwrappedArithmetic,
-    DirectJessUnwrappedSlashValue,
     DirectJessGuardValue,
     DirectJessGuardCompare,
     DirectJessGuardCall,
