@@ -16,7 +16,9 @@ import {
   descendantBranch,
   isOrPlainSimples,
   mkBranch,
+  multisetEqual,
   multisetSubset,
+  simpleTexts,
   textSimples
 } from './ir.js';
 import type { Branch, Compound, Seg, Simple } from './ir.js';
@@ -56,10 +58,14 @@ export function applyInstruction(
     // NOT force the append hidden. `effHidden` folds both into one decision.
     const chainHidden = b.hidden === true && b.ext === true;
     const effHidden = extenderHidden || chainHidden;
-    // Whole-branch match → append extenders as siblings. A multi-segment target
-    // also matches an `:is()`-grafted branch whose expansion equals the target
-    // (`.replace.replace .replace` vs `:is(.replace.replace, …) .replace`).
-    if (bKey === targetKey || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
+    // Whole-branch match → append extenders as siblings. Exact mode matches by
+    // selector EQUIVALENCY (EXTEND_RULES §0), not serialization: `.b.c` and `.c.b`
+    // are the same selector, so the decision is order-independent multiset-equal
+    // compounds with aligned combinators (`branchExactEquivalent`), NOT `branchText`
+    // equality. A multi-segment target also matches an `:is()`-grafted branch whose
+    // expansion equals the target (`.replace.replace .replace` vs
+    // `:is(.replace.replace, …) .replace`).
+    if (branchExactEquivalent(b, target) || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
       out.push(b);
       for (const e of extenders) {
         pushExtender(appends, e, chainHidden);
@@ -166,10 +172,10 @@ function pushExtender(appends: Branch[], e: Branch, forceHidden: boolean): void 
  * sibling) is deliberately NOT a whole match.
  */
 export function branchWholeMatches(b: Branch, target: Branch, partial: boolean): boolean {
-  const targetKey = branchText(target);
-  if (branchText(b) === targetKey) {
+  if (branchExactEquivalent(b, target)) {
     return true;
   }
+  const targetKey = branchText(target);
   if (target.segs.length > 1 && branchExpansions(b).includes(targetKey)) {
     return true;
   }
@@ -177,6 +183,52 @@ export function branchWholeMatches(b: Branch, target: Branch, partial: boolean):
     return true;
   }
   return false;
+}
+
+/**
+ * Order-independent WHOLE-branch equivalence for EXACT (non-`all`) mode: `b` and
+ * `target` select the same elements (EXTEND_RULES §0). The criterion is structural,
+ * not textual — it REPLACES the former `branchText(b) === branchText(target)` exact
+ * test, which missed reordered compounds (`.b.c` vs `.c.b` produced NO extend):
+ *
+ *   - same number of segments;
+ *   - each aligned segment's compound is MULTISET-EQUAL — order of simples is
+ *     irrelevant, but consume-ALL (a strict subset like `.b.b.c` vs `.b.c` is NOT
+ *     equal, so it correctly does not match in exact mode);
+ *   - combinators align left-to-right, INCLUDING the head (leading) combinator, so
+ *     `.a .b` never matches `.a > .b` / `.a + .b`.
+ *
+ * `:is()` grafts are compared as opaque `:is(...)` tokens (via `simpleTexts`).
+ *
+ * A memoized `branchText` equality is tried FIRST as a fast-ACCEPT (EXTEND_RULES.md
+ * early-exit: equal serializations ⇒ match). This is allocation-free (reuses the
+ * cached `Branch.key`), keeps the hot common path off `simpleTexts`/`multisetEqual`,
+ * and makes this a TRUE strict superset of the old `bKey === targetKey`: every pair the
+ * string compare matched still matches (incl. interpolated simples that render empty,
+ * e.g. `.a@{x}` vs `.a`), plus reordered compounds. The structural multiset comparison
+ * runs ONLY when the serializations differ — the genuine order-independent case — never
+ * as an early-exit FALSE.
+ */
+export function branchExactEquivalent(b: Branch, target: Branch): boolean {
+  if (branchText(b) === branchText(target)) {
+    return true;
+  }
+  const bSegs = b.segs;
+  const tSegs = target.segs;
+  if (bSegs.length !== tSegs.length) {
+    return false;
+  }
+  for (let k = 0; k < bSegs.length; k++) {
+    const bs = bSegs[k]!;
+    const ts = tSegs[k]!;
+    if (bs.comb !== ts.comb) {
+      return false;
+    }
+    if (!multisetEqual(simpleTexts(bs.compound), simpleTexts(ts.compound))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

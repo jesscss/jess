@@ -266,3 +266,40 @@ export function multisetSubset(need: string[], have: string[]): boolean {
   }
   return true;
 }
+
+/**
+ * True when `a` and `b` are EQUAL multisets — same elements with the same counts.
+ * This is `multisetSubset` in BOTH directions (each ⊆ the other), computed in one
+ * pass off the equal-length invariant: same length + `a` ⊆ `b` ⟹ equal. Exact-mode
+ * whole-branch equivalence needs equality (consume-ALL: `.b.b.c` must NOT equal
+ * `.b.c`), not the one-directional subset the `all` sub-part path uses.
+ */
+export function multisetEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const counts = new Map<string, number>();
+  for (const x of a) {
+    counts.set(x, (counts.get(x) ?? 0) + 1);
+  }
+  for (const y of b) {
+    const c = counts.get(y) ?? 0;
+    if (c <= 0) {
+      return false;
+    }
+    counts.set(y, c - 1);
+  }
+  return true;
+}
+
+/**
+ * The full serialized simples of a compound, INCLUDING `:is()` grafts (each graft is
+ * one opaque `:is(...)` token). Unlike `textSimples` (plain-text simples only, grafts
+ * dropped) this keeps grafts as tokens so a multiset comparison over the result treats
+ * `.a` and `.a:is(.b)` as distinct — matching the pre-fix `branchText` string equality,
+ * which the exact-mode equivalence must not loosen. Order-independent by construction:
+ * the caller multiset-compares, so simple order within the compound is irrelevant.
+ */
+export function simpleTexts(c: Compound): string[] {
+  return c.simples.map(simpleText);
+}

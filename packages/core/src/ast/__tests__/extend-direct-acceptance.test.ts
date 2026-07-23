@@ -41,6 +41,25 @@ describe('direct canonical extend', () => {
     );
   });
 
+  it('adds an exact extender whose target reorders the compound simples', () => {
+    // `.b.c {}` + `.a:extend(.c.b) {}` — the find `.c.b` is compound-equivalent to
+    // the base `.b.c` (order of simple selectors is irrelevant, EXTEND_RULES §0), so
+    // it is a WHOLE-branch exact match and `.a` appends as a sibling.
+    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('.b'), simpleSelector('.c')]) }]);
+    const find = complexSelector([{ compound: compoundSelectorOf([simpleSelector('.c'), simpleSelector('.b')]) }]);
+    const document = stylesheet([
+      rule(base, [decl('color', keyword('red'))]),
+      rule('.a', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.b.c,\n'
+      + '.a {\n'
+      + '  color: red;\n'
+      + '}\n'
+    );
+  });
+
   it('propagates an all extender through a nested target selector', () => {
     const document = stylesheet([
       rule('.button', [
