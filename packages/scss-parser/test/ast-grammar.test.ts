@@ -1429,6 +1429,22 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
+  it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
+    // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
+    // surrounding the argument inside the parens
+    // (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
+    // preserved verbatim; insignificant space surrounding the argument is
+    // normalized away, matching the canonical CSS grammar and the other dialects.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
+    }
+  });
+
   it('constructs ordinary SCSS interpolated simple selectors as existing typed SimpleSelector facts', () => {
     const source = '$name: button; $state: active; .#{$name}-#{$state}, #item-#{$name} { color: blue; }';
     const cst = parseScssCst(source);

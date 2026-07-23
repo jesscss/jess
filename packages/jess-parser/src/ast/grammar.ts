@@ -1331,21 +1331,29 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessPseudo = node<SimpleToken>(
     'DirectJessPseudo',
+    // Insignificant whitespace may surround a functional pseudo's argument inside
+    // its parens (`:not( .b )`, `:nth-child( 2n+1 )`). Consume it here so valid
+    // CSS is accepted in the .jess dialect exactly as the canonical CSS grammar
+    // accepts it; it is trivia, so the serialized argument stays normalized.
     sequence(
       g.CssAstSyntaxPseudoColon,
       g.CssAstSyntaxKeyword,
-      optional(sequence(literal('('), g.DirectJessStaticPseudoArgument, literal(')')))
+      optional(sequence(literal('('), optional(rawWhitespace), g.DirectJessStaticPseudoArgument, optional(rawWhitespace), literal(')')))
     ),
     (children) => {
       const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
-      if (children.length === 2) {
+      // The argument reduces to a `SelectorList` or a plain An+B string; the
+      // colon, name, parens, and surrounding-whitespace children are all tokens,
+      // so a find on those two shapes locates the argument regardless of whether
+      // optional whitespace is present.
+      const arg = children.find((child): child is SelectorList | string => isSelectorList(child) || typeof child === 'string');
+      if (arg === undefined) {
         return simpleSelector(head);
       }
       // Parser = STRUCTURE + trivia only. A whitelisted selector-function pseudo
       // keeps the parsed `args` (SelectorList) and does NOT join: core serialize
       // owns the inline `:is(a, b)` rule (`pseudoCanonical`). The nth/opaque path
       // still collapses to canonical SimpleSelector text via `staticSelectorText`.
-      const arg = children[3];
       if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(requireToken(children[1]).value.toLowerCase())) {
         return pseudoSelector(head, arg);
       }
@@ -1398,9 +1406,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // `-n` selector. `of` needs an authored separator, so `2n+1of .item` cannot
   // be silently normalized into the distinct `2n+1 of .item` syntax.
   const directJessStaticNthOfHead = regex(/(?:even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+)[ \t\n\r\f]+of(?![-_a-zA-Z0-9\u0080-\uffff])[ \t\n\r\f]+/i);
+  // The trailing lookahead tolerates insignificant whitespace before `)` so a
+  // valid CSS `:nth-child( 2n+1 )` argument is recognized; `DirectJessPseudo`
+  // consumes that surrounding paren whitespace (Selectors-4 §6.6.2,
+  // https://www.w3.org/TR/selectors-4/#anb-microsyntax).
   const directJessStaticNthPseudoArgument = choice(
-    sequence(directJessStaticNthOfHead, parser({ trivia: whitespace }, g.DirectJessStaticSelector), regex(/(?=\))/)),
-    sequence(g.CssAstSyntaxNth, regex(/(?=\))/))
+    sequence(directJessStaticNthOfHead, parser({ trivia: whitespace }, g.DirectJessStaticSelector), regex(/(?=[ \t\n\r\f]*\))/)),
+    sequence(g.CssAstSyntaxNth, regex(/(?=[ \t\n\r\f]*\))/))
   );
   // Retain the parsed `SelectorList` rather than collapsing it to text: a
   // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured

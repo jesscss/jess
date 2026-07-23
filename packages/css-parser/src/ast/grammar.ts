@@ -76,6 +76,7 @@ type CssAstLocalRules = {
   CssAstPseudo: Combinator<SimpleToken>;
   CssAstPseudoArgument: Combinator<string>;
   CssAstLeadingDashPseudoArgument: Combinator<string>;
+  CssAstTypedNthPseudoArgument: Combinator<string>;
   CssAstLeadingDashRawPseudoArgument: Combinator<string>;
   CssAstNestingSelector: Combinator<SimpleSelector>;
   CssAstProperty: Combinator<string>;
@@ -621,11 +622,37 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     children => children.map(sourceText).join('')
   );
+  // A non-dash-led An+B argument (`2n+1`, `n+3`, `n - 3`, `even`). Selectors-4
+  // defines the `<An+B>` microsyntax with OPTIONAL whitespace around the `+`/`-`
+  // sign — `2n + 1` and `n - 3` are as valid as `2n+1`
+  // (https://www.w3.org/TR/selectors-4/#anb-microsyntax; the equivalent grammar
+  // note is https://www.w3.org/TR/css-syntax-3/#the-anb-type). The shared `nth`
+  // recognition already spans that whitespace; recognize the complete typed form
+  // here so a bare-`n`-led argument (`n+3`) is not first claimed by the selector
+  // arm below as a lone type selector `n` and then left unable to close. This
+  // mirrors the negative `CssAstLeadingDashPseudoArgument` arm for the positive
+  // and unsigned cases; the trailing `(?=\))` keeps malformed forms (`2n +`,
+  // `2n+1x`) on their existing rejecting path.
+  const CssAstTypedNthPseudoArgument = node<string>(
+    'CssAstTypedNthPseudoArgument',
+    parser({ trivia: whitespace }, sequence(
+      g.CssAstSyntaxNth,
+      optional(sequence(optional(blockComment), regex(/of(?![-\w])/i), g.CssAstSelector)),
+      regex(/(?=\))/)
+    )),
+    (children) => {
+      const nth = tokenText(children[0]);
+      const selector = children.find(isSelectorList);
+      const comment = children.find(child => isTerminalText(child) && tokenText(child).startsWith('/*'));
+      return selector === undefined ? nth : `${nth}${comment === undefined ? '' : tokenText(comment)} of ${selectorArgumentText(selector)}`;
+    }
+  );
   const CssAstPseudoArgument = node<string>(
     'CssAstPseudoArgument',
     choice(
       g.CssAstLeadingDashPseudoArgument,
       g.CssAstLeadingDashRawPseudoArgument,
+      g.CssAstTypedNthPseudoArgument,
       parser({ trivia: interstitialTrivia }, g.CssAstSelector),
       sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), pseudoRawArgument)
     ),
@@ -1783,6 +1810,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     CssAstPseudo,
     CssAstPseudoArgument,
     CssAstLeadingDashPseudoArgument,
+    CssAstTypedNthPseudoArgument,
     CssAstLeadingDashRawPseudoArgument,
     CssAstNestingSelector,
     CssAstProperty,

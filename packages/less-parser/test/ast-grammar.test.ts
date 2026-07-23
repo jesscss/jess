@@ -3757,6 +3757,27 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
+    // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
+    // surrounding the argument inside the parens
+    // (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
+    // preserved verbatim; insignificant space surrounding the argument is
+    // normalized away, matching the canonical CSS grammar and the other dialects.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
+    ] as const) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
+      if (!isStylesheet(result.value)) {
+        continue;
+      }
+      expect(serialize(result.value).css, source).toEqual(expected);
+    }
+  });
+
   it('constructs static selector-valued functional pseudos through the recursive direct selector grammar', () => {
     const source = '.card:not(.disabled):has(.child > .grandchild), .note:is(.a, .b) { color: red; }';
     const cst = parseLessCst(source);

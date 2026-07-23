@@ -245,6 +245,24 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
+  it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
+    // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign in
+    // the `<An+B>` microsyntax (https://www.w3.org/TR/selectors-4/#anb-microsyntax);
+    // the sign whitespace is preserved verbatim, while insignificant whitespace
+    // surrounding the argument inside the parens is normalized away — matching
+    // the existing `2n+1` handling, which emits the An+B expression as authored.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(n + 3) { color: red; }', 'a:nth-child(n + 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1 of .item) { color: red; }', 'a:nth-child(2n + 1 of .item) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parseAst(source)).css, source).toEqual(expected);
+    }
+  });
+
   it('treats public selector and declaration-internal comments as trivia without swallowing comment statements', () => {
     const source = '/* root */ a/* compound */.card /* descendant */ > /* combinator */ [data-kind /* attribute */ = /* value */ primary i]:/* pseudo */hover { /* body */ color /* colon */ : /* value */ red/* tail */; }';
     const cst = parseCssCst(source);

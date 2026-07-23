@@ -649,6 +649,24 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('accepts An+B and selector pseudo whitespace as valid CSS, normalizing surrounding argument space', () => {
+    // Valid CSS is valid .jess: Selectors-4 §6.6.2 permits OPTIONAL whitespace
+    // around the `+`/`-` sign, and CSS permits insignificant whitespace
+    // surrounding any functional pseudo's argument inside the parens
+    // (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
+    // preserved verbatim; surrounding paren whitespace is normalized away exactly
+    // as the canonical CSS grammar and the other dialects do.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:not( .b ) { color: red; }', 'a:not(.b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
+    }
+  });
+
   it('constructs static Jess stylesheet and module import facts directly without resolving them', () => {
     const source = [
       '@-compose "./theme.jess" as theme;',

@@ -2550,7 +2550,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       // malformed-prefix gate prevents a broken An+B form from falling through
       // to ordinary raw pseudo content.
       sequence(g.CssAstSyntaxPseudoColon, directScssNthPseudoNameWithArgument, literal('('), not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument, literal(')')),
-      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
+      // Insignificant whitespace surrounding the `<An+B>` argument inside the
+      // parens (`:nth-child( 2n+1 )`) is normalized away, matching the other
+      // dialects; sign whitespace inside the argument (`2n + 1`, `n - 3`) stays
+      // verbatim in the captured chunk. Selectors-4 §6.6.2 permits both
+      // (https://www.w3.org/TR/selectors-4/#anb-microsyntax).
+      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3]).trim()})`)
     ),
     node<SimpleToken>(
       'DirectScssStructuredPseudo',
