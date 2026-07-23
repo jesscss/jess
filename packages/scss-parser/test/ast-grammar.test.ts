@@ -1307,7 +1307,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
-  it('constructs static selector-valued pseudo arguments without an opaque interpolation path', () => {
+  it('constructs static selector-valued pseudo arguments as structured PseudoSelector args (core owns the join)', () => {
     const source = '.card:not(.disabled, [aria-hidden=true]) { color: blue; }';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -1316,10 +1316,83 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+    // Parser keeps the parsed `SelectorList` as `args`; `text` is null (the
+    // inline join is core serialization's job, spaced). `:not` structures but is
+    // sealed (crossable:false).
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: ':not(.disabled,[aria-hidden=true])' }
+        {
+          type: 'PseudoSelector', name: ':not', text: null, crossable: false, interp: null,
+          args: { type: 'SelectorList', selectors: [
+            { head: { simples: [{ type: 'SimpleSelector', text: '.disabled' }] } },
+            { head: { simples: [{ type: 'SimpleSelector', text: '[aria-hidden=true]' }] } }
+          ] }
+        }
+      ] } }] } }]
+    });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.card:not(.disabled, [aria-hidden=true]) {\n  color: blue;\n}\n'
+    );
+  });
+
+  it('structures whitelisted selector-arg pseudos and leaves interp / non-whitelist pseudos unchanged', () => {
+    // (1) `:is` structures: `args` is a real SelectorList, `text` is null, and it
+    // is crossable. Authored spacing does NOT matter — core serialization joins
+    // with `, ` on one line, so `:is(.a,.b)` and `:is(.a, .b)` both round-trip to
+    // the spaced canonical form.
+    const structured = run(scssAstGrammar.ScssAstDocument, '.x:is(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(structured.ok && structured.unconsumedFrom === null).toBe(true);
+    expect(structured.value).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        {
+          type: 'PseudoSelector', name: ':is', text: null, crossable: true, interp: null,
+          args: { type: 'SelectorList', selectors: [
+            { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
+            { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+          ] }
+        }
+      ] } }] } }]
+    });
+    // The parser produces STRUCTURE + trivia only: it never joins, so the head
+    // compound's serializer-owned `_canon` memo is still unset at parse time.
+    let canonBeforeSerialize: string | undefined = 'unset-marker';
+    if (isStylesheet(structured.value)) {
+      const first = structured.value.children[0];
+      if (first?.type === 'Rule') {
+        canonBeforeSerialize = first.selector.selectors[0]?.head._canon;
+      }
+    }
+    expect(canonBeforeSerialize).toBeUndefined();
+    for (const [source, expected] of [
+      ['.x:is(.a,.b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:is(.a, .b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n']
+    ] as const) {
+      const rt = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      expect(isStylesheet(rt.value) ? serialize(rt.value).css : undefined, source).toBe(expected);
+    }
+
+    // (2) `:where` structures too, but is SEALED (crossable:false).
+    const sealed = run(scssAstGrammar.ScssAstDocument, '.x:where(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(sealed.value).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'PseudoSelector', name: ':where', text: null, crossable: false }
+      ] } }] } }]
+    });
+
+    // (3) An interpolation-bearing whitelisted pseudo arg is NOT structured — the
+    // static-arg lookahead fails on `#{`, so it degrades to the unchanged path
+    // (rejected today, still rejected). `:global` is not whitelisted, so it stays
+    // opaque SimpleSelector text.
+    const interp = run(scssAstGrammar.ScssAstDocument, '.x:is(#{$sel}) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(false);
+    const opaque = run(scssAstGrammar.ScssAstDocument, '.x:global(.a) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(opaque.value).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'SimpleSelector', text: ':global(.a)' }
       ] } }] } }]
     });
   });

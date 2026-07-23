@@ -8,8 +8,8 @@
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, pseudoSelector, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -154,7 +154,7 @@ type ScssAstRules = {
   DirectScssStaticPseudoArgument: Combinator<string>;
   DirectScssStaticPseudoGroup: Combinator<string>;
   DirectScssStaticPseudoSquare: Combinator<string>;
-  DirectScssPseudo: Combinator<SimpleSelector>;
+  DirectScssPseudo: Combinator<SimpleToken>;
   DirectScssNestingSelector: Combinator<SimpleSelector>;
   DirectScssCompound: Combinator<CompoundSelector>;
   DirectScssComplexTail: Combinator<ScssComplexTail>;
@@ -229,7 +229,7 @@ function isCompoundSelector(value: unknown): value is CompoundSelector {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'CompoundSelector'
     && 'simples' in value && Array.isArray(value.simples)
-    && value.simples.every(isSimpleSelector);
+    && value.simples.every(isSimpleToken);
 }
 
 function isComplexSelector(value: unknown): value is ComplexSelector {
@@ -273,8 +273,17 @@ function requireCompoundSelector(value: unknown): CompoundSelector {
   return value;
 }
 
-function requireSimpleSelector(value: unknown): SimpleSelector {
-  if (!isSimpleSelector(value)) {
+// A compound token is either a plain `SimpleSelector` or a structured
+// `PseudoSelector` (`:is(.a, .b)` etc.). The structured pseudo carries its
+// argument as a `SelectorList` in `args` and leaves `text` null; core
+// serialization owns the inline join.
+function isSimpleToken(value: unknown): value is SimpleToken {
+  return isSimpleSelector(value)
+    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'PseudoSelector');
+}
+
+function requireSimpleToken(value: unknown): SimpleToken {
+  if (!isSimpleToken(value)) {
     throw new TypeError('Direct SCSS AST grammar produced a non-simple selector child.');
   }
   return value;
@@ -2394,6 +2403,13 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   );
   const directScssNthPseudoNameWithArgument = regex(/nth-(?:last-)?(?:child|of-type)(?=\()/i);
   const directScssSelectorPseudoNameWithArgument = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
+  // The selector-function pseudos whose argument is retained as a STRUCTURED
+  // `SelectorList` (P0). Narrower than the opaque-text set above: `:global` and
+  // `:local` stay opaque. Gated on the NAME, and only when the argument parses
+  // as a static selector list with no `#{…}` interpolation — an interpolated arg
+  // fails the structured arm and degrades to the opaque/rejecting paths, so its
+  // behaviour is byte-for-byte unchanged. `crossable` is decided in core.
+  const directScssStructuredPseudoNameWithArgument = regex(/(?:is|not|has|where|matches)(?=\()/i);
   const DirectScssPseudo = choice(
     node<SimpleSelector>(
       'DirectScssNthPseudo',
@@ -2404,6 +2420,27 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       // to ordinary raw pseudo content.
       sequence(g.CssAstSyntaxPseudoColon, directScssNthPseudoNameWithArgument, literal('('), not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument, literal(')')),
       children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
+    ),
+    node<SimpleToken>(
+      'DirectScssStructuredPseudo',
+      // Parser = STRUCTURE + trivia only: keep the parsed `SelectorList` as `args`
+      // and DO NOT join — core serialization owns the inline `:is(a, b)` rule
+      // (`pseudoCanonical`). The `not(not(...))` positive lookahead confirms the
+      // argument is a fully STATIC selector arg (the existing chunk grammar
+      // rejects `#{`) before the structural parse commits; an interpolated or
+      // non-selector arg fails here and falls through to the opaque/reject arms.
+      sequence(
+        g.CssAstSyntaxPseudoColon,
+        directScssStructuredPseudoNameWithArgument,
+        literal('('),
+        not(not(sequence(g.DirectScssStaticSelectorPseudoArgument, literal(')')))),
+        g.DirectScssSelector,
+        literal(')')
+      ),
+      children => pseudoSelector(
+        `${requireToken(children[0]).value}${requireToken(children[1]).value}`,
+        requireSelectorList(children.find(isSelectorList))
+      )
     ),
     node<SimpleSelector>(
       'DirectScssSelectorPseudo',
@@ -2427,7 +2464,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssCompound = node<CompoundSelector>(
     'DirectScssCompound',
     noTrivia(oneOrMore(choice(g.DirectScssNestingSelector, parser({ trivia: whitespace }, g.DirectScssAttribute), g.DirectScssPseudo, g.DirectScssPlaceholder, g.DirectScssInterpolatedSimple, g.DirectScssSimple))),
-    children => compoundSelectorOf(children.map(requireSimpleSelector))
+    children => compoundSelectorOf(children.map(requireSimpleToken))
   );
   const directScssCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'));
   const DirectScssComplexTail = node<ScssComplexTail>(
