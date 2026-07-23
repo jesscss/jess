@@ -41,13 +41,16 @@ const inst = (
 });
 
 describe('branch-key cache (mkBranch / branchText)', () => {
-  it('mkBranch pre-declares `key` as an own property initialized undefined', () => {
+  it('mkBranch pre-declares `key` and `bnd` as own properties initialized undefined', () => {
     const b = mkBranch([{ comb: ' ', compound: { simples: [{ t: 'text', text: '.a' }] } }]);
-    // One stable hidden class: every branch is born `{ segs, key }`, so the memo
-    // write below is an in-place store, never a `{segs}`->`{segs,key}` transition.
-    expect(Object.keys(b)).toEqual(['segs', 'key']);
+    // One stable hidden class: every branch is born `{ segs, key, bnd }`, so the memo
+    // write below (and any later `bnd` origin store) is an in-place store, never a
+    // `{segs}`->`{segs,key}`->`{segs,key,bnd}` transition.
+    expect(Object.keys(b)).toEqual(['segs', 'key', 'bnd']);
     expect(Object.hasOwn(b, 'key')).toBe(true);
     expect(b.key).toBeUndefined();
+    expect(Object.hasOwn(b, 'bnd')).toBe(true);
+    expect(b.bnd).toBeUndefined();
   });
 
   it('branchText computes once, stores the result on `key`, and reads it back', () => {

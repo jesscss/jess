@@ -52,20 +52,31 @@ are correct byte-identical patches on it, but they cannot give it the dual-curso
    front having consumed the target **exhaustively**. Structural comparison of simples (atom identity),
    never `valueOf()` strings. This replaces both `branchExactEquivalent` (opaque grafts) and the
    sole-graft `branchExpansions`.
-3. **Match on the composed/implicit branch + an AMPERSAND-BOUNDARY MARKER (the load-bearing part).**
-   Matching happens on the fully-composed ("implicit") selector — the parent is already baked into the
-   branch (ast-v2 is compose-first via `composePath`), so it is NOT re-passed for keys. BUT the branch
-   MUST carry a marker of **where the ampersand boundary is** (which segments/simples came from the
-   parent-compose vs the ruleset's own-local), because the match's position relative to that boundary
-   decides three DISTINCT behaviors (§3a). Parent context enters as this boundary marker, not as keySet
-   bits. This is the reference's boundary-crossing logic (`detectAndHandleBoundaryCrossing`; the
-   `extend-ampersand-boundary` tests).
-4. **Bitset reject (corrected — no parent union).** Front-gate with the EXACT-mode gate
-   `requiredKeySet(target) ∩ visibleKeySet(target)` subset test — NOT raw `keySet` (raw over-rejects
-   `:is(.c,.q).a.b` ≡ `.a.b.c`, since `requiredKeySet` is empty for OR-parts). Partial path uses the
-   `isDisjoint`/shares-atom prefilter (already correct in ast-v2, `solve.ts` `branchSharesAtom`). The
-   parent-keySet UNION is **redundant** in the compose-first model (parent already in the composed
-   branch) — drop it. O(1) reject; zero-extend docs short-circuit entirely.
+3. **Match on the composed/implicit branch + a STRUCTURAL AMPERSAND-BOUNDARY MARKER (the load-bearing
+   part).** Matching happens on the fully-composed ("implicit") selector — the parent is already baked
+   into the branch (ast-v2 is compose-first via `composePath`), so it is NOT re-passed for keys. BUT the
+   branch MUST carry a marker of **where the ampersand boundary is**, because the match's position
+   relative to that boundary decides three DISTINCT behaviors (§3a).
+   **LANDED (RUNG P-amp):** the marker is a per-SEGMENT `bnd: Int8Array` on `Branch` (`ir.ts`,
+   pre-declared `undefined` in `mkBranch` beside `key` — one hidden class, no megamorphism): `bnd[i] === 0`
+   is own-local, `k>0` is the k-th enclosing `&`-hop. `composePath` now **SPLICES the parent's segments in
+   as separate `Seg`s** (a standalone `&` under `.outer .mid` yields the three matchable segments
+   `.outer .mid .leaf`, never one embedded-space text simple — the pre-P-amp collapse that silently
+   dropped a crossing extend) and stamps each output segment's origin. `branchText`/atoms/`textSimples`
+   ignore `bnd`; `cloneBranch` copies it; serialization is byte-identical. The origin classifier is
+   `classifyMatchBoundary(b, target, partial)` (`match.ts`) — it locates the matched span exactly as
+   `applyInstruction` does and reads `bnd` over it → `'local' | 'within' | 'crossing' | 'none'`. This is
+   the structural port of `detectAndHandleBoundaryCrossing` / `classifyExtendMatch`'s 3-way `MatchResult`.
+4. **Bitset reject — parent atoms enter via the composed branch (compose-first), so no SEPARATE union.**
+   Front-gate with the shares-atom prefilter (`solve.ts` `branchSharesAtom`, `plan.mayMatch`). NOTE the
+   correction to the earlier "drop the parent union" wording: the parent atoms are **REQUIRED** in the
+   available set — but because ast-v2 stays **compose-first** (`composePath` bakes the parent into the
+   candidate branch before the reject runs), those atoms are already present in the composed seed the
+   prefilter reads, so no *separate* parent-atom union is materialized. A future lazy matcher that defers
+   the parent-splice would have to union the parent atoms explicitly (tree-v1 `extend-roots.ts:421`);
+   full laziness is a **deferred perf follow-on** (RUNG P-amp kept compose-first — MUST-HAVE was correct
+   output + the structural boundary, not the laziness). Do not regress the compose-gating. O(1) reject;
+   zero-extend docs short-circuit entirely.
 5. **Extend-roots integration.** The scope/reachability pass (which rulesets an extend reaches — self +
    descendant roots, never ancestors; `@media`/`@layer`/`@container` scoping) is the source of the
    parent context + bits and decides *where* the matcher runs. Port it alongside the matcher, not after.
@@ -102,14 +113,36 @@ Where extendWith lands depends on what the match SPANS (per `EXTEND_RULES.md §3
 - Decide by **what the match produces** (does it span combinators / the whole compound?), never by AST
   type or path length (`EXTEND_RULES.md §3a`).
 
-### 3a. Ampersand-boundary rule (the hoist decision — from the composed branch + boundary marker)
-Given the ampersand-boundary marker (§2.3), classify the match by its position relative to the boundary:
-- Match falls **fully inside the ampersand(s)** (entirely the parent-composed part) ⟹ **NO effect** —
-  the extend does not apply (matching only the inherited parent is not a match of this ruleset).
-- Match **crosses** the boundary (part parent, part own-local) ⟹ **HOIST** the extended result to root.
-- Match falls **entirely outside** the ampersand(s) (own-local only) ⟹ apply in place, **NO hoist**.
-This is `EXTEND_RULES.md §5` + `detectAndHandleBoundaryCrossing`; the emit-layer hoist triggers already
-exist (`emit.ts`), so this piece is "feed the boundary classification into the existing hoist," not new.
+### 3a. Ampersand-boundary rule (the hoist decision — from the composed branch's `bnd`)
+Given the per-segment `bnd` marker (§2.3), `classifyMatchBoundary` reads the matched span's origins:
+- Match falls **entirely inside an ancestor `&`** (span all `bnd > 0`) ⟹ `'within'`. In tree-v1 this is
+  "NO effect — the parent carries it and the child inherits via `&` at render." In **compose-first**
+  ast-v2 the child was already composed against the *raw* parent, so the equivalent correct output is
+  produced by the in-place substitution on the composed branch (a single-compound parent slot
+  `.item .box` → `.item :is(.box, .z)`), OR — for a multi-branch / foreign-alias parent — by the emit
+  layer FLATTENING and recomposing (trigger P). So `'within'` does **not** universally mean "no effect"
+  under compose-first; it means "no *new* boundary is crossed by this rule's own selector."
+- Match **crosses** the boundary (span mixed `bnd = 0` and `bnd > 0`) ⟹ **HOIST**.
+- Match falls **entirely own-local** (span all `bnd === 0`) ⟹ apply in place, **NO hoist**.
+
+**Hoist LEVEL — per-boundary vs always-root (owner review point).** tree-v1 always hoists to ROOT.
+Per-boundary would hoist to the nesting level of the nearest crossed `&` = `min positive bnd in the
+span`. RUNG P-amp landed the FLAT-mode structural fix (a crossing sub-span now grafts in place —
+`.outer :is(.mid .leaf, .z)` — byte-identical to always-root at root, since flat mode has no nesting).
+The **NESTED-mode** hoist placement is a **deferred follow-on**: wiring `classifyMatchBoundary`'s
+`'crossing'` verdict into `emit.ts`'s existing flatten machinery makes the rule hoist, but the current
+hoist queue drains **one nesting level up** (correct for the one-level-deep trigger-P/X cases it was
+built for), so a two-level-deep crossing (Case G) double-composes its ancestor (`.outer { .outer :is(…) }`).
+Correct per-boundary (or always-root) placement needs a bubble-to-level mechanism in the serializer's
+nested hoist queue — that is the remaining P-amp work, gated on the owner's per-boundary-vs-always-root call.
+
+**Text-heuristic retirement (partial).** `classifyMatchBoundary` replaces the *match-span* input the old
+triggers approximated with text prefixes. It does NOT by itself replace trigger X's `descendsFrom`, which
+tests the **EXTENDER branch's** relationship to the parent header (does the appended sibling still nest
+under the same parent?) — a fact the match-span `bnd` does not carry. A full retirement of
+`descendsFrom`/`extendedParentHeader` therefore needs the extender-relationship modeled too; it is
+sequenced with the nested-hoist placement work above, not landed in P-amp (the text triggers stay in
+place and remain byte-identical on the whole corpus).
 
 > **Standing note — nested output is the Jess default, per-boundary hoist is PRIMARY.**
 > Jess renders **NESTED** by default (`collapseNesting:false`); nested extend placement and the
@@ -144,9 +177,14 @@ acceptance tests FIRST (red), implement, green, byte-identity on the full extend
   §3a partial-wrap) and the EXISTING emit hoist triggers (§3a boundary rule).
 - **P3 (verify, not build) — bitset gate**: adopt `requiredKeySet ∩ visible` (drop the parent union);
   op-budget zero-on-extend-free + linear. The partial prefilter (`branchSharesAtom`) already holds.
-- **P4 (verify, not build) — ampersand boundary marker + hoist**: ensure the composed branch carries the
-  boundary marker (§2.3) and the §3a three-way classification feeds emit's existing hoist. No new matcher
-  parameter — the matcher needs no parent for correctness (compose-first); only the boundary marker.
+- **P-amp (PARTIALLY LANDED) — structural ampersand boundary marker + hoist**: the composed branch now
+  carries the per-segment `bnd` marker (§2.3) via a parent-segment-splicing `composePath`, and
+  `classifyMatchBoundary` gives the §3a three-way verdict. LANDED: the FLAT-mode structural fix (a
+  crossing sub-span grafts in place; Case G/F red→green; within-ampersand + local byte-identical; whole
+  corpus — 721 core extend tests + all-less — byte-identical). DEFERRED (owner-review-gated): feeding
+  `'crossing'` into emit's NESTED-mode hoist with correct per-boundary/always-root PLACEMENT (the queue
+  currently drains one level up), and the full retirement of `descendsFrom`/`extendedParentHeader` (needs
+  the extender-parent relationship, not just the match-span `bnd`). See §3a.
 - **P5 (verify, not build) — scope/reachability** (`reaches`, media/layer scope, `referenceBoundary`)
   already exists in ast-v2 (`plan.ts`/`solve.ts`); confirm it still holds under the new matcher.
 

@@ -342,3 +342,111 @@ describe('direct canonical extend', () => {
     expect(complexHasAmpersand(prepassChild)).toBe(false);
   });
 });
+
+/** A structured descendant complex `a b` (two single-compound segments), the shape
+ * the real parser builds — unlike the `sel('a b')` helper, which collapses a
+ * multi-part string into ONE embedded-space compound. */
+const descendant = (a: string, b: string) =>
+  complexSelector([
+    { compound: compoundSelectorOf([simpleSelector(a)]) },
+    { comb: ' ', compound: compoundSelectorOf([simpleSelector(b)]) }
+  ]);
+
+describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
+  // The pre-P-amp compose collapsed a MULTI-segment parent into one embedded-space
+  // text simple at the `&` slot, so an interior parent segment stopped being a
+  // matchable unit and a crossing extend was SILENTLY DROPPED. Splicing the parent's
+  // segments in (and carrying a per-segment `bnd` origin) restores the match.
+
+  it('applies a crossing all-extender across a spliced multi-segment parent (Case G)', () => {
+    // `.outer { .mid { & .leaf { … } } }` composes to the THREE segments
+    // `.outer .mid .leaf` (origins 2,1,0). `.z:extend(.mid .leaf all)` matches the
+    // `.mid`(ancestor)+`.leaf`(own) sub-span — a boundary CROSS. On dev the parent
+    // `.outer .mid` was one embedded-space simple so `.mid .leaf` never matched and
+    // `.z` was dropped; now it grafts in place.
+    const leaf = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('&')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.leaf')]) }
+    ]);
+    const document = stylesheet([
+      rule('.outer', [rule('.mid', [rule(leaf, [decl('c', keyword('d'))])])]),
+      rule('.z', [], [{ target: selist(descendant('.mid', '.leaf')), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.outer :is(.mid .leaf, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('applies a crossing all-extender across MULTIPLE spliced ampersands (Case F)', () => {
+    // `.p { .a & .b & { … } }` composes to `.a .p .b .p` (origins 0,1,0,1).
+    // `.z:extend(.p .b .p all)` matches the `.p`(anc) `.b`(own) `.p`(anc) sub-span.
+    const inner = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.a')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.b')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+    ]);
+    const target = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.p')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.b')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.p')]) }
+    ]);
+    const document = stylesheet([
+      rule('.p', [rule(inner, [decl('c', keyword('d'))])]),
+      rule('.z', [], [{ target: selist(target), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.a :is(.p .b .p, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('keeps a WITHIN-AMPERSAND all-match correct (extend targets only the parent context)', () => {
+    // `.box { color; .item & { … } }` composes the child to `.item .box` (origins 0,1).
+    // `.z:extend(.box all)` matches `.box`(ancestor) — a WITHIN-AMPERSAND match. The
+    // parent `.box` carries the extend (`.box, .z`); the child's `.box` slot renders
+    // `:is(.box, .z)` — `.item :is(.box, .z)`, correct under the boundary model.
+    const child = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.item')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+    ]);
+    const document = stylesheet([
+      rule('.box', [decl('color', keyword('red')), rule(child, [decl('c', keyword('d'))])]),
+      rule('.z', [], [{ target: selist(sel('.box')), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.box,\n'
+      + '.z {\n'
+      + '  color: red;\n'
+      + '}\n'
+      + '.item :is(.box, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('keeps a LOCAL all-match in place (extend targets own-local across the ampersand)', () => {
+    // `.box { & .leaf { … } }` composes to `.box .leaf` (origins 1,0). `.z:extend(.leaf
+    // all)` matches `.leaf`(own-local) — a LOCAL match, substituted in place.
+    const child = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('&')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.leaf')]) }
+    ]);
+    const document = stylesheet([
+      rule('.box', [rule(child, [decl('c', keyword('d'))])]),
+      rule('.z', [], [{ target: selist(sel('.leaf')), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.box :is(.leaf, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+});

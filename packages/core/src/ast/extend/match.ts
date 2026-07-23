@@ -197,6 +197,84 @@ export function branchWholeMatches(b: Branch, target: Branch, partial: boolean):
 const NO_MATCH = -2;
 
 /**
+ * [&-boundary] The ampersand-boundary class of an instruction match against a
+ * COMPOSED branch (its per-segment `bnd` origin, `compose.ts`): the structural
+ * replacement for the emit-layer text heuristics.
+ *
+ *   - `'none'`     — the target does not match this branch at all.
+ *   - `'local'`    — the matched span is ENTIRELY own-local (`bnd === 0`): the rule
+ *                    keeps the match in place; no `&`-boundary is crossed.
+ *   - `'within'`   — the matched span is ENTIRELY inherited from an ancestor `&`
+ *                    (`bnd > 0`): the match is on the parent context, not this
+ *                    ruleset's own selector.
+ *   - `'crossing'` — the matched span straddles the boundary (some `bnd === 0` and
+ *                    some `bnd > 0`): it cannot be expressed as a local rewrite.
+ *
+ * The span is located exactly as `applyInstruction` locates it (whole-branch append
+ * vs sub-compound / sub-segment rewrite), then classified from `b.bnd`. `undefined`
+ * `bnd` (a branch that never went through an `&`-compose) reads as all own-local.
+ */
+export type MatchBoundary = 'none' | 'local' | 'within' | 'crossing';
+
+function spanBoundary(bnd: Int8Array | undefined, start: number, len: number): MatchBoundary {
+  if (!bnd) {
+    return 'local';
+  }
+  let hasOwn = false;
+  let hasAncestor = false;
+  for (let i = start; i < start + len && i < bnd.length; i++) {
+    if (bnd[i] === 0) {
+      hasOwn = true;
+    } else {
+      hasAncestor = true;
+    }
+  }
+  if (hasOwn && hasAncestor) {
+    return 'crossing';
+  }
+  return hasAncestor ? 'within' : 'local';
+}
+
+export function classifyMatchBoundary(b: Branch, target: Branch, partial: boolean): MatchBoundary {
+  // Whole-branch (exact/all) append: the span is the ENTIRE branch.
+  if (branchWholeMatch(b, target, false) || (partial && branchWholeMatch(b, target, true))) {
+    return spanBoundary(b.bnd, 0, b.segs.length);
+  }
+  if (!partial) {
+    return 'none';
+  }
+  // Single-compound `all` sub-match: the first segment the target compound subsets.
+  if (target.segs.length === 1) {
+    const need = textSimples(target.segs[0]!.compound);
+    for (let i = 0; i < b.segs.length; i++) {
+      if (multisetSubset(need, textSimples(b.segs[i]!.compound))) {
+        return spanBoundary(b.bnd, i, 1);
+      }
+    }
+    return 'none';
+  }
+  // Multi-segment `all` sub-match: the first aligned span (mirrors substituteMultiCompound).
+  const P = target.segs.length;
+  for (let start = 0; start + P <= b.segs.length; start++) {
+    let ok = true;
+    for (let k = 0; k < P; k++) {
+      if (!multisetSubset(textSimples(target.segs[k]!.compound), textSimples(b.segs[start + k]!.compound))) {
+        ok = false;
+        break;
+      }
+      if (k > 0 && target.segs[k]!.comb !== b.segs[start + k]!.comb) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      return spanBoundary(b.bnd, start, P);
+    }
+  }
+  return 'none';
+}
+
+/**
  * The invariant CONTEXT of one whole-branch walk, passed BY REFERENCE so the recursion
  * threads only the two `(segIdx, findIdx)` cursors by value (no cloned cursor objects,
  * invariant 5). `base`/`target` are the two branches' segments; `partial` selects EXACT
