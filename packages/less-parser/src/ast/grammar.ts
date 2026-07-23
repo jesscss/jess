@@ -582,6 +582,99 @@ function requireInterpolationFact(value: unknown): InterpolationFact {
   return value;
 }
 
+/** Fold grammar-owned interpolation facts, bare variable references, and literal
+ * tokens into canonical Interpolation parts.  An optional `leading` literal seeds
+ * the run so quote openers stay attached to their following literal segment. */
+function interpolationPartsFrom(children: readonly unknown[], unquote: boolean, leading?: string): Interpolation['parts'] {
+  const parts: Interpolation['parts'] = [];
+  if (leading !== undefined) {
+    parts.push({ lit: leading });
+  }
+  for (const child of children) {
+    if (isInterpolationFact(child)) {
+      parts.push({ ref: child.ref, unquote });
+    } else if (isVarRef(child)) {
+      parts.push({ ref: child, unquote });
+    } else {
+      appendInterpolationLiteral(parts, requireToken(child).value);
+    }
+  }
+  return parts;
+}
+
+/** Reduce grammar-produced `separator` field captures into their terminal text. */
+function separatorsFromFields(fields: FieldMap | undefined): string[] {
+  return fields?.separator === undefined
+    ? []
+    : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
+}
+
+/** Fold selected value children into a comma `List`, retaining any authored
+ * separator layout, and collapse a single value to itself. */
+function commaListFromChildren<T extends ValueSlot>(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  pick: (child: unknown) => child is T
+): T | List {
+  const values = children.filter(pick);
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  const result = list(values, ',');
+  const separators = separatorsFromFields(fields);
+  return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
+}
+
+/** Shared space-separated value-term reduction: preserved `/`, `-`, and `%`
+ * pieces become keywords, and authored gaps are retained as a ValueLayout. */
+function valuePieceReducer(children: readonly unknown[], fields: FieldMap | undefined): ValueSlot {
+  const values = children
+    .filter(child => isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%'))
+    .map(child => isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')
+      ? keyword(requireTerminalText(child))
+      : requireValueNode(child));
+  const authoredSeparators = separatorsFromFields(fields);
+  const separators = authoredSeparators.length === values.length - 1
+    ? authoredSeparators
+    : [...authoredSeparators, ...Array(Math.max(0, values.length - 1 - authoredSeparators.length)).fill('')];
+  return values.length === 1 ? values[0]! : withValueLayout(values, separators);
+}
+
+/** A structural value child stays as-is; a grammar terminal becomes a keyword. */
+function keywordOrValue(child: unknown): ValueNode {
+  return isValueNode(child) ? child : keyword(requireTerminalText(child));
+}
+
+/** Space-join value/terminal children into a single SpacedValue. */
+function spacedFromValueChildren(children: readonly unknown[]): ValueNode {
+  return spaced(children.map(keywordOrValue));
+}
+
+function isComplexTailFact(value: unknown): value is ComplexTailFact {
+  return typeof value === 'object' && value !== null && 'comb' in value && 'compound' in value;
+}
+
+/** Shared `optional(combinator) compound` selector-tail reduction: the compound
+ * and combinator sub-rules vary by selector family, but the fold to a
+ * `{ comb, compound }` fact is identical. */
+function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
+  const compound = children.find(isCompound);
+  if (compound === undefined) {
+    throw new TypeError('Direct Less AST grammar produced a selector tail without a compound.');
+  }
+  const token = children.find(child => !isCompound(child));
+  return { comb: token === undefined ? ' ' : requireCombinator(token), compound };
+}
+
+/** Space-separated query clause reduction: keyword/value children join into a
+ * SpacedValue, and a single value collapses to itself. */
+function queryClauseReducer(children: readonly unknown[]): ValueNode {
+  const values = children
+    .filter(child => child !== undefined && child !== null && child !== false)
+    .map(keywordOrValue);
+  return values.length === 1 ? values[0]! : spaced(values);
+}
+
 /** Turn grammar-owned custom-property leaves into a canonical value without a source scan. */
 function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
   const interpolationParts: Interpolation['parts'] = [];
@@ -1476,17 +1569,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       g.DirectLessInterpolation,
       many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
     )),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (typeof child === 'object' && child !== null && 'ref' in child && 'src' in child) {
-          parts.push({ ref: requireInterpolationFact(child).ref, unquote: true });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolation(parts);
-    }
+    children => interpolation(interpolationPartsFrom(children, true))
   );
   const DirectLessQuoted = node<Quoted | Interpolation>(
     'DirectLessQuoted',
@@ -1496,28 +1579,24 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     ),
     (children) => {
       const open = requireToken(children[0]);
-      if (!children.some(child => typeof child === 'object' && child !== null && 'ref' in child && 'src' in child)) {
+      if (!children.some(isInterpolationFact)) {
         const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
         return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
       }
-      const parts: Interpolation['parts'] = [{ lit: open.value }];
-      for (const child of children.slice(1, -1)) {
-        if (typeof child === 'object' && child !== null && 'ref' in child && 'src' in child) {
-          parts.push({ ref: requireInterpolationFact(child).ref, unquote: true });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
+      const parts = interpolationPartsFrom(children.slice(1, -1), true, open.value);
       appendInterpolationLiteral(parts, open.value);
       return interpolation(parts);
     }
   );
+  // Static (interpolation-free) single/double-quoted body shared by the quoted
+  // value, functional-pseudo, and attribute-selector static grammars.
+  const staticQuotedBody = choice(
+    noTrivia(sequence(literal('"'), many(choice(g.LessAstSyntaxQuotedDoubleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
+    noTrivia(sequence(literal('\''), many(choice(g.LessAstSyntaxQuotedSingleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
+  );
   const DirectLessStaticQuoted = node<Quoted>(
     'DirectLessStaticQuoted',
-    choice(
-      noTrivia(sequence(literal('"'), many(choice(g.LessAstSyntaxQuotedDoubleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.LessAstSyntaxQuotedSingleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
-    ),
+    staticQuotedBody,
     (children) => {
       const open = requireToken(children[0]);
       const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
@@ -1539,16 +1618,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       if (quote !== '"' && quote !== '\'') {
         throw new TypeError('Direct Less escaped quote lost its quote delimiter.');
       }
-      if (children.some(child => typeof child === 'object' && child !== null && 'ref' in child && 'src' in child)) {
-        const parts: Interpolation['parts'] = [];
-        for (const child of children.slice(1, -1)) {
-          if (typeof child === 'object' && child !== null && 'ref' in child && 'src' in child) {
-            parts.push({ ref: requireInterpolationFact(child).ref, unquote: true });
-          } else {
-            appendInterpolationLiteral(parts, requireToken(child).value);
-          }
-        }
-        return interpolation(parts);
+      if (children.some(isInterpolationFact)) {
+        return interpolation(interpolationPartsFrom(children.slice(1, -1), true));
       }
       const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
       return quoted(`${opener}${value}${quote}`, value, quote, true);
@@ -1587,19 +1658,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       sequence(g.DirectLessVarReference, oneOrMore(choice(staticUrlText, g.DirectLessInterpolation))),
       sequence(g.DirectLessInterpolation, many(choice(staticUrlText, g.DirectLessInterpolation)))
     )),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isVarRef(child)) {
-          parts.push({ ref: child, unquote: true });
-        } else if (typeof child === 'object' && child !== null && 'ref' in child && 'src' in child) {
-          parts.push({ ref: requireInterpolationFact(child).ref, unquote: true });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolation(parts);
-    }
+    children => interpolation(interpolationPartsFrom(children, true))
   );
   const DirectLessDynamicUrl = node<Url>(
     'DirectLessDynamicUrl',
@@ -1738,16 +1797,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
     )),
     (children) => {
-      if (children.some(child => typeof child === 'object' && child !== null && 'ref' in child && 'src' in child)) {
-        const parts: Interpolation['parts'] = [];
-        for (const child of children) {
-          if (typeof child === 'object' && child !== null && 'ref' in child && 'src' in child) {
-            parts.push({ ref: requireInterpolationFact(child).ref, unquote: true });
-          } else {
-            appendInterpolationLiteral(parts, requireToken(child).value);
-          }
-        }
-        return interpolation(parts);
+      if (children.some(isInterpolationFact)) {
+        return interpolation(interpolationPartsFrom(children, true));
       }
       return keyword(children.map(child => requireToken(child).value).join(''));
     }
@@ -1936,9 +1987,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         }
       }
       const call = funcCall(name, args);
-      const separators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
+      const separators = separatorsFromFields(fields);
       if (separators.length === args.length - 1) {
         withValueLayout(call.args, separators);
       }
@@ -1960,9 +2009,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       const name = requireToken(children[0]).value;
       const args = children.slice(1, -1).filter(isValueSlotValue);
       const call = funcCall(name, args);
-      const separators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
+      const separators = separatorsFromFields(fields);
       if (separators.length === args.length - 1) {
         withValueLayout(call.args, separators);
       }
@@ -2194,48 +2241,16 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessValueTerm = node<ValueSlot>(
     'DirectLessValueTerm',
     noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), DirectLessValuePiece)), many(noTrivia(g.DirectLessValueComment)))),
-    (children, fields) => {
-      const values = children.filter(child => isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')).map(child => isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')
-        ? keyword(requireTerminalText(child))
-        : requireValueNode(child));
-      const authoredSeparators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
-      const separators = authoredSeparators.length === values.length - 1
-        ? authoredSeparators
-        : [...authoredSeparators, ...Array(Math.max(0, values.length - 1 - authoredSeparators.length)).fill('')];
-      return values.length === 1 ? values[0]! : withValueLayout(values, separators);
-    }
+    (children, fields) => valuePieceReducer(children, fields)
   );
   // Function bodies use their own argument boundary rule, but comments *inside*
   // an argument are still output-bearing Less value syntax. This local value
   // term therefore keeps the ordinary comment piece while its scalar sibling
   // above leaves a completed argument's trailing trivia to `functionTrivia`.
-  const DirectLessFunctionValuePiece = choice(
-    g.DirectLessUnicodeRange,
-    DirectLessTopSumMaybeDivision,
-    g.DirectLessValueComment,
-    literal('/'),
-    literal('-'),
-    literal('%')
-  );
   const DirectLessFunctionValueTerm = node<ValueSlot>(
     'DirectLessFunctionValueTerm',
-    noTrivia(sequence(DirectLessFunctionValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), DirectLessFunctionValuePiece)))),
-    (children, fields) => {
-      const values = children
-        .filter(child => isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%'))
-        .map(child => isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')
-          ? keyword(requireTerminalText(child))
-          : requireValueNode(child));
-      const authoredSeparators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
-      const separators = authoredSeparators.length === values.length - 1
-        ? authoredSeparators
-        : [...authoredSeparators, ...Array(Math.max(0, values.length - 1 - authoredSeparators.length)).fill('')];
-      return values.length === 1 ? values[0]! : withValueLayout(values, separators);
-    }
+    noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), DirectLessValuePiece)))),
+    (children, fields) => valuePieceReducer(children, fields)
   );
   const DirectLessValue = node<ValueSlot>(
     'DirectLessValue',
@@ -2251,15 +2266,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       if (referenceValue !== undefined) {
         return referenceValue;
       }
-      const values = children.filter(isValueSlotValue);
-      if (values.length === 1) {
-        return values[0]!;
-      }
-      const result = list(values, ',');
-      const separators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
-      return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
+      return commaListFromChildren(children, fields, isValueSlotValue);
     }
   );
   // Variable declarations additionally permit Less trivia immediately after
@@ -2273,17 +2280,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), g.DirectLessValueTerm)),
       optional(sequence(literal(','), optional(whitespace)))
     ),
-    (children, fields) => {
-      const values = children.filter(isValueSlotValue);
-      if (values.length === 1) {
-        return values[0]!;
-      }
-      const result = list(values, ',');
-      const separators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
-      return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
-    }
+    (children, fields) => commaListFromChildren(children, fields, isValueSlotValue)
   );
   // `!important` is a grammar-owned declaration/value modifier.  Variables
   // carry the wrapper so references hoist importance once; declarations expose
@@ -2335,15 +2332,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       if (!children.some(isInterpolationFact)) {
         return requireToken(children[0]).value;
       }
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isInterpolationFact(child)) {
-          parts.push({ ref: child.ref, unquote: false });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolation(parts);
+      return interpolation(interpolationPartsFrom(children, false));
     }
   );
   const DirectLessCustomParen = node<readonly CustomValuePart[]>(
@@ -2414,17 +2403,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       noTrivia(sequence(optional(literal('*')), optional(literal('-')), optional(g.CssAstSyntaxInterpolatedPropertyStart), g.DirectLessInterpolation, many(choice(g.CssAstSyntaxInterpolatedPropertyTail, g.DirectLessInterpolation)))),
       noTrivia(sequence(literal('--'), optional(choice(g.LessAstSyntaxInterpolatedCustomPropertyStart, g.LessAstSyntaxInterpolatedCustomPropertyDash)), g.DirectLessInterpolation, many(choice(g.LessAstSyntaxInterpolatedCustomPropertyTail, g.DirectLessInterpolation))))
     ),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (typeof child === 'object' && child !== null && 'ref' in child && 'src' in child) {
-          parts.push({ ref: requireInterpolationFact(child).ref, unquote: false });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolation(parts);
-    }
+    children => interpolation(interpolationPartsFrom(children, false))
   );
   // A block comment between a property and `:` is authored declaration-name
   // syntax. Preserve it through the existing structural Interpolation name
@@ -2541,18 +2520,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), not(regex(/\/\//)), DirectLessValuePiece)),
       many(noTrivia(g.DirectLessValueComment))
     )),
-    (children, fields) => {
-      const values = children.filter(child => isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')).map(child => isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')
-        ? keyword(requireTerminalText(child))
-        : requireValueNode(child));
-      const authoredSeparators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
-      const separators = authoredSeparators.length === values.length - 1
-        ? authoredSeparators
-        : [...authoredSeparators, ...Array(Math.max(0, values.length - 1 - authoredSeparators.length)).fill('')];
-      return values.length === 1 ? values[0]! : withValueLayout(values, separators);
-    }
+    (children, fields) => valuePieceReducer(children, fields)
   );
   const DirectLessMixinParam: Combinator<Param> = choice(
     node<Param>(
@@ -3321,7 +3289,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessQueryLogicalGroup = node<ValueNode>(
     'DirectLessQueryLogicalGroup',
     sequence(literal('('), g.DirectLessQueryFeature, oneOrMore(sequence(g.CssAstSyntaxQueryAndOr, g.DirectLessQueryFeature)), literal(')')),
-    children => block(spaced(children.filter(child => isValueNode(child) ? true : isTerminalText(child, 'and') || isTerminalText(child, 'or')).map(child => isValueNode(child) ? child : keyword(requireTerminalText(child)))))
+    children => block(spaced(children.filter(child => isValueNode(child) ? true : isTerminalText(child, 'and') || isTerminalText(child, 'or')).map(keywordOrValue)))
   );
   // Container queries permit a nested negated condition, for example
   // `(not (height > 670px))`. It is a parenthesized structural query fact,
@@ -3375,7 +3343,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       many(sequence(g.CssAstSyntaxQueryAndOr, DirectLessQueryTerm)),
       many(DirectLessQueryComment)
     ),
-    children => spaced(children.map(child => isValueNode(child) ? child : keyword(requireTerminalText(child))))
+    children => spacedFromValueChildren(children)
   );
   const DirectLessQueryClause = node<ValueNode>(
     'DirectLessQueryClause',
@@ -3388,27 +3356,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         many(DirectLessQueryComment)
       )
     ),
-    (children) => {
-      const values = children
-        .filter(child => child !== undefined && child !== null && child !== false)
-        .map(child => isValueNode(child) ? child : keyword(requireTerminalText(child)));
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
+    children => queryClauseReducer(children)
   );
   const DirectLessQueryPrelude = node<ValueNode>(
     'DirectLessQueryPrelude',
     sequence(g.DirectLessQueryClause, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), g.DirectLessQueryClause))),
-    (children, fields) => {
-      const clauses = children.filter(isValueNode);
-      if (clauses.length === 1) {
-        return clauses[0]!;
-      }
-      const result = list(clauses, ',');
-      const separators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
-      return separators.length === clauses.length - 1 ? withValueLayout(result, separators) : result;
-    }
+    (children, fields) => commaListFromChildren(children, fields, isValueNode)
   );
   // Less permits a variable interpolation as an ordinary `@media` query term:
   // `@media @{all} and @{tv}`. That is not a container-query form, so retain
@@ -3427,7 +3380,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       many(sequence(g.CssAstSyntaxQueryAndOr, DirectLessMediaQueryTerm)),
       many(DirectLessQueryComment)
     ),
-    children => spaced(children.map(child => isValueNode(child) ? child : keyword(requireTerminalText(child))))
+    children => spacedFromValueChildren(children)
   );
   const DirectLessMediaQueryClause = node<ValueNode>(
     'DirectLessMediaQueryClause',
@@ -3440,27 +3393,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         many(DirectLessQueryComment)
       )
     ),
-    (children) => {
-      const values = children
-        .filter(child => child !== undefined && child !== null && child !== false)
-        .map(child => isValueNode(child) ? child : keyword(requireTerminalText(child)));
-      return values.length === 1 ? values[0]! : spaced(values);
-    }
+    children => queryClauseReducer(children)
   );
   const DirectLessMediaQueryPrelude = node<ValueNode>(
     'DirectLessMediaQueryPrelude',
     sequence(DirectLessMediaQueryClause, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), DirectLessMediaQueryClause))),
-    (children, fields) => {
-      const clauses = children.filter(isValueNode);
-      if (clauses.length === 1) {
-        return clauses[0]!;
-      }
-      const result = list(clauses, ',');
-      const separators = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
-      return separators.length === clauses.length - 1 ? withValueLayout(result, separators) : result;
-    }
+    (children, fields) => commaListFromChildren(children, fields, isValueNode)
   );
   // A style query is a real typed container-header function. Its argument is a
   // structural custom-property comparison rather than an opaque header slice.
@@ -3752,10 +3690,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessStaticPseudoQuoted = node<string>(
     'DirectLessStaticPseudoQuoted',
-    choice(
-      noTrivia(sequence(literal('"'), many(choice(g.LessAstSyntaxQuotedDoubleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.LessAstSyntaxQuotedSingleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
-    ),
+    staticQuotedBody,
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
   const DirectLessStaticPseudoGroup = node<string>(
@@ -3821,18 +3756,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessStaticPseudoComplexTail = node<ComplexTailFact>(
     'DirectLessStaticPseudoComplexTail',
     sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoCompound)),
-    (children) => {
-      const compound = children.find(isCompound);
-      if (compound === undefined) {
-        throw new TypeError('Direct Less pseudo selector tail has no compound.');
-      }
-      const token = children.find(child => !isCompound(child));
-      const comb = token === undefined ? ' ' : requireTerminalText(token);
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '|' && comb !== '||') {
-        throw new TypeError('Direct Less pseudo selector tail has an invalid combinator.');
-      }
-      return { comb, compound };
-    }
+    combinatorTailReducer
   );
   const DirectLessStaticPseudoComplex = node<ComplexSelector>(
     'DirectLessStaticPseudoComplex',
@@ -3846,7 +3770,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
       return complexSelector([
         { compound: head },
-        ...children.filter((tail): tail is ComplexTailFact => typeof tail === 'object' && tail !== null && 'comb' in tail && 'compound' in tail)
+        ...children.filter(isComplexTailFact)
       ], leading === undefined ? undefined : requireCombinator(leading));
     }
   );
@@ -3948,57 +3872,30 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessStaticAttributeQuoted = node<string>(
     'DirectLessStaticAttributeQuoted',
-    choice(
-      noTrivia(sequence(literal('"'), many(choice(g.LessAstSyntaxQuotedDoubleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.LessAstSyntaxQuotedSingleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
-    ),
+    staticQuotedBody,
     children => children.map(requireToken).map(token => token.value).join('')
   );
   // Less's attribute name/value interpolation is one complete selector token.
   // Keep every literal delimiter and every interpolation reference (`@{…}` and
   // `${…}`) as an `Interpolation` part rather than recovering the bracket text
   // after parsing. Dynamic pseudos and extend headers remain separate, rejected forms.
+  // Attribute name and value interpolation share one grammar body; the reducers
+  // differ only by whether each reference part is unquoted (name) or kept quoted
+  // (value, so `[data=@{value}]` retains its source spelling).
+  const directAttributeInterpolationTokenBody = noTrivia(sequence(
+    optional(choice(g.LessAstSyntaxInterpolatedValueStart, g.LessAstSyntaxInterpolatedValueDash)),
+    g.DirectLessInterpolation,
+    many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
+  ));
   const DirectLessInterpolatedAttributeToken = node<Interpolation>(
     'DirectLessInterpolatedAttributeToken',
-    noTrivia(sequence(
-      optional(choice(g.LessAstSyntaxInterpolatedValueStart, g.LessAstSyntaxInterpolatedValueDash)),
-      g.DirectLessInterpolation,
-      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
-    )),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isInterpolationFact(child)) {
-          parts.push({ ref: child.ref, unquote: true });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolation(parts);
-    }
+    directAttributeInterpolationTokenBody,
+    children => interpolation(interpolationPartsFrom(children, true))
   );
-  // Attribute-value interpolation differs from an interpolated attribute name:
-  // a quoted Less variable must retain its quote bytes when it becomes the
-  // unquoted source spelling `[data=@{value}]`.  Static keyword values are
-  // unchanged; quoted values render as the corresponding quoted CSS selector.
   const DirectLessInterpolatedAttributeValueToken = node<Interpolation>(
     'DirectLessInterpolatedAttributeValueToken',
-    noTrivia(sequence(
-      optional(choice(g.LessAstSyntaxInterpolatedValueStart, g.LessAstSyntaxInterpolatedValueDash)),
-      g.DirectLessInterpolation,
-      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
-    )),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isInterpolationFact(child)) {
-          parts.push({ ref: child.ref, unquote: false });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolation(parts);
-    }
+    directAttributeInterpolationTokenBody,
+    children => interpolation(interpolationPartsFrom(children, false))
   );
   const DirectLessInterpolatedAttributeQuoted = node<Interpolation>(
     'DirectLessInterpolatedAttributeQuoted',
@@ -4006,17 +3903,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       noTrivia(sequence(literal('"'), many(choice(g.DirectLessVariableInterpolation, g.LessAstSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
       noTrivia(sequence(literal('\''), many(choice(g.DirectLessVariableInterpolation, g.LessAstSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
     ),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isInterpolationFact(child)) {
-          parts.push({ ref: child.ref, unquote: true });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolation(parts);
-    }
+    children => interpolation(interpolationPartsFrom(children, true))
   );
   const DirectLessStaticAttributeMatch = node<StaticAttributeMatchFact>(
     'DirectLessStaticAttributeMatch',
@@ -4108,14 +3995,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessAdjacentInterpolatedSelector = node<SimpleSelector>(
     'DirectLessAdjacentInterpolatedSelector',
     noTrivia(sequence(g.DirectLessVariableInterpolation, oneOrMore(g.DirectLessVariableInterpolation))),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        const fact = requireInterpolationFact(child);
-        parts.push({ ref: fact.ref, unquote: true });
-      }
-      return interpolatedSimpleSelector(interpolation(parts));
-    }
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   // A bare interpolation may be followed by a glued selector simple, such as
   // `@{base}.bbb`. Keep that suffix as an interpolation literal segment rather
@@ -4123,14 +4003,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessBareInterpolatedSelectorWithSuffix = node<SimpleSelector>(
     'DirectLessBareInterpolatedSelectorWithSuffix',
     noTrivia(sequence(g.DirectLessVariableInterpolation, oneOrMore(choice(directInterpolatedSelectorTail, staticSimpleSelector)))),
-    (children) => {
-      const fact = requireInterpolationFact(children[0]);
-      const parts: Interpolation['parts'] = [{ ref: fact.ref, unquote: true }];
-      for (const child of children.slice(1)) {
-        appendInterpolationLiteral(parts, requireToken(child).value);
-      }
-      return interpolatedSimpleSelector(interpolation(parts));
-    }
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   const DirectLessInterpolatedSimpleSelector = node<SimpleSelector>(
     'DirectLessInterpolatedSimpleSelector',
@@ -4139,17 +4012,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       g.DirectLessVariableInterpolation,
       many(choice(directInterpolatedSelectorTail, g.DirectLessVariableInterpolation))
     )),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isInterpolationFact(child)) {
-          parts.push({ ref: child.ref, unquote: true });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolatedSimpleSelector(interpolation(parts));
-    }
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   // `&` plus a glued Less interpolation is one parent-suffix selector token,
   // not a static parent selector followed by a second compound member. The
@@ -4161,17 +4024,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       g.DirectLessVariableInterpolation,
       many(choice(directInterpolatedSelectorTail, g.DirectLessVariableInterpolation))
     )),
-    (children) => {
-      const parts: Interpolation['parts'] = [];
-      for (const child of children) {
-        if (isInterpolationFact(child)) {
-          parts.push({ ref: child.ref, unquote: true });
-        } else {
-          appendInterpolationLiteral(parts, requireToken(child).value);
-        }
-      }
-      return interpolatedSimpleSelector(interpolation(parts));
-    }
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   const directLessNonCommentCompoundSimple = choice(
     g.DirectLessInterpolatedParentSuffix,
@@ -4218,7 +4071,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         throw new TypeError('Direct Less AST grammar produced a selector without a head compound.');
       }
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
-      const tails = children.filter((tail): tail is ComplexTailFact => typeof tail === 'object' && tail !== null && 'comb' in tail && 'compound' in tail).map((tail): ComplexTailFact => {
+      const tails = children.filter(isComplexTailFact).map((tail): ComplexTailFact => {
         if (typeof tail !== 'object' || tail === null || !('comb' in tail) || !('compound' in tail)) {
           throw new TypeError('Direct Less AST grammar produced an invalid selector tail.');
         }
@@ -4246,18 +4099,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessComplexTail = node<ComplexTailFact>(
     'DirectLessComplexTail',
     sequence(optional(staticCombinator), g.DirectLessCompound),
-    (children) => {
-      const compound = children.find(isCompound);
-      if (compound === undefined) {
-        throw new TypeError('Direct Less AST grammar produced a selector tail without a compound.');
-      }
-      const token = children.find(child => !isCompound(child));
-      const comb = token === undefined ? ' ' : requireTerminalText(token);
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '|' && comb !== '||') {
-        throw new TypeError('Direct Less AST grammar produced an invalid selector combinator.');
-      }
-      return { comb, compound };
-    }
+    combinatorTailReducer
   );
   const DirectLessSelectorTail = node<ComplexSelector>(
     'DirectLessSelectorTail',
@@ -4281,18 +4123,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessStaticExtendComplexTail = node<ComplexTailFact>(
     'DirectLessStaticExtendComplexTail',
     sequence(optional(staticCombinator), DirectLessStaticExtendCompound),
-    (children) => {
-      const compound = children.find(isCompound);
-      if (compound === undefined) {
-        throw new TypeError('Direct Less static extend selector tail has no compound.');
-      }
-      const token = children.find(child => !isCompound(child));
-      const comb = token === undefined ? ' ' : requireTerminalText(token);
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '|' && comb !== '||') {
-        throw new TypeError('Direct Less static extend selector tail has an invalid combinator.');
-      }
-      return { comb, compound };
-    }
+    combinatorTailReducer
   );
   const DirectLessExtendComplex = node<ComplexSelector>(
     'DirectLessExtendComplex',
@@ -4305,26 +4136,13 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       // The terminal-flag lookahead is a recognition-only child. Keep only
       // actual tail facts: otherwise the successful stop check is emitted as
       // a fake descendant tail with no compound.
-      ...children.slice(1).filter((tail): tail is ComplexTailFact =>
-        typeof tail === 'object' && tail !== null && 'comb' in tail && 'compound' in tail
-      )
+      ...children.slice(1).filter(isComplexTailFact)
     ])
   );
   const DirectLessExtendTargetComplexTail = node<ComplexTailFact>(
     'DirectLessExtendTargetComplexTail',
     sequence(optional(staticCombinator), g.DirectLessCompound),
-    (children) => {
-      const compound = children.find(isCompound);
-      if (compound === undefined) {
-        throw new TypeError('Direct Less extend target selector tail has no compound.');
-      }
-      const token = children.find(child => !isCompound(child));
-      const comb = token === undefined ? ' ' : requireTerminalText(token);
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '|' && comb !== '||') {
-        throw new TypeError('Direct Less extend target selector tail has an invalid combinator.');
-      }
-      return { comb, compound };
-    }
+    combinatorTailReducer
   );
   const DirectLessExtendTargetComplex = node<ComplexSelector>(
     'DirectLessExtendTargetComplex',
@@ -4336,9 +4154,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     ),
     children => complexSelector([
       { compound: requireCompound(children[0]) },
-      ...children.slice(1).filter((tail): tail is ComplexTailFact =>
-        typeof tail === 'object' && tail !== null && 'comb' in tail && 'compound' in tail
-      )
+      ...children.slice(1).filter(isComplexTailFact)
     ])
   );
   const DirectLessExtendTarget = node<ExtendTargetFact>(
