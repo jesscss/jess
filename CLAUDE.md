@@ -51,7 +51,7 @@ Do not keep branch-stage snapshots, pass counts, or transient failure notes here
 
 For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 
-- the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (7 invariants +
+- the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (9 invariants +
   regression-fixture catalogue); enforcement design is
   `docs/future/llm-quality-enforcement-design.md`
 - load the `perf-architecture` skill before editing; use the
