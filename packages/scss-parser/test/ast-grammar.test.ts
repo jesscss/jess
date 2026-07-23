@@ -1801,4 +1801,86 @@ describe('SCSS canonical-AST grammar', () => {
     expect(serialize(document).css).toContain('color: red /* keep */\n    blue;');
     expect(serialize(document).css).toContain('shadow: a,\n    b;');
   });
+
+  // SCSS→Jess lowering (parse/AST-shape correctness; evaluator rendering of the
+  // shared Collection/accessor/lambda is a separate downstream concern).
+  it('lowers SCSS map literals to the shared Collection node', () => {
+    expect(parse('$m: (a: 1, b: 2);')).toEqual({
+      type: 'Stylesheet',
+      children: [{
+        type: 'VariableDeclaration', name: 'm', write: { mode: 'declare' },
+        value: {
+          type: 'Collection', entries: [
+            { type: 'Declaration', name: 'a', value: { type: 'Dimension', number: 1, unit: '', src: '1' }, merge: null, important: false },
+            { type: 'Declaration', name: 'b', value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }
+          ]
+        }
+      }]
+    });
+
+    // Empty `()` and a single `(a: 1)` are maps too.
+    expect(parse('$m: ();').children[0]).toMatchObject({ value: { type: 'Collection', entries: [] } });
+    expect(parse('$m: (a: 1);').children[0]).toMatchObject({ value: { type: 'Collection', entries: [{ type: 'Declaration', name: 'a' }] } });
+
+    // A quoted-string key lowers to the entry name; a space-list value stays a
+    // structured value slot.
+    expect(parse('$m: ("k": 1px solid);').children[0]).toMatchObject({
+      value: { type: 'Collection', entries: [{ type: 'Declaration', name: 'k', value: [{ type: 'Dimension', src: '1px' }, { type: 'Keyword', src: 'solid' }] }] }
+    });
+
+    // A paren value-list (no `key:` entry) stays a Block list, never a Collection.
+    expect(parse('$m: (1 2 3);').children[0]).toMatchObject({ value: { type: 'Block', delimiter: 'paren' } });
+    expect(parse('$m: (1 + 2);').children[0]).toMatchObject({ value: { type: 'Block', inner: { type: 'Operation' } } });
+  });
+
+  it('lowers SCSS map-get to the shared $[…] accessor read', () => {
+    // `map-get($m, a)` => `$m[a]`: a Reference whose single BracketLookup step
+    // carries the key (member lookup for a value key, var lookup for `$k`).
+    expect(parse('.x { color: map-get($m, a); }').children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Declaration', name: 'color',
+        value: {
+          type: 'Reference',
+          base: { type: 'VariableReference', name: 'm', lookup: 'live' },
+          steps: [{ type: 'BracketLookup', key: { type: 'Keyword', src: 'a' }, keyKind: 'member' }],
+          raw: '$m[a]'
+        }
+      }]
+    });
+
+    expect(parse('.x { color: map-get($m, $k); }').children[0]).toMatchObject({
+      body: [{ value: { type: 'Reference', steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'k' }, keyKind: 'var' }], raw: '$m[$k]' } }]
+    });
+
+    // A non-canonical arity stays a plain FunctionCall for `fns` routing.
+    expect(parse('.x { color: map-get($m); }').children[0]).toMatchObject({
+      body: [{ value: { type: 'FunctionCall', name: 'map-get' } }]
+    });
+  });
+
+  it('lowers a user SCSS @function to a $var-bound anonymous mixin whose @return is result:', () => {
+    // A zero-parameter function lowers completely: `$two: @() > { result: 2 }`.
+    expect(parse('@function two() { @return 2; }')).toEqual({
+      type: 'Stylesheet',
+      children: [{
+        type: 'VariableDeclaration', name: 'two', write: { mode: 'declare' },
+        value: {
+          type: 'AnonymousMixin',
+          body: [{ type: 'Declaration', name: 'result', value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }]
+        }
+      }]
+    });
+
+    // A parameterized function still lowers to the var-bound lambda + `result:`;
+    // the `($n)` parameter list is currently DROPPED — `AnonymousMixin` has no
+    // `params` field (see the accompanying gap report).
+    expect(parse('@function double($n) { @return $n * 2; }').children[0]).toMatchObject({
+      type: 'VariableDeclaration', name: 'double',
+      value: {
+        type: 'AnonymousMixin',
+        body: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'VariableReference', name: 'n' } } }]
+      }
+    });
+  });
 });

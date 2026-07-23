@@ -8,8 +8,8 @@
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, pseudoSelector, quoted, range, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -39,9 +39,13 @@ type ScssAstRules = {
   DirectScssUrl: Combinator<ValueNode>;
   DirectScssInterpolatedUrlValue: Combinator<Interpolation>;
   DirectScssFunctionName: Combinator<Keyword>;
-  DirectScssCall: Combinator<FunctionCall>;
+  DirectScssCall: Combinator<FunctionCall | Reference>;
   DirectScssInterpolatedValue: Combinator<Interpolation>;
   DirectScssParen: Combinator<ValueNode>;
+  DirectScssMapEntry: Combinator<Declaration>;
+  DirectScssMap: Combinator<Collection>;
+  DirectScssReturn: Combinator<Declaration>;
+  DirectScssFunction: Combinator<VariableDeclaration>;
   DirectScssSquare: Combinator<ValueNode>;
   DirectScssValueAtom: Combinator<ValueNode>;
   DirectScssMathUnary: Combinator<ValueNode>;
@@ -497,6 +501,10 @@ function isValue(value: unknown): value is ValueNode {
       return 'src' in value && typeof value.src === 'string';
     case 'Collection':
       return 'entries' in value && Array.isArray(value.entries);
+    case 'Reference':
+      return 'base' in value && 'steps' in value && Array.isArray(value.steps);
+    case 'AnonymousMixin':
+      return 'body' in value && Array.isArray(value.body);
     default:
       return false;
   }
@@ -596,6 +604,46 @@ function requireKeyword(value: unknown): Keyword {
     throw new TypeError('Direct SCSS AST grammar produced a non-keyword child.');
   }
   return node;
+}
+
+/** The best-effort authored spelling of a value node for a Reference `raw`. */
+function referenceKeyRaw(node: ValueNode): string {
+  if (node.type === 'VariableReference') {
+    return `$${node.name}`;
+  }
+  if (node.type === 'Quoted') {
+    return node.src;
+  }
+  return 'src' in node && typeof node.src === 'string' ? node.src : '';
+}
+
+/** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
+ *  whose single BracketLookup step carries the key. A `$var` key selects the
+ *  variable-namespace lookup; every other key is a value-equality member lookup
+ *  (map keys compare by value, never by position, so `index` is never used). */
+function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
+  const step: ReferenceStep = key.type === 'VariableReference'
+    ? { type: 'BracketLookup', key, keyKind: 'var' }
+    : { type: 'BracketLookup', key, keyKind: 'member' };
+  const baseRaw = base.type === 'Reference' ? base.raw : referenceKeyRaw(base);
+  return reference(base, [step], `${baseRaw}[${referenceKeyRaw(key)}]`);
+}
+
+/** A Sass map key lowers to a Collection entry NAME. Collection names are
+ *  `string | Interpolation` (leaf identifiers), so identifier, string, dimension,
+ *  and interpolation keys lower cleanly; other value keys (colors aside, which
+ *  carry a `src`) are unrepresentable as a Collection name and are rejected. */
+function mapKeyName(node: ValueNode): string | Interpolation {
+  if (node.type === 'Interpolation') {
+    return node;
+  }
+  if (node.type === 'Quoted') {
+    return node.value;
+  }
+  if ('src' in node && typeof node.src === 'string') {
+    return node.src;
+  }
+  throw new TypeError('Unsupported SCSS map key: Collection entry names must be identifiers, strings, dimensions, or interpolations.');
 }
 
 function isGuardNode(value: unknown): value is GuardNode {
@@ -900,7 +948,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     sequence(not(g.CssAstSyntaxUrlOpen), g.CssAstSyntaxKeyword),
     children => keyword(requireToken(children[children.length - 1]).value)
   );
-  const DirectScssCall = node<FunctionCall>(
+  const DirectScssCall = node<FunctionCall | Reference>(
     'DirectScssCall',
     sequence(
       g.DirectScssFunctionName,
@@ -930,6 +978,13 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
         args.push(requireValueSlot(child.value));
       }
       const call = funcCall(requireKeyword(children[0]).src, args);
+      // Sass `map-get($m, k)` lowers to the shared `$[…]` accessor read `$m[k]`
+      // (a Reference whose single BracketLookup step carries the key). Only the
+      // canonical two-argument, single-value-node form lowers; anything else
+      // (spread/space-list args) stays a plain FunctionCall for `fns` routing.
+      if (call.name === 'map-get' && args.length === 2 && isValue(args[0]) && isValue(args[1])) {
+        return lowerMapGet(args[0], args[1]);
+      }
       if (separators.length === args.length - 1) {
         withValueLayout(call.args, separators);
       }
@@ -973,6 +1028,35 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     noTrivia(sequence(literal('['), g.DirectScssValue, literal(']'))),
     children => block(requireValue(children[1]), 'square')
   );
+  // A Sass map entry `key: value`. The key is a single arithmetic term (an
+  // identifier, string, number, or `#{…}`); the value is an ordinary value term
+  // (a space/slash list, never a comma list — commas separate entries). It lowers
+  // to a Collection entry: a leaf-named Declaration.
+  const DirectScssMapEntry = node<Declaration>(
+    'DirectScssMapEntry',
+    noTrivia(sequence(g.DirectScssMathTopSum, optional(directScssValueTrivia), literal(':'), optional(directScssValueTrivia), g.DirectScssValueTerm)),
+    children => decl(mapKeyName(requireValue(children[0])), requireValueSlot(children[children.length - 1]))
+  );
+  // A Sass map literal `(a: 1, b: 2)` lowers to the shared `Collection` (the same
+  // key/value-entries node used for SCSS nested properties), disambiguated from a
+  // paren value-list `(1 2 3)` by the `key: value` entry shape. Empty `()` and a
+  // single `(a: 1)` are both maps. This arm sits before `DirectScssParen` in the
+  // value-atom choice; when no entry carries a colon it backtracks to the paren
+  // list/arithmetic form.
+  const DirectScssMap = node<Collection>(
+    'DirectScssMap',
+    choice(
+      noTrivia(sequence(
+        literal('('), optional(directScssValueTrivia),
+        g.DirectScssMapEntry,
+        many(noTrivia(sequence(optional(directScssValueTrivia), literal(','), optional(directScssValueTrivia), g.DirectScssMapEntry))),
+        optional(noTrivia(sequence(optional(directScssValueTrivia), literal(',')))),
+        optional(directScssValueTrivia), literal(')')
+      )),
+      noTrivia(sequence(literal('('), optional(directScssValueTrivia), literal(')')))
+    ),
+    children => collection(children.filter(isDeclaration))
+  );
   // Merged keyword / identifier-led interpolation terminal. Scanning the leading
   // identifier ONCE, it either closes as a plain `Keyword` (no `#{\u2026}` follows) or
   // an identifier-led `Interpolation` (`foo#{$x}bar`). This is the sole keyword
@@ -1002,7 +1086,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // `DirectScssInterpolation` arm after it is therefore unreachable.
   const DirectScssValueAtom = node<ValueNode>(
     'DirectScssValueAtom',
-    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssParen, g.DirectScssSquare, g.DirectScssCustomPropertyValue, DirectScssKeywordOrInterpolatedValue),
+    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssMap, g.DirectScssParen, g.DirectScssSquare, g.DirectScssCustomPropertyValue, DirectScssKeywordOrInterpolatedValue),
     children => requireValue(children[0])
   );
   // Signed numerics are one Dimension leaf. Unary signs only own a variable or
@@ -1543,7 +1627,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // and lets parseman first-set-gate the whole cluster behind a single `@`
   // check. The `@import` arm stays ahead of the cluster because its authored
   // order there predates the cluster; keeping it out preserves precedence.
-  const directScssNestedAtStatement = choice(g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf);
+  const directScssNestedAtStatement = choice(g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf);
   const directScssNestedBodyPrefix = choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, directScssNestedAtStatement);
   // Nested body ending in `Rule` (mixin/each/for/nested-scope bodies).
   const directScssNestedBody = many(choice(directScssNestedBodyPrefix, g.DirectScssRule));
@@ -1567,6 +1651,33 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       requireToken(children[1]).value,
       isParamArray(children[2]) ? children[2] : [],
       statementChildren(children, true)
+    )
+  );
+  // `@return v` inside a user `@function` yields the function's value. Per the
+  // SCSS→Jess lowering it becomes a `result: v` declaration in the lambda body;
+  // the shared evaluator reads a `result` entry as the yielded value.
+  const DirectScssReturn = node<Declaration>(
+    'DirectScssReturn',
+    sequence(regex(/@return(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssValue, optional(literal(';'))),
+    children => decl('result', requireValueSlot(children[1]))
+  );
+  // A user `@function f($n) { @return v }` lowers to a value-returning anonymous
+  // mixin (lambda) bound to a `$var`: `$f: @($n) > { result: v }`. There is NO
+  // first-class `$function` node — this reuses `variableDeclaration` +
+  // `AnonymousMixin`, and `@return` reuses `result:`. GAP: `AnonymousMixin` has
+  // no `params` field, so the `($n)` parameter list cannot be attached yet; the
+  // params are parsed (grammar-accepted) but dropped at lowering. See the report.
+  const DirectScssFunction = node<VariableDeclaration>(
+    'DirectScssFunction',
+    sequence(
+      regex(/@function(?![-_a-zA-Z0-9\u0080-\uffff])/i), directMixinName, optional(g.DirectScssMixinParams), literal('{'),
+      many(choice(g.DirectScssComment, g.DirectScssVarDeclaration, g.DirectScssReturn, g.DirectScssIf, g.DirectScssEach, g.DirectScssFor)),
+      literal('}')
+    ),
+    children => variableDeclaration(
+      requireToken(children[1]).value,
+      anonymousMixin(statementChildren(children, true)),
+      { mode: 'declare' }
     )
   );
   const DirectScssEachName = node<string>(
@@ -2539,7 +2650,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     // shape, not a reducer-time placement check.
     sequence(
       many(choice(g.DirectScssComment, g.DirectScssVarDeclaration, g.DirectScssUse, g.DirectScssForward)),
-      many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssAtRuleStatement, g.DirectScssVarDeclaration, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssFontFace, g.DirectScssCounterStyle, g.DirectScssPropertyAtRule, g.DirectScssKeyframes, g.DirectScssRule))
+      many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssAtRuleStatement, g.DirectScssVarDeclaration, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssFontFace, g.DirectScssCounterStyle, g.DirectScssPropertyAtRule, g.DirectScssKeyframes, g.DirectScssRule))
     ),
     children => stylesheet(statements(children.flatMap(child => Array.isArray(child) ? child : [child])))
   );
@@ -2562,6 +2673,10 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     DirectScssCall,
     DirectScssInterpolatedValue,
     DirectScssParen,
+    DirectScssMapEntry,
+    DirectScssMap,
+    DirectScssReturn,
+    DirectScssFunction,
     DirectScssSquare,
     DirectScssValueAtom,
     DirectScssMathUnary,
