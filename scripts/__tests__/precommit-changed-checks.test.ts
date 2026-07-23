@@ -12,8 +12,8 @@ import { dirname, delimiter, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-describe('pre-commit aggressive-review mode', () => {
-  it('uses release mode only for an alpha squash commit', () => {
+describe('changed package checks', () => {
+  it('keeps staged checks independent from the release-only push gate', () => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const tempRoot = mkdtempSync(resolve(tmpdir(), 'jess-alpha-precommit-'));
     const sandbox = resolve(tempRoot, 'repo');
@@ -65,16 +65,14 @@ describe('pre-commit aggressive-review mode', () => {
 
       expect(readFileSync(invocationLog, 'utf8').trim().split('\n')).toEqual([
         'run verify:config-syntax -- --staged',
-        'run verify:aggressive-cutting-review -- --mode=release --skip-executable-evidence',
-        'run verify:config-syntax -- --staged',
-        'run verify:aggressive-cutting-review -- --mode=staged --skip-executable-evidence'
+        'run verify:config-syntax -- --staged'
       ]);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
 
-  it('uses the verifier default working scope for a pre-push invocation', () => {
+  it('runs changed packages once in non-watch mode without duplicating package-owned runner flags', () => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const tempRoot = mkdtempSync(resolve(tmpdir(), 'jess-prepush-review-'));
     const sandbox = resolve(tempRoot, 'repo');
@@ -103,9 +101,17 @@ describe('pre-commit aggressive-review mode', () => {
       writeFileSync(fakePnpm, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$JESS_PRECOMMIT_INVOCATIONS"\n');
       chmodSync(fakePnpm, 0o755);
 
-      const probe = resolve(sandbox, 'docs/prepush-mode-probe.md');
-      writeFileSync(probe, 'working-scope probe\n');
-      execFileSync('git', ['add', 'docs/prepush-mode-probe.md', 'scripts/precommit-changed-checks.mjs', 'scripts/staged-lint.mjs'], { cwd: sandbox });
+      const coreProbe = resolve(sandbox, 'packages/core/src/prepush-dev-probe.ts');
+      const parserProbe = resolve(sandbox, 'packages/jess-parser/src/prepush-dev-probe.ts');
+      writeFileSync(coreProbe, 'export const prepushDevCoreProbe = true;\n');
+      writeFileSync(parserProbe, 'export const prepushDevParserProbe = true;\n');
+      execFileSync('git', [
+        'add',
+        'packages/core/src/prepush-dev-probe.ts',
+        'packages/jess-parser/src/prepush-dev-probe.ts',
+        'scripts/precommit-changed-checks.mjs',
+        'scripts/staged-lint.mjs'
+      ], { cwd: sandbox });
       execFileSync('git', ['commit', '--quiet', '-m', 'test: committed pre-push probe'], { cwd: sandbox });
 
       const env = {
@@ -120,8 +126,15 @@ describe('pre-commit aggressive-review mode', () => {
 
       expect(readFileSync(invocationLog, 'utf8').trim().split('\n')).toEqual([
         'run verify:config-syntax',
-        'run verify:baseline',
-        'run verify:aggressive-cutting-review -- --mode=committed'
+        'run verify:parser-runtime-boundary',
+        '--filter ./packages/core test -- --run',
+        '-w exec tsc -p packages/core/tsconfig.build.json --noEmit',
+        '--filter ./packages/core build',
+        'exec eslint packages/core/src/prepush-dev-probe.ts',
+        '--filter ./packages/jess-parser test',
+        '-w exec tsc -p packages/jess-parser/tsconfig.build.json --noEmit',
+        '--filter ./packages/jess-parser build',
+        'exec eslint packages/jess-parser/src/prepush-dev-probe.ts'
       ]);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });

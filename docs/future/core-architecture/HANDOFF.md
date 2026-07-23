@@ -9,6 +9,77 @@
 > explicit language-service/document use; no CST-to-AST bridge, host, or
 > compatibility route is an acceptable interim production design.
 
+## ACTIVE PRIORITY CHECKLIST — structural-rot + perf recovery (2026-07-22)
+
+Findings from a parallel profiling/audit sweep. **Process mandate: every item below is fixed via an
+adversarially-reviewed DESIGN change — reviewed against `INVARIANTS.md` + the relevant design docs
+(extend design, "parser owns structure" keystone) BEFORE implementation — NOT hallucinated on the fly.
+The review must be GOOD this time:** the prior adversarial/"ponytail" gates were tuned for correctness +
+byte-identity + minimal-diff and let all of the below through, because they never checked *structure,
+dispatch cost, tree-walks, byte-re-derivation, or duplication*. Add those as explicit review dimensions.
+
+### P0 — GUARDRAILS (prevent recurrence; these are the checks that failed)
+- [ ] **No serialize-then-reparse of structure.** Ban re-deriving structured data from a string the code
+      itself just serialized (see P1.1). Add a lint/review check + assertion; codify in the keystone.
+- [ ] **No full-tree walks.** Existing hard guideline; it was violated (P1.2). Add enforcement, not just prose.
+- [ ] **No blind rewrite over an existing tuned implementation.** The AST v2 extend was reimplemented
+      from scratch, ignoring the already-tuned legacy engine + `EXTEND_RULES.md` (P1.3). A rewrite of any
+      subsystem that already has a tuned implementation/design MUST consult and port it, not reinvent —
+      make this an explicit review gate.
+- [ ] **Fix the adversarial-review process itself** to score structure/perf/dispatch/duplication/re-derivation
+      AND "did this ignore an existing tuned engine/design doc?", before approving. This is the meta-fix.
+
+### P1 — EVAL/RENDER disasters (eval+serialize ≈19ms of ~62ms render; must reach ~5–8ms for the 40–45ms bar). See [[eval-render-perf-roadmap]].
+- [ ] **1. Kill the `selectorAtoms` regex round-trip** (biggest single self-time, 3.1%). `serialize.ts:~1104`
+      serializes a *structured* compound to text then regex-tokenizes it BACK into atoms, un-memoized, per
+      mixin match (~99×). Read atoms off the parsed node. Direct "parser owns structure" violation.
+- [ ] **2. `documentHasExtend` → parse-time flag.** Currently walks the WHOLE tree every render to detect
+      `:extend()` the parser already knows about. Full-tree-walk violation.
+- [ ] **3. Extend matching: the AST v2 extend was REWRITTEN badly — it ignored the ALREADY-TUNED legacy
+      extend engine.** It does `.includes()` O(n·m) substring compares + recomputed selector string-keys
+      (`extend/match.ts:55/149`, `ir.ts:71 branchText`) — the exact OPPOSITE of the documented design
+      (`packages/core/src/tree/util/EXTEND_RULES.md`, the tuned legacy engine, and the "extend = fast-reject,
+      O(1) bitset, NEVER full-scan; only ~8% of extends do work" invariant, [[feedback-extend-fast-reject-not-full-scan]]).
+      FIX = restore that design in AST v2 (bitset/structural fast-reject + cached branch keys), do NOT
+      invent a third algorithm. Adversarially review the port against `EXTEND_RULES.md` + the legacy engine
+      BEFORE writing code.
+- [ ] **4. Cut extend Set/clone allocation** (the C++ churn: `SymmetricDifference`/`CloneObjectIC`/spreads).
+
+### P2 — GRAMMAR STRUCTURAL ROT (all 4 grammars; root cause: scannerless port re-expanded the Chevrotain 7-arm grouped `rule` into flat 15–20-arm choices w/ per-arm `@keyword` re-scan, then copy-pasted). Reference: `git show 35dfff1a8~1:packages/less-parser/src/productions/root.ts` + `.../atRules.ts`. **CSS is the canonical base (has `OpaqueAtRuleBlock`).**
+- [x] **Wave 1 LESS DONE (landed `ddaa70363`, byte-identical):** 6 inline copies → one shared
+      `directLessBlockStatement`/`directLessBlockBody`; 10 `@`-arms grouped into `directLessAtStatement`
+      (20→11 arms); named-vs-inline DRIFT reconciled (root/detached-ruleset kept separate — legitimately differ).
+- [ ] **Wave 1 remaining:** SCSS ×10 / CSS ×11 / Jess ×3 body-choice de-dup (same pattern, zero byte-risk).
+- [ ] ~~`@`-read-once → keyword-switch dispatch~~ **LOW HEADROOM — parseman `emitFirstMatch` already
+      first-char-gates the arms** (one int compare skips all `@`-arms for a non-`@` stmt; no re-lex). The
+      audit's "re-scan per arm" premise was wrong. `@`-keyword-switch saves ≪1ms + is correctness-risky
+      (`@supports: red`→VarDeclaration precedence). SKIP.
+- [ ] **REAL remaining Less parse lever: decl-vs-ruleset left-factor.** A declaration's property name is
+      speculatively parsed as a `Ruleset` selector before `Declaration` wins (leading-name double-parse) +
+      `firstSet:any` un-gated arms. Left-factor the shared selector/property prefix — HIGH-risk, needs
+      byte-identity proof across interp/custom-prop/`:extend`/guard/`!important`.
+- [ ] **Wave 2 (medium; gate on ast/ differential): Nested/non-nested paired families → body-param**
+      (SCSS 4 pairs, CSS, Less); **Less adopt `OpaqueAtRuleBlock`**; **collapse `AtRuleBlock`+`AtRuleStatement`
+      → one `AtRule`** (NOTE: changes AST node `type` → NOT parser-only byte-identical; needs coordinated
+      core/eval/serialize changes).
+
+### P3 — PARSE perf levers (see [[less-parser-grammar-cost-roadmap]])
+- [ ] **Less L1 — `!important` double-parse** (~99% of decls re-descend the value tower). IN FLIGHT.
+- [ ] **Jess J1 — `$var` triple-parse** (VarReference parsed 3×). Queued behind Phase 2; intersects the
+      "root-level arithmetic exists?" decision ([[jess-math-operators-spaces-only]]).
+- [ ] **SCSS S1/S2 — `NestedConditionalBlock` 15% self** (at-rule speculation + media-prelude shared-prefix).
+- [ ] **Cross-cutting allocation (C++ ~50%+, biggest absolute bucket): monomorphic node shapes** (kill
+      megamorphic keyed-stores) **+ remove `[...spread]` in hot reducers + single-value fast-paths.**
+
+### Model correction (in flight, separate track)
+- [x] SCSS nested-property → `Collection` node (Phase 1 landed `b3976867e`).
+- [x] Phase 2 DONE + LANDED (`b7f413d08`, clean-build verified): `AnonymousMixin` added, value blocks
+      content-classified, AST `DetachedRuleset` node DELETED. LESSON: CST grammar rule ≠ AST node — keep the
+      CST `DetachedRuleset` rule name (renaming it dangled `compose()`, masked by a stale build). Added
+      compose-integrity regression guards. See [[collection-vs-detached-ruleset-model]].
+
+---
+
 ## Current target
 
 Keep AST v2 as the canonical public representation. Parseman grammar reductions
@@ -39,18 +110,18 @@ after those Less-alpha gates are genuinely green.
 
 ### Less corpus truthfulness gate
 
-`packages/jess/test/less/all-less.test.ts` currently contains 30 runnable
-expected-failure markers. They remain complete, visible compatibility evidence:
-the harness passes when a named fixture fails, so none is passing-parity proof.
-The owner decision for the first alpha is to classify—not drain or hide—them.
-The maintained symptom/scope/follow-up inventory and alpha safety gates are in
-[`../../less-v5-alpha-readiness.md`](../../less-v5-alpha-readiness.md), and the
-release notes must link it. The six groups are callable/reference and scope
-semantics (9); imports/conditional at-rule execution (6); direct
-parser/evaluator correctness (7); F5 lazy color calls (2); URL options (2);
-and source-map artifacts (4). These add to 30. In particular, a missing mixin remains an error; only an
-ordinary function call with an optional function reference may fall back to a
-CSS `Call` when lookup misses.
+`packages/jess/test/less/all-less.test.ts` has 32 registered expected-failure
+cases, but only 21 are selected by the current alpha fixture glob and filters.
+The public alpha lane runs 107 cases (78 unit, 29 config): 86 ordinary
+byte-identical checks plus 21 active expected-failure checks. The harness passes
+when a named fixture still fails, so none is passing-parity proof. The owner
+decision for the first alpha is to classify—not drain or hide—them. The
+reproducible selection accounting, exact active cases, inactive registry
+entries, symptoms, scope, and follow-up rule are in
+[`../../less-v5-corpus-inventory.md`](../../less-v5-corpus-inventory.md); the
+readiness tracker and release notes must link that inventory. In particular, a
+missing mixin remains an error; only an ordinary function call with an optional
+function reference may fall back to a CSS `Call` when lookup misses.
 
 ### `callWithContext` deletion prerequisite
 
@@ -365,11 +436,12 @@ the same source paths. A disposable rehearsal confirmed that
 these are history-topology conflicts, not a semantic queue to resolve by hand.
 Do not ordinary-merge or rebase `dev` into `alpha`.
 
-For the refresh, first create a recovery ref such as
-`git branch alpha-pre-alpha9-cut alpha` and work in an isolated `alpha`
-worktree. Import the endpoint tree with a two-tree patch
-(`git diff --binary alpha-pre-alpha9-cut..dev` and `git apply --index`), then run
-`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage`.
+For the refresh, first fetch `origin/dev`, create a recovery ref such as
+`git branch alpha-pre-alpha9-cut alpha`, and work in an isolated `alpha`
+worktree. Import the exact pushed source tree with a two-tree patch
+(`git diff --binary alpha-pre-alpha9-cut..origin/dev` and `git apply --index`), then run
+`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage`
+followed by `node scripts/release/record-alpha-source-provenance.mjs --stage`.
 The required `--stage` makes that tool restore and stage only each
 `packages/*/package.json` `.version` field from the
 recovery ref; it must not restore whole manifest files. The alpha snapshot takes
@@ -399,7 +471,12 @@ alpha docs wholesale.
   used. This is release correctness evidence, not a performance claim.
 
 Commit one controlled refresh on `alpha`, confirm a clean source tree, and run
-the full `release:alpha` chain before owner-approved publication. The
+the full `release:alpha` chain before owner-approved publication. The first
+`release:alpha:check` gate fetches `origin/dev`, requires the committed exact
+source SHA in `scripts/release/alpha-source-provenance.json`, and proves the
+alpha tree differs only in that provenance record and package-manifest version
+fields. Alpha-only source or documentation changes must land on `dev` before
+the snapshot. The
 orchestrator resolves the fresh registry candidate before preflight, passes it
 to the nested publish dry-run without mutating manifests, and writes the
 lockstep versions only after checks pass; this avoids treating the previous
@@ -485,16 +562,18 @@ the newly generated parser artifacts.
 
 ### Current alpha.9 candidate evidence (2026-07-22; not authorized to publish)
 
-The current local alpha snapshot is `dd70d6b2f`. It is a controlled two-tree
+The current local alpha snapshot is `6be731a5e`. It is a controlled two-tree
 refresh on the isolated `alpha` worktree, retaining the intended
 `2.0.0-alpha.9` package manifests rather than an ordinary merge or rebase of
-shared alpha history. The alpha worktree is clean. The recorded full
-`pnpm run release:alpha:check` run passed with Parseman `0.29.0`: release
-build, config syntax, 22 strict type configurations, production lint with no
-errors, Less-alpha route, direct Jess parser/plugin/Rollup tests, AST-v2
-ratchet, baseline, release-mode cutting review, the 18-package allowlist,
-packed consumer, and nested alpha.9 publish dry-run. The latter resolved
-`2.0.0-alpha.9` ahead of the published alpha.8 tag; it did not publish.
+shared alpha history. The alpha worktree is clean. The repaired alpha push gate
+ran `pnpm run prepush:changed-packages`, which dispatches on `alpha` to the
+full `pnpm run release:alpha:check` chain. It passed with Parseman `0.29.0`:
+release build, config syntax, 22 strict type configurations, production lint
+with no errors, Less-alpha route, direct Jess parser/plugin/Rollup tests,
+AST-v2 ratchet, baseline, release-mode cutting review, the 18-package
+allowlist, packed consumer, and nested alpha.9 publish dry-run. The latter
+resolved `2.0.0-alpha.9` ahead of the published alpha.8 tag; it did not
+publish.
 
 The current source and snapshot use the rolling Node-LTS policy above; the
 manifest's `>=18` is its present floor, not a promise to support only Node 18.
@@ -514,9 +593,9 @@ clean and independently proven.
 - **Helper/API surface and metadata mutations:** none; no runtime or package
   metadata changes are claimed here.
 - **Evidence:** `564b65615` remains historical pre-Parseman-0.29 evidence;
-  current release evidence is `338801372` → `8bcc31516` and its full alpha
-  preflight/dry-run. This documentation records release state only; it makes no
-  performance claim.
+  `6be731a5e` is the current controlled alpha snapshot and its branch-aware
+  `prepush:changed-packages` release chain passed. This documentation records
+  release state only; it makes no performance claim.
 
 ### Aggressive Cutting Self-Prosecution — staged alpha-version recovery
 

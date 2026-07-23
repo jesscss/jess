@@ -1,18 +1,9 @@
 import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { lessAstGrammar } from './ast/grammar.js';
+import { LessParseError } from './parse-error.js';
 
-export class LessParseError extends SyntaxError {
-  readonly offset: number;
-  readonly expected: readonly string[];
-
-  constructor(message: string, offset: number, expected: readonly string[]) {
-    super(message);
-    this.name = 'LessParseError';
-    this.offset = offset;
-    this.expected = expected;
-  }
-}
+export { LessDynamicCharsetError, LessParseError } from './parse-error.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -36,8 +27,7 @@ export function parse(input: string): Stylesheet {
       ? result.unconsumedFrom ?? result.span.end
       : result.span.start;
     const expected = result.expected;
-    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
-    throw new LessParseError(`Less parse did not produce a complete Stylesheet document at offset ${offset}.${detail}`, offset, expected);
+    throw new LessParseError(offset, expected);
   }
   return result.value;
 }

@@ -158,7 +158,6 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
   ['tests-unit/property-name-interp/property-name-interp.less', 'Less5 owner-set rejection of deprecated dash-only @- and @{-} variable names; Less4 deprecation is implemented in unpushed worktree commit db03543d'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
-  ['tests-unit/variables-in-at-rules/variables-in-at-rules.less', 'Less5 rejects dynamic @charset interpolation; static charset remains on the generic statement route pending the public Charset node decision'],
   ['tests-unit/plugin-module/plugin-module.less', 'Less5 alpha rejects clean-css: its legacy CommonJS @plugin graph uses require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime intentionally does not support (a cold worker can instead report its explicit startup diagnostic); this is not a parser, evaluator, or Context import-resolution failure'],
   // Explicit Less5 removals. Keep these legacy fixtures runnable so an
   // accidental reintroduction is visible rather than silently skipped.

@@ -10,11 +10,13 @@ import { jessAstGrammar } from './ast/grammar.js';
 
 /** Structured failure from the public direct Jess parser. */
 export class JessParseError extends SyntaxError {
+  readonly code = 'parse/syntax-error' as const;
   readonly offset: number;
   readonly expected: readonly string[];
 
-  constructor(message: string, offset: number, expected: readonly string[]) {
-    super(message);
+  constructor(offset: number, expected: readonly string[]) {
+    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
+    super(`Jess parser error.${detail}`);
     this.name = 'JessParseError';
     this.offset = offset;
     this.expected = expected;
@@ -43,12 +45,7 @@ export function parse(input: string): Stylesheet {
       ? result.unconsumedFrom ?? result.span.end
       : result.span.start;
     const expected = result.expected;
-    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
-    throw new JessParseError(
-      `Jess parse did not produce a complete Stylesheet document at offset ${offset}.${detail}`,
-      offset,
-      expected
-    );
+    throw new JessParseError(offset, expected);
   }
   return result.value;
 }

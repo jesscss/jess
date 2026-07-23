@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
+# Pushing is fast: the full build/test/structural gate runs in PR CI and via `pnpm verify:pr`.
 pnpm run prepush:changed-packages

@@ -294,15 +294,55 @@ export interface VarIndirect {
 }
 
 /**
- * A detached ruleset value `@rs: { … }`: a block of statements bound to a
- * value, callable (`@rs()`) to splice its body at the call site. `body` is the
- * CANONICAL block, stored once (never cloned). Its lexical closure belongs to
- * the render activation that binds it, never to this reusable source node.
+ * An anonymous mixin value `@rs: { … }` / `$x: { … }`: a nil-args (no parameter
+ * list) executable block bound to a value, callable (`@rs()`) to splice its body
+ * at the call site. Unlike a {@link Collection} (a data map), its body CAN contain
+ * rulesets, at-rules, and mixin calls — it is the safe, more-capable classification
+ * for any value-position `{ … }` block that cannot be clearly inferred to be a map.
+ * `body` is the CANONICAL block, stored once (never cloned). Its lexical closure
+ * belongs to the render activation that binds it, never to this reusable source node.
  */
-export interface DetachedRuleset {
-  readonly type: 'DetachedRuleset';
+export interface AnonymousMixin {
+  readonly type: 'AnonymousMixin';
   readonly body: Statement[];
 }
+
+/**
+ * A data/map block value `{ key: value; … }`. Its ROOT-LEVEL children are
+ * key/value ENTRIES only — {@link Declaration}s or {@link VariableDeclaration}s,
+ * never at-rules, mixin calls, or rulesets. An entry's VALUE, however, may be any
+ * value node (including an {@link AnonymousMixin}), so entries stay ordinary
+ * declaration/variable-declaration nodes.
+ *
+ * Used for SCSS nested properties (`font: 20px { family: serif }`): the carrier
+ * Declaration's `value` is a Collection whose entries keep LEAF-ONLY names, plus
+ * an optional `base` holding the carrier's own declaration value (`20px`). The
+ * hyphenated flattening happens at serialize time, never at parse. Also used for
+ * a value-position `{ … }` block that is clearly a data map — one whose root-level
+ * statements are ONLY variable declarations (`@dr: { @a: 1; @b: 2 }`).
+ */
+export interface Collection {
+  readonly type: 'Collection';
+  readonly entries: (Declaration | VariableDeclaration)[];
+  /** The carrier's own declaration value, e.g. `20px` in `font: 20px { … }`;
+   * omitted when the nested property has no own value. */
+  readonly base?: ValueSlot;
+}
+
+/** A value-position `{ … }` block: either a data-map {@link Collection} or an
+ *  executable {@link AnonymousMixin}. Both carry a statement body (a Collection's
+ *  is its `entries`), consumed uniformly by map access, iteration, and splicing. */
+export type ValueBlock = AnonymousMixin | Collection;
+
+/** Narrow a value node to a value-position block ({@link AnonymousMixin} or
+ *  {@link Collection}). */
+export const isValueBlock = (n: { type: string }): n is ValueBlock =>
+  n.type === 'AnonymousMixin' || n.type === 'Collection';
+
+/** The statement body of a value-position block — a Collection exposes its
+ *  `entries`, an AnonymousMixin its `body`. */
+export const valueBlockBody = (n: ValueBlock): Statement[] =>
+  n.type === 'Collection' ? n.entries : n.body;
 
 /** One typed step in a left-associated {@link Reference} chain. */
 export type ReferenceStep = DotLookup | BracketLookup | ReferenceCall;
@@ -380,7 +420,8 @@ export type ValueNode =
   | Interpolation
   | GeneralEnclosed
   | VarIndirect
-  | DetachedRuleset
+  | AnonymousMixin
+  | Collection
   | Reference
   | Range;
 
@@ -557,11 +598,6 @@ export interface Declaration {
    * own line, e.g. a multi-line `grid-template-areas`). v5 preserves that layout:
    * the value emits starting on the next indented line instead of after `: `. */
   readonly valueOnNewLine?: boolean;
-  /** SCSS nested-property collection (`font: 20px { size: 1rem }`): the carrier
-   * declaration holds the leaf declarations as a {@link DetachedRuleset} whose
-   * body entries are plain Declarations with LEAF-ONLY names. Flattened to
-   * hyphenated declarations at serialize time; absent on ordinary declarations. */
-  readonly nested?: DetachedRuleset;
 }
 
 /**
@@ -732,7 +768,7 @@ export interface Apply {
  * A Jess `$for (... of ...)` loop. The binding retains the authored single,
  * comma, bracket, or tuple form; entries are source-dependent. Less `each()` lowers
  * at its parser boundary into a compatible Jess binding.
- * a map (`DetachedRuleset` / a var bound to one / a `@map[k]` accessor) iterates
+ * a map (a `Collection` or `AnonymousMixin` / a var bound to one / a `@map[k]` accessor) iterates
  * its declarations; a `MixinCall` (`each(.mixin(), …)`) iterates the call's OUTPUT
  * declarations; anything else evaluates to a list (a `range(…)` call, a `@list`
  * var, or a literal `1 2 3` / `a, b` byte-list) and iterates its items.
@@ -868,7 +904,30 @@ export const generalEnclosed = (
   content: Interpolation
 ): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
 export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup });
-export const detachedRuleset = (body: Statement[]): DetachedRuleset => ({ type: 'DetachedRuleset', body });
+export const anonymousMixin = (body: Statement[]): AnonymousMixin => ({ type: 'AnonymousMixin', body });
+
+/**
+ * Classify a value-position `{ … }` block by its CONTENT (parse-time, structural):
+ *
+ * - **{@link Collection}** (data map) when the block is CLEARLY a data map — its
+ *   root-level statements are ONLY variable declarations (`@dr: { @a: 1; @b: 2 }`),
+ *   with no rulesets, at-rules, mixin calls, or even comments. An entry's VALUE may
+ *   itself be an anonymous mixin — that does not disqualify it; the restriction is on
+ *   the block's direct STATEMENTS.
+ * - **{@link AnonymousMixin}** otherwise — the safe, more-capable default when the
+ *   block cannot be clearly inferred to be a map (property-keyed blocks, or any block
+ *   containing a ruleset / at-rule / mixin call / comment). Nothing in the body is
+ *   ever dropped: a block kept as an AnonymousMixin splices verbatim when called.
+ *
+ * This is a structural classification, not the lossy flatten/merge that must stay
+ * eval-time.
+ */
+export const classifyValueBlock = (body: Statement[]): ValueBlock => {
+  if (body.length === 0 || !body.every((s): s is VariableDeclaration => s.type === 'VariableDeclaration')) {
+    return anonymousMixin(body);
+  }
+  return { type: 'Collection', entries: body };
+};
 export const forNode = (
   iterable: ValueSlot | MixinCall,
   rules: Statement[],
@@ -915,14 +974,15 @@ export const decl = (
   value: ValueSlot,
   merge: null | ',' | ' ' = null,
   important = false,
-  valueOnNewLine = false,
-  nested?: DetachedRuleset
-): Declaration => {
-  const base: Declaration = valueOnNewLine
+  valueOnNewLine = false
+): Declaration =>
+  valueOnNewLine
     ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
     : { type: 'Declaration', name, value, merge, important };
-  return nested === undefined ? base : { ...base, nested };
-};
+/** A data/map block value: leaf-named `entries`, plus an optional `base` carrier
+ * value (`20px` in `font: 20px { … }`). See {@link Collection}. */
+export const collection = (entries: Declaration[], base?: ValueSlot): Collection =>
+  base === undefined ? { type: 'Collection', entries } : { type: 'Collection', entries, base };
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
 /** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice).
  * `media` (optional) wraps the splice in an `@media <media> { … }` block. */

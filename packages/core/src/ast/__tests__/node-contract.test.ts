@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isNode, type Node } from '../node.js';
 import {
+  collection,
   generalEnclosed,
   important,
   interpolation,
@@ -26,6 +27,12 @@ describe('AST node contract', () => {
     );
 
     expect(isNode(capture)).toBe(true);
+  });
+
+  it('admits Collection through the exported Node union', () => {
+    const value: Node = collection([]);
+
+    expect(isNode(value)).toBe(true);
   });
 
   it('publishes GeneralEnclosed with structured Interpolation content', () => {

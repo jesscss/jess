@@ -605,20 +605,24 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     children => selectorArgumentText(children[0])
   );
-  const CssAstPseudo = choice(
-    node<SimpleSelector>(
-      'CssAstNthPseudo',
-      sequence(g.CssAstSyntaxPseudoColon, nthPseudoNameWithArgument, literal('('), g.CssAstPseudoArgument, literal(')')),
-      children => simpleSelector(`${tokenText(children[0])}${tokenText(children[1])}(${tokenText(children[3])})`)
+  // Both pseudo arms share the leading `:`/`::` colon. Left-factor it so that
+  // sub-rule runs once per pseudo instead of once per arm; the An+B and generic
+  // branches then differ only after the colon. Both original reducers already
+  // collapse to the same "head, plus optional (arg) at child index 3" shape, so
+  // the merged node keeps byte-identical SimpleSelector text.
+  const CssAstPseudo = node<SimpleSelector>(
+    'CssAstPseudo',
+    sequence(
+      g.CssAstSyntaxPseudoColon,
+      choice(
+        sequence(nthPseudoNameWithArgument, literal('('), g.CssAstPseudoArgument, literal(')')),
+        sequence(not(nthPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
+      )
     ),
-    node<SimpleSelector>(
-      'CssAstGenericPseudo',
-      sequence(g.CssAstSyntaxPseudoColon, not(nthPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')')))),
-      (children) => {
-        const head = `${tokenText(children[0])}${tokenText(children[1])}`;
-        return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${tokenText(children[3])})`);
-      }
-    )
+    (children) => {
+      const head = `${tokenText(children[0])}${tokenText(children[1])}`;
+      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${tokenText(children[3])})`);
+    }
   );
   // `&` is a semantic selector token, not a post-parse text substitution. The
   // core selector model represents it as the canonical SimpleSelector text expected by
@@ -1078,9 +1082,16 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         // route is selected at its opener; every other declaration value uses
         // the component-value route and cannot turn calc into a permissive
         // generic call.
+        // A calc-prefixed value routes through the strict CssAstValue math
+        // grammar; every other declaration value uses the component-value
+        // route. The non-calc arm needs no second `(?=calc\()` guard: a
+        // malformed calc that fails the first arm is already rejected inside
+        // CssAstDeclarationValueAtom, whose own guard forbids `calc` degrading
+        // into Keyword + paren. Dropping the duplicate lookahead removes one
+        // regex probe from every ordinary declaration.
         choice(
           sequence(regex(/(?=calc\()/i), g.CssAstValue),
-          sequence(not(regex(/(?=calc\()/i)), g.CssAstDeclarationExtendedValue)
+          g.CssAstDeclarationExtendedValue
         ),
         many(blockComment),
         not(literal('{')),

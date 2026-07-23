@@ -1234,6 +1234,14 @@ export class Context {
       };
     }
 
+    // A parser diagnostic already explains why no document exists. Even when
+    // collection mode is enabled, downstream import/eval cannot proceed
+    // without a document; rethrow that exact diagnostic instead of adding a
+    // misleading unsupported-file error.
+    if (parseResult.errors.length > 0) {
+      throw makeJessErrorFromDiagnostic(parseResult.errors[0]!);
+    }
+
     // No tree and no errors means unsupported file
     const notSupportedError = new Error(`File "${friendlyPath}" not supported`);
     if (this.opts.breakOnError !== false) {
@@ -1326,6 +1334,12 @@ export class Context {
     }
     const document = result.document;
     if (!document) {
+      if (result.errors.length > 0) {
+        // Collection mode retains the diagnostic, but a caller asking for a
+        // document still needs the structured parser failure—not a generic
+        // secondary error with no source provenance.
+        throw makeJessErrorFromDiagnostic(result.errors[0]!);
+      }
       throw new Error('Failed to parse content');
     }
     if (!this.document) {

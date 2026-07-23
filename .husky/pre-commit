@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
 # Auto-stage cursor state files so they're always included in commits
 git add .cursor/PREPUSH_CHECK_TODOS.md .cursor/PROJECT_STATE.md 2>/dev/null || true
-pnpm run precommit:staged
+# Fast gate only: lint the staged added/modified lines. The full build/test/
+# structural gate lives in PR CI and in `pnpm verify:pr`. Keep commits snappy.
+pnpm run precommit:lint

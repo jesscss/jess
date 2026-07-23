@@ -10,9 +10,19 @@ describe('@jesscss/plugin-css', () => {
   });
 
   it('returns diagnostics rather than throwing for invalid CSS', () => {
-    const result = cssPlugin().safeParse!('entry.css', '.entry { color: red;');
+    const source = '.entry { color: red; }\n!broken';
+    const result = cssPlugin().safeParse!('entry.css', source);
 
     expect(result.document).toBeUndefined();
-    expect(result.errors).toMatchObject([{ code: 'parse/syntax-error', filePath: 'entry.css', line: 1 }]);
+    expect(result.errors).toMatchObject([{
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: expect.stringMatching(/^CSS parser error\./),
+      filePath: 'entry.css',
+      line: 2,
+      column: 1,
+      file: { source }
+    }]);
+    expect(result.errors[0]?.lines?.[2]).toBe('!broken');
   });
 });

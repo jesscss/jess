@@ -38,16 +38,18 @@ baseline only and never as a performance acceptance claim.
 - Source quality: the repository-wide production ESLint audit reports **0
   errors and 319 warnings**. The warnings are tracked lint debt; there is no
   current ESLint-error blocker.
-- Strict types: the current local alpha candidate uses real published Parseman
-  packages and its recorded `pnpm run release:alpha:check` passes all **22**
-  strict type configurations. The current candidate evidence lives in
+- Strict types: the current local alpha candidate resolves the published
+  `parseman@0.29.0` package and its recorded `pnpm run release:alpha:check`
+  passes all **22** strict type configurations. The current candidate evidence lives in
   [`HANDOFF.md`](./future/core-architecture/HANDOFF.md#current-alpha9-candidate-evidence-2026-07-22-not-authorized-to-publish).
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
   allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
   excluded because it depends on `jess` and is not part of the runtime closure.
-  The controlled alpha snapshot at `dd70d6b2f` passes the allowlist,
-  packed-consumer, and alpha.9 dry-run publish checks. It awaits explicit owner
-  approval for the full `pnpm run release:alpha` command; it is not published.
+  The controlled alpha snapshot at `6be731a5e` passes the allowlist,
+  packed-consumer, and alpha.9 dry-run publish checks. Its repaired push gate
+  ran `pnpm run prepush:changed-packages`, which dispatches on `alpha` to the
+  full `release:alpha:check` chain. It awaits explicit owner approval for the
+  full `pnpm run release:alpha` command; it is not published.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
 instrumentation. Diagnostic coverage/trace uses a separate macro transform and
@@ -147,11 +149,12 @@ The alpha blocks only on these advertised correctness and release-safety gates:
   consumer-install proof;
 - the advertised `lessc` commands and options, including built-artifact CLI
   smoke/compatibility tests; and
-- a release-note known-limitations section that links the complete inventory and
-  states the unsupported or divergent behavior honestly.
-- `[x]` **Strict source quality.** Published `parseman@0.28.1` removes the
-  parser-entry `FusedRule` declaration mismatch; the alpha snapshot's forced
-  frozen install and `verify:types` pass 22/22 configurations. Production
+- a release-note known-limitations section that links the complete
+  [`less-v5-corpus-inventory.md`](./less-v5-corpus-inventory.md) and states the
+  unsupported or divergent behavior honestly.
+- `[x]` **Strict source quality.** Published `parseman@0.29.0` is the current
+  parser dependency; the alpha snapshot's forced frozen install and
+  `verify:types` pass 22/22 configurations. Production
   ESLint reports 0 errors and 319 warnings. Warnings remain tracked debt and
   neither types nor lint errors may be hidden by bundlers' `--noCheck` builds.
 - `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
@@ -368,29 +371,19 @@ Known gaps to add or close:
 
 ## Known limitations: runnable upstream corpus inventory
 
-The runnable corpus has **30** explicit expected-failure markers in
-`packages/jess/test/less/all-less.test.ts`. They are test instrumentation,
-not passing compatibility evidence: each marker makes a mismatching render pass
-the harness while preserving the observed failure. This is the complete first
-alpha known-limitations inventory. A marker may be removed only with
-byte-identical fixture proof; otherwise its release-note classification must
-remain explicit and be updated when its symptom or scope changes.
-
-| Class | Current fixtures | Symptom and alpha scope | Follow-up / evidence |
-| --- | --- | --- | --- |
-| Callable/reference and scope semantics | `detached-rulesets`, `functions-each`, `mixins`, `namespacing-5`, `namespacing-8`, `namespacing-functions`, `namespacing-media`, `variables`, `variables-in-at-rules` | Advanced Less callable, detached-ruleset, `each()`, namespace, and live/scoped lookup results can diverge. Missing mixins are still errors; ordinary unregistered `foo()` remains an optional CSS-function fallback, not a missing-mixin success. | Typed callable/reference lookup and binding semantics in core; graduate only with focused core proof plus byte-identical fixture output. |
-| Imports and conditional at-rules | `import-reference`, `import`, `import-remote`, `urls`, `process-imports/google`, `plugin/plugin` | Some reference/remote/interpolated imports, process-import filtering, and media-query merging diverge. `@plugin` script execution itself is separately proved; its fixture mismatch shares the import/media rendering gap. | Context/plugin-owned import execution and typed media wrapping; no dialect-local resolver or source reparse. |
-| Parser/evaluator edge syntax | `selectors`, `property-name-interp`, `parse-interpolation`, `parser-slashed-combinator`, `permissive-parse`, `media`, `container` | Specific selector interpolation/pseudo, property interpolation, slashed-combinator, and permissive at-rule-prelude forms are rejected or render differently. | Extend the direct Parseman grammar and canonical AST only where the syntax has an agreed semantic shape; retain migration-policy questions as documented decisions. |
-| Less math/unit evaluation | `tests-config/units/no-strict/no-strict.less`, `tests-config/units/strict/strict-units.less` | `LessPlugin.setContext` normalization of legacy `language.less` `math: 0`/`strictUnits` is now proven by the focused strict-units test. The strict fixture is byte-identical. The remaining evaluator gap is structural bare-slash precedence in no-strict under eager `math: 0`/`mathMode: 'always'`; `parens-division` must preserve bare slash values. The focused test keeps exactly `test-division`, `t3`, and `t6` visible as mismatches. | Promote the existing typed `ValueSlot[]` structure without reparsing source bytes; retain strict-unit final validation after cancellation and strict incompatible `+`/`-` errors. The no-strict fixture's three named values must evaluate under its `language.less.math: 0` config before this row is green; equivalent bare slash values under `parens-division` remain authored. |
-| F5 lazy CSS color calls | `color-functions/operations`, `functions/functions` (the `color-functions/rgba` overload cases are green) | CSS-shaped un-operated rgb-family calls with three or more slots remain authored and byte-faithful; Less 4's goldens expect eager clamping or canonicalization for the two remaining boundary fixtures. Less one-/two-slot overloads are dispatched and tested. | Preserve the call-level demand boundary; only a consumer that needs a typed color may invoke the implementation. The focused F5 contract is 17/17. |
-| URL-option behavior | `static-urls`, `url-args` | Some configured static-URL/query-argument behavior differs from Less. The four rewrite/rootpath fixtures are byte-identical public-route passes, not limitations. | One Context/plugin-owned URL transform contract, with public compiler fixture proof; do not add a dialect-local resolver. |
-| Source-map artifacts | `sourcemaps-basepath`, `sourcemaps-include-source`, `sourcemaps-rootpath`, `sourcemaps-url` | Source-map annotations and emitted artifacts are not alpha-supported behavior. | Dedicated artifact harness and documented public source-map contract, rather than render-string assertions. |
-
-The grouped paths above deliberately name every marker; do not summarize the
-list as broad “advanced math/color” or “known-hang” buckets. Existing
-non-runnable skips (helper files, no-CSS fixtures, compression/debug fixtures,
-and plugin API scope decisions) are a separate inventory and are not evidence
-that a runnable expected failure is non-blocking.
+The complete, reproducible first-alpha inventory is
+[`less-v5-corpus-inventory.md`](./less-v5-corpus-inventory.md). Its current
+snapshot distinguishes 32 registered cases from 21 active expected-failure
+checks in the 107-case alpha fixture lane. They are test instrumentation, not
+passing compatibility evidence: a named active marker makes a mismatching
+render pass the harness while preserving the observed failure. A marker may be
+removed only with byte-identical fixture proof; otherwise its release-note
+classification must remain explicit and be updated when its symptom or scope
+changes. Do not duplicate fixture lists or inferred totals here: the inventory
+is the only release-facing enumeration. Existing non-runnable skips (helper
+files, no-CSS fixtures, compression/debug fixtures, and plugin API scope
+decisions) are separate from both the active expected-failure lane and the
+registered-but-unselected limitations.
 
 Do not use the older `describe.todo` Less files as release evidence until each
 test is revalidated against upstream Less behavior, Jess behavior docs, or a
@@ -433,12 +426,12 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
-- 2026-07-22: `parseman@0.28.1` was published and consumed by Jess. The
-  controlled alpha snapshot `564b65615` passed the full
-  `release:alpha:check` chain with its 18-package packed-consumer proof and
-  alpha.9 dry-run publish. It is awaiting explicit owner approval for the full
-  `pnpm run release:alpha` command; this does not publish the separate external
-  Less alpha.
+- 2026-07-22 (historical pre-Parseman-0.29 snapshot): `parseman@0.28.1` was
+  published and consumed by Jess. The controlled alpha snapshot `564b65615`
+  passed the full `release:alpha:check` chain with its 18-package
+  packed-consumer proof and alpha.9 dry-run publish. It is retained as
+  historical evidence only; it does not authorize or validate the current
+  candidate.
 - 2026-07-21 (historical baseline, superseded below): Made source quality an
   explicit blocking alpha gate rather than inferring it from release builds
   that use `--noCheck`. The dependency-ordered `verify:types` audit on the

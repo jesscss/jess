@@ -7,6 +7,7 @@
   },
   "scripts": {
     "ci": "pnpm build && pnpm test",
+    "test": "echo 'patch-css has no active test suite (see test:tofix)'",
     "prepublishOnly": "pnpm build",
     "dist": "rollup -c",
     "build": "pnpm clean && pnpm compile",

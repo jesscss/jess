@@ -153,6 +153,29 @@ well-supported runtime speed. Use memory pressure as the next tiebreaker, and
 use object-count reduction only as a proxy when it covers total runtime objects
 and supports those goals.
 
+## Performance Architecture
+
+Before writing or reviewing code on a hot path (core tree/eval/render,
+grammar/parser, extend/selector algorithms), work from the canonical perf
+checklist:
+
+- `docs/perf/V8-ARCHITECTURE.md` — the **7 invariants** ("before you write X,
+  check Y") plus the regression-fixture catalogue of real incidents
+  (`selectorAtoms` re-derivation, the `documentHasExtend` tree-walk, extend
+  `.includes()` `O(n·m)`, polymorphic node shapes, the 20×7 `choice` fan-out,
+  compose-integrity / stale-build degrade). Each invariant is backed by a
+  mechanical gate where one exists; the gates run in
+  `.github/workflows/pr-quality-gate.yml`.
+- `docs/future/llm-quality-enforcement-design.md` — design of the enforcement
+  layer (the `perf-architecture` skill, the `perf-architecture-reviewer` agent,
+  and this cross-tool contract).
+
+Load the `perf-architecture` skill before editing those paths; dispatch the
+`perf-architecture-reviewer` before landing, and require **evidence per
+invariant** from it — a bare "Approved" is not a valid review result. These
+docs are the single source of truth; do not restate the invariant list in
+tool-specific rules — point at `docs/perf/V8-ARCHITECTURE.md`.
+
 ## Core Architecture Handoff
 
 When working on the active evaluation-model refactor, use these docs as the canonical source:

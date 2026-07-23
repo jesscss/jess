@@ -31,7 +31,7 @@ with private runtime dependencies remain intentionally excluded.
 ## Cut the release snapshot
 
 An alpha is a release snapshot, not a normal branch integration. After the
-exact `dev` candidate has passed its intended gates, squash it onto an
+exact pushed `origin/dev` candidate has passed its intended gates, snapshot it onto an
 up-to-date `alpha` worktree, add the owner-reviewed user-facing release notes,
 and commit that snapshot. Do not ordinary-merge or rebase `dev` into `alpha`.
 The full cut procedure is in the repository

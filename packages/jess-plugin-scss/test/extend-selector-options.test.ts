@@ -15,15 +15,19 @@ describe('scss-plugin direct AST parse route', () => {
 
   it('normalizes direct parser syntax failures as parse diagnostics', () => {
     const plugin = scssPlugin();
-    const result = plugin.safeParse!('test.scss', '.a { color: red;');
+    const source = '.a { color: red; }\n!broken';
+    const result = plugin.safeParse!('test.scss', source);
 
     expect(result.document).toBeUndefined();
     expect(result.errors).toMatchObject([{
       code: 'parse/syntax-error',
       phase: 'parse',
       filePath: 'test.scss',
-      line: 1,
-      column: 1
+      line: 2,
+      column: 1,
+      message: expect.stringMatching(/^SCSS parser error\./),
+      file: { source }
     }]);
+    expect(result.errors[0]?.lines?.[2]).toBe('!broken');
   });
 });

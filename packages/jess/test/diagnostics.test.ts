@@ -125,6 +125,80 @@ describe('Eval error source location', () => {
   });
 });
 
+describe('Public parser diagnostic provenance', () => {
+  const cases = [
+    { dialect: 'Less', extension: '.less', source: '.ok { color: red; }\n!broken' },
+    { dialect: 'SCSS', extension: '.scss', source: '.ok { color: red; }\n!broken' },
+    { dialect: 'Jess', extension: '.jess', source: '.ok { color: red; }\n!broken' }
+  ] as const;
+
+  for (const testCase of cases) {
+    it(`${testCase.dialect} retains source provenance through the public compiler route`, async () => {
+      const filePath = `/proj/invalid${testCase.extension}`;
+      const result = await new Compiler().renderToResult(
+        { source: testCase.source, filePath, extension: testCase.extension },
+        { suppressWarnings: true, breakOnError: false }
+      );
+
+      expect(result.errors).toHaveLength(1);
+      const diagnostic = result.errors[0]!;
+      expect(diagnostic).toMatchObject({
+        code: 'parse/syntax-error',
+        phase: 'parse',
+        filePath,
+        line: 2,
+        column: 1,
+        file: { source: testCase.source }
+      });
+      expect(diagnostic.lines?.[2]).toBe('!broken');
+    });
+  }
+
+  it('renders the Less 5 charset policy with path, source excerpt, and caret', async () => {
+    const source = '@Eight: 8;\n@charset "UTF-@{Eight}";';
+    const filePath = '/proj/charset.less';
+    const captured = await captureAsync(() => new Compiler().renderToResult(
+      { source, filePath, extension: '.less' },
+      { breakOnError: false }
+    ));
+
+    expect(captured.value.errors).toHaveLength(1);
+    expect(captured.value.errors[0]).toMatchObject({
+      code: 'parse/dynamic-charset',
+      filePath,
+      line: 2,
+      column: 1
+    });
+    expect(captured.err).toContain('charset.less');
+    expect(captured.err).toContain('@charset "UTF-@{Eight}";');
+    // linecraft renders the source caret as its vertical marker glyph.
+    expect(captured.err).toContain('╿');
+  });
+
+  it('uses the imported file as the parse diagnostic source', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-parse-diagnostic-'));
+    const entry = path.join(dir, 'entry.less');
+    const imported = path.join(dir, 'broken.less');
+    fs.writeFileSync(entry, '@import "./broken.less";\n');
+    fs.writeFileSync(imported, '.ok { color: red; }\n!broken');
+    try {
+      const result = await new Compiler().safeRender(entry, { suppressWarnings: true });
+      expect(result.errors).toHaveLength(1);
+      const diagnostic = result.errors[0]!;
+      expect(diagnostic).toMatchObject({
+        code: 'parse/syntax-error',
+        filePath: imported,
+        line: 2,
+        column: 1,
+        file: { source: '.ok { color: red; }\n!broken' }
+      });
+      expect(diagnostic.lines?.[2]).toBe('!broken');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 /** Captures everything written to stdout + stderr while `fn` runs. */
 function capture(fn: () => void): { out: string; err: string } {
   const out: string[] = [];
@@ -144,6 +218,25 @@ function capture(fn: () => void): { out: string; err: string } {
     errSpy.mockRestore();
   }
   return { out: out.join(''), err: err.join('') };
+}
+
+async function captureAsync<T>(fn: () => Promise<T>): Promise<{ value: T; out: string; err: string }> {
+  const out: string[] = [];
+  const err: string[] = [];
+  const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+    out.push(String(chunk));
+    return true;
+  });
+  const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+    err.push(String(chunk));
+    return true;
+  });
+  try {
+    return { value: await fn(), out: out.join(''), err: err.join('') };
+  } finally {
+    outSpy.mockRestore();
+    errSpy.mockRestore();
+  }
 }
 
 const OSC8 = '\x1b]8;;';

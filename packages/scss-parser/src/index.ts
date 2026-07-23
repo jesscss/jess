@@ -2,6 +2,21 @@ import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { scssAstGrammar } from './ast/grammar.js';
 
+/** Structured failure from the public direct SCSS parser. */
+export class ScssParseError extends SyntaxError {
+  readonly code = 'parse/syntax-error' as const;
+  readonly offset: number;
+  readonly expected: readonly string[];
+
+  constructor(offset: number, expected: readonly string[]) {
+    const detail = expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
+    super(`SCSS parser error.${detail}`);
+    this.name = 'ScssParseError';
+    this.offset = offset;
+    this.expected = expected;
+  }
+}
+
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
     && value !== null
@@ -20,7 +35,10 @@ export function parse(input: string): Stylesheet {
   }
   const result = run(entry, input, { trivia });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
-    throw new SyntaxError('SCSS parse did not produce a complete Stylesheet document.');
+    const offset = result.ok
+      ? result.unconsumedFrom ?? result.span.end
+      : result.span.start;
+    throw new ScssParseError(offset, result.expected);
   }
   return result.value;
 }
