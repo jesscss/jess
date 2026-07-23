@@ -51,7 +51,7 @@
     "prepare": "husky install",
     "precommit:staged": "node scripts/precommit-changed-checks.mjs --mode=staged",
     "prepush:changed-packages": "node scripts/prepush-dispatch.mjs",
-    "prepush:changed-packages:upstream": "node scripts/precommit-changed-checks.mjs --mode=upstream",
+    "prepush:dev:check": "node scripts/precommit-changed-checks.mjs --mode=upstream",
     "lint:fix": "eslint --ignore-pattern '**/__tests__/**' --fix 'packages/**/src/**/*.{mjs,cjs,js,ts}' 'scripts/**/*.{mjs,cjs,js,ts}' '*.config.{mjs,cjs,js,ts}' 'vitest.d.ts' 'test/setup.ts'",
     "lint": "eslint --ignore-pattern '**/__tests__/**' 'packages/**/src/**/*.{mjs,cjs,js,ts}' 'scripts/**/*.{mjs,cjs,js,ts}' '*.config.{mjs,cjs,js,ts}' 'vitest.d.ts' 'test/setup.ts'",
     "lint:production": "pnpm run lint",

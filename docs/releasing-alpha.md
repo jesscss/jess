@@ -76,6 +76,17 @@ Blocked from the initial alpha set (do not publish yet):
   - `--tag alpha` publishes are allowed only from `alpha`.
   - non-alpha tags (future stable releases) are allowed only from `main`.
 
+## Push checks
+
+The Husky pre-push hook is deliberately branch-aware. A push from `alpha` runs
+the full `release:alpha:check` preflight, including the complete baseline,
+hot-path review, packed-consumer proof, and dry-run publish. A push from `dev`
+or any ordinary development branch runs only `prepush:dev:check`: configuration
+syntax plus test, typecheck, build, and changed-file lint for each changed
+workspace package. The development gate is blocking, but it does not run the
+whole-core or fixture baseline and does not create advisory TODO files. Run the
+full release preflight when preparing an alpha, not for ordinary `dev` pushes.
+
 ## Publish order for the external Less alpha
 
 The Jess alpha and the external `less@5.0.0-alpha.1` package are separate

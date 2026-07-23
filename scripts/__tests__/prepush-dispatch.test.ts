@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 describe('pre-push dispatcher', () => {
   it.each([
     ['alpha', 'release:alpha:check'],
-    ['dev', 'prepush:changed-packages:upstream']
+    ['dev', 'prepush:dev:check']
   ])('runs %s branch through %s', (branch, expectedScript) => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const tempRoot = mkdtempSync(resolve(tmpdir(), 'jess-prepush-dispatch-'));

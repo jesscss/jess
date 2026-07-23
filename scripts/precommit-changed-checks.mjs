@@ -1,25 +1,11 @@
 #!/usr/bin/env node
 import { execFileSync, execSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { shouldRunFullBaselineForFiles } from './shared-baseline-paths.mjs';
 import { stagedTouchedLines, stagedLintableFiles, stagedLintMessages } from './staged-lint.mjs';
 
 const ROOT = process.cwd();
 const MODE = process.argv.includes('--mode=upstream') ? 'upstream' : 'staged';
-const SHOULD_BLOCK = MODE === 'staged';
-const TODO_REPORT_PATH = path.join(ROOT, '.cursor', 'PREPUSH_CHECK_TODOS.md');
-const failures = [];
-
-/** Packages that gate on the broad baseline. Push blocked if baseline fails. */
-const BASELINE_PACKAGES = new Set([
-  'packages/core',
-  'packages/less-parser',
-  'packages/css-parser',
-  'packages/jess',
-  'packages/jess-plugin-less',
-  'packages/jess-plugin-less-compat'
-]);
 
 const NON_SOURCE_PATH_PATTERNS = [
   /\/build\//,
@@ -27,25 +13,6 @@ const NON_SOURCE_PATH_PATTERNS = [
   /\/dist\//,
   /\/coverage\//
 ];
-
-function currentBranchName() {
-  try {
-    return execSync('git branch --show-current', {
-      cwd: ROOT,
-      encoding: 'utf8'
-    }).trim();
-  } catch {
-    return '';
-  }
-}
-
-function aggressiveReviewMode() {
-  return MODE === 'staged' && currentBranchName() === 'alpha'
-    ? 'release'
-    : MODE === 'upstream'
-      ? 'committed'
-      : MODE;
-}
 
 function requireCleanPushTarget() {
   if (MODE !== 'upstream') {
@@ -60,8 +27,7 @@ function requireCleanPushTarget() {
   }
 }
 
-function run(command, args, packageDir, options = {}) {
-  const { required = SHOULD_BLOCK } = options;
+function run(command, args) {
   const rendered = [command, ...args].join(' ');
   console.log(`\n$ ${rendered}`);
   const result = spawnSync(command, args, {
@@ -77,55 +43,8 @@ function run(command, args, packageDir, options = {}) {
     process.stderr.write(stderr);
   }
   if (result.status !== 0) {
-    failures.push({
-      packageDir,
-      command: rendered,
-      status: result.status ?? 1,
-      output: [stdout, stderr].filter(Boolean).join('\n').trim()
-    });
-    if (required) {
-      process.exit(result.status ?? 1);
-    }
+    process.exit(result.status ?? 1);
   }
-}
-
-function writeTodoReport() {
-  if (MODE !== 'upstream') {
-    return;
-  }
-  if (failures.length === 0) {
-    if (existsSync(TODO_REPORT_PATH)) {
-      rmSync(TODO_REPORT_PATH);
-    }
-    return;
-  }
-  const now = new Date().toISOString();
-  const lines = [
-    '# Pre-push Check TODOs',
-    '',
-    `Generated: ${now}`,
-    '',
-    'These checks failed during `--mode=upstream` and were treated as non-blocking.',
-    '',
-    '## TODO Items',
-    ...failures.map((f, i) => `${i + 1}. [ ] \`${f.packageDir}\` - \`${f.command}\` (exit ${f.status})`),
-    '',
-    '## Failure Details',
-    ...failures.flatMap((f, i) => [
-      `### ${i + 1}) ${f.packageDir}`,
-      '',
-      `- Command: \`${f.command}\``,
-      `- Exit: \`${f.status}\``,
-      '',
-      '```',
-      f.output || '(no output captured)',
-      '```',
-      ''
-    ])
-  ];
-  mkdirSync(path.dirname(TODO_REPORT_PATH), { recursive: true });
-  writeFileSync(TODO_REPORT_PATH, `${lines.join('\n')}\n`, 'utf8');
-  console.log(`\nWrote TODO report: ${path.relative(ROOT, TODO_REPORT_PATH)}`);
 }
 
 function readPackageScripts(packageDir) {
@@ -225,17 +144,17 @@ function hasCodeImpactingChanges(files, packageDir) {
 
 function runTypecheckForPackage(packageDir, scripts) {
   if (scripts.typecheck) {
-    run('pnpm', ['--filter', `./${packageDir}`, 'typecheck'], packageDir);
+    run('pnpm', ['--filter', `./${packageDir}`, 'typecheck']);
     return;
   }
   const tsBuild = path.join(ROOT, packageDir, 'tsconfig.build.json');
   if (existsSync(tsBuild)) {
-    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.build.json`, '--noEmit'], packageDir);
+    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.build.json`, '--noEmit']);
     return;
   }
   const tsConfig = path.join(ROOT, packageDir, 'tsconfig.json');
   if (existsSync(tsConfig)) {
-    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.json`, '--noEmit'], packageDir);
+    run('pnpm', ['-w', 'exec', 'tsc', '-p', `${packageDir}/tsconfig.json`, '--noEmit']);
     return;
   }
   console.log(`- skip typecheck for ${packageDir} (no tsconfig or typecheck script)`);
@@ -243,7 +162,7 @@ function runTypecheckForPackage(packageDir, scripts) {
 
 function runBuildForPackage(packageDir, scripts) {
   if (scripts.build) {
-    run('pnpm', ['--filter', `./${packageDir}`, 'build'], packageDir);
+    run('pnpm', ['--filter', `./${packageDir}`, 'build']);
     return;
   }
   console.log(`- skip build for ${packageDir} (no build script)`);
@@ -254,7 +173,7 @@ function runLintForFiles(packageDir, files) {
     console.log(`- skip lint for ${packageDir} (no changed JS/TS files)`);
     return;
   }
-  run('pnpm', ['exec', 'eslint', ...files], packageDir);
+  run('pnpm', ['exec', 'eslint', ...files]);
 }
 
 function stagedHunkLines(file) {
@@ -278,7 +197,6 @@ async function runStagedLintForFiles(files) {
     // A broken ESLint invocation/config means no complete diagnostic result was
     // available, so it must block rather than be treated as historical debt.
     const output = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    failures.push({ packageDir: 'eslint', command: 'ESLint staged API', status: 1, output });
     console.error('ESLint staged API failed before diagnostics could be collected.');
     console.error(output);
     process.exit(1);
@@ -307,18 +225,10 @@ async function runStagedLintForFiles(files) {
   for (const message of actionable) {
     console.error(`${message.filePath}:${message.line}:${message.column} ${message.message}${message.ruleId ? ` (${message.ruleId})` : ''}`);
   }
-  failures.push({ packageDir: 'eslint', command: 'ESLint staged API', status: 1, output: JSON.stringify(actionable) });
   process.exit(1);
 }
 
-function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyRun) {
-  if (packageDir !== 'packages/core') {
-    return;
-  }
-  if (baselineAlreadyRun) {
-    console.log(`- skip core-only test (verify:baseline already ran)`);
-    return;
-  }
+function runTestsForPackage(packageDir, scripts, files) {
   if (!hasCodeImpactingChanges(files, packageDir)) {
     console.log(`- skip required tests for ${packageDir} (no code-impacting changes)`);
     return;
@@ -327,27 +237,7 @@ function runRequiredTestsForPackage(packageDir, scripts, files, baselineAlreadyR
     console.log(`- skip required tests for ${packageDir} (no test script)`);
     return;
   }
-  run('pnpm', ['--filter', `./${packageDir}`, 'test'], packageDir, { required: true });
-}
-
-function runVerifyBaseline() {
-  console.log('\n==> Running verify:baseline (core + parsers + Less fixture and compatibility suites)');
-  run('pnpm', ['run', 'verify:baseline'], undefined, { required: true });
-}
-
-function runAggressiveCuttingReview({ mode, skipExecutableEvidence = false } = {}) {
-  console.log('\n==> Running verify:aggressive-cutting-review (hot-path cost/admission contracts)');
-  const args = ['run', 'verify:aggressive-cutting-review'];
-  if (mode || skipExecutableEvidence) {
-    args.push('--');
-  }
-  if (mode) {
-    args.push(`--mode=${mode}`);
-  }
-  if (skipExecutableEvidence) {
-    args.push('--skip-executable-evidence');
-  }
-  run('pnpm', args, undefined, { required: true });
+  run('pnpm', ['--filter', `./${packageDir}`, 'test', '--', '--run']);
 }
 
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
@@ -367,29 +257,18 @@ run(
   'pnpm',
   MODE === 'staged'
     ? ['run', 'verify:config-syntax', '--', '--staged']
-    : ['run', 'verify:config-syntax'],
-  undefined,
-  { required: true }
+    : ['run', 'verify:config-syntax']
 );
 
 const changedPackages = packageDirs(files);
-let baselineRan = false;
-if (MODE === 'upstream') {
-  const needsBaseline = shouldRunFullBaselineForFiles(files) || changedPackages.some(pkg => BASELINE_PACKAGES.has(pkg));
-  if (needsBaseline) {
-    runVerifyBaseline();
-    baselineRan = true;
-  }
-}
+const hasParserSourceChanges = files.some(file =>
+  /^packages\/(?:css|less|scss|jess)-parser\/src\//.test(file)
+);
 
-// Staged pre-commit checks intentionally avoid live profile evidence because
-// generated package output may still belong to the previous source revision.
-// The upstream/pre-push path runs the baseline build above before collecting
-// executable evidence.
-runAggressiveCuttingReview({
-  mode: aggressiveReviewMode(),
-  skipExecutableEvidence: MODE !== 'upstream'
-});
+if (MODE === 'upstream' && hasParserSourceChanges) {
+  console.log('\n==> Running parser runtime-boundary validation');
+  run('pnpm', ['run', 'verify:parser-runtime-boundary']);
+}
 
 if (MODE === 'staged') {
   await runStagedLintForFiles(stagedLintableFiles(files));
@@ -400,9 +279,6 @@ if (changedPackages.length === 0) {
     ? 'No package changes against upstream. Skipping package checks.'
     : 'No staged package changes. Skipping package checks.'
   );
-  if (MODE === 'upstream' && baselineRan) {
-    console.log('\nPre-push package checks passed.');
-  }
   process.exit(0);
 }
 
@@ -416,12 +292,12 @@ for (const packageDir of changedPackages) {
   }
   console.log(`\n==> ${packageDir}`);
   if (MODE === 'upstream') {
-    runRequiredTestsForPackage(packageDir, scripts, files, baselineRan);
     const lintableFiles = stagedLintableFiles(files).filter(file => file.startsWith(`${packageDir}/`));
     if (!hasCodeImpactingChanges(files, packageDir)) {
       console.log(`- skip typecheck/build/lint for ${packageDir} (no code-impacting changes)`);
       continue;
     }
+    runTestsForPackage(packageDir, scripts, files);
     runTypecheckForPackage(packageDir, scripts);
     runBuildForPackage(packageDir, scripts);
     runLintForFiles(packageDir, lintableFiles);
@@ -429,12 +305,7 @@ for (const packageDir of changedPackages) {
 }
 
 if (MODE === 'upstream') {
-  writeTodoReport();
-  if (failures.length > 0) {
-    console.log(`\nPre-push package checks completed with ${failures.length} failing command(s) recorded as TODOs.`);
-    process.exit(0);
-  }
-  console.log('\nPre-push package checks passed.');
+  console.log('\nDev pre-push changed-package checks passed.');
 } else {
   console.log('\nPre-commit staged checks passed.');
 }

@@ -13,7 +13,7 @@ function currentBranch() {
 
 const script = currentBranch() === 'alpha'
   ? 'release:alpha:check'
-  : 'prepush:changed-packages:upstream';
+  : 'prepush:dev:check';
 const result = spawnSync('pnpm', ['run', script], { stdio: 'inherit' });
 
 if (result.error) {
