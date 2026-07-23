@@ -726,32 +726,45 @@ function customPartsFromChildren(children: readonly unknown[]): CustomValuePart[
 }
 
 function isValueNode(value: unknown): value is ValueNode {
-  return isQuoted(value)
-    || isAny(value)
-    || isComment(value)
-    || isVarRef(value)
-    || (typeof value === 'object'
-      && value !== null
-      && 'type' in value
-      && (value.type === 'Keyword'
-        || value.type === 'Color'
-        || value.type === 'Dimension'
-        || value.type === 'Url'
-        || value.type === 'FunctionCall'
-        || value.type === 'SpacedValue'
-        || value.type === 'List'
-        || value.type === 'Operation'
-        || value.type === 'Condition'
-        || value.type === 'Block'
-        || value.type === 'PropertyReference'
-        || value.type === 'VarIndirect'
-        || value.type === 'Reference'
-        || value.type === 'Interpolation'
-        || value.type === 'Important'
-        || value.type === 'SelectorCapture'
-        || value.type === 'AnonymousMixin'
-        || value.type === 'Collection'
-        || value.type === 'GeneralEnclosed'));
+  // Dispatch once on the discriminant rather than re-running the object guard
+  // through each `isX` prefix. Type-only arms return true directly (matching
+  // the original union); the four structurally-validated node kinds delegate to
+  // their deep guards, preserving identical acceptance.
+  if (typeof value !== 'object' || value === null || !('type' in value)) {
+    return false;
+  }
+  switch (value.type) {
+    case 'Keyword':
+    case 'Color':
+    case 'Dimension':
+    case 'Url':
+    case 'FunctionCall':
+    case 'SpacedValue':
+    case 'List':
+    case 'Operation':
+    case 'Condition':
+    case 'Block':
+    case 'PropertyReference':
+    case 'VarIndirect':
+    case 'Reference':
+    case 'Interpolation':
+    case 'Important':
+    case 'SelectorCapture':
+    case 'AnonymousMixin':
+    case 'Collection':
+    case 'GeneralEnclosed':
+      return true;
+    case 'Quoted':
+      return isQuoted(value);
+    case 'Any':
+      return isAny(value);
+    case 'Comment':
+      return isComment(value);
+    case 'VariableReference':
+      return isVarRef(value);
+    default:
+      return false;
+  }
 }
 
 function valueSlot(value: ValueSlot): ValueSlot {
@@ -1170,11 +1183,42 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
 }
 
 function isStatement(value: unknown): value is Statement {
-  return isImportAtRule(value) || isVarDeclaration(value) || isDeclaration(value)
-    || isComment(value) || isRule(value) || isAtRuleBlock(value) || isAtRuleStatement(value)
-    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'Plugin')
-    || isMixinDef(value) || isMixinCall(value) || isReferenceCall(value) || isFor(value)
-    || isFunctionCall(value);
+  // Every statement guard gates on a distinct `type`, so dispatch once on the
+  // discriminant instead of trying up to thirteen guards sequentially (each of
+  // which re-runs the object guard). Behaviour is identical.
+  if (typeof value !== 'object' || value === null || !('type' in value)) {
+    return false;
+  }
+  switch (value.type) {
+    case 'ImportAtRule':
+      return isImportAtRule(value);
+    case 'VariableDeclaration':
+      return isVarDeclaration(value);
+    case 'Declaration':
+      return isDeclaration(value);
+    case 'Comment':
+      return isComment(value);
+    case 'Rule':
+      return isRule(value);
+    case 'AtRuleBlock':
+      return isAtRuleBlock(value);
+    case 'AtRuleStatement':
+      return isAtRuleStatement(value);
+    case 'Plugin':
+      return true;
+    case 'MixinDef':
+      return isMixinDef(value);
+    case 'MixinCall':
+      return isMixinCall(value);
+    case 'Reference':
+      return isReferenceCall(value);
+    case 'For':
+      return isFor(value);
+    case 'FunctionCall':
+      return isFunctionCall(value);
+    default:
+      return false;
+  }
 }
 
 function requireStatementArray(value: unknown): Statement[] {
