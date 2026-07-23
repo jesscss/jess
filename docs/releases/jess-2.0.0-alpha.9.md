@@ -52,7 +52,7 @@ parser/plugin/Rollup tests, AST-v2 production-route ratchet, baseline suite,
 aggressive-cutting release review, package-closure validation, and packed
 consumer proof. Its final dry-run publish also passed. The repaired alpha push
 gate runs `pnpm run prepush:changed-packages`, which dispatches to that full
-release chain only on `alpha`. Published Parseman `0.29.0` is the dependency
+release chain only on `alpha`. Published Parseman `0.30.0` is the dependency
 used by the current candidate.
 
 The public Less alpha fixture lanes currently exercise 107 cases: 86 ordinary
@@ -120,7 +120,7 @@ This is a deliberately breaking alpha architecture change.
   classified corpus results rather than dialect-specific engine fallbacks.
 - It makes no parser-performance claim. The direct parser baseline and Parseman
   regression work remain release-gated and are measured separately.
-- It does not publish from local workspace links. Parseman `0.29.0` is already
+- It does not publish from local workspace links. Parseman `0.30.0` is already
   published, consumed through a real package version, and proven through the
   alpha packed-consumer check.
 

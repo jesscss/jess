@@ -39,13 +39,18 @@ function workspaceSrcAliases() {
     }
     alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
   }
-  // The css-parser `./jess` subpath (functional-parse driver) — the ast parse
-  // host drives the grammar through `runFunctionalParse` with a build host.
-  // Subpaths normally fall through to node resolution, which misses from core
-  // (no hoist); a src alias keeps the TS-aware run working.
+  // CSS-parser subpaths used by source-aliased workspace parsers. Subpaths
+  // normally fall through to node resolution, which misses from a consuming
+  // package when the direct parser package itself has been aliased to `src`.
+  // These aliases preserve the same source-to-source graph that the built
+  // package exports provide to production consumers.
   const cssJess = resolve(root, 'packages/css-parser/src/jess.ts');
   if (existsSync(cssJess)) {
     alias.push({ find: /^@jesscss\/css-parser\/jess$/, replacement: cssJess });
+  }
+  const cssGrammar = resolve(root, 'packages/css-parser/src/grammar.ts');
+  if (existsSync(cssGrammar)) {
+    alias.push({ find: /^@jesscss\/css-parser\/grammar$/, replacement: cssGrammar });
   }
   return alias;
 }
