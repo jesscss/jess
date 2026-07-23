@@ -72,7 +72,7 @@ describe('changed package checks', () => {
     }
   });
 
-  it('runs a changed parser package through source safety, test, types, build, and changed-file lint without the release baseline', () => {
+  it('runs changed packages once in non-watch mode without duplicating package-owned runner flags', () => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const tempRoot = mkdtempSync(resolve(tmpdir(), 'jess-prepush-review-'));
     const sandbox = resolve(tempRoot, 'repo');
@@ -101,9 +101,17 @@ describe('changed package checks', () => {
       writeFileSync(fakePnpm, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$JESS_PRECOMMIT_INVOCATIONS"\n');
       chmodSync(fakePnpm, 0o755);
 
-      const probe = resolve(sandbox, 'packages/css-parser/src/prepush-dev-probe.ts');
-      writeFileSync(probe, 'export const prepushDevProbe = true;\n');
-      execFileSync('git', ['add', 'packages/css-parser/src/prepush-dev-probe.ts', 'scripts/precommit-changed-checks.mjs', 'scripts/staged-lint.mjs'], { cwd: sandbox });
+      const coreProbe = resolve(sandbox, 'packages/core/src/prepush-dev-probe.ts');
+      const parserProbe = resolve(sandbox, 'packages/jess-parser/src/prepush-dev-probe.ts');
+      writeFileSync(coreProbe, 'export const prepushDevCoreProbe = true;\n');
+      writeFileSync(parserProbe, 'export const prepushDevParserProbe = true;\n');
+      execFileSync('git', [
+        'add',
+        'packages/core/src/prepush-dev-probe.ts',
+        'packages/jess-parser/src/prepush-dev-probe.ts',
+        'scripts/precommit-changed-checks.mjs',
+        'scripts/staged-lint.mjs'
+      ], { cwd: sandbox });
       execFileSync('git', ['commit', '--quiet', '-m', 'test: committed pre-push probe'], { cwd: sandbox });
 
       const env = {
@@ -119,10 +127,14 @@ describe('changed package checks', () => {
       expect(readFileSync(invocationLog, 'utf8').trim().split('\n')).toEqual([
         'run verify:config-syntax',
         'run verify:parser-runtime-boundary',
-        '--filter ./packages/css-parser test -- --run',
-        '-w exec tsc -p packages/css-parser/tsconfig.build.json --noEmit',
-        '--filter ./packages/css-parser build',
-        'exec eslint packages/css-parser/src/prepush-dev-probe.ts'
+        '--filter ./packages/core test -- --run',
+        '-w exec tsc -p packages/core/tsconfig.build.json --noEmit',
+        '--filter ./packages/core build',
+        'exec eslint packages/core/src/prepush-dev-probe.ts',
+        '--filter ./packages/jess-parser test',
+        '-w exec tsc -p packages/jess-parser/tsconfig.build.json --noEmit',
+        '--filter ./packages/jess-parser build',
+        'exec eslint packages/jess-parser/src/prepush-dev-probe.ts'
       ]);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });

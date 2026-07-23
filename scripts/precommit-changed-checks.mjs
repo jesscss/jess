@@ -237,7 +237,15 @@ function runTestsForPackage(packageDir, scripts, files) {
     console.log(`- skip required tests for ${packageDir} (no test script)`);
     return;
   }
-  run('pnpm', ['--filter', `./${packageDir}`, 'test', '--', '--run']);
+  // Most package test scripts start Vitest in watch mode, so the push gate
+  // must add `--run`. Some packages already own an explicit non-watch flag;
+  // forwarding a second runner flag makes Vitest reject the invocation.
+  const ownsNonWatchFlag = /(?:^|\s)--run(?:\s|$)|(?:^|\s)--watch(?:=false|\s+false)(?:\s|$)/.test(scripts.test);
+  const args = ['--filter', `./${packageDir}`, 'test'];
+  if (!ownsNonWatchFlag) {
+    args.push('--', '--run');
+  }
+  run('pnpm', args);
 }
 
 const rawFiles = MODE === 'upstream' ? changedFilesAgainstUpstream() : stagedFiles();
