@@ -191,6 +191,23 @@ function sourceText(value: unknown): string {
   return requireToken(value).value;
 }
 
+/** Map query/media-prelude children to value nodes, coercing bare keyword tokens
+ *  (`and`/`or`/media types) to `Keyword`s while passing structured values through. */
+function keywordizeValues(children: readonly unknown[]): ValueNode[] {
+  return children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
+}
+
+/** Concatenate the authored spelling of every child. The canonical opaque
+ *  representation for attribute selectors and non-structured pseudo arguments. */
+function joinSourceText(children: readonly unknown[]): string {
+  return children.map(sourceText).join('');
+}
+
+/** Concatenate every child token value into one opaque static-prelude token. */
+function joinTokenValue(children: readonly unknown[]): Token {
+  return { value: children.map(requireToken).map(token => token.value).join('') };
+}
+
 /** Shared reducer for a static `"…"` / `'…'` quoted value: the opening quote is
  * `children[0]`, the raw body is `children[1]`, and both the source spelling and
  * decoded body are preserved verbatim (never interpolation). */
@@ -1455,7 +1472,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(g.DirectScssStaticImportMediaInParens, many(sequence(g.CssAstSyntaxQueryAndOr, g.DirectScssStaticImportMediaInParens)))
     ),
     (children) => {
-      const values = children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
+      const values = keywordizeValues(children);
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
@@ -1470,7 +1487,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticImportMediaOnlyClause = node<ValueNode>(
     'DirectScssStaticImportMediaOnlyClause',
     sequence(g.CssAstSyntaxQueryOnly, DirectScssStaticImportMediaNonOnlyKeyword, many(sequence(directScssStaticImportMediaAnd, g.DirectScssStaticImportMediaInParens))),
-    children => spaced(children.map(child => isValue(child) ? child : keyword(requireToken(child).value)))
+    children => spaced(keywordizeValues(children))
   );
   const DirectScssStaticImportMediaClause = node<ValueNode>(
     'DirectScssStaticImportMediaClause',
@@ -1481,7 +1498,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       DirectScssStaticImportMediaNonOnlyKeyword
     ),
     (children) => {
-      const values = children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
+      const values = keywordizeValues(children);
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
@@ -1919,7 +1936,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       sequence(g.CssAstSyntaxQueryNot, g.DirectScssQueryInParens),
       sequence(g.DirectScssQueryInParens, many(sequence(g.CssAstSyntaxQueryAndOr, g.DirectScssQueryInParens)))
     ),
-    children => spaced(children.map(child => isValue(child) ? child : keyword(requireToken(child).value)))
+    children => spaced(keywordizeValues(children))
   );
   // `only` modifies a media type; it cannot introduce a parenthesized query
   // condition. Keep `not (...)` in DirectScssQueryCondition, where that form
@@ -1936,7 +1953,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       DirectScssQueryNonOnlyKeyword,
       many(sequence(g.CssAstSyntaxQueryAndOr, g.DirectScssQueryInParens))
     ),
-    children => spaced(children.map(child => isValue(child) ? child : keyword(requireToken(child).value)))
+    children => spaced(keywordizeValues(children))
   );
   const DirectScssQueryClause = node<ValueNode>(
     'DirectScssQueryClause',
@@ -1947,7 +1964,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       DirectScssQueryNonOnlyKeyword
     ),
     (children) => {
-      const values = children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
+      const values = keywordizeValues(children);
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
@@ -2090,22 +2107,22 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticAtPreludeDoubleQuoted = node<Token>(
     'DirectScssStaticAtPreludeDoubleQuoted',
     sequence(literal('"'), directDoubleQuotedText, literal('"')),
-    children => ({ value: children.map(requireToken).map(token => token.value).join('') })
+    joinTokenValue
   );
   const DirectScssStaticAtPreludeSingleQuoted = node<Token>(
     'DirectScssStaticAtPreludeSingleQuoted',
     sequence(literal('\''), directSingleQuotedText, literal('\'')),
-    children => ({ value: children.map(requireToken).map(token => token.value).join('') })
+    joinTokenValue
   );
   const DirectScssStaticAtPreludeParen = node<Token>(
     'DirectScssStaticAtPreludeParen',
     sequence(literal('('), many(g.DirectScssStaticAtPreludeAtom), literal(')')),
-    children => ({ value: children.map(requireToken).map(token => token.value).join('') })
+    joinTokenValue
   );
   const DirectScssStaticAtPreludeSquare = node<Token>(
     'DirectScssStaticAtPreludeSquare',
     sequence(literal('['), many(g.DirectScssStaticAtPreludeAtom), literal(']')),
-    children => ({ value: children.map(requireToken).map(token => token.value).join('') })
+    joinTokenValue
   );
   const DirectScssStaticAtPreludeAtom = node<Token>(
     'DirectScssStaticAtPreludeAtom',
@@ -2457,7 +2474,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       )),
       literal(']')
     ),
-    children => simpleSelector(children.map(sourceText).join(''))
+    children => simpleSelector(joinSourceText(children))
   );
   // Selector-valued pseudo arguments have the same canonical selector shape as
   // an ordinary rule header. Parse them through that grammar, then preserve the
@@ -2471,7 +2488,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     // its static grammar here so it remains accepted without giving a nested
     // DirectScssSelector an interpolation escape hatch.
     sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument),
-    children => children.map(sourceText).join('')
+    joinSourceText
   );
   // A static functional pseudo is still a canonical SimpleSelector leaf. Its
   // argument is grammar-recognized (including balanced groups, brackets,
@@ -2483,17 +2500,17 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticPseudoGroup = node<string>(
     'DirectScssStaticPseudoGroup',
     sequence(literal('('), many(choice(g.DirectScssStaticPseudoGroup, g.DirectScssStaticPseudoSquare, DirectScssStaticValueQuoted, g.CssAstSyntaxBlockComment, directScssStaticPseudoChunk)), literal(')')),
-    children => children.map(sourceText).join('')
+    joinSourceText
   );
   const DirectScssStaticPseudoSquare = node<string>(
     'DirectScssStaticPseudoSquare',
     sequence(literal('['), many(choice(g.DirectScssStaticPseudoGroup, g.DirectScssStaticPseudoSquare, DirectScssStaticValueQuoted, g.CssAstSyntaxBlockComment, directScssStaticPseudoChunk)), literal(']')),
-    children => children.map(sourceText).join('')
+    joinSourceText
   );
   const DirectScssStaticPseudoArgument = node<string>(
     'DirectScssStaticPseudoArgument',
     oneOrMore(choice(g.DirectScssStaticPseudoGroup, g.DirectScssStaticPseudoSquare, DirectScssStaticValueQuoted, g.CssAstSyntaxBlockComment, directScssStaticPseudoChunk)),
-    children => children.map(sourceText).join('')
+    joinSourceText
   );
   // Selector-valued pseudo arguments are still text inside the containing
   // SimpleSelector, but their top-level commas have the established canonical
@@ -2503,7 +2520,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticSelectorPseudoItem = node<string>(
     'DirectScssStaticSelectorPseudoItem',
     oneOrMore(choice(g.DirectScssStaticPseudoGroup, g.DirectScssStaticPseudoSquare, DirectScssStaticValueQuoted, g.CssAstSyntaxBlockComment, directScssStaticSelectorPseudoChunk)),
-    children => children.map(sourceText).join('')
+    joinSourceText
   );
   const DirectScssStaticSelectorPseudoTail = node<string>(
     'DirectScssStaticSelectorPseudoTail',
@@ -2513,7 +2530,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticSelectorPseudoArgument = node<string>(
     'DirectScssStaticSelectorPseudoArgument',
     sequence(g.DirectScssStaticSelectorPseudoItem, many(g.DirectScssStaticSelectorPseudoTail)),
-    children => children.map(sourceText).join('')
+    joinSourceText
   );
   const directScssNthPseudoNameWithArgument = regex(/nth-(?:last-)?(?:child|of-type)(?=\()/i);
   const directScssSelectorPseudoNameWithArgument = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
