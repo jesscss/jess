@@ -77,6 +77,7 @@ import type {
   Rule,
   SpacedValue,
   SimpleSelector,
+  SimpleToken,
   SelectorList,
   Statement,
   StyleImport,
@@ -3334,7 +3335,7 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
 
 /** [selector-capture] The group a lone bare `@{name}` simple resolves to (a
  *  single-part interp whose sole part is a group ref) — else null. */
-function simpleGroupInterp(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+function simpleGroupInterp(sim: SimpleToken, frame: Frame | null, e: EvalCtx): GroupInterp | null {
   const interp = sim.interp;
   if (interp?.parts.length !== 1) {
     return null;
@@ -3386,7 +3387,12 @@ function expandComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): May
  *  part folds to its bytes, EXCEPT a group ref (a `*[…]` capture or `~'…'` comma
  *  string) embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
  *  single `:is(…)` group; a single-branch capture splices its lone branch bare. */
-function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  // A structured pseudo carries its authored spelling in `text`; P0.1 has no
+  // per-frame arg resolution — emit the verbatim text (same as a static simple).
+  if (sim.type === 'PseudoSelector') {
+    return sim.text;
+  }
   const interp = sim.interp;
   if (interp === null) {
     return sim.text ?? '';
@@ -3420,7 +3426,7 @@ function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx)
 
 /** Synchronous selector-interpolation consumers cannot suspend and resume a
  * partially mutated selector. Public emitted selectors retain the async path. */
-function resolveSimpleTextSync(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): string {
+function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: EvalCtx): string {
   const value = resolveSimpleText(sim, frame, e);
   if (isThenable(value)) {
     throw new Error('async value in synchronous selector interpolation is unsupported');

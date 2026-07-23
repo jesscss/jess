@@ -445,10 +445,32 @@ export interface SimpleSelector {
   readonly interp: Interpolation | null;
 }
 
+/**
+ * A structured selector-function pseudo, e.g. `:is(.a, .b)`, `:not(.x)`. `text`
+ * and `interp` are the FIRST TWO fields at the SAME offsets as `SimpleSelector`
+ * so the degree-2 IC over `sim.text`/`sim.interp` in `compoundCanonical` reads a
+ * shared-prefix offset. `text` is the EXACT per-dialect authored spelling the
+ * grammar already computes (never re-derived from `args`); `args` retains the
+ * parsed inner `SelectorList` (null = degrade-to-opaque, SCSS best-effort).
+ * `crossable` is true iff the name is a boundary a selector may cross for extend
+ * (`:is`/`:matches`); every other name (`:not`/`:where`/`:has`/…) is sealed.
+ */
+export interface PseudoSelector {
+  readonly type: 'PseudoSelector';
+  readonly text: string;
+  readonly interp: Interpolation | null;
+  readonly name: string;
+  readonly args: SelectorList | null;
+  readonly crossable: boolean;
+}
+
+/** A single token inside a compound — a plain simple or a structured pseudo. */
+export type SimpleToken = SimpleSelector | PseudoSelector;
+
 /** A run of simple tokens with no separator, e.g. `.a.b`, `&:hover`. */
 export interface CompoundSelector {
   readonly type: 'CompoundSelector';
-  readonly simples: SimpleSelector[];
+  readonly simples: SimpleToken[];
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
   /** Serializer-owned memo of the has-interp flag (lazy). */
@@ -897,6 +919,23 @@ export const list = (
 export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null });
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
 export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp });
+
+/**
+ * Selector-function pseudos a selector may CROSS during extend (the arg list is a
+ * boundary extend forks through). Gated on the NAME whitelist, never on colon
+ * count — `::slotted()` takes selector args but stays sealed (not listed). Compare
+ * lowercased. `:where`/`:not`/`:has`/`:global`/`:local` are sealed (crossable:false).
+ */
+const CROSSABLE_PSEUDOS = new Set([':is', ':matches']);
+export const crossable = (name: string): boolean => CROSSABLE_PSEUDOS.has(name.toLowerCase());
+/** A structured selector-function pseudo. `text` is the authored spelling (never
+ *  re-derived from `args`); `crossable` is computed from `name`. */
+export const pseudoSelector = (
+  name: string,
+  args: SelectorList | null,
+  text: string,
+  interp: Interpolation | null = null
+): PseudoSelector => ({ type: 'PseudoSelector', text, interp, name, args, crossable: crossable(name) });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts });
 export const generalEnclosed = (
   form: GeneralEnclosed['form'],
