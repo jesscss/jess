@@ -391,6 +391,20 @@ function valueChildren(children: readonly unknown[]): ValueNode[] {
   return values;
 }
 
+/** First structured value child without allocating a filtered array. The
+ * component-value reducers only need the leading value; the whole-array
+ * `valueChildren` above stays for the math/query reducers that fold every
+ * operand. */
+function firstValue(children: readonly unknown[]): ValueNode {
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
+    if (isValue(child)) {
+      return child;
+    }
+  }
+  throw new Error('CSS AST value grammar lost its value child');
+}
+
 function optionalValue(value: unknown): ValueNode | null {
   if (value === null || value === undefined) {
     return null;
@@ -411,6 +425,19 @@ function valueSlotChildren(children: readonly unknown[]): ValueSlot[] {
     throw new Error('CSS AST value grammar lost its value child');
   }
   return values;
+}
+
+/** First slot-aware value child without allocating a filtered array. Mirrors
+ * `firstValue` for the component-value/call-argument reducers that only need
+ * the leading slot value. */
+function firstValueSlot(children: readonly unknown[]): ValueSlot {
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
+    if (isValueSlotValue(child)) {
+      return child;
+    }
+  }
+  throw new Error('CSS AST value grammar lost its value child');
 }
 
 function foldOperation(children: readonly unknown[]): ValueNode {
@@ -761,7 +788,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcParen = node(
     'CssAstCalcParen',
     noTrivia(sequence(literal('('), many(calcWhitespace), g.CssAstMathSum, many(calcWhitespace), literal(')'))),
-    children => block(valueChildren(children)[0]!)
+    children => block(firstValue(children))
   );
   // `var()` is a component-value substitution boundary even inside a strict
   // calc expression. Its fallback is its own component-value sequence, while
@@ -898,7 +925,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcVarFallbackItem = node(
     'CssAstCalcVarFallbackItem',
     choice(g.CssAstCalcVarFallbackTerm, g.CssAstCalcVarFallbackEmpty),
-    children => valueSlotChildren(children)[0]!
+    children => firstValueSlot(children)
   );
   const CssAstCalcVarFallback = node(
     'CssAstCalcVarFallback',
@@ -935,7 +962,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcValue = node(
     'CssAstCalcValue',
     choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCalcVarCall, parser({ trivia: whitespace }, g.CssAstCall), g.CssAstCalcParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstMathProduct = node(
     'CssAstMathProduct',
@@ -950,7 +977,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcCall = node(
     'CssAstCalcCall',
     noTrivia(sequence(regex(/calc(?=\()/i), literal('('), many(calcWhitespace), g.CssAstMathSum, many(calcWhitespace), literal(')'))),
-    children => funcCall(tokenText(children[0]), [valueChildren(children)[0]!])
+    children => funcCall(tokenText(children[0]), [firstValue(children)])
   );
   // Preserve the public declaration component-value language without letting
   // its permissive forms leak into query preludes or calc. `calc(...)` remains
@@ -1013,7 +1040,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationCall, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword, g.CssAstDeclarationAny)
       )
     ),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstDeclarationValueTerm = node(
     'CssAstDeclarationValueTerm',
@@ -1053,12 +1080,12 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstDeclarationCall,
       sequence(not(sequence(g.CssAstSyntaxKeyword, literal('('))), g.CssAstDeclarationExtendedValue)
     ),
-    children => valueSlotChildren(children)[0]!
+    children => firstValueSlot(children)
   );
   const CssAstValueAtom = node(
     'CssAstValueAtom',
     choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCall, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstValueTerm = node('CssAstValueTerm', noTrivia(sequence(CssAstValueAtom, many(choice(
     sequence(field('separator', cssValueTrivia), CssAstValueAtom),
@@ -1262,7 +1289,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryColonFeature = node(
     'CssAstQueryColonFeature',
     sequence(literal('('), g.CssAstProperty, literal(':'), g.CssAstValue, literal(')')),
-    children => block(operation(':', keyword(tokenText(children[1]!)), valueChildren(children)[0]!))
+    children => block(operation(':', keyword(tokenText(children[1]!)), firstValue(children)))
   );
   const CssAstQueryComparisonFeature = node(
     'CssAstQueryComparisonFeature',
@@ -1314,7 +1341,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryFeature = node(
     'CssAstQueryFeature',
     choice(CssAstQueryBareFeature, CssAstQueryColonFeature, CssAstQueryComparisonFeature, CssAstQueryRangeFeature),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstQueryNonOnlyKeyword = node<Keyword>(
     'CssAstQueryNonOnlyKeyword',
@@ -1330,7 +1357,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryTerm = node<ValueNode>(
     'CssAstQueryTerm',
     choice(g.CssAstQueryFeature, g.CssAstQueryFunction, CssAstQueryNonOnlyKeyword),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstQueryOnlyClause = node<ValueNode>(
     'CssAstQueryOnlyClause',
@@ -1445,7 +1472,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstGeneralEnclosed
     ),
     (children) => {
-      const value = valueChildren(children)[0]!;
+      const value = firstValue(children);
       return isValue(children[0]) ? value : block(value);
     }
   );
