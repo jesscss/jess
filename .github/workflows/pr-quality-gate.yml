@@ -101,3 +101,11 @@ jobs:
 
       - name: Audit — node creation hotspots
         run: pnpm run audit:node-creation
+
+      # Cross-tool surface parity: AGENTS.md (Codex), CLAUDE.md (Claude), and
+      # .cursor/rules/* (Cursor) must each reference the same canonical perf-doc
+      # set (docs/perf/V8-ARCHITECTURE.md + the enforcement design). Reports-only:
+      # surfaces drift is flagged without failing the job.
+      - name: Report — cross-tool surface parity
+        continue-on-error: true
+        run: pnpm run verify:surface-parity

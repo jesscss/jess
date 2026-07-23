@@ -19,6 +19,7 @@ import {
   textSimples
 } from './ir.js';
 import type { Branch, Compound, Seg, Simple } from './ir.js';
+import { recordAstExtendProfile } from './plan.js';
 
 /**
  * Apply one instruction to a selector list (a rule's branches OR an `:is()`
@@ -41,6 +42,11 @@ export function applyInstruction(
   let changed = false;
 
   for (const b of list) {
+    // Core matcher comparison: one candidate branch tested against the target.
+    // Opt-in, import-time-captured counter (undefined in production → no call, no
+    // allocation); the sum across the fixpoint is the O(subjects·instructions·
+    // branches) surface the extend-op-budget gate ceilings.
+    recordAstExtendProfile?.('astExtend.match.branchComparisons');
     const bKey = branchText(b);
     // [import:reference] chaining an extend off a branch that was itself an extend
     // PRODUCT from a hidden rule (`b.ext && b.hidden`) yields a hidden result — the
