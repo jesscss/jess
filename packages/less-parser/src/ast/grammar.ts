@@ -1577,11 +1577,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return interpolation([{ ref: fact.ref, unquote: true }]);
     }
   );
+  const directLessInterpolatedValueTail = choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation);
   const DirectLessInterpolatedValue = node<Interpolation>(
     'DirectLessInterpolatedValue',
     noTrivia(sequence(
       g.DirectLessInterpolation,
-      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
+      many(directLessInterpolatedValueTail)
     )),
     children => interpolation(interpolationPartsFrom(children, true))
   );
@@ -1718,9 +1719,10 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(literal('('), g.CssAstSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.DirectLessVarReference, literal(')')),
     children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
   );
+  const directLessQuotedOrUrlTarget = choice(g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessDynamicUrl, g.DirectLessStaticUrl);
   const DirectLessImport = node<ImportAtRule>(
     'DirectLessImport',
-    sequence(importKeyword, optional(g.DirectLessImportOptions), choice(g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessDynamicUrl, g.DirectLessStaticUrl), optional(field('tail', choice(DirectLessImportQueryTail, g.DirectLessAtRuleInterpolation, g.DirectLessStaticTail))), literal(';')),
+    sequence(importKeyword, optional(g.DirectLessImportOptions), directLessQuotedOrUrlTarget, optional(field('tail', choice(DirectLessImportQueryTail, g.DirectLessAtRuleInterpolation, g.DirectLessStaticTail))), literal(';')),
     (children, fields) => {
       // Every accepted import fact is a grammar child or a field capture. In
       // particular, the opaque tail is reconstructed from terminal values only
@@ -1751,7 +1753,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(
       regex(/@plugin(?![-\w])/i),
       optional(sequence(literal('('), field('options', g.DirectLessGeneralEnclosedContent), literal(')'))),
-      field('target', choice(g.DirectLessEscapedQuoted, g.DirectLessQuoted, g.DirectLessDynamicUrl, g.DirectLessStaticUrl)),
+      field('target', directLessQuotedOrUrlTarget),
       literal(';')
     ),
     (_children, fields) => {
@@ -1808,7 +1810,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'DirectLessKeywordOrInterpolatedValue',
     noTrivia(sequence(
       g.LessAstSyntaxInterpolatedValueStart,
-      many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
+      many(directLessInterpolatedValueTail)
     )),
     (children) => {
       if (children.some(isInterpolationFact)) {
@@ -2638,15 +2640,16 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return { value: list(args.map(argument => requireValueSlot(argument.value)), ',') };
     }
   );
+  const directLessMixinSemicolonArgument = choice(g.DirectLessMixinArgumentGroup, DirectLessMixinCallArgument);
   const DirectLessMixinArguments = node<readonly MixinCallArgument[]>(
     'DirectLessMixinArguments',
     choice(
       attempt(sequence(
-        choice(g.DirectLessMixinArgumentGroup, DirectLessMixinCallArgument),
+        directLessMixinSemicolonArgument,
         literal(';'),
         optional(sequence(
-          choice(g.DirectLessMixinArgumentGroup, DirectLessMixinCallArgument),
-          many(sequence(literal(';'), choice(g.DirectLessMixinArgumentGroup, DirectLessMixinCallArgument))),
+          directLessMixinSemicolonArgument,
+          many(sequence(literal(';'), directLessMixinSemicolonArgument)),
           optional(literal(';'))
         ))
       )),
@@ -3707,19 +3710,20 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     staticQuotedBody,
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
+  const directLessStaticPseudoInner = choice(g.DirectLessStaticPseudoGroup, g.DirectLessStaticPseudoSquare, g.DirectLessStaticPseudoQuoted, blockComment, directLessStaticPseudoChunk);
   const DirectLessStaticPseudoGroup = node<string>(
     'DirectLessStaticPseudoGroup',
-    sequence(literal('('), many(choice(g.DirectLessStaticPseudoGroup, g.DirectLessStaticPseudoSquare, g.DirectLessStaticPseudoQuoted, blockComment, directLessStaticPseudoChunk)), literal(')')),
+    sequence(literal('('), many(directLessStaticPseudoInner), literal(')')),
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
   const DirectLessStaticPseudoSquare = node<string>(
     'DirectLessStaticPseudoSquare',
-    sequence(literal('['), many(choice(g.DirectLessStaticPseudoGroup, g.DirectLessStaticPseudoSquare, g.DirectLessStaticPseudoQuoted, blockComment, directLessStaticPseudoChunk)), literal(']')),
+    sequence(literal('['), many(directLessStaticPseudoInner), literal(']')),
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
   const DirectLessStaticNonSelectorPseudoArgument = node<string>(
     'DirectLessStaticNonSelectorPseudoArgument',
-    oneOrMore(choice(g.DirectLessStaticPseudoGroup, g.DirectLessStaticPseudoSquare, g.DirectLessStaticPseudoQuoted, blockComment, directLessStaticPseudoChunk)),
+    oneOrMore(directLessStaticPseudoInner),
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
   // A functional pseudo's static selector argument is the same recursive
@@ -3913,7 +3917,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const directAttributeInterpolationTokenBody = noTrivia(sequence(
     optional(choice(g.LessAstSyntaxInterpolatedValueStart, g.LessAstSyntaxInterpolatedValueDash)),
     g.DirectLessInterpolation,
-    many(choice(g.LessAstSyntaxInterpolatedValueTail, g.DirectLessInterpolation))
+    many(directLessInterpolatedValueTail)
   ));
   const DirectLessInterpolatedAttributeToken = node<Interpolation>(
     'DirectLessInterpolatedAttributeToken',
