@@ -1664,9 +1664,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // A user `@function f($n) { @return v }` lowers to a value-returning anonymous
   // mixin (lambda) bound to a `$var`: `$f: @($n) > { result: v }`. There is NO
   // first-class `$function` node — this reuses `variableDeclaration` +
-  // `AnonymousMixin`, and `@return` reuses `result:`. GAP: `AnonymousMixin` has
-  // no `params` field, so the `($n)` parameter list cannot be attached yet; the
-  // params are parsed (grammar-accepted) but dropped at lowering. See the report.
+  // `AnonymousMixin` (with the same `params` shape a MixinDef uses), and `@return`
+  // reuses `result:`. The parameter list threads into `AnonymousMixin.params`; an
+  // empty/absent list is omitted so the plain-block shape stays monomorphic.
   const DirectScssFunction = node<VariableDeclaration>(
     'DirectScssFunction',
     sequence(
@@ -1674,11 +1674,14 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       many(choice(g.DirectScssComment, g.DirectScssVarDeclaration, g.DirectScssReturn, g.DirectScssIf, g.DirectScssEach, g.DirectScssFor)),
       literal('}')
     ),
-    children => variableDeclaration(
-      requireToken(children[1]).value,
-      anonymousMixin(statementChildren(children, true)),
-      { mode: 'declare' }
-    )
+    (children) => {
+      const params = isParamArray(children[2]) ? children[2] : [];
+      return variableDeclaration(
+        requireToken(children[1]).value,
+        anonymousMixin(statementChildren(children, true), params.length > 0 ? params : undefined),
+        { mode: 'declare' }
+      );
+    }
   );
   const DirectScssEachName = node<string>(
     'DirectScssEachName',

@@ -64,4 +64,27 @@ describe('scss plugin render-through', () => {
     expect(css).not.toContain('@if');
     expect(css).not.toContain('@else');
   });
+
+  /**
+   * A user `@function` lowers to a `$var`-bound value lambda (an `AnonymousMixin`
+   * carrying `params`); `@return` lowers to a `result:` entry; a call to it lowers
+   * to a `$f(args)` invoke. The evaluator binds args→params and yields `result:`.
+   */
+  it('renders a zero-parameter user @function call', async () => {
+    const compiler = new Compiler();
+    const src = '@function two() { @return 2; }\n.a { w: two(); }';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toContain('w: 2');
+    expect(css).not.toContain('two(');
+    expect(css).not.toContain('@function');
+  });
+
+  it('renders a parameterized user @function call binding the argument', async () => {
+    const compiler = new Compiler();
+    const src = '@function double($n) { @return $n * 2; }\n.a { w: double(2); }';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toContain('w: 4');
+    expect(css).not.toContain('double(');
+    expect(css).not.toContain('@function');
+  });
 });

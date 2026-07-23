@@ -294,17 +294,24 @@ export interface VarIndirect {
 }
 
 /**
- * An anonymous mixin value `@rs: { … }` / `$x: { … }`: a nil-args (no parameter
- * list) executable block bound to a value, callable (`@rs()`) to splice its body
- * at the call site. Unlike a {@link Collection} (a data map), its body CAN contain
- * rulesets, at-rules, and mixin calls — it is the safe, more-capable classification
- * for any value-position `{ … }` block that cannot be clearly inferred to be a map.
- * `body` is the CANONICAL block, stored once (never cloned). Its lexical closure
- * belongs to the render activation that binds it, never to this reusable source node.
+ * An anonymous mixin value `@rs: { … }` / `$x: { … }`: an executable block bound
+ * to a value, callable (`@rs()`) to splice its body at the call site. Unlike a
+ * {@link Collection} (a data map), its body CAN contain rulesets, at-rules, and
+ * mixin calls — it is the safe, more-capable classification for any value-position
+ * `{ … }` block that cannot be clearly inferred to be a map. `body` is the
+ * CANONICAL block, stored once (never cloned). Its lexical closure belongs to the
+ * render activation that binds it, never to this reusable source node.
+ *
+ * Like a {@link MixinDef}, it may carry a `params` list (same {@link Param} shape):
+ * a value-position lambda `@($n) > { result: … }` — the lowered form of an SCSS
+ * user `@function f($n) { @return … }`. The field is OMITTED for the plain,
+ * parameterless block so that shape stays monomorphic. A call binds args→params
+ * (positional/named/default) and yields the value of the body's `result:` entry.
  */
 export interface AnonymousMixin {
   readonly type: 'AnonymousMixin';
   readonly body: Statement[];
+  readonly params?: Param[];
 }
 
 /**
@@ -972,7 +979,8 @@ export const generalEnclosed = (
   content: Interpolation
 ): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
 export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup });
-export const anonymousMixin = (body: Statement[]): AnonymousMixin => ({ type: 'AnonymousMixin', body });
+export const anonymousMixin = (body: Statement[], params?: Param[]): AnonymousMixin =>
+  params === undefined ? { type: 'AnonymousMixin', body } : { type: 'AnonymousMixin', body, params };
 
 /**
  * Classify a value-position `{ … }` block by its CONTENT (parse-time, structural):

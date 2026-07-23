@@ -1861,6 +1861,7 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('lowers a user SCSS @function to a $var-bound anonymous mixin whose @return is result:', () => {
     // A zero-parameter function lowers completely: `$two: @() > { result: 2 }`.
+    // The `params` field is OMITTED so the plain-block shape stays monomorphic.
     expect(parse('@function two() { @return 2; }')).toEqual({
       type: 'Stylesheet',
       children: [{
@@ -1872,15 +1873,34 @@ describe('SCSS canonical-AST grammar', () => {
       }]
     });
 
-    // A parameterized function still lowers to the var-bound lambda + `result:`;
-    // the `($n)` parameter list is currently DROPPED — `AnonymousMixin` has no
-    // `params` field (see the accompanying gap report).
-    expect(parse('@function double($n) { @return $n * 2; }').children[0]).toMatchObject({
-      type: 'VariableDeclaration', name: 'double',
+    // A parameterized function threads its `($n)` list into `AnonymousMixin.params`
+    // (the same `Param` shape a MixinDef uses), with `@return` → `result:`.
+    expect(parse('@function double($n) { @return $n * 2; }').children[0]).toEqual({
+      type: 'VariableDeclaration', name: 'double', write: { mode: 'declare' },
       value: {
         type: 'AnonymousMixin',
-        body: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'VariableReference', name: 'n' } } }]
+        params: [{ name: 'n' }],
+        body: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'VariableReference', name: 'n', lookup: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' } }, merge: null, important: false }]
       }
+    });
+  });
+
+  it('lowers a user SCSS @function call site to a $var-bound lambda invoke', () => {
+    // `double(2)` => `$double(2)`: a Reference invoke on the bound variable, so it
+    // reaches the general call-a-value-lambda evaluator path. A builtin call
+    // (`darken(...)`) is left as a FunctionCall for `fns` routing.
+    const doc = parse('@function double($n) { @return $n * 2; } .a { w: double(2); c: darken(#fff, 10%); }');
+    const ruleNode = doc.children.find(child => child.type === 'Rule');
+    expect(ruleNode).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: 'w', value: {
+          type: 'Reference',
+          base: { type: 'VariableReference', name: 'double', lookup: 'live' },
+          steps: [{ type: 'Call', args: [{ value: { type: 'Dimension', number: 2, unit: '', src: '2' } }] }]
+        } },
+        { type: 'Declaration', name: 'c', value: { type: 'FunctionCall', name: 'darken' } }
+      ]
     });
   });
 });

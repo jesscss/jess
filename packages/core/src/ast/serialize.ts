@@ -113,7 +113,7 @@ import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/uni
 import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeBlock, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
-import { DefaultGuardAmbiguityError, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -2710,6 +2710,66 @@ function declMapFromMixinCall(
   return { byVar, byProp, list, varFrames };
 }
 
+/** The value yielded by a called value-lambda: the FIRST top-level `result:`
+ *  declaration in its body (the lowered form of an SCSS `@return`). A `@return`
+ *  nested inside a `@if`/`@each` branch is not surfaced here — see the invoke. */
+function lambdaResultValue(body: Statement[]): ValueSlot | undefined {
+  for (const s of body) {
+    if (s.type === 'Declaration' && s.name === 'result') {
+      return s.value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Invoke a value-position lambda ({@link AnonymousMixin} carrying `params`, e.g.
+ * the lowered SCSS user `@function`) called as `$f(args)`. Binds args→params with
+ * the SAME rules as a MixinDef call (positional/named/default/rest, via
+ * {@link bindArgs}) — args resolve in the CALLER frame, param defaults in the
+ * lambda's DEFINITION frame — then activates the body and returns the value of its
+ * `result:` entry, evaluated later in the activation frame. Returns `null` when the
+ * args cannot bind or the body yields no `result:` (caller falls back to `raw`).
+ */
+function invokeValueLambda(
+  lambda: AnonymousMixin,
+  args: CallArg[],
+  defFrame: Frame | null,
+  callerFrame: Frame | null,
+  e: EvalCtx
+): { value: ValueSlot; frame: Frame } | null {
+  const syntheticDef: MixinDef = { type: 'MixinDef', name: '', params: lambda.params ?? [], body: lambda.body };
+  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false };
+  const resolveCaller = makeResolver(callerFrame, e);
+  const resolveDefault: DefaultResolver = (v, boundSoFar) => {
+    const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    const b = evalBytes(v, overlay, e);
+    if (isThenable(b)) {
+      throw new Error('async value in a synchronous function-parameter default position');
+    }
+    return b;
+  };
+  const bindings = bindArgs(syntheticDef, call, resolveCaller, resolveDefault);
+  if (bindings === null) {
+    return null;
+  }
+  const result = lambdaResultValue(lambda.body);
+  if (result === undefined) {
+    return null;
+  }
+  const activation: Frame = {
+    parent: defFrame,
+    mixins: collectMixins(lambda.body),
+    declIndex: collectDeclIndex(lambda.body, bindings),
+    cells: cellsForParams(bindings),
+    reassign: null,
+    statements: lambda.body,
+    sourceOwner: defFrame ? sourceOwnerForBody(lambda.body, defFrame, e) : null,
+    ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame } : {})
+  };
+  return { value: result, frame: activation };
+}
+
 function resolveReferenceResult(
   node: Reference,
   frame: Frame | null,
@@ -2732,6 +2792,21 @@ function resolveReferenceResult(
     if (step.type === 'Call') {
       if (isMixinCallValue(value)) {
         value = step.args.length === 0 ? value : { ...value, args: step.args };
+        continue;
+      }
+      // A value bound to a callable lambda (`$f(args)`) — a param'd or paramless
+      // `AnonymousMixin` that yields a `result:` — invokes: bind args→params, run
+      // the body, yield `result:`. An `AnonymousMixin` WITHOUT a `result:` entry is
+      // an ordinary detached ruleset (spliced elsewhere); leave it untouched so its
+      // existing value-position behavior is preserved.
+      if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
+        && lambdaResultValue(value.body) !== undefined) {
+        const invoked = invokeValueLambda(value, step.args, valueFrame, frame, e);
+        if (invoked === null) {
+          return null;
+        }
+        value = invoked.value;
+        valueFrame = invoked.frame;
       }
       continue;
     }
