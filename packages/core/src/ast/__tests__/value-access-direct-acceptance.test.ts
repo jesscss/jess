@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, detachedRuleset, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
+  decl, collection, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
   variableDeclaration, varIndirect, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -12,7 +12,7 @@ const render = (document: Stylesheet): string | undefined => serialize(document,
 
 describe('direct canonical value access', () => {
   it('resolves indirect variables, typed map members, and prior property values', () => {
-    const tokens = detachedRuleset([
+    const tokens = collection([
       decl('gap', dimension(8, 'px')),
       variableDeclaration('tone', keyword('navy'), { mode: 'declare' })
     ]);
@@ -41,8 +41,8 @@ describe('direct canonical value access', () => {
 
   it('follows ordered dot then bracket reference steps without byte recovery', () => {
     const document = stylesheet([
-      variableDeclaration('theme', detachedRuleset([
-        variableDeclaration('palette', detachedRuleset([decl('accent', keyword('teal'))]), { mode: 'declare' })
+      variableDeclaration('theme', collection([
+        variableDeclaration('palette', collection([decl('accent', keyword('teal'))]), { mode: 'declare' })
       ]), { mode: 'declare' }),
       rule('.card', [
         decl('color', reference(
@@ -58,8 +58,8 @@ describe('direct canonical value access', () => {
 
   it('resolves an indirect map-member name in the accessor frame, not the map owner', () => {
     const document = stylesheet([
-      variableDeclaration('schemes', detachedRuleset([
-        variableDeclaration('primary', detachedRuleset([decl('color', keyword('blue'))]), { mode: 'declare' })
+      variableDeclaration('schemes', collection([
+        variableDeclaration('primary', collection([decl('color', keyword('blue'))]), { mode: 'declare' })
       ]), { mode: 'declare' }),
       rule('.entry', [
         variableDeclaration('scheme-name', keyword('primary'), { mode: 'declare' }),

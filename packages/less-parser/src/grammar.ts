@@ -743,7 +743,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // single-expression `parenBody` above, so `(12 (13))` still errors.
   const permissiveParenBody = sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), expect(literal(')')));
   // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
-  const DetachedRuleset = node(sequence(literal('{'), g.declarationList, literal('}')));
+  const AnonymousMixin = node(sequence(literal('{'), g.declarationList, literal('}')));
   // Function-call arguments are their OWN production, NOT `parenBody`: unlike a parenthesized
   // value, a function argument may be an anonymous mixin `.(…){…}` or a bare
   // detached ruleset `{…}` — e.g. `each(@list, { … })`, `func({a:1}, {b:2})`. The
@@ -761,7 +761,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `@a`). A bare `@a` is a Reference (the CALL shape); the mixin-DEFINITION builder
   // reinterprets a lone `@name` as a param.
   const argRest = node('Rest', choice(sequence(lessVar, literal('...')), literal('...')));
-  const argNamedSeq = node('NamedArg', sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence)));
+  const argNamedSeq = node('NamedArg', sequence(lessVar, literal(':'), choice(AnonymousMixin, g.valueSequence)));
   // ── Name-independent condition arguments ─────────────────────────────────────
   // A top-level condition operator (`> < >= <= = and or not`) inside ANY call's
   // argument makes that argument a `Condition` — no name dispatch on `if`/`boolean`.
@@ -856,7 +856,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
       sequence(g.CondArgAndOp, many(sequence(orKw, g.CondArgAnd))),
       sequence(g.CondArgAnd, oneOrMore(sequence(orKw, g.CondArgAnd)))
     )));
-  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, ArgCondition, g.valueSequence);
+  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, AnonymousMixin, ArgCondition, g.valueSequence);
   // Function-call args and mixin-call args are now IDENTICAL — one `argsInner`. After
   // a semicolon, commas keep splitting args (`sepBy(callArgSeq, ',')`), so both `.m(…)`
   // and `foo(…)` catch the one illegal case: mixing the comma and semicolon ARG
@@ -1198,7 +1198,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
     Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
     valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url, Quoted,
-    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, SelectorCapture, anyValue, EachFor,
+    parenBody, permissiveParenBody, Paren, GluedParen, AnonymousMixin, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, SelectorCapture, anyValue, EachFor,
     queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement, ImportOption, ImportOptions, ImportTarget, ImportMedia,
     preludeToken, preludeParen, preludeSquare,
     AtRuleBlock, AtRuleStatement, AtRuleMalformed, atRuleBody,

@@ -8,8 +8,8 @@ import { attempt, choice, composeLeaf, field, literal, many, noTrivia, node, not
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
-import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, DetachedRuleset, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -59,7 +59,7 @@ type JessAstRules = {
   DirectJessCallArgument: Combinator<ValueSlot>;
   DirectJessCall: Combinator<FunctionCall>;
   DirectJessCollectionEntry: Combinator<Declaration>;
-  DirectJessCollection: Combinator<DetachedRuleset>;
+  DirectJessCollection: Combinator<Collection>;
   DirectJessValueAtom: Combinator<ValueNode>;
   DirectJessValueTerm: Combinator<ValueSlot>;
   DirectJessValue: Combinator<ValueSlot>;
@@ -365,7 +365,8 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'List'
       || value.type === 'Block'
       || value.type === 'Url'
-      || value.type === 'DetachedRuleset'
+      || value.type === 'AnonymousMixin'
+      || value.type === 'Collection'
       || value.type === 'Range');
 }
 
@@ -1447,10 +1448,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return decl(requireToken(children[0]).value, Array.isArray(value) ? value : valueSlot(requireValueNode(value)));
     }
   );
-  const DirectJessCollection = node<DetachedRuleset>(
+  const DirectJessCollection = node<Collection>(
     'DirectJessCollection',
     sequence(literal('{'), parser({ trivia: whitespace }, many(g.DirectJessCollectionEntry)), optional(rawWhitespace), literal('}')),
-    children => detachedRuleset(children.filter(isDeclaration))
+    children => collection(children.filter(isDeclaration))
   );
   // A chained reference is a value-only Jess form. It requires a tail so a
   // plain `$name` retains the existing VariableReference reduction, while the
