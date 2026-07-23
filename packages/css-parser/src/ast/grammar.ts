@@ -605,20 +605,24 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     children => selectorArgumentText(children[0])
   );
-  const CssAstPseudo = choice(
-    node<SimpleSelector>(
-      'CssAstNthPseudo',
-      sequence(g.CssAstSyntaxPseudoColon, nthPseudoNameWithArgument, literal('('), g.CssAstPseudoArgument, literal(')')),
-      children => simpleSelector(`${tokenText(children[0])}${tokenText(children[1])}(${tokenText(children[3])})`)
+  // Both pseudo arms share the leading `:`/`::` colon. Left-factor it so that
+  // sub-rule runs once per pseudo instead of once per arm; the An+B and generic
+  // branches then differ only after the colon. Both original reducers already
+  // collapse to the same "head, plus optional (arg) at child index 3" shape, so
+  // the merged node keeps byte-identical SimpleSelector text.
+  const CssAstPseudo = node<SimpleSelector>(
+    'CssAstPseudo',
+    sequence(
+      g.CssAstSyntaxPseudoColon,
+      choice(
+        sequence(nthPseudoNameWithArgument, literal('('), g.CssAstPseudoArgument, literal(')')),
+        sequence(not(nthPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
+      )
     ),
-    node<SimpleSelector>(
-      'CssAstGenericPseudo',
-      sequence(g.CssAstSyntaxPseudoColon, not(nthPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')')))),
-      (children) => {
-        const head = `${tokenText(children[0])}${tokenText(children[1])}`;
-        return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${tokenText(children[3])})`);
-      }
-    )
+    (children) => {
+      const head = `${tokenText(children[0])}${tokenText(children[1])}`;
+      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${tokenText(children[3])})`);
+    }
   );
   // `&` is a semantic selector token, not a post-parse text substitution. The
   // core selector model represents it as the canonical SimpleSelector text expected by
