@@ -37,6 +37,8 @@ import {
   variableDeclaration,
   isLiteralNode,
   isTypedLiteral,
+  isValueBlock,
+  valueBlockBody,
   compoundCanonical,
   compoundHasInterp,
   complexCanonical,
@@ -53,7 +55,8 @@ import type {
   ComplexSelector,
   CompoundSelector,
   Declaration,
-  DetachedRuleset,
+  AnonymousMixin,
+  ValueBlock,
   Dimension,
   For,
   If,
@@ -501,8 +504,9 @@ export interface Frame {
   // its subtree and shadows a same-name built-in; the chain IS the `parent` chain —
   // no parallel scope structure.
   fns?: Map<string, Fn> | null;
-  /** Detached-ruleset closure facts for this activation; never stored on AST nodes. */
-  detachedBindings?: Map<DetachedRuleset, DetachedBinding>;
+  /** Value-block (anonymous-mixin / collection) closure facts for this activation;
+   * never stored on AST nodes. */
+  detachedBindings?: Map<ValueBlock, DetachedBinding>;
   /** Opaque Context source identity that authored this activation's body. */
   sourceOwner?: object | null;
 }
@@ -516,18 +520,18 @@ function withSourceOwner<T>(e: EvalCtx, owner: object | null | undefined, run: (
 }
 
 function bindDetached(frame: Frame, value: Binding, lexicalFrame: Frame, sourceOwner: object | null): void {
-  if (!isDetachedRulesetBinding(value)) {
+  if (!isValueBlockBinding(value)) {
     return;
   }
   (frame.detachedBindings ??= new Map()).set(value, { lexicalFrame, sourceOwner });
 }
 
-function isDetachedRulesetBinding(value: Binding): value is DetachedRuleset {
-  return 'type' in value && value.type === 'DetachedRuleset';
+function isValueBlockBinding(value: Binding): value is ValueBlock {
+  return 'type' in value && isValueBlock(value);
 }
 
 function detachedBinding(frame: Frame | null, value: Binding): DetachedBinding | undefined {
-  if (!isDetachedRulesetBinding(value)) {
+  if (!isValueBlockBinding(value)) {
     return undefined;
   }
   let fallback: Frame | null | undefined;
@@ -1340,8 +1344,8 @@ function parentExcludes(frame: Frame | null, body: Statement[]): boolean {
 
 /**
  * The nearest last-wins binding for `name` (top of the nearest non-empty stack).
- * Used by the detached-ruleset / namespace paths that need the CURRENT value node
- * (e.g. to test `.type === 'DetachedRuleset'`); it does not honor exclusion
+ * Used by the value-block / namespace paths that need the CURRENT value node
+ * (e.g. to test for an `AnonymousMixin` / `Collection`); it does not honor exclusion
  * because those callers resolve a name to a concrete ruleset binding, not a lazy
  * self-referential value. The regular value read uses `resolveVarRef` instead.
  */
@@ -1440,7 +1444,7 @@ function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scop
 
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
   bindDetached(frame, node.value, frame, sourceOwnerForBody(
-    'type' in node.value && node.value.type === 'DetachedRuleset' ? node.value.body : node,
+    'type' in node.value && isValueBlock(node.value) ? valueBlockBody(node.value) : node,
     frame,
     e
   ));
@@ -2385,8 +2389,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         `${emitValue(resolved[0]!)}${node.includeStart ? '' : '>'} to ${node.includeEnd ? '' : '<'}${emitValue(resolved[1]!)}${node.step === null ? '' : ` step ${emitValue(resolved[2]!)}`}`
       ));
     }
-    case 'DetachedRuleset':
-      // A detached ruleset reaching a value/arg position is not byte-serializable:
+    case 'AnonymousMixin':
+      // An anonymous mixin reaching a value/arg position is not byte-serializable:
       // it can only be *called* (`@dr()`). less.js drops such an argument to an
       // ordinary function (`fn({…})` → `fn()`), so it folds to empty bytes here
       // rather than throwing. (Full `if()`/`isruleset()`/`isdefined()` DR handling —
@@ -2626,7 +2630,7 @@ function resolveBaseDeclMap(
     return null;
   }
   // Any other base resolves to a ruleset body through the shared resolver: a
-  // direct `DetachedRuleset`, a `@var` bound to one (or, transitively, to another
+  // direct value block (`AnonymousMixin` / `Collection`), a `@var` bound to one (or, transitively, to another
   // `@map[k]` accessor — the chained-accessor case `@scheme: @m[@k]; @scheme[@c]`),
   // or a `@map[k]` accessor whose matched member is a detached ruleset. Its body
   // decls (both `prop:` and `@var:` members, via `evalToDeclMap`) are the map.
@@ -2719,7 +2723,7 @@ function resolveReferenceResult(
     value = resolved.value;
     valueFrame = resolved.frame;
     sourceOwner = detachedBinding(valueFrame, value)?.sourceOwner
-      ?? sourceOwnerForBody(!isValueSlotArray(value) && value.type === 'DetachedRuleset' ? value.body : value, valueFrame, e);
+      ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
   for (const step of node.steps) {
     if (step.type === 'Call') {
@@ -2843,7 +2847,7 @@ function evalReference(node: Reference, frame: Frame | null, e: EvalCtx): MaybeP
  * Follow a `@var` → … → `@var` binding chain to the concrete value node it names
  * (non-throwing; stops at the first non-`VariableReference`). Returns `undefined` if any link
  * is unbound. Used by the detached-ruleset introspection functions, which must
- * inspect the BINDING (a `DetachedRuleset` node) rather than materialize it.
+ * inspect the BINDING (a value-block node) rather than materialize it.
  */
 function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undefined {
   let cur: Binding | undefined = node;
@@ -2860,7 +2864,7 @@ function resolveBindingNode(node: Binding, frame: Frame | null): Binding | undef
 
 /**
  * `isdefined(@x)` / `isruleset(@x)`: detached-ruleset introspection that inspects
- * the BINDING without byte-materializing it (a `DetachedRuleset` arg is not
+ * the BINDING without byte-materializing it (a value-block arg is not
  * value-serializable, and `isdefined` must swallow an unbound reference rather
  * than throw `@x is undefined`). Returns the `true`/`false` literal, or `undefined`
  * when `node` is not one of these calls (fall through to normal dispatch).
@@ -2880,7 +2884,7 @@ function evalIntrospection(node: FunctionCall, frame: Frame | null): Value | und
   }
   if (node.name === 'isruleset') {
     const bound = resolveBindingNode(arg, frame);
-    return literal(bound !== undefined && !isValueSlotArray(bound) && bound.type === 'DetachedRuleset'
+    return literal(bound !== undefined && !isValueSlotArray(bound) && isValueBlock(bound)
       ? 'true'
       : 'false');
   }
@@ -3026,20 +3030,23 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
       bindingFrame = hit.frame;
     }
   }
-  const detached = resolveDetachedRuleset(binding, bindingFrame, e);
+  const detached = resolveValueBlock(binding, bindingFrame, e);
   if (!detached) {
     return evalTypedSlot(slot, frame, e);
   }
   const closure = detachedBinding(bindingFrame, detached);
   const definitionFrame = closure?.lexicalFrame ?? bindingFrame;
   const declarations: { declaration: Declaration; name: string }[] = [];
-  for (const statement of detached.body) {
+  for (const statement of valueBlockBody(detached)) {
     if (statement.type === 'Declaration' && typeof statement.name === 'string') {
       declarations.push({ declaration: statement, name: statement.name });
     }
   }
   const values = declarations.map(({ declaration }) => evalTypedSlot(declaration.value, definitionFrame, e));
   return combineAll(values, resolved => ({
+    // The `DetachedRuleset` tag is the less.js-facing plugin transport name (external
+    // Less plugins pattern-match `node.type === 'DetachedRuleset'`); it is NOT the AST
+    // node and stays verbatim for compat.
     type: 'DetachedRuleset' as const,
     rules: declarations.map(({ name }, index) => ({ name, value: resolved[index]! }))
   }));
@@ -3065,7 +3072,7 @@ function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null
         bindingFrame = hit.frame;
       }
     }
-    if (resolveDetachedRuleset(binding, bindingFrame, e)) {
+    if (resolveValueBlock(binding, bindingFrame, e)) {
       return true;
     }
   }
@@ -4889,6 +4896,12 @@ function walkBody(
             pushDeclLeaf(decl(node.name, coll.base, node.merge, node.important));
           }
           for (const entry of coll.entries) {
+            // An SCSS nested-property carrier's entries are always plain declarations
+            // (`family: serif`); a variable-declaration entry only appears in a Less/Jess
+            // data-map Collection, which never reaches this property-flatten path.
+            if (entry.type !== 'Declaration') {
+              continue;
+            }
             pushDeclLeaf(decl(joinNestedPropertyName(node.name, entry.name), entry.value, entry.merge, entry.important));
           }
           break;
@@ -5553,7 +5566,7 @@ function captureArgDefFrames(bindings: Map<string, Binding> | null, callerFrame:
     if (isValueSlotArray(v)) {
       continue;
     }
-    if (v.type === 'DetachedRuleset') {
+    if (isValueBlock(v)) {
       bindDetached(callFrame, v, callerFrame, callerFrame.sourceOwner ?? null);
     } else if (v.type === 'MixinCall') {
       (e.mixinCallHomes ??= new WeakMap()).set(v, callerFrame);
@@ -5589,7 +5602,7 @@ function leakBodyVars(callerFrame: Frame, body: Statement[], callFrame: Frame, e
       continue;
     }
     let snap: ValueNode;
-    if (!isValueSlotArray(v) && (v.type === 'DetachedRuleset' || isTypedLiteral(v))) {
+    if (!isValueSlotArray(v) && (isValueBlock(v) || isTypedLiteral(v))) {
       snap = v;
     } else {
       const b = evalBytes(v, callFrame, e);
@@ -5690,7 +5703,7 @@ function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): Valu
 }
 
 /**
- * Resolve a binding node to the {@link DetachedRuleset} it names or produces:
+ * Resolve a binding node to the {@link ValueBlock} it names or produces:
  * follow `@var` → `@var` chains AND evaluate a conditional `if(cond, A, B)` whose
  * taken branch is (transitively) a detached ruleset — so `@x: if(cond, {…}, {…});
  * @x();` splices the chosen branch's declarations. Returns `undefined` when the
@@ -5719,7 +5732,7 @@ function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): Mix
   return undefined;
 }
 
-function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx): DetachedRuleset | undefined {
+function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): ValueBlock | undefined {
   const seen = new Set<Binding>();
   let cur: Binding | undefined = node;
   while (cur && !seen.has(cur)) {
@@ -5727,7 +5740,7 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
     if (isValueSlotArray(cur)) {
       return undefined;
     }
-    if (cur.type === 'DetachedRuleset') {
+    if (isValueBlock(cur)) {
       return cur;
     }
     if (cur.type === 'VariableReference') {
@@ -5748,9 +5761,16 @@ function resolveDetachedRuleset(node: Binding, frame: Frame | null, e: EvalCtx):
   return undefined;
 }
 
-/** A detached ruleset is callable/map-like, never a CSS declaration value. */
+/** A value block (anonymous mixin / data-map collection) is callable/map-like,
+ *  never a CSS declaration value. The lone exception is an SCSS nested-property
+ *  carrier — a Collection that is the DIRECT value of this declaration (`font:
+ *  20px { family: serif }`), which `walkBody` flattens to hyphenated declarations
+ *  rather than rejecting. */
 function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | null, e: EvalCtx): void {
-  if (!resolveDetachedRuleset(node.value, frame, e)) {
+  if (!isValueSlotArray(node.value) && node.value.type === 'Collection') {
+    return;
+  }
+  if (!resolveValueBlock(node.value, frame, e)) {
     return;
   }
   throw ERR.rulesetOnProperty({ node, meta: { what: declName(node, frame, e) } });
@@ -5761,22 +5781,23 @@ function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | nu
  * into the CALLER frame (Less scope unlocking). Returns null if the variable is
  * not bound to (or does not conditionally produce) a detached ruleset. */
 function referenceCallFrame(
-  dr: DetachedRuleset,
+  dr: ValueBlock,
   frame: Frame,
   definitionFrame: Frame | null = frame,
   sourceOwner: object | null = null
-): { dr: DetachedRuleset; callFrame: Frame } {
-  // A detached-ruleset node is canonical and can be passed through several loop
+): { dr: ValueBlock; callFrame: Frame } {
+  // A value-block node is canonical and can be passed through several loop
   // activations. Its lexical home is therefore the FRAME that resolved THIS call,
   // never a mutable node-level first-use cache.
   const def = definitionFrame ?? frame;
-  const own = collectMixins(dr.body);
+  const body = valueBlockBody(dr);
+  const own = collectMixins(body);
   const callFrame: Frame = {
     parent: def, // definition scope has priority
     mixins: own,
-    declIndex: collectDeclIndex(dr.body), cells: null, reassign: null,
+    declIndex: collectDeclIndex(body), cells: null, reassign: null,
     fallback: frame, // caller scope is the fallback
-    statements: dr.body,
+    statements: body,
     sourceOwner
   };
   publishMixins(frame, own); // unlocking: caller sees the ruleset's mixins
@@ -5817,7 +5838,7 @@ function expandReferenceCall(
   if (step.args.length !== 0) {
     throw new Error('Reference call arguments require a callable mixin target.');
   }
-  const dr = resolveDetachedRuleset(resolved.value, resolved.frame, e);
+  const dr = resolveValueBlock(resolved.value, resolved.frame, e);
   if (!dr) {
     return;
   }
@@ -5833,9 +5854,10 @@ function expandReferenceCall(
     binding?.lexicalFrame ?? resolved.frame,
     binding?.sourceOwner ?? resolved.sourceOwner
   );
+  const drBody = valueBlockBody(r.dr);
   const executeBody = () => mapMaybe(
-    prepareBodyPlugins(r.dr.body, r.callFrame, e),
-    () => walkBody(r.dr.body, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope, applyExpansion)
+    prepareBodyPlugins(drBody, r.callFrame, e),
+    () => walkBody(drBody, composed, ancestor, r.callFrame, group, flush, partition, e, false, forceLeading, propertyScope, applyExpansion)
   );
   return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
 }
@@ -5932,9 +5954,9 @@ function resolveForRuleset(
   if (isValueSlotArray(node)) {
     return null;
   }
-  if (node.type === 'DetachedRuleset') {
+  if (isValueBlock(node)) {
     const binding = detachedBinding(frame, node);
-    return { body: node.body, frame: binding?.lexicalFrame ?? frame, detached: binding };
+    return { body: valueBlockBody(node), frame: binding?.lexicalFrame ?? frame, detached: binding };
   }
   if (node.type === 'VariableReference') {
     const bound = lookupVar(frame, node.name);
@@ -5944,9 +5966,9 @@ function resolveForRuleset(
     if (isValueSlotArray(bound)) {
       return null;
     }
-    if (bound.type === 'DetachedRuleset') {
+    if (isValueBlock(bound)) {
       const binding = detachedBinding(frame, bound);
-      return { body: bound.body, frame: binding?.lexicalFrame ?? frame, detached: binding };
+      return { body: valueBlockBody(bound), frame: binding?.lexicalFrame ?? frame, detached: binding };
     }
     // The binding is itself an indirection to a ruleset — a `@var` alias chain or
     // a `@map[k]` accessor (`@scheme: @color-schemes[@@name]; each(@scheme, …)` /
@@ -6049,7 +6071,7 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Fo
         items.push({
           value: s.value,
           key: any(name),
-          ...(!isValueSlotArray(s.value) && s.value.type === 'DetachedRuleset' && map.detached
+          ...(!isValueSlotArray(s.value) && isValueBlock(s.value) && map.detached
             ? { detached: map.detached }
             : {})
         });
@@ -6145,7 +6167,7 @@ function bindForDetached(frame: Frame, bindings: Map<string, ValueSlot>, item: F
     return;
   }
   for (const value of bindings.values()) {
-    if (value === item.value && !isValueSlotArray(value) && value.type === 'DetachedRuleset') {
+    if (value === item.value && !isValueSlotArray(value) && isValueBlock(value)) {
       bindDetached(frame, value, item.detached.lexicalFrame, item.detached.sourceOwner);
     }
   }
@@ -6296,7 +6318,7 @@ function expandSpreadArgs(call: MixinCall, resolveCaller: ValueResolver): MixinC
 }
 
 /** Replace `@rs` args (a VariableReference bound to a detached ruleset) with the
- * resolved `DetachedRuleset` node so it binds by reference. */
+ * resolved value-block node so it binds by reference. */
 /**
  * Recognize a mixin-call-shaped VALUE — a `SpacedValue` of a `.`/`#` selector head
  * (`Any`) glued to a `Block` arg group (`.something(foo)`, `#library.core.colors()`)
@@ -6313,7 +6335,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
     // dispatches it (its args resolve in the caller frame's runtime binding).
     if ('type' in a.value && a.value.type === 'VariableReference') {
       const bound = lookupVar(frame, a.value.name);
-      if (bound && !isValueSlotArray(bound) && bound.type === 'DetachedRuleset') {
+      if (bound && !isValueSlotArray(bound) && isValueBlock(bound)) {
         changed = true;
         return { ...a, value: bound };
       }
@@ -8823,14 +8845,15 @@ function expandNestedReferenceCall(
   if (step.args.length !== 0) {
     throw new Error('Reference call arguments require a callable mixin target.');
   }
-  const dr = resolveDetachedRuleset(resolved.value, resolved.frame, e);
+  const dr = resolveValueBlock(resolved.value, resolved.frame, e);
   if (!dr) {
     return;
   }
   const r = referenceCallFrame(dr, frame, resolved.frame, resolved.sourceOwner);
+  const drBody = valueBlockBody(r.dr);
   const executeBody = () => mapMaybe(
-    prepareBodyPlugins(r.dr.body, r.callFrame, e),
-    () => emitNestedBody(r.dr.body, r.callFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion)
+    prepareBodyPlugins(drBody, r.callFrame, e),
+    () => emitNestedBody(drBody, r.callFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion)
   );
   return withSourceOwner(e, r.callFrame.sourceOwner, executeBody);
 }

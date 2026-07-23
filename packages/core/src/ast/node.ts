@@ -44,7 +44,7 @@ import type {
   Interpolation,
   GeneralEnclosed,
   VarIndirect,
-  DetachedRuleset,
+  AnonymousMixin,
   Collection,
   Reference,
   Range,
@@ -65,7 +65,7 @@ export type NodeType =
   | 'SpacedValue' | 'List' | 'VariableReference' | 'MixinDef' | 'MixinCall' | 'VariableDeclaration'
   | 'Sequence' | 'Important' | 'Operation' | 'FunctionCall' | 'Block' | 'Condition'
   | 'AtRuleBlock' | 'AtRuleStatement' | 'ImportAtRule' | 'Plugin' | 'OpaqueAtRuleBlock' | 'Interpolation' | 'GeneralEnclosed' | 'VarIndirect'
-  | 'DetachedRuleset' | 'Collection' | 'Reference' | 'Range' | 'PropertyReference' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
+  | 'AnonymousMixin' | 'Collection' | 'Reference' | 'Range' | 'PropertyReference' | 'For' | 'If' | 'StyleImport' | 'ModuleImport' | 'RawInline';
 
 /** Combinator between two compounds in a complex selector. `|` is the CSS
  * namespace separator (tight, no spaces: `foo|h1`); `||` is the column
@@ -87,7 +87,7 @@ export type Node =
   | Stylesheet | Rule | Declaration | Comment | SelectorList | ComplexSelector | CompoundSelector
   | SimpleSelector | SelectorCapture | Keyword | Color | Quoted | Any | Url | Dimension | SpacedValue | List | VariableReference | MixinDef | MixinCall
   | VariableDeclaration | Sequence | Important | Operation | FunctionCall | Block | Condition
-  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | VarIndirect | DetachedRuleset | Collection
+  | AtRuleBlock | AtRuleStatement | ImportAtRule | Plugin | OpaqueAtRuleBlock | Interpolation | GeneralEnclosed | VarIndirect | AnonymousMixin | Collection
   | Reference | Range | PropertyReference | For | If | StyleImport | ModuleImport | RawInline;
 
 /**
@@ -111,7 +111,7 @@ export const AST_NODE_TYPES: ReadonlySet<string> = new Set<NodeType>([
   'SpacedValue', 'List', 'VariableReference', 'MixinDef', 'MixinCall', 'VariableDeclaration',
   'Sequence', 'Important', 'Operation', 'FunctionCall', 'Block', 'Condition',
   'AtRuleBlock', 'AtRuleStatement', 'ImportAtRule', 'Plugin', 'OpaqueAtRuleBlock', 'Interpolation', 'GeneralEnclosed', 'VarIndirect',
-  'DetachedRuleset', 'Reference', 'Range', 'PropertyReference', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline'
+  'AnonymousMixin', 'Reference', 'Range', 'PropertyReference', 'For', 'If', 'StyleImport', 'ModuleImport', 'RawInline'
 ]);
 
 /** Value predicate for a tree2 AST node (replaces the old `x instanceof Node`). */
