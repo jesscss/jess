@@ -7,6 +7,15 @@ export const ALPHA_BRANCH = 'alpha';
 export const ALPHA_SOURCE_REF = 'origin/dev';
 export const ALPHA_SOURCE_PROVENANCE_PATH = 'scripts/release/alpha-source-provenance.json';
 export const ALPHA_SOURCE_PROVENANCE_SCHEMA = 1;
+// An existing alpha may need the current release-safety policy in order to
+// validate its already-recorded source snapshot. These are release controls,
+// not product source: permit them only when alpha copies the exact files from
+// the current pushed dev ref.
+export const ALPHA_RELEASE_CONTROL_FILES = new Set([
+  'scripts/release/alpha-source-sync.mjs',
+  'scripts/release/verify-alpha-source-sync.mjs',
+  'scripts/release/__tests__/alpha-source-sync.test.ts'
+]);
 // `dev` remains active while an alpha gate runs. Requiring its tip to stay frozen
 // makes a valid release snapshot needlessly impossible to publish; accepting an
 // unboundedly old snapshot is no better. Keep the release snapshot recent without
@@ -115,6 +124,10 @@ function showJson(rootDir, ref, file) {
   }
 }
 
+function matchesRefFile(rootDir, ref, file) {
+  return git(rootDir, ['diff', '--quiet', ref, 'HEAD', '--', file], { allowFailure: true }).status === 0;
+}
+
 function manifestOnlyChangesVersion(rootDir, sourceCommit, file) {
   const sourceManifest = showJson(rootDir, sourceCommit, file);
   const alphaManifest = showJson(rootDir, 'HEAD', file);
@@ -187,6 +200,10 @@ export function verifyAlphaSourceSync({ rootDir = process.cwd(), fetch = true } 
     // provenance exceptions only.
     for (const change of changedPaths(rootDir, provenance.sourceCommit)) {
       if (change.file === ALPHA_SOURCE_PROVENANCE_PATH && change.status === 'A') {
+        continue;
+      }
+      if (ALPHA_RELEASE_CONTROL_FILES.has(change.file)
+        && matchesRefFile(rootDir, sourceCommit, change.file)) {
         continue;
       }
       if (change.status === 'M' && isWorkspaceManifest(change.file)

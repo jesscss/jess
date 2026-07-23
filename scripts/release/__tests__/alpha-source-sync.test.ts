@@ -47,7 +47,9 @@ function createAlphaSandbox() {
     name: '@fixture/package', version: '2.0.0-alpha.5', exports: { ['.']: './lib/index.js' }
   });
   mkdirSync(path.join(source, 'src'), { recursive: true });
+  mkdirSync(path.join(source, 'scripts/release'), { recursive: true });
   writeFileSync(path.join(source, 'src/engine.mjs'), 'export const source = true;\n');
+  writeFileSync(path.join(source, 'scripts/release/alpha-source-sync.mjs'), 'export const policy = 1;\n');
   commitAll(source, 'source');
   run('git', ['remote', 'add', 'origin', remote], source);
   run('git', ['push', '--quiet', '-u', 'origin', 'dev'], source);
@@ -106,6 +108,25 @@ describe('alpha source-sync release guard', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/13 commits behind current origin\/dev/u);
     expect(result.stderr).toMatch(/maximum allowed drift is 12/u);
+  });
+
+  it('allows an alpha release-control update only when it exactly matches pushed dev', () => {
+    const { alpha, source } = createAlphaSandbox();
+    const control = path.join(source, 'scripts/release/alpha-source-sync.mjs');
+    writeFileSync(control, 'export const policy = 2;\n');
+    commitAll(source, 'update alpha release control');
+    run('git', ['push', '--quiet', 'origin', 'dev'], source);
+    writeFileSync(path.join(alpha, 'scripts/release/alpha-source-sync.mjs'), 'export const policy = 2;\n');
+    commitAll(alpha, 'backport release control');
+
+    const accepted = runResult(process.execPath, [verifyScript], alpha);
+    expect(accepted.status).toBe(0);
+
+    writeFileSync(path.join(alpha, 'scripts/release/alpha-source-sync.mjs'), 'export const policy = 3;\n');
+    commitAll(alpha, 'mutate release control');
+    const rejected = runResult(process.execPath, [verifyScript], alpha);
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.stderr).toMatch(/outside the controlled release surface: M\tscripts\/release\/alpha-source-sync\.mjs/u);
   });
 
   it('rejects any alpha-only source change', () => {
