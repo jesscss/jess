@@ -499,6 +499,12 @@ const customSingleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const customEscape = regex(/\\[^\n\r\f]/);
 const customDoubleQuoted = sequence(literal('"'), customDoubleQuotedText, literal('"'));
 const customSingleQuoted = sequence(literal('\''), customSingleQuotedText, literal('\''));
+// Balanced-group skips shared by the value, import-tail, calc var()-fallback,
+// and at-prelude scanners. One combinator per delimiter, reused at every skip
+// site instead of respelling the identical comment/escape/quote skip set.
+const balancedParens = balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
+const balancedBrackets = balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
+const balancedBraces = balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
 // A general-enclosed payload is grammar-owned arbitrary CSS component text. This
 // raw-template chunk deliberately stops at every structural delimiter; quotes,
 // comments, and balanced groups below own those bytes instead. It is a Parseman
@@ -514,28 +520,22 @@ const customValue = scanTo(choice(literal(';'), literal('}')), {
     customEscape,
     customDoubleQuoted,
     customSingleQuoted,
-    balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-    balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-    balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+    balancedParens,
+    balancedBrackets,
+    balancedBraces
   ]
-});
-const nestedImportTailGroup = balanced('(', ')', {
-  skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted]
-});
-const nestedImportTailSquare = balanced('[', ']', {
-  skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted]
 });
 const importTailGroup = sequence(
   literal('('),
   scanTo(literal(')'), {
-    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, nestedImportTailGroup]
+    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedParens]
   }),
   expect(literal(')'), ')')
 );
 const importTailSquareGroup = sequence(
   literal('['),
   scanTo(literal(']'), {
-    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, nestedImportTailSquare]
+    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets]
   }),
   expect(literal(']'), ']')
 );
@@ -777,35 +777,34 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   // bodies are captured with scanTo. These zero-width structural guards make
   // that lossless capture reject a closer reached before a nested, differently
   // shaped block has closed: `[a(b]` and `{a[b}` cannot be accepted merely
-  // because the outer leaf sees its own closer first.
-  const calcVarFallbackNestedBracket = balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
-  const calcVarFallbackNestedBrace = balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
+  // because the outer leaf sees its own closer first. The nested-group skips are
+  // the shared `balancedBrackets`/`balancedBraces` combinators.
   const calcVarFallbackBracketCrossParen = sequence(
     literal('['),
-    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal('('),
-    scanTo(choice(literal(')'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(choice(literal(')'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal(']')
   );
   const calcVarFallbackBracketCrossBrace = sequence(
     literal('['),
-    scanTo(literal('{'), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(literal('{'), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal('{'),
-    scanTo(choice(literal('}'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(choice(literal('}'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal(']')
   );
   const calcVarFallbackBraceCrossParen = sequence(
     literal('{'),
-    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('('),
-    scanTo(choice(literal(')'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(choice(literal(')'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('}')
   );
   const calcVarFallbackBraceCrossBracket = sequence(
     literal('{'),
-    scanTo(literal('['), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(literal('['), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('['),
-    scanTo(choice(literal(']'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(choice(literal(']'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('}')
   );
   // A parenthesized fallback is structural, unlike the raw bracket/brace
@@ -852,7 +851,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
           customEscape,
           customDoubleQuoted,
           customSingleQuoted,
-          balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+          balancedBrackets
         ]
       }),
       literal(']')
@@ -870,7 +869,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
           customEscape,
           customDoubleQuoted,
           customSingleQuoted,
-          balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+          balancedBraces
         ]
       }),
       literal('}')
@@ -1204,8 +1203,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       customEscape,
       customDoubleQuoted,
       customSingleQuoted,
-      balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-      balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+      balancedParens,
+      balancedBrackets
     ]
   });
   const CssAstAtPrelude = node('CssAstAtPrelude', atPrelude, (children) => {
@@ -1218,8 +1217,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       customEscape,
       customDoubleQuoted,
       customSingleQuoted,
-      balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-      balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+      balancedParens,
+      balancedBrackets
     ]
   });
   const CssAstStatementPrelude = node('CssAstStatementPrelude', statementPrelude, (children) => {
@@ -1431,7 +1430,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
           customEscape,
           customDoubleQuoted,
           customSingleQuoted,
-          balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+          balancedParens
         ]
       }),
       expect(literal(')'), ')')
