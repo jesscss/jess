@@ -3,7 +3,7 @@ import { makeBuiltinRegistry } from '@jesscss/fns';
 import { atRuleBlock } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  compoundSelectorOf, complexHasAmpersand, complexSelector, decl, interpolation, keyword, stylesheet, rule, sel, selist, simpleSelector, interpolatedSimpleSelector, variableDeclaration, variableReference, type Stylesheet
+  compoundSelectorOf, complexHasAmpersand, complexSelector, decl, interpolation, keyword, pseudoSelector, stylesheet, rule, sel, selist, simpleSelector, interpolatedSimpleSelector, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { collectPlan } from '../extend/plan.js';
@@ -37,6 +37,51 @@ describe('direct canonical extend', () => {
       '.button,\n'
       + '.button-primary {\n'
       + '  color: navy;\n'
+      + '}\n'
+    );
+  });
+
+  it('crosses a structured :is() to append an exact extender whose find dot-matches one arm (C1)', () => {
+    // `.x:is(.a, .b) { … } .y:extend(.x.a) {}` — the crossable `:is()` graft lets the
+    // find `.x.a` match through the `.a` arm, so `.y` appends as a whole-branch comma
+    // sibling. The base header serializes byte-identically (`:is(.a, .b)`).
+    const base = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))])
+    }]);
+    const find = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')])
+    }]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.y', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.x:is(.a, .b),\n'
+      + '.y {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('crosses a structured :is() alongside a trailing simple (C4)', () => {
+    // `.x:is(.a, .b).c { … } .y:extend(.x.a.c) {}` — the find `.x.a.c` matches through
+    // the `.a` arm while `.x`/`.c` match the bare simples on either side of the graft.
+    const base = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b'))), simpleSelector('.c')])
+    }]);
+    const find = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a'), simpleSelector('.c')])
+    }]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.y', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.x:is(.a, .b).c,\n'
+      + '.y {\n'
+      + '  c: d;\n'
       + '}\n'
     );
   });

@@ -12,6 +12,7 @@ import {
   cloneBranch,
   cloneSeg,
   cloneSimple,
+  collectBranchAtoms,
   compoundText,
   descendantBranch,
   isOrPlainSimples,
@@ -83,7 +84,12 @@ export function applyInstruction(
     // equality. A multi-segment target also matches an `:is()`-grafted branch whose
     // expansion equals the target (`.replace.replace .replace` vs
     // `:is(.replace.replace, …) .replace`).
-    if (branchExactEquivalent(b, target) || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))) {
+    if (
+      branchExactEquivalent(b, target)
+      || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))
+      || (b.segs.length === 1 && target.segs.length === 1
+        && compoundExhaustive(b.segs[0]!.compound, target.segs[0]!.compound))
+    ) {
       out.push(b);
       for (const e of appendExtenders) {
         pushExtender(appends, e, chainHidden);
@@ -247,6 +253,126 @@ export function branchExactEquivalent(b: Branch, target: Branch): boolean {
     }
   }
   return true;
+}
+
+/** Sentinel for a find cursor that could not consume a graft branch. Distinct from
+ *  `-1` (a legitimately exhausted find cursor). */
+const NO_MATCH = -2;
+
+/**
+ * EXACT-mode whole-compound match THROUGH crossable `:is()` grafts. Both `base`
+ * and `find` are one segment's simples (the caller gates `b.segs.length === 1 &&
+ * target.segs.length === 1`); the base may carry structured `{ t: 'is' }` grafts
+ * (authored `:is()`/`:matches()`), the find is plain text. Turns C1
+ * (`.x:is(.a, .b)` matched by `.x.a`) and C4 (`.x:is(.a, .b).c` by `.x.a.c`) into
+ * whole-branch appends — the extender becomes a comma sibling via the existing
+ * append path, with no emit change.
+ *
+ * FAST-REJECT precedes any fork: a graft-free base can add nothing beyond the
+ * caller's order-independent `branchExactEquivalent`, and a find atom no branch can
+ * supply makes the match impossible — both bail before a single OR-path is walked.
+ * The walk itself (`cursorMatch`) recurses by VALUE (numeric cursor indices on the
+ * call stack): no cloned cursor objects, no `valueOf()`.
+ */
+function compoundExhaustive(base: Compound, find: Compound): boolean {
+  // A graft-free base positional-matches the find iff it multiset-matches it, a
+  // case `branchExactEquivalent` already decided FALSE upstream — so a base with no
+  // `{ t: 'is' }` graft can never add a match here. This cheap gate keeps every
+  // graft-free candidate (the overwhelming majority) off the atom Set + cursor.
+  let hasGraft = false;
+  for (const s of base.simples) {
+    if (s.t === 'is') {
+      hasGraft = true;
+      break;
+    }
+  }
+  if (!hasGraft) {
+    return false;
+  }
+  // Every atom the find REQUIRES must be suppliable by the base — its bare text
+  // simples plus every atom reachable inside a crossable graft (`collectBranchAtoms`
+  // recurses grafts). A find atom no branch supplies is unmatchable, so bail without
+  // exploring any OR-path. A find graft is outside this rung's positional cursor and
+  // also bails here (the `s.t !== 'text'` guard).
+  const baseAtoms = new Set<string>();
+  collectCompoundAtoms(base, baseAtoms);
+  for (const s of find.simples) {
+    if (s.t !== 'text' || !baseAtoms.has(s.text)) {
+      return false;
+    }
+  }
+  return cursorMatch(base.simples, base.simples.length - 1, find.simples, find.simples.length - 1);
+}
+
+/** Collect every atom a compound can supply into `out`: its bare text simples plus,
+ *  for each crossable graft, every atom reachable inside its branches. */
+function collectCompoundAtoms(c: Compound, out: Set<string>): void {
+  for (const s of c.simples) {
+    if (s.t === 'text') {
+      out.add(s.text);
+    } else {
+      for (const br of s.branches) {
+        collectBranchAtoms(br, out);
+      }
+    }
+  }
+}
+
+/**
+ * Two cursors walk `base`/`find` back-to-front. A base TEXT simple must equal the
+ * aligned find text simple. A base crossable GRAFT forks: each single-segment
+ * OR-branch is consumed positionally against the find (`consumeBranch`), and the
+ * first branch that lets the remaining cursors exhaust wins. Success is BOTH cursors
+ * exhausted. Recurses by value — the cursor state is the two `number` indices.
+ */
+function cursorMatch(base: readonly Simple[], bi: number, find: readonly Simple[], fi: number): boolean {
+  if (bi < 0) {
+    return fi < 0;
+  }
+  if (fi < 0) {
+    return false;
+  }
+  const bs = base[bi]!;
+  if (bs.t === 'text') {
+    const fs = find[fi]!;
+    return fs.t === 'text' && fs.text === bs.text && cursorMatch(base, bi - 1, find, fi - 1);
+  }
+  // Crossable graft: fork over its OR-branches. Only a SINGLE-segment branch is
+  // consumable inside one compound (a descendant span cannot fit in a compound).
+  // `consumeBranch` bails on the first irreconcilable atom, so a branch whose
+  // trailing atom != find[fi] never descends — the per-branch fast reject.
+  for (const br of bs.branches) {
+    if (br.segs.length !== 1) {
+      continue;
+    }
+    const nf = consumeBranch(br.segs[0]!.compound.simples, find, fi);
+    if (nf !== NO_MATCH && cursorMatch(base, bi - 1, find, nf)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Consume a graft branch's `inner` simples against `find` back-to-front from `fi`,
+ * returning the new find cursor (may be `-1` when the find is fully consumed) or
+ * `NO_MATCH`. Text-only positional match — this rung's authored `:is()` args are
+ * plain compounds; a non-text inner simple bails (deferred to a later rung).
+ */
+function consumeBranch(inner: readonly Simple[], find: readonly Simple[], fi: number): number {
+  let f = fi;
+  for (let j = inner.length - 1; j >= 0; j--) {
+    const innerSimple = inner[j]!;
+    if (f < 0 || innerSimple.t !== 'text') {
+      return NO_MATCH;
+    }
+    const fs = find[f]!;
+    if (fs.t !== 'text' || fs.text !== innerSimple.text) {
+      return NO_MATCH;
+    }
+    f--;
+  }
+  return f;
 }
 
 /**

@@ -9,8 +9,8 @@
 
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
-import { simpleTokenText } from '../nodes.js';
-import type { ComplexSelector, SelectorList } from '../nodes.js';
+import { complexHasInterp, simpleTokenText } from '../nodes.js';
+import type { ComplexSelector, SelectorList, SimpleToken } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
 
@@ -169,25 +169,51 @@ export function cloneBranch(b: Branch): Branch {
 
 /* ------------------------------------------------------------------ from AST */
 
-function compoundFromSimples(texts: string[]): Compound {
-  return { simples: texts.map(text => ({ t: 'text', text })) };
+/**
+ * Build the IR simple for one selector token.
+ *
+ * A CROSSABLE structured pseudo (`:is(...)`/`:matches(...)`) with a concrete arg
+ * list and NO interpolation anywhere in that list becomes the structured
+ * `{ t: 'is' }` graft the matcher forks through (`compoundExhaustive`). Every other
+ * token flattens to its canonical text via `simpleTokenText`, exactly as before:
+ *   - a SEALED pseudo (`:where`/`:not`/`:has`/…, `crossable === false`) stays an
+ *     opaque `:where(…)` text token — its arg is not a boundary extend may cross;
+ *   - a degrade-to-opaque pseudo (`args === null`) keeps its retained `text`;
+ *   - a `@{…}`-interpolated token (`text: null`) contributes `''` — its concrete
+ *     text is only known in an entering frame the extend engine cannot access.
+ *
+ * The interp guard is load-bearing: an arg list that only resolves under
+ * interpolation must stay opaque (each `@{…}` contributes `''`) rather than a
+ * structured branch the matcher would treat as concrete atoms — the engine has no
+ * frame to materialize it. Structuring is byte-transparent to serialization: a
+ * `{ t: 'is' }` graft renders via `simpleText` to the same `:is(a, b)` join as
+ * `pseudoCanonical`, so a document with no matching extend is unchanged.
+ */
+function simpleFromToken(sim: SimpleToken): Simple {
+  if (
+    sim.type === 'PseudoSelector'
+    && sim.crossable
+    && sim.args !== null
+    && sim.interp === null
+    && !sim.args.selectors.some(complexHasInterp)
+  ) {
+    return { t: 'is', branches: levelFromSelectorList(sim.args) };
+  }
+  return { t: 'text', text: simpleTokenText(sim) };
+}
+
+function compoundFromTokens(simples: SimpleToken[]): Compound {
+  return { simples: simples.map(simpleFromToken) };
 }
 
 export function branchFromComplex(c: ComplexSelector): Branch {
   const segs: Seg[] = [];
-  // A selector token carrying `@{…}` interpolation has `text: null` (its concrete
-  // text is only known once resolved in an entering frame, which the extend
-  // engine has no access to). Represent it by its literal contribution (`''`),
-  // matching `compoundCanonical`'s convention, so the IR is always a plain string
-  // and no downstream `.includes`/`.split` hits null. A structured pseudo has
-  // `text: null` too, but its contribution is the inline `:is(a, b)` join owned by
-  // core serialization (`simpleTokenText`), so extend sees the same opaque text.
   segs.push({
     comb: c.leadingComb ?? ' ',
-    compound: compoundFromSimples(c.head.simples.map(simpleTokenText))
+    compound: compoundFromTokens(c.head.simples)
   });
   for (const seg of c.tail) {
-    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map(simpleTokenText)) });
+    segs.push({ comb: seg.comb, compound: compoundFromTokens(seg.compound.simples) });
   }
   return segs.length === 0 ? mkBranch([{ comb: ' ', compound: { simples: [] } }]) : mkBranch(segs);
 }
