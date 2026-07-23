@@ -49,6 +49,14 @@ Start with `AGENTS.md`.
 
 Do not keep branch-stage snapshots, pass counts, or transient failure notes here.
 
+For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
+
+- the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (7 invariants +
+  regression-fixture catalogue); enforcement design is
+  `docs/future/llm-quality-enforcement-design.md`
+- load the `perf-architecture` skill before editing; use the
+  `perf-architecture-reviewer` (evidence per invariant, not a verdict) before landing
+
 For the core architecture/eval-render work:
 
 - treat `docs/future/core-architecture/HANDOFF.md` as the active entry point

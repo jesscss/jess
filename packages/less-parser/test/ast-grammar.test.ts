@@ -428,7 +428,7 @@ describe('Less AST grammar facts', () => {
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'VariableDeclaration', value: { type: 'DetachedRuleset', body: [{ type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule' }] }] } },
+        { type: 'VariableDeclaration', value: { type: 'AnonymousMixin', body: [{ type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule' }] }] } },
         { type: 'For', rules: [{ type: 'AtRuleBlock', name: '@-webkit-keyframes', prelude: { type: 'Quoted', value: 'slide' }, body: [{ type: 'Rule' }] }] }
       ]
     });
@@ -921,7 +921,7 @@ describe('Less AST grammar facts', () => {
       children: [{
         type: 'VariableDeclaration', name: 'theme',
         value: {
-          type: 'DetachedRuleset',
+          type: 'AnonymousMixin',
           body: [
             { type: 'VariableDeclaration', name: 'accent', value: { type: 'Color', src: 'blue' } },
             { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'accent' } }
@@ -942,7 +942,7 @@ describe('Less AST grammar facts', () => {
       children: [{
         type: 'VariableDeclaration', name: 'grays',
         value: {
-          type: 'DetachedRuleset',
+          type: 'AnonymousMixin',
           body: [
             { type: 'Declaration', name: '100', value: { type: 'Color', src: '#f8f9fa' } },
             { type: 'Declaration', name: '900', value: { type: 'Color', src: '#212529' } },
@@ -970,7 +970,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'VariableDeclaration', name: 'theme',
           value: {
-            type: 'DetachedRuleset',
+            type: 'AnonymousMixin',
             body: [
               { type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] },
               { type: 'AtRuleBlock', name: '@media', body: [{ type: 'Rule' }] },
@@ -1028,11 +1028,11 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet', children: [
-        { type: 'VariableDeclaration', name: 'theme', value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] } },
-        { type: 'MixinDef', name: '.m', params: [{ name: 'default', default: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'width' }] } }] },
-        { type: 'MixinCall', name: '.m', args: [{ value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] } }] },
-        { type: 'MixinCall', name: '.m', args: [{ name: 'named', value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] } }] },
-        { type: 'FunctionCall', name: 'fn', args: [{ type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'display' }] }] }
+        { type: 'VariableDeclaration', name: 'theme', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } },
+        { type: 'MixinDef', name: '.m', params: [{ name: 'default', default: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'width' }] } }] },
+        { type: 'MixinCall', name: '.m', args: [{ value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } }] },
+        { type: 'MixinCall', name: '.m', args: [{ name: 'named', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } }] },
+        { type: 'FunctionCall', name: 'fn', args: [{ type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'display' }] }] }
       ]
     });
 
@@ -1041,7 +1041,7 @@ describe('Less AST grammar facts', () => {
     expect(valueArgument.unconsumedFrom).toBeNull();
     expect(valueArgument.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Declaration', name: 'value', value: {
-        type: 'FunctionCall', name: 'fn', args: [{ type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] }]
+        type: 'FunctionCall', name: 'fn', args: [{ type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] }]
       } }]
     });
 
@@ -1064,7 +1064,7 @@ describe('Less AST grammar facts', () => {
     expect(rawDirect.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'VariableDeclaration', name: 'theme', value: {
-        type: 'DetachedRuleset', body: [{ type: 'Declaration', name: '<', value: { type: 'Any', src: '%3c' } }]
+        type: 'AnonymousMixin', body: [{ type: 'Declaration', name: '<', value: { type: 'Any', src: '%3c' } }]
       } }]
     });
     const nestedConditionalArgument = run(
@@ -1486,7 +1486,7 @@ describe('Less AST grammar facts', () => {
       children: [{ value: {
         type: 'FunctionCall',
         name: 'if',
-        args: [{ type: 'Condition' }, { type: 'DetachedRuleset' }, { type: 'DetachedRuleset' }]
+        args: [{ type: 'Condition' }, { type: 'AnonymousMixin' }, { type: 'AnonymousMixin' }]
       } }]
     });
   });
@@ -2337,8 +2337,8 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'MixinDef', name: '.configure', params: [
-        { name: 'a', default: { type: 'DetachedRuleset', body: [] } },
-        { name: 'b', default: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'default' }] } }
+        { name: 'a', default: { type: 'AnonymousMixin', body: [] } },
+        { name: 'b', default: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'default' }] } }
       ] }]
     });
   });
@@ -2355,8 +2355,8 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'MixinDef' }, { type: 'Rule', body: [{ type: 'MixinCall', args: [
-        { value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'direct' }] } },
-        { name: 'b', value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'named' }] } }
+        { value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'direct' }] } },
+        { name: 'b', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'named' }] } }
       ] }] }]
     });
   });
@@ -2706,12 +2706,12 @@ describe('Less AST grammar facts', () => {
     expect(serialize(result.value).css).toContain('.out {\n  ordinary: callee;\n  returned: callee-return;\n}');
   });
 
-  it('reads forward-declared detached-ruleset map members and typed indirect keys', () => {
+  it('classifies variable-only value blocks as Collections and reads their typed members', () => {
     // Upstream tests-config/namespacing/namespacing-1.less: the map declaration
     // follows its reads, and `@@varToGet` selects the `@default-color` member.
     const source = `
 @varToGet: default-color;
-.out { direct: @defaults[@default-color]; nested: @defaults[@nested][@color]; indirect: @defaults[@@varToGet]; }
+.out { @defaults(); direct: @defaults[@default-color]; nested: @defaults[@nested][@color]; indirect: @defaults[@@varToGet]; }
 @defaults: { @default-color: red; @nested: { @color: yellow; }; };
 `;
     const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
@@ -2722,6 +2722,35 @@ describe('Less AST grammar facts', () => {
     if (!isStylesheet(result.value)) {
       throw new TypeError('expected Stylesheet');
     }
+    expect(result.value.children[2]).toMatchObject({
+      type: 'VariableDeclaration',
+      name: 'defaults',
+      value: {
+        type: 'Collection',
+        entries: [
+          { type: 'VariableDeclaration', name: 'default-color' },
+          {
+            type: 'VariableDeclaration',
+            name: 'nested',
+            value: {
+              type: 'Collection',
+              entries: [{ type: 'VariableDeclaration', name: 'color' }]
+            }
+          }
+        ]
+      }
+    });
+    const outputRule = result.value.children[1];
+    expect(outputRule).toMatchObject({ type: 'Rule' });
+    if (outputRule?.type !== 'Rule') {
+      throw new TypeError('expected output rule');
+    }
+    expect(outputRule.body[0]).toMatchObject({
+      type: 'Reference',
+      base: { type: 'VariableReference', name: 'defaults', lookup: 'scoped' },
+      steps: [{ type: 'Call', args: [] }],
+      raw: '@defaults()'
+    });
     expect(serialize(result.value).css).toContain('.out {\n  direct: red;\n  nested: yellow;\n  indirect: red;\n}');
   });
 

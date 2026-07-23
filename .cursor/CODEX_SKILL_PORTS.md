@@ -12,6 +12,14 @@ Ported because they contain valid Jess-specific behavior:
 - `jess-parser-ast-contract`
 - `jess-function-library-testing`
 - `jess-aggressive-cutting-review`
+- `jess-perf-architecture` (source: `.cursor/skills/perf-architecture/`; the
+  7 V8-architecture invariants + regression catalogue from
+  `docs/perf/V8-ARCHITECTURE.md`)
+
+Recommendation (see `docs/future/llm-quality-enforcement-design.md`): keep each
+skill's authored source in-repo under `.cursor/skills/` and treat
+`~/.codex/skills` as a generated copy synced from it, so every skill is
+versioned and parity-checkable instead of hand-edited out of tree.
 
 Not ported as separate Jess skills because Codex already has stronger generic
 skills for the same role:

@@ -2,7 +2,7 @@
 import { attempt, choice, composeLeaf, field, leaf, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax, lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, detachedRuleset, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Comment, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessDynamicCharsetError } from '../parse-error.js';
 
@@ -36,8 +36,8 @@ type LessAstLocalRules = {
   DirectLessImport: Combinator<ImportAtRule>;
   DirectLessPlugin: Combinator<Plugin>;
   DirectLessVarDeclaration: Combinator<VariableDeclaration>;
-  DirectLessDetachedRulesetDeclaration: Combinator<VariableDeclaration>;
-  DirectLessDetachedRuleset: Combinator<ValueNode>;
+  DirectLessValueBlockDeclaration: Combinator<VariableDeclaration>;
+  DirectLessValueBlock: Combinator<ValueNode>;
   DirectLessVarIndirect: Combinator<VarIndirect>;
   DirectLessVarReferenceChain: Combinator<ValueNode>;
   DirectLessVarReference: Combinator<VariableReference>;
@@ -90,6 +90,7 @@ type LessAstLocalRules = {
   DirectLessValue: Combinator<ValueSlot>;
   DirectLessVariableValue: Combinator<ValueSlot>;
   DirectLessImportant: Combinator<Important>;
+  DirectLessValueMaybeImportant: Combinator<ValueSlot>;
   DirectLessCustomPropertyName: Combinator<string | Interpolation>;
   DirectLessCustomPart: Combinator<CustomValuePart>;
   DirectLessCustomInnerPart: Combinator<CustomValuePart>;
@@ -655,7 +656,8 @@ function isValueNode(value: unknown): value is ValueNode {
         || value.type === 'Interpolation'
         || value.type === 'Important'
         || value.type === 'SelectorCapture'
-        || value.type === 'DetachedRuleset'
+        || value.type === 'AnonymousMixin'
+        || value.type === 'Collection'
         || value.type === 'GeneralEnclosed'));
 }
 
@@ -1128,7 +1130,7 @@ function requireCallbackStatements(children: readonly unknown[]): Statement[] {
 }
 
 /** Read a grammar-owned `{ … }` body without silently dropping non-body facts. */
-function requireDetachedRulesetBody(children: readonly unknown[]): Statement[] {
+function requireValueBlockBody(children: readonly unknown[]): Statement[] {
   const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
   const bodyEnd = children.findIndex((child, index) => index > bodyStart && isTerminalText(child, '}'));
   if (bodyStart < 0 || bodyEnd < 0) {
@@ -1702,13 +1704,13 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       return variableDeclaration(name.value, isMixinCall(value) ? value : variableValueWithoutComments(variableValueSlot(value)), { mode: 'declare' });
     }
   );
-  const DirectLessDetachedRulesetDeclaration = node<VariableDeclaration>(
-    'DirectLessDetachedRulesetDeclaration',
+  const DirectLessValueBlockDeclaration = node<VariableDeclaration>(
+    'DirectLessValueBlockDeclaration',
     sequence(
       literal('@'),
       g.LessAstSyntaxVariableName,
       literal(':'),
-      g.DirectLessDetachedRuleset,
+      g.DirectLessValueBlock,
       optional(literal(';'))
     ),
     children => variableDeclaration(
@@ -1918,8 +1920,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // A final delimiter has no following argument, so it intentionally has no
   // ValueLayout boundary to retain.
   const DirectLessFunctionArguments = optional(sequence(
-    choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument),
-    many(noTrivia(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessDetachedRuleset, g.DirectLessFunctionArgument)))),
+    choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessValueBlock, g.DirectLessFunctionArgument),
+    many(noTrivia(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessValueBlock, g.DirectLessFunctionArgument)))),
     optional(noTrivia(regex(/[;,][ \t\n\r\f]*/)))
   ));
   const DirectLessFunction = node<FunctionCall>(
@@ -2293,6 +2295,26 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(g.DirectLessValue, literal('!'), many(blockComment), g.CssAstSyntaxImportant),
     children => important(requireValueSlot(children[0]))
   );
+  // Left-factored value/priority: parse the value tower ONCE, then an optional
+  // `!important` tail.  The old `choice(DirectLessImportant, DirectLessValue)`
+  // was non-disjoint on the value first-set, so every declaration without a
+  // priority (~99%) descended the whole value tower inside `DirectLessImportant`,
+  // failed at the required `!`, backtracked, and re-descended as a bare value.
+  // The tail mirrors `DirectLessImportant` exactly (`!`, interspersed block
+  // comments, case-insensitive `important`), so the AST is identical either way:
+  // an `Important` wrapper when the tail matched, else the bare value.
+  const DirectLessValueMaybeImportant = node<ValueSlot>(
+    'DirectLessValueMaybeImportant',
+    sequence(
+      not(literal('{')),
+      g.DirectLessValue,
+      optional(sequence(literal('!'), many(blockComment), g.CssAstSyntaxImportant))
+    ),
+    (children) => {
+      const value = requireValueSlot(children[0]);
+      return children.some(child => isTerminalText(child, '!')) ? important(value) : value;
+    }
+  );
   // Less custom properties retain CSS declaration-value text.  The direct
   // route therefore treats every ordinary byte run as literal `Any` content,
   // but lets the shared strict `@{…}` grammar surface interpolation as typed
@@ -2434,7 +2456,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         // Less accepts an explicit empty declaration value (`margin: ;`). Keep
         // it as a canonical empty opaque value rather than dropping the
         // declaration or falling back to a second parser.
-        optional(choice(g.DirectLessImportant, sequence(not(literal('{')), g.DirectLessValue)))
+        optional(g.DirectLessValueMaybeImportant)
       )),
       optional(literal(';'))
     )),
@@ -2495,7 +2517,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(
       g.LessAstSyntaxPunctuationMapKey,
       literal(':'),
-      optional(choice(g.DirectLessImportant, sequence(not(literal('{')), g.DirectLessValue))),
+      optional(g.DirectLessValueMaybeImportant),
       optional(literal(';'))
     ),
     (children) => {
@@ -2546,7 +2568,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         g.LessAstSyntaxVariableName,
         optional(sequence(
           literal(':'),
-          choice(g.DirectLessDetachedRuleset, DirectLessMixinParamValueTerm),
+          choice(g.DirectLessValueBlock, DirectLessMixinParamValueTerm),
           optional(whitespace)
         ))
       ),
@@ -2973,11 +2995,37 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       };
     }
   );
+  // Shared block-body statement dispatch. Every braced Less body (mixin
+  // definitions, `@supports`/media/container/generic at-rule blocks, and the
+  // ruleset body via the extend-augmented reuse below) accepts this exact
+  // ordered arm set. Factoring it into one named combinator keeps the arm-win
+  // precedence identical across all block contexts instead of hand-copying the
+  // arms per production. The root document and the detached-ruleset/`each`
+  // `DirectLessBodyStatement` deliberately keep their own ordered arm sets
+  // because they legitimately differ (comment-first root ordering; the
+  // punctuation-map arm and Each/Ruleset reordering in body statements).
+  // `@`-led statement dispatch. Every body context lists these ten arms in this
+  // exact contiguous order, so grouping them into one nested choice is
+  // byte-identical to the flat listing (a bare `choice` passes its winning arm's
+  // value through unchanged, and firstMatch order is preserved). This is the
+  // structural "one at-rule dispatch" grouping; parseman already first-set-gates
+  // the whole group behind a single `@` (codepoint 64) check, so a non-`@`
+  // statement skips all ten arms with one integer compare.
+  const directLessAtStatement = choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessValueBlockDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement);
+  const directLessBlockStatement = choice(directLessAtStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'));
+  const directLessBlockBody = many(directLessBlockStatement);
+  // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
+  // shared arms. Nesting the shared choice ahead of it preserves the original
+  // precedence: the shared arms (including the empty `;`) are tried in the same
+  // order first, then the extend statement — behaviourally identical to the
+  // former flat `choice(<shared arms>, DirectLessExtendStatement, ';')` because
+  // an extend head never matches `;` or any shared arm the flat list did not.
+  const directLessRulesetBody = many(choice(directLessBlockStatement, g.DirectLessExtendStatement));
   const DirectLessMixinDefinition = node<MixinDef>(
     'DirectLessMixinDefinition',
     sequence(
       DirectLessMixinSignature,
-      many(choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'))),
+      directLessBlockBody,
       optional(g.DirectLessFunction),
       literal('}'),
       optional(literal(';'))
@@ -3002,16 +3050,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // CST/tree conversion or an opaque body fallback.
   const DirectLessBodyStatement = choice(
     DirectLessPunctuationMapDeclaration,
-    g.DirectLessImport,
-    g.DirectLessPlugin,
-    g.DirectLessDetachedRulesetDeclaration,
-    g.DirectLessVarDeclaration,
-    g.DirectLessSupportsBlock,
-    g.DirectLessMediaContainerBlock,
-    g.DirectLessReferenceCall,
-    g.DirectLessKeyframes,
-    g.DirectLessAtRuleBlock,
-    g.DirectLessAtRuleStatement,
+    directLessAtStatement,
     g.DirectLessMixinDefinition,
     g.DirectLessMixinCall,
     g.DirectLessBareMixinCall,
@@ -3023,14 +3062,14 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     g.DirectLessComment,
     literal(';')
   );
-  const DirectLessDetachedRuleset = node<ValueNode>(
-    'DirectLessDetachedRuleset',
+  const DirectLessValueBlock = node<ValueNode>(
+    'DirectLessValueBlock',
     sequence(literal('{'), many(g.DirectLessBodyStatement), optional(g.DirectLessFunction), literal('}')),
-    children => detachedRuleset(requireDetachedRulesetBody(children))
+    children => classifyValueBlock(requireValueBlockBody(children))
   );
   const DirectLessCallArgumentValue = node<MixinCallArgument['value']>(
     'DirectLessCallArgumentValue',
-    choice(attempt(g.DirectLessFlatMixinCall), g.DirectLessDetachedRuleset, g.DirectLessValueTerm),
+    choice(attempt(g.DirectLessFlatMixinCall), g.DirectLessValueBlock, g.DirectLessValueTerm),
     (children) => {
       const value = children[0];
       if (isMixinCall(value) || isValueSlotValue(value)) {
@@ -3206,7 +3245,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       g.CssAstSyntaxSupportsAtKeyword,
       choice(g.DirectLessAtRuleInterpolation, g.DirectLessSupportsCondition),
       literal('{'),
-      many(choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'))),
+      directLessBlockBody,
       optional(g.DirectLessFunction),
       literal('}')
     ),
@@ -3453,7 +3492,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'DirectLessMediaContainerBody',
     sequence(
       literal('{'),
-      many(choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'))),
+      directLessBlockBody,
       optional(g.DirectLessFunction),
       literal('}')
     ),
@@ -3613,7 +3652,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         not(noTrivia(literal('('))),
         optional(choice(g.DirectLessInterpolatedValue, g.DirectLessStaticAtRulePrelude)),
         literal('{'),
-        many(choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'))),
+        directLessBlockBody,
         optional(g.DirectLessFunction),
         literal('}')
       ),
@@ -3622,7 +3661,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         not(noTrivia(literal('('))),
         optional(g.DirectLessStaticAtRulePrelude),
         literal('{'),
-        many(choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'))),
+        directLessBlockBody,
         optional(g.DirectLessFunction),
         literal('}')
       )
@@ -4369,7 +4408,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   );
   const DirectLessRuleset = node<Rule>(
     'DirectLessRuleset',
-    sequence(g.DirectLessSelector, optional(g.DirectLessMixinGuard), literal('{'), many(choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, g.DirectLessExtendStatement, literal(';'))), optional(g.DirectLessFunction), literal('}')),
+    sequence(g.DirectLessSelector, optional(g.DirectLessMixinGuard), literal('{'), directLessRulesetBody, optional(g.DirectLessFunction), literal('}')),
     (children) => {
       const extensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
       return rule(
@@ -4386,7 +4425,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'LessAstDocument',
     // A standalone root block comment must reduce before selector productions
     // may treat it as selector trivia for the following ruleset.
-    sequence(many(choice(g.DirectLessComment, g.DirectLessImport, g.DirectLessPlugin, g.DirectLessDetachedRulesetDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement, g.DirectLessMixinDefinition, g.DirectLessInlineExtendRule, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
+    sequence(many(choice(g.DirectLessComment, directLessAtStatement, g.DirectLessMixinDefinition, g.DirectLessInlineExtendRule, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
     children => stylesheet(requireStatements(children)),
     { trailingTrivia: true }
   );
@@ -4396,8 +4435,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessImport,
     DirectLessPlugin,
     DirectLessVarDeclaration,
-    DirectLessDetachedRulesetDeclaration,
-    DirectLessDetachedRuleset,
+    DirectLessValueBlockDeclaration,
+    DirectLessValueBlock,
     DirectLessVarIndirect,
     DirectLessVarReferenceChain,
     DirectLessVarReference,
@@ -4450,6 +4489,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessValue,
     DirectLessVariableValue,
     DirectLessImportant,
+    DirectLessValueMaybeImportant,
     DirectLessCustomPropertyName,
     DirectLessCustomPart,
     DirectLessCustomInnerPart,

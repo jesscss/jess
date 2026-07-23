@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  condition, decl, reference, detachedRuleset, dimension, funcCall, keyword,
+  condition, decl, reference, anonymousMixin, dimension, funcCall, keyword,
   mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -14,7 +14,7 @@ describe('variable-call canonical AST emission', () => {
   it('splices a direct detached ruleset through its definition scope and caller fallback', () => {
     const document = stylesheet([
       variableDeclaration('base', keyword('red'), { mode: 'declare' }),
-      variableDeclaration('theme', detachedRuleset([
+      variableDeclaration('theme', anonymousMixin([
         variableDeclaration('local', variableReference('base', 'scoped'), { mode: 'declare' }),
         decl('color', variableReference('local', 'scoped')),
         decl('width', variableReference('caller-width', 'scoped'))
@@ -34,8 +34,8 @@ describe('variable-call canonical AST emission', () => {
       variableDeclaration('enabled', keyword('true'), { mode: 'declare' }),
       variableDeclaration('content', funcCall('if', [
         condition({ g: 'truth', value: variableReference('enabled', 'scoped') }, '@enabled'),
-        detachedRuleset([decl('display', keyword('grid'))]),
-        detachedRuleset([decl('display', keyword('none'))])
+        anonymousMixin([decl('display', keyword('grid'))]),
+        anonymousMixin([decl('display', keyword('none'))])
       ]), { mode: 'declare' }),
       rule('.panel', [reference(variableReference('content', 'scoped'), [{ type: 'Call', args: [] }], '@content()')])
     ]);
@@ -51,7 +51,7 @@ describe('variable-call canonical AST emission', () => {
         rule('.inner', [reference(variableReference('ruleset', 'scoped'), [{ type: 'Call', args: [] }], '@ruleset()')])
       ]),
       rule('.entry', [
-        mixinCall('.wrap', [detachedRuleset([decl('width', variableReference('a', 'scoped'))])])
+        mixinCall('.wrap', [anonymousMixin([decl('width', variableReference('a', 'scoped'))])])
       ])
     ]);
 

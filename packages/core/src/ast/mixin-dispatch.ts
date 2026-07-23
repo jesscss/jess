@@ -21,7 +21,7 @@
  */
 
 import type { MixinCall, MixinDef, ValueSlot } from './nodes.js';
-import { any, isLiteralNode, isTypedLiteral } from './nodes.js';
+import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
 import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } from './guard.js';
 
@@ -180,9 +180,9 @@ export function bindArgs(
 }
 
 function resolveEager(v: CallValue, resolveCaller: ValueResolver): CallValue {
-  // a detached-ruleset arg binds BY REFERENCE (never byte-flattened) so its
-  // body + closure survive to the call site.
-  if ('type' in v && (v.type === 'DetachedRuleset' || v.type === 'MixinCall')) {
+  // a value-block (anonymous-mixin / collection) arg binds BY REFERENCE (never
+  // byte-flattened) so its body + closure survive to the call site.
+  if ('type' in v && (isValueBlock(v) || v.type === 'MixinCall')) {
     return v;
   }
   // A fully typed list carries comparison-relevant item tags (notably compatible
@@ -212,7 +212,7 @@ function isTypedGuardValue(v: CallValue): v is ValueSlot {
 }
 
 /** Eager-resolve a DEFAULT param value with the params-bound-so-far overlay
- * (see `DefaultResolver`). By-reference cases (detached ruleset / typed literal)
+ * (see `DefaultResolver`). By-reference cases (value block / typed literal)
  * survive exactly as a call arg does; everything else byte-flattens through the
  * default resolver (falling back to the caller resolver when none is supplied). */
 function resolveEagerDefault(
@@ -222,7 +222,7 @@ function resolveEagerDefault(
   resolveCaller: ValueResolver,
   resolveDefault?: DefaultResolver
 ): CallValue {
-  if ('type' in v && v.type === 'DetachedRuleset') {
+  if ('type' in v && isValueBlock(v)) {
     return v;
   }
   if (isTypedGuardValue(v)) {

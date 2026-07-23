@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,8 +16,8 @@ import { describe, expect, it } from 'vitest';
 describe('pre-push dispatcher', () => {
   it.each([
     ['alpha', 'release:alpha:check'],
-    ['dev', 'prepush:dev:check']
-  ])('runs %s branch through %s', (branch, expectedScript) => {
+    ['dev', undefined]
+  ])('runs %s branch through the expected push gate', (branch, expectedScript) => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const tempRoot = mkdtempSync(resolve(tmpdir(), 'jess-prepush-dispatch-'));
     const sandbox = resolve(tempRoot, 'repo');
@@ -45,7 +46,11 @@ describe('pre-push dispatcher', () => {
         }
       });
 
-      expect(readFileSync(invocationLog, 'utf8').trim()).toBe(`run ${expectedScript}`);
+      if (expectedScript) {
+        expect(readFileSync(invocationLog, 'utf8').trim()).toBe(`run ${expectedScript}`);
+      } else {
+        expect(existsSync(invocationLog)).toBe(false);
+      }
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }

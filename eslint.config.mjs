@@ -41,6 +41,7 @@ Module._resolveFilename = function(request, parent, isMain, options) {
 };
 
 const { default: tseslint } = await import('typescript-eslint');
+const { default: localRules } = await import('./scripts/eslint-rules/index.mjs');
 
 const compat = new FlatCompat({
   baseDirectory: __dirname,
@@ -256,6 +257,75 @@ export default tseslint.config([
     rules: {
       '@typescript-eslint/no-unused-vars': 0,
       curly: ['error', 'all']
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // LLM-quality REGRESSION PINS (local rules). ALL `warn` (advisory) by policy:
+  // these are pins, not merge gates. Several are intentionally heuristic and
+  // WILL surface some legitimate code; promotion of any to `error`/blocking
+  // requires a measured <5% false-positive bake on real PRs. See
+  // `scripts/eslint-rules/index.mjs` for the per-rule limitation notes.
+  // ---------------------------------------------------------------------------
+
+  // #2 Byte re-derivation — hot AST code only; serializers/debug are the
+  // legitimate owners of byte scanning, so they are excluded.
+  {
+    files: ['packages/*/src/ast/**/*.{ts,tsx}'],
+    ignores: [
+      '**/serialize*.{ts,tsx}',
+      '**/*debug*.{ts,tsx}',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}'
+    ],
+    plugins: { local: localRules },
+    rules: {
+      'local/no-serialize-rederivation': 'warn'
+    }
+  },
+
+  // #3 Full-tree walk — best-effort, report-only; scoped to an explicit
+  // allowlist of eval/render hot-path files (recursion is legitimate in
+  // serialize/eval, so this stays advisory and narrowly targeted).
+  {
+    files: [
+      'packages/core/src/ast/value-eval.ts',
+      'packages/core/src/ast/eval*.ts',
+      'packages/core/src/ast/evaluator*.ts',
+      'packages/core/src/ast/render*.ts',
+      'packages/core/src/ast/resolve*.ts'
+    ],
+    plugins: { local: localRules },
+    rules: {
+      'local/no-full-tree-walk-hot-path': 'warn'
+    }
+  },
+
+  // #6 Oversized/duplicated choice — grammar sprawl pin.
+  {
+    files: ['packages/*/src/**/*.{ts,tsx}'],
+    plugins: { local: localRules },
+    rules: {
+      'local/no-oversized-choice': ['warn', { maxArms: 15, dupMinArms: 5 }]
+    }
+  },
+
+  // Deprecated DetachedRuleset AST node type. Allowlist: the plugin-transport
+  // (`serialize.ts` uses the less.js-facing transport tag; `value-eval.ts`
+  // declares the `PluginDetachedRuleset` transport interface) and the
+  // grammar/CST `DetachedRuleset` productions (grammar files live outside
+  // `src/ast`, so they are already out of scope).
+  {
+    files: ['packages/*/src/ast/**/*.{ts,tsx}'],
+    ignores: [
+      '**/serialize.ts',
+      '**/value-eval.ts',
+      '**/__tests__/**'
+    ],
+    plugins: { local: localRules },
+    rules: {
+      'local/no-deprecated-detached-ruleset': 'warn'
     }
   }, globalIgnores([
     '**/node_modules/**',
