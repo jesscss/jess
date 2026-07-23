@@ -365,11 +365,12 @@ the same source paths. A disposable rehearsal confirmed that
 these are history-topology conflicts, not a semantic queue to resolve by hand.
 Do not ordinary-merge or rebase `dev` into `alpha`.
 
-For the refresh, first create a recovery ref such as
-`git branch alpha-pre-alpha9-cut alpha` and work in an isolated `alpha`
-worktree. Import the endpoint tree with a two-tree patch
-(`git diff --binary alpha-pre-alpha9-cut..dev` and `git apply --index`), then run
-`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage`.
+For the refresh, first fetch `origin/dev`, create a recovery ref such as
+`git branch alpha-pre-alpha9-cut alpha`, and work in an isolated `alpha`
+worktree. Import the exact pushed source tree with a two-tree patch
+(`git diff --binary alpha-pre-alpha9-cut..origin/dev` and `git apply --index`), then run
+`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage`
+followed by `node scripts/release/record-alpha-source-provenance.mjs --stage`.
 The required `--stage` makes that tool restore and stage only each
 `packages/*/package.json` `.version` field from the
 recovery ref; it must not restore whole manifest files. The alpha snapshot takes
@@ -399,7 +400,12 @@ alpha docs wholesale.
   used. This is release correctness evidence, not a performance claim.
 
 Commit one controlled refresh on `alpha`, confirm a clean source tree, and run
-the full `release:alpha` chain before owner-approved publication. The
+the full `release:alpha` chain before owner-approved publication. The first
+`release:alpha:check` gate fetches `origin/dev`, requires the committed exact
+source SHA in `scripts/release/alpha-source-provenance.json`, and proves the
+alpha tree differs only in that provenance record and package-manifest version
+fields. Alpha-only source or documentation changes must land on `dev` before
+the snapshot. The
 orchestrator resolves the fresh registry candidate before preflight, passes it
 to the nested publish dry-run without mutating manifests, and writes the
 lockstep versions only after checks pass; this avoids treating the previous

@@ -64,7 +64,7 @@ Blocked from the initial alpha set (do not publish yet):
 ## Branch and version policy
 
 - Publish alpha packages from branch `alpha`.
-- Cut each Jess alpha by importing the validated current `dev` endpoint into an
+- Cut each Jess alpha by importing the validated current pushed `origin/dev` endpoint into an
   isolated `alpha` worktree with the controlled two-tree patch procedure below,
   then making one release-snapshot commit. `alpha` is a release-snapshot
   branch, not a normal integration branch: do not ordinary-merge or rebase
@@ -99,7 +99,7 @@ silently relabeled as passing.
 
 ## Cut the alpha snapshot from `dev`
 
-Do this only after the exact `dev` candidate has passed its intended readiness
+Do this only after the exact pushed `origin/dev` candidate has passed its intended readiness
 and release checks. The `alpha` and `dev` histories have independently added
 the same source paths, so a plain `git merge --squash origin/dev` is unsafe and
 must not be used. Follow the verified two-tree snapshot procedure recorded in
@@ -108,16 +108,21 @@ the [Core Architecture Handoff](future/core-architecture/HANDOFF.md):
 1. Fetch the current refs, create a recovery ref such as
    `alpha-pre-alpha9-cut` from `alpha`, and work in an isolated `alpha`
    worktree.
-2. Import the endpoint tree with a binary two-tree patch, using
-   `git diff --binary alpha..dev` followed by `git apply --index`.
+2. Import the pushed source tree with a binary two-tree patch, using
+   `git diff --binary alpha-pre-alpha9-cut..origin/dev` followed by `git apply --index`.
 3. Preserve **only each package manifest's `version` field** from the recovery
    ref, after the patch has imported the current `dev` manifests:
 
    ```bash
-   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut
+   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage
+   node scripts/release/record-alpha-source-provenance.mjs --stage
    ```
 
-   Do not restore whole `packages/*/package.json` files. The snapshot must keep
+   Do not restore whole `packages/*/package.json` files. The second command
+   records the exact fetched `origin/dev` SHA for the commit. The release check
+   rejects any alpha source divergence other than that record and package
+   manifest versions, so alpha-only release notes or source changes must land
+   on dev first. The snapshot must keep
    every current `dev` manifest field—especially dependencies, peer ranges,
    exports, and publish configuration—and retain only the recovery alpha
    versions until the registry-aware release step selects the next version.
