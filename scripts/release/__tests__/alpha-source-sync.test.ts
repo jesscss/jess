@@ -47,7 +47,9 @@ function createAlphaSandbox() {
     name: '@fixture/package', version: '2.0.0-alpha.5', exports: { ['.']: './lib/index.js' }
   });
   mkdirSync(path.join(source, 'src'), { recursive: true });
+  mkdirSync(path.join(source, 'scripts/release'), { recursive: true });
   writeFileSync(path.join(source, 'src/engine.mjs'), 'export const source = true;\n');
+  writeFileSync(path.join(source, 'scripts/release/alpha-source-sync.mjs'), 'export const policy = 1;\n');
   commitAll(source, 'source');
   run('git', ['remote', 'add', 'origin', remote], source);
   run('git', ['push', '--quiet', '-u', 'origin', 'dev'], source);
@@ -69,12 +71,12 @@ function createAlphaSandbox() {
 }
 
 describe('alpha source-sync release guard', () => {
-  it('accepts only a clean alpha projection with version-only package differences and exact pushed-dev provenance', () => {
+  it('accepts a clean alpha projection with version-only package differences and exact pushed-dev provenance', () => {
     const { alpha } = createAlphaSandbox();
     const result = runResult(process.execPath, [verifyScript], alpha);
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toMatch(/Alpha source sync verified against origin\/dev/u);
+    expect(result.stdout).toMatch(/Alpha source projection verified/u);
     const provenance = JSON.parse(readFileSync(path.join(alpha, 'scripts/release/alpha-source-provenance.json'), 'utf8'));
     expect(provenance).toEqual({
       schemaVersion: 1,
@@ -83,16 +85,48 @@ describe('alpha source-sync release guard', () => {
     });
   });
 
-  it('rejects a pushed-dev advance after the alpha snapshot was recorded', () => {
+  it('allows a bounded pushed-dev advance after the alpha snapshot was recorded', () => {
     const { alpha, source } = createAlphaSandbox();
     writeFileSync(path.join(source, 'src/new-source.mjs'), 'export const newer = true;\n');
     commitAll(source, 'advance dev');
     run('git', ['push', '--quiet', 'origin', 'dev'], source);
 
     const result = runResult(process.execPath, [verifyScript], alpha);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/\(1 commits ahead\)/u);
+  });
+
+  it('rejects a pushed-dev advance beyond the bounded release drift', () => {
+    const { alpha, source } = createAlphaSandbox();
+    for (let index = 0; index < 13; index++) {
+      writeFileSync(path.join(source, 'src', `advance-${index}.mjs`), `export const advance = ${index};\n`);
+      commitAll(source, `advance dev ${index}`);
+    }
+    run('git', ['push', '--quiet', 'origin', 'dev'], source);
+
+    const result = runResult(process.execPath, [verifyScript], alpha);
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/current origin\/dev/u);
-    expect(result.stderr).toMatch(/Create a new controlled alpha snapshot/u);
+    expect(result.stderr).toMatch(/13 commits behind current origin\/dev/u);
+    expect(result.stderr).toMatch(/maximum allowed drift is 12/u);
+  });
+
+  it('allows an alpha release-control update only when it exactly matches pushed dev', () => {
+    const { alpha, source } = createAlphaSandbox();
+    const control = path.join(source, 'scripts/release/alpha-source-sync.mjs');
+    writeFileSync(control, 'export const policy = 2;\n');
+    commitAll(source, 'update alpha release control');
+    run('git', ['push', '--quiet', 'origin', 'dev'], source);
+    writeFileSync(path.join(alpha, 'scripts/release/alpha-source-sync.mjs'), 'export const policy = 2;\n');
+    commitAll(alpha, 'backport release control');
+
+    const accepted = runResult(process.execPath, [verifyScript], alpha);
+    expect(accepted.status).toBe(0);
+
+    writeFileSync(path.join(alpha, 'scripts/release/alpha-source-sync.mjs'), 'export const policy = 3;\n');
+    commitAll(alpha, 'mutate release control');
+    const rejected = runResult(process.execPath, [verifyScript], alpha);
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.stderr).toMatch(/outside the controlled release surface: M\tscripts\/release\/alpha-source-sync\.mjs/u);
   });
 
   it('rejects any alpha-only source change', () => {

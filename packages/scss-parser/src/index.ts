@@ -1,6 +1,7 @@
 import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { scssAstGrammar } from './ast/grammar.js';
+import { lowerUserFunctionCalls } from './ast/lower-user-function-calls.js';
 
 /** Structured failure from the public direct SCSS parser. */
 export class ScssParseError extends SyntaxError {
@@ -40,5 +41,8 @@ export function parse(input: string): Stylesheet {
       : result.span.start;
     throw new ScssParseError(offset, result.expected);
   }
-  return result.value;
+  // Rewrite user-`@function` call sites to `$f(args)` lambda invokes. The pass
+  // no-ops when the parsed document defines no user function; recognition stays
+  // in the grammar rather than checking source text here.
+  return lowerUserFunctionCalls(result.value);
 }

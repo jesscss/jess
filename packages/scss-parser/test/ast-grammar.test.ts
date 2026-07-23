@@ -1307,7 +1307,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
-  it('constructs static selector-valued pseudo arguments without an opaque interpolation path', () => {
+  it('constructs static selector-valued pseudo arguments as structured PseudoSelector args (core owns the join)', () => {
     const source = '.card:not(.disabled, [aria-hidden=true]) { color: blue; }';
     const cst = parseScssCst(source);
     expect(cst.errors).toHaveLength(0);
@@ -1316,10 +1316,83 @@ describe('SCSS canonical-AST grammar', () => {
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+    // Parser keeps the parsed `SelectorList` as `args`; `text` is null (the
+    // inline join is core serialization's job, spaced). `:not` structures but is
+    // sealed (crossable:false).
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
         { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: ':not(.disabled,[aria-hidden=true])' }
+        {
+          type: 'PseudoSelector', name: ':not', text: null, crossable: false, interp: null,
+          args: { type: 'SelectorList', selectors: [
+            { head: { simples: [{ type: 'SimpleSelector', text: '.disabled' }] } },
+            { head: { simples: [{ type: 'SimpleSelector', text: '[aria-hidden=true]' }] } }
+          ] }
+        }
+      ] } }] } }]
+    });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.card:not(.disabled, [aria-hidden=true]) {\n  color: blue;\n}\n'
+    );
+  });
+
+  it('structures whitelisted selector-arg pseudos and leaves interp / non-whitelist pseudos unchanged', () => {
+    // (1) `:is` structures: `args` is a real SelectorList, `text` is null, and it
+    // is crossable. Authored spacing does NOT matter — core serialization joins
+    // with `, ` on one line, so `:is(.a,.b)` and `:is(.a, .b)` both round-trip to
+    // the spaced canonical form.
+    const structured = run(scssAstGrammar.ScssAstDocument, '.x:is(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(structured.ok && structured.unconsumedFrom === null).toBe(true);
+    expect(structured.value).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        {
+          type: 'PseudoSelector', name: ':is', text: null, crossable: true, interp: null,
+          args: { type: 'SelectorList', selectors: [
+            { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
+            { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+          ] }
+        }
+      ] } }] } }]
+    });
+    // The parser produces STRUCTURE + trivia only: it never joins, so the head
+    // compound's serializer-owned `_canon` memo is still unset at parse time.
+    let canonBeforeSerialize: string | undefined = 'unset-marker';
+    if (isStylesheet(structured.value)) {
+      const first = structured.value.children[0];
+      if (first?.type === 'Rule') {
+        canonBeforeSerialize = first.selector.selectors[0]?.head._canon;
+      }
+    }
+    expect(canonBeforeSerialize).toBeUndefined();
+    for (const [source, expected] of [
+      ['.x:is(.a,.b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:is(.a, .b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n']
+    ] as const) {
+      const rt = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      expect(isStylesheet(rt.value) ? serialize(rt.value).css : undefined, source).toBe(expected);
+    }
+
+    // (2) `:where` structures too, but is SEALED (crossable:false).
+    const sealed = run(scssAstGrammar.ScssAstDocument, '.x:where(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(sealed.value).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'PseudoSelector', name: ':where', text: null, crossable: false }
+      ] } }] } }]
+    });
+
+    // (3) An interpolation-bearing whitelisted pseudo arg is NOT structured — the
+    // static-arg lookahead fails on `#{`, so it degrades to the unchanged path
+    // (rejected today, still rejected). `:global` is not whitelisted, so it stays
+    // opaque SimpleSelector text.
+    const interp = run(scssAstGrammar.ScssAstDocument, '.x:is(#{$sel}) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(false);
+    const opaque = run(scssAstGrammar.ScssAstDocument, '.x:global(.a) { color: red; }', { trivia: scssAstGrammar.whitespace });
+    expect(opaque.value).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'SimpleSelector', text: ':global(.a)' }
       ] } }] } }]
     });
   });
@@ -1353,6 +1426,22 @@ describe('SCSS canonical-AST grammar', () => {
     ]) {
       const direct = run(scssAstGrammar.ScssAstDocument, invalid, { trivia: scssAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
+    }
+  });
+
+  it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
+    // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
+    // surrounding the argument inside the parens
+    // (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
+    // preserved verbatim; insignificant space surrounding the argument is
+    // normalized away, matching the canonical CSS grammar and the other dialects.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
     }
   });
 
@@ -1727,5 +1816,107 @@ describe('SCSS canonical-AST grammar', () => {
     expect(valueLayoutOf(comma)).toEqual([',\n  ']);
     expect(serialize(document).css).toContain('color: red /* keep */\n    blue;');
     expect(serialize(document).css).toContain('shadow: a,\n    b;');
+  });
+
+  // SCSS→Jess lowering (parse/AST-shape correctness; evaluator rendering of the
+  // shared Collection/accessor/lambda is a separate downstream concern).
+  it('lowers SCSS map literals to the shared Collection node', () => {
+    expect(parse('$m: (a: 1, b: 2);')).toEqual({
+      type: 'Stylesheet',
+      children: [{
+        type: 'VariableDeclaration', name: 'm', write: { mode: 'declare' },
+        value: {
+          type: 'Collection', entries: [
+            { type: 'Declaration', name: 'a', value: { type: 'Dimension', number: 1, unit: '', src: '1' }, merge: null, important: false },
+            { type: 'Declaration', name: 'b', value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }
+          ]
+        }
+      }]
+    });
+
+    // Empty `()` and a single `(a: 1)` are maps too.
+    expect(parse('$m: ();').children[0]).toMatchObject({ value: { type: 'Collection', entries: [] } });
+    expect(parse('$m: (a: 1);').children[0]).toMatchObject({ value: { type: 'Collection', entries: [{ type: 'Declaration', name: 'a' }] } });
+
+    // A quoted-string key lowers to the entry name; a space-list value stays a
+    // structured value slot.
+    expect(parse('$m: ("k": 1px solid);').children[0]).toMatchObject({
+      value: { type: 'Collection', entries: [{ type: 'Declaration', name: 'k', value: [{ type: 'Dimension', src: '1px' }, { type: 'Keyword', src: 'solid' }] }] }
+    });
+
+    // A paren value-list (no `key:` entry) stays a Block list, never a Collection.
+    expect(parse('$m: (1 2 3);').children[0]).toMatchObject({ value: { type: 'Block', delimiter: 'paren' } });
+    expect(parse('$m: (1 + 2);').children[0]).toMatchObject({ value: { type: 'Block', inner: { type: 'Operation' } } });
+  });
+
+  it('lowers SCSS map-get to the shared $[…] accessor read', () => {
+    // `map-get($m, a)` => `$m[a]`: a Reference whose single BracketLookup step
+    // carries the key (member lookup for a value key, var lookup for `$k`).
+    expect(parse('.x { color: map-get($m, a); }').children[0]).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Declaration', name: 'color',
+        value: {
+          type: 'Reference',
+          base: { type: 'VariableReference', name: 'm', lookup: 'live' },
+          steps: [{ type: 'BracketLookup', key: { type: 'Keyword', src: 'a' }, keyKind: 'member' }],
+          raw: '$m[a]'
+        }
+      }]
+    });
+
+    expect(parse('.x { color: map-get($m, $k); }').children[0]).toMatchObject({
+      body: [{ value: { type: 'Reference', steps: [{ type: 'BracketLookup', key: { type: 'VariableReference', name: 'k' }, keyKind: 'var' }], raw: '$m[$k]' } }]
+    });
+
+    // A non-canonical arity stays a plain FunctionCall for `fns` routing.
+    expect(parse('.x { color: map-get($m); }').children[0]).toMatchObject({
+      body: [{ value: { type: 'FunctionCall', name: 'map-get' } }]
+    });
+  });
+
+  it('lowers a user SCSS @function to a $var-bound anonymous mixin whose @return is result:', () => {
+    // A zero-parameter function lowers completely: `$two: @() > { result: 2 }`.
+    // The `params` field is OMITTED so the plain-block shape stays monomorphic.
+    expect(parse('@function two() { @return 2; }')).toEqual({
+      type: 'Stylesheet',
+      children: [{
+        type: 'VariableDeclaration', name: 'two', write: { mode: 'declare' },
+        value: {
+          type: 'AnonymousMixin',
+          body: [{ type: 'Declaration', name: 'result', value: { type: 'Dimension', number: 2, unit: '', src: '2' }, merge: null, important: false }]
+        }
+      }]
+    });
+
+    // A parameterized function threads its `($n)` list into `AnonymousMixin.params`
+    // (the same `Param` shape a MixinDef uses), with `@return` → `result:`.
+    expect(parse('@function double($n) { @return $n * 2; }').children[0]).toEqual({
+      type: 'VariableDeclaration', name: 'double', write: { mode: 'declare' },
+      value: {
+        type: 'AnonymousMixin',
+        params: [{ name: 'n' }],
+        body: [{ type: 'Declaration', name: 'result', value: { type: 'Operation', operator: '*', left: { type: 'VariableReference', name: 'n', lookup: 'live' }, right: { type: 'Dimension', number: 2, unit: '', src: '2' } }, merge: null, important: false }]
+      }
+    });
+  });
+
+  it('lowers a user SCSS @function call site to a $var-bound lambda invoke', () => {
+    // `double(2)` => `$double(2)`: a Reference invoke on the bound variable, so it
+    // reaches the general call-a-value-lambda evaluator path. A builtin call
+    // (`darken(...)`) is left as a FunctionCall for `fns` routing.
+    const doc = parse('@function double($n) { @return $n * 2; } .a { w: double(2); c: darken(#fff, 10%); }');
+    const ruleNode = doc.children.find(child => child.type === 'Rule');
+    expect(ruleNode).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: 'w', value: {
+          type: 'Reference',
+          base: { type: 'VariableReference', name: 'double', lookup: 'live' },
+          steps: [{ type: 'Call', args: [{ value: { type: 'Dimension', number: 2, unit: '', src: '2' } }] }]
+        } },
+        { type: 'Declaration', name: 'c', value: { type: 'FunctionCall', name: 'darken' } }
+      ]
+    });
   });
 });

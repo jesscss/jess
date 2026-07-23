@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('pre-push dispatcher', () => {
   it.each([
-    ['alpha', 'release:alpha:check'],
+    ['alpha', 'release:alpha:push-check'],
     ['dev', undefined]
   ])('runs %s branch through the expected push gate', (branch, expectedScript) => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');

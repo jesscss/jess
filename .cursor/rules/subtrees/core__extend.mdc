@@ -10,6 +10,19 @@ globs:
 
 # Extend hotspot
 
+## Nested output is the DEFAULT — never dismiss it
+
+- Jess's default render mode is **NESTED** (`collapseNesting:false`). Structural
+  `&`-nesting, per-boundary ampersand hoist, and nested extend placement are
+  **first-class features** and a deliberate differentiator vs less.js (which
+  flattens to root). This ships **by default**.
+- The all-less / extend corpus rendering **FLAT** is a testing convenience, **NOT**
+  the spec and **NOT** evidence nested behavior is unimportant.
+- NEVER dismiss nested-mode correctness as "moot" / "edge case" / "deferred because
+  no fixture hits it". Correctness that ships by default (nested) must be honored
+  and **TESTED**. A flat-only corpus is a coverage **gap to fill** (add nested
+  fixtures), not the target. This bites hardest on hoist/placement work.
+
 ## Files
 
 - Implementation: `packages/core/src/tree/util/extend.ts`

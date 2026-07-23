@@ -3,6 +3,7 @@ import { run } from 'parseman';
 import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../core/src/ast/serialize.js';
+import { simpleTokenText } from '../../core/src/ast/nodes.js';
 import { cssAstGrammar } from '../src/ast/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { parse } from '../src/index.js';
@@ -124,16 +125,84 @@ describe('CSS canonical-AST grammar', () => {
     }
 
     const document = parseAst(':is(.card, [data-kind=primary]) { color: red; }');
+    // Structured pseudo: parser keeps `args` (pieces), `text` is null; the inline
+    // join is core serialization's job (spaced).
     expect(document.children[0]).toMatchObject({
       type: 'Rule', selector: {
-        selectors: [{ head: { simples: [{ text: ':is(.card,[data-kind=primary])' }] } }]
+        selectors: [{ head: { simples: [{ type: 'PseudoSelector', name: ':is', text: null }] } }]
       }
     });
+    expect(serialize(document).css).toEqual(':is(.card, [data-kind=primary]) {\n  color: red;\n}\n');
 
     for (const source of ['[role=] { color: red; }', ':is(.card { color: red; }', ':nth-child(-n+) { color: red; }']) {
       const cst = parseCssCst(source);
       expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(() => parseAst(source), source).toThrow();
+    }
+  });
+
+  it('retains the parsed SelectorList as structured PseudoSelector args for whitelisted selector-function pseudos', () => {
+    const document = parseAst('.x:is(.a, .b) { color: red; }');
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      selector: {
+        selectors: [{
+          head: {
+            simples: [
+              { type: 'SimpleSelector', text: '.x' },
+              {
+                type: 'PseudoSelector',
+                name: ':is',
+                text: null,
+                crossable: true,
+                interp: null,
+                args: {
+                  type: 'SelectorList',
+                  selectors: [
+                    { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
+                    { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+                  ]
+                }
+              }
+            ]
+          }
+        }]
+      }
+    });
+
+    // `:not` structures too, but is sealed (crossable:false).
+    const sealed = parseAst('.x:not(.a, .b) { color: red; }');
+    expect(sealed.children[0]).toMatchObject({
+      type: 'Rule',
+      selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
+      ] } }] }
+    });
+
+    // Non-whitelist pseudos (`::before`, `:hover`) stay opaque SimpleSelector text.
+    const opaque = parseAst('.x::before:hover { color: red; }');
+    expect(opaque.children[0]).toMatchObject({
+      type: 'Rule',
+      selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'SimpleSelector', text: '::before' },
+        { type: 'SimpleSelector', text: ':hover' }
+      ] } }] }
+    });
+
+    // Serialization gate: authored `:is`/`:where`/`:not` selector-arg pseudos
+    // render on ONE line with normalized WS (`:is(a, b)`, spaced) via the
+    // core-owned join, REGARDLESS of authored spacing. The parser stores no
+    // joined `text` — structure lives in `args`; core serialize owns the rule.
+    for (const [source, expected] of [
+      ['.x:is(.a,.b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:is(.a, .b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:is(.a ,.b ) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:where(.a, .b) { color: red; }', '.x:where(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:not(.a, .b) { color: red; }', '.x:not(.a, .b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parseAst(source)).css, source).toEqual(expected);
     }
   });
 
@@ -173,6 +242,107 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-last-of-type(2n+1x) { color: red; }'
     ]) {
       expect(() => parseAst(source), source).toThrow();
+    }
+  });
+
+  it('restricts `of <selector>` to nth-child/nth-last-child and rejects it on nth-of-type (Selectors-4 §6.6.2)', () => {
+    // `<An+B> of <complex-selector-list>` is valid ONLY for :nth-child()/
+    // :nth-last-child(); :nth-of-type()/:nth-last-of-type() take a bare <An+B>
+    // (https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo). The of-type
+    // `of` forms are not valid CSS, so the AST grammar must REJECT them rather
+    // than silently capture the `<An+B> of …` tail as opaque raw / selector text.
+    // This guards the CSS-aligned tightening (§7.1) against regressing to the
+    // prior over-permissive acceptance across every An+B-prefix spelling.
+    for (const source of [
+      ':nth-of-type(2n of .a) { color: red; }',
+      ':nth-of-type(n of .a) { color: red; }',
+      ':nth-of-type(2n + 1 of .a) { color: red; }',
+      ':nth-last-of-type(-n+3 of .a) { color: red; }',
+      ':nth-last-of-type(even of .a) { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).toThrow();
+    }
+
+    // nth-child/last-child still accept `of`; bare of-type An+B is unaffected.
+    for (const source of [
+      'a:nth-child(2n of .a) { color: red; }',
+      'a:nth-last-child(-n+3 of .a) { color: red; }',
+      'a:nth-child(n of .a) { color: red; }',
+      'a:nth-of-type(2n+1) { color: red; }',
+      'a:nth-of-type(-n+3) { color: red; }',
+      'a:nth-last-of-type(odd) { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).not.toThrow();
+    }
+  });
+
+  it('makes selector-argument pseudos selector-only and rejects paren-less nth names (cross-dialect divergence unification)', () => {
+    // Two tracked css/jess/less divergences close here (design §7). (1) The
+    // selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+    // selector-ONLY argument with no general-any fallback, so a non-selector
+    // argument such as `:not(2n+1)` rejects the whole pseudo (less/jess already
+    // reject). (2) A bare, paren-less nth name is not a keyword pseudo — it must
+    // reach the structured nth arms with an immediate `(` or be rejected, matching
+    // Less's identifier-boundary guard.
+    for (const source of [
+      '.x:not(2n+1) { color: red; }',
+      '.x:is(2n+1) { color: red; }',
+      '.x:where(2n+1) { color: red; }',
+      '.x:has(2n+1) { color: red; }',
+      '.x:matches(2n+1) { color: red; }',
+      '.x:nth-child { color: red; }',
+      '.x:nth-of-type { color: red; }',
+      '.x:nth-last-child { color: red; }',
+      '.x:nth-last-of-type { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).toThrow();
+    }
+
+    // Valid selector arguments (including `:has()` relative selectors), the
+    // general-any pseudos (`:lang`/`:dir`/unknown — verbatim any-value, unchanged),
+    // and parenthesized nth still parse.
+    for (const source of [
+      '.x:not(.a) { color: red; }',
+      '.x:is(.a, .b) { color: red; }',
+      '.x:where(.a, .b) { color: red; }',
+      '.x:matches(.a) { color: red; }',
+      '.x:has(> .b) { color: red; }',
+      '.x:has(.card > .icon) { color: red; }',
+      '.x:not(::before) { color: red; }',
+      '.x:is(:not(.a)) { color: red; }',
+      '.x:nth-child(2n+1) { color: red; }',
+      '.x:lang(en) { color: red; }',
+      '.x:dir(rtl) { color: red; }',
+      '.x:unknown(2n+1) { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).not.toThrow();
+    }
+
+    // `:has()` relative selectors are structured and serialize back byte-identically.
+    for (const [source, expected] of [
+      ['.x:has(> .b) { color: red; }', '.x:has(> .b) {\n  color: red;\n}\n'],
+      ['.x:has(+ .b) { color: red; }', '.x:has(+ .b) {\n  color: red;\n}\n'],
+      ['.x:has(~ .b) { color: red; }', '.x:has(~ .b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parseAst(source)).css, source).toEqual(expected);
+    }
+  });
+
+  it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
+    // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign in
+    // the `<An+B>` microsyntax (https://www.w3.org/TR/selectors-4/#anb-microsyntax);
+    // the sign whitespace is preserved verbatim, while insignificant whitespace
+    // surrounding the argument inside the parens is normalized away — matching
+    // the existing `2n+1` handling, which emits the An+B expression as authored.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(n + 3) { color: red; }', 'a:nth-child(n + 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n + 1 of .item) { color: red; }', 'a:nth-child(2n + 1 of .item) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parseAst(source)).css, source).toEqual(expected);
     }
   });
 
@@ -253,8 +423,8 @@ describe('CSS canonical-AST grammar', () => {
       ['[data-role] { color: red; }', ['[data-role]']],
       ['[data-role="button" i] { color: red; }', ['[data-role="button"i]']],
       ['[lang|=en][data^=pre][data$="end" s] { color: red; }', ['[lang|=en]', '[data^=pre]', '[data$="end"s]']],
-      [':is(.card, :not(.disabled), :has(.icon > svg)) { color: red; }', [':is(.card,:not(.disabled),:has(.icon > svg))']],
-      [':has(.card > .icon, :is(.badge, .label)) { color: red; }', [':has(.card > .icon,:is(.badge,.label))']],
+      [':is(.card, :not(.disabled), :has(.icon > svg)) { color: red; }', [':is(.card, :not(.disabled), :has(.icon > svg))']],
+      [':has(.card > .icon, :is(.badge, .label)) { color: red; }', [':has(.card > .icon, :is(.badge, .label))']],
       [':nth-child(2n + 1 of :is(.card, .tile)) { color: red; }', [':nth-child(2n + 1 of :is(.card, .tile))']],
       [':nth-child(-n+2 of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-last-of-type(-5n) { color: red; }', [':nth-last-of-type(-5n)']],
@@ -274,7 +444,10 @@ describe('CSS canonical-AST grammar', () => {
       if (first?.type !== 'Rule') {
         throw new Error(`Expected a rule for ${source}`);
       }
-      expect(first.selector.selectors[0]?.head.simples.map(simple => simple.text), source).toEqual(expectedSimples);
+      // A structured pseudo has `text: null` (structure in `args`); its canonical
+      // inline spelling is produced by core serialization (`simpleTokenText`), not
+      // the parser. Opaque simples/nth pseudos still carry verbatim `text`.
+      expect(first.selector.selectors[0]?.head.simples.map(simpleTokenText), source).toEqual(expectedSimples);
     }
 
     for (const source of [

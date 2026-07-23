@@ -44,6 +44,7 @@ import {
   complexCanonical,
   complexHasInterp,
   complexHasAmpersand,
+  pseudoCanonical,
   simpleSelector
 } from './nodes.js';
 import type {
@@ -77,6 +78,7 @@ import type {
   Rule,
   SpacedValue,
   SimpleSelector,
+  SimpleToken,
   SelectorList,
   Statement,
   StyleImport,
@@ -111,7 +113,7 @@ import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/uni
 import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeBlock, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
-import { DefaultGuardAmbiguityError, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
+import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
 import { computeExtends, type ExtendPlacementResults, type ExtendResults } from './extend.js'; // [extend]
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
@@ -2708,6 +2710,66 @@ function declMapFromMixinCall(
   return { byVar, byProp, list, varFrames };
 }
 
+/** The value yielded by a called value-lambda: the FIRST top-level `result:`
+ *  declaration in its body (the lowered form of an SCSS `@return`). A `@return`
+ *  nested inside a `@if`/`@each` branch is not surfaced here — see the invoke. */
+function lambdaResultValue(body: Statement[]): ValueSlot | undefined {
+  for (const s of body) {
+    if (s.type === 'Declaration' && s.name === 'result') {
+      return s.value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Invoke a value-position lambda ({@link AnonymousMixin} carrying `params`, e.g.
+ * the lowered SCSS user `@function`) called as `$f(args)`. Binds args→params with
+ * the SAME rules as a MixinDef call (positional/named/default/rest, via
+ * {@link bindArgs}) — args resolve in the CALLER frame, param defaults in the
+ * lambda's DEFINITION frame — then activates the body and returns the value of its
+ * `result:` entry, evaluated later in the activation frame. Returns `null` when the
+ * args cannot bind or the body yields no `result:` (caller falls back to `raw`).
+ */
+function invokeValueLambda(
+  lambda: AnonymousMixin,
+  args: CallArg[],
+  defFrame: Frame | null,
+  callerFrame: Frame | null,
+  e: EvalCtx
+): { value: ValueSlot; frame: Frame } | null {
+  const syntheticDef: MixinDef = { type: 'MixinDef', name: '', params: lambda.params ?? [], body: lambda.body };
+  const call: MixinCall = { type: 'MixinCall', name: '', args, path: [], important: false };
+  const resolveCaller = makeResolver(callerFrame, e);
+  const resolveDefault: DefaultResolver = (v, boundSoFar) => {
+    const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    const b = evalBytes(v, overlay, e);
+    if (isThenable(b)) {
+      throw new Error('async value in a synchronous function-parameter default position');
+    }
+    return b;
+  };
+  const bindings = bindArgs(syntheticDef, call, resolveCaller, resolveDefault);
+  if (bindings === null) {
+    return null;
+  }
+  const result = lambdaResultValue(lambda.body);
+  if (result === undefined) {
+    return null;
+  }
+  const activation: Frame = {
+    parent: defFrame,
+    mixins: collectMixins(lambda.body),
+    declIndex: collectDeclIndex(lambda.body, bindings),
+    cells: cellsForParams(bindings),
+    reassign: null,
+    statements: lambda.body,
+    sourceOwner: defFrame ? sourceOwnerForBody(lambda.body, defFrame, e) : null,
+    ...(callerFrame && callerFrame !== defFrame ? { fallback: callerFrame } : {})
+  };
+  return { value: result, frame: activation };
+}
+
 function resolveReferenceResult(
   node: Reference,
   frame: Frame | null,
@@ -2730,6 +2792,21 @@ function resolveReferenceResult(
     if (step.type === 'Call') {
       if (isMixinCallValue(value)) {
         value = step.args.length === 0 ? value : { ...value, args: step.args };
+        continue;
+      }
+      // A value bound to a callable lambda (`$f(args)`) — a param'd or paramless
+      // `AnonymousMixin` that yields a `result:` — invokes: bind args→params, run
+      // the body, yield `result:`. An `AnonymousMixin` WITHOUT a `result:` entry is
+      // an ordinary detached ruleset (spliced elsewhere); leave it untouched so its
+      // existing value-position behavior is preserved.
+      if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
+        && lambdaResultValue(value.body) !== undefined) {
+        const invoked = invokeValueLambda(value, step.args, valueFrame, frame, e);
+        if (invoked === null) {
+          return null;
+        }
+        value = invoked.value;
+        valueFrame = invoked.frame;
       }
       continue;
     }
@@ -3268,11 +3345,11 @@ function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string
 /* ---------------------------------------------------- selector composition */
 
 /**
- * [nesting] Cartesian-expand every `&` in `canon` independently over the FULL
- * `parents` array — plain parent×child nesting expands, it does NOT compact to
- * `:is(a, b, …)`. Each `&` is its own odometer digit with the LEFTMOST `&`
- * most-significant, so `& > &` over parents `[p0,p1]` emits
- * `p0>p0, p0>p1, p1>p0, p1>p1` (see the 16-row `& > &` golden in selectors.less).
+ * [nesting] LEGACY cartesian `&` expansion, retained ONLY for the exotic
+ * quoted-selector-interpolation parent that carried a top-level comma into a single
+ * parent branch (`composeOne`/`composeHeader` route the normal multi-parent case
+ * through `resolveComplexAmp`, which is position-aware and spec-faithful). Each `&`
+ * is its own odometer digit with the LEFTMOST `&` most-significant.
  */
 function joinAmpersand(canon: string, parents: string[]): string[] {
   const segs = canon.split('&');
@@ -3334,7 +3411,7 @@ function refGroupInterp(ref: ValueNode, frame: Frame | null, e: EvalCtx): GroupI
 
 /** [selector-capture] The group a lone bare `@{name}` simple resolves to (a
  *  single-part interp whose sole part is a group ref) — else null. */
-function simpleGroupInterp(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+function simpleGroupInterp(sim: SimpleToken, frame: Frame | null, e: EvalCtx): GroupInterp | null {
   const interp = sim.interp;
   if (interp?.parts.length !== 1) {
     return null;
@@ -3386,7 +3463,13 @@ function expandComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): May
  *  part folds to its bytes, EXCEPT a group ref (a `*[…]` capture or `~'…'` comma
  *  string) embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
  *  single `:is(…)` group; a single-branch capture splices its lone branch bare. */
-function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  // A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
+  // `:is(a, b)` form via the core-owned join. P0 pseudo args are STATIC (no
+  // per-frame resolution), so the static `pseudoCanonical` path suffices.
+  if (sim.type === 'PseudoSelector') {
+    return pseudoCanonical(sim);
+  }
   const interp = sim.interp;
   if (interp === null) {
     return sim.text ?? '';
@@ -3420,7 +3503,7 @@ function resolveSimpleText(sim: SimpleSelector, frame: Frame | null, e: EvalCtx)
 
 /** Synchronous selector-interpolation consumers cannot suspend and resume a
  * partially mutated selector. Public emitted selectors retain the async path. */
-function resolveSimpleTextSync(sim: SimpleSelector, frame: Frame | null, e: EvalCtx): string {
+function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: EvalCtx): string {
   const value = resolveSimpleText(sim, frame, e);
   if (isThenable(value)) {
     throw new Error('async value in synchronous selector interpolation is unsupported');
@@ -3465,23 +3548,117 @@ function resolveComplexSync(c: ComplexSelector, frame: Frame | null, e: EvalCtx)
   return value;
 }
 
-/** Compose ONE child complex over ALL `parents`, cartesian-expanded (child-major,
- * parent-minor). `&`-bearing children expand each `&` over every parent; `&`-less
- * children take an implicit descendant prefix, one branch per parent. */
-function composeOne(parents: string[], child: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const canon = resolveComplex(child, frame, e);
-  return mapMaybe(canon, (text) => {
-    if (complexHasAmpersand(child)) {
-    // A quoted selector interpolation can preserve a comma list as one parent
-    // branch. It cannot be substituted into a non-leading `&` merge template
-    // such as `.fruit-&`: Less rejects that ambiguous template rather than
-    // treating its commas as a source-text selector list.
-      if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
-        throw ERR.commaListInterpolation({ node: child, meta: { selector: text } });
-      }
-      return joinAmpersand(text, parents);
+/** [nesting] The `&` SUBJECT-slot substitution over MULTIPLE parents: the parent
+ *  list wraps once in `:is(a, b, …)`; a single parent substitutes bare. Only a bare
+ *  LEADING `&` (the compound's subject) uses this — a name-merged `&` distributes. */
+function ampSub(parents: string[]): string {
+  return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;
+}
+
+/** [nesting] One `&`-bearing token resolved against `parents`, position-aware.
+ *  A list-accepting pseudo (`:is`/`:where`/`:not`/`:has`/`:matches`) whose args
+ *  reference `&` recurses so the `&` becomes the BARE parent list inside the pseudo
+ *  (`:not(&)` over `.a, .b` → `:not(.a, .b)`, not the De-Morgan-wrong
+ *  `:not(.a), :not(.b)`). A bare LEADING `&` (`first`, the compound SUBJECT — `&`,
+ *  `&.mod`, `& + &`) wraps in `:is(parents)`, which keeps the subject even for a
+ *  complex parent (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a
+ *  fused append (`&__el`) or a `&` merged after a preceding name (`.qux&`,
+ *  `.fruit-&`) — is a name concatenation and DISTRIBUTES per parent (a group cannot
+ *  splice into a name; `:is(.foo .bar)` would also relocate the subject). Returns
+ *  one variant per distribution — the branch-multiplying case. */
+function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
+    return mapMaybe(resolveSelectorListAmp(sim.args, parents, frame, e),
+      branches => [`${sim.name}(${branches.join(', ')})`]);
+  }
+  return mapMaybe(resolveSimpleText(sim, frame, e), (text) => {
+    if (!text.includes('&')) {
+      return [text];
     }
-    return parents.map(p => p + ' ' + text);
+    if (first && text === '&') {
+      return [sub];
+    }
+    return parents.map(p => text.split('&').join(p));
+  });
+}
+
+/** [nesting] One compound resolved against `parents`, its tokens concatenated;
+ *  a distributing `&` (append/merge) multiplies its variants (cartesian). */
+function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], sub: string, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  const tokens = cmp.simples.map((sim, i) => resolveTokenAmp(sim, parents, sub, i === 0, frame, e));
+  return combineAll(tokens, (lists) => {
+    let acc = [''];
+    for (const variants of lists) {
+      const next: string[] = [];
+      for (const head of acc) {
+        for (const v of variants) {
+          next.push(head + v);
+        }
+      }
+      acc = next;
+    }
+    return acc;
+  });
+}
+
+/** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
+ *  position-aware substitution — the spec-faithful CSS-Nesting parent resolution
+ *  that replaces the old context-blind cartesian odometer. A whole selector branch
+ *  that is a bare `&` expands to the parent list itself (branch-multiplying); every
+ *  interior `&` resolves by role in `resolveCompoundAmp`. */
+function resolveComplexAmp(c: ComplexSelector, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  if ((c.leadingComb === undefined || c.leadingComb === ' ') && c.tail.length === 0 && c.head.simples.length === 1) {
+    const only = c.head.simples[0]!;
+    if (only.type === 'SimpleSelector' && only.interp === null && only.text === '&') {
+      return parents.slice();
+    }
+  }
+  const sub = ampSub(parents);
+  const compounds = [resolveCompoundAmp(c.head, parents, sub, frame, e),
+    ...c.tail.map(seg => resolveCompoundAmp(seg.compound, parents, sub, frame, e))];
+  return combineAll(compounds, (variants) => {
+    const lead = c.leadingComb !== undefined && c.leadingComb !== ' '
+      ? renderCombinator(c.leadingComb).trimStart()
+      : '';
+    let acc = variants[0]!.map(v => lead + v);
+    for (let i = 0; i < c.tail.length; i++) {
+      const comb = renderCombinator(c.tail[i]!.comb);
+      const next: string[] = [];
+      for (const head of acc) {
+        for (const t of variants[i + 1]!) {
+          next.push(head + comb + t);
+        }
+      }
+      acc = next;
+    }
+    return acc;
+  });
+}
+
+/** [nesting] Resolve a selector list against `parents`, flattening each complex's
+ *  branch variants. Reused for a list-accepting pseudo's args. */
+function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  return combineAll(list.selectors.map(c => resolveComplexAmp(c, parents, frame, e)), values => values.flat());
+}
+
+/** Compose ONE child complex over ALL `parents`. A MULTI-parent `&`-bearing child
+ * resolves each `&` by structural position (`resolveComplexAmp`); `&`-less children
+ * take an implicit descendant prefix, one branch per parent. A SINGLE parent — the
+ * common BEM/`&:hover` nesting — keeps the fast `joinAmpersand` string splice (byte-
+ * identical to the structural walk for one parent), which also carries the legacy
+ * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`). */
+function composeOne(parents: string[], child: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  if (!complexHasAmpersand(child)) {
+    return mapMaybe(resolveComplex(child, frame, e), text => parents.map(p => p + ' ' + text));
+  }
+  if (parents.length >= 2 && !parents.some(hasTopLevelComma)) {
+    return resolveComplexAmp(child, parents, frame, e);
+  }
+  return mapMaybe(resolveComplex(child, frame, e), (text) => {
+    if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
+      throw ERR.commaListInterpolation({ node: child, meta: { selector: text } });
+    }
+    return joinAmpersand(text, parents);
   });
 }
 
@@ -3499,24 +3676,28 @@ function composeSync(parents: string[], child: SelectorList, frame: Frame | null
 }
 
 /**
- * [nesting] The EMITTED-header branches for `child` under `parents`. Identical to
- * `compose` EXCEPT an `&`-less child under MULTIPLE parents compacts to a single
- * `:is(p0, p1, …) child` prefix (alpha v5 header form), instead of one cartesian
- * branch per parent. `compose` (the parent-list carried into further `&` nesting)
- * stays fully cartesian — the two forms diverge only for `&`-less multi-parent.
- * Only called with `parents.length >= 2` (callers use `compose` for the rest).
+ * [nesting] The EMITTED-header branches for `child` under `parents`. An `&`-less
+ * child under MULTIPLE parents compacts to a single `:is(p0, p1, …) child` prefix
+ * (alpha v5 header form); an `&`-bearing child resolves each `&` by structural
+ * position (`resolveComplexAmp`). Only called with `parents.length >= 2` (callers
+ * use `compose` for the rest).
  */
 function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const isPrefix = `:is(${parents.join(', ')}) `;
-  const parts = child.selectors.map(c => mapMaybe(resolveComplex(c, frame, e), (canon) => {
-    if (complexHasAmpersand(c)) {
-      if (parents.some(hasTopLevelComma) && !canon.startsWith('&')) {
-        throw ERR.commaListInterpolation({ node: c, meta: { selector: canon } });
-      }
-      return joinAmpersand(canon, parents);
+  const parts = child.selectors.map((c) => {
+    if (!complexHasAmpersand(c)) {
+      return mapMaybe(resolveComplex(c, frame, e), canon => [isPrefix + canon]);
     }
-    return [isPrefix + canon];
-  }));
+    if (parents.some(hasTopLevelComma)) {
+      return mapMaybe(resolveComplex(c, frame, e), (canon) => {
+        if (!canon.startsWith('&')) {
+          throw ERR.commaListInterpolation({ node: c, meta: { selector: canon } });
+        }
+        return joinAmpersand(canon, parents);
+      });
+    }
+    return resolveComplexAmp(c, parents, frame, e);
+  });
   return combineAll(parts, values => values.flat());
 }
 
@@ -8140,11 +8321,25 @@ interface NestedLeafBuffer {
   readonly flush: () => void;
 }
 
+/**
+ * [extend] A rule deferred to an enclosing block's hoist queue (an extend match that
+ * crosses the `&`). `bubble` is the PER-BOUNDARY hoist distance (`NestedRulePlan.
+ * hoistBubble`): the number of enclosing blocks the rule must rise out of. `1` (the
+ * classic single-level trigger-P/X hoist) emits at the immediate parent's level; `k > 1`
+ * re-hoists the entry up the ancestor chain (decrementing each level) until it lands
+ * `k` blocks up, so a match that crosses `k` nesting boundaries clears exactly those.
+ */
+interface HoistEntry {
+  rule: Rule;
+  frame: Frame;
+  bubble: number;
+}
+
 function emitNestedBody(
   statements: Statement[],
   frame: Frame,
   e: Emit,
-  hoist?: { rule: Rule; frame: Frame }[],
+  hoist?: HoistEntry[],
   imp = false, // [important] call-level `!important` forced onto this body's decls
   source: NestedHeaderSource | null = null,
   placement: NestedRuleMixinPlacement | null = null,
@@ -8192,16 +8387,18 @@ function emitNestedBody(
           }
           flushBuf();
           // [extend] a rule whose extend match crosses the `&` FLATTENS: defer it to
-          // the enclosing rule's hoist queue (emitted flat at that rule's depth).
+          // the enclosing rule's hoist queue. `hoistBubble` (default 1) is how many
+          // enclosing blocks it must rise out of — the per-boundary hoist distance.
           if (hoist && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten) {
-            hoist.push({ rule: node, frame });
+            const plan = extendProjection(frame, e)!.nestedPlan.get(node)!;
+            hoist.push({ rule: node, frame, bubble: plan.hoistBubble ?? 1 });
             break;
           }
           // Only a selected synthesized ruleset mixin gets a placement fact.  It
           // is consumed by the first `&`-bearing nested header; ordinary authored
           // nesting has no fact and stays literal in collapse:false mode.
           const appliesPlacement = placement !== null && selectorListHasAmpersand(node.selector);
-          const emitted = emitNestedRule(node, frame, e, imp, source, appliesPlacement ? placement : null);
+          const emitted = emitNestedRule(node, frame, e, imp, source, appliesPlacement ? placement : null, hoist);
           if (isThenable(emitted)) {
             return emitted.then(() => {
               if (appliesPlacement) {
@@ -8484,7 +8681,11 @@ function emitNestedRule(
   e: Emit,
   imp = false,
   source: NestedHeaderSource | null = null,
-  placement: NestedRuleMixinPlacement | null = null
+  placement: NestedRuleMixinPlacement | null = null,
+  // [extend] the ENCLOSING block's hoist queue: a crossing child that must rise more
+  // than one level (`bubble > 1`) is re-pushed here (decremented) instead of emitted
+  // at this rule's level, so it keeps bubbling up the ancestor chain until it lands.
+  outerHoist?: HoistEntry[]
 ): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true (the
   // flattened path applies the same gate in `flatten`).
@@ -8573,7 +8774,7 @@ function emitNestedRule(
   (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   // [extend] children that flatten (extend crossed the `&`) bubble out to this
   // rule's depth; collect them and emit flat after the block closes.
-  const hoist: { rule: Rule; frame: Frame }[] = [];
+  const hoist: HoistEntry[] = [];
   e.depth++;
   const finish = (): MaybePromise<void> => {
     e.depth--;
@@ -8622,10 +8823,18 @@ function emitNestedRule(
     };
     // [extend] hoisted (flattened) children at this rule's depth: a `renest` child
     // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
-    // emits FLAT.
+    // emits FLAT. A `bubble > 1` child must rise FURTHER: re-push it (decremented) to
+    // THIS rule's enclosing hoist queue so it keeps bubbling up the ancestor chain,
+    // landing exactly `bubble` blocks above its origin (its stripped header re-nests
+    // under the wrapper ancestors it lands inside). When there is no outer queue (an
+    // outermost block), it lands here — the highest reachable level.
     const runHoist = (index: number): MaybePromise<void> => {
       for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
         const h = hoist[hoistIndex]!;
+        if (h.bubble > 1 && outerHoist) {
+          outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1 });
+          continue;
+        }
         const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
           ? emitNestedRule(h.rule, h.frame, e, imp)
           : emitHoisted(h.rule, h.frame, e);

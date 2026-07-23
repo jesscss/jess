@@ -234,8 +234,8 @@ describe('Less AST grammar facts', () => {
         name: 'targets',
         value: {
           type: 'SelectorCapture',
-          branches: ['.notice', '.card:not(.muted,.disabled):nth-child(-n+2)', '.tail:nth-child(2n+1)'],
-          src: '*[.notice, .card:not(.muted,.disabled):nth-child(-n+2), .tail:nth-child(2n+1)]'
+          branches: ['.notice', '.card:not(.muted, .disabled):nth-child(-n+2)', '.tail:nth-child(2n+1)'],
+          src: '*[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)]'
         }
       }]
     });
@@ -3559,7 +3559,7 @@ describe('Less AST grammar facts', () => {
       throw new TypeError('expected Stylesheet');
     }
     expect(serialize(result.value)).toEqual({
-      css: '.card-item,\n#tone-active {\n  color: red;\n}\n.card-item.active,\n#tone-active.active {\n  color: blue;\n}\n'
+      css: '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     });
   });
 
@@ -3757,6 +3757,27 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
+    // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
+    // surrounding the argument inside the parens
+    // (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
+    // preserved verbatim; insignificant space surrounding the argument is
+    // normalized away, matching the canonical CSS grammar and the other dialects.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
+    ] as const) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
+      if (!isStylesheet(result.value)) {
+        continue;
+      }
+      expect(serialize(result.value).css, source).toEqual(expected);
+    }
+  });
+
   it('constructs static selector-valued functional pseudos through the recursive direct selector grammar', () => {
     const source = '.card:not(.disabled):has(.child > .grandchild), .note:is(.a, .b) { color: red; }';
     const cst = parseLessCst(source);
@@ -3766,12 +3787,83 @@ describe('Less AST grammar facts', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+    // Whitelisted selector-function pseudos structure their arg: `text` is null,
+    // structure lives in `args`, and the inline `:is(a, b)` join is core
+    // serialization's job. `:is`/`:matches` are crossable; `:not`/`:has` sealed.
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [
-        { head: { simples: [{ text: '.card' }, { text: ':not(.disabled)' }, { text: ':has(.child > .grandchild)' }] } },
-        { head: { simples: [{ text: '.note' }, { text: ':is(.a,.b)' }] } }
+        { head: { simples: [
+          { type: 'SimpleSelector', text: '.card' },
+          { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
+          { type: 'PseudoSelector', name: ':has', text: null, crossable: false }
+        ] } },
+        { head: { simples: [
+          { type: 'SimpleSelector', text: '.note' },
+          { type: 'PseudoSelector', name: ':is', text: null, crossable: true }
+        ] } }
       ] } }]
     });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.card:not(.disabled):has(.child > .grandchild),\n.note:is(.a, .b) {\n  color: red;\n}\n'
+    );
+  });
+
+  it('structures whitelisted selector-function pseudos while interpolated and :extend forms stay opaque', () => {
+    const headSimples = (source: string): unknown[] => {
+      const parsed = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(parsed.ok, source).toBe(true);
+      expect(parsed.unconsumedFrom, source).toBeNull();
+      return stylesheet(parsed.value).children
+        .flatMap(child => child.type === 'Rule' ? [child] : [])[0]
+        .selector.selectors[0].head.simples;
+    };
+
+    // Whitelisted `:is` structures: parser keeps `args` (structure), never a
+    // joined `text`; the inline `:is(.a, .b)` spelling is core serialization's job.
+    // `:is`/`:matches` are crossable for extend.
+    expect(headSimples('.x:is(.a, .b) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      {
+        type: 'PseudoSelector', name: ':is', text: null, crossable: true, interp: null,
+        args: { type: 'SelectorList', selectors: [
+          { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
+          { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+        ] }
+      }
+    ]);
+
+    // `:not` structures too but is sealed (crossable:false).
+    expect(headSimples('.x:not(.a, .b) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
+    ]);
+
+    // Non-whitelist `:global`/`:local` stay opaque SimpleSelector text (no space).
+    expect(headSimples('.x:global(.a, .b) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'SimpleSelector', text: ':global(.a,.b)' }
+    ]);
+
+    // An interpolated pseudo name stays an opaque interp-backed SimpleSelector —
+    // it never becomes a structured PseudoSelector.
+    expect(headSimples('.x:@{state} { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':' }, { ref: { name: 'state' } }] } }
+    ]);
+
+    // A `@{…}`-interpolation-bearing arg never reaches the static SelectorList
+    // arm: the whitelisted structured path requires a fully static arg, so this
+    // form does not parse (byte-identical to pre-change recognition).
+    for (const source of ['.x:is(@{sel}) { color: red; }', '.x:not(.a@{b}) { color: red; }']) {
+      const rejected = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), source).toBe(false);
+    }
+
+    // `:extend(...)` is a Less extend directive, not a pseudo: it is never
+    // structured and leaves the compound with only the subject SimpleSelector.
+    expect(headSimples('.x:extend(.a) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' }
+    ]);
   });
 
   it('retains leading combinators inside nested functional pseudo selectors', () => {
@@ -3783,11 +3875,13 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { type: 'SimpleSelector', text: ':is(:not(:has(> .foo)),:has(> .foo.bar))' }
+        { type: 'PseudoSelector', name: ':is', text: null, crossable: true }
       ] } }] } }]
     });
+    // Structured pseudos now render on ONE line with the canonical spaced join
+    // (`, `) via core serialization; the nested leading `>` combinators survive.
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      ':is(:not(:has(> .foo)),:has(> .foo.bar)) {\n  overflow: clip;\n}\n'
+      ':is(:not(:has(> .foo)), :has(> .foo.bar)) {\n  overflow: clip;\n}\n'
     );
   });
 
@@ -3843,6 +3937,45 @@ describe('Less AST grammar facts', () => {
     ] } }] });
   });
 
+  it('restricts the `of S` nth argument to the child index via the shared cssAstPseudoSyntax recognition', () => {
+    // `of S` is valid only for `:nth-child`/`:nth-last-child` (Selectors-4 §6.6.2);
+    // the type-index families take a bare `<An+B>` (§7.1). The shared
+    // `CssAstSyntaxNthChildName`/`CssAstSyntaxNthTypeName`/`CssAstSyntaxOfKeyword`
+    // recognitions from `@jesscss/internal-css-recognition/pseudo-consts` are what
+    // enforce this split — a stray `of S` on an of-type index must reject rather
+    // than fall through to an opaque descendant-selector parse.
+    for (const rejected of [
+      'a:nth-of-type(2n of .a) { color: red; }',
+      'a:nth-of-type(n of .a) { color: red; }',
+      'a:nth-last-of-type(-n+3 of .a) { color: red; }'
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, rejected, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), rejected).toBe(false);
+    }
+
+    for (const accepted of [
+      'a:nth-child(2n of .a) { color: red; }',
+      'a:nth-of-type(2n+1) { color: red; }',
+      'a:nth-last-of-type(odd) { color: red; }'
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, accepted, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), accepted).toBe(true);
+    }
+
+    // The Less-only `@{…}` interpolated An+B argument stays intact through the
+    // shared-name dispatch: `:nth-child(@{n})` remains an Interpolation-backed
+    // SimpleSelector, not a raw selector reparse.
+    const interp = run(lessAstGrammar.LessAstDocument, 'a:nth-child(@{n}) { color: red; }', { trivia: lessAstGrammar.whitespace });
+    expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(true);
+    expect(interp.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: 'a' },
+        { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation' } }
+      ] } }] } }]
+    });
+  });
+
   it('keeps public block-comment trivia inside static selector-valued pseudo arguments', () => {
     const source = '.card:not(/* before */ .disabled, /* between */ .muted):nth-child(/* numeric */ 2n + 1) { color: red; }';
     const cst = parseLessCst(source);
@@ -3854,7 +3987,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { text: '.card' }, { text: ':not(.disabled,.muted)' }, { text: ':nth-child(2n + 1)' }
+        { type: 'SimpleSelector', text: '.card' },
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
+        { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
       ] } }] } }]
     });
   });

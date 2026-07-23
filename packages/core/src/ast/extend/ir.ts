@@ -9,7 +9,8 @@
 
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
-import type { ComplexSelector, SelectorList } from '../nodes.js';
+import { complexHasInterp, simpleTokenText } from '../nodes.js';
+import type { ComplexSelector, SelectorList, SimpleToken } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
 
@@ -48,6 +49,18 @@ export interface Branch {
    * (hence its text) is fixed for its lifetime. `hidden`/`ext` are provenance only
    * and ignored by `branchText`, so stamping them after a text read cannot stale it. */
   key?: string;
+  /**
+   * [&-boundary] Per-SEGMENT ampersand-compose origin, one `Int8Array` entry per
+   * `segs[i]`. `bnd[i] === 0` ⇒ the segment is the ruleset's OWN-LOCAL selector;
+   * `bnd[i] === k > 0` ⇒ it was spliced in from the k-th enclosing ancestor by an
+   * `&`-compose (`composePath`). PRE-DECLARED `undefined` by the sole `mkBranch`
+   * factory (exactly like `key`) so a later `b.bnd = …` write lands on an existing
+   * field — never a hidden-class transition (V8 invariant 1 / R4). A branch with no
+   * boundary information (a bare target, an `:is()`-arg sub-branch) leaves it
+   * `undefined`, which every reader treats as "all own-local". `branchText`,
+   * `collectBranchAtoms`, `textSimples`, `branchSharesAtom` all IGNORE it (it is
+   * origin provenance, not selector text); `cloneBranch` copies it. */
+  bnd?: Int8Array;
   hidden?: boolean;
   /** [import:reference] true when this branch was PRODUCED by an extend (a folded-in
    * extender), false/absent for an original seed branch. Chaining an extend off a
@@ -63,7 +76,7 @@ export interface Branch {
  * fixpoint's hot path). `hidden`/`ext` are stamped after construction by the
  * provenance-carrying sites (`cloneBranch`, `buildContribs`), exactly as before. */
 export function mkBranch(segs: Seg[]): Branch {
-  return { segs, key: undefined };
+  return { segs, key: undefined, bnd: undefined };
 }
 
 /** A selector list level (a rule's own-local alternatives / an `:is()` arg). */
@@ -157,6 +170,11 @@ export function cloneBranch(b: Branch): Branch {
   // [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
   // every clone so a branch's visibility survives compose/solve/compaction unchanged.
   const out: Branch = mkBranch(b.segs.map(cloneSeg));
+  // [&-boundary] `bnd` is per-segment origin provenance, not text — carry it across
+  // every clone (a fresh `Int8Array`, since a clone's segs are a fresh array too).
+  if (b.bnd) {
+    out.bnd = Int8Array.from(b.bnd);
+  }
   if (b.hidden) {
     out.hidden = true;
   }
@@ -168,23 +186,51 @@ export function cloneBranch(b: Branch): Branch {
 
 /* ------------------------------------------------------------------ from AST */
 
-function compoundFromSimples(texts: string[]): Compound {
-  return { simples: texts.map(text => ({ t: 'text', text })) };
+/**
+ * Build the IR simple for one selector token.
+ *
+ * A CROSSABLE structured pseudo (`:is(...)`/`:matches(...)`) with a concrete arg
+ * list and NO interpolation anywhere in that list becomes the structured
+ * `{ t: 'is' }` graft the whole-branch matcher forks through (`branchWholeMatch`). Every other
+ * token flattens to its canonical text via `simpleTokenText`, exactly as before:
+ *   - a SEALED pseudo (`:where`/`:not`/`:has`/…, `crossable === false`) stays an
+ *     opaque `:where(…)` text token — its arg is not a boundary extend may cross;
+ *   - a degrade-to-opaque pseudo (`args === null`) keeps its retained `text`;
+ *   - a `@{…}`-interpolated token (`text: null`) contributes `''` — its concrete
+ *     text is only known in an entering frame the extend engine cannot access.
+ *
+ * The interp guard is load-bearing: an arg list that only resolves under
+ * interpolation must stay opaque (each `@{…}` contributes `''`) rather than a
+ * structured branch the matcher would treat as concrete atoms — the engine has no
+ * frame to materialize it. Structuring is byte-transparent to serialization: a
+ * `{ t: 'is' }` graft renders via `simpleText` to the same `:is(a, b)` join as
+ * `pseudoCanonical`, so a document with no matching extend is unchanged.
+ */
+function simpleFromToken(sim: SimpleToken): Simple {
+  if (
+    sim.type === 'PseudoSelector'
+    && sim.crossable
+    && sim.args !== null
+    && sim.interp === null
+    && !sim.args.selectors.some(complexHasInterp)
+  ) {
+    return { t: 'is', branches: levelFromSelectorList(sim.args) };
+  }
+  return { t: 'text', text: simpleTokenText(sim) };
+}
+
+function compoundFromTokens(simples: SimpleToken[]): Compound {
+  return { simples: simples.map(simpleFromToken) };
 }
 
 export function branchFromComplex(c: ComplexSelector): Branch {
   const segs: Seg[] = [];
-  // A selector token carrying `@{…}` interpolation has `text: null` (its concrete
-  // text is only known once resolved in an entering frame, which the extend
-  // engine has no access to). Represent it by its literal contribution (`''`),
-  // matching `Compound.canonical()`'s `sim.text ?? ''` convention, so the IR is
-  // always a plain string and no downstream `.includes`/`.split` hits null.
   segs.push({
     comb: c.leadingComb ?? ' ',
-    compound: compoundFromSimples(c.head.simples.map(s => s.text ?? ''))
+    compound: compoundFromTokens(c.head.simples)
   });
   for (const seg of c.tail) {
-    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map(s => s.text ?? '')) });
+    segs.push({ comb: seg.comb, compound: compoundFromTokens(seg.compound.simples) });
   }
   return segs.length === 0 ? mkBranch([{ comb: ' ', compound: { simples: [] } }]) : mkBranch(segs);
 }
@@ -265,4 +311,41 @@ export function multisetSubset(need: string[], have: string[]): boolean {
     counts.set(n, c - 1);
   }
   return true;
+}
+
+/**
+ * True when `a` and `b` are EQUAL multisets — same elements with the same counts.
+ * This is `multisetSubset` in BOTH directions (each ⊆ the other), computed in one
+ * pass off the equal-length invariant: same length + `a` ⊆ `b` ⟹ equal. Exact-mode
+ * whole-branch equivalence needs equality (consume-ALL: `.b.b.c` must NOT equal
+ * `.b.c`), not the one-directional subset the `all` sub-part path uses.
+ */
+export function multisetEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  const counts = new Map<string, number>();
+  for (const x of a) {
+    counts.set(x, (counts.get(x) ?? 0) + 1);
+  }
+  for (const y of b) {
+    const c = counts.get(y) ?? 0;
+    if (c <= 0) {
+      return false;
+    }
+    counts.set(y, c - 1);
+  }
+  return true;
+}
+
+/**
+ * The full serialized simples of a compound, INCLUDING `:is()` grafts (each graft is
+ * one opaque `:is(...)` token). Unlike `textSimples` (plain-text simples only, grafts
+ * dropped) this keeps grafts as tokens so a multiset comparison over the result treats
+ * `.a` and `.a:is(.b)` as distinct — matching the pre-fix `branchText` string equality,
+ * which the exact-mode equivalence must not loosen. Order-independent by construction:
+ * the caller multiset-compares, so simple order within the compound is irrelevant.
+ */
+export function simpleTexts(c: Compound): string[] {
+  return c.simples.map(simpleText);
 }

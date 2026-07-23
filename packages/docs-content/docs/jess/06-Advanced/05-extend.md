@@ -29,6 +29,12 @@ When the target matches only *part* of a compound selector, Jess grafts
 (`.a >` stays on the left). When the target matches a whole compound, the extender
 is appended to the selector list instead (no `:is()` wrapper).
 
+Grouping the match and the extender into `:is()` also raises **specificity**: an
+`:is()` scores as its most specific argument, so `.a > :is(.c, #b)` scores an ID even
+for the plain-class `.c` branch. See
+[Selector compaction — Specificity and `:is()` grouping](./09-selector-compaction.md#specificity-and-is-grouping-nesting--extend)
+for the cascade implications and the vs-4.x migration note.
+
 ## Exact matching
 
 Use `!exact` to require a whole-selector match — the equivalent of Less's plain

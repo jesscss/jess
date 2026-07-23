@@ -9,6 +9,7 @@ import { balanced, choice, composeLeaf, expect, field, literal, many, noTrivia, 
 import type { Combinator, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
+import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
 import {
   any,
   atRuleBlock,
@@ -31,6 +32,7 @@ import {
   stylesheet,
   rule,
   selist,
+  pseudoSelector,
   simpleSelector,
   spaced,
   url,
@@ -57,6 +59,7 @@ import type {
   Rule,
   SelectorList,
   SimpleSelector,
+  SimpleToken,
   Statement,
   ValueNode,
   ValueSlot
@@ -71,9 +74,13 @@ type CssAstLocalRules = {
   CssAstCompound: Combinator<CompoundSelector>;
   CssAstSimple: Combinator<SimpleSelector>;
   CssAstAttribute: Combinator<SimpleSelector>;
-  CssAstPseudo: Combinator<SimpleSelector>;
+  CssAstPseudo: Combinator<SimpleToken>;
   CssAstPseudoArgument: Combinator<string>;
+  CssAstOfTypePseudoArgument: Combinator<string>;
   CssAstLeadingDashPseudoArgument: Combinator<string>;
+  CssAstTypedNthPseudoArgument: Combinator<string>;
+  CssAstLeadingDashOfTypePseudoArgument: Combinator<string>;
+  CssAstTypedOfTypePseudoArgument: Combinator<string>;
   CssAstLeadingDashRawPseudoArgument: Combinator<string>;
   CssAstNestingSelector: Combinator<SimpleSelector>;
   CssAstProperty: Combinator<string>;
@@ -99,6 +106,7 @@ type CssAstLocalRules = {
   CssAstCalcParen: Combinator<Block>;
   CssAstDeclarationVarCall: Combinator<FunctionCall>;
   CssAstDeclarationCall: Combinator<FunctionCall>;
+  CssAstDeclarationIdent: Combinator<ValueNode>;
   CssAstDeclarationParen: Combinator<Block>;
   CssAstDeclarationAny: Combinator<ValueNode>;
   CssAstDeclarationValueAtom: Combinator<ValueNode>;
@@ -125,7 +133,6 @@ type CssAstLocalRules = {
   CssAstOpaqueAtPrelude: Combinator<string | null>;
   CssAstOpaqueBody: Combinator<string>;
   CssAstOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
-  CssAstRequiredAtPrelude: Combinator<ValueNode>;
   CssAstQueryBareFeature: Combinator<ValueNode>;
   CssAstQueryRangeFeature: Combinator<ValueNode>;
   CssAstQueryFeature: Combinator<ValueNode>;
@@ -205,6 +212,16 @@ function isNodeType<T extends string>(value: unknown, type: T): value is { reado
 function isSimple(value: unknown): value is SimpleSelector {
   return isNodeType(value, 'SimpleSelector');
 }
+
+function isSimpleToken(value: unknown): value is SimpleToken {
+  return isNodeType(value, 'SimpleSelector') || isNodeType(value, 'PseudoSelector');
+}
+
+// Selector-function pseudos whose argument is retained as a structured
+// `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
+// never on colon count — `::slotted()` takes selector args but is absent here,
+// so it stays opaque text. `crossable` (a narrower set) is decided in core.
+const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
 function isCompound(value: unknown): value is CompoundSelector {
   return isNodeType(value, 'CompoundSelector');
@@ -380,6 +397,20 @@ function valueChildren(children: readonly unknown[]): ValueNode[] {
   return values;
 }
 
+/** First structured value child without allocating a filtered array. The
+ * component-value reducers only need the leading value; the whole-array
+ * `valueChildren` above stays for the math/query reducers that fold every
+ * operand. */
+function firstValue(children: readonly unknown[]): ValueNode {
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
+    if (isValue(child)) {
+      return child;
+    }
+  }
+  throw new Error('CSS AST value grammar lost its value child');
+}
+
 function optionalValue(value: unknown): ValueNode | null {
   if (value === null || value === undefined) {
     return null;
@@ -400,6 +431,19 @@ function valueSlotChildren(children: readonly unknown[]): ValueSlot[] {
     throw new Error('CSS AST value grammar lost its value child');
   }
   return values;
+}
+
+/** First slot-aware value child without allocating a filtered array. Mirrors
+ * `firstValue` for the component-value/call-argument reducers that only need
+ * the leading slot value. */
+function firstValueSlot(children: readonly unknown[]): ValueSlot {
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
+    if (isValueSlotValue(child)) {
+      return child;
+    }
+  }
+  throw new Error('CSS AST value grammar lost its value child');
 }
 
 function foldOperation(children: readonly unknown[]): ValueNode {
@@ -429,10 +473,6 @@ function documentStatements(children: readonly unknown[]): Statement[] {
     throw new Error('CssAstDocument has an unexpected child');
   }
   return statements;
-}
-
-function frameOneStatements(children: readonly unknown[]): Statement[] {
-  return children.filter(isDocumentStatement);
 }
 
 function blockStatements(children: readonly unknown[]): Statement[] {
@@ -466,7 +506,11 @@ const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
 const genericFunctionName = regex(/(?!(?:calc)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 // Only the Selectors An+B pseudo families give a leading numeric argument the
 // special An+B meaning. Every other functional pseudo retains its raw argument.
-const nthPseudoNameWithArgument = regex(/nth-(?:last-)?(?:child|of-type)(?=\()/i);
+// The two families diverge on the `of S` tail: `:nth-child`/`:nth-last-child`
+// accept it (Selectors-4 §6.6.2), `:nth-of-type`/`:nth-last-of-type` do not.
+// The `g`-free name recognitions live in the shared `cssAstPseudoSyntax`
+// artifact and are referenced as `g.CssAstSyntaxNthChildName` /
+// `g.CssAstSyntaxNthTypeName`.
 // Public `anyValue` is intentionally permissive. The direct declaration
 // extension needs only its punctuation-run branch: identifier-shaped values
 // already lower through CssAstKeyword, and `#` stays reserved for the strict
@@ -477,21 +521,90 @@ const declarationAnyCharacter = choice(
   literal('?'), literal('$'), literal('@'), literal('%'), literal('&'),
   literal(':'), literal('.')
 );
+// declarationAnyCharacter minus `/`. Leading the punctuation-run arm with this
+// (concrete 16-char first-set) instead of a `not('/*')` guard lets the compiler
+// resolve CssAstDeclarationAny's first-set and first-char-gate it; the `/` cases
+// keep their adjacent-comment guard in the dedicated slash arm.
+const nonSlashDeclarationAnyCharacter = choice(
+  literal('+'), literal('-'), literal('*'), literal('='),
+  literal('<'), literal('>'), literal('|'), literal('~'), literal('^'),
+  literal('?'), literal('$'), literal('@'), literal('%'), literal('&'),
+  literal(':'), literal('.')
+);
 // `@import` is a CSS statement at-rule with a required target. Its dedicated
 // grammar retains the prelude as grammar-owned bytes while it validates that
 // target; loading and resolution are not parser or AST responsibilities.
 const importAtKeyword = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
+// Grammar-local copy of CssAstSyntaxStatementAtRuleName. Leading the statement
+// at-rule with this resolves the arm's `@` first-set so the compiler first-char
+// gates it, instead of entering the statement node frame speculatively at every
+// declaration and ruleset (the cross-composition reference reads as `any`).
+const statementAtRuleName = regex(/@(?!(?:import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+// Grammar-local copies of the conditional at-keywords (identical to the shared
+// CssAstSyntax*AtKeyword rules). Same first-set-resolution motive as above: a
+// concrete `@media`/`@supports`/`@container` leading recognizer lets the compiler
+// first-char-gate the conditional-block arms instead of entering them at every
+// top-level statement and conditional-body item.
+const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+const mediaAtKeyword = regex(/@media(?![-\w])/i);
+const containerAtKeyword = regex(/@container(?![-\w])/i);
+// Grammar-local copies of the remaining block at-keywords (identical to the
+// shared CssAstSyntax* rules) so every at-rule block arm in the document/body
+// choices leads with a concrete `@` first-set and the compiler first-char-gates
+// the whole at-rule cluster. NOTE: these mirror packages/internal-css-recognition
+// recognition.ts; genericAtRuleName's exclusion list in particular must stay in
+// sync with the known at-rule names above.
+const descriptorAtKeyword = regex(/@(?:font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition)(?![-\w])/i);
+const scopeAtKeyword = regex(/@scope(?![-\w])/i);
+const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
+const layerAtKeyword = regex(/@layer(?![-\w])/i);
+const pageAtKeyword = regex(/@page(?![-\w])/i);
+const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-\w])/i);
+const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
+const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
+const genericAtRuleName = regex(/@(?!(?:import|media|container|supports|starting-style|page|scope|font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition|-moz-document|document|font-feature-values|layer|(?:-[a-z]+-)?keyframes)(?=[^-\w]|$))-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const urlName = regex(/url(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
 const importTailWhitespace = regex(/[ \t\n\r\f]+/);
 const importTailText = regex(/[^()[\]"'\/; \t\n\r\f]+/);
 const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
+// A relative selector (a `:has()` argument) may open with a combinator. Only the
+// child/sibling combinators lead a relative selector; a leading `|`/`||` is
+// namespace syntax, not a relative combinator.
+const relativeSelectorCombinator = choice(literal('>'), literal('+'), literal('~'));
+// A pseudo selector always opens with `:`/`::`. Spelling this leading colon as a
+// grammar-local recognizer (identical to the shared CssAstSyntaxPseudoColon) lets
+// the compiler resolve the pseudo arm's first-set to `:` and first-char-gate it in
+// the compound-selector choice, instead of treating a cross-composition reference
+// as an `any` first-set and speculatively entering the pseudo node at every simple
+// selector.
+const pseudoColon = regex(/::?/);
+// Grammar-local copy of CssAstSyntaxSimple. As the fallback arm of the compound
+// selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
+// `*`) so the compiler first-char-gates the whole compound choice; a cross-
+// composition reference reads as `any`, entering the simple-selector node frame
+// at every compound-selector boundary (`{`, `,`, whitespace).
+const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
+// Grammar-local copies of the leading hex-color and number recognizers (identical
+// to CssAstSyntaxHexColor / CssAstSyntaxNumber). Leading a component-value choice
+// arm with a cross-composition `g.CssAstSyntax*` reference leaves that arm's
+// first-set unresolved (`any`), so the compiler enters the Color / Dimension node
+// frame speculatively at every value atom. A local leading recognizer resolves the
+// arm's first-set (`#` / `[+-.0-9]`) so it is first-char-gated instead.
+const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
+const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 const customDoubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const customSingleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const customEscape = regex(/\\[^\n\r\f]/);
 const customDoubleQuoted = sequence(literal('"'), customDoubleQuotedText, literal('"'));
 const customSingleQuoted = sequence(literal('\''), customSingleQuotedText, literal('\''));
+// Balanced-group skips shared by the value, import-tail, calc var()-fallback,
+// and at-prelude scanners. One combinator per delimiter, reused at every skip
+// site instead of respelling the identical comment/escape/quote skip set.
+const balancedParens = balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
+const balancedBrackets = balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
+const balancedBraces = balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
 // A general-enclosed payload is grammar-owned arbitrary CSS component text. This
 // raw-template chunk deliberately stops at every structural delimiter; quotes,
 // comments, and balanced groups below own those bytes instead. It is a Parseman
@@ -507,32 +620,26 @@ const customValue = scanTo(choice(literal(';'), literal('}')), {
     customEscape,
     customDoubleQuoted,
     customSingleQuoted,
-    balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-    balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-    balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+    balancedParens,
+    balancedBrackets,
+    balancedBraces
   ]
-});
-const nestedImportTailGroup = balanced('(', ')', {
-  skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted]
-});
-const nestedImportTailSquare = balanced('[', ']', {
-  skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted]
 });
 const importTailGroup = sequence(
   literal('('),
   scanTo(literal(')'), {
-    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, nestedImportTailGroup]
+    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedParens]
   }),
   expect(literal(')'), ')')
 );
 const importTailSquareGroup = sequence(
   literal('['),
   scanTo(literal(']'), {
-    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, nestedImportTailSquare]
+    skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets]
   }),
   expect(literal(']'), ']')
 );
-export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, rules<CssAstLocalRules>({ trivia: whitespace }, (g) => {
+export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<CssAstLocalRules>({ trivia: whitespace }, (g) => {
   const pseudoRawDoubleQuoted = sequence(literal('"'), g.CssAstSyntaxDoubleQuotedText, literal('"'));
   const pseudoRawSingleQuoted = sequence(literal('\''), g.CssAstSyntaxSingleQuotedText, literal('\''));
   const pseudoRawArgument = scanTo(literal(')'), {
@@ -545,7 +652,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ]
   });
   const CssAstComment = node('CssAstComment', blockComment, children => comment(tokenText(children[0])));
-  const CssAstSimple = node('CssAstSimple', g.CssAstSyntaxSimple, children => simpleSelector(tokenText(children[0])));
+  const CssAstSimple = node('CssAstSimple', simpleSelectorToken, children => simpleSelector(tokenText(children[0])));
   const CssAstAttribute = node<SimpleSelector>(
     'CssAstAttribute',
     sequence(
@@ -564,8 +671,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstLeadingDashPseudoArgument',
     parser({ trivia: whitespace }, sequence(
       noTrivia(sequence(literal('-'), g.CssAstSyntaxNth)),
-      optional(sequence(optional(blockComment), regex(/of(?![-\w])/i), g.CssAstSelector)),
-      regex(/(?=\))/)
+      optional(sequence(optional(blockComment), g.CssAstSyntaxOfKeyword, g.CssAstSelector)),
+      g.CssAstSyntaxPseudoCloseAhead
     )),
     (children) => {
       const nth = `-${tokenText(children[1])}`;
@@ -587,41 +694,166 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     children => children.map(sourceText).join('')
   );
+  // A non-dash-led An+B argument (`2n+1`, `n+3`, `n - 3`, `even`). Selectors-4
+  // defines the `<An+B>` microsyntax with OPTIONAL whitespace around the `+`/`-`
+  // sign — `2n + 1` and `n - 3` are as valid as `2n+1`
+  // (https://www.w3.org/TR/selectors-4/#anb-microsyntax; the equivalent grammar
+  // note is https://www.w3.org/TR/css-syntax-3/#the-anb-type). The shared `nth`
+  // recognition already spans that whitespace; recognize the complete typed form
+  // here so a bare-`n`-led argument (`n+3`) is not first claimed by the selector
+  // arm below as a lone type selector `n` and then left unable to close. This
+  // mirrors the negative `CssAstLeadingDashPseudoArgument` arm for the positive
+  // and unsigned cases; the trailing `(?=\))` keeps malformed forms (`2n +`,
+  // `2n+1x`) on their existing rejecting path.
+  const CssAstTypedNthPseudoArgument = node<string>(
+    'CssAstTypedNthPseudoArgument',
+    parser({ trivia: whitespace }, sequence(
+      g.CssAstSyntaxNth,
+      optional(sequence(optional(blockComment), g.CssAstSyntaxOfKeyword, g.CssAstSelector)),
+      g.CssAstSyntaxPseudoCloseAhead
+    )),
+    (children) => {
+      const nth = tokenText(children[0]);
+      const selector = children.find(isSelectorList);
+      const comment = children.find(child => isTerminalText(child) && tokenText(child).startsWith('/*'));
+      return selector === undefined ? nth : `${nth}${comment === undefined ? '' : tokenText(comment)} of ${selectorArgumentText(selector)}`;
+    }
+  );
+  // `:nth-of-type`/`:nth-last-of-type` accept only a BARE `<An+B>` — Selectors-4
+  // §6.6.2 does not define an `of S` tail for the type-index families. These arms
+  // mirror the child arms above but omit the optional `of <selector>` clause, so
+  // a `... of ...` argument no longer matches here and falls to the raw/reject
+  // path (the CSS-aligned owner decision, §7.1).
+  const CssAstLeadingDashOfTypePseudoArgument = node<string>(
+    'CssAstLeadingDashOfTypePseudoArgument',
+    parser({ trivia: whitespace }, sequence(
+      noTrivia(sequence(literal('-'), g.CssAstSyntaxNth)),
+      g.CssAstSyntaxPseudoCloseAhead
+    )),
+    children => `-${tokenText(children[1])}`
+  );
+  const CssAstTypedOfTypePseudoArgument = node<string>(
+    'CssAstTypedOfTypePseudoArgument',
+    parser({ trivia: whitespace }, sequence(
+      g.CssAstSyntaxNth,
+      g.CssAstSyntaxPseudoCloseAhead
+    )),
+    children => tokenText(children[0])
+  );
   const CssAstPseudoArgument = node<string>(
     'CssAstPseudoArgument',
     choice(
       g.CssAstLeadingDashPseudoArgument,
       g.CssAstLeadingDashRawPseudoArgument,
+      g.CssAstTypedNthPseudoArgument,
       parser({ trivia: interstitialTrivia }, g.CssAstSelector),
       sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), pseudoRawArgument)
     ),
     children => selectorArgumentText(children[0])
   );
-  const CssAstGenericPseudoArgument = node<string>(
+  // The `:nth-of-type` family's argument: identical to `CssAstPseudoArgument`
+  // except the An+B arms are the bare (no-`of`) variants. The two bare An+B arms
+  // reject an `of` tail via their close-ahead, but the selector and raw fallbacks
+  // would otherwise re-capture `<An+B> of …` as opaque text (the selector arm as a
+  // compound selector, the raw arm as a scanned span). A negative lookahead for an
+  // `<An+B>` immediately followed by `of` closes both leaks so the whole of-type
+  // branch fails — Selectors-4 §6.6.2 defines `of S` only for nth-child/last-child
+  // (§7.1). The guard fires ONLY on an An+B-prefixed `of` tail, so every argument
+  // that does not use one (a plain selector or opaque raw arg) stays byte-identical.
+  const CssAstOfTypePseudoArgument = node<string>(
+    'CssAstOfTypePseudoArgument',
+    choice(
+      g.CssAstLeadingDashOfTypePseudoArgument,
+      g.CssAstLeadingDashRawPseudoArgument,
+      g.CssAstTypedOfTypePseudoArgument,
+      sequence(
+        not(parser({ trivia: whitespace }, sequence(g.CssAstSyntaxNth, g.CssAstSyntaxOfKeyword))),
+        choice(
+          parser({ trivia: interstitialTrivia }, g.CssAstSelector),
+          sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), pseudoRawArgument)
+        )
+      )
+    ),
+    children => selectorArgumentText(children[0])
+  );
+  // Retain the parsed `SelectorList` rather than collapsing it to text: a
+  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // `args`. The raw arm still yields its scanned text. `CssAstPseudo` derives the
+  // authored `text` from whichever it gets via `selectorArgumentText`, so the
+  // SimpleSelector text is byte-identical to the pre-P0.2 collapse.
+  const CssAstGenericPseudoArgument = node<SelectorList | string>(
     'CssAstGenericPseudoArgument',
     choice(
       parser({ trivia: interstitialTrivia }, g.CssAstSelector),
       pseudoRawArgument
     ),
-    children => selectorArgumentText(children[0])
+    children => isSelectorList(children[0]) ? children[0] : selectorArgumentText(children[0])
+  );
+  // A `:has()` argument is a relative selector, so an individual complex may open
+  // with a combinator (`:has(> .b)`). The outer selector grammar forbids a leading
+  // combinator, so this pseudo-private complex admits an optional relative one and
+  // rides it on the ComplexSelector's `leadingComb`. A leading `|` is namespace
+  // syntax, not a relative combinator, so it is excluded (mirrors Less's
+  // `relativeSelectorCombinator`).
+  const CssAstRelativeComplex = node<ComplexSelector>(
+    'CssAstRelativeComplex',
+    sequence(optional(relativeSelectorCombinator), g.CssAstComplex),
+    (children) => {
+      const complex = children.find(isComplex);
+      if (complex === undefined) {
+        throw new Error('CssAstRelativeComplex requires a complex selector');
+      }
+      if (children.length === 1) {
+        return complex;
+      }
+      const lead = tokenText(children[0]);
+      if (lead !== '>' && lead !== '+' && lead !== '~') {
+        throw new Error('CssAstRelativeComplex produced an invalid leading combinator');
+      }
+      return { ...complex, leadingComb: lead };
+    }
+  );
+  // The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+  // selector-ONLY argument: a (relative) selector list with no general-any text
+  // fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
+  // non-relative shape reduces byte-identically to `CssAstSelector` (both assemble
+  // `selist(...selectorComplexes(children))`); the retained `SelectorList` becomes
+  // structured `PseudoSelector.args` in `CssAstPseudo`, never joined at parse.
+  const CssAstSelectorOnlyPseudoArgument = node<SelectorList>(
+    'CssAstSelectorOnlyPseudoArgument',
+    parser({ trivia: interstitialTrivia }, sequence(CssAstRelativeComplex, many(sequence(literal(','), CssAstRelativeComplex)))),
+    children => selist(...selectorComplexes(children))
   );
   // Both pseudo arms share the leading `:`/`::` colon. Left-factor it so that
   // sub-rule runs once per pseudo instead of once per arm; the An+B and generic
   // branches then differ only after the colon. Both original reducers already
   // collapse to the same "head, plus optional (arg) at child index 3" shape, so
   // the merged node keeps byte-identical SimpleSelector text.
-  const CssAstPseudo = node<SimpleSelector>(
+  const CssAstPseudo = node<SimpleToken>(
     'CssAstPseudo',
     sequence(
-      g.CssAstSyntaxPseudoColon,
+      pseudoColon,
       choice(
-        sequence(nthPseudoNameWithArgument, literal('('), g.CssAstPseudoArgument, literal(')')),
-        sequence(not(nthPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
+        sequence(g.CssAstSyntaxNthChildName, literal('('), g.CssAstPseudoArgument, literal(')')),
+        sequence(g.CssAstSyntaxNthTypeName, literal('('), g.CssAstOfTypePseudoArgument, literal(')')),
+        sequence(g.CssAstSyntaxSelectorArgPseudoName, literal('('), CssAstSelectorOnlyPseudoArgument, literal(')')),
+        sequence(not(g.CssAstSyntaxSelectorArgPseudoName), not(g.CssAstSyntaxNthName), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
       )
     ),
     (children) => {
       const head = `${tokenText(children[0])}${tokenText(children[1])}`;
-      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${tokenText(children[3])})`);
+      if (children.length === 2) {
+        return simpleSelector(head);
+      }
+      // Parser = STRUCTURE + trivia only. A whitelisted selector-function pseudo
+      // keeps the parsed `args` (SelectorList) and does NOT join: core serialize
+      // owns the inline `:is(a, b)` rule (`pseudoCanonical`). The opaque/nth/raw
+      // path still collapses to SimpleSelector text via `selectorArgumentText`.
+      const arg = children[3];
+      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(tokenText(children[1]).toLowerCase())) {
+        return pseudoSelector(head, arg);
+      }
+      return simpleSelector(`${head}(${selectorArgumentText(arg)})`);
     }
   );
   // `&` is a semantic selector token, not a post-parse text substitution. The
@@ -634,9 +866,9 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     parser({ trivia: interstitialTrivia }, g.CssAstPseudo),
     g.CssAstSimple
   )))), (children) => {
-    const simples: SimpleSelector[] = [];
+    const simples: SimpleToken[] = [];
     for (const child of children) {
-      if (!isSimple(child)) {
+      if (!isSimpleToken(child)) {
         throw new TypeError('CssAstCompound produced a non-simple selector child.');
       }
       simples.push(child);
@@ -670,10 +902,10 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     customPropertyName,
     children => keyword(tokenText(children[0]))
   );
-  const CssAstColor = node('CssAstColor', g.CssAstSyntaxHexColor, children => color(tokenText(children[0])));
+  const CssAstColor = node('CssAstColor', hexColor, children => color(tokenText(children[0])));
   const CssAstDimension = node(
     'CssAstDimension',
-    noTrivia(sequence(g.CssAstSyntaxNumber, optional(g.CssAstSyntaxDimensionUnit))),
+    noTrivia(sequence(numberValue, optional(g.CssAstSyntaxDimensionUnit))),
     (children) => {
       const numberText = tokenText(children[0]);
       const unit = children.length > 1 ? tokenText(children[1]) : '';
@@ -738,7 +970,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcParen = node(
     'CssAstCalcParen',
     noTrivia(sequence(literal('('), many(calcWhitespace), g.CssAstMathSum, many(calcWhitespace), literal(')'))),
-    children => block(valueChildren(children)[0]!)
+    children => block(firstValue(children))
   );
   // `var()` is a component-value substitution boundary even inside a strict
   // calc expression. Its fallback is its own component-value sequence, while
@@ -754,35 +986,34 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   // bodies are captured with scanTo. These zero-width structural guards make
   // that lossless capture reject a closer reached before a nested, differently
   // shaped block has closed: `[a(b]` and `{a[b}` cannot be accepted merely
-  // because the outer leaf sees its own closer first.
-  const calcVarFallbackNestedBracket = balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
-  const calcVarFallbackNestedBrace = balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
+  // because the outer leaf sees its own closer first. The nested-group skips are
+  // the shared `balancedBrackets`/`balancedBraces` combinators.
   const calcVarFallbackBracketCrossParen = sequence(
     literal('['),
-    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal('('),
-    scanTo(choice(literal(')'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(choice(literal(')'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal(']')
   );
   const calcVarFallbackBracketCrossBrace = sequence(
     literal('['),
-    scanTo(literal('{'), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(literal('{'), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal('{'),
-    scanTo(choice(literal('}'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBracket] }),
+    scanTo(choice(literal('}'), literal(']')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }),
     literal(']')
   );
   const calcVarFallbackBraceCrossParen = sequence(
     literal('{'),
-    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(literal('('), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('('),
-    scanTo(choice(literal(')'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(choice(literal(')'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('}')
   );
   const calcVarFallbackBraceCrossBracket = sequence(
     literal('{'),
-    scanTo(literal('['), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(literal('['), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('['),
-    scanTo(choice(literal(']'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, calcVarFallbackNestedBrace] }),
+    scanTo(choice(literal(']'), literal('}')), { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }),
     literal('}')
   );
   // A parenthesized fallback is structural, unlike the raw bracket/brace
@@ -829,7 +1060,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
           customEscape,
           customDoubleQuoted,
           customSingleQuoted,
-          balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+          balancedBrackets
         ]
       }),
       literal(']')
@@ -847,7 +1078,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
           customEscape,
           customDoubleQuoted,
           customSingleQuoted,
-          balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+          balancedBraces
         ]
       }),
       literal('}')
@@ -876,7 +1107,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcVarFallbackItem = node(
     'CssAstCalcVarFallbackItem',
     choice(g.CssAstCalcVarFallbackTerm, g.CssAstCalcVarFallbackEmpty),
-    children => valueSlotChildren(children)[0]!
+    children => firstValueSlot(children)
   );
   const CssAstCalcVarFallback = node(
     'CssAstCalcVarFallback',
@@ -913,7 +1144,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcValue = node(
     'CssAstCalcValue',
     choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCalcVarCall, parser({ trivia: whitespace }, g.CssAstCall), g.CssAstCalcParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstMathProduct = node(
     'CssAstMathProduct',
@@ -928,7 +1159,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstCalcCall = node(
     'CssAstCalcCall',
     noTrivia(sequence(regex(/calc(?=\()/i), literal('('), many(calcWhitespace), g.CssAstMathSum, many(calcWhitespace), literal(')'))),
-    children => funcCall(tokenText(children[0]), [valueChildren(children)[0]!])
+    children => funcCall(tokenText(children[0]), [firstValue(children)])
   );
   // Preserve the public declaration component-value language without letting
   // its permissive forms leak into query preludes or calc. `calc(...)` remains
@@ -944,9 +1175,21 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     // that slash as one structured punctuation component so `/ .5` does not
     // swallow the numeric leaf into opaque bytes; punctuation runs such as
     // `//` remain losslessly represented as one Any node.
+    //
+    // Both original arms led with not('/*'), collapsing this node's first-set to
+    // 'any' so it (and the whole value atom it terminates) entered speculatively
+    // at every value-term boundary. This value path runs under the enclosing
+    // value-term noTrivia, so the '/*' guard is adjacent-only; split on the first
+    // char instead: the '/' arm consumes '/', rejects an adjacent '*' (comment),
+    // then keeps the single-slash-before-number/ws case or continues the run; the
+    // non-slash arm leads with the 16 non-'/' punctuation literals. Every arm now
+    // resolves a concrete first-set, so the compiler first-char-gates it.
     choice(
-      noTrivia(sequence(not(sequence(literal('/'), literal('*'))), literal('/'), regex(/(?=[.0-9 \t\n\r\f])/))),
-      sequence(not(sequence(literal('/'), literal('*'))), oneOrMore(declarationAnyCharacter))
+      noTrivia(sequence(literal('/'), not(literal('*')), choice(
+        regex(/(?=[.0-9 \t\n\r\f])/),
+        many(declarationAnyCharacter)
+      ))),
+      sequence(nonSlashDeclarationAnyCharacter, many(declarationAnyCharacter))
     ),
     children => any(children.map(tokenText).join(''))
   );
@@ -960,6 +1203,40 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       }
       const args = children.filter(isValueSlotValue);
       return funcCall(name.value, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
+    }
+  );
+  // A generic-function call and a bare keyword share the same identifier
+  // prefix. Rather than attempt the call (scan the identifier, require `(`,
+  // fail, roll back) and then re-scan the identifier as a keyword, recognize
+  // the identifier ONCE and branch on the optional `(` call tail. This is the
+  // scannerless equivalent of the reference lexer's Function-vs-Value token
+  // split: no shared-prefix re-scan on the hottest value token. url()/var()/
+  // calc() keep their dedicated preceding arms; the retained not(urlOpen) guard
+  // and the outer not(calc) guard preserve their exact error paths.
+  const CssAstDeclarationIdent = node<ValueNode>(
+    'CssAstDeclarationIdent',
+    // Lead with genericFunctionName (a grammar-local regex) so this arm resolves a
+    // concrete identifier first-set and the compiler first-char-gates it, instead
+    // of entering it speculatively at every value-atom boundary. The former
+    // not(urlOpen) guard is unreachable here: `url(` is always consumed (or
+    // hard-errored) by the preceding CssAstUrl arm, so it never reaches this arm.
+    sequence(
+      genericFunctionName,
+      optional(sequence(
+        literal('('),
+        optional(cssValueTrivia),
+        optional(sequence(g.CssAstDeclarationValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstDeclarationValueTerm)))),
+        optional(cssValueTrivia),
+        literal(')')
+      ))
+    ),
+    (children, fields) => {
+      const name = tokenText(children[0]);
+      if (!children.some(child => isTerminalText(child) && tokenText(child) === '(')) {
+        return keyword(name);
+      }
+      const args = children.filter(isValueSlotValue);
+      return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
     }
   );
   // `var()` has one required custom-property argument and one optional
@@ -981,17 +1258,20 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDeclarationValueAtom = node(
     'CssAstDeclarationValueAtom',
     // `calc()` is a declaration component just like url()/var()/a generic
-    // function, including after a prior component (`0 calc(...)`). It must
-    // still be selected at its own opener: the guard keeps a malformed calc
-    // from degrading into Keyword("calc") followed by a permissive paren.
+    // function, including after a prior component (`0 calc(...)`). It is selected
+    // at its own opener by the leading CssAstCalcCall arm. The former
+    // not(?=calc\() guard on the second arm was redundant AND poisoned this
+    // node's first-set to 'any' (so it entered speculatively at every value-term
+    // boundary): a malformed `calc(` cannot degrade into Keyword+paren here
+    // because CssAstDeclarationIdent's genericFunctionName already excludes
+    // `calc(`, so it fails and the atom is rejected exactly as before. Dropping
+    // the guard flattens the choice so every arm leads with a concrete first-set
+    // and the compiler first-char-gates the whole value atom.
     choice(
       g.CssAstCalcCall,
-      sequence(
-        not(regex(/(?=calc\()/i)),
-        choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationCall, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword, g.CssAstDeclarationAny)
-      )
+      g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationIdent, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstDeclarationAny
     ),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstDeclarationValueTerm = node(
     'CssAstDeclarationValueTerm',
@@ -1031,12 +1311,12 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstDeclarationCall,
       sequence(not(sequence(g.CssAstSyntaxKeyword, literal('('))), g.CssAstDeclarationExtendedValue)
     ),
-    children => valueSlotChildren(children)[0]!
+    children => firstValueSlot(children)
   );
   const CssAstValueAtom = node(
     'CssAstValueAtom',
     choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCall, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstValueTerm = node('CssAstValueTerm', noTrivia(sequence(CssAstValueAtom, many(choice(
     sequence(field('separator', cssValueTrivia), CssAstValueAtom),
@@ -1063,7 +1343,13 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   // cannot become declaration values or block the `!important` reduction.
   const CssAstImportant = node(
     'CssAstImportant',
-    sequence(many(blockComment), literal('!'), many(blockComment), g.CssAstSyntaxImportant, many(blockComment)),
+    // Lead with `!` (the cheap disambiguating signal) so this arm resolves a
+    // concrete first-set and optional(Important) is first-char-gated instead of
+    // entering the node frame at every declaration's value boundary. The former
+    // leading many(blockComment) was dead: the enclosing declaration already
+    // consumes any comments before the `!` marker, and this reducer ignores its
+    // children, so dropping it is output-identical.
+    sequence(literal('!'), many(blockComment), g.CssAstSyntaxImportant, many(blockComment)),
     () => true
   );
   const CssAstDeclaration = node(
@@ -1166,7 +1452,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstAtRuleStatement = node(
     'CssAstAtRuleStatement',
-    sequence(g.CssAstSyntaxStatementAtRuleName, g.CssAstStatementPrelude, literal(';')),
+    sequence(statementAtRuleName, g.CssAstStatementPrelude, literal(';')),
     (children) => {
       const name = tokenText(children[0]);
       return atRuleStatement(name, optionalValue(children[1]));
@@ -1181,8 +1467,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       customEscape,
       customDoubleQuoted,
       customSingleQuoted,
-      balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-      balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+      balancedParens,
+      balancedBrackets
     ]
   });
   const CssAstAtPrelude = node('CssAstAtPrelude', atPrelude, (children) => {
@@ -1195,8 +1481,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       customEscape,
       customDoubleQuoted,
       customSingleQuoted,
-      balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }),
-      balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+      balancedParens,
+      balancedBrackets
     ]
   });
   const CssAstStatementPrelude = node('CssAstStatementPrelude', statementPrelude, (children) => {
@@ -1215,7 +1501,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstOpaqueAtRuleBlock = node(
     'CssAstOpaqueAtRuleBlock',
     sequence(
-      g.CssAstSyntaxGenericAtRuleName,
+      genericAtRuleName,
       noTrivia(sequence(
         g.CssAstOpaqueAtPrelude,
         literal('{'),
@@ -1232,9 +1518,6 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       return opaqueAtRuleBlock(tokenText(children[0]!), prelude, rawBody);
     }
   );
-  const CssAstRequiredAtPrelude = node('CssAstRequiredAtPrelude', sequence(not(literal('{')), atPrelude), (children) => {
-    return any(tokenText(children[0]!).trim());
-  });
   const CssAstQueryBareFeature = node(
     'CssAstQueryBareFeature',
     sequence(literal('('), g.CssAstProperty, literal(')')),
@@ -1243,16 +1526,16 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryColonFeature = node(
     'CssAstQueryColonFeature',
     sequence(literal('('), g.CssAstProperty, literal(':'), g.CssAstValue, literal(')')),
-    children => block(operation(':', keyword(tokenText(children[1]!)), valueChildren(children)[0]!))
+    children => block(operation(':', keyword(tokenText(children[1]!)), firstValue(children)))
   );
   const CssAstQueryComparisonFeature = node(
     'CssAstQueryComparisonFeature',
     sequence(
       literal('('),
       g.CssAstProperty,
-      choice(literal('<='), literal('>='), literal('<'), literal('='), literal('>')),
+      g.CssAstSyntaxQueryComparisonOperator,
       g.CssAstValue,
-      optional(sequence(choice(literal('<='), literal('>='), literal('<'), literal('='), literal('>')), g.CssAstValue)),
+      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, g.CssAstValue)),
       literal(')')
     ),
     children => block(chainedQueryComparison(keyword(tokenText(children[1]!)), children))
@@ -1266,9 +1549,9 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     sequence(
       literal('('),
       g.CssAstValue,
-      choice(literal('<='), literal('>='), literal('<'), literal('='), literal('>')),
+      g.CssAstSyntaxQueryComparisonOperator,
       g.CssAstProperty,
-      optional(sequence(choice(literal('<='), literal('>='), literal('<'), literal('='), literal('>')), g.CssAstValue)),
+      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, g.CssAstValue)),
       literal(')')
     ),
     (children) => {
@@ -1295,7 +1578,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryFeature = node(
     'CssAstQueryFeature',
     choice(CssAstQueryBareFeature, CssAstQueryColonFeature, CssAstQueryComparisonFeature, CssAstQueryRangeFeature),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstQueryNonOnlyKeyword = node<Keyword>(
     'CssAstQueryNonOnlyKeyword',
@@ -1311,7 +1594,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstQueryTerm = node<ValueNode>(
     'CssAstQueryTerm',
     choice(g.CssAstQueryFeature, g.CssAstQueryFunction, CssAstQueryNonOnlyKeyword),
-    children => valueChildren(children)[0]!
+    children => firstValue(children)
   );
   const CssAstQueryOnlyClause = node<ValueNode>(
     'CssAstQueryOnlyClause',
@@ -1411,7 +1694,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
           customEscape,
           customDoubleQuoted,
           customSingleQuoted,
-          balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] })
+          balancedParens
         ]
       }),
       expect(literal(')'), ')')
@@ -1426,7 +1709,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstGeneralEnclosed
     ),
     (children) => {
-      const value = valueChildren(children)[0]!;
+      const value = firstValue(children);
       return isValue(children[0]) ? value : block(value);
     }
   );
@@ -1463,14 +1746,18 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
+  const cssNestedBody = choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'));
+  const cssDeclarationBody = choice(g.CssAstComment, g.CssAstDeclaration, literal(';'));
+  const cssConditionalBody = choice(g.CssAstComment, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset);
+  const cssBlockBody = choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstStartingStyleBlock, g.CssAstLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset);
   const CssAstLayerBlock = node(
     'CssAstLayerBlock',
-    sequence(g.CssAstSyntaxLayerAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstStartingStyleBlock, g.CssAstLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)), literal('}')),
+    sequence(layerAtKeyword, g.CssAstAtPrelude, literal('{'), many(cssBlockBody), literal('}')),
     children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), blockStatements(children))
   );
   const CssAstNestedLayerBlock = node(
     'CssAstNestedLayerBlock',
-    sequence(g.CssAstSyntaxLayerAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))), literal('}')),
+    sequence(layerAtKeyword, g.CssAstAtPrelude, literal('{'), many(cssNestedBody), literal('}')),
     children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), rulesetStatements(children))
   );
   // `@page` accepts only declarations, empty statements, and its sixteen
@@ -1483,7 +1770,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstSyntaxMarginAtKeyword,
       many(blockComment),
       literal('{'),
-      many(choice(g.CssAstComment, g.CssAstDeclaration, literal(';'))),
+      many(cssDeclarationBody),
       literal('}')
     ),
     children => atRuleBlock(
@@ -1495,7 +1782,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstPageBlock = node(
     'CssAstPageBlock',
     sequence(
-      g.CssAstSyntaxPageAtKeyword,
+      pageAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(choice(g.CssAstComment, g.CssAstDeclaration, g.CssAstMarginBox, literal(';'))),
@@ -1521,14 +1808,14 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       literal('{'),
       // This is the public descriptorBody shape: empty declaration statements
       // are syntactically valid and deliberately have no AST statement node.
-      many(choice(g.CssAstComment, g.CssAstDeclaration, literal(';'))),
+      many(cssDeclarationBody),
       literal('}')
     ),
     children => rule(keyframeSelectorList(children), children.filter((value): value is Comment | Declaration => isComment(value) || isDeclaration(value)))
   );
   const CssAstKeyframes = node(
     'CssAstKeyframes',
-    sequence(g.CssAstSyntaxKeyframesAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstKeyframeBlock)), literal('}')),
+    sequence(keyframesAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstKeyframeBlock)), literal('}')),
     (children) => {
       return atRuleBlock(tokenText(children[0]), optionalValue(children[1]), blockStatements(children));
     }
@@ -1542,7 +1829,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       // it is trivia between the selector and `{`, never a body statement.
       many(blockComment),
       parser({ trivia: interstitialTrivia }, literal('{')),
-      many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
+      many(cssNestedBody),
       literal('}')
     ),
     (children) => {
@@ -1557,27 +1844,27 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstConditionalBlock',
     choice(
       sequence(
-        g.CssAstSyntaxSupportsAtKeyword,
+        supportsAtKeyword,
         many(blockComment),
         parser({ trivia: interstitialTrivia }, g.CssAstSupportsPrelude),
         many(blockComment),
         literal('{'),
-        many(choice(g.CssAstComment, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)),
+        many(cssConditionalBody),
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxMediaAtKeyword,
+        mediaAtKeyword,
         g.CssAstQueryPrelude,
         literal('{'),
-        many(choice(g.CssAstComment, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)),
+        many(cssConditionalBody),
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxContainerAtKeyword,
+        containerAtKeyword,
         not(g.CssAstSyntaxQueryOnly),
         g.CssAstQueryPrelude,
         literal('{'),
-        many(choice(g.CssAstComment, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)),
+        many(cssConditionalBody),
         literal('}')
       )
     ),
@@ -1589,27 +1876,27 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstNestedConditionalBlock',
     choice(
       sequence(
-        g.CssAstSyntaxSupportsAtKeyword,
+        supportsAtKeyword,
         many(blockComment),
         parser({ trivia: interstitialTrivia }, g.CssAstSupportsPrelude),
         many(blockComment),
         literal('{'),
-        many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
+        many(cssNestedBody),
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxMediaAtKeyword,
+        mediaAtKeyword,
         g.CssAstQueryPrelude,
         literal('{'),
-        many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
+        many(cssNestedBody),
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxContainerAtKeyword,
+        containerAtKeyword,
         not(g.CssAstSyntaxQueryOnly),
         g.CssAstQueryPrelude,
         literal('{'),
-        many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
+        many(cssNestedBody),
         literal('}')
       )
     ),
@@ -1620,10 +1907,10 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDescriptorBlock = node(
     'CssAstDescriptorBlock',
     sequence(
-      g.CssAstSyntaxDescriptorAtKeyword,
+      descriptorAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
-      many(choice(g.CssAstComment, g.CssAstDeclaration, literal(';'))),
+      many(cssDeclarationBody),
       literal('}')
     ),
     children => atRuleBlock(
@@ -1641,7 +1928,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstSyntaxFontFeatureValueAtKeyword,
       many(blockComment),
       literal('{'),
-      many(choice(g.CssAstComment, g.CssAstDeclaration, literal(';'))),
+      many(cssDeclarationBody),
       literal('}')
     ),
     children => atRuleBlock(
@@ -1653,7 +1940,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstFontFeatureValuesBlock = node(
     'CssAstFontFeatureValuesBlock',
     sequence(
-      g.CssAstSyntaxFontFeatureValuesAtKeyword,
+      fontFeatureValuesAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(choice(g.CssAstComment, g.CssAstFontFeatureValueBlock)),
@@ -1668,13 +1955,13 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstScopeBlock = node(
     'CssAstScopeBlock',
     sequence(
-      g.CssAstSyntaxScopeAtKeyword,
+      scopeAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       // `@scope` has the public declaration-list body model, so a nested
       // scope retains the existing canonical AtRuleBlock reduction rather than
       // being rejected or routed through an opaque body.
-      many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
+      many(cssNestedBody),
       literal('}')
     ),
     children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), rulesetStatements(children))
@@ -1682,7 +1969,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstStartingStyleBlock = node(
     'CssAstStartingStyleBlock',
     sequence(
-      g.CssAstSyntaxStartingStyleAtKeyword,
+      startingStyleAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)),
@@ -1693,10 +1980,10 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstNestedStartingStyleBlock = node(
     'CssAstNestedStartingStyleBlock',
     sequence(
-      g.CssAstSyntaxStartingStyleAtKeyword,
+      startingStyleAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
-      many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstDeclaration, g.CssAstNestedConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstNestedStartingStyleBlock, g.CssAstNestedLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset, literal(';'))),
+      many(cssNestedBody),
       literal('}')
     ),
     children => atRuleBlock(tokenText(children[0]), optionalValue(children[1]), rulesetStatements(children))
@@ -1704,30 +1991,16 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDocumentBlock = node(
     'CssAstDocumentBlock',
     sequence(
-      g.CssAstSyntaxDocumentAtKeyword,
+      documentAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
-      many(choice(
-        g.CssAstComment,
-        g.CssAstAtRuleStatement,
-        g.CssAstConditionalBlock,
-        g.CssAstDescriptorBlock,
-        g.CssAstFontFeatureValuesBlock,
-        g.CssAstScopeBlock,
-        g.CssAstStartingStyleBlock,
-        g.CssAstLayerBlock,
-        g.CssAstPageBlock,
-        g.CssAstKeyframes,
-        g.CssAstDocumentBlock,
-        g.CssAstOpaqueAtRuleBlock,
-        g.CssAstRuleset
-      )),
+      many(cssBlockBody),
       literal('}')
     ),
     children => atRuleBlock(
       tokenText(children[0]!),
       children.find(isValue) ?? null,
-      frameOneStatements(children)
+      blockStatements(children)
     )
   );
   const CssAstDocument = node(
@@ -1746,7 +2019,11 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     CssAstAttribute,
     CssAstPseudo,
     CssAstPseudoArgument,
+    CssAstOfTypePseudoArgument,
     CssAstLeadingDashPseudoArgument,
+    CssAstTypedNthPseudoArgument,
+    CssAstLeadingDashOfTypePseudoArgument,
+    CssAstTypedOfTypePseudoArgument,
     CssAstLeadingDashRawPseudoArgument,
     CssAstNestingSelector,
     CssAstProperty,
@@ -1772,6 +2049,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     CssAstCalcParen,
     CssAstDeclarationVarCall,
     CssAstDeclarationCall,
+    CssAstDeclarationIdent,
     CssAstDeclarationParen,
     CssAstDeclarationAny,
     CssAstDeclarationValueAtom,
@@ -1798,7 +2076,6 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     CssAstOpaqueAtPrelude,
     CssAstOpaqueBody,
     CssAstOpaqueAtRuleBlock,
-    CssAstRequiredAtPrelude,
     CssAstQueryBareFeature,
     CssAstQueryRangeFeature,
     CssAstQueryFeature,

@@ -18,6 +18,14 @@ globs:
 - Extend algorithm: `packages/core/src/tree/util/extend.ts`
 - Tree subsystem: `packages/core/src/tree/**`
 
+## Render mode: nested is the DEFAULT
+
+Jess's default render mode is **NESTED** output (`collapseNesting:false`) — a
+first-class feature, not an edge case. Serialization/render must honor nested
+output; the flat all-less/extend corpus is a testing convenience, not the spec.
+Never dismiss nested-mode correctness as "moot" or "deferred". See
+`.cursor/rules/subtrees/core__extend.mdc`.
+
 ## Architecture priority
 
 - Follow `AGENTS.md` for repo-wide goals.

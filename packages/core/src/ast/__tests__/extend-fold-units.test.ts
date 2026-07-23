@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { branchText, descendantBranch, mkBranch } from '../extend/ir.js';
-import type { Branch, Simple } from '../extend/ir.js';
-import { appendDeduped } from '../extend/match.js';
+import { branchText, descendantBranch, mkBranch, multisetEqual } from '../extend/ir.js';
+import type { Branch, Seg, Simple } from '../extend/ir.js';
+import type { Combinator } from '../node.js';
+import { appendDeduped, branchWholeMatch } from '../extend/match.js';
+
+/** Exact-mode whole-branch equivalence: the unified matcher in its non-`all` form.
+ *  These INCREMENT-B assertions pin the exact decision (reordered compounds match,
+ *  consume-ALL, aligned combinators, interp-empty parity, graft opacity). */
+const branchExactEquivalent = (b: Branch, target: Branch): boolean => branchWholeMatch(b, target, false);
 import { buildContribs, groupInstructions } from '../extend/solve.js';
 import type { Contrib, ContribMap } from '../extend/solve.js';
 import type { PlanInstruction } from '../extend/plan.js';
@@ -35,13 +41,16 @@ const inst = (
 });
 
 describe('branch-key cache (mkBranch / branchText)', () => {
-  it('mkBranch pre-declares `key` as an own property initialized undefined', () => {
+  it('mkBranch pre-declares `key` and `bnd` as own properties initialized undefined', () => {
     const b = mkBranch([{ comb: ' ', compound: { simples: [{ t: 'text', text: '.a' }] } }]);
-    // One stable hidden class: every branch is born `{ segs, key }`, so the memo
-    // write below is an in-place store, never a `{segs}`->`{segs,key}` transition.
-    expect(Object.keys(b)).toEqual(['segs', 'key']);
+    // One stable hidden class: every branch is born `{ segs, key, bnd }`, so the memo
+    // write below (and any later `bnd` origin store) is an in-place store, never a
+    // `{segs}`->`{segs,key}`->`{segs,key,bnd}` transition.
+    expect(Object.keys(b)).toEqual(['segs', 'key', 'bnd']);
     expect(Object.hasOwn(b, 'key')).toBe(true);
     expect(b.key).toBeUndefined();
+    expect(Object.hasOwn(b, 'bnd')).toBe(true);
+    expect(b.bnd).toBeUndefined();
   });
 
   it('branchText computes once, stores the result on `key`, and reads it back', () => {
@@ -134,5 +143,101 @@ describe('appendDeduped — whole-branch append dedup', () => {
   it('returns false for an empty append list', () => {
     const out = [textBranch('.a')];
     expect(appendDeduped(out, [], new Set(['.a']))).toBe(false);
+  });
+});
+
+/**
+ * Isolated unit tests for INCREMENT B — the pure exact-mode WHOLE-branch equivalence
+ * predicate (`branchExactEquivalent`) and the multiset-EQUALITY primitive it rests on.
+ * Exercised directly on the flat `Branch` IR, so a failure localizes to the predicate
+ * rather than the serializer/plan pipeline. Covers the three landmines the exact
+ * decision must honor: reordered compounds match, a strict subset (consume-ALL) does
+ * NOT, and a combinator mismatch does NOT.
+ */
+
+/** A one-segment branch of N text simples (a single compound `.b.c` = ['.b','.c']). */
+const compoundBranch = (...texts: string[]): Branch =>
+  mkBranch([{ comb: ' ', compound: { simples: texts.map((text): Simple => ({ t: 'text', text })) } }]);
+
+/** A complex branch: each `[comb, ...simples]` tuple is one segment. */
+const complexBranch = (...segs: [Combinator, ...string[]][]): Branch =>
+  mkBranch(segs.map(([comb, ...texts]): Seg => ({
+    comb,
+    compound: { simples: texts.map((text): Simple => ({ t: 'text', text })) }
+  })));
+
+describe('multiset equality (multisetEqual)', () => {
+  it('is true for a reordered multiset', () => {
+    expect(multisetEqual(['.b', '.c'], ['.c', '.b'])).toBe(true);
+  });
+
+  it('is false for a strict subset (unequal counts)', () => {
+    expect(multisetEqual(['.b', '.b', '.c'], ['.b', '.c'])).toBe(false);
+    expect(multisetEqual(['.b', '.c'], ['.b', '.b', '.c'])).toBe(false);
+  });
+
+  it('is false when an element differs', () => {
+    expect(multisetEqual(['.a', '.b'], ['.a', '.c'])).toBe(false);
+  });
+
+  it('respects repeated-element counts', () => {
+    expect(multisetEqual(['.a', '.a', '.b'], ['.a', '.b', '.a'])).toBe(true);
+    expect(multisetEqual(['.a', '.a', '.b'], ['.a', '.b', '.b'])).toBe(false);
+  });
+});
+
+describe('exact-mode whole-branch equivalence (branchExactEquivalent)', () => {
+  it('matches a reordered compound (the fixed correctness bug)', () => {
+    // `.b.c` ≡ `.c.b` — order of simples is irrelevant (EXTEND_RULES §0).
+    expect(branchExactEquivalent(compoundBranch('.b', '.c'), compoundBranch('.c', '.b'))).toBe(true);
+  });
+
+  it('matches an identical single-simple branch (string-equality parity)', () => {
+    expect(branchExactEquivalent(compoundBranch('.base'), compoundBranch('.base'))).toBe(true);
+  });
+
+  it('rejects a consume-ALL subset (`.b.b.c` is not `.b.c`)', () => {
+    expect(branchExactEquivalent(compoundBranch('.b', '.b', '.c'), compoundBranch('.b', '.c'))).toBe(false);
+    expect(branchExactEquivalent(compoundBranch('.b', '.c'), compoundBranch('.b', '.b', '.c'))).toBe(false);
+  });
+
+  it('rejects a combinator mismatch (`.a .b` is not `.a > .b`)', () => {
+    const descendant = complexBranch([' ', '.a'], [' ', '.b']);
+    const child = complexBranch([' ', '.a'], ['>', '.b']);
+    const adjacent = complexBranch([' ', '.a'], ['+', '.b']);
+    expect(branchExactEquivalent(descendant, child)).toBe(false);
+    expect(branchExactEquivalent(descendant, adjacent)).toBe(false);
+    expect(branchExactEquivalent(child, adjacent)).toBe(false);
+  });
+
+  it('matches a multi-segment branch with per-segment reordering and aligned combinators', () => {
+    // `.a.b > .c.d` ≡ `.b.a > .d.c`.
+    const a = complexBranch([' ', '.a', '.b'], ['>', '.c', '.d']);
+    const b = complexBranch([' ', '.b', '.a'], ['>', '.d', '.c']);
+    expect(branchExactEquivalent(a, b)).toBe(true);
+  });
+
+  it('rejects a differing segment count', () => {
+    expect(branchExactEquivalent(compoundBranch('.a'), complexBranch([' ', '.a'], [' ', '.b']))).toBe(false);
+  });
+
+  it('fast-accepts equal serializations even when a simple renders empty (interp-empty parity)', () => {
+    // `.a@{x}` renders simples ['.a', ''] but serializes to '.a' (the interpolated
+    // simple contributes no text). The old `bKey === targetKey` matched it against
+    // `.a`; the branchText fast-accept preserves that (true strict superset), where a
+    // bare structural multiset check would wrongly drop it on the length guard.
+    const withEmpty = compoundBranch('.a', '');
+    const plain = compoundBranch('.a');
+    expect(branchText(withEmpty)).toBe(branchText(plain)); // both serialize to '.a'
+    expect(branchExactEquivalent(withEmpty, plain)).toBe(true);
+  });
+
+  it('keeps an `:is()` graft opaque (a graft-bearing compound is not equal to its bare simple)', () => {
+    const bare = compoundBranch('.a');
+    const grafted = mkBranch([{
+      comb: ' ',
+      compound: { simples: [{ t: 'text', text: '.a' }, { t: 'is', branches: [compoundBranch('.b')] }] }
+    }]);
+    expect(branchExactEquivalent(bare, grafted)).toBe(false);
   });
 });

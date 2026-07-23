@@ -294,17 +294,24 @@ export interface VarIndirect {
 }
 
 /**
- * An anonymous mixin value `@rs: { … }` / `$x: { … }`: a nil-args (no parameter
- * list) executable block bound to a value, callable (`@rs()`) to splice its body
- * at the call site. Unlike a {@link Collection} (a data map), its body CAN contain
- * rulesets, at-rules, and mixin calls — it is the safe, more-capable classification
- * for any value-position `{ … }` block that cannot be clearly inferred to be a map.
- * `body` is the CANONICAL block, stored once (never cloned). Its lexical closure
- * belongs to the render activation that binds it, never to this reusable source node.
+ * An anonymous mixin value `@rs: { … }` / `$x: { … }`: an executable block bound
+ * to a value, callable (`@rs()`) to splice its body at the call site. Unlike a
+ * {@link Collection} (a data map), its body CAN contain rulesets, at-rules, and
+ * mixin calls — it is the safe, more-capable classification for any value-position
+ * `{ … }` block that cannot be clearly inferred to be a map. `body` is the
+ * CANONICAL block, stored once (never cloned). Its lexical closure belongs to the
+ * render activation that binds it, never to this reusable source node.
+ *
+ * Like a {@link MixinDef}, it may carry a `params` list (same {@link Param} shape):
+ * a value-position lambda `@($n) > { result: … }` — the lowered form of an SCSS
+ * user `@function f($n) { @return … }`. The field is OMITTED for the plain,
+ * parameterless block so that shape stays monomorphic. A call binds args→params
+ * (positional/named/default) and yields the value of the body's `result:` entry.
  */
 export interface AnonymousMixin {
   readonly type: 'AnonymousMixin';
   readonly body: Statement[];
+  readonly params?: Param[];
 }
 
 /**
@@ -445,10 +452,35 @@ export interface SimpleSelector {
   readonly interp: Interpolation | null;
 }
 
+/**
+ * A structured selector-function pseudo, e.g. `:is(.a, .b)`, `:not(.x)`. `text`
+ * and `interp` are the FIRST TWO fields at the SAME offsets as `SimpleSelector`
+ * so the degree-2 IC over `sim.text`/`sim.interp` in `compoundCanonical` reads a
+ * shared-prefix offset. For a STRUCTURED pseudo the STRUCTURE lives in `args`
+ * (the parsed inner `SelectorList`) and `text` is `null`: the parser produces
+ * pieces + trivia, never a joined spelling — SERIALIZATION owns the inline
+ * `:is(a, b)` rule (see `pseudoCanonical` / `serialize.ts`), never a grammar.
+ * `text` is only non-null for the degrade-to-opaque case (`args: null`), where
+ * the token behaves like a plain `SimpleSelector`. `crossable` is true iff the
+ * name is a boundary a selector may cross for extend (`:is`/`:matches`); every
+ * other name (`:not`/`:where`/`:has`/…) is sealed.
+ */
+export interface PseudoSelector {
+  readonly type: 'PseudoSelector';
+  readonly text: string | null;
+  readonly interp: Interpolation | null;
+  readonly name: string;
+  readonly args: SelectorList | null;
+  readonly crossable: boolean;
+}
+
+/** A single token inside a compound — a plain simple or a structured pseudo. */
+export type SimpleToken = SimpleSelector | PseudoSelector;
+
 /** A run of simple tokens with no separator, e.g. `.a.b`, `&:hover`. */
 export interface CompoundSelector {
   readonly type: 'CompoundSelector';
-  readonly simples: SimpleSelector[];
+  readonly simples: SimpleToken[];
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
   /** Serializer-owned memo of the has-interp flag (lazy). */
@@ -460,7 +492,7 @@ export const compoundCanonical = (c: CompoundSelector): string => {
   if (c._canon === undefined) {
     let s = '';
     for (const sim of c.simples) {
-      s += sim.text ?? '';
+      s += simpleTokenText(sim);
     }
     c._canon = s;
   }
@@ -485,6 +517,12 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
 /** True iff any token carries a literal `&` (bare, fused, or in an interpolation template). */
 export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
   for (const sim of c.simples) {
+    if (sim.type === 'PseudoSelector') {
+      if (pseudoCanonical(sim).includes('&')) {
+        return true;
+      }
+      continue;
+    }
     if (sim.text?.includes('&') === true) {
       return true;
     }
@@ -540,6 +578,24 @@ export const complexCanonical = (c: ComplexSelector): string => {
   }
   return c._canon;
 };
+
+/**
+ * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
+ * is the SINGLE core serialization site for the pseudo-arg join: branches join
+ * with `, ` (normalized WS, one line) via the core-owned `complexCanonical`. The
+ * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
+ * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
+ */
+export const pseudoCanonical = (p: PseudoSelector): string =>
+  p.args !== null
+    ? `${p.name}(${p.args.selectors.map(complexCanonical).join(', ')})`
+    : p.text ?? '';
+
+/** The canonical contributed text of one simple token: a structured pseudo emits
+ *  its inline `:is(a, b)` form, a plain simple emits its literal (`''` when the
+ *  token is interp-only and carries no static text). */
+export const simpleTokenText = (sim: SimpleToken): string =>
+  sim.type === 'PseudoSelector' ? pseudoCanonical(sim) : (sim.text ?? '');
 
 export const complexHasAmpersand = (c: ComplexSelector): boolean => {
   if (c._hasAmp === undefined) {
@@ -897,6 +953,25 @@ export const list = (
 export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null });
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
 export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp });
+
+/**
+ * Selector-function pseudos a selector may CROSS during extend (the arg list is a
+ * boundary extend forks through). Gated on the NAME whitelist, never on colon
+ * count — `::slotted()` takes selector args but stays sealed (not listed). Compare
+ * lowercased. `:where`/`:not`/`:has`/`:global`/`:local` are sealed (crossable:false).
+ */
+const CROSSABLE_PSEUDOS = new Set([':is', ':matches']);
+export const crossable = (name: string): boolean => CROSSABLE_PSEUDOS.has(name.toLowerCase());
+/** A structured selector-function pseudo. When `args` is present the structure
+ *  lives there and `text` is forced `null` (serialization joins via
+ *  `pseudoCanonical`, the parser never does); `text` is only retained for the
+ *  degrade-to-opaque `args: null` case. `crossable` is computed from `name`. */
+export const pseudoSelector = (
+  name: string,
+  args: SelectorList | null,
+  text: string | null = null,
+  interp: Interpolation | null = null
+): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name) });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts });
 export const generalEnclosed = (
   form: GeneralEnclosed['form'],
@@ -904,7 +979,8 @@ export const generalEnclosed = (
   content: Interpolation
 ): GeneralEnclosed => ({ type: 'GeneralEnclosed', form, name, content });
 export const varIndirect = (nameRef: ValueNode, lookup: VariableLookup): VarIndirect => ({ type: 'VarIndirect', nameRef, lookup });
-export const anonymousMixin = (body: Statement[]): AnonymousMixin => ({ type: 'AnonymousMixin', body });
+export const anonymousMixin = (body: Statement[], params?: Param[]): AnonymousMixin =>
+  params === undefined ? { type: 'AnonymousMixin', body } : { type: 'AnonymousMixin', body, params };
 
 /**
  * Classify a value-position `{ … }` block by its CONTENT (parse-time, structural):
@@ -948,7 +1024,7 @@ export const reference = (
 ): Reference => ({ type: 'Reference', base, steps, raw });
 export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw });
 /** A compound from an already-built list of simple tokens. */
-export const compoundSelectorOf = (simples: SimpleSelector[]): CompoundSelector => ({ type: 'CompoundSelector', simples });
+export const compoundSelectorOf = (simples: SimpleToken[]): CompoundSelector => ({ type: 'CompoundSelector', simples });
 /** `compoundSelector('.a', '.b')` => `.a.b`. */
 export const compoundSelector = (...texts: string[]): CompoundSelector => compoundSelectorOf(texts.map(simpleSelector));
 /** `complexSelector([{ compound: compoundSelector('.a') }, { comb: '>', compound: compoundSelector('.b') }])` => `.a > .b`. */

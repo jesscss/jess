@@ -3,7 +3,7 @@ import { makeBuiltinRegistry } from '@jesscss/fns';
 import { atRuleBlock } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  compoundSelectorOf, complexHasAmpersand, complexSelector, decl, interpolation, keyword, stylesheet, rule, sel, selist, simpleSelector, interpolatedSimpleSelector, variableDeclaration, variableReference, type Stylesheet
+  compoundSelectorOf, complexHasAmpersand, complexSelector, decl, interpolation, keyword, pseudoSelector, stylesheet, rule, sel, selist, simpleSelector, interpolatedSimpleSelector, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { collectPlan } from '../extend/plan.js';
@@ -37,6 +37,120 @@ describe('direct canonical extend', () => {
       '.button,\n'
       + '.button-primary {\n'
       + '  color: navy;\n'
+      + '}\n'
+    );
+  });
+
+  it('crosses a structured :is() to append an exact extender whose find dot-matches one arm (C1)', () => {
+    // `.x:is(.a, .b) { … } .y:extend(.x.a) {}` — the crossable `:is()` graft lets the
+    // find `.x.a` match through the `.a` arm, so `.y` appends as a whole-branch comma
+    // sibling. The base header serializes byte-identically (`:is(.a, .b)`).
+    const base = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))])
+    }]);
+    const find = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')])
+    }]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.y', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.x:is(.a, .b),\n'
+      + '.y {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('crosses a structured :is() alongside a trailing simple (C4)', () => {
+    // `.x:is(.a, .b).c { … } .y:extend(.x.a.c) {}` — the find `.x.a.c` matches through
+    // the `.a` arm while `.x`/`.c` match the bare simples on either side of the graft.
+    const base = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b'))), simpleSelector('.c')])
+    }]);
+    const find = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a'), simpleSelector('.c')])
+    }]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.y', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.x:is(.a, .b).c,\n'
+      + '.y {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('crosses a structured :is() in a MULTI-segment branch head compound (C5)', () => {
+    // `.x:is(.a, .b) .y { … } .z:extend(.x.a .y) {}` — the unified whole-branch matcher
+    // crosses the `.a` arm in the FIRST segment while the trailing `.y` segment aligns,
+    // so the exact extender appends as a comma sibling. On dev the single-segment guard
+    // excluded this (a descendant selector carrying an inline graft), so `.z` was dropped.
+    const base = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.y')]) }
+    ]);
+    const find = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.y')]) }
+    ]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.z', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.x:is(.a, .b) .y,\n'
+      + '.z {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('crosses a structured :is() in a MULTI-segment branch trailing compound past a child combinator (C6)', () => {
+    // `.p > .x:is(.a, .b) { … } .z:extend(.p > .x.a) {}` — the graft is in the LAST
+    // segment, reached across a `>` combinator that must align; `.z` appends as a sibling.
+    const base = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.p')]) },
+      { comb: '>', compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) }
+    ]);
+    const find = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.p')]) },
+      { comb: '>', compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) }
+    ]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.z', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.p > .x:is(.a, .b),\n'
+      + '.z {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('adds an exact extender whose target reorders the compound simples', () => {
+    // `.b.c {}` + `.a:extend(.c.b) {}` — the find `.c.b` is compound-equivalent to
+    // the base `.b.c` (order of simple selectors is irrelevant, EXTEND_RULES §0), so
+    // it is a WHOLE-branch exact match and `.a` appends as a sibling.
+    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('.b'), simpleSelector('.c')]) }]);
+    const find = complexSelector([{ compound: compoundSelectorOf([simpleSelector('.c'), simpleSelector('.b')]) }]);
+    const document = stylesheet([
+      rule(base, [decl('color', keyword('red'))]),
+      rule('.a', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.b.c,\n'
+      + '.a {\n'
+      + '  color: red;\n'
       + '}\n'
     );
   });
@@ -226,5 +340,113 @@ describe('direct canonical extend', () => {
       + '}\n'
     );
     expect(complexHasAmpersand(prepassChild)).toBe(false);
+  });
+});
+
+/** A structured descendant complex `a b` (two single-compound segments), the shape
+ * the real parser builds — unlike the `sel('a b')` helper, which collapses a
+ * multi-part string into ONE embedded-space compound. */
+const descendant = (a: string, b: string) =>
+  complexSelector([
+    { compound: compoundSelectorOf([simpleSelector(a)]) },
+    { comb: ' ', compound: compoundSelectorOf([simpleSelector(b)]) }
+  ]);
+
+describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
+  // The pre-P-amp compose collapsed a MULTI-segment parent into one embedded-space
+  // text simple at the `&` slot, so an interior parent segment stopped being a
+  // matchable unit and a crossing extend was SILENTLY DROPPED. Splicing the parent's
+  // segments in (and carrying a per-segment `bnd` origin) restores the match.
+
+  it('applies a crossing all-extender across a spliced multi-segment parent (Case G)', () => {
+    // `.outer { .mid { & .leaf { … } } }` composes to the THREE segments
+    // `.outer .mid .leaf` (origins 2,1,0). `.z:extend(.mid .leaf all)` matches the
+    // `.mid`(ancestor)+`.leaf`(own) sub-span — a boundary CROSS. On dev the parent
+    // `.outer .mid` was one embedded-space simple so `.mid .leaf` never matched and
+    // `.z` was dropped; now it grafts in place.
+    const leaf = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('&')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.leaf')]) }
+    ]);
+    const document = stylesheet([
+      rule('.outer', [rule('.mid', [rule(leaf, [decl('c', keyword('d'))])])]),
+      rule('.z', [], [{ target: selist(descendant('.mid', '.leaf')), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.outer :is(.mid .leaf, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('applies a crossing all-extender across MULTIPLE spliced ampersands (Case F)', () => {
+    // `.p { .a & .b & { … } }` composes to `.a .p .b .p` (origins 0,1,0,1).
+    // `.z:extend(.p .b .p all)` matches the `.p`(anc) `.b`(own) `.p`(anc) sub-span.
+    const inner = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.a')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.b')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+    ]);
+    const target = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.p')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.b')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.p')]) }
+    ]);
+    const document = stylesheet([
+      rule('.p', [rule(inner, [decl('c', keyword('d'))])]),
+      rule('.z', [], [{ target: selist(target), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.a :is(.p .b .p, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('keeps a WITHIN-AMPERSAND all-match correct (extend targets only the parent context)', () => {
+    // `.box { color; .item & { … } }` composes the child to `.item .box` (origins 0,1).
+    // `.z:extend(.box all)` matches `.box`(ancestor) — a WITHIN-AMPERSAND match. The
+    // parent `.box` carries the extend (`.box, .z`); the child's `.box` slot renders
+    // `:is(.box, .z)` — `.item :is(.box, .z)`, correct under the boundary model.
+    const child = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.item')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+    ]);
+    const document = stylesheet([
+      rule('.box', [decl('color', keyword('red')), rule(child, [decl('c', keyword('d'))])]),
+      rule('.z', [], [{ target: selist(sel('.box')), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.box,\n'
+      + '.z {\n'
+      + '  color: red;\n'
+      + '}\n'
+      + '.item :is(.box, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('keeps a LOCAL all-match in place (extend targets own-local across the ampersand)', () => {
+    // `.box { & .leaf { … } }` composes to `.box .leaf` (origins 1,0). `.z:extend(.leaf
+    // all)` matches `.leaf`(own-local) — a LOCAL match, substituted in place.
+    const child = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('&')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.leaf')]) }
+    ]);
+    const document = stylesheet([
+      rule('.box', [rule(child, [decl('c', keyword('d'))])]),
+      rule('.z', [], [{ target: selist(sel('.leaf')), partial: true }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.box :is(.leaf, .z) {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
   });
 });

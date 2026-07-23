@@ -61,6 +61,12 @@ a whole new expanded selector for every match site, cascades of extends compact
 into far less CSS. This is the same [`:is()` compaction](./output-model.md#is-selector-compaction)
 that shapes 5.x flattened output.
 
+Grouping the match and the extender into `:is()` also affects **specificity**: an
+`:is()` scores as its most specific argument, so `.a > :is(.c, #b)` scores an ID even
+for the plain-class `.c` branch. See
+[Selector Compaction — Specificity and `:is()` grouping](./selector-compaction.md#specificity-and-is-grouping-nesting--extend)
+for the cascade implications and the 4.x migration note.
+
 ## Multi-target `all` and the `!all` flag
 
 Per-selector `all` on each target (`:extend(.a all, .b all)`) is deprecated in

@@ -13,6 +13,11 @@
       "types": "./lib/opaque-at-rule.d.ts",
       "import": "./lib/opaque-at-rule.js",
       "require": "./lib/opaque-at-rule.cjs"
+    },
+    "./pseudo-consts": {
+      "types": "./lib/pseudo-consts.d.ts",
+      "import": "./lib/pseudo-consts.js",
+      "require": "./lib/pseudo-consts.cjs"
     }
   },
   "files": ["lib"],

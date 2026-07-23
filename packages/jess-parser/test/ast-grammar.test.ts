@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import { sourceSpanOf, type Stylesheet, type Rule } from '@jesscss/core/ast';
+import { sourceSpanOf, type Stylesheet, type Rule, type SimpleToken } from '@jesscss/core/ast';
 import { JessError } from '@jesscss/core';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
@@ -590,6 +590,136 @@ describe('Jess AST grammar facts', () => {
       expect(captured.ok && captured.unconsumedFrom === null, source).toBe(true);
       expect(ordinary.ok && ordinary.unconsumedFrom === null, source).toBe(true);
       expect(captured.value).toEqual(ordinary.value);
+    }
+  });
+
+  it('retains whitelisted selector-function pseudo arguments as structure, not baked text', () => {
+    const secondSimple = (source: string): SimpleToken => {
+      const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      const rule = stylesheet(result.value).children.find((child): child is Rule => isRecord(child) && child.type === 'Rule');
+      expect(rule, source).toBeDefined();
+      return rule!.selector.selectors[0]!.head.simples[1]!;
+    };
+
+    // `:is` keeps the parsed `SelectorList` as `args` (structure), forces `text`
+    // to null (core serialization owns the join), and is crossable.
+    const isPseudo = secondSimple('.x:is(.a, .b) { c: d; }');
+    expect(isPseudo).toMatchObject({
+      type: 'PseudoSelector',
+      name: ':is',
+      text: null,
+      crossable: true,
+      args: { type: 'SelectorList', selectors: [{ head: {} }, { head: {} }] }
+    });
+
+    // Parser stores STRUCTURE only: the inner complex `_canon` memo is never
+    // populated at parse (the earlier baked-text approach set it eagerly).
+    expect(isPseudo.type).toBe('PseudoSelector');
+    if (isPseudo.type === 'PseudoSelector') {
+      expect(isPseudo.args).not.toBeNull();
+      for (const complex of isPseudo.args!.selectors) {
+        expect(complex._canon).toBeUndefined();
+      }
+    }
+
+    // `:not` is structured too but SEALED — not a boundary extend forks through.
+    expect(secondSimple('.x:not(.a, .b) { c: d; }')).toMatchObject({
+      type: 'PseudoSelector',
+      name: ':not',
+      text: null,
+      crossable: false,
+      args: { type: 'SelectorList' }
+    });
+
+    // Core owns the inline `:is(a, b)` join, so authored spacing is normalized
+    // identically whether or not the source had a space after the comma.
+    for (const source of ['.x:is(.a,.b) { c: d; }', '.x:is(.a, .b) { c: d; }']) {
+      const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(serialize(stylesheet(result.value)).css).toBe('.x:is(.a, .b) {\n  c: d;\n}\n');
+    }
+
+    // An `$[…]`-interpolated pseudo argument is NOT a static `SelectorList`, so it
+    // never reaches the structured path: it stays opaque exactly as before (the
+    // Jess selector chain has no typed interpolation for pseudo args yet, so the
+    // rule does not fully parse).
+    for (const interpolated of ['.x:not(.a-$[t]) { c: d; }', '.x:is(.card-$[t]) { c: d; }']) {
+      const rejected = run(jessAstGrammar.JessAstDocument, interpolated, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, interpolated).toBe(false);
+    }
+  });
+
+  it('rejects paren-less nth pseudo names at the identifier boundary (cross-dialect divergence unification)', () => {
+    // A bare, paren-less nth name is not a keyword pseudo — it must reach the
+    // structured nth arms with an immediate `(` or be rejected, matching Less's
+    // identifier-boundary guard (design §7). Jess is already selector-only for
+    // `:not`, so `:not(2n+1)` already rejects; this closes the remaining bare-nth
+    // divergence with css/less.
+    for (const source of [
+      '.x:nth-child { color: red; }',
+      '.x:nth-of-type { color: red; }',
+      '.x:nth-last-child { color: red; }',
+      '.x:nth-last-of-type { color: red; }',
+      '.x:not(2n+1) { color: red; }'
+    ]) {
+      const rejected = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
+    }
+
+    for (const source of [
+      '.x:nth-child(2n+1) { color: red; }',
+      '.x:nth-of-type(2n) { color: red; }',
+      '.x:not(.a) { color: red; }',
+      '.x:is(.a, .b) { color: red; }',
+      '.x:lang(en) { color: red; }'
+    ]) {
+      const accepted = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(accepted.ok && accepted.unconsumedFrom === null, source).toBe(true);
+    }
+  });
+
+  it('accepts An+B and selector pseudo whitespace as valid CSS, normalizing surrounding argument space', () => {
+    // Valid CSS is valid .jess: Selectors-4 §6.6.2 permits OPTIONAL whitespace
+    // around the `+`/`-` sign, and CSS permits insignificant whitespace
+    // surrounding any functional pseudo's argument inside the parens
+    // (https://www.w3.org/TR/selectors-4/#anb-microsyntax). Sign whitespace is
+    // preserved verbatim; surrounding paren whitespace is normalized away exactly
+    // as the canonical CSS grammar and the other dialects do.
+    for (const [source, expected] of [
+      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
+      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
+      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
+      ['a:not( .b ) { color: red; }', 'a:not(.b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
+    }
+  });
+
+  it('restricts `<An+B> of S` to the nth-child index, rejecting it on nth-of-type (Selectors-4 §6.6.2)', () => {
+    // `of S` is defined ONLY for `:nth-child()`/`:nth-last-child()`; the
+    // type-index families take a bare `<An+B>`. Mirroring the CSS reference, the
+    // nth name now dispatches child vs of-type, so an `of` tail on the of-type
+    // families fails to parse rather than being captured as opaque selector text.
+    for (const invalid of [
+      'a:nth-of-type(2n of .a) { color: red; }',
+      'a:nth-of-type(n of .a) { color: red; }',
+      'a:nth-last-of-type(-n+3 of .a) { color: red; }',
+      'a:nth-last-of-type(even of .a) { color: red; }'
+    ]) {
+      const rejected = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+    // `of S` on the child index and a bare `<An+B>` on the of-type index stay
+    // accepted, serialized byte-identically to the authored argument.
+    for (const [source, expected] of [
+      ['a:nth-child(2n of .a) { color: red; }', 'a:nth-child(2n of .a) {\n  color: red;\n}\n'],
+      ['a:nth-child(n of .a) { color: red; }', 'a:nth-child(n of .a) {\n  color: red;\n}\n'],
+      ['a:nth-of-type(2n+1) { color: red; }', 'a:nth-of-type(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-of-type(odd) { color: red; }', 'a:nth-last-of-type(odd) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
     }
   });
 
