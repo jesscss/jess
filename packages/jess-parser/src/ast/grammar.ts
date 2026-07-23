@@ -804,6 +804,53 @@ function isVarDeclaration(value: unknown): value is VariableDeclaration {
     && isValueSlotValue(value.value);
 }
 
+// Shared guard reducers. `$if` and mixin guards recognize the same GuardNode
+// shapes through distinct combinator arms; only the recognition differs, so the
+// reduction bodies are identical and shared here.
+function reduceGuardTruth(children: readonly unknown[]): GuardNode {
+  return { g: 'truth', value: requireExpressionFact(children[0]).value };
+}
+function reduceGuardCompare(children: readonly unknown[]): GuardNode {
+  return {
+    g: 'cmp',
+    op: requireToken(children[1]).value.trim(),
+    left: requireExpressionFact(children[0]).value,
+    right: requireExpressionFact(children[2]).value
+  };
+}
+function reduceGuardAnd(children: readonly unknown[]): GuardNode {
+  let result = requireGuardNode(children[0]);
+  for (let index = 2; index < children.length; index += 2) {
+    result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
+  }
+  return result;
+}
+function reduceGuardOr(children: readonly unknown[]): GuardNode {
+  let result = requireGuardNode(children[0]);
+  for (let index = 2; index < children.length; index += 2) {
+    result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
+  }
+  return result;
+}
+// Shared selector reducers. The static and dynamic selector families differ only
+// in their recognition arms (static excludes interpolation); the compound,
+// complex, tail, and list reductions are structurally identical.
+function reduceCompound(children: readonly unknown[]): CompoundSelector {
+  return compoundSelectorOf(children.map(requireSimpleToken));
+}
+function reduceComplex(children: readonly unknown[]): ComplexSelector {
+  return complexSelector([
+    { compound: requireCompound(children[0]) },
+    ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+  ]);
+}
+function reduceSelectorTail(children: readonly unknown[]): ComplexSelector {
+  return requireComplexSelector(children[1]);
+}
+function reduceSelectorList(children: readonly unknown[]): SelectorList {
+  return selist(...children.map(requireComplexSelector));
+}
+
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
 const whitespace = trivia(rawWhitespace);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
@@ -964,17 +1011,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessGuardValue = node<GuardNode>(
     'DirectJessGuardValue',
     g.DirectJessExpressionSum,
-    children => ({ g: 'truth', value: requireExpressionFact(children[0]).value })
+    reduceGuardTruth
   );
   const DirectJessGuardCompare = node<GuardNode>(
     'DirectJessGuardCompare',
     sequence(g.DirectJessExpressionSum, regex(/>=|<=|>|<|=/), g.DirectJessExpressionSum),
-    children => ({
-      g: 'cmp',
-      op: requireToken(children[1]).value.trim(),
-      left: requireExpressionFact(children[0]).value,
-      right: requireExpressionFact(children[2]).value
-    })
+    reduceGuardCompare
   );
   const DirectJessGuardCall = node<GuardNode>(
     'DirectJessGuardCall',
@@ -1013,24 +1055,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessGuardAnd = node<GuardNode>(
     'DirectJessGuardAnd',
     sequence(g.DirectJessGuardPrimary, oneOrMore(sequence(regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessGuardPrimary))),
-    (children) => {
-      let result = requireGuardNode(children[0]);
-      for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
-      }
-      return result;
-    }
+    reduceGuardAnd
   );
   const DirectJessGuardOr = node<GuardNode>(
     'DirectJessGuardOr',
     sequence(g.DirectJessGuardPrimary, oneOrMore(sequence(regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessGuardPrimary))),
-    (children) => {
-      let result = requireGuardNode(children[0]);
-      for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
-      }
-      return result;
-    }
+    reduceGuardOr
   );
   const DirectJessMixinGuard = node<GuardNode>(
     'DirectJessMixinGuard',
@@ -1363,7 +1393,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessStaticCompound = node<CompoundSelector>(
     'DirectJessStaticCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessSimple))),
-    children => compoundSelectorOf(children.map(requireSimpleToken))
+    reduceCompound
   );
   const directJessCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'));
   const DirectJessStaticComplexTail = node<JessComplexTail>(
@@ -1385,20 +1415,17 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessStaticComplex = node<ComplexSelector>(
     'DirectJessStaticComplex',
     sequence(g.DirectJessStaticCompound, many(g.DirectJessStaticComplexTail)),
-    children => complexSelector([
-      { compound: requireCompound(children[0]) },
-      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
-    ])
+    reduceComplex
   );
   const DirectJessStaticSelectorTail = node<ComplexSelector>(
     'DirectJessStaticSelectorTail',
     parser({ trivia: whitespace }, sequence(literal(','), g.DirectJessStaticComplex)),
-    children => requireComplexSelector(children[1])
+    reduceSelectorTail
   );
   const DirectJessStaticSelector = node<SelectorList>(
     'DirectJessStaticSelector',
     parser({ trivia: whitespace }, sequence(g.DirectJessStaticComplex, many(g.DirectJessStaticSelectorTail))),
-    children => selist(...children.map(requireComplexSelector))
+    reduceSelectorList
   );
   // The selector-list shared by ordinary selectors and `*[…]` is deliberately
   // limited to authored static pseudo arguments and typed An+B forms. CSS's
@@ -1928,18 +1955,26 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     sequence(jessImportAtRuleName, g.DirectJessCssImportPrelude, literal(';')),
     children => atRuleStatement(requireToken(children[0]).value, requireValueNode(children[1]))
   );
+  // Shared block-body statement set for the at-rule-bearing blocks (`@supports`,
+  // generic at-rules): identical 16-rule choice plus a bare `;` arm. Mirrors the
+  // less-parser `directLessBlockStatement` const so the macro fuses a single
+  // shared choice instead of re-emitting it per block.
+  const directJessAtBlockStatement = choice(
+    g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration,
+    g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend,
+    g.DirectJessFor, g.DirectJessIf, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement,
+    g.DirectJessRule, literal(';')
+  );
+  // Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
+  // 15-rule choice with no bare `;` or `$extend` arm.
+  const directJessNestedBodyStatement = choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement, g.DirectJessRule);
   const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
     'DirectJessSupportsAtRuleBlock',
     sequence(
       jessSupportsAtRuleName,
       g.DirectJessSupportsCondition,
       literal('{'),
-      many(choice(
-        g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration,
-        g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend,
-        g.DirectJessFor, g.DirectJessIf, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement,
-        g.DirectJessRule, literal(';')
-      )),
+      many(directJessAtBlockStatement),
       literal('}')
     ),
     children => atRuleBlock(
@@ -2164,12 +2199,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     sequence(
       g.DirectJessAtRuleHeader,
       literal('{'),
-      many(choice(
-        g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration,
-        g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend,
-        g.DirectJessFor, g.DirectJessIf, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement,
-        g.DirectJessRule, literal(';')
-      )),
+      many(directJessAtBlockStatement),
       literal('}')
     ),
     children => atRuleBlock(
@@ -2278,7 +2308,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       directJessMixinName, g.DirectJessMixinParams,
       optional(sequence(regex(/when(?![-_a-zA-Z0-9\u0080-\uffff])/), literal('('), g.DirectJessMixinGuard, literal(')'))),
       literal('{'),
-      many(choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement, g.DirectJessRule)),
+      many(directJessNestedBodyStatement),
       literal('}')
     ),
     (children) => {
@@ -2360,7 +2390,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       choice(g.DirectJessForRange, g.DirectJessValue),
       literal(')'),
       literal('{'),
-      many(choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement, g.DirectJessRule)),
+      many(directJessNestedBodyStatement),
       literal('}')
     ),
     children => forNode(
@@ -2378,17 +2408,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessIfGuardValue = node<GuardNode>(
     'DirectJessIfGuardValue',
     g.DirectJessExpressionSum,
-    children => ({ g: 'truth', value: requireExpressionFact(children[0]).value })
+    reduceGuardTruth
   );
   const DirectJessIfGuardCompare = node<GuardNode>(
     'DirectJessIfGuardCompare',
     noTrivia(sequence(g.DirectJessExpressionSum, jessIfGuardCompareOperator, g.DirectJessExpressionSum)),
-    children => ({
-      g: 'cmp',
-      op: requireToken(children[1]).value.trim(),
-      left: requireExpressionFact(children[0]).value,
-      right: requireExpressionFact(children[2]).value
-    })
+    reduceGuardCompare
   );
   const DirectJessIfGuardPrimary = node<GuardNode>(
     'DirectJessIfGuardPrimary',
@@ -2409,24 +2434,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessIfGuardAnd = node<GuardNode>(
     'DirectJessIfGuardAnd',
     sequence(g.DirectJessIfGuardPrimary, oneOrMore(sequence(regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfGuardPrimary))),
-    (children) => {
-      let result = requireGuardNode(children[0]);
-      for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'and', left: result, right: requireGuardNode(children[index]) };
-      }
-      return result;
-    }
+    reduceGuardAnd
   );
   const DirectJessIfGuardOr = node<GuardNode>(
     'DirectJessIfGuardOr',
     sequence(g.DirectJessIfGuardPrimary, oneOrMore(sequence(regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/), g.DirectJessIfGuardPrimary))),
-    (children) => {
-      let result = requireGuardNode(children[0]);
-      for (let index = 2; index < children.length; index += 2) {
-        result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
-      }
-      return result;
-    }
+    reduceGuardOr
   );
   const DirectJessIfGuard = node<GuardNode>(
     'DirectJessIfGuard',
@@ -2449,7 +2462,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // containing frame in source order. Existing statement evaluators already
       // execute calls and loops here; imports and placement-sensitive extends
       // remain held until their respective models are available.
-      many(choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement, g.DirectJessRule)),
+      many(directJessNestedBodyStatement),
       literal('}')
     ),
     children => collectBodyStatements(children, 1)
@@ -2488,7 +2501,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessCompound = node<CompoundSelector>(
     'DirectJessCompound',
     noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessInterpolatedSimple, g.DirectJessSimple))),
-    children => compoundSelectorOf(children.map(requireSimpleToken))
+    reduceCompound
   );
   const DirectJessComplexTail = node<JessComplexTail>(
     'DirectJessComplexTail',
@@ -2509,20 +2522,17 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessComplex = node<ComplexSelector>(
     'DirectJessComplex',
     sequence(g.DirectJessCompound, many(g.DirectJessComplexTail)),
-    children => complexSelector([
-      { compound: requireCompound(children[0]) },
-      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
-    ])
+    reduceComplex
   );
   const DirectJessSelectorTail = node<ComplexSelector>(
     'DirectJessSelectorTail',
     sequence(literal(','), g.DirectJessComplex),
-    children => requireComplexSelector(children[1])
+    reduceSelectorTail
   );
   const DirectJessSelector = node<SelectorList>(
     'DirectJessSelector',
     sequence(g.DirectJessComplex, many(g.DirectJessSelectorTail)),
-    children => selist(...children.map(requireComplexSelector))
+    reduceSelectorList
   );
   const DirectJessApply = node<Apply>(
     'DirectJessApply',
