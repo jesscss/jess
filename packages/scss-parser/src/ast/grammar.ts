@@ -926,14 +926,17 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       return call;
     }
   );
+  // Interpolation-LED value leaf: an interpolation at the value start, then any
+  // mix of identifier chunks and further interpolations (`#{$x}foo#{$y}`). The
+  // identifier-LED spelling (`foo#{$x}bar`) and the plain keyword are both owned
+  // by the merged `DirectScssKeywordOrInterpolatedValue` terminal below, so this
+  // production never speculatively scans a leading identifier for an ordinary
+  // keyword value and then backtracks. Because it requires `#{` first, it also
+  // cannot capture a `--name#{...}` token, which the old leading-identifier arm
+  // had to exclude with a dedicated `not(--\u2026#{)` guard.
   const DirectScssInterpolatedValue = node<Interpolation>(
     'DirectScssInterpolatedValue',
     sequence(
-      // `--name#{...}` is a dynamic custom-property token, not the static
-      // value leaf introduced here. Keep it out of the generic interpolation
-      // route until AST v2 has a typed dynamic-custom-property model.
-      not(regex(/--[-_a-zA-Z0-9\u0080-\uffff]*#\{/)),
-      optional(regex(/[-_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/)),
       g.DirectScssInterpolation,
       many(choice(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/), g.DirectScssInterpolation))
     ),
@@ -960,9 +963,32 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     noTrivia(sequence(literal('['), g.DirectScssValue, literal(']'))),
     children => block(requireValue(children[1]), 'square')
   );
+  // Merged keyword / identifier-led interpolation terminal. Scanning the leading
+  // identifier ONCE, it either closes as a plain `Keyword` (no `#{\u2026}` follows) or
+  // an identifier-led `Interpolation` (`foo#{$x}bar`). This is the sole keyword
+  // value arm, so an ordinary keyword is no longer scanned by a speculative
+  // interpolation arm first. The start uses the shared `CssAstSyntaxKeyword`
+  // terminal (identical to the retired `DirectScssKeyword` arm, escapes and all);
+  // the tail chunks reuse the exact identifier class the old interpolated-value
+  // arm used, so every prior parse shape is preserved byte-for-byte.
+  const DirectScssKeywordOrInterpolatedValue = node<ValueNode>(
+    'DirectScssKeywordOrInterpolatedValue',
+    sequence(
+      g.CssAstSyntaxKeyword,
+      many(choice(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/), g.DirectScssInterpolation))
+    ),
+    (children) => {
+      if (children.some(isInterpolation)) {
+        return interpolation(children.flatMap(child => isInterpolation(child)
+          ? child.parts
+          : [{ lit: requireToken(child).value }]));
+      }
+      return keyword(children.map(child => requireToken(child).value).join(''));
+    }
+  );
   const DirectScssValueAtom = node<ValueNode>(
     'DirectScssValueAtom',
-    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssInterpolation, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssParen, g.DirectScssSquare, g.DirectScssCustomPropertyValue, g.DirectScssKeyword),
+    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssInterpolation, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssParen, g.DirectScssSquare, g.DirectScssCustomPropertyValue, DirectScssKeywordOrInterpolatedValue),
     children => requireValue(children[0])
   );
   // Signed numerics are one Dimension leaf. Unary signs only own a variable or
