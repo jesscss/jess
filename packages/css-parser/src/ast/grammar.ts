@@ -31,6 +31,7 @@ import {
   stylesheet,
   rule,
   selist,
+  pseudoSelector,
   simpleSelector,
   spaced,
   url,
@@ -57,6 +58,7 @@ import type {
   Rule,
   SelectorList,
   SimpleSelector,
+  SimpleToken,
   Statement,
   ValueNode,
   ValueSlot
@@ -71,7 +73,7 @@ type CssAstLocalRules = {
   CssAstCompound: Combinator<CompoundSelector>;
   CssAstSimple: Combinator<SimpleSelector>;
   CssAstAttribute: Combinator<SimpleSelector>;
-  CssAstPseudo: Combinator<SimpleSelector>;
+  CssAstPseudo: Combinator<SimpleToken>;
   CssAstPseudoArgument: Combinator<string>;
   CssAstLeadingDashPseudoArgument: Combinator<string>;
   CssAstLeadingDashRawPseudoArgument: Combinator<string>;
@@ -204,6 +206,16 @@ function isNodeType<T extends string>(value: unknown, type: T): value is { reado
 function isSimple(value: unknown): value is SimpleSelector {
   return isNodeType(value, 'SimpleSelector');
 }
+
+function isSimpleToken(value: unknown): value is SimpleToken {
+  return isNodeType(value, 'SimpleSelector') || isNodeType(value, 'PseudoSelector');
+}
+
+// Selector-function pseudos whose argument is retained as a structured
+// `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
+// never on colon count — `::slotted()` takes selector args but is absent here,
+// so it stays opaque text. `crossable` (a narrower set) is decided in core.
+const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
 
 function isCompound(value: unknown): value is CompoundSelector {
   return isNodeType(value, 'CompoundSelector');
@@ -592,20 +604,25 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     children => selectorArgumentText(children[0])
   );
-  const CssAstGenericPseudoArgument = node<string>(
+  // Retain the parsed `SelectorList` rather than collapsing it to text: a
+  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // `args`. The raw arm still yields its scanned text. `CssAstPseudo` derives the
+  // authored `text` from whichever it gets via `selectorArgumentText`, so the
+  // SimpleSelector text is byte-identical to the pre-P0.2 collapse.
+  const CssAstGenericPseudoArgument = node<SelectorList | string>(
     'CssAstGenericPseudoArgument',
     choice(
       parser({ trivia: interstitialTrivia }, g.CssAstSelector),
       pseudoRawArgument
     ),
-    children => selectorArgumentText(children[0])
+    children => isSelectorList(children[0]) ? children[0] : selectorArgumentText(children[0])
   );
   // Both pseudo arms share the leading `:`/`::` colon. Left-factor it so that
   // sub-rule runs once per pseudo instead of once per arm; the An+B and generic
   // branches then differ only after the colon. Both original reducers already
   // collapse to the same "head, plus optional (arg) at child index 3" shape, so
   // the merged node keeps byte-identical SimpleSelector text.
-  const CssAstPseudo = node<SimpleSelector>(
+  const CssAstPseudo = node<SimpleToken>(
     'CssAstPseudo',
     sequence(
       g.CssAstSyntaxPseudoColon,
@@ -616,7 +633,17 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     (children) => {
       const head = `${tokenText(children[0])}${tokenText(children[1])}`;
-      return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${tokenText(children[3])})`);
+      if (children.length === 2) {
+        return simpleSelector(head);
+      }
+      // `text` is the authored spelling from the EXISTING join (never re-derived
+      // from `args`), so it is byte-identical to the pre-P0.2 SimpleSelector.
+      const arg = children[3];
+      const text = `${head}(${selectorArgumentText(arg)})`;
+      if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(tokenText(children[1]).toLowerCase())) {
+        return pseudoSelector(head, arg, text);
+      }
+      return simpleSelector(text);
     }
   );
   // `&` is a semantic selector token, not a post-parse text substitution. The
@@ -629,9 +656,9 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     parser({ trivia: interstitialTrivia }, g.CssAstPseudo),
     g.CssAstSimple
   )))), (children) => {
-    const simples: SimpleSelector[] = [];
+    const simples: SimpleToken[] = [];
     for (const child of children) {
-      if (!isSimple(child)) {
+      if (!isSimpleToken(child)) {
         throw new TypeError('CssAstCompound produced a non-simple selector child.');
       }
       simples.push(child);

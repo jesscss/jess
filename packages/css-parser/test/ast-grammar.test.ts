@@ -137,6 +137,69 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
+  it('retains the parsed SelectorList as structured PseudoSelector args for whitelisted selector-function pseudos', () => {
+    const document = parseAst('.x:is(.a, .b) { color: red; }');
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      selector: {
+        selectors: [{
+          head: {
+            simples: [
+              { type: 'SimpleSelector', text: '.x' },
+              {
+                type: 'PseudoSelector',
+                name: ':is',
+                text: ':is(.a,.b)',
+                crossable: true,
+                interp: null,
+                args: {
+                  type: 'SelectorList',
+                  selectors: [
+                    { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
+                    { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+                  ]
+                }
+              }
+            ]
+          }
+        }]
+      }
+    });
+
+    // `:not` structures too, but is sealed (crossable:false).
+    const sealed = parseAst('.x:not(.a, .b) { color: red; }');
+    expect(sealed.children[0]).toMatchObject({
+      type: 'Rule',
+      selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'PseudoSelector', name: ':not', text: ':not(.a,.b)', crossable: false }
+      ] } }] }
+    });
+
+    // Non-whitelist pseudos (`::before`, `:hover`) stay opaque SimpleSelector text.
+    const opaque = parseAst('.x::before:hover { color: red; }');
+    expect(opaque.children[0]).toMatchObject({
+      type: 'Rule',
+      selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '.x' },
+        { type: 'SimpleSelector', text: '::before' },
+        { type: 'SimpleSelector', text: ':hover' }
+      ] } }] }
+    });
+
+    // Byte-identity gate: authored `:is`/`:where`/`:not` selector-arg pseudos
+    // round-trip through parse->serialize unchanged (P0.2 keeps the existing
+    // no-space `text` canonical; spacing is a separate follow-up).
+    for (const [source, expected] of [
+      ['.x:is(.a,.b) { color: red; }', '.x:is(.a,.b) {\n  color: red;\n}\n'],
+      ['.x:is(.a, .b) { color: red; }', '.x:is(.a,.b) {\n  color: red;\n}\n'],
+      ['.x:where(.a, .b) { color: red; }', '.x:where(.a,.b) {\n  color: red;\n}\n'],
+      ['.x:not(.a, .b) { color: red; }', '.x:not(.a,.b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parseAst(source)).css, source).toEqual(expected);
+    }
+  });
+
   it('does not turn malformed numeric pseudo arguments into raw direct-AST selector text', () => {
     for (const source of [
       ':nth-child(2n +) { color: red; }',

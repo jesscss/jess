@@ -987,7 +987,7 @@ export const reference = (
 ): Reference => ({ type: 'Reference', base, steps, raw });
 export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw });
 /** A compound from an already-built list of simple tokens. */
-export const compoundSelectorOf = (simples: SimpleSelector[]): CompoundSelector => ({ type: 'CompoundSelector', simples });
+export const compoundSelectorOf = (simples: SimpleToken[]): CompoundSelector => ({ type: 'CompoundSelector', simples });
 /** `compoundSelector('.a', '.b')` => `.a.b`. */
 export const compoundSelector = (...texts: string[]): CompoundSelector => compoundSelectorOf(texts.map(simpleSelector));
 /** `complexSelector([{ compound: compoundSelector('.a') }, { comb: '>', compound: compoundSelector('.b') }])` => `.a > .b`. */
