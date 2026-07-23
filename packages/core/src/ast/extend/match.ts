@@ -15,6 +15,7 @@ import {
   compoundText,
   descendantBranch,
   isOrPlainSimples,
+  mkBranch,
   multisetSubset,
   textSimples
 } from './ir.js';
@@ -107,17 +108,34 @@ export function applyInstruction(
   }
 
   if (appends.length > 0) {
+    // Build the presence index ONCE per apply (i.e. once per group per pass — the
+    // fold collapses a target's N instructions into one call), not once per queued
+    // extender. `appendDeduped` then folds every whole-branch append through it.
     const present = new Set(out.map(branchText));
-    for (const e of appends) {
-      const k = branchText(e);
-      if (!present.has(k)) {
-        out.push(e);
-        present.add(k);
-        changed = true;
-      }
+    if (appendDeduped(out, appends, present)) {
+      changed = true;
     }
   }
   return changed ? out : null;
+}
+
+/**
+ * Append `appends` onto `out`, skipping any branch whose text already occurs in
+ * `out` (the whole-branch self-avoidance dedup). `present` is the caller-owned
+ * presence index, seeded once from `out` so a folded group's appends dedup in a
+ * single pass instead of rebuilding the set per extender. Mutates `out`/`present`;
+ * returns whether any branch was actually added. */
+export function appendDeduped(out: Branch[], appends: Branch[], present: Set<string>): boolean {
+  let added = false;
+  for (const e of appends) {
+    const k = branchText(e);
+    if (!present.has(k)) {
+      out.push(e);
+      present.add(k);
+      added = true;
+    }
+  }
+  return added;
 }
 
 /**
@@ -224,8 +242,8 @@ function recurseIntoGrafts(
   extenderKeys: Set<string>,
   targetAtoms: Set<string>
 ): Branch {
-  return {
-    segs: b.segs.map(seg => ({
+  return mkBranch(
+    b.segs.map(seg => ({
       comb: seg.comb,
       compound: {
         simples: seg.compound.simples.map((s): Simple => {
@@ -237,7 +255,7 @@ function recurseIntoGrafts(
         })
       }
     }))
-  };
+  );
 }
 
 /** Substitute a single-compound target inside every matching compound. */
@@ -265,7 +283,7 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
       }
     };
   });
-  return { segs };
+  return mkBranch(segs);
 }
 
 /** Collapse contiguous matched atoms into one `:is(<matched>, ext)`, keep the rest. */
@@ -325,7 +343,7 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
     }
     const isSeg: Seg = {
       comb: start === 0 ? ' ' : segs[start]!.comb,
-      compound: { simples: isOrPlainSimples([{ segs: spanSegs }, ...extenders]) }
+      compound: { simples: isOrPlainSimples([mkBranch(spanSegs), ...extenders]) }
     };
     const outSegs: Seg[] = [];
     for (let i = 0; i < segs.length; i++) {
@@ -335,7 +353,7 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
         outSegs.push(isSeg);
       }
     }
-    return { segs: outSegs };
+    return mkBranch(outSegs);
   }
   return b;
 }
@@ -363,5 +381,5 @@ function branchExpansions(b: Branch): string[] {
       acc = acc.map(pre => [...pre, seg]);
     }
   }
-  return acc.map(segs => branchText({ segs }));
+  return acc.map(segs => branchText(mkBranch(segs)));
 }

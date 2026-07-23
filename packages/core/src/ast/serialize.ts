@@ -117,6 +117,7 @@ import { computeExtends, type ExtendPlacementResults, type ExtendResults } from 
 import { documentHasExtend, recordAstExtendProfile } from './extend/plan.js'; // [extend/selector-interp]
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js';
 import type { Branch, Level } from './extend/ir.js';
+import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
 import { ERR, WARN } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
@@ -3885,12 +3886,10 @@ function resolvedExtendBranch(node: ComplexSelector, frame: Frame, e: EvalCtx): 
       simples: texts.map(text => ({ t: 'text' as const, text }))
     }));
   const parts = [compound(node.head), ...node.tail.map(part => compound(part.compound))];
-  return combineAll(parts, compounds => ({
-    segs: [
-      { comb: node.leadingComb ?? ' ', compound: compounds[0]! },
-      ...node.tail.map((part, index) => ({ comb: part.comb, compound: compounds[index + 1]! }))
-    ]
-  }));
+  return combineAll(parts, compounds => mkBranch([
+    { comb: node.leadingComb ?? ' ', compound: compounds[0]! },
+    ...node.tail.map((part, index) => ({ comb: part.comb, compound: compounds[index + 1]! }))
+  ]));
 }
 
 function resolvedExtendLevel(node: SelectorList, frame: Frame, e: EvalCtx): MaybePromise<Level> {

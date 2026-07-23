@@ -38,6 +38,7 @@ import {
   compoundText,
   descendantBranch,
   isSimple,
+  mkBranch,
   multisetSubset,
   simpleText,
   textSimples
@@ -244,8 +245,13 @@ function tryMergeSiblings(a: Branch, b: Branch, allowMultiSeg: boolean): Branch 
   }
   const segs = a.segs.map((s, i) => (i === diff ? { comb: s.comb, compound: merged } : cloneSeg(s)));
   // [import:reference] the merged branch is visible if EITHER source is visible (an
-  // `:is(a, b)` emits its whole group). Only two hidden branches merge to hidden.
-  return a.hidden && b.hidden ? { segs, hidden: true } : { segs };
+  // `:is(a, b)` emits its whole group). Only two hidden branches merge to hidden
+  // (stamped after the factory, exactly as `cloneBranch` carries provenance).
+  const out = mkBranch(segs);
+  if (a.hidden && b.hidden) {
+    out.hidden = true;
+  }
+  return out;
 }
 
 /**
