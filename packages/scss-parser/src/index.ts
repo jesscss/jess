@@ -42,6 +42,15 @@ export function parse(input: string): Stylesheet {
     throw new ScssParseError(offset, result.expected);
   }
   // Rewrite user-`@function` call sites to `$f(args)` lambda invokes (no-op unless
-  // the document defines a user function).
+  // the document defines a user function). The only construct that produces a
+  // user-function marker (a `VariableDeclaration` bound to an `AnonymousMixin`) is
+  // `@function`, which is keyword-gated in the grammar — so a source with no
+  // `@function` token cannot define one. Skip the whole-document collection walk in
+  // that case (the common one) with a single native source scan rather than an
+  // allocating per-node tree walk (V8-ARCHITECTURE invariant 3 / R2). Case-insensitive
+  // to match the grammar's `/@function/i` acceptance.
+  if (!/@function/i.test(input)) {
+    return result.value;
+  }
   return lowerUserFunctionCalls(result.value);
 }
