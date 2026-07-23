@@ -44,10 +44,10 @@ type SimpleToken = SimpleSelector | PseudoSelector;   // CompoundSelector.simple
    resolves per-frame or stays opaque — must match TODAY exactly (today `:is(@{x})` likely rides an
    opaque/raw path; confirm and preserve — do NOT let structured `args` freeze a currently-resolving interp).
 3. **`branchFromComplex` keeps pseudos OPAQUE `{t:'text', text: pseudo.text}` for ALL of P0** — this is the
-   entire extend byte-safety of P0. **AND** pre-provision the extend-IR graft node (`ir.ts:17`
-   `{t:'is'}`) to carry an original verbatim `text` field NOW, so P1 can re-serialize an *unmodified* graft
-   verbatim (no-space authored `:is` preserved) and only re-serialize *structurally* (spaced) when extend
-   actually rewrote the branches. **R2's fix is a P0 data-model obligation.**
+   entire extend byte-safety of P0 (structured nodes present, but flattened to text, so extend is inert).
+   Then P1 builds SPACED grafts. (CORRECTED: the "carry verbatim no-space text" half of this amendment is
+   DROPPED — output is always spaced per R2/owner; the graft re-serializes spaced regardless. No verbatim
+   carry-through needed.)
 4. **SCSS `args` is BEST-EFFORT / optional** — `args:null` (sealed-opaque) whenever the permissive chunk
    content is not a clean `SelectorList` (the chunk path accepts `:is(.a,,,.b)`, `:is(> ~ +)` that a real
    parse rejects → making the parse authoritative is a hard regression). `text` stays the verbatim chunk join.
@@ -58,11 +58,27 @@ type SimpleToken = SimpleSelector | PseudoSelector;   // CompoundSelector.simple
    red-flagged for P1 — the current extend corpus only asserts engine-SYNTHESIZED spaced `:is` and is BLIND
    to authored no-space carry-through (R2).
 
-## R2 resolved (the "which spelling" decision — answer: neither globally)
-There is NO single byte-safe spelling: aligning the IR to no-space would break the current ast-v2 extend
-corpus (synthesized spaced `:is`, which the alpha `.css` oracle passes); keeping authored `:is()` opaque is
-what preserves no-space today. The only byte-safe rule: **unmodified graft ⟹ verbatim original `text`;
-modified graft ⟹ structural (spaced, matching the synthesis oracle).** Hence amendment 3.
+## R2 resolved (CORRECTED — owner + `.css` oracle): CSS OUTPUT is ALWAYS SPACED. One spelling.
+The earlier "no-space to match the reference" was a MISREAD: the no-space `:is(.a,.b)` / `:where(.a,.b)`
+forms are `.valueOf()` — the NORMALIZED string for equality/matching comparisons, **never rendered CSS**.
+Actual CSS output uses standard formatting — **always `, ` (space after comma)**: confirmed by the `.css`
+oracle (`:is(.bar, .ext3, .ext4)`, `:is(h1, h2, h3)`, `:is(.foo, .ext1 .ext2, .ext3, .ext4)`) and the
+css-parser `nesting.css` round-trip (`:is(h1, h2, h3)` spaced). So there is exactly ONE output spelling:
+**spaced**. The synthesized-graft serializer (`ir.ts:78`, `emit.ts:149` — `join(', ')`) is ALREADY correct;
+authored `:is()` must render spaced via the same path. Internal MATCHING uses the normalized (no-space)
+valueOf form; do NOT conflate it with output.
+
+**Amendment 3 is therefore SIMPLIFIED** — the "carry verbatim no-space text so unmodified grafts
+re-serialize verbatim" mechanism is UNNECESSARY (it preserved a valueOf artifact that never reaches output).
+The IR graft re-serializes SPACED whether or not extend modified it. What P0 must still keep is
+constraint 3's FIRST half — `branchFromComplex` keeps pseudos opaque for all of P0 (byte-safe inert), then
+P1 builds spaced grafts. Byte-identity gates against the **render-based (spaced) extend corpus + `.css`
+oracle**, NOT the `.valueOf()` no-space assertions.
+
+**One empirical check owed at the CSS grammar phase (P0.2/P1):** does CURRENT ast-v2 render an authored
+`.x:is(.a, .b){}` spaced (⟹ port is byte-identical) or leak the parser's no-space `selectorArgumentText`
+canonical to output (⟹ a current bug the port CORRECTS to spaced, gated on the `.css` oracle per
+intended-design, not on byte-identity to the wrong output)? Verify with a real render, don't assume.
 
 ## Classification
 `CROSSABLE = {':is', ':matches'}` (lowercased compare). Sealed: `:where`, `:not`, `:has`, `:global`,
