@@ -44,6 +44,7 @@ import {
   complexCanonical,
   complexHasInterp,
   complexHasAmpersand,
+  pseudoCanonical,
   simpleSelector
 } from './nodes.js';
 import type {
@@ -3388,10 +3389,11 @@ function expandComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): May
  *  string) embedded in a compoundSelector (`.d@{cap}&:hover`, `@{c}@{d}`) compacts to a
  *  single `:is(…)` group; a single-branch capture splices its lone branch bare. */
 function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  // A structured pseudo carries its authored spelling in `text`; P0.1 has no
-  // per-frame arg resolution — emit the verbatim text (same as a static simple).
+  // A structured pseudo's STRUCTURE lives in `args`; serialize it to the inline
+  // `:is(a, b)` form via the core-owned join. P0 pseudo args are STATIC (no
+  // per-frame resolution), so the static `pseudoCanonical` path suffices.
   if (sim.type === 'PseudoSelector') {
-    return sim.text;
+    return pseudoCanonical(sim);
   }
   const interp = sim.interp;
   if (interp === null) {

@@ -636,14 +636,15 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       if (children.length === 2) {
         return simpleSelector(head);
       }
-      // `text` is the authored spelling from the EXISTING join (never re-derived
-      // from `args`), so it is byte-identical to the pre-P0.2 SimpleSelector.
+      // Parser = STRUCTURE + trivia only. A whitelisted selector-function pseudo
+      // keeps the parsed `args` (SelectorList) and does NOT join: core serialize
+      // owns the inline `:is(a, b)` rule (`pseudoCanonical`). The opaque/nth/raw
+      // path still collapses to SimpleSelector text via `selectorArgumentText`.
       const arg = children[3];
-      const text = `${head}(${selectorArgumentText(arg)})`;
       if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(tokenText(children[1]).toLowerCase())) {
-        return pseudoSelector(head, arg, text);
+        return pseudoSelector(head, arg);
       }
-      return simpleSelector(text);
+      return simpleSelector(`${head}(${selectorArgumentText(arg)})`);
     }
   );
   // `&` is a semantic selector token, not a post-parse text substitution. The

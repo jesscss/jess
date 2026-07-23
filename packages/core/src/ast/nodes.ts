@@ -449,15 +449,18 @@ export interface SimpleSelector {
  * A structured selector-function pseudo, e.g. `:is(.a, .b)`, `:not(.x)`. `text`
  * and `interp` are the FIRST TWO fields at the SAME offsets as `SimpleSelector`
  * so the degree-2 IC over `sim.text`/`sim.interp` in `compoundCanonical` reads a
- * shared-prefix offset. `text` is the EXACT per-dialect authored spelling the
- * grammar already computes (never re-derived from `args`); `args` retains the
- * parsed inner `SelectorList` (null = degrade-to-opaque, SCSS best-effort).
- * `crossable` is true iff the name is a boundary a selector may cross for extend
- * (`:is`/`:matches`); every other name (`:not`/`:where`/`:has`/…) is sealed.
+ * shared-prefix offset. For a STRUCTURED pseudo the STRUCTURE lives in `args`
+ * (the parsed inner `SelectorList`) and `text` is `null`: the parser produces
+ * pieces + trivia, never a joined spelling — SERIALIZATION owns the inline
+ * `:is(a, b)` rule (see `pseudoCanonical` / `serialize.ts`), never a grammar.
+ * `text` is only non-null for the degrade-to-opaque case (`args: null`), where
+ * the token behaves like a plain `SimpleSelector`. `crossable` is true iff the
+ * name is a boundary a selector may cross for extend (`:is`/`:matches`); every
+ * other name (`:not`/`:where`/`:has`/…) is sealed.
  */
 export interface PseudoSelector {
   readonly type: 'PseudoSelector';
-  readonly text: string;
+  readonly text: string | null;
   readonly interp: Interpolation | null;
   readonly name: string;
   readonly args: SelectorList | null;
@@ -482,7 +485,7 @@ export const compoundCanonical = (c: CompoundSelector): string => {
   if (c._canon === undefined) {
     let s = '';
     for (const sim of c.simples) {
-      s += sim.text ?? '';
+      s += simpleTokenText(sim);
     }
     c._canon = s;
   }
@@ -507,6 +510,12 @@ export const compoundHasInterp = (c: CompoundSelector): boolean => {
 /** True iff any token carries a literal `&` (bare, fused, or in an interpolation template). */
 export const compoundHasAmpersand = (c: CompoundSelector): boolean => {
   for (const sim of c.simples) {
+    if (sim.type === 'PseudoSelector') {
+      if (pseudoCanonical(sim).includes('&')) {
+        return true;
+      }
+      continue;
+    }
     if (sim.text?.includes('&') === true) {
       return true;
     }
@@ -562,6 +571,24 @@ export const complexCanonical = (c: ComplexSelector): string => {
   }
   return c._canon;
 };
+
+/**
+ * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
+ * is the SINGLE core serialization site for the pseudo-arg join: branches join
+ * with `, ` (normalized WS, one line) via the core-owned `complexCanonical`. The
+ * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
+ * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
+ */
+export const pseudoCanonical = (p: PseudoSelector): string =>
+  p.args !== null
+    ? `${p.name}(${p.args.selectors.map(complexCanonical).join(', ')})`
+    : p.text ?? '';
+
+/** The canonical contributed text of one simple token: a structured pseudo emits
+ *  its inline `:is(a, b)` form, a plain simple emits its literal (`''` when the
+ *  token is interp-only and carries no static text). */
+export const simpleTokenText = (sim: SimpleToken): string =>
+  sim.type === 'PseudoSelector' ? pseudoCanonical(sim) : (sim.text ?? '');
 
 export const complexHasAmpersand = (c: ComplexSelector): boolean => {
   if (c._hasAmp === undefined) {
@@ -928,14 +955,16 @@ export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelecto
  */
 const CROSSABLE_PSEUDOS = new Set([':is', ':matches']);
 export const crossable = (name: string): boolean => CROSSABLE_PSEUDOS.has(name.toLowerCase());
-/** A structured selector-function pseudo. `text` is the authored spelling (never
- *  re-derived from `args`); `crossable` is computed from `name`. */
+/** A structured selector-function pseudo. When `args` is present the structure
+ *  lives there and `text` is forced `null` (serialization joins via
+ *  `pseudoCanonical`, the parser never does); `text` is only retained for the
+ *  degrade-to-opaque `args: null` case. `crossable` is computed from `name`. */
 export const pseudoSelector = (
   name: string,
   args: SelectorList | null,
-  text: string,
+  text: string | null = null,
   interp: Interpolation | null = null
-): PseudoSelector => ({ type: 'PseudoSelector', text, interp, name, args, crossable: crossable(name) });
+): PseudoSelector => ({ type: 'PseudoSelector', text: args !== null ? null : text, interp, name, args, crossable: crossable(name) });
 export const interpolation = (parts: InterpPart[]): Interpolation => ({ type: 'Interpolation', parts });
 export const generalEnclosed = (
   form: GeneralEnclosed['form'],

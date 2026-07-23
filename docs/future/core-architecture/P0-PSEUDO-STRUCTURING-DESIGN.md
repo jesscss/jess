@@ -4,6 +4,24 @@ Status: DESIGN validated by forensic pass + adversarial review. Ready to impleme
 Prerequisite for the extend `:is()` port (`EXTEND-PORT-DESIGN.md`). Parser/AST + serializer only —
 NO extend-engine change (that is P1).
 
+## ARCHITECTURAL CORRECTION (2026-07-23, owner-stated, non-negotiable)
+The PARSER's job is STRUCTURED PIECES + captured TRIVIA. The parser NEVER joins, NEVER canonicalizes,
+NEVER decides `,` vs `, `, NEVER calls a `*SelectorText` canonical-join helper on pseudo args, and NEVER
+populates a serializer-owned `_canon` memo during parse. SERIALIZATION (in core) owns ALL whitespace/trivia
+rules, and those rules ALREADY EXIST unchanged:
+- `:is()`/pseudo args serialize on ONE line with normalized WS — inline `:is(a, b)` — via the core-owned
+  `pseudoCanonical` (`nodes.ts`) and `serialize.ts` (`branches.join(', ')`).
+- Top-level selector lists serialize one-per-line with normalized indent (`header.join(',\n' + idt)`).
+
+Therefore a STRUCTURED `PseudoSelector` (has `args: SelectorList`) has **`text: null`** — the structure
+lives in `args`, and the inline join is computed by `pseudoCanonical(p) = p.name + '(' +
+p.args.selectors.map(complexCanonical).join(', ') + ')'` (the ONE core serialization site). `complexCanonical`
+is core-owned serialization, so its join belongs in core, never in a grammar. The superseded amendment-1
+"`text` from the EXISTING grammar join" is REPLACED by this: the grammar emits `pseudoSelector(name, args)`
+with no text and no `selectorArgumentText` call on the structured arg; `text` is retained ONLY for the
+degrade-to-opaque `args: null` case. The rest of this doc is preserved for history; where it says "emit
+`text`" for a structured pseudo, read "emit `pseudoCanonical(args)`".
+
 ## Verdict (from review)
 Node model is sound and byte-safe. The two load-bearing choices are correct: (1) a **distinct
 `PseudoSelector` node** (widening `SimpleSelector` would give `type:'SimpleSelector'` two hidden classes
@@ -17,7 +35,9 @@ adds a parse (today it keeps args as raw regex chunks).
 ```ts
 interface PseudoSelector {
   readonly type: 'PseudoSelector';
-  readonly text: string;          // FIELD 1 — exact per-dialect canonical, same offset as SimpleSelector.text
+  readonly text: string | null;   // FIELD 1 — NULL for the structured case (structure is in `args`);
+                                   //   non-null ONLY for degrade-to-opaque (`args: null`). Same offset
+                                   //   as SimpleSelector.text.
   readonly interp: Interpolation | null;  // FIELD 2 — same offset as SimpleSelector.interp
   readonly name: string;          // verbatim, e.g. ':is' / ':IS' (case preserved)
   readonly args: SelectorList | null;      // recursive; null = degrade-to-opaque (SCSS best-effort)
@@ -28,17 +48,22 @@ type SimpleToken = SimpleSelector | PseudoSelector;   // CompoundSelector.simple
 `text`/`interp` are the FIRST TWO fields at the SAME offsets as `SimpleSelector` so the degree-2 IC over
 `sim.text`/`sim.interp` in `compoundCanonical` reads a shared-prefix offset (cheap; ≤4-way, not megamorphic).
 
-## Serialization: emit `text`, ignore `args` — byte-identical by construction
-`compoundCanonical`/`compoundHasInterp`/`compoundHasAmpersand` (`nodes.ts:459-500`) and
-`serialize.ts:3389-3437` read `sim.text`/`sim.interp` — which `PseudoSelector` carries at the same offsets.
-`text` is the EXACT string the grammar already computes (four distinct authored spellings: CSS/Less
-`join(',')` no-space, Jess `join(', ')` space, SCSS verbatim chunk join). Serializer never re-joins off `args`.
+## Serialization: emit `pseudoCanonical(args)` — the core join, one output spelling
+A structured `PseudoSelector` has `text: null`, so `compoundCanonical` (`nodes.ts`), `compoundHasAmpersand`,
+and `serialize.ts`'s `resolveSimpleText` route it through `pseudoCanonical`/`simpleTokenText` — the SINGLE
+core serialization site that joins the parsed `args` inline as `:is(a, b)` (`, ` separator, one line, via
+core-owned `complexCanonical`). There is exactly ONE output spelling: **spaced** (see R2 below). The grammar
+computes NO join and populates NO `_canon` at parse — so parse-time node shapes stay monomorphic (the
+shape-stability harness stays green). SCSS best-effort (`args:null`) still falls back to the retained
+verbatim `text` in the opaque branch.
 
 ## The 6 REQUIRED amendments (from adversarial review — all must land before/with code)
-1. **`text` from the EXISTING join, never re-derived from `args`.** Reducer:
-   `{type:'PseudoSelector', name, args, crossable, text: head + '(' + existingArgText + ')'}` where
-   `existingArgText` is today's `selectorArgumentText`/`staticSelectorText`/chunk result. Re-joining off
-   `args` would silently normalize SCSS verbatim + pick one comma-spelling for all → wide regression.
+1. **SUPERSEDED by the ARCHITECTURAL CORRECTION above.** (Was: "`text` from the EXISTING grammar join.")
+   The structured case now stores NO joined `text` (`text: null`); the join is core-owned
+   (`pseudoCanonical`). The grammar emits `pseudoSelector(name, args)` and never calls a join helper on the
+   structured arg. The SCSS-verbatim / comma-spelling concern this amendment guarded against is moot: core
+   emits ONE spaced spelling from `args`, and SCSS best-effort falls back to opaque `text` only when `args`
+   is null.
 2. **`PseudoSelector` carries `text` + `interp` (fields 1-2, shared offsets)**; the 3 canonical helpers +
    serialize read them. **DECIDE + document** whether pseudo-arg interpolation (`:is(@{x})`/`#{$x}`)
    resolves per-frame or stays opaque — must match TODAY exactly (today `:is(@{x})` likely rides an

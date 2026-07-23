@@ -3,6 +3,7 @@ import { run } from 'parseman';
 import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../core/src/ast/serialize.js';
+import { simpleTokenText } from '../../core/src/ast/nodes.js';
 import { cssAstGrammar } from '../src/ast/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { parse } from '../src/index.js';
@@ -124,11 +125,14 @@ describe('CSS canonical-AST grammar', () => {
     }
 
     const document = parseAst(':is(.card, [data-kind=primary]) { color: red; }');
+    // Structured pseudo: parser keeps `args` (pieces), `text` is null; the inline
+    // join is core serialization's job (spaced).
     expect(document.children[0]).toMatchObject({
       type: 'Rule', selector: {
-        selectors: [{ head: { simples: [{ text: ':is(.card,[data-kind=primary])' }] } }]
+        selectors: [{ head: { simples: [{ type: 'PseudoSelector', name: ':is', text: null }] } }]
       }
     });
+    expect(serialize(document).css).toEqual(':is(.card, [data-kind=primary]) {\n  color: red;\n}\n');
 
     for (const source of ['[role=] { color: red; }', ':is(.card { color: red; }', ':nth-child(-n+) { color: red; }']) {
       const cst = parseCssCst(source);
@@ -149,7 +153,7 @@ describe('CSS canonical-AST grammar', () => {
               {
                 type: 'PseudoSelector',
                 name: ':is',
-                text: ':is(.a,.b)',
+                text: null,
                 crossable: true,
                 interp: null,
                 args: {
@@ -172,7 +176,7 @@ describe('CSS canonical-AST grammar', () => {
       type: 'Rule',
       selector: { selectors: [{ head: { simples: [
         { type: 'SimpleSelector', text: '.x' },
-        { type: 'PseudoSelector', name: ':not', text: ':not(.a,.b)', crossable: false }
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
       ] } }] }
     });
 
@@ -187,14 +191,16 @@ describe('CSS canonical-AST grammar', () => {
       ] } }] }
     });
 
-    // Byte-identity gate: authored `:is`/`:where`/`:not` selector-arg pseudos
-    // round-trip through parse->serialize unchanged (P0.2 keeps the existing
-    // no-space `text` canonical; spacing is a separate follow-up).
+    // Serialization gate: authored `:is`/`:where`/`:not` selector-arg pseudos
+    // render on ONE line with normalized WS (`:is(a, b)`, spaced) via the
+    // core-owned join, REGARDLESS of authored spacing. The parser stores no
+    // joined `text` — structure lives in `args`; core serialize owns the rule.
     for (const [source, expected] of [
-      ['.x:is(.a,.b) { color: red; }', '.x:is(.a,.b) {\n  color: red;\n}\n'],
-      ['.x:is(.a, .b) { color: red; }', '.x:is(.a,.b) {\n  color: red;\n}\n'],
-      ['.x:where(.a, .b) { color: red; }', '.x:where(.a,.b) {\n  color: red;\n}\n'],
-      ['.x:not(.a, .b) { color: red; }', '.x:not(.a,.b) {\n  color: red;\n}\n']
+      ['.x:is(.a,.b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:is(.a, .b) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:is(.a ,.b ) { color: red; }', '.x:is(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:where(.a, .b) { color: red; }', '.x:where(.a, .b) {\n  color: red;\n}\n'],
+      ['.x:not(.a, .b) { color: red; }', '.x:not(.a, .b) {\n  color: red;\n}\n']
     ] as const) {
       expect(serialize(parseAst(source)).css, source).toEqual(expected);
     }
@@ -316,8 +322,8 @@ describe('CSS canonical-AST grammar', () => {
       ['[data-role] { color: red; }', ['[data-role]']],
       ['[data-role="button" i] { color: red; }', ['[data-role="button"i]']],
       ['[lang|=en][data^=pre][data$="end" s] { color: red; }', ['[lang|=en]', '[data^=pre]', '[data$="end"s]']],
-      [':is(.card, :not(.disabled), :has(.icon > svg)) { color: red; }', [':is(.card,:not(.disabled),:has(.icon > svg))']],
-      [':has(.card > .icon, :is(.badge, .label)) { color: red; }', [':has(.card > .icon,:is(.badge,.label))']],
+      [':is(.card, :not(.disabled), :has(.icon > svg)) { color: red; }', [':is(.card, :not(.disabled), :has(.icon > svg))']],
+      [':has(.card > .icon, :is(.badge, .label)) { color: red; }', [':has(.card > .icon, :is(.badge, .label))']],
       [':nth-child(2n + 1 of :is(.card, .tile)) { color: red; }', [':nth-child(2n + 1 of :is(.card, .tile))']],
       [':nth-child(-n+2 of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-last-of-type(-5n) { color: red; }', [':nth-last-of-type(-5n)']],
@@ -337,7 +343,10 @@ describe('CSS canonical-AST grammar', () => {
       if (first?.type !== 'Rule') {
         throw new Error(`Expected a rule for ${source}`);
       }
-      expect(first.selector.selectors[0]?.head.simples.map(simple => simple.text), source).toEqual(expectedSimples);
+      // A structured pseudo has `text: null` (structure in `args`); its canonical
+      // inline spelling is produced by core serialization (`simpleTokenText`), not
+      // the parser. Opaque simples/nth pseudos still carry verbatim `text`.
+      expect(first.selector.selectors[0]?.head.simples.map(simpleTokenText), source).toEqual(expectedSimples);
     }
 
     for (const source of [

@@ -9,6 +9,7 @@
 
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
+import { simpleTokenText } from '../nodes.js';
 import type { ComplexSelector, SelectorList } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
@@ -177,14 +178,16 @@ export function branchFromComplex(c: ComplexSelector): Branch {
   // A selector token carrying `@{…}` interpolation has `text: null` (its concrete
   // text is only known once resolved in an entering frame, which the extend
   // engine has no access to). Represent it by its literal contribution (`''`),
-  // matching `Compound.canonical()`'s `sim.text ?? ''` convention, so the IR is
-  // always a plain string and no downstream `.includes`/`.split` hits null.
+  // matching `compoundCanonical`'s convention, so the IR is always a plain string
+  // and no downstream `.includes`/`.split` hits null. A structured pseudo has
+  // `text: null` too, but its contribution is the inline `:is(a, b)` join owned by
+  // core serialization (`simpleTokenText`), so extend sees the same opaque text.
   segs.push({
     comb: c.leadingComb ?? ' ',
-    compound: compoundFromSimples(c.head.simples.map(s => s.text ?? ''))
+    compound: compoundFromSimples(c.head.simples.map(simpleTokenText))
   });
   for (const seg of c.tail) {
-    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map(s => s.text ?? '')) });
+    segs.push({ comb: seg.comb, compound: compoundFromSimples(seg.compound.simples.map(simpleTokenText)) });
   }
   return segs.length === 0 ? mkBranch([{ comb: ' ', compound: { simples: [] } }]) : mkBranch(segs);
 }
