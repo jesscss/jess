@@ -174,7 +174,7 @@ export function cloneBranch(b: Branch): Branch {
  *
  * A CROSSABLE structured pseudo (`:is(...)`/`:matches(...)`) with a concrete arg
  * list and NO interpolation anywhere in that list becomes the structured
- * `{ t: 'is' }` graft the matcher forks through (`compoundExhaustive`). Every other
+ * `{ t: 'is' }` graft the whole-branch matcher forks through (`branchWholeMatch`). Every other
  * token flattens to its canonical text via `simpleTokenText`, exactly as before:
  *   - a SEALED pseudo (`:where`/`:not`/`:has`/…, `crossable === false`) stays an
  *     opaque `:where(…)` text token — its arg is not a boundary extend may cross;

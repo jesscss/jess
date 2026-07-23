@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { branchText, descendantBranch, mkBranch, multisetEqual } from '../extend/ir.js';
 import type { Branch, Seg, Simple } from '../extend/ir.js';
 import type { Combinator } from '../node.js';
-import { appendDeduped, branchExactEquivalent } from '../extend/match.js';
+import { appendDeduped, branchWholeMatch } from '../extend/match.js';
+
+/** Exact-mode whole-branch equivalence: the unified matcher in its non-`all` form.
+ *  These INCREMENT-B assertions pin the exact decision (reordered compounds match,
+ *  consume-ALL, aligned combinators, interp-empty parity, graft opacity). */
+const branchExactEquivalent = (b: Branch, target: Branch): boolean => branchWholeMatch(b, target, false);
 import { buildContribs, groupInstructions } from '../extend/solve.js';
 import type { Contrib, ContribMap } from '../extend/solve.js';
 import type { PlanInstruction } from '../extend/plan.js';

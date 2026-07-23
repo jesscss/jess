@@ -47,7 +47,6 @@ export function applyInstruction(
   // `div ∧ span` is rejected even when `span` is re-tried transitively through the graft).
   outerSurrounding: readonly string[] = []
 ): Branch[] | null {
-  const targetKey = branchText(target);
   const out: Branch[] = [];
   const appends: Branch[] = [];
   let changed = false;
@@ -77,19 +76,13 @@ export function applyInstruction(
     // NOT force the append hidden. `effHidden` folds both into one decision.
     const chainHidden = b.hidden === true && b.ext === true;
     const effHidden = extenderHidden || chainHidden;
-    // Whole-branch match → append extenders as siblings. Exact mode matches by
-    // selector EQUIVALENCY (EXTEND_RULES §0), not serialization: `.b.c` and `.c.b`
-    // are the same selector, so the decision is order-independent multiset-equal
-    // compounds with aligned combinators (`branchExactEquivalent`), NOT `branchText`
-    // equality. A multi-segment target also matches an `:is()`-grafted branch whose
-    // expansion equals the target (`.replace.replace .replace` vs
-    // `:is(.replace.replace, …) .replace`).
-    if (
-      branchExactEquivalent(b, target)
-      || (target.segs.length > 1 && branchExpansions(b).includes(targetKey))
-      || (b.segs.length === 1 && target.segs.length === 1
-        && compoundExhaustive(b.segs[0]!.compound, target.segs[0]!.compound))
-    ) {
+    // Whole-branch EXACT match → append extenders as siblings. Matches by selector
+    // EQUIVALENCY (EXTEND_RULES §0), not serialization: `.b.c` ≡ `.c.b`, and a target
+    // may match THROUGH a base's crossable `:is()` graft — in a single compound
+    // (`.x:is(.a, .b)` matched by `.x.a`), alongside trailing simples (`.x:is(.a, .b).c`
+    // by `.x.a.c`), across ANY number of segments (`.x:is(.a, .b) .y` by `.x.a .y`), or
+    // as a lone-graft segment expanding (`:is(.a .b, .c) .d` by `.a .b .d`).
+    if (branchWholeMatch(b, target, false)) {
       out.push(b);
       for (const e of appendExtenders) {
         pushExtender(appends, e, chainHidden);
@@ -112,7 +105,7 @@ export function applyInstruction(
       // degenerates to a plain comma-append (`.a.b > .c.d, .x`), NOT an
       // `:is()`-wrap of the whole branch — the sub-span `:is()` wrap is reserved for
       // matches with surrounding combinator context (see `substituteMultiCompound`).
-      if (matchesWholeBranchSubset(b, target)) {
+      if (branchWholeMatch(b, target, true)) {
         out.push(b);
         for (const e of appendExtenders) {
           pushExtender(appends, e, chainHidden);
@@ -186,146 +179,236 @@ function pushExtender(appends: Branch[], e: Branch, forceHidden: boolean): void 
 
 /**
  * True when `target` matches the WHOLE of `b` — the append condition
- * `applyInstruction` uses for a whole-branch (exact/all) hit: an identical key,
- * a multi-segment target equal to one of `b`'s `:is()`-graft expansions, or (for
- * an `all` match) a multi-segment compound-subset of the entire branch. This is
- * the "the extender becomes a SIBLING of the whole complex" signal the nested
- * re-projection reads to decide a cross-`&` flatten (a foreign whole-complex
- * sibling cannot be expressed as a local own-local rewrite). A single-compound
- * `all` sub-match (which rewrites a compound IN PLACE, never appends a whole
- * sibling) is deliberately NOT a whole match.
+ * `applyInstruction` uses for a whole-branch (exact/all) hit. This is the "the
+ * extender becomes a SIBLING of the whole complex" signal the nested re-projection
+ * reads to decide a cross-`&` flatten (a foreign whole-complex sibling cannot be
+ * expressed as a local own-local rewrite). Delegates to the single `branchWholeMatch`:
+ * the exact whole-branch equivalence/graft-cross for any instruction, plus the
+ * multi-segment `all` subset for a partial one. A single-compound `all` sub-match
+ * (which rewrites a compound IN PLACE, never appends a whole sibling) is deliberately
+ * NOT a whole match (`branchWholeMatch`'s ALL-mode P<2 gate).
  */
 export function branchWholeMatches(b: Branch, target: Branch, partial: boolean): boolean {
-  if (branchExactEquivalent(b, target)) {
-    return true;
-  }
-  const targetKey = branchText(target);
-  if (target.segs.length > 1 && branchExpansions(b).includes(targetKey)) {
-    return true;
-  }
-  if (partial && matchesWholeBranchSubset(b, target)) {
-    return true;
-  }
-  return false;
+  return branchWholeMatch(b, target, false) || (partial && branchWholeMatch(b, target, true));
+}
+
+/** Sentinel for a find cursor that could not consume a graft arm. Distinct from
+ *  `-1` (a legitimately exhausted find cursor). */
+const NO_MATCH = -2;
+
+/**
+ * The invariant CONTEXT of one whole-branch walk, passed BY REFERENCE so the recursion
+ * threads only the two `(segIdx, findIdx)` cursors by value (no cloned cursor objects,
+ * invariant 5). `base`/`target` are the two branches' segments; `partial` selects EXACT
+ * vs ALL semantics; `memo` caches `(si, fi)` results (non-null only for a lone-graft
+ * base, the sole forking source); `guard`/`guardMax` bound total visits (mirrors
+ * solve.ts's `guardMax`) so a pathological graft nesting can never spin.
+ */
+interface Walk {
+  base: readonly Seg[];
+  target: readonly Seg[];
+  partial: boolean;
+  memo: Map<number, boolean> | null;
+  guard: number;
+  guardMax: number;
 }
 
 /**
- * Order-independent WHOLE-branch equivalence for EXACT (non-`all`) mode: `b` and
- * `target` select the same elements (EXTEND_RULES §0). The criterion is structural,
- * not textual — it REPLACES the former `branchText(b) === branchText(target)` exact
- * test, which missed reordered compounds (`.b.c` vs `.c.b` produced NO extend):
+ * The SINGLE whole-branch matcher. Decides whether `target` matches the WHOLE of `b`
+ * — the append condition `applyInstruction` uses for a whole-branch (exact/all) hit —
+ * crossing the base's structured `{ t: 'is' }` grafts. It REPLACES the four ad-hoc
+ * predicates the whole-branch condition used to OR together (order-independent exact
+ * equivalence, `:is()`-graft segment expansion, the single-compound dual-cursor graft
+ * cross, and the multi-segment `all` subset), generalized to MULTI-segment selectors:
  *
- *   - same number of segments;
- *   - each aligned segment's compound is MULTISET-EQUAL — order of simples is
- *     irrelevant, but consume-ALL (a strict subset like `.b.b.c` vs `.b.c` is NOT
- *     equal, so it correctly does not match in exact mode);
- *   - combinators align left-to-right, INCLUDING the head (leading) combinator, so
- *     `.a .b` never matches `.a > .b` / `.a + .b`.
+ *   - `partial === false` (EXACT, EXTEND_RULES §0 — same elements): every aligned
+ *     segment's compound is MULTISET-EQUAL (order-independent, consume-ALL: `.b.c` ≡
+ *     `.c.b`, but `.b.b.c` ≢ `.b.c`), OR — when the base compound carries a graft —
+ *     matched THROUGH it (`compoundCross`); a base segment that is a LONE graft expands
+ *     its OR-arms into a segment span (`segSpanMatch`, e.g. `:is(.a .b, .c) .d` matched
+ *     by `.a .b .d`). Combinators align at EVERY segment, including the head.
+ *   - `partial === true` (ALL): a MULTI-segment (≥2) target whose every compound is a
+ *     multiset SUBSET of the aligned base compound with internal combinators aligned
+ *     (grafts dropped). A single-compound `all` target is deliberately NOT a whole
+ *     match — it is a sub-compound rewrite (`substituteSingleCompound`) — so this
+ *     returns false for it.
  *
- * `:is()` grafts are compared as opaque `:is(...)` tokens (via `simpleTexts`).
- *
- * A memoized `branchText` equality is tried FIRST as a fast-ACCEPT (EXTEND_RULES.md
- * early-exit: equal serializations ⇒ match). This is allocation-free (reuses the
- * cached `Branch.key`), keeps the hot common path off `simpleTexts`/`multisetEqual`,
- * and makes this a TRUE strict superset of the old `bKey === targetKey`: every pair the
- * string compare matched still matches (incl. interpolated simples that render empty,
- * e.g. `.a@{x}` vs `.a`), plus reordered compounds. The structural multiset comparison
- * runs ONLY when the serializations differ — the genuine order-independent case — never
- * as an early-exit FALSE.
+ * A memoized `branchText` fast-ACCEPT runs FIRST (equal serializations ⇒ match,
+ * allocation-free — reuses the cached `Branch.key`, and preserves interp-empty parity
+ * like `.a@{x}` vs `.a`). For a graft-bearing base an ATOM SUBSET reject precedes any
+ * fork: a target text atom no base branch can supply (grafts walked) makes the match
+ * impossible, so it bails before a single OR-path is explored. The walk recurses BY
+ * VALUE — numeric `(segIdx, simpleIdx)` cursors on the JS call stack, no cloned cursor
+ * objects, no `valueOf()` — and is memoized on `(segIdx, findIdx)` so segment-graft
+ * expansion stays polynomial.
  */
-export function branchExactEquivalent(b: Branch, target: Branch): boolean {
+export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): boolean {
   if (branchText(b) === branchText(target)) {
     return true;
   }
-  const bSegs = b.segs;
-  const tSegs = target.segs;
-  if (bSegs.length !== tSegs.length) {
+  // A single-compound `all` target is a sub-compound rewrite, never a whole-branch
+  // append (the former `matchesWholeBranchSubset` P<2 guard). Exact mode still matches
+  // a single compound by order-independent equality, so this gate is ALL-mode only.
+  if (partial && target.segs.length < 2) {
     return false;
   }
-  for (let k = 0; k < bSegs.length; k++) {
-    const bs = bSegs[k]!;
-    const ts = tSegs[k]!;
-    if (bs.comb !== ts.comb) {
-      return false;
+  // GRAFT-FREE FAST PATH (the overwhelmingly-common candidate): with no crossable graft
+  // anywhere in the base there is nothing to fork, so no atom Set, no memo Map, no `Walk`
+  // and no recursion — a flat per-segment multiset compare (the former inline
+  // `branchExactEquivalent` / `matchesWholeBranchSubset` loops), allocation-identical to
+  // dev. The recursive cross-through machinery is reserved for the rare grafted base.
+  if (!branchHasGraft(b)) {
+    return flatWholeMatch(b.segs, target.segs, partial);
+  }
+  // ATOM FAST-REJECT (grafted base): every atom the target REQUIRES (its plain-text
+  // simples across all segments) must be suppliable by the base — its bare text simples
+  // plus every atom reachable inside a crossable graft. A required atom no branch
+  // supplies is unmatchable, so bail before exploring any OR-path.
+  const baseAtoms = new Set<string>();
+  collectBranchAtoms(b, baseAtoms);
+  for (const seg of target.segs) {
+    for (const s of seg.compound.simples) {
+      if (s.t === 'text' && !baseAtoms.has(s.text)) {
+        return false;
+      }
     }
-    if (!multisetEqual(simpleTexts(bs.compound), simpleTexts(ts.compound))) {
+  }
+  // Memoize on (segIdx, findIdx) ONLY when the base has a lone-graft segment — the sole
+  // source of segment-level forking. Without one the walk advances both cursors in
+  // lockstep (linear), so no memo Map is allocated on that path either.
+  const walk: Walk = {
+    base: b.segs,
+    target: target.segs,
+    partial,
+    memo: hasLoneGraftSeg(b) ? new Map<number, boolean>() : null,
+    guard: 0,
+    guardMax: (b.segs.length + 2) * (target.segs.length + 2)
+  };
+  return segMatch(walk, 0, 0);
+}
+
+/**
+ * Flat whole-branch compare for a graft-FREE base: same segment count, every aligned
+ * compound EXACT multiset-equal (or, ALL-mode, a multiset subset) with combinators
+ * aligned (EXACT includes the head; ALL ignores the leading combinator). No fork, so no
+ * allocation beyond the per-segment `multiset*` the compare already needs.
+ */
+function flatWholeMatch(base: readonly Seg[], target: readonly Seg[], partial: boolean): boolean {
+  if (base.length !== target.length) {
+    return false;
+  }
+  for (let k = 0; k < base.length; k++) {
+    const bs = base[k]!;
+    const ts = target[k]!;
+    if (!combAligned(k, bs.comb, ts.comb, partial) || !compoundMatch(bs.compound, ts.compound, partial)) {
       return false;
     }
   }
   return true;
 }
 
-/** Sentinel for a find cursor that could not consume a graft branch. Distinct from
- *  `-1` (a legitimately exhausted find cursor). */
-const NO_MATCH = -2;
-
 /**
- * EXACT-mode whole-compound match THROUGH crossable `:is()` grafts. Both `base`
- * and `find` are one segment's simples (the caller gates `b.segs.length === 1 &&
- * target.segs.length === 1`); the base may carry structured `{ t: 'is' }` grafts
- * (authored `:is()`/`:matches()`), the find is plain text. Turns C1
- * (`.x:is(.a, .b)` matched by `.x.a`) and C4 (`.x:is(.a, .b).c` by `.x.a.c`) into
- * whole-branch appends — the extender becomes a comma sibling via the existing
- * append path, with no emit change.
- *
- * FAST-REJECT precedes any fork: a graft-free base can add nothing beyond the
- * caller's order-independent `branchExactEquivalent`, and a find atom no branch can
- * supply makes the match impossible — both bail before a single OR-path is walked.
- * The walk itself (`cursorMatch`) recurses by VALUE (numeric cursor indices on the
- * call stack): no cloned cursor objects, no `valueOf()`.
+ * Walk `base`/`target` segments together from the head. A base segment that is a LONE
+ * crossable graft forks its OR-arms into a segment span (`segSpanMatch`, exact only);
+ * every other base segment consumes exactly ONE target segment (combinator-aligned
+ * compound match). Success is BOTH cursors exhausted. Recurses BY VALUE (only the
+ * `(si, fi)` numeric cursors vary; `w` is invariant, passed by reference); memoized on
+ * `(si, fi)` when `w.memo` is non-null so segment-graft expansion stays polynomial.
  */
-function compoundExhaustive(base: Compound, find: Compound): boolean {
-  // A graft-free base positional-matches the find iff it multiset-matches it, a
-  // case `branchExactEquivalent` already decided FALSE upstream — so a base with no
-  // `{ t: 'is' }` graft can never add a match here. This cheap gate keeps every
-  // graft-free candidate (the overwhelming majority) off the atom Set + cursor.
-  let hasGraft = false;
-  for (const s of base.simples) {
-    if (s.t === 'is') {
-      hasGraft = true;
-      break;
-    }
+function segMatch(w: Walk, si: number, fi: number): boolean {
+  if (si === w.base.length) {
+    return fi === w.target.length;
   }
-  if (!hasGraft) {
+  if (fi === w.target.length || w.guard++ > w.guardMax) {
     return false;
   }
-  // Every atom the find REQUIRES must be suppliable by the base — its bare text
-  // simples plus every atom reachable inside a crossable graft (`collectBranchAtoms`
-  // recurses grafts). A find atom no branch supplies is unmatchable, so bail without
-  // exploring any OR-path. A find graft is outside this rung's positional cursor and
-  // also bails here (the `s.t !== 'text'` guard).
-  const baseAtoms = new Set<string>();
-  collectCompoundAtoms(base, baseAtoms);
-  for (const s of find.simples) {
-    if (s.t !== 'text' || !baseAtoms.has(s.text)) {
+  const key = w.memo ? si * (w.target.length + 1) + fi : 0;
+  if (w.memo) {
+    const cached = w.memo.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+  }
+  const bSeg = w.base[si]!;
+  const graft = w.partial ? null : loneGraftSimple(bSeg.compound);
+  let result: boolean;
+  if (graft) {
+    result = false;
+    for (const arm of graft.branches) {
+      if (segSpanMatch(w, si, bSeg.comb, arm, fi)) {
+        result = true;
+        break;
+      }
+    }
+  } else {
+    const fSeg = w.target[fi]!;
+    result =
+      combAligned(fi, bSeg.comb, fSeg.comb, w.partial)
+      && compoundMatch(bSeg.compound, fSeg.compound, w.partial)
+      && segMatch(w, si + 1, fi + 1);
+  }
+  if (w.memo) {
+    w.memo.set(key, result);
+  }
+  return result;
+}
+
+/**
+ * Consume a lone-graft base segment's OR-arm as a segment SPAN: the arm's segments
+ * graft in at `fi` (the arm's first segment takes the parent graft segment's `headComb`,
+ * the rest their own), each an EXACT combinator-aligned compound match. On success the
+ * outer walk resumes past the consumed span. Exact-mode only (the caller gates it).
+ */
+function segSpanMatch(w: Walk, si: number, headComb: Seg['comb'], arm: Branch, fi: number): boolean {
+  const armSegs = arm.segs;
+  if (fi + armSegs.length > w.target.length) {
+    return false;
+  }
+  for (let k = 0; k < armSegs.length; k++) {
+    const aSeg = armSegs[k]!;
+    const fSeg = w.target[fi + k]!;
+    const comb = k === 0 ? headComb : aSeg.comb;
+    if (comb !== fSeg.comb || !compoundMatch(aSeg.compound, fSeg.compound, false)) {
       return false;
     }
   }
-  return cursorMatch(base.simples, base.simples.length - 1, find.simples, find.simples.length - 1);
+  return segMatch(w, si + 1, fi + armSegs.length);
 }
 
-/** Collect every atom a compound can supply into `out`: its bare text simples plus,
- *  for each crossable graft, every atom reachable inside its branches. */
-function collectCompoundAtoms(c: Compound, out: Set<string>): void {
-  for (const s of c.simples) {
-    if (s.t === 'text') {
-      out.add(s.text);
-    } else {
-      for (const br of s.branches) {
-        collectBranchAtoms(br, out);
-      }
-    }
-  }
+/** Head-combinator rule: EXACT aligns every combinator including the leading one; ALL
+ *  ignores the leading combinator (`fi === 0`) and aligns only internal ones. */
+function combAligned(fi: number, bComb: Seg['comb'], fComb: Seg['comb'], partial: boolean): boolean {
+  return partial && fi === 0 ? true : bComb === fComb;
 }
 
 /**
- * Two cursors walk `base`/`find` back-to-front. A base TEXT simple must equal the
- * aligned find text simple. A base crossable GRAFT forks: each single-segment
- * OR-branch is consumed positionally against the find (`consumeBranch`), and the
- * first branch that lets the remaining cursors exhaust wins. Success is BOTH cursors
- * exhausted. Recurses by value — the cursor state is the two `number` indices.
+ * Match one target compound against one base compound. EXACT: order-independent
+ * multiset EQUALITY of the serialized simples (grafts as opaque tokens), OR — when the
+ * base carries a graft — a positional cross THROUGH it (`compoundCross`). ALL: the
+ * target's plain-text simples are a multiset SUBSET of the base's (grafts dropped, as
+ * the former `matchesWholeBranchSubset`).
  */
-function cursorMatch(base: readonly Simple[], bi: number, find: readonly Simple[], fi: number): boolean {
+function compoundMatch(baseC: Compound, findC: Compound, partial: boolean): boolean {
+  if (partial) {
+    return multisetSubset(textSimples(findC), textSimples(baseC));
+  }
+  if (multisetEqual(simpleTexts(baseC), simpleTexts(findC))) {
+    return true;
+  }
+  return compoundHasGraft(baseC)
+    && compoundCross(baseC.simples, baseC.simples.length - 1, findC.simples, findC.simples.length - 1);
+}
+
+/**
+ * EXACT positional cross of one base compound's simples through its crossable grafts.
+ * Two cursors walk `base`/`find` back-to-front: a base TEXT simple must equal the
+ * aligned find text simple; a base GRAFT forks over its single-segment OR-arms
+ * (`consumeArm`), the first that lets the remaining cursors exhaust winning (a
+ * descendant span cannot fit inside a compound, so multi-segment arms are skipped —
+ * they are the lone-graft SEGMENT case handled by `segSpanMatch`). Success is BOTH
+ * cursors exhausted. Recurses BY VALUE (the two numeric cursor indices).
+ */
+function compoundCross(base: readonly Simple[], bi: number, find: readonly Simple[], fi: number): boolean {
   if (bi < 0) {
     return fi < 0;
   }
@@ -335,18 +418,14 @@ function cursorMatch(base: readonly Simple[], bi: number, find: readonly Simple[
   const bs = base[bi]!;
   if (bs.t === 'text') {
     const fs = find[fi]!;
-    return fs.t === 'text' && fs.text === bs.text && cursorMatch(base, bi - 1, find, fi - 1);
+    return fs.t === 'text' && fs.text === bs.text && compoundCross(base, bi - 1, find, fi - 1);
   }
-  // Crossable graft: fork over its OR-branches. Only a SINGLE-segment branch is
-  // consumable inside one compound (a descendant span cannot fit in a compound).
-  // `consumeBranch` bails on the first irreconcilable atom, so a branch whose
-  // trailing atom != find[fi] never descends — the per-branch fast reject.
-  for (const br of bs.branches) {
-    if (br.segs.length !== 1) {
+  for (const arm of bs.branches) {
+    if (arm.segs.length !== 1) {
       continue;
     }
-    const nf = consumeBranch(br.segs[0]!.compound.simples, find, fi);
-    if (nf !== NO_MATCH && cursorMatch(base, bi - 1, find, nf)) {
+    const nf = consumeArm(arm.segs[0]!.compound.simples, find, fi);
+    if (nf !== NO_MATCH && compoundCross(base, bi - 1, find, nf)) {
       return true;
     }
   }
@@ -354,12 +433,11 @@ function cursorMatch(base: readonly Simple[], bi: number, find: readonly Simple[
 }
 
 /**
- * Consume a graft branch's `inner` simples against `find` back-to-front from `fi`,
- * returning the new find cursor (may be `-1` when the find is fully consumed) or
- * `NO_MATCH`. Text-only positional match — this rung's authored `:is()` args are
- * plain compounds; a non-text inner simple bails (deferred to a later rung).
+ * Consume a single-segment graft arm's `inner` simples against `find` back-to-front
+ * from `fi`, returning the new find cursor (may be `-1` when fully consumed) or
+ * `NO_MATCH`. Text-only positional match; a non-text inner simple bails.
  */
-function consumeBranch(inner: readonly Simple[], find: readonly Simple[], fi: number): number {
+function consumeArm(inner: readonly Simple[], find: readonly Simple[], fi: number): number {
   let f = fi;
   for (let j = inner.length - 1; j >= 0; j--) {
     const innerSimple = inner[j]!;
@@ -375,30 +453,41 @@ function consumeBranch(inner: readonly Simple[], find: readonly Simple[], fi: nu
   return f;
 }
 
-/**
- * True when a MULTI-segment target compound-subset-matches the ENTIRE branch:
- * same segment count, each target compound ⊆ the aligned branch compound, and
- * internal combinators aligned. A whole-span match consumes the whole selector,
- * so the caller comma-appends the extenders rather than `:is()`-wrapping the
- * branch. Single-compound (P===1) targets are excluded — their sub-compound
- * matches carry in-compound context and are handled by `substituteSingleCompound`.
- */
-function matchesWholeBranchSubset(b: Branch, target: Branch): boolean {
-  const P = target.segs.length;
-  if (P < 2 || P !== b.segs.length) {
-    return false;
-  }
-  for (let k = 0; k < P; k++) {
-    const ts = target.segs[k]!;
-    const bs = b.segs[k]!;
-    if (!multisetSubset(textSimples(ts.compound), textSimples(bs.compound))) {
-      return false;
-    }
-    if (k > 0 && ts.comb !== bs.comb) {
-      return false;
+/** True when any of a compound's simples is a crossable `:is()` graft. */
+function compoundHasGraft(c: Compound): boolean {
+  for (const s of c.simples) {
+    if (s.t === 'is') {
+      return true;
     }
   }
-  return true;
+  return false;
+}
+
+/** True when any segment of a branch carries a crossable `:is()` graft. */
+function branchHasGraft(b: Branch): boolean {
+  for (const seg of b.segs) {
+    if (compoundHasGraft(seg.compound)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The lone `:is()` graft when a compound is exactly one crossable graft simple, else
+ *  null — the segment-level expansion case (`:is(.a .b, .c) .d`). */
+function loneGraftSimple(c: Compound): Extract<Simple, { t: 'is' }> | null {
+  return c.simples.length === 1 && c.simples[0]!.t === 'is' ? c.simples[0]! : null;
+}
+
+/** True when a branch has a segment that is exactly one crossable graft — the only
+ *  source of segment-level forking, so the memo is allocated only for these bases. */
+function hasLoneGraftSeg(b: Branch): boolean {
+  for (const seg of b.segs) {
+    if (loneGraftSimple(seg.compound)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -614,30 +703,4 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
     return mkBranch(outSegs);
   }
   return b;
-}
-
-/** Expand a branch's `:is()` grafts into the set of flat complex texts it denotes. */
-function branchExpansions(b: Branch): string[] {
-  let acc: Seg[][] = [[]];
-  for (const seg of b.segs) {
-    // A segment whose compound is a single `:is(...)` graft expands to its args.
-    const single = seg.compound.simples.length === 1 ? seg.compound.simples[0]! : null;
-    if (single && single.t === 'is') {
-      const next: Seg[][] = [];
-      for (const arg of single.branches) {
-        for (const pre of acc) {
-          // Graft the arg's segments in place (first arg-seg takes this seg's comb).
-          const grafted = arg.segs.map((as, i) => ({
-            comb: i === 0 ? seg.comb : as.comb,
-            compound: as.compound
-          }));
-          next.push([...pre, ...grafted]);
-        }
-      }
-      acc = next;
-    } else {
-      acc = acc.map(pre => [...pre, seg]);
-    }
-  }
-  return acc.map(segs => branchText(mkBranch(segs)));
 }

@@ -86,6 +86,56 @@ describe('direct canonical extend', () => {
     );
   });
 
+  it('crosses a structured :is() in a MULTI-segment branch head compound (C5)', () => {
+    // `.x:is(.a, .b) .y { … } .z:extend(.x.a .y) {}` — the unified whole-branch matcher
+    // crosses the `.a` arm in the FIRST segment while the trailing `.y` segment aligns,
+    // so the exact extender appends as a comma sibling. On dev the single-segment guard
+    // excluded this (a descendant selector carrying an inline graft), so `.z` was dropped.
+    const base = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.y')]) }
+    ]);
+    const find = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) },
+      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.y')]) }
+    ]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.z', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.x:is(.a, .b) .y,\n'
+      + '.z {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
+  it('crosses a structured :is() in a MULTI-segment branch trailing compound past a child combinator (C6)', () => {
+    // `.p > .x:is(.a, .b) { … } .z:extend(.p > .x.a) {}` — the graft is in the LAST
+    // segment, reached across a `>` combinator that must align; `.z` appends as a sibling.
+    const base = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.p')]) },
+      { comb: '>', compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) }
+    ]);
+    const find = complexSelector([
+      { compound: compoundSelectorOf([simpleSelector('.p')]) },
+      { comb: '>', compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) }
+    ]);
+    const document = stylesheet([
+      rule(base, [decl('c', keyword('d'))]),
+      rule('.z', [], [{ target: selist(find), partial: false }])
+    ]);
+
+    expect(render(document)).toBe(
+      '.p > .x:is(.a, .b),\n'
+      + '.z {\n'
+      + '  c: d;\n'
+      + '}\n'
+    );
+  });
+
   it('adds an exact extender whose target reorders the compound simples', () => {
     // `.b.c {}` + `.a:extend(.c.b) {}` — the find `.c.b` is compound-equivalent to
     // the base `.b.c` (order of simple selectors is irrelevant, EXTEND_RULES §0), so
