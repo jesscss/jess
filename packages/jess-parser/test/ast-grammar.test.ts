@@ -1588,8 +1588,8 @@ describe('Jess AST grammar facts', () => {
           type: 'VariableDeclaration',
           name: 'collection',
           value: {
-            type: 'Collection',
-            entries: [
+            type: 'DetachedRuleset',
+            body: [
               { type: 'Declaration', name: 'header', value: { type: 'Keyword', src: 'red' } },
               { type: 'Declaration', name: 'footer', value: { type: 'Keyword', src: 'blue' } }
             ]
@@ -1717,7 +1717,7 @@ describe('Jess AST grammar facts', () => {
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'VariableDeclaration', name: 'my-mixin', value: { type: 'Collection' } },
+        { type: 'VariableDeclaration', name: 'my-mixin', value: { type: 'DetachedRuleset' } },
         { type: 'Rule', body: [{ type: 'Reference', base: { type: 'VariableReference', name: 'my-mixin', lookup: 'live' }, steps: [{ type: 'Call', args: [] }], raw: '$my-mixin()' }] }
       ]
     });

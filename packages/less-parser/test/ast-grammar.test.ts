@@ -427,7 +427,7 @@ describe('Less AST grammar facts', () => {
     expect(direct.value).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'VariableDeclaration', value: { type: 'AnonymousMixin', body: [{ type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule' }] }] } },
+        { type: 'VariableDeclaration', value: { type: 'DetachedRuleset', body: [{ type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule' }] }] } },
         { type: 'For', rules: [{ type: 'AtRuleBlock', name: '@-webkit-keyframes', prelude: { type: 'Quoted', value: 'slide' }, body: [{ type: 'Rule' }] }] }
       ]
     });
@@ -920,7 +920,7 @@ describe('Less AST grammar facts', () => {
       children: [{
         type: 'VariableDeclaration', name: 'theme',
         value: {
-          type: 'AnonymousMixin',
+          type: 'DetachedRuleset',
           body: [
             { type: 'VariableDeclaration', name: 'accent', value: { type: 'Color', src: 'blue' } },
             { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'accent' } }
@@ -941,7 +941,7 @@ describe('Less AST grammar facts', () => {
       children: [{
         type: 'VariableDeclaration', name: 'grays',
         value: {
-          type: 'AnonymousMixin',
+          type: 'DetachedRuleset',
           body: [
             { type: 'Declaration', name: '100', value: { type: 'Color', src: '#f8f9fa' } },
             { type: 'Declaration', name: '900', value: { type: 'Color', src: '#212529' } },
@@ -969,7 +969,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'VariableDeclaration', name: 'theme',
           value: {
-            type: 'AnonymousMixin',
+            type: 'DetachedRuleset',
             body: [
               { type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] },
               { type: 'AtRuleBlock', name: '@media', body: [{ type: 'Rule' }] },
@@ -1027,11 +1027,11 @@ describe('Less AST grammar facts', () => {
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
       type: 'Stylesheet', children: [
-        { type: 'VariableDeclaration', name: 'theme', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } },
-        { type: 'MixinDef', name: '.m', params: [{ name: 'default', default: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'width' }] } }] },
-        { type: 'MixinCall', name: '.m', args: [{ value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } }] },
-        { type: 'MixinCall', name: '.m', args: [{ name: 'named', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } }] },
-        { type: 'FunctionCall', name: 'fn', args: [{ type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'display' }] }] }
+        { type: 'VariableDeclaration', name: 'theme', value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] } },
+        { type: 'MixinDef', name: '.m', params: [{ name: 'default', default: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'width' }] } }] },
+        { type: 'MixinCall', name: '.m', args: [{ value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] } }] },
+        { type: 'MixinCall', name: '.m', args: [{ name: 'named', value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] } }] },
+        { type: 'FunctionCall', name: 'fn', args: [{ type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'display' }] }] }
       ]
     });
 
@@ -1040,7 +1040,7 @@ describe('Less AST grammar facts', () => {
     expect(valueArgument.unconsumedFrom).toBeNull();
     expect(valueArgument.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Declaration', name: 'value', value: {
-        type: 'FunctionCall', name: 'fn', args: [{ type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] }]
+        type: 'FunctionCall', name: 'fn', args: [{ type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'color' }] }]
       } }]
     });
 
@@ -1063,7 +1063,7 @@ describe('Less AST grammar facts', () => {
     expect(rawDirect.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'VariableDeclaration', name: 'theme', value: {
-        type: 'AnonymousMixin', body: [{ type: 'Declaration', name: '<', value: { type: 'Any', src: '%3c' } }]
+        type: 'DetachedRuleset', body: [{ type: 'Declaration', name: '<', value: { type: 'Any', src: '%3c' } }]
       } }]
     });
     const nestedConditionalArgument = run(
@@ -1485,7 +1485,7 @@ describe('Less AST grammar facts', () => {
       children: [{ value: {
         type: 'FunctionCall',
         name: 'if',
-        args: [{ type: 'Condition' }, { type: 'AnonymousMixin' }, { type: 'AnonymousMixin' }]
+        args: [{ type: 'Condition' }, { type: 'DetachedRuleset' }, { type: 'DetachedRuleset' }]
       } }]
     });
   });
@@ -2331,8 +2331,8 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'MixinDef', name: '.configure', params: [
-        { name: 'a', default: { type: 'AnonymousMixin', body: [] } },
-        { name: 'b', default: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'default' }] } }
+        { name: 'a', default: { type: 'DetachedRuleset', body: [] } },
+        { name: 'b', default: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'default' }] } }
       ] }]
     });
   });
@@ -2349,8 +2349,8 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'MixinDef' }, { type: 'Rule', body: [{ type: 'MixinCall', args: [
-        { value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'direct' }] } },
-        { name: 'b', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'named' }] } }
+        { value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'direct' }] } },
+        { name: 'b', value: { type: 'DetachedRuleset', body: [{ type: 'Declaration', name: 'named' }] } }
       ] }] }]
     });
   });

@@ -297,11 +297,11 @@ describe('public Less parse()', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(document).toMatchObject({
       type: 'Stylesheet', children: [
-        { type: 'VariableDeclaration', name: 'theme', value: { type: 'AnonymousMixin' } },
-        { type: 'MixinDef', name: '.m', params: [{ name: 'default', default: { type: 'AnonymousMixin' } }] },
-        { type: 'MixinCall', name: '.m', args: [{ value: { type: 'AnonymousMixin' } }] },
-        { type: 'MixinCall', name: '.m', args: [{ name: 'named', value: { type: 'AnonymousMixin' } }] },
-        { type: 'FunctionCall', name: 'fn', args: [{ type: 'AnonymousMixin' }] }
+        { type: 'VariableDeclaration', name: 'theme', value: { type: 'DetachedRuleset' } },
+        { type: 'MixinDef', name: '.m', params: [{ name: 'default', default: { type: 'DetachedRuleset' } }] },
+        { type: 'MixinCall', name: '.m', args: [{ value: { type: 'DetachedRuleset' } }] },
+        { type: 'MixinCall', name: '.m', args: [{ name: 'named', value: { type: 'DetachedRuleset' } }] },
+        { type: 'FunctionCall', name: 'fn', args: [{ type: 'DetachedRuleset' }] }
       ]
     });
 
@@ -662,7 +662,7 @@ describe('public Less parse()', () => {
     expect(document).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'VariableDeclaration', value: { type: 'AnonymousMixin', body: [{ type: 'Rule' }, { type: 'AtRuleBlock' }, { type: 'MixinDef' }, { type: 'For' }] } },
+        { type: 'VariableDeclaration', value: { type: 'DetachedRuleset', body: [{ type: 'Rule' }, { type: 'AtRuleBlock' }, { type: 'MixinDef' }, { type: 'For' }] } },
         { type: 'Rule', body: [{ type: 'Reference', base: { type: 'VariableReference' }, steps: [{ type: 'Call', args: [] }] }] },
         { type: 'For', rules: [{ type: 'Rule' }] }
       ]
@@ -772,7 +772,7 @@ describe('public Less parse()', () => {
     expect(document).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'VariableDeclaration', value: { type: 'AnonymousMixin', body: [{ type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule' }] }] } },
+        { type: 'VariableDeclaration', value: { type: 'DetachedRuleset', body: [{ type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule' }] }] } },
         { type: 'Rule', body: [{ type: 'Reference', base: { type: 'VariableReference' }, steps: [{ type: 'Call', args: [] }] }] },
         { type: 'For', rules: [{ type: 'AtRuleBlock', name: '@-webkit-keyframes', prelude: { type: 'Quoted', value: 'slide' }, body: [{ type: 'Rule' }] }] }
       ]

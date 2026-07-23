@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, collection, dimension, forNode, funcCall, interpolation, keyword, list,
+  decl, detachedRuleset, dimension, forNode, funcCall, interpolation, keyword, list,
   range, stylesheet, rule, spaced, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -52,7 +52,7 @@ describe('For canonical AST emission', () => {
   });
 
   it('binds map keys and values from a detached ruleset', () => {
-    const map = collection([
+    const map = detachedRuleset([
       decl('one', keyword('blue')),
       decl('two', keyword('green')),
       decl('three', keyword('red'))
@@ -74,7 +74,7 @@ describe('For canonical AST emission', () => {
     const document = stylesheet([
       rule('.set', [
         forNode(
-          collection([decl('one', keyword('blue')), decl('two', keyword('green'))]),
+          detachedRuleset([decl('one', keyword('blue')), decl('two', keyword('green'))]),
           [decl(interpolation([{ ref: variableReference('key', 'scoped'), unquote: true }]), variableReference('value', 'scoped'))],
           { kind: 'bracket', names: ['key', 'value'] }
         )
@@ -85,7 +85,7 @@ describe('For canonical AST emission', () => {
   });
 
   it('binds comma key and counter positions for both lists and maps', () => {
-    const map = collection([decl('first', keyword('red')), decl('second', keyword('blue'))]);
+    const map = detachedRuleset([decl('first', keyword('red')), decl('second', keyword('blue'))]);
     const document = stylesheet([
       rule('.list', [
         forNode(

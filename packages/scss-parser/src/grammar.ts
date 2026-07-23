@@ -196,8 +196,8 @@ export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules({ trivia: r
     many(sequence(literal(','), g.valueSequence)),
     optional(literal(','))
   );
-  const callArgSeq = choice(g.AnonymousMixinDefinition, g.AnonymousMixin, g.valueSequence);
-  const callArgList = choice(g.AnonymousMixinDefinition, g.AnonymousMixin, valueList);
+  const callArgSeq = choice(g.AnonymousMixinDefinition, g.DetachedRuleset, g.valueSequence);
+  const callArgList = choice(g.AnonymousMixinDefinition, g.DetachedRuleset, valueList);
   const functionCallArgs = sequence(
     optional(sequence(
       callArgSeq,

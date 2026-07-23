@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { defineFunction } from '../value-dispatch.js';
-import { decl, anonymousMixin, funcCall, keyword, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
+import { decl, detachedRuleset, funcCall, keyword, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
 import { atRuleBlock, plugin } from '../at-rule.js';
 import { serialize } from '../serialize.js';
 import type { PluginHost } from '../value-eval.js';
@@ -73,7 +73,7 @@ describe('typed Plugin lexical body preparation', () => {
       loadPlugin: async ({ specifier }) => [fn('probe', specifier)]
     };
     const document = stylesheet([
-      variableDeclaration('theme', anonymousMixin([
+      variableDeclaration('theme', detachedRuleset([
         decl('before', funcCall('probe', [])),
         target('detached'),
         decl('after', funcCall('probe', []))
