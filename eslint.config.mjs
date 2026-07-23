@@ -302,14 +302,18 @@ export default tseslint.config([
     }
   },
 
-  // #6 Oversized/duplicated choice — grammar sprawl pin.
-  {
-    files: ['packages/*/src/**/*.{ts,tsx}'],
-    plugins: { local: localRules },
-    rules: {
-      'local/no-oversized-choice': ['warn', { maxArms: 15, dupMinArms: 5 }]
-    }
-  },
+  // #6 Oversized/duplicated choice — RETIRED. `choice()` in `src/…grammar.ts` is
+  // an AUTHORED parseman macro DSL declaration (`import … from 'parseman' with
+  // { type: 'macro' }`); the parseman compiler (`parseman.rolldown()` in tsdown)
+  // expands it at build into `lib/` (gitignored), and THAT compiled output — not
+  // the authored arm list — decides dispatch: disjoint arms become a switch
+  // jump-table or a single integer compare each (no re-lex), and reference arms
+  // keep dispatch parity via the fixpoint first-set recipe. So arm count on the
+  // authored declaration is NOT a cost signal, and eslint only ever sees the
+  // authored src. Genuine duplication (e.g. scss copy-pasting a statement-body
+  // choice 26×) is a code-size/structure concern surfaced by the grammar audit,
+  // not a line-count lint. See docs/perf/V8-ARCHITECTURE.md invariant 8 / R5.
+  // Rule impl kept in scripts/eslint-rules for reference but intentionally unwired.
 
   // Deprecated DetachedRuleset AST node type. Allowlist: the plugin-transport
   // (`serialize.ts` uses the less.js-facing transport tag; `value-eval.ts`

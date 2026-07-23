@@ -142,17 +142,25 @@ or call ladder is a net loss.
 alternatives that re-scan the same prefix or copy a large choice across
 contexts.
 
-*Why:* per-arm re-scan is O(arms) on the common path. Parseman's first-match
-codegen can first-character-gate disjoint arms, so prove a re-scan is real
-before optimizing it.
+*Why:* per-arm re-scan is O(arms) on the common path — BUT `choice()` in
+`grammar.ts` is an authored parseman macro; the parseman COMPILER (output in
+`lib/`) decides dispatch, first-character-gating disjoint arms into a switch
+jump-table or one integer compare each (no re-lex), with reference arms kept in
+parity by the fixpoint first-set recipe. So arm count on the authored declaration
+is NOT a cost signal; a real re-scan only exists where arms share a leading char
+(the `@`-keyword cluster tried sequentially), and even that is bounded + fail-fast.
+Prove a re-scan is real before optimizing it.
 
 **INCIDENT:** a 20-arm statement choice copied seven times, plus overfit split
-nodes (`AtRuleBlock`/`Statement`).
+nodes (`AtRuleBlock`/`Statement`). The perf premise was wrong (already gated); the
+real defect was the *duplication* (e.g. scss copy-pastes a statement-body choice
+26×) — a code-size/warmup/memory + structure concern, not throughput.
 
-**DETECTOR:** choice-size/duplicate-choice linting is a regression pin; node
-schema review catches overfit node families. The Less `@` cluster is already
-first-character-gated, so it is not evidence of a dispatch regression by
-itself.
+**DETECTOR:** NOT an arm-count lint (retired — parseman owns dispatch, so line
+count is not a cost signal on the authored macro; see eslint.config.mjs #6). The
+duplication is surfaced by the grammar audit and fixed by extracting a shared
+production (the `directLessBlockStatement` pattern), byte-identity-gated. Overfit
+node families are caught by node-schema review.
 
 ## 9. Grammar codegen integrity
 
