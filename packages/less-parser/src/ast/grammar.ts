@@ -89,6 +89,7 @@ type LessAstLocalRules = {
   DirectLessValue: Combinator<ValueSlot>;
   DirectLessVariableValue: Combinator<ValueSlot>;
   DirectLessImportant: Combinator<Important>;
+  DirectLessValueMaybeImportant: Combinator<ValueSlot>;
   DirectLessCustomPropertyName: Combinator<string | Interpolation>;
   DirectLessCustomPart: Combinator<CustomValuePart>;
   DirectLessCustomInnerPart: Combinator<CustomValuePart>;
@@ -2291,6 +2292,26 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(g.DirectLessValue, literal('!'), many(blockComment), g.CssAstSyntaxImportant),
     children => important(requireValueSlot(children[0]))
   );
+  // Left-factored value/priority: parse the value tower ONCE, then an optional
+  // `!important` tail.  The old `choice(DirectLessImportant, DirectLessValue)`
+  // was non-disjoint on the value first-set, so every declaration without a
+  // priority (~99%) descended the whole value tower inside `DirectLessImportant`,
+  // failed at the required `!`, backtracked, and re-descended as a bare value.
+  // The tail mirrors `DirectLessImportant` exactly (`!`, interspersed block
+  // comments, case-insensitive `important`), so the AST is identical either way:
+  // an `Important` wrapper when the tail matched, else the bare value.
+  const DirectLessValueMaybeImportant = node<ValueSlot>(
+    'DirectLessValueMaybeImportant',
+    sequence(
+      not(literal('{')),
+      g.DirectLessValue,
+      optional(sequence(literal('!'), many(blockComment), g.CssAstSyntaxImportant))
+    ),
+    (children) => {
+      const value = requireValueSlot(children[0]);
+      return children.some(child => isTerminalText(child, '!')) ? important(value) : value;
+    }
+  );
   // Less custom properties retain CSS declaration-value text.  The direct
   // route therefore treats every ordinary byte run as literal `Any` content,
   // but lets the shared strict `@{…}` grammar surface interpolation as typed
@@ -2432,7 +2453,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
         // Less accepts an explicit empty declaration value (`margin: ;`). Keep
         // it as a canonical empty opaque value rather than dropping the
         // declaration or falling back to a second parser.
-        optional(choice(g.DirectLessImportant, sequence(not(literal('{')), g.DirectLessValue)))
+        optional(g.DirectLessValueMaybeImportant)
       )),
       optional(literal(';'))
     )),
@@ -2493,7 +2514,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     sequence(
       g.LessAstSyntaxPunctuationMapKey,
       literal(':'),
-      optional(choice(g.DirectLessImportant, sequence(not(literal('{')), g.DirectLessValue))),
+      optional(g.DirectLessValueMaybeImportant),
       optional(literal(';'))
     ),
     (children) => {
@@ -4430,6 +4451,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     DirectLessValue,
     DirectLessVariableValue,
     DirectLessImportant,
+    DirectLessValueMaybeImportant,
     DirectLessCustomPropertyName,
     DirectLessCustomPart,
     DirectLessCustomInnerPart,
