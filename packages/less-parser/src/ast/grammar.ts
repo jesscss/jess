@@ -2,8 +2,8 @@
 import { attempt, choice, composeLeaf, field, leaf, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax, lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Any, AtRuleBlock, AtRuleStatement, Comment, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Comment, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessDynamicCharsetError } from '../parse-error.js';
 
 type Token = { readonly value: string };
@@ -158,7 +158,7 @@ type LessAstLocalRules = {
   DirectLessNamespacePrelude: Combinator<ValueNode>;
   DirectLessAtRuleBlock: Combinator<AtRuleBlock>;
   DirectLessAtRuleStatement: Combinator<AtRuleStatement>;
-  DirectLessStaticPseudo: Combinator<SimpleSelector>;
+  DirectLessStaticPseudo: Combinator<SimpleToken>;
   DirectLessInterpolatedPseudo: Combinator<SimpleSelector>;
   DirectLessInterpolatedNthPseudo: Combinator<SimpleSelector>;
   DirectLessStaticNthPseudo: Combinator<SimpleSelector>;
@@ -963,6 +963,20 @@ function isSimpleSelector(value: unknown): value is SimpleSelector {
     && value.type === 'SimpleSelector'
     && 'text' in value
     && 'interp' in value;
+}
+
+// Selector-function pseudos whose static argument is retained as a structured
+// `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
+// mirroring the CSS grammar. `:global`/`:local` are recognized by
+// `directStaticSelectorPseudoName` but stay opaque text — they are absent here.
+// `crossable` (a narrower set) is decided in core.
+const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
+
+function isSimpleToken(value: unknown): value is SimpleToken {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
 function requireCompound(value: unknown): CompoundSelector {
@@ -3714,13 +3728,15 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // retains structural selector facts without a text scanner or a reparse.
   // Keep it local, like CSS's generic pseudo argument: it is an implementation
   // component of the public pseudo production, not a second parser API.
-  const DirectLessStaticPseudoArgument = node<string>(
+  // Retain the parsed `SelectorList` rather than collapsing it to text. A
+  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // `args`; `DirectLessStaticSelectorPseudo` joins the opaque `:global`/`:local`
+  // fallback via `complexCanonical`. The parser never bakes the inline
+  // `:is(a, b)` spelling — core serialization owns that.
+  const DirectLessStaticPseudoArgument = node<SelectorList>(
     'DirectLessStaticPseudoArgument',
     parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector),
-    (children) => {
-      const selectors = requireSelectorList(children[0]);
-      return selectors.selectors.map(complexCanonical).join(',');
-    }
+    children => requireSelectorList(children[0])
   );
   const DirectLessSelectorComment = node<SimpleSelector>(
     'DirectLessSelectorComment',
@@ -3741,7 +3757,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       many(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticNthPseudo, g.DirectLessStaticPseudo, g.DirectLessStaticAttribute, blockComment))
     )),
     children => compoundSelectorOf(children.flatMap((child) => {
-      if (isSimpleSelector(child)) {
+      if (isSimpleToken(child)) {
         return [child];
       }
       const text = requireToken(child).value;
@@ -3807,10 +3823,22 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     literal('(')
   );
   const DirectLessStaticPseudo = choice(
-    node<SimpleSelector>(
+    node<SimpleToken>(
       'DirectLessStaticSelectorPseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(regex(/::?/), not(DirectLessExtendPseudoOpen), directStaticSelectorPseudoName, literal('('), DirectLessStaticPseudoArgument, literal(')'))),
-      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
+      (children) => {
+        const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
+        // Parser = STRUCTURE + trivia only. A whitelisted selector-function
+        // pseudo keeps the parsed `args` (SelectorList) and does NOT join: core
+        // serialize owns the inline `:is(a, b)` rule (`pseudoCanonical`). The
+        // non-whitelist `:global`/`:local` names still collapse to opaque
+        // SimpleSelector text via `complexCanonical`.
+        const arg = children[3];
+        if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(requireToken(children[1]).value.toLowerCase())) {
+          return pseudoSelector(head, arg);
+        }
+        return simpleSelector(`${head}(${requireSelectorList(arg).selectors.map(complexCanonical).join(',')})`);
+      }
     ),
     node<SimpleSelector>(
       'DirectLessStaticNonSelectorPseudo',
@@ -4054,7 +4082,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     // not commit `:nth-child` before seeing the opening parenthesis.
     noTrivia(oneOrMore(choice(directLessNonCommentCompoundSimple, DirectLessSelectorComment))),
     (children) => {
-      const simples = children.map(child => isSimpleSelector(child) ? child : simpleSelector(requireToken(child).value));
+      const simples = children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
       return compoundSelectorOf(simples);
     }
   );
@@ -4118,7 +4146,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessStaticExtendCompound = node<CompoundSelector>(
     'DirectLessStaticExtendCompound',
     noTrivia(oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticNthPseudo, g.DirectLessStaticPseudo, g.DirectLessStaticAttribute, DirectLessSelectorComment))),
-    children => compoundSelectorOf(children.filter(child => !isTerminalText(child, '/*')).map(child => isSimpleSelector(child) ? child : simpleSelector(requireToken(child).value)))
+    children => compoundSelectorOf(children.filter(child => !isTerminalText(child, '/*')).map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const DirectLessStaticExtendComplexTail = node<ComplexTailFact>(
     'DirectLessStaticExtendComplexTail',

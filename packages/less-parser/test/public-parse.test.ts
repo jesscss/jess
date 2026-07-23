@@ -1146,7 +1146,9 @@ describe('public Less parse()', () => {
 
     expect(document).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { text: '.card' }, { text: ':not(.disabled)' }, { text: ':has(.child > .grandchild)' }
+        { type: 'SimpleSelector', text: '.card' },
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
+        { type: 'PseudoSelector', name: ':has', text: null, crossable: false }
       ] } }] } }]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
@@ -1252,11 +1254,13 @@ describe('public Less parse()', () => {
 
     expect(document).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { text: '.card' }, { text: ':not(.disabled,.muted,.a > .b)' }, { text: ':nth-child(2n + 1)' }
+        { type: 'SimpleSelector', text: '.card' },
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
+        { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
       ] } }] } }]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
-      '.card:not(.disabled,.muted,.a > .b):nth-child(2n + 1) {\n  color: red;\n}\n'
+      '.card:not(.disabled, .muted, .a > .b):nth-child(2n + 1) {\n  color: red;\n}\n'
     );
   });
 
@@ -1265,9 +1269,15 @@ describe('public Less parse()', () => {
 
     expect(document).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { text: '.card' }, { text: ':not(.x.y,.a .b)' }
+        { type: 'SimpleSelector', text: '.card' },
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
       ] } }] } }]
     });
+    // A glued/comment boundary stays one compound inside the structured arg; the
+    // canonical join renders `:not(.x.y, .a .b)` (spaced) via core serialization.
+    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+      '.card:not(.x.y, .a .b) {\n  color: red;\n}\n'
+    );
   });
 
   it('retains outer selector comments on the public route', () => {

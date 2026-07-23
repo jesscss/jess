@@ -234,8 +234,8 @@ describe('Less AST grammar facts', () => {
         name: 'targets',
         value: {
           type: 'SelectorCapture',
-          branches: ['.notice', '.card:not(.muted,.disabled):nth-child(-n+2)', '.tail:nth-child(2n+1)'],
-          src: '*[.notice, .card:not(.muted,.disabled):nth-child(-n+2), .tail:nth-child(2n+1)]'
+          branches: ['.notice', '.card:not(.muted, .disabled):nth-child(-n+2)', '.tail:nth-child(2n+1)'],
+          src: '*[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)]'
         }
       }]
     });
@@ -3766,12 +3766,83 @@ describe('Less AST grammar facts', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
+    // Whitelisted selector-function pseudos structure their arg: `text` is null,
+    // structure lives in `args`, and the inline `:is(a, b)` join is core
+    // serialization's job. `:is`/`:matches` are crossable; `:not`/`:has` sealed.
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [
-        { head: { simples: [{ text: '.card' }, { text: ':not(.disabled)' }, { text: ':has(.child > .grandchild)' }] } },
-        { head: { simples: [{ text: '.note' }, { text: ':is(.a,.b)' }] } }
+        { head: { simples: [
+          { type: 'SimpleSelector', text: '.card' },
+          { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
+          { type: 'PseudoSelector', name: ':has', text: null, crossable: false }
+        ] } },
+        { head: { simples: [
+          { type: 'SimpleSelector', text: '.note' },
+          { type: 'PseudoSelector', name: ':is', text: null, crossable: true }
+        ] } }
       ] } }]
     });
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.card:not(.disabled):has(.child > .grandchild),\n.note:is(.a, .b) {\n  color: red;\n}\n'
+    );
+  });
+
+  it('structures whitelisted selector-function pseudos while interpolated and :extend forms stay opaque', () => {
+    const headSimples = (source: string): unknown[] => {
+      const parsed = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(parsed.ok, source).toBe(true);
+      expect(parsed.unconsumedFrom, source).toBeNull();
+      return stylesheet(parsed.value).children
+        .flatMap(child => child.type === 'Rule' ? [child] : [])[0]
+        .selector.selectors[0].head.simples;
+    };
+
+    // Whitelisted `:is` structures: parser keeps `args` (structure), never a
+    // joined `text`; the inline `:is(.a, .b)` spelling is core serialization's job.
+    // `:is`/`:matches` are crossable for extend.
+    expect(headSimples('.x:is(.a, .b) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      {
+        type: 'PseudoSelector', name: ':is', text: null, crossable: true, interp: null,
+        args: { type: 'SelectorList', selectors: [
+          { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
+          { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
+        ] }
+      }
+    ]);
+
+    // `:not` structures too but is sealed (crossable:false).
+    expect(headSimples('.x:not(.a, .b) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
+    ]);
+
+    // Non-whitelist `:global`/`:local` stay opaque SimpleSelector text (no space).
+    expect(headSimples('.x:global(.a, .b) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'SimpleSelector', text: ':global(.a,.b)' }
+    ]);
+
+    // An interpolated pseudo name stays an opaque interp-backed SimpleSelector —
+    // it never becomes a structured PseudoSelector.
+    expect(headSimples('.x:@{state} { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':' }, { ref: { name: 'state' } }] } }
+    ]);
+
+    // A `@{…}`-interpolation-bearing arg never reaches the static SelectorList
+    // arm: the whitelisted structured path requires a fully static arg, so this
+    // form does not parse (byte-identical to pre-change recognition).
+    for (const source of ['.x:is(@{sel}) { color: red; }', '.x:not(.a@{b}) { color: red; }']) {
+      const rejected = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), source).toBe(false);
+    }
+
+    // `:extend(...)` is a Less extend directive, not a pseudo: it is never
+    // structured and leaves the compound with only the subject SimpleSelector.
+    expect(headSimples('.x:extend(.a) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' }
+    ]);
   });
 
   it('retains leading combinators inside nested functional pseudo selectors', () => {
@@ -3783,11 +3854,13 @@ describe('Less AST grammar facts', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { type: 'SimpleSelector', text: ':is(:not(:has(> .foo)),:has(> .foo.bar))' }
+        { type: 'PseudoSelector', name: ':is', text: null, crossable: true }
       ] } }] } }]
     });
+    // Structured pseudos now render on ONE line with the canonical spaced join
+    // (`, `) via core serialization; the nested leading `>` combinators survive.
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      ':is(:not(:has(> .foo)),:has(> .foo.bar)) {\n  overflow: clip;\n}\n'
+      ':is(:not(:has(> .foo)), :has(> .foo.bar)) {\n  overflow: clip;\n}\n'
     );
   });
 
@@ -3854,7 +3927,9 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { text: '.card' }, { text: ':not(.disabled,.muted)' }, { text: ':nth-child(2n + 1)' }
+        { type: 'SimpleSelector', text: '.card' },
+        { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
+        { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
       ] } }] } }]
     });
   });
