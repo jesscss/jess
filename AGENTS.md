@@ -159,7 +159,7 @@ Before writing or reviewing code on a hot path (core tree/eval/render,
 grammar/parser, extend/selector algorithms), work from the canonical perf
 checklist:
 
-- `docs/perf/V8-ARCHITECTURE.md` — the **7 invariants** ("before you write X,
+- `docs/perf/V8-ARCHITECTURE.md` — the **9 invariants** ("before you write X,
   check Y") plus the regression-fixture catalogue of real incidents
   (`selectorAtoms` re-derivation, the `documentHasExtend` tree-walk, extend
   `.includes()` `O(n·m)`, polymorphic node shapes, the 20×7 `choice` fan-out,

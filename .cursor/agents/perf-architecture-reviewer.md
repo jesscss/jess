@@ -10,7 +10,7 @@ canonical perf checklist and return **evidence per item** — never a bare
 verdict. Follow `AGENTS.md` for repo-wide constraints. Do not change code.
 
 Canonical checklist you review against:
-[`docs/perf/V8-ARCHITECTURE.md`](../../docs/perf/V8-ARCHITECTURE.md) (7
+[`docs/perf/V8-ARCHITECTURE.md`](../../docs/perf/V8-ARCHITECTURE.md) (9
 invariants + regression-fixture catalogue). Design rationale:
 `docs/future/llm-quality-enforcement-design.md`.
 
@@ -31,25 +31,36 @@ grepped / read>". If you cannot produce evidence for an item, say
 
 ## What to collect (evidence required)
 
-For each of the 7 invariants, cite concrete evidence:
+For each of the 9 invariants (numbered as in the canonical doc), cite concrete
+evidence:
 
-1. **Copy/clone** — count new deep-copy sites (`.copy(true)`, `.clone(true)`,
-   `copyWithReusableLeaves(this)`). List file:line for each; note whether reuse
-   was available.
-2. **Materialize** — count `eval(...).toString()` / `resolve(...).to*String(...)`
-   chains introduced. file:line each.
-3. **Render** — any output built outside the render-buffer? file:line.
-4. **Lookup / re-derive** — any `.findVariable/.findProperty/.findDeclaration`,
-   `documentHas*` walk, or per-call set/array recompute? Is the empty case
-   short-circuited? file:line + the shape recomputed.
-5. **Leanest path** — new fields/helpers/shims: list each and state whether it
+1. **Monomorphic node shapes** — for each hot call site the diff touches: does it
+   add a sometimes-present / branch-varying field, a `delete node.*`, or a
+   `{ ...node }` reshape to a `type`? State shape count (base=N PR=N). file:line.
+2. **Re-derive / materialize early** — any serialize→scan (source = a
+   `serialize`/`*Canonical` return, sink = `.match`/`.includes`/`.indexOf`/
+   `.split`/`RegExp.test`/char-index), or `eval(...).toString()` /
+   `resolve(...).to*String(...)` chain introduced? file:line each.
+3. **Full-tree-walk / lookups** — any `documentHas*` walk,
+   `.findVariable/.findProperty/.findDeclaration`, or per-call set/array
+   recompute? Is the empty case short-circuited with a flag/bitset before any
+   scan? file:line + the shape recomputed.
+4. **Complexity class** — does the diff touch a tuned subsystem (extend,
+   selectors, grammar)? State the core-operation growth at N vs 2N
+   (`O(1)`/`O(n)`/`O(n·m)`), whether it preserves the tuned design, and whether a
+   `design/NNN.md` cites the invariants doc.
+5. **Allocation / one canonical tree** — count new `[...spread]` /
+   `Array(n).fill()` / `{ ...clone }` / fresh `Set`/`Map` per iteration and deep
+   `.copy(true)`/`.clone(true)` sites; note whether reuse / a single-value
+   fast-path was available. file:line each.
+6. **Render buffer** — any output built outside the canonical render buffer, or a
+   bespoke `renderNodeTo*` path? file:line.
+7. **Leanest path** — new fields/helpers/shims: list each and state whether it
    maps to the target runtime model or is currently-used cruft.
-6. **Shape & op-growth** — for each hot call site the diff touches: is it
-   monomorphic (one hidden class) or does the diff add a sometimes-present /
-   branch-varying field? For each new loop/scan/`choice`: state the growth
-   (`O(1)`, `O(n)`, `O(n·m)`, alternative count) and whether a Set/Map/bitset or
-   left-factor applies.
-7. **Grammar / compose** — if grammar/macro touched: did you check a clean build
+8. **Dispatch once** — for each new loop/scan/`choice`: state the arm count and
+   whether it re-scans a shared prefix; does a left-factor / first-set guard
+   apply? (Parseman first-char-gates disjoint arms — verify a re-scan is real.)
+9. **Grammar / compose** — if grammar/macro touched: did you check a clean build
    log for `falling back to runtime` / `references missing rule`? Quote the
    relevant log lines or state the build was clean.
 
@@ -58,20 +69,21 @@ For each of the 7 invariants, cite concrete evidence:
 You MUST state, per row, whether the diff reintroduces the shape (with
 evidence). Never skip a row.
 
-- **R1 `selectorAtoms` re-derivation** — is the atom `string[]`/`Set` rebuilt per
-  predicate call instead of decision-time scratch computed once and freed?
-- **R2 `documentHasExtend` tree-walk** — is a whole-document walk answering a
-  yes/no that should be a cached flag / O(1) bitset reject? Zero-extend docs
-  short-circuited?
-- **R3 extend `.includes()` `O(n·m)`** — nested linear membership over
+- **R1 `selectorAtoms` re-derivation** *(inv 2)* — is the atom `string[]`/`Set`
+  rebuilt per predicate call instead of decision-time scratch computed once and
+  freed?
+- **R2 `documentHasExtend` tree-walk** *(inv 3)* — is a whole-document walk
+  answering a yes/no that should be a cached flag / O(1) bitset reject?
+  Zero-extend docs short-circuited?
+- **R3 extend `.includes()` `O(n·m)`** *(inv 4)* — nested linear membership over
   selectors × targets where a Set/bitset makes it linear?
-- **R4 polymorphic node shapes** — a sometimes-present field / branch-varying
-  object shape de-optimizing a hot call site?
-- **R5 20×7 `choice` fan-out** — a grammar `choice`/dispatch fanned to ~20
-  alternatives retried deep, re-parsing a shared prefix per alternative?
-- **R6 compose-integrity / stale-build degrade** — a grammar/macro change that
-  silently falls back to the interpreter or references a missing rule, visible
-  only in the build log?
+- **R4 polymorphic node shapes** *(inv 1)* — a sometimes-present field /
+  branch-varying object shape de-optimizing a hot call site?
+- **R5 20×7 `choice` fan-out** *(inv 8)* — a grammar `choice`/dispatch fanned to
+  ~20 alternatives retried deep, re-parsing a shared prefix per alternative?
+- **R6 compose-integrity / stale-build degrade** *(inv 9)* — a grammar/macro
+  change that silently falls back to the interpreter or references a missing
+  rule, visible only in the build log?
 
 ## Output format
 
@@ -82,13 +94,15 @@ evidence). Never skip a row.
 **Build log checked:** (yes + clean | yes + findings quoted | n/a — no grammar change)
 
 ### Invariants
-1. Copy/clone — PASS | RISK | VIOLATION — evidence: …
-2. Materialize — … — evidence: …
-3. Render — … — evidence: …
-4. Lookup/re-derive — … — evidence: …
-5. Leanest path — … — evidence: …
-6. Shape & op-growth — … — evidence: …
-7. Grammar/compose — … — evidence: …
+1. Monomorphic shapes — PASS | RISK | VIOLATION — evidence: …
+2. Re-derive/materialize — … — evidence: …
+3. Full-tree-walk/lookups — … — evidence: …
+4. Complexity class — … — evidence: …
+5. Allocation/canonical-tree — … — evidence: …
+6. Render buffer — … — evidence: …
+7. Leanest path — … — evidence: …
+8. Dispatch once — … — evidence: …
+9. Grammar/compose — … — evidence: …
 
 ### Regression catalogue
 R1 selectorAtoms — not reintroduced | REINTRODUCED — evidence: …
@@ -109,6 +123,7 @@ R6 compose/stale-build — … — evidence: …
 - If a gate exists for an item (`verify:node-copy-frontier`,
   `verify:materialization-frontier`, `verify:render-buffer-frontier`,
   `verify:binding-lookup-hot-paths`, `verify:aggressive-cutting-review`,
-  `verify:compose-integrity`), you may run it and cite its output as evidence —
-  but still reason about shape/op-growth (items 6, R3–R5) yourself, since no gate
-  covers those.
+  `verify:compose-integrity`, shape-stability `test/ast-shape/`, extend
+  `extend-op-budget`), you may run it and cite its output as evidence — but still
+  reason about shape and op-growth (invariants 1, 4, 8; R3–R5) yourself, since no
+  gate fully covers those.

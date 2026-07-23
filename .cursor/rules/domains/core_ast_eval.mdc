@@ -22,7 +22,7 @@ globs:
 
 - Follow `AGENTS.md` for repo-wide goals.
 - For hot-path perf, the canonical checklist is `docs/perf/V8-ARCHITECTURE.md`
-  (7 invariants + regression-fixture catalogue); enforcement design is
+  (9 invariants + regression-fixture catalogue); enforcement design is
   `docs/future/llm-quality-enforcement-design.md`. Load the `perf-architecture`
   skill before editing eval/render/extend, and use the
   `perf-architecture-reviewer` (evidence per invariant) before landing.

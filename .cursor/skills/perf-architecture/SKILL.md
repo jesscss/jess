@@ -1,6 +1,6 @@
 ---
 name: perf-architecture
-description: Load BEFORE writing or changing code on Jess hot paths (core tree/eval/render, grammar/parser, extend/selector algorithms). Packages the 7 V8-architecture invariants as pre-write checks and points at the canonical checklist.
+description: Load BEFORE writing or changing code on Jess hot paths (core tree/eval/render, grammar/parser, extend/selector algorithms). Packages the 9 V8-architecture invariants as pre-write checks and points at the canonical checklist.
 ---
 
 # Perf architecture (pre-write checklist)
@@ -19,41 +19,55 @@ Architecture**.
 
 ## Before you write X, check Y
 
-1. **Copy/clone** — before `.copy(true)` / `.clone(true)` /
-   `copyWithReusableLeaves(this)`: can node reuse + lazy per-placement state
-   serve this instead? Deep copy as eval isolation is an anti-pattern.
-   *(gate: `verify:node-copy-frontier`)*
+Numbered to match the canonical `docs/perf/V8-ARCHITECTURE.md` invariants 1–9.
 
-2. **Materialize** — before `x.eval(ctx).toString()` /
-   `.resolve(...).toTrimmedString(...)`: serialize the structured node directly;
-   don't stringify mid-eval. *(gate: `verify:materialization-frontier`)*
+1. **Monomorphic node shapes** — before adding a sometimes-present field,
+   `delete node.*`, conditional field assignment, or `{ ...node }` reshape: keep
+   every node of a `type` one field set/order through one factory. A second
+   hidden class per type is the single biggest cost.
+   *(gate: shape-stability harness `test/ast-shape/` + reshape lints)*
 
-3. **Render** — before concatenating output or adding a `renderNodeTo*` path:
-   route through the canonical render-buffer
-   (`packages/core/src/tree/util/render-buffer.ts`). One pass, one buffer.
-   *(gate: `verify:render-buffer-frontier`)*
+2. **Never re-derive / materialize early** — before `x.eval(ctx).toString()` /
+   `.resolve(...).toTrimmedString(...)` or serializing a node then scanning the
+   string: read the structured data off the node; render the structured node
+   directly. *(gate: `verify:materialization-frontier` + serialize-to-scan lint)*
 
-4. **Lookup / re-derive** — before `.findVariable/.findProperty/.findDeclaration`,
-   a `documentHas*` scan, or recomputing a set/array you already hold: use the
-   occurrence helpers (`find*DeclarationOccurrence`); cache-once/read-many;
-   short-circuit the empty case with a flag/bitset before any scan.
-   *(gate: `verify:binding-lookup-hot-paths`)*
+3. **Never full-tree-walk; lookups are occurrence reads** — before a
+   `documentHas*` scan, `.findVariable/.findProperty/.findDeclaration`, or
+   recomputing a set/array you already hold: use a parse-time flag / O(1) bitset
+   reject and the occurrence helpers; short-circuit the empty case before any
+   scan. *(gate: `verify:binding-lookup-hot-paths` + extend op-counter budgets)*
 
-5. **New field / helper / shim** — before adding one: is it on the leanest path
-   to the feature and mapped to the target runtime model, or just
-   "currently used"? Delete transitional surfaces in the cutover; don't carry
-   no-op wrappers. *(gate: `verify:aggressive-cutting-review`)*
+4. **Complexity class is an invariant (even clean-room)** — before rewriting a
+   tuned subsystem (extend, selectors, grammar): consult the tuned impl + its
+   design doc; preserve the design principles and complexity class. Clean-room ≠
+   constraint-free. *(gate: scaling budgets `extend-op-budget` + `design/NNN.md`)*
 
-6. **Shape & op-growth** — before a sometimes-present field, a mixed-shape call
-   site, or a scan/`choice` whose cost grows with input: keep the hot call site
-   **monomorphic** (one stable hidden class), and keep operations linear/constant
-   via Set/Map/bitset instead of `O(n·m)`; left-factor big `choice` fan-outs.
-   *(reviewer-enforced; incidents R3–R5 in the catalogue)*
+5. **Allocation discipline / one canonical tree** — before `[...spread]` /
+   `Array(n).fill()` / `{ ...clone }` / a fresh `Set`/`Map` per iteration, or a
+   deep `.copy(true)`/`.clone(true)` to isolate eval: single-value fast-path
+   first, reuse buffers, prefer one canonical tree + lazy per-placement state.
+   *(gate: `verify:node-copy-frontier` + `audit:node-creation`)*
 
-7. **Grammar / compose** — before landing a grammar or parseman `compose()`/macro
-   change: read a *clean* full build log for `falling back to runtime` or
-   `references missing rule`. A stale `lib/` masks compose failures — build the
-   chain serially from clean. *(gate: `verify:compose-integrity`)*
+6. **Render through the canonical buffer** — before concatenating output or
+   adding a bespoke `renderNodeTo*` path: route through the one canonical render
+   buffer. One pass, one buffer. *(gate: `verify:render-buffer-frontier`)*
+
+7. **Leanest path only** — before adding a node field, helper, wrapper, or
+   compat shim: is it on the leanest path to the target runtime model, or just
+   "currently used"? Delete transitional surfaces in the cutover.
+   *(gate: `verify:aggressive-cutting-review`)*
+
+8. **Dispatch once; don't re-scan a shared prefix** — before listing N
+   alternatives that re-scan a shared prefix or copy a large `choice` across
+   contexts: read the leading token/`@keyword` once, then switch; left-factor.
+   (Parseman first-char-gates disjoint arms — prove a re-scan is real first.)
+   *(gate: `no-oversized-choice` lint)*
+
+9. **Grammar codegen integrity** — before landing a grammar or parseman
+   `compose()`/macro change: read a *clean* full build log for `falling back to
+   runtime` or `references missing rule`. A stale `lib/` masks compose failures —
+   build the chain serially from clean. *(gate: `verify:compose-integrity`)*
 
 ## Don't claim perf wins without measurement
 
