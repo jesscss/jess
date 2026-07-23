@@ -137,9 +137,10 @@ describe('Public parser diagnostic provenance', () => {
       const filePath = `/proj/invalid${testCase.extension}`;
       const result = await new Compiler().renderToResult(
         { source: testCase.source, filePath, extension: testCase.extension },
-        { suppressWarnings: true }
+        { suppressWarnings: true, breakOnError: false }
       );
 
+      expect(result.errors).toHaveLength(1);
       const diagnostic = result.errors[0]!;
       expect(diagnostic).toMatchObject({
         code: 'parse/syntax-error',
@@ -157,9 +158,11 @@ describe('Public parser diagnostic provenance', () => {
     const source = '@Eight: 8;\n@charset "UTF-@{Eight}";';
     const filePath = '/proj/charset.less';
     const captured = await captureAsync(() => new Compiler().renderToResult(
-      { source, filePath, extension: '.less' }
+      { source, filePath, extension: '.less' },
+      { breakOnError: false }
     ));
 
+    expect(captured.value.errors).toHaveLength(1);
     expect(captured.value.errors[0]).toMatchObject({
       code: 'parse/dynamic-charset',
       filePath,
@@ -180,6 +183,7 @@ describe('Public parser diagnostic provenance', () => {
     fs.writeFileSync(imported, '.ok { color: red; }\n!broken');
     try {
       const result = await new Compiler().safeRender(entry, { suppressWarnings: true });
+      expect(result.errors).toHaveLength(1);
       const diagnostic = result.errors[0]!;
       expect(diagnostic).toMatchObject({
         code: 'parse/syntax-error',

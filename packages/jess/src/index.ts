@@ -85,6 +85,40 @@ function internalUnknownDiagnostic(
   };
 }
 
+/**
+ * Context records a plugin diagnostic before it throws the corresponding
+ * JessError. Public compiler result methods begin with that recorded list, so
+ * only append the thrown conversion when it is a distinct diagnostic. This
+ * preserves independent sites while avoiding a second copy of one parser (or
+ * context-owned) failure.
+ */
+function sameDiagnosticSite(
+  left: ErrorDiagnostic | WarningDiagnostic,
+  right: ErrorDiagnostic | WarningDiagnostic
+): boolean {
+  return left.code === right.code
+    && left.phase === right.phase
+    && left.message === right.message
+    && left.reason === right.reason
+    && left.fix === right.fix
+    && left.note === right.note
+    && left.filePath === right.filePath
+    && left.line === right.line
+    && left.column === right.column;
+}
+
+function appendThrownJessDiagnostic(
+  errors: ErrorDiagnostic[],
+  warnings: WarningDiagnostic[],
+  error: JessError
+): void {
+  const diagnostic = toDiagnostic(error);
+  const target = 'errors' in diagnostic ? errors : warnings;
+  if (!target.some(existing => sameDiagnosticSite(existing, diagnostic))) {
+    target.push(diagnostic);
+  }
+}
+
 type LessOptions = ReturnType<typeof getOptions>;
 type LessPluginInput = NonNullable<Parameters<typeof lessPlugin>[0]> & { plugins?: readonly unknown[] };
 type LessPluginCacheKey = string;
@@ -1286,12 +1320,7 @@ export class Compiler {
       const errMsg = err instanceof Error ? err.message : String(err);
 
       if (err instanceof JessError) {
-        const diagnostic = toDiagnostic(err);
-        if ('errors' in diagnostic) {
-          errors.push(diagnostic);
-        } else {
-          warnings.push(diagnostic);
-        }
+        appendThrownJessDiagnostic(errors, warnings, err);
       } else {
         errors.push(internalUnknownDiagnostic(
           err,
@@ -1365,12 +1394,7 @@ export class Compiler {
       const errMsg = err instanceof Error ? err.message : String(err);
 
       if (err instanceof JessError) {
-        const diagnostic = toDiagnostic(err);
-        if ('errors' in diagnostic) {
-          errors.push(diagnostic);
-        } else {
-          warnings.push(diagnostic);
-        }
+        appendThrownJessDiagnostic(errors, warnings, err);
       } else {
         errors.push(internalUnknownDiagnostic(
           err,
@@ -1429,12 +1453,7 @@ export class Compiler {
       const errMsg = err instanceof Error ? err.message : String(err);
 
       if (err instanceof JessError) {
-        const diagnostic = toDiagnostic(err);
-        if ('errors' in diagnostic) {
-          errors.push(diagnostic);
-        } else {
-          warnings.push(diagnostic);
-        }
+        appendThrownJessDiagnostic(errors, warnings, err);
       } else {
         errors.push(internalUnknownDiagnostic(
           err,
