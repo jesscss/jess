@@ -1488,29 +1488,6 @@ const directLayerAtRuleName = regex(/@layer(?![-\w])/i);
 const directNamespaceAtRuleName = regex(/@namespace(?![-\w])/i);
 const directCharsetAtRuleName = regex(/@charset(?![-\w])/i);
 const directAtRuleName = regex(/@(?!(?:-import|-export|import|layer|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-// Grammar-local copies of the conditional/keyframes at-keywords (identical to the
-// shared CssAstSyntax*AtKeyword rules in internal-css-recognition). parseman
-// cannot resolve a first-set across the composeLeaf artifact boundary, so a
-// leading `g.CssAstSyntax*AtKeyword` reference reads as an `any` first-set and the
-// compiler enters DirectLessSupportsBlock/MediaContainerBlock/Keyframes
-// speculatively at every statement position. Spelling each leading recognizer
-// grammar-locally resolves the arm's `@` first-set so the whole @-led statement
-// cluster first-char-gates: a non-`@` declaration/ruleset skips all these arms
-// with one codepoint check instead of entering each node frame and rolling back.
-const directSupportsAtKeyword = regex(/@supports(?![-\w])/i);
-const directMediaAtKeyword = regex(/@media(?![-\w])/i);
-const directContainerAtKeyword = regex(/@container(?![-\w])/i);
-const directKeyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-\w])/i);
-// Grammar-local copy of LessAstSyntaxCustomProperty (identical to
-// internal-css-recognition's lessCustomProperty). The plain-`--name` arm of
-// DirectLessCustomPropertyName led with the cross-composition reference, which
-// reads as an `any` first-set, so DirectLessCustomDeclaration was entered
-// speculatively at every declaration position (benchmark.less: ~4,300 probes,
-// ~1.57% of parse). Both custom-property-name arms begin with `--`, so spelling
-// this recognizer grammar-locally resolves the whole name choice to a `-`
-// first-set and the custom-vs-standard declaration dispatch first-char-gates:
-// an ordinary `color:` declaration skips DirectLessCustomDeclaration entirely.
-const directLessCustomPropertyName = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
 const directMixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const directMixinPathCombinator = regex(/>/);
 const directMixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
@@ -2446,7 +2423,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
         g.DirectLessInterpolation,
         many(choice(g.LessAstSyntaxInterpolatedCustomPropertyTail, g.DirectLessInterpolation))
       )),
-      directLessCustomPropertyName
+      g.LessAstSyntaxCustomProperty
     ),
     (children) => {
       if (!children.some(isInterpolationFact)) {
@@ -3429,7 +3406,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   const DirectLessSupportsBlock = node<AtRuleBlock>(
     'DirectLessSupportsBlock',
     sequence(
-      directSupportsAtKeyword,
+      g.CssAstSyntaxSupportsAtKeyword,
       choice(g.DirectLessAtRuleInterpolation, g.DirectLessSupportsCondition),
       literal('{'),
       directLessBlockBody,
@@ -3658,8 +3635,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   const DirectLessMediaContainerBlock = node<AtRuleBlock>(
     'DirectLessMediaContainerBlock',
     choice(
-      sequence(directMediaAtKeyword, choice(DirectLessMediaQueryPrelude, g.DirectLessAtRuleInterpolation), g.DirectLessMediaContainerBody),
-      sequence(directContainerAtKeyword, not(g.CssAstSyntaxQueryOnly), DirectLessContainerQueryPrelude, g.DirectLessMediaContainerBody)
+      sequence(g.CssAstSyntaxMediaAtKeyword, choice(DirectLessMediaQueryPrelude, g.DirectLessAtRuleInterpolation), g.DirectLessMediaContainerBody),
+      sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly), DirectLessContainerQueryPrelude, g.DirectLessMediaContainerBody)
     ),
     (children) => {
       const body = children.find(Array.isArray);
@@ -3703,7 +3680,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   const DirectLessKeyframes = node<AtRuleBlock>(
     'DirectLessKeyframes',
     sequence(
-      directKeyframesAtKeyword,
+      g.CssAstSyntaxKeyframesAtKeyword,
       many(g.DirectLessQueryComment),
       field('prelude', choice(g.DirectLessAtRuleInterpolation, g.DirectLessEscapedQuoted, g.DirectLessStaticQuoted, g.DirectLessKeyword)),
       many(g.DirectLessQueryComment),
