@@ -106,7 +106,7 @@ function isCssCstChild(value: unknown): value is CssCstChild {
 
 export const cssCstBuildHost: BuildHost = (
   grammarType: string,
-  _children: ReadonlyArray<unknown>,
+  _children: ReadonlyArray<unknown> | undefined,
   _fields: FieldMap | undefined,
   span: Span,
   rawChildren: ReadonlyArray<unknown>,
@@ -147,7 +147,7 @@ function cssCstBuildHostFor(options: CssCstParseOptions): BuildHost {
   return Object.assign(
     (
       grammarType: string,
-      children: ReadonlyArray<unknown>,
+      children: ReadonlyArray<unknown> | undefined,
       fields: FieldMap | undefined,
       span: Span,
       rawChildren: ReadonlyArray<unknown>,
