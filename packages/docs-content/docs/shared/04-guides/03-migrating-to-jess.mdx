@@ -1,7 +1,7 @@
 ---
 title: Migrating to Jess
 sidebar_label: Migrating to Jess
-description: Move a Less or Sass codebase onto Jess with jess convert and side-by-side syntax mapping tables.
+description: Move a Less or Sass codebase onto Jess by hand, with side-by-side syntax mapping tables for every construct.
 audiences:
   - jess
   - sass
@@ -14,39 +14,45 @@ import AudienceGate from '@theme/AudienceGate';
 
 <AudienceGate include={['jess']}>
 
-Moving an existing **Less** or **Sass** codebase onto **Jess**? This guide pairs
-the `jess convert` first pass with a side-by-side mapping so you can see exactly
-what each construct becomes in Jess syntax.
+Moving an existing **Less** or **Sass** codebase onto **Jess**? This guide is a
+side-by-side mapping so you can see exactly what each construct becomes in Jess
+syntax.
 
 </AudienceGate>
 
 <AudienceGate include={['sass']}>
 
 Coming from **Sass/SCSS**? Jess parses your SCSS today (it calls the supported
-subset **Sass+**), and `jess convert` rewrites it to native `.jess`. The tables
-below read left-to-right: **your Sass** on the left, **Jess** on the right.
+subset **Sass+**), so nothing forces you to rewrite it. When you do want native
+`.jess`, the tables below read left-to-right: **your Sass** on the left,
+**Jess** on the right.
 
 </AudienceGate>
 
-:::note
-`jess convert` is available today and is best used as a first-pass migration assistant. Plan on reviewing converted output and iterating on edge cases (especially complex mixin/namespace patterns) as Jess syntax continues to evolve in alpha.
+:::caution Migration is manual today
+There is **no `jess convert` command**. An automated `.less`/`.scss` → `.jess`
+converter is planned but not implemented, and the `jess` CLI has no subcommands
+at all — it compiles a single file to CSS (`jess input.less -o dist`).
+
+You do not have to migrate to use Jess: the compiler reads `.less` and `.scss`
+sources directly. Port files to `.jess` by hand, using the mappings below, only
+where you want the native syntax.
 :::
 
-## Migrating Less to Jess
+## Construct mapping
 
-```sh
-jess convert "./src/less/**/*.less" "./src/styles"
-```
-
-## Conversion steps
-
-Jess starts by parsing your Less/Sass source (or other plugin-provided language), then evaluates the tree so it can rewrite syntax with real context (imports, function calls, variable lookups). Think of it as "mechanical migration first, human polish second."
+Each section pairs a source construct with the Jess spelling it becomes. These
+are the same mappings an automated converter would apply, so they are equally
+useful as a hand-migration checklist and as the specification for that future
+tool.
 
 ### At-rules
 
-Jess will convert at-rules to their prefixed counterparts. In import rules, Jess will distinguish between file-relative and module-relative imports, as Jess requires file-relative imports to be explicit.
+At-rules become their prefixed counterparts. Import rules also have to
+distinguish file-relative from module-relative paths, because Jess requires
+file-relative imports to be explicit.
 
-E.g. `@import` will become `@-import`
+E.g. `@import` becomes `@-import`
 
 <Tabs>
   <TabItem value="Less">
@@ -66,14 +72,17 @@ E.g. `@import` will become `@-import`
   </TabItem>
 </Tabs>
 
-:::tip Prefer `@-compose` once converted
+:::tip Prefer `@-compose` once ported
 `@-import` is a **legacy bridge** — it works and eases a mechanical port, but it
 emits a deprecation warning because it re-exports everything and changes the
 evaluation context per call. The Jess module system is
-[`@-compose`](/docs/Language/atrules) (namespaced, isolated scope, `with { }`
-configuration). A Sass `@use "./theme";` maps most cleanly to
-`@-compose "./theme";`, not `@-import`. Convert with `@-import` for the first
-pass, then promote real modules to `@-compose`.
+[`@-compose`](/docs/Language/atrules) (namespaced, isolated scope). A Sass
+`@use "./theme";` maps most cleanly to `@-compose "./theme";`, not `@-import`.
+Use `@-import` for the first pass, then promote real modules to `@-compose`.
+
+`@-compose` currently accepts a quoted path and an optional `as` alias
+(`@-compose "./theme" as t;`). Sass's `@use ... with (...)` configuration has no
+`@-compose` equivalent yet.
 :::
 
 ### Variable declarations

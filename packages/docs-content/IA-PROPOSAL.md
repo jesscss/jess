@@ -197,7 +197,8 @@ facings.
     scss-compatibility         A:[jess,sass]       how SCSS maps into Jess.
     unsupported-sass-features  A:[jess,sass]       @at-root, @forward show/hide/as — parsed, not evaluated.
     stricter-than-sass         A:[jess,sass]       invalid-CSS Sass tolerates that Jess rejects.
-  migrating-to-jess            A:[jess,sass]       `jess convert`; Less→Jess AND Sass→Jess mapping tables.
+  migrating-to-jess            A:[jess,sass]       manual port; Less→Jess AND Sass→Jess mapping tables.
+                               (no `jess convert` exists — converter is unbuilt.)
                                gate: two source columns (Less / Sass) → Jess.
   theming                      A:[jess]            design tokens, @-compose ... with { }, static vs patch output.
   browser-usage                A:[jess,less]       gate: Less update-script model vs Jess dynamic/patch output.
