@@ -95,6 +95,9 @@ run('pnpm', ['run', 'ci']);
 heading('Structural & perf gates');
 for (const script of [
   'verify:config-syntax',
+  // A truthiness test on a possibly-awaitable value silently takes one branch
+  // instead of crashing, and neither tsc nor no-unnecessary-condition sees it.
+  'verify:maybe-promise-truthiness',
   'verify:aggressive-cutting-review',
   'verify:node-copy-frontier',
   'verify:materialization-frontier',

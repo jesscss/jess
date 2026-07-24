@@ -3661,10 +3661,64 @@ function resolveSimpleText(sim: SimpleToken, frame: Frame | null, e: EvalCtx): M
 
 /** Synchronous selector-interpolation consumers cannot suspend and resume a
  * partially mutated selector. Public emitted selectors retain the async path. */
+/**
+ * A selector interpolation that can only be resolved by awaiting. Distinct from
+ * an ordinary resolution failure because the extend pre-pass deliberately
+ * SWALLOWS the latter (an interp that never resolves — a guarded rule that is
+ * never emitted — correctly falls back to "no extend match"). An awaitable value
+ * is not that: it is a real capability gap, and swallowing it produced malformed
+ * CSS with no diagnostic at all.
+ */
+class AsyncSelectorInterp extends Error {
+  /** The offending token, so the diagnostic can point at its `@{…}` reference. */
+  readonly token: SimpleToken;
+
+  constructor(token: SimpleToken) {
+    super('selector interpolation resolved to an awaitable value');
+    this.name = 'AsyncSelectorInterp';
+    this.token = token;
+  }
+}
+
+/**
+ * Span-carrying nodes to attribute a selector-interp failure to, most specific
+ * first. Rules and selectors carry no source span (the parser records them only
+ * for a few value nodes), but the `@{…}` REFERENCE inside the interpolation does
+ * — and that reference is the thing the author would have to change.
+ */
+function interpSpanCandidates(token: SimpleToken): object[] {
+  const out: object[] = [];
+  for (const part of token.interp?.parts ?? []) {
+    if ('ref' in part) {
+      out.push(part.ref);
+    }
+  }
+  return out;
+}
+
+/**
+ * The authored spelling of an interpolated token (`.@{e}`), rebuilt from its
+ * template. The parser records no source span for a selector-interpolation
+ * reference, so a line/column is often unavailable here; naming the selector
+ * keeps the diagnostic actionable regardless.
+ */
+function interpTokenSpelling(token: SimpleToken): string {
+  let out = '';
+  for (const part of token.interp?.parts ?? []) {
+    if ('lit' in part) {
+      out += part.lit;
+      continue;
+    }
+    const ref = part.ref;
+    out += !isValueSlotArray(ref) && ref.type === 'VariableReference' ? `@{${ref.name}}` : '@{…}';
+  }
+  return out;
+}
+
 function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: EvalCtx): string {
   const value = resolveSimpleText(sim, frame, e);
   if (isThenable(value)) {
-    throw new Error('async value in synchronous selector interpolation is unsupported');
+    throw new AsyncSelectorInterp(sim);
   }
   return value;
 }
@@ -4154,6 +4208,41 @@ function declName(node: Declaration, frame: Frame | null, e: EvalCtx): string {
 }
 
 /**
+ * The extend pre-pass resolves selector interpolation SYNCHRONOUSLY, in place,
+ * before the extend planner reads it. That pass deliberately tolerates an interp
+ * it cannot resolve. It must not tolerate one that merely needs awaiting: doing
+ * so left `.@{async}` with no text at all, which emitted a rule with an EMPTY
+ * leading selector (`,\n.a { … }`) and silently dropped the `:extend()` — wrong
+ * CSS, no error, no warning. Reported here like every other position that cannot
+ * yet await, until the pre-pass itself moves onto the MaybePromise lane.
+ *
+ * TODO(maybe-promise-extend-prepass): give the extend pre-pass an awaitable lane
+ * so an interpolated selector built from an async value can participate in
+ * extend. Tracked in docs/future/core-architecture/HANDOFF.md.
+ */
+function rejectAsyncSelectorInterp(
+  error: unknown,
+  where: string,
+  nodes: readonly object[],
+  e: EvalCtx
+): void {
+  if (!(error instanceof AsyncSelectorInterp)) {
+    return;
+  }
+  // Point at the most specific node that actually carries a source span: the
+  // selector if the parser recorded one, else the rule. A diagnostic that lands
+  // on 1:1 is worse than useless — it sends the reader to the top of the file.
+  const detail = `${where} "${interpTokenSpelling(error.token)}"`;
+  for (const node of [...interpSpanCandidates(error.token), ...nodes]) {
+    const location = callSiteLocation(node, e);
+    if (location.line !== undefined) {
+      throw ERR.asyncInSyncPosition({ node, ...location, meta: { where: detail } });
+    }
+  }
+  throw ERR.asyncInSyncPosition({ node: nodes[0] ?? {}, meta: { where: detail } });
+}
+
+/**
  * [extend/selector-interp] Resolve a compound's interpolated simples in place, in
  * `frame`, replacing each `@{…}` token with the static resolved text — the SAME
  * per-simple resolution {@link resolveCompound} performs at emit, so the mutated
@@ -4164,11 +4253,19 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
   if (!compoundHasInterp(comp)) {
     return;
   }
+  // Resolve EVERY interpolated simple before mutating any of them. A partial
+  // mutation (simple 0 replaced, simple 1 throwing) would leave the compound in a
+  // state that is neither the authored selector nor the resolved one, and the
+  // caller's recovery path would then serialize that corruption.
+  const resolved: Array<{ index: number; text: string }> = [];
   for (let i = 0; i < comp.simples.length; i++) {
     const sim = comp.simples[i]!;
     if (sim.interp !== null) {
-      comp.simples[i] = simpleSelector(resolveSimpleTextSync(sim, frame, e));
+      resolved.push({ index: i, text: resolveSimpleTextSync(sim, frame, e) });
     }
+  }
+  for (const { index, text } of resolved) {
+    comp.simples[index] = simpleSelector(text);
   }
   comp._hasInterp = false;
   comp._canon = undefined;
@@ -4224,9 +4321,12 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
         }
         try {
           resolveComplexInterpInPlace(c, frame, e);
-        } catch {
-          // Unresolvable interp (e.g. a guarded rule never emitted): leave verbatim —
-          // the extend engine falls back to the baseline (no match), never regresses.
+        } catch (error) {
+          // An AWAITABLE interp is a capability gap, not an unresolvable branch:
+          // report it. Anything else (e.g. a guarded rule never emitted) leaves the
+          // selector verbatim — the extend engine falls back to the baseline (no
+          // match), never regresses.
+          rejectAsyncSelectorInterp(error, 'extend pre-pass rule selector', [c, list, st], e);
         }
       }
       // The same planner reads extend targets before matching. Resolve their
@@ -4240,9 +4340,10 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
           }
           try {
             resolveComplexInterpInPlace(c, frame, e);
-          } catch {
-            // Preserve the unresolved target when its branch cannot resolve;
-            // the planner then keeps the existing no-match behavior.
+          } catch (error) {
+            // As above: an awaitable target is reported; a genuinely unresolvable
+            // one is preserved and the planner keeps its no-match behavior.
+            rejectAsyncSelectorInterp(error, 'extend pre-pass :extend() target', [c, inst.target, st], e);
           }
         }
       }

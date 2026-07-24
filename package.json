@@ -102,6 +102,7 @@
     "verify:surface-parity": "node scripts/verify-surface-parity.mjs",
     "verify:baseline": "node scripts/verify-baseline.mjs",
     "verify:types": "node scripts/verify-types.mjs",
+    "verify:maybe-promise-truthiness": "node scripts/verify-maybe-promise-truthiness.mjs",
     "build:release": "pnpm -r --filter=!jess-docs --filter=!@jesscss/docs-less build",
     "verify:alpha:packed-consumer": "node scripts/release/verify-alpha-packed-consumer.mjs",
     "release:alpha:push-check": "node scripts/release/verify-alpha-source-sync.mjs && node scripts/release/validate-alpha-publish-set.mjs",
