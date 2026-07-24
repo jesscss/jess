@@ -2568,11 +2568,45 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // condition-grammar / FnCtx capability wave, not this path.)
       return literal('');
     case 'Collection':
-      // A Collection is an SCSS nested-property carrier value. It is flattened to
-      // hyphenated declarations structurally in `walkBody` (case 'Declaration')
-      // and never reaches a value/arg evaluation position; fold to empty bytes.
-      return literal('');
+      return collectionBytes(node, frame, e);
   }
+}
+
+/**
+ * Bytes for a {@link Collection} reaching a value/arg position — an SCSS map
+ * literal (`$m: (a: 1, b: 2)`, lowered to a Collection at parse) passed to a
+ * function, or the authorable Jess collection `$m: { a: 1; b: 2 }`.
+ *
+ * The emitted form is the CANONICAL Jess collection spelling `{ a: 1; b: 2 }`
+ * (`{}` when empty). It is deliberately NOT the Sass paren-map syntax: that is
+ * SCSS *input* syntax which the parser lowers away, so by this point there is no
+ * paren map left to round-trip to. Entry names may be an {@link Interpolation}
+ * (`(#{$k}: 1)`) and resolve through the ordinary declaration-name path; a
+ * variable-declaration entry (`{ @a: 1 }`) keeps its `@` sigil, matching every
+ * other name-in-bytes site in this file.
+ *
+ * A `base` (the carrier's own value in the SCSS nested property `font: 20px { … }`)
+ * is emitted ahead of the block. That shape only reaches here when the structural
+ * flatten in `walkBody` did not run for it; emitting it keeps the authored value
+ * visible instead of silently dropping it.
+ */
+function collectionBytes(node: Collection, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
+  const pieces: Array<MaybePromise<string>> = node.entries.map((entry) => {
+    const name = entry.type === 'Declaration' ? declName(entry, frame, e) : `@${entry.name}`;
+    const important = entry.type === 'Declaration' && entry.important ? ' !important' : '';
+    // `evalBinding` keeps the one deliberate empty-bytes case (`@p: .mk-map()`,
+    // an accessible/callable-only binding) shared with every other binding read.
+    return mapMaybe(evalBinding(entry.value, frame, e), v => `${name}: ${emitValue(v)}${important}`);
+  });
+  if (node.base !== undefined) {
+    pieces.unshift(evalBytes(node.base, frame, e));
+  }
+  const first = node.base === undefined ? 0 : 1;
+  return combineAll(pieces, (bytes) => {
+    const body = bytes.slice(first).join('; ');
+    const block = body === '' ? '{}' : `{ ${body} }`;
+    return literal(first === 0 ? block : `${bytes[0]!} ${block}`);
+  });
 }
 
 /** Resolve an interpolation template to bytes (literals + spliced refs). */
