@@ -1623,11 +1623,16 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     children => spaced(children.map(child => isValue(child) ? child : keyword(tokenText(child))))
   );
+  // A clause is one `<media-query>`: whitespace-joined terms only. The comma
+  // belongs to the enclosing `<media-query-list>` (mediaqueries-4 §2.1), so it
+  // must not be an optional separator here — swallowing it collapsed
+  // `screen, print` into a SpacedValue instead of the List the other three
+  // dialects produce.
   const CssAstQueryClause = node<ValueNode>(
     'CssAstQueryClause',
     choice(
       CssAstQueryOnlyClause,
-      sequence(CssAstQueryTerm, many(sequence(optional(literal(',')), CssAstQueryTerm)))
+      sequence(CssAstQueryTerm, many(CssAstQueryTerm))
     ),
     (children) => {
       const values = valueChildren(children);

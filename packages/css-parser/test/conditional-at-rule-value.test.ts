@@ -29,6 +29,7 @@ const dim = (src: string) => ({ type: 'Dimension', src });
 const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', inner });
 const op = (operator: string, left: unknown, right: unknown) => ({ type: 'Operation', operator, left, right });
 const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
+const list = (...value: unknown[]) => ({ type: 'List', sep: ',', value });
 
 /**
  * `<ratio>` — mediaqueries-4 §2.1, `<number> [ / <number> ]?`. The slash is a
@@ -115,7 +116,30 @@ const COMPOSITION: Array<[string, string, object]> = [
   ['a named @container', '@container card (min-width: 400px) { a { color: red; } }',
     { type: 'SpacedValue', parts: [kw('card'), paren(op(':', kw('min-width'), dim('400px')))] }],
   ['an and chain in @container', '@container (min-width: 400px) and (min-height: 400px) { a { color: red; } }',
-    { type: 'SpacedValue', parts: [paren(op(':', kw('min-width'), dim('400px'))), kw('and'), paren(op(':', kw('min-height'), dim('400px')))] }]
+    { type: 'SpacedValue', parts: [paren(op(':', kw('min-width'), dim('400px'))), kw('and'), paren(op(':', kw('min-height'), dim('400px')))] }],
+  ['a comma-separated media-query list', '@media screen, print { a { color: red; } }', list(kw('screen'), kw('print'))],
+  ['a three-item media-query list', '@media screen, print, tv { a { color: red; } }', list(kw('screen'), kw('print'), kw('tv'))],
+  ['a list of parenthesized features', '@media (min-width: 1px), (max-width: 2px) { a { color: red; } }',
+    list(paren(op(':', kw('min-width'), dim('1px'))), paren(op(':', kw('max-width'), dim('2px'))))],
+  ['a list whose first query is only-modified', '@media only screen, print { a { color: red; } }',
+    list({ type: 'SpacedValue', parts: [kw('only'), kw('screen')] }, kw('print'))],
+  ['a list whose first query is an and chain', '@media screen and (hover), print { a { color: red; } }',
+    list({ type: 'SpacedValue', parts: [kw('screen'), kw('and'), paren(kw('hover'))] }, kw('print'))],
+  ['a comma-separated @container query list', '@container (width > 1px), (height > 1px) { a { color: red; } }',
+    list(paren(op('>', kw('width'), dim('1px'))), paren(op('>', kw('height'), dim('1px'))))]
+];
+
+/**
+ * The parser is not a linter. Which feature names exist, which keywords are
+ * meaningful for a feature, and which units are real are all language-service
+ * facts — the grammar's job is the SHAPE. A dialect that rejects one of these
+ * turns a diagnosable squiggle into a lost file, so they are pinned here.
+ */
+const NOT_A_LINTER: Array<[string, string, object]> = [
+  ['an unknown feature name', '@media (future-feature: 3) { a { color: red; } }', paren(op(':', kw('future-feature'), dim('3')))],
+  ['an unknown keyword for a known feature', '@media (orientation: sideways) { a { color: red; } }', paren(op(':', kw('orientation'), kw('sideways')))],
+  ['an unknown unit', '@media (min-width: 5qq) { a { color: red; } }', paren(op(':', kw('min-width'), dim('5qq')))],
+  ['a nonsensical but well-formed unit', '@media (min-width: 17deg) { a { color: red; } }', paren(op(':', kw('min-width'), dim('17deg')))]
 ];
 
 /**
@@ -141,16 +165,6 @@ const SUPPORTS: Array<[string, string, object]> = [
   ['a custom-property test', '@supports (--x: red) { a { color: red; } }', { type: 'GeneralEnclosed' }]
 ];
 
-/**
- * DIVERGENCE (css-parser gap, not a dialect feature). `CssAstQueryClause` treats
- * the comma as an optional separator inside a single whitespace-joined clause, so
- * `@media screen, print` reduces to a `SpacedValue` where less/scss/jess all
- * produce the `List` that mediaqueries-4 §2.1 describes. Encoded so the shared
- * body stays identical across the four packages; fixing css-parser should replace
- * this constant with the `List` form the other three use.
- */
-const MEDIA_QUERY_LIST = { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'screen' }, { type: 'Keyword', src: 'print' }] };
-
 function prelude(source: string): unknown {
   const first = parse(source).children[0];
   if (first === undefined || !('prelude' in first)) {
@@ -162,7 +176,7 @@ function prelude(source: string): unknown {
 describe('CSS conditional at-rule value holes', () => {
   for (const [group, cases] of [
     ['<ratio>', RATIO], ['<mf-range>', RANGE], ['<mf-value>', FEATURE_VALUE],
-    ['query composition', COMPOSITION], ['@supports', SUPPORTS]
+    ['query composition', COMPOSITION], ['@supports', SUPPORTS], ['not a linter', NOT_A_LINTER]
   ] as const) {
     for (const [label, source, expected] of cases) {
       it(`${group}: accepts ${label}`, () => {
@@ -170,15 +184,6 @@ describe('CSS conditional at-rule value holes', () => {
       });
     }
   }
-
-  /**
-   * A comma-separated media-query list is a `List`, not a whitespace join —
-   * mediaqueries-4 §2.1. Encoded as a constant because css-parser currently
-   * folds the comma into a `SpacedValue`; see MEDIA_QUERY_LIST below.
-   */
-  it('reduces a comma-separated media-query list', () => {
-    expect(prelude('@media screen, print { a { color: red; } }')).toMatchObject(MEDIA_QUERY_LIST);
-  });
 
   /**
    * The custom-property `!important` tail — css-syntax-3 §5.5.6 strips the marker

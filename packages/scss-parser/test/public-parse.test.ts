@@ -642,15 +642,27 @@ describe('@jesscss/scss-parser public parse API', () => {
       '@document url("screen") { $tone: red; .card { color: $tone; } }',
       '@document url("screen") { @import "nested.css"; }',
       '@page { @document url("screen") { .card { color: red; } } }',
-      '@keyframes fade { @document url("screen") { .card { color: red; } } }',
-      '@documentary url("screen") { .card { color: red; } }',
-      '@-moz-documentary url("screen") { .card { color: red; } }'
+      '@keyframes fade { @document url("screen") { .card { color: red; } } }'
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
     expect(parse('@documenté { .card { color: red; } }')).toMatchObject({
       children: [{ type: 'AtRuleBlock', name: '@document', prelude: { type: 'Any', src: 'é' } }]
     });
+  });
+
+  /**
+   * The `@document` name boundary must not swallow a longer name — but a name it
+   * does not own is an UNKNOWN at-rule, not a syntax error. Which at-rules exist
+   * is a language-service fact, so these keep their full authored name and reach
+   * the opaque capture instead of failing the stylesheet.
+   */
+  it('keeps a longer at-rule name off @document and captures it opaquely', () => {
+    for (const name of ['@documentary', '@-moz-documentary']) {
+      expect(parse(`${name} url("screen") { .card { color: red; } }`), name).toMatchObject({
+        children: [{ type: 'OpaqueAtRuleBlock', name, prelude: 'url("screen")' }]
+      });
+    }
   });
 
   it('parses descriptor-only @property through the public Stylesheet route', () => {

@@ -9,8 +9,9 @@ import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, n
 import type { Combinator, FusedRule } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -175,6 +176,10 @@ type ScssAstRules = {
   DirectScssSelectorTail: Combinator<ComplexSelector>;
   DirectScssSelector: Combinator<SelectorList>;
   DirectScssExtend: Combinator<ExtendInstruction>;
+  DirectScssOpaquePrelude: Combinator<string | null>;
+  DirectScssOpaqueBody: Combinator<string>;
+  DirectScssOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  DirectScssOpaqueAtRuleStatement: Combinator<AtRuleStatement>;
   DirectScssRule: Combinator<Rule>;
   whitespace: Combinator<unknown>;
 };
@@ -796,7 +801,12 @@ function isStatementChild(child: unknown, allowDeclarations: boolean): child is 
     || isFor(child)
     || isIf(child)
     || isRule(child)
+    || isOpaqueAtRuleBlock(child)
     || (allowDeclarations && isDeclaration(child));
+}
+
+function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'OpaqueAtRuleBlock';
 }
 
 function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {
@@ -900,6 +910,19 @@ const scopeAtKeyword = regex(/@scope(?![-\w])/i);
 const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
 const pageAtKeyword = regex(/@page(?![-\w])/i);
 const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
+// An at-rule this grammar has no typed production for is still well-formed CSS:
+// which at-rules exist is a language-service fact, not a parse decision, so an
+// unknown block (`@view-transition`, `@position-try`, anything newer than this
+// grammar) is captured opaquely instead of failing the whole stylesheet. The
+// exclusion list is dispatch, not vocabulary: every name here HAS a typed
+// production above, and a malformed one must report its own error rather than
+// silently degrade to opaque bytes. Sass's evaluated directives are excluded for
+// the same reason — `@debug`/`@warn`/`@error`/`@else`/`@while`/`@at-root`/
+// `@content` are not CSS output and must never be emitted verbatim. The `@-…`
+// compiler namespace (`@-use`/`@-compose`/`@-export`/`@-import`/`@-from`, what
+// SCSS module directives LOWER to) is excluded for the same reason, while a
+// vendor prefix (`@-webkit-anything`) stays ordinary unknown CSS.
+const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|function|return|if|else|each|for|while|extend|at-root|content|debug|warn|error|charset|namespace|media|container|supports|starting-style|page|scope|font-face|counter-style|property|font-feature-values|layer|-moz-document|document|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9-￿]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
 // Grammar-local property-name recognizer (byte-identical to CssAstSyntaxProperty).
 // Declaration and StaticNestedProperty lead their arm with a `choice(interpolated
 // property, property)`; spelling the plain property locally resolves that arm's
@@ -908,7 +931,7 @@ const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
 // no longer enters and rolls back the declaration/nested-property node frames.
 const propertyName = regex(/\*?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
-export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rules<ScssAstRules>({ trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] }, (g) => {
+export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<ScssAstRules>({ trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
   // valid for closed value facts, but admits CSS escapes that SCSS variables do
   // not: `scssVar` in the production grammar is deliberately unescaped.
@@ -1641,7 +1664,7 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
     choice(
       sequence(literal('('), propertyName, literal(')')),
       sequence(literal('('), propertyName, literal(':'), g.DirectScssSupportsAtom, literal(')')),
-      sequence(literal('('), propertyName, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), g.DirectScssSupportsAtom, literal(')'))
+      sequence(literal('('), propertyName, g.CssAstSyntaxQueryComparisonOperator, g.DirectScssSupportsAtom, literal(')'))
     ),
     (children) => {
       const property = keyword(requireToken(children[1]).value);
@@ -1847,7 +1870,9 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
   // common nested at-statement, followed by the control-flow forms, so placing
   // them ahead of the rarely-nested CSS bubbling blocks lets the common case win
   // on its first recognizer instead of failing the block recognizers first.
-  const directScssNestedAtStatement = choice(g.DirectScssMixinCall, g.DirectScssIf, g.DirectScssEach, g.DirectScssFor, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock);
+  // The opaque arm is last in every cluster: its name recognizer already excludes
+  // every name the typed arms own, so it can only win where nothing else could.
+  const directScssNestedAtStatement = choice(g.DirectScssMixinCall, g.DirectScssIf, g.DirectScssEach, g.DirectScssFor, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssOpaqueAtRuleBlock, g.DirectScssOpaqueAtRuleStatement);
   // The `@`-led cluster is tried LAST in every body, after `Rule`. Every cluster
   // arm opens with a literal `@` at-keyword, so it is disjoint from `Rule` (a
   // selector never opens with `@`), from `@keyframes`/`@extend` (distinct
@@ -1879,8 +1904,8 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
   // Statement-level bubbling at-rule bodies (media/supports/container and the
   // starting-style/layer variant) each list a fixed ordered arm set shared
   // across their own arms; hoist each distinct signature to one combinator.
-  const directScssConditionalBody = many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssKeyframes, g.DirectScssRule));
-  const directScssStartingLayerBody = many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssKeyframes, g.DirectScssRule));
+  const directScssConditionalBody = many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssKeyframes, g.DirectScssOpaqueAtRuleBlock, g.DirectScssOpaqueAtRuleStatement, g.DirectScssRule));
+  const directScssStartingLayerBody = many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssMixinDef, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssKeyframes, g.DirectScssOpaqueAtRuleBlock, g.DirectScssOpaqueAtRuleStatement, g.DirectScssRule));
   const DirectScssMixinDef = node<MixinDef>(
     'DirectScssMixinDef',
     sequence(
@@ -2137,7 +2162,7 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
       return denominator === undefined ? numerator : operation('/', numerator, denominator);
     }
   );
-  const directScssQueryComparisonOperator = choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('='));
+  const directScssQueryComparisonOperator = g.CssAstSyntaxQueryComparisonOperator;
   // media-queries-4 §2.4.3 lets `<mf-range>` lead with the value rather than the
   // feature name — `(100px < width)` and the two-sided `(100px < width < 200px)`
   // — so a name-first comparison is only half of the production. This is plain
@@ -2991,6 +3016,55 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
     sequence(regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i), g.DirectScssSelector, optional(literal(';'))),
     children => ({ target: requireSelectorList(children[1]), partial: false })
   );
+  // An unknown CSS block is terminal authored syntax. The shared recognition
+  // artifact owns every balanced/string/comment boundary; this reduction only
+  // records raw facts and keeps `$` out of an unquoted dynamic header, so a
+  // dynamic prelude still rejects rather than becoming opaque text.
+  // Wrap the two raw captures in their own nodes so this family's child count is
+  // fixed: an `optional(scanTo(...))` that matches nothing emits no child and
+  // would otherwise shift every positional index in the reducers below.
+  const DirectScssOpaquePrelude = node<string | null>(
+    'DirectScssOpaquePrelude',
+    g.ScssAstOpaqueStaticPrelude,
+    (children) => {
+      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
+      return text === '' ? null : text;
+    }
+  );
+  const DirectScssOpaqueBody = node<string>(
+    'DirectScssOpaqueBody',
+    g.ScssAstOpaqueBody,
+    children => children.length === 0 ? '' : requireToken(children[0]).value
+  );
+  const DirectScssOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
+    'DirectScssOpaqueAtRuleBlock',
+    sequence(
+      scssGenericAtRuleName,
+      noTrivia(sequence(g.DirectScssOpaquePrelude, literal('{'), g.DirectScssOpaqueBody, literal('}')))
+    ),
+    (children) => {
+      const prelude = children[1];
+      const rawBody = children[3];
+      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
+        throw new TypeError('Direct SCSS opaque at-rule lost its grammar-owned raw facts.');
+      }
+      return opaqueAtRuleBlock(requireToken(children[0]).value, prelude, rawBody);
+    }
+  );
+  // The statement spelling of the same fact (`@view-transition;`). It shares the
+  // block's name recognizer, so the two are disjoint from every typed arm and
+  // from each other — this one requires `;` where the block requires `{`.
+  const DirectScssOpaqueAtRuleStatement = node<AtRuleStatement>(
+    'DirectScssOpaqueAtRuleStatement',
+    sequence(scssGenericAtRuleName, noTrivia(sequence(g.DirectScssOpaquePrelude, literal(';')))),
+    (children) => {
+      const prelude = children[1];
+      if (prelude !== null && typeof prelude !== 'string') {
+        throw new TypeError('Direct SCSS opaque at-rule statement lost its grammar-owned raw facts.');
+      }
+      return atRuleStatement(requireToken(children[0]).value, prelude === null ? null : any(prelude));
+    }
+  );
   const DirectScssRule = node<Rule>(
     'DirectScssRule',
     sequence(
@@ -3019,7 +3093,7 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
     // shape, not a reducer-time placement check.
     sequence(
       many(choice(g.DirectScssComment, g.DirectScssVarDeclaration, g.DirectScssUse, g.DirectScssForward)),
-      many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssAtRuleStatement, g.DirectScssVarDeclaration, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssFontFace, g.DirectScssCounterStyle, g.DirectScssPropertyAtRule, g.DirectScssKeyframes, g.DirectScssRule))
+      many(choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssAtRuleStatement, g.DirectScssVarDeclaration, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf, g.DirectScssConditionalBlock, g.DirectScssStartingStyleBlock, g.DirectScssLayerBlock, g.DirectScssScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssFontFace, g.DirectScssCounterStyle, g.DirectScssPropertyAtRule, g.DirectScssKeyframes, g.DirectScssOpaqueAtRuleBlock, g.DirectScssOpaqueAtRuleStatement, g.DirectScssRule))
     ),
     children => stylesheet(statements(children.flatMap(child => Array.isArray(child) ? child : [child])))
   );
@@ -3153,6 +3227,10 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
     DirectScssKeyframeSelector,
     DirectScssKeyframeBlock,
     DirectScssKeyframes,
+    DirectScssOpaquePrelude,
+    DirectScssOpaqueBody,
+    DirectScssOpaqueAtRuleBlock,
+    DirectScssOpaqueAtRuleStatement,
     DirectScssSimple,
     DirectScssInterpolatedSimple,
     DirectScssPlaceholder,
