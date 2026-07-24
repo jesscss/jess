@@ -29,7 +29,12 @@ type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boole
 type InlineExtendBranchFact = { readonly selector: ComplexSelector; readonly extensions: readonly ExtendInstruction[] };
 type CustomValuePart = string | InterpolationFact | readonly CustomValuePart[];
 type GeneralEnclosedNameFact = { readonly name: string };
-type FunctionConditionFact = { readonly guard: MixinGuard; readonly src: string };
+type FunctionConditionFact = {
+  readonly guard: MixinGuard;
+  readonly src: string;
+  readonly grouped: boolean;
+  readonly hasComparison: boolean;
+};
 
 /** Rules this file defines; macro-fused recognition inputs are not local output. */
 type LessAstLocalRules = {
@@ -119,6 +124,9 @@ type LessAstLocalRules = {
   DirectLessMixinReference: Combinator<Reference>;
   DirectLessReferenceCall: Combinator<Reference>;
   DirectLessMixinGuard: Combinator<MixinGuard>;
+  DirectLessMixinGuardTopOr: Combinator<MixinGuard>;
+  DirectLessMixinGuardTopAnd: Combinator<MixinGuard>;
+  DirectLessMixinGuardTopTerm: Combinator<MixinGuard>;
   DirectLessMixinGuardOr: Combinator<MixinGuard>;
   DirectLessMixinGuardAnd: Combinator<MixinGuard>;
   DirectLessMixinGuardTerm: Combinator<MixinGuard>;
@@ -1130,7 +1138,9 @@ function isMixinGuard(value: unknown): value is MixinGuard {
 
 function isFunctionConditionFact(value: unknown): value is FunctionConditionFact {
   return typeof value === 'object' && value !== null && 'guard' in value && 'src' in value
-    && typeof value.src === 'string' && isMixinGuard(value.guard);
+    && typeof value.src === 'string' && isMixinGuard(value.guard)
+    && 'grouped' in value && typeof value.grouped === 'boolean'
+    && 'hasComparison' in value && typeof value.hasComparison === 'boolean';
 }
 
 function guardOperatorText(value: unknown): string | null {
@@ -1179,11 +1189,16 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
   }
   let guard = first.guard;
   let src = first.src;
+  if (facts.length > 1 && facts.some(fact => fact.hasComparison && !fact.grouped)) {
+    throw new TypeError('Direct Less function condition comparisons must be grouped before logical operators.');
+  }
+  let hasComparison = first.hasComparison;
   for (const right of facts.slice(1)) {
     guard = { g: kind, left: guard, right: right.guard };
     src += ` ${kind} ${right.src}`;
+    hasComparison ||= right.hasComparison;
   }
-  return { guard, src };
+  return { guard, src, grouped: false, hasComparison };
 }
 
 function isStatement(value: unknown): value is Statement {
@@ -1980,7 +1995,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
       if (inner === undefined) {
         throw new TypeError('Direct Less function condition lost its parenthesized operand.');
       }
-      return { guard: inner.guard, src: `(${inner.src})` };
+      return { guard: inner.guard, src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
     }
   );
   const DirectLessFunctionConditionTerm = node<FunctionConditionFact>(
@@ -1994,8 +2009,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
       const nested = children.filter(isFunctionConditionFact);
       const values = children.filter(isValueNode);
       const operator = children.map(guardOperatorText).find((value): value is string => value !== null)?.trim();
-      const left = nested[0] ?? (values[0] === undefined ? undefined : { guard: { g: 'truth' as const, value: values[0] }, src: functionConditionSource(values[0]) });
-      const right = nested[1] ?? (values.length > 1 && values[1] !== undefined ? { guard: { g: 'truth' as const, value: values[1] }, src: functionConditionSource(values[1]) } : undefined);
+      const left = nested[0] ?? (values[0] === undefined ? undefined : { guard: { g: 'truth' as const, value: values[0] }, src: functionConditionSource(values[0]), grouped: false, hasComparison: false });
+      const right = nested[1] ?? (values.length > 1 && values[1] !== undefined ? { guard: { g: 'truth' as const, value: values[1] }, src: functionConditionSource(values[1]), grouped: false, hasComparison: false } : undefined);
       if (left === undefined) {
         throw new TypeError('Direct Less function condition term lost its left operand.');
       }
@@ -2008,13 +2023,20 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
         if (right === undefined) {
           throw new TypeError('Direct Less comparison requires value operands.');
         }
+        if (nested.length === 0 && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not')) {
+          throw new TypeError('Direct Less function condition `not` requires a grouped condition operand.');
+        }
         const leftValue = left.guard.g === 'truth' ? left.guard.value : condition(left.guard, left.src);
         const rightValue = right.guard.g === 'truth' ? right.guard.value : condition(right.guard, right.src);
         guard = { g: 'cmp', op: operator, left: leftValue, right: rightValue };
         src = `${left.src} ${operator} ${right.src}`;
       }
       const negated = children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not');
-      return negated ? { guard: { g: 'not', inner: guard }, src: `not(${src})` } : { guard, src };
+      const hasComparison = operator !== undefined || left.hasComparison || right?.hasComparison === true;
+      const grouped = operator === undefined && left.grouped;
+      return negated
+        ? { guard: { g: 'not', inner: guard }, src: `not(${src})`, grouped, hasComparison }
+        : { guard, src, grouped, hasComparison };
     }
   );
   const DirectLessFunctionConditionAnd = node<FunctionConditionFact>(
@@ -3045,9 +3067,30 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
     sequence(g.DirectLessMixinGuardAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.DirectLessMixinGuardAnd))),
     children => foldMixinGuards('or', children)
   );
+  const DirectLessMixinGuardTopTerm = node<MixinGuard>(
+    'DirectLessMixinGuardTopTerm',
+    sequence(optional(regex(/not(?![-\w])/)), literal('('), g.DirectLessMixinGuardOr, literal(')')),
+    (children) => {
+      const guard = children.find(isMixinGuard);
+      if (guard === undefined) {
+        throw new TypeError('Direct Less AST grammar produced an empty top-level grouped guard.');
+      }
+      return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
+    }
+  );
+  const DirectLessMixinGuardTopAnd = node<MixinGuard>(
+    'DirectLessMixinGuardTopAnd',
+    sequence(g.DirectLessMixinGuardTopTerm, many(sequence(regex(/and(?![-\w])/), g.DirectLessMixinGuardTopTerm))),
+    children => foldMixinGuards('and', children)
+  );
+  const DirectLessMixinGuardTopOr = node<MixinGuard>(
+    'DirectLessMixinGuardTopOr',
+    sequence(g.DirectLessMixinGuardTopAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.DirectLessMixinGuardTopAnd))),
+    children => foldMixinGuards('or', children)
+  );
   const DirectLessMixinGuard = node<MixinGuard>(
     'DirectLessMixinGuard',
-    parser({ trivia: mixinGuardTrivia }, sequence(regex(/when(?![-\w])/), g.DirectLessMixinGuardOr)),
+    parser({ trivia: mixinGuardTrivia }, sequence(regex(/when(?![-\w])/), g.DirectLessMixinGuardTopOr)),
     (children) => {
       const guard = children.find(isMixinGuard);
       if (guard === undefined) {
@@ -4534,6 +4577,9 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
     DirectLessMixinReference,
     DirectLessReferenceCall,
     DirectLessMixinGuard,
+    DirectLessMixinGuardTopOr,
+    DirectLessMixinGuardTopAnd,
+    DirectLessMixinGuardTopTerm,
     DirectLessMixinGuardOr,
     DirectLessMixinGuardAnd,
     DirectLessMixinGuardTerm,

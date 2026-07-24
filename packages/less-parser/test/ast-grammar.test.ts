@@ -21,6 +21,15 @@ function stylesheet(value: unknown): Stylesheet {
   return value;
 }
 
+function parsesCompleteStylesheet(source: string): boolean {
+  try {
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
+  } catch {
+    return false;
+  }
+}
+
 function expectExplicitListSeparators(value: unknown): void {
   if (Array.isArray(value)) {
     value.forEach(expectExplicitListSeparators);
@@ -1430,8 +1439,31 @@ describe('Less AST grammar facts', () => {
   });
 
   it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
-    const result = run(lessAstGrammar.LessAstDocument, 'x: boolean(2 > 1 = 3 > 2);', { trivia: lessAstGrammar.whitespace });
-    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+    expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
+  });
+
+  it('enforces Less function condition grouping for boolean() and if()', () => {
+    const accepts = [
+      'x: boolean(1 = 1);',
+      'x: boolean(not (1 = 1));',
+      'x: boolean((1 = 1) and (2 = 2));',
+      'x: if(1 = 1, yes, no);',
+      'x: if(not (1 = 1), yes, no);',
+      'x: if((1 = 1) and (2 = 2), yes, no);'
+    ];
+    const rejects = [
+      'x: boolean(not 1 = 1);',
+      'x: boolean(1 = 1 and (2 = 2));',
+      'x: if(not 1 = 1, yes, no);',
+      'x: if(1 = 1 and (2 = 2), yes, no);'
+    ];
+
+    for (const source of accepts) {
+      expect(parsesCompleteStylesheet(source), source).toBe(true);
+    }
+    for (const source of rejects) {
+      expect(parsesCompleteStylesheet(source), source).toBe(false);
+    }
   });
 
   it('constructs a truth condition in a multi-argument Less function call', () => {
@@ -2902,6 +2934,26 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+  });
+
+  it('enforces Less when guard comparison grouping', () => {
+    const accepts = [
+      '.match() when (1 = 1) { color: green; }',
+      '.match() when not (1 = 1) { color: green; }',
+      '.match() when (1 = 1) and (2 = 2) { color: green; }'
+    ];
+    const rejects = [
+      '.match() when 1 = 1 { color: red; }',
+      '.match() when true { color: red; }',
+      '.match(@is-true) when @is-true { color: red; }'
+    ];
+
+    for (const source of accepts) {
+      expect(parsesCompleteStylesheet(source), source).toBe(true);
+    }
+    for (const source of rejects) {
+      expect(parsesCompleteStylesheet(source), source).toBe(false);
+    }
   });
 
   it('routes the namespacing-7 accessor guards through existing typed References', () => {
