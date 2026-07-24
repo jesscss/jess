@@ -166,6 +166,55 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('skips Less line-comment trivia after every function-argument delimiter', () => {
+    // The `separator` capture is authored layout, not a trivia substitute: the
+    // argument after a delimiter runs the same ambient trivia as the first one.
+    const sources = [
+      '.a { b: max(1px,\n  // c\n  2px); }',
+      '.a { b: max(1px, // c\n2px); }',
+      '.a { b: max(\n  // c\n  1px, 2px); }',
+      '.a { b: e(1px;\n  // c\n  2px); }'
+    ];
+    for (const source of sources) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+    }
+  });
+
+  it('retains the authored delimiter gap when a line comment follows a function argument comma', () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '.a { b: max(1px,\n  // c\n  2px); }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', body: [{ type: 'Declaration', value: {
+        type: 'FunctionCall', name: 'max', args: [
+          { type: 'Dimension', number: 1, unit: 'px' },
+          { type: 'Dimension', number: 2, unit: 'px' }
+        ]
+      } }] }]
+    });
+    // The authored `,\n  ` gap survives as layout; the comment is trivia, so it
+    // never reaches the emitted bytes.
+    expect(serialize(stylesheet(result.value)).css).toBe('.a {\n  b: max(1px,\n    2px);\n}\n');
+  });
+
+  it('skips line-comment trivia after a delimiter in a call-argument function', () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '@m: { a: 1; }\neach(@m,\n  // c\n  #(@v, @k) { .@{k} { x: @v; } });',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+  });
+
   it('keeps a CSS escape hack as a typed declaration-value suffix', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,

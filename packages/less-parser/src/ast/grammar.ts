@@ -2067,9 +2067,15 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   // canonicalizes both to the ordinary function-call comma spelling.
   // A final delimiter has no following argument, so it intentionally has no
   // ValueLayout boundary to retain.
+  // The `separator` capture records the authored delimiter gap for byte-faithful
+  // replay; it is layout, never a substitute for trivia. The following argument
+  // therefore stays under ambient trivia (`functionTrivia` here), so a `//` line
+  // comment after a delimiter is skipped exactly as it is before the first
+  // argument. Block comments are deliberately excluded from that trivia: they
+  // are output-bearing value syntax and must reach DirectLessFunctionValueTerm.
   const DirectLessFunctionArguments = optional(sequence(
     choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessValueBlock, g.DirectLessFunctionArgument),
-    many(noTrivia(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessValueBlock, g.DirectLessFunctionArgument)))),
+    many(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), choice(g.DirectLessDoubledQuoteFunctionArgument, g.DirectLessValueBlock, g.DirectLessFunctionArgument))),
     optional(noTrivia(regex(/[;,][ \t\n\r\f]*/)))
   ));
   const DirectLessFunction = node<FunctionCall>(
@@ -2096,7 +2102,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   // so a declaration value cannot acquire the call-only `{ … }` first set.
   const DirectLessCallArgumentFunctionArguments = optional(sequence(
     g.DirectLessCallArgumentValue,
-    many(noTrivia(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), g.DirectLessCallArgumentValue))),
+    many(sequence(field('separator', regex(/[;,][ \t\n\r\f]*/)), g.DirectLessCallArgumentValue)),
     optional(noTrivia(regex(/[;,][ \t\n\r\f]*/)))
   ));
   const DirectLessCallArgumentFunction = node<FunctionCall>(
