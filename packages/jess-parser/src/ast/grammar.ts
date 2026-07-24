@@ -61,6 +61,15 @@ type JessAstRules = {
   DirectJessValueTerm: Combinator<ValueSlot>;
   DirectJessValue: Combinator<ValueSlot>;
   DirectJessImportant: Combinator<true>;
+  DirectJessCustomPropertyValue: Combinator<Keyword>;
+  DirectJessCustomPropertyName: Combinator<string | Interpolation>;
+  DirectJessCustomPart: Combinator<unknown>;
+  DirectJessCustomInnerPart: Combinator<unknown>;
+  DirectJessCustomParen: Combinator<readonly unknown[]>;
+  DirectJessCustomSquare: Combinator<readonly unknown[]>;
+  DirectJessCustomCurly: Combinator<readonly unknown[]>;
+  DirectJessCustomValue: Combinator<ValueNode>;
+  DirectJessCustomDeclaration: Combinator<Declaration>;
   DirectJessDeclaration: Combinator<Declaration>;
   DirectJessMixinParam: Combinator<Param>;
   DirectJessMixinParams: Combinator<Param[]>;
@@ -168,6 +177,11 @@ type SharedCssAstSyntax = {
   CssAstSyntaxProperty: Combinator<string>;
   CssAstSyntaxInterpolatedPropertyStart: Combinator<string>;
   CssAstSyntaxInterpolatedPropertyTail: Combinator<string>;
+  CssAstSyntaxCustomProperty: Combinator<string>;
+  CssAstSyntaxCustomOuterContent: Combinator<string>;
+  CssAstSyntaxCustomInnerContent: Combinator<string>;
+  CssAstSyntaxCustomSingleQuoted: Combinator<string>;
+  CssAstSyntaxCustomDoubleQuoted: Combinator<string>;
   CssAstSyntaxQueryAndOr: Combinator<string>;
   CssAstSyntaxQueryNot: Combinator<string>;
   CssAstSyntaxQueryOnly: Combinator<string>;
@@ -370,7 +384,10 @@ function isValueNode(value: unknown): value is ValueNode {
   return typeof value === 'object'
     && value !== null
     && 'type' in value
-    && (value.type === 'Keyword'
+    // `Any` is verbatim authored text: the reduced form of a custom-property
+    // value, which Jess never evaluates.
+    && (value.type === 'Any'
+      || value.type === 'Keyword'
       || value.type === 'Quoted'
       || value.type === 'VariableReference'
       || value.type === 'Reference'
@@ -504,6 +521,44 @@ function templateInterpolationFromChildren(children: readonly unknown[]): Interp
     }
   }
   return interpolation(parts);
+}
+
+/**
+ * Flatten the grammar-owned parts of a custom-property value. Custom-property
+ * values are never evaluated, so every byte outside a typed `$[…]` segment
+ * stays literal `<declaration-value>` text and the reduction only joins grammar
+ * children — it never rescans source. Nested balanced groups arrive as nested
+ * arrays from the paren/square/curly productions.
+ */
+function appendCustomValueParts(children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void {
+  for (const child of children) {
+    if (Array.isArray(child)) {
+      appendCustomValueParts(child, parts, seen);
+    } else if (isInterpolation(child)) {
+      seen.interpolated = true;
+      for (const part of child.parts) {
+        if (isInterpolationLiteral(part)) {
+          appendInterpolationLiteral(parts, part.lit);
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendInterpolationLiteral(parts, requireToken(child).value);
+    }
+  }
+}
+
+/** Reduce a whole custom-property value to `Interpolation` (when it carries a
+ * `$[…]`) or to verbatim `Any` text. */
+function customValueFromChildren(children: readonly unknown[]): ValueNode {
+  const parts: Interpolation['parts'] = [];
+  const seen = { interpolated: false };
+  appendCustomValueParts(children, parts, seen);
+  if (seen.interpolated) {
+    return interpolation(parts);
+  }
+  return any(parts.map(part => isInterpolationLiteral(part) ? part.lit : '').join(''));
 }
 
 function requireExpressionFact(value: unknown): ExpressionFact {
@@ -888,6 +943,7 @@ const jessDollarInterpStructure = noTrivia(choice(
   sequence(literal('$['), literal('\''), regex(/(?:[^'\\]|\\[\s\S])*/), literal('\''), literal(']')),
   sequence(literal('$['), literal('"'), regex(/(?:[^"\\]|\\[\s\S])*/), literal('"'), literal(']'))
 ));
+const jessCustomPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 const jessGeneralTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 // An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
@@ -1689,6 +1745,15 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return requireExpressionFact(foldExpression(sumParts)).value;
     }
   );
+  // A CSS custom-property token is an ordinary component value (`var(--accent)`),
+  // not a Jess declaration name. It is not a CSS ident, so it cannot reach the
+  // Keyword leaf; give it its own arm just ahead of Keyword, which shares the
+  // leading `-` but can never match a second one.
+  const DirectJessCustomPropertyValue = node<Keyword>(
+    'DirectJessCustomPropertyValue',
+    g.CssAstSyntaxCustomProperty,
+    children => keyword(requireToken(children[0]).value)
+  );
   // The three `$`-headed arms (DollarValue `$name`, Expression `$(`, DollarInterp
   // `$[`) are mutually exclusive on the character after `$`, so their relative
   // order is behaviour-neutral. Plain `$name` references dominate real values, so
@@ -1697,7 +1762,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // frames. `$(`/`$[` cost one fast VarReference reject instead.
   const DirectJessValueAtom = node<ValueNode>(
     'DirectJessValueAtom',
-    choice(g.DirectJessCollection, g.DirectJessDollarValue, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
+    choice(g.DirectJessCollection, g.DirectJessDollarValue, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessCustomPropertyValue, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
   const DirectJessValueTerm = node<ValueSlot>(
@@ -2289,10 +2354,110 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return interpolation(parts);
     }
   );
+  // A custom property is plain CSS in every dialect, so Jess composes the same
+  // recognition the CSS base does rather than routing `--x` through the ordinary
+  // property terminal (a CSS ident, which cannot start with `--`). The name is
+  // the custom-property leaf, or that leaf's `--` prefix followed by `$[…]`
+  // segments.
+  const DirectJessCustomPropertyName = node<string | Interpolation>(
+    'DirectJessCustomPropertyName',
+    choice(
+      noTrivia(sequence(
+        literal('--'),
+        many(jessCustomPropertyChunk),
+        g.DirectJessDollarInterp,
+        many(choice(jessCustomPropertyChunk, g.DirectJessDollarInterp))
+      )),
+      g.CssAstSyntaxCustomProperty
+    ),
+    (children) => {
+      if (!children.some(isInterpolation)) {
+        return requireToken(children[0]).value;
+      }
+      const parts: Interpolation['parts'] = [];
+      appendCustomValueParts(children, parts, { interpolated: false });
+      return interpolation(parts);
+    }
+  );
+  // The value is a CSS `<declaration-value>`: an almost-arbitrary token stream
+  // whose only structure is balanced groups, strings, comments — and, in Jess,
+  // `$[…]`. A custom-property value is never evaluated, so every other byte
+  // stays literal text: a bare `$name` is authored CSS here, not a variable
+  // reference. Delimiters recurse as grammar children rather than being captured
+  // as one opaque span, so an inner `;` or `}` cannot end the declaration.
+  const DirectJessCustomParen = node<readonly unknown[]>(
+    'DirectJessCustomParen',
+    noTrivia(sequence(literal('('), many(g.DirectJessCustomInnerPart), literal(')'))),
+    children => children.slice()
+  );
+  const DirectJessCustomSquare = node<readonly unknown[]>(
+    'DirectJessCustomSquare',
+    noTrivia(sequence(literal('['), many(g.DirectJessCustomInnerPart), literal(']'))),
+    children => children.slice()
+  );
+  const DirectJessCustomCurly = node<readonly unknown[]>(
+    'DirectJessCustomCurly',
+    noTrivia(sequence(literal('{'), many(g.DirectJessCustomInnerPart), literal('}'))),
+    children => children.slice()
+  );
+  const DirectJessCustomInnerPart: Combinator<unknown> = choice(
+    g.DirectJessDollarInterp,
+    g.CssAstSyntaxCustomInnerContent,
+    blockComment,
+    g.CssAstSyntaxCustomSingleQuoted,
+    g.CssAstSyntaxCustomDoubleQuoted,
+    g.DirectJessCustomParen,
+    g.DirectJessCustomSquare,
+    g.DirectJessCustomCurly
+  );
+  const DirectJessCustomPart: Combinator<unknown> = choice(
+    g.DirectJessDollarInterp,
+    g.CssAstSyntaxCustomOuterContent,
+    blockComment,
+    g.CssAstSyntaxCustomSingleQuoted,
+    g.CssAstSyntaxCustomDoubleQuoted,
+    g.DirectJessCustomParen,
+    g.DirectJessCustomSquare,
+    g.DirectJessCustomCurly
+  );
+  const DirectJessCustomValue = node<ValueNode>(
+    'DirectJessCustomValue',
+    noTrivia(many(g.DirectJessCustomPart)),
+    children => customValueFromChildren(children)
+  );
+  const DirectJessCustomDeclaration = node<Declaration>(
+    'DirectJessCustomDeclaration',
+    sequence(g.DirectJessCustomPropertyName, literal(':'), g.DirectJessCustomValue, literal(';')),
+    (children) => {
+      const name = children[0];
+      if (typeof name !== 'string' && !isInterpolation(name)) {
+        throw new TypeError('Direct Jess AST grammar produced a custom declaration without a name.');
+      }
+      // An interpolated custom-property name is itself a ValueNode, so read the
+      // value from its fixed position after the colon rather than by shape.
+      const value = children[2];
+      if (!isValueNode(value)) {
+        throw new TypeError('Direct Jess AST grammar produced an incomplete custom declaration.');
+      }
+      return decl(name, valueSlot(value));
+    }
+  );
   const DirectJessDeclaration = node<Declaration>(
     'DirectJessDeclaration',
-    sequence(choice(DirectJessInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectJessValue, optional(g.DirectJessImportant), literal(';')),
-    children => decl(isToken(children[0]) ? requireToken(children[0]).value : requireInterpolation(children[0]), requireValueSlot(children[2]), null, children.includes(true))
+    choice(
+      g.DirectJessCustomDeclaration,
+      sequence(choice(DirectJessInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectJessValue, optional(g.DirectJessImportant), literal(';'))
+    ),
+    (children) => {
+      // The custom-property arm is a single completed Declaration child; pass it
+      // through so every body that admits a declaration admits a custom property
+      // without respelling the arm at each site.
+      const custom = children[0];
+      if (children.length === 1 && isDeclaration(custom)) {
+        return custom;
+      }
+      return decl(isToken(children[0]) ? requireToken(children[0]).value : requireInterpolation(children[0]), requireValueSlot(children[2]), null, children.includes(true));
+    }
   );
   const DirectJessAtRuleBlock = node<AtRuleBlock>(
     'DirectJessAtRuleBlock',
@@ -2753,6 +2918,15 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessValueTerm,
     DirectJessValue,
     DirectJessImportant,
+    DirectJessCustomPropertyValue,
+    DirectJessCustomPropertyName,
+    DirectJessCustomPart,
+    DirectJessCustomInnerPart,
+    DirectJessCustomParen,
+    DirectJessCustomSquare,
+    DirectJessCustomCurly,
+    DirectJessCustomValue,
+    DirectJessCustomDeclaration,
     DirectJessDeclaration,
     DirectJessMixinParam,
     DirectJessMixinParams,

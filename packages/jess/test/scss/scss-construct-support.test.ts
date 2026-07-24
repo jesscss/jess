@@ -161,12 +161,17 @@ const CONSTRUCTS: Construct[] = [
   },
 
   // ── custom properties ──────────────────────────────────────────────────────
+  { group: 'custom properties', name: 'plain custom property declaration', src: '.a { --x: red; }', supported: true },
+  { group: 'custom properties', name: 'empty custom property value', src: '.a { --x:; }', supported: true },
+  { group: 'custom properties', name: 'custom property value with a brace block', src: '.a { --x: { color: red }; }', supported: true },
+  { group: 'custom properties', name: 'custom property value with a quoted semicolon', src: '.a { --x: "a;b"; }', supported: true },
+  { group: 'custom properties', name: 'digit-led custom property name', src: '.a { --0: red; }', supported: true },
   {
     group: 'custom properties',
-    name: 'plain custom property declaration',
-    src: '.a { --x: red; }',
+    name: 'reserved bare `--` name',
+    src: '.a { --: red; }',
     supported: false,
-    note: 'INVERSION: the interpolated-name form `--#{$p}x: red` DOES parse. Plain CSS custom properties are supposed to be permissive at the CSS base — this looks like a real bug, not an SCSS feature gap.'
+    note: 'DELIBERATE: css-variables-1 §2 reserves `--` itself, so it is not a custom-property name in any dialect.'
   },
   { group: 'custom properties', name: 'interpolated custom property name', src: '.a { --#{$p}x: red; }', supported: true },
   { group: 'custom properties', name: 'var() reference', src: '.a { w: var(--x); }', supported: true },

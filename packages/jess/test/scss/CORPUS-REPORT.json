@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-24T19:05:58.519Z",
+  "generated": "2026-07-24T19:40:58.477Z",
   "bootstrap": "5.3.8",
   "node": "v24.11.1",
   "platform": "darwin/arm64",
@@ -46,10 +46,6 @@
       {
         "name": "@while",
         "files": 2
-      },
-      {
-        "name": "plain custom property declaration",
-        "files": 1
       },
       {
         "name": "line comment inside a paren list",
@@ -188,8 +184,7 @@
           "interpolation as a standalone selector compound",
           "interpolation inside a var() name",
           "@include with a trailing content block",
-          "leading combinator (implicit &)",
-          "plain custom property declaration"
+          "leading combinator (implicit &)"
         ],
         "detail": "SCSS parser error."
       },

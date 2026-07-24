@@ -126,6 +126,29 @@ const lessQuotedSingleChunk = regex(/(?:[^'\\@$]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0
 // the static CSS-name bytes around those typed segments.
 const interpolatedPropertyStart = regex(/(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const interpolatedPropertyTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+// A CSS custom-property name is a `<dashed-ident>`: `--` followed by ident code
+// points. css-syntax-3 §4.3.9 only inspects the two code points after a leading
+// `-`, so a digit or a further `-` right after the prefix still starts an ident
+// — `--0` and `---x` are ordinary custom properties, not malformed names. The
+// one exclusion is `--` itself, which css-variables-1 §2 reserves for future use
+// by CSS; requiring at least one trailing ident code point rejects it here so a
+// dialect falls through to its ordinary property (and error) path.
+const customPropertyName = regex(/--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+// A custom-property value is a CSS `<declaration-value>` (css-syntax-3 §7.2):
+// any token sequence without a bad string/url, an unmatched close delimiter, or
+// a top-level `;`. Balanced groups, strings, and comments are grammar structure
+// at the consumer, so these content runs stop at every delimiter and let the
+// consumer's own production own those bytes. They also stop before an
+// interpolation opener (`#{`, `${`, `$[`, `$(`) so a dialect's typed
+// interpolation reaches its own production instead of being swallowed as text;
+// a lone `#`/`$` that opens nothing is still ordinary content, and a lone `/`
+// that does not open a comment is matched here rather than halting the run.
+// The inner variant drops `;` from the stop set: inside a balanced group a
+// semicolon is ordinary content, not a declaration terminator.
+const customOuterContent = regex(/(?:\\[^\n\r\f]|[^(){}[\];'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
+const customInnerContent = regex(/(?:\\[^\n\r\f]|[^(){}[\]'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
+const customSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
+const customDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
 const lessInterpolatedCustomPropertyStart = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const lessInterpolatedCustomPropertyDash = regex(/-/);
 const lessInterpolatedCustomPropertyTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
@@ -137,7 +160,11 @@ const lessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 // exclude balanced delimiters, strings, comments, and a valid interpolation
 // opener so the direct Less grammar can retain each of those facts structurally
 // rather than scanning a completed value span.
-const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
+// Less's own custom-property leaf. It differs from the shared CSS one only by
+// leaving escapes to the Less custom-property content leaves below. The `+`
+// (not `*`) keeps the reserved bare `--` out, matching css-variables-1 §2 and
+// the other three dialects.
+const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]+/);
 const lessCustomOuterContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\];'"\/\\])+|\/(?!\*)/);
 const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\]'"\/\\])+|\/(?!\*)/);
 const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
@@ -186,7 +213,12 @@ export const cssAstSyntax = rules(_g => ({
   CssAstSyntaxNumber: number,
   CssAstSyntaxDimensionUnit: dimensionUnit,
   CssAstSyntaxInterpolatedPropertyStart: interpolatedPropertyStart,
-  CssAstSyntaxInterpolatedPropertyTail: interpolatedPropertyTail
+  CssAstSyntaxInterpolatedPropertyTail: interpolatedPropertyTail,
+  CssAstSyntaxCustomProperty: customPropertyName,
+  CssAstSyntaxCustomOuterContent: customOuterContent,
+  CssAstSyntaxCustomInnerContent: customInnerContent,
+  CssAstSyntaxCustomSingleQuoted: customSingleQuoted,
+  CssAstSyntaxCustomDoubleQuoted: customDoubleQuoted
 }));
 
 export const lessAstSyntax = rules(_g => ({

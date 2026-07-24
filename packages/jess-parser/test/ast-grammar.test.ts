@@ -1964,7 +1964,10 @@ describe('Jess AST grammar facts', () => {
       '$tone: #12345;',
       '$tone: #123456789;',
       '.card { color: blue }',
-      '.card { --$[property]: blue; }'
+      // `--` alone is reserved by css-variables-1 §2, so it is not a custom
+      // property name in any dialect. (`--$[property]` IS one, and is asserted
+      // in custom-property.test.ts alongside the less/scss equivalents.)
+      '.card { --: blue; }'
     ]) {
       const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);

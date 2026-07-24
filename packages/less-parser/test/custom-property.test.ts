@@ -1,0 +1,88 @@
+import { describe, expect, it } from 'vitest';
+import { parse } from '@jesscss/less-parser';
+
+/**
+ * A custom property is permissive at the CSS base, and valid CSS must parse in
+ * every dialect. The same matrix is asserted in the less / scss / jess parser
+ * packages, so a dialect that re-invents custom-property recognition instead of
+ * composing the shared CSS leaves fails there rather than drifting silently.
+ *
+ * The value grammar is `<declaration-value>` (css-syntax-3 §7.2): any token
+ * sequence without a bad string/url, an unmatched close delimiter, or a
+ * top-level `;`. The name is a `<dashed-ident>` (css-syntax-3 §4.3.9) except
+ * bare `--`, which css-variables-1 §2 reserves.
+ */
+const ACCEPTED: Array<[string, string, string]> = [
+  ['static keyword value', 'a { --x: red; }', 'red'],
+  ['numeric value', 'a { --x: 0; }', '0'],
+  ['multi-term value', 'a { --x: 1px solid black; }', '1px solid black'],
+  ['empty value', 'a { --x:; }', ''],
+  ['whitespace-only value', 'a { --x:   ; }', ''],
+  ['nested parens', 'a { --x: foo(bar(1, 2)); }', 'foo(bar(1, 2))'],
+  ['a brace block', 'a { --x: { color: red }; }', '{ color: red }'],
+  ['a semicolon inside a bracket group', 'a { --x: [a;b]; }', '[a;b]'],
+  ['a protocol-relative url', 'a { --x: url(//e.com/a;b.png); }', 'url(//e.com/a;b.png)'],
+  ['an escape and a non-ASCII byte', 'a { --x: \\2014 é; }', '\\2014 é'],
+  ['a lone solidus', 'a { --x: a/b; }', 'a/b'],
+  ['a trailing priority marker', 'a { --x: red !important; }', 'red !important']
+];
+
+const NAMES = ['--x', '--X', '--x-y', '--0', '---x', '--_x', '--é'];
+
+describe('Less custom properties', () => {
+  for (const [label, source, expected] of ACCEPTED) {
+    it(`accepts ${label}`, () => {
+      expect(parse(source)).toMatchObject({
+        children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected } }] }]
+      });
+    });
+  }
+
+  for (const name of NAMES) {
+    it(`accepts the custom-property name \`${name}\``, () => {
+      expect(parse(`a { ${name}: red; }`)).toMatchObject({
+        children: [{ type: 'Rule', body: [{ type: 'Declaration', name, value: { type: 'Any', src: 'red' } }] }]
+      });
+    });
+  }
+
+  it('rejects the reserved bare `--` name', () => {
+    expect(() => parse('a { --: red; }')).toThrow();
+  });
+
+  it('accepts a custom property at root, nested, and inside @media', () => {
+    expect(() => parse(':root { --x: red; }')).not.toThrow();
+    expect(() => parse('a { b { --x: red; } }')).not.toThrow();
+    expect(() => parse('@media screen { a { --x: red; } }')).not.toThrow();
+  });
+
+  it('accepts an interpolated custom-property name', () => {
+    expect(parse('@p: q; a { --@{p}x: red; }')).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration' },
+        { type: 'Rule', body: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
+      ]
+    });
+  });
+
+  it('accepts an interpolation as the whole custom-property tail', () => {
+    expect(() => parse('@p: q; a { --@{p}: red; }')).not.toThrow();
+  });
+
+  // KNOWN DIVERGENCE: css / scss / jess all keep a wholly-quoted custom-property
+  // value as verbatim `Any`, matching `<declaration-value>`. Less alone re-types
+  // it as a `Quoted` value (`customValueFromParts` in src/ast/grammar.ts). The
+  // input parses everywhere, so the shared matrix above stays dialect-neutral;
+  // this case pins the difference so it cannot drift unnoticed.
+  it('accepts a semicolon inside a string (as a Less-only Quoted value)', () => {
+    expect(parse('a { --x: "a;b"; }')).toMatchObject({
+      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Quoted', src: '"a;b"' } }] }]
+    });
+  });
+
+  it('accepts a custom-property reference in a var() consumer', () => {
+    expect(parse('a { color: var(--x, blue); }')).toMatchObject({
+      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+    });
+  });
+});

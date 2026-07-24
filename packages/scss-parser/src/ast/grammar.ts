@@ -59,6 +59,14 @@ type ScssAstRules = {
   DirectScssValue: Combinator<ValueSlot>;
   DirectScssImportant: Combinator<true>;
   DirectScssInterpolatedProperty: Combinator<Interpolation>;
+  DirectScssCustomPropertyName: Combinator<string | Interpolation>;
+  DirectScssCustomPart: Combinator<unknown>;
+  DirectScssCustomInnerPart: Combinator<unknown>;
+  DirectScssCustomParen: Combinator<readonly unknown[]>;
+  DirectScssCustomSquare: Combinator<readonly unknown[]>;
+  DirectScssCustomCurly: Combinator<readonly unknown[]>;
+  DirectScssCustomValue: Combinator<ValueNode>;
+  DirectScssCustomDeclaration: Combinator<Declaration>;
   DirectScssDeclaration: Combinator<Declaration>;
   DirectScssStaticNestedPropertyLeaf: Combinator<Declaration>;
   DirectScssStaticNestedProperty: Combinator<Declaration>;
@@ -461,6 +469,44 @@ function interpolationFromTemplateChildren(children: readonly unknown[]): Interp
   return interpolation(parts);
 }
 
+/**
+ * Turn the grammar-owned parts of a custom-property value into one canonical
+ * value. Custom-property values are not evaluated: everything outside a typed
+ * `#{…}` stays literal `<declaration-value>` text, so the reduction only joins
+ * grammar children — it never rescans source. Nested balanced groups arrive as
+ * nested arrays from the paren/square/curly productions.
+ */
+function customValueFromParts(children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void {
+  for (const child of children) {
+    if (Array.isArray(child)) {
+      customValueFromParts(child, parts, seen);
+    } else if (isInterpolation(child)) {
+      seen.interpolated = true;
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendLiteral(parts, part.lit);
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendLiteral(parts, requireToken(child).value);
+    }
+  }
+}
+
+/** Reduce a whole custom-property value to `Interpolation` (when it carries a
+ * `#{…}`) or to verbatim `Any` text. */
+function customValue(children: readonly unknown[]): ValueNode {
+  const parts: Interpolation['parts'] = [];
+  const seen = { interpolated: false };
+  customValueFromParts(children, parts, seen);
+  if (seen.interpolated) {
+    return interpolation(parts);
+  }
+  return any(parts.map(part => 'lit' in part ? part.lit : '').join(''));
+}
+
 /** Fold a grammar-produced left-associative operator chain. Precedence belongs
  * to the caller's product/sum production, never to a source-text recovery. */
 function foldOperation(children: readonly unknown[]): ValueNode {
@@ -813,10 +859,6 @@ const directScssSelectorTextRun = regex(/[-_a-zA-Z0-9]+/);
 // General-enclosed retains its body as an interpolation template. Delimiters
 // recurse below; this leaf owns every other byte without a source reparse.
 const directScssGeneralTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
-// Match the shared CSS direct-AST custom-property value leaf exactly. This is
-// a Parseman lexical production for a static component value, not declaration
-// name recognition or a string post-pass.
-const directScssCustomPropertyValue = regex(/--(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 // Grammar-local copies of the leading pseudo-colon, hex-color and number
 // recognizers (byte-identical to the shared CssAstSyntaxPseudoColon /
 // CssAstSyntaxHexColor / CssAstSyntaxNumber). Leading a choice arm with a
@@ -956,7 +998,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rul
   );
   const DirectScssCustomPropertyValue = node<Keyword>(
     'DirectScssCustomPropertyValue',
-    directScssCustomPropertyValue,
+    g.CssAstSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
   const DirectScssColor = node<Color>(
@@ -1335,10 +1377,108 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rul
       return interpolation(parts);
     }
   );
+  // A custom property is plain CSS in every dialect, so SCSS composes the same
+  // recognition the CSS base does rather than routing `--x` through the ordinary
+  // property terminal (which is a CSS ident and cannot start with `--`). The name
+  // is the shared custom-property leaf, or that leaf's `--` prefix followed by
+  // SCSS `#{…}` segments.
+  const DirectScssCustomPropertyName = node<string | Interpolation>(
+    'DirectScssCustomPropertyName',
+    choice(
+      noTrivia(sequence(
+        literal('--'),
+        many(directScssPropertyChunk),
+        g.DirectScssInterpolation,
+        many(choice(directScssPropertyChunk, g.DirectScssInterpolation))
+      )),
+      g.CssAstSyntaxCustomProperty
+    ),
+    (children) => {
+      if (!children.some(isInterpolation)) {
+        return requireToken(children[0]).value;
+      }
+      const parts: Interpolation['parts'] = [];
+      customValueFromParts(children, parts, { interpolated: false });
+      return interpolation(parts);
+    }
+  );
+  // The value is a CSS `<declaration-value>`: an almost-arbitrary token stream
+  // whose only structure is balanced groups, strings, comments — and, in SCSS,
+  // `#{…}`. Sass does not evaluate a custom-property value, so every other byte
+  // stays literal text. Delimiters recurse as grammar children rather than being
+  // captured as one opaque span, so an inner `;` or `}` cannot end the
+  // declaration and an inner `#{…}` still reduces to a typed segment.
+  const DirectScssCustomParen = node<readonly unknown[]>(
+    'DirectScssCustomParen',
+    noTrivia(sequence(literal('('), many(g.DirectScssCustomInnerPart), literal(')'))),
+    children => children.slice()
+  );
+  const DirectScssCustomSquare = node<readonly unknown[]>(
+    'DirectScssCustomSquare',
+    noTrivia(sequence(literal('['), many(g.DirectScssCustomInnerPart), literal(']'))),
+    children => children.slice()
+  );
+  const DirectScssCustomCurly = node<readonly unknown[]>(
+    'DirectScssCustomCurly',
+    noTrivia(sequence(literal('{'), many(g.DirectScssCustomInnerPart), literal('}'))),
+    children => children.slice()
+  );
+  const DirectScssCustomInnerPart: Combinator<unknown> = choice(
+    g.DirectScssInterpolation,
+    g.CssAstSyntaxCustomInnerContent,
+    blockComment,
+    g.CssAstSyntaxCustomSingleQuoted,
+    g.CssAstSyntaxCustomDoubleQuoted,
+    g.DirectScssCustomParen,
+    g.DirectScssCustomSquare,
+    g.DirectScssCustomCurly
+  );
+  const DirectScssCustomPart: Combinator<unknown> = choice(
+    g.DirectScssInterpolation,
+    g.CssAstSyntaxCustomOuterContent,
+    blockComment,
+    g.CssAstSyntaxCustomSingleQuoted,
+    g.CssAstSyntaxCustomDoubleQuoted,
+    g.DirectScssCustomParen,
+    g.DirectScssCustomSquare,
+    g.DirectScssCustomCurly
+  );
+  const DirectScssCustomValue = node<ValueNode>(
+    'DirectScssCustomValue',
+    noTrivia(many(g.DirectScssCustomPart)),
+    children => customValue(children)
+  );
+  const DirectScssCustomDeclaration = node<Declaration>(
+    'DirectScssCustomDeclaration',
+    sequence(g.DirectScssCustomPropertyName, literal(':'), g.DirectScssCustomValue, optional(literal(';'))),
+    (children) => {
+      const name = children[0];
+      if (typeof name !== 'string' && !isInterpolation(name)) {
+        throw new TypeError('Direct SCSS AST grammar produced a custom declaration without a name.');
+      }
+      // An interpolated custom-property name is itself a ValueNode, so read the
+      // value from its fixed position after the colon rather than by shape.
+      const value = children[2];
+      if (!isValue(value)) {
+        throw new TypeError('Direct SCSS AST grammar produced an incomplete custom declaration.');
+      }
+      return decl(name, valueSlot(value));
+    }
+  );
   const DirectScssDeclaration = node<Declaration>(
     'DirectScssDeclaration',
-    sequence(choice(g.DirectScssInterpolatedProperty, propertyName), optional(choice(literal('+_'), literal('+'))), literal(':'), g.DirectScssValue, optional(g.DirectScssImportant), optional(literal(';'))),
+    choice(
+      g.DirectScssCustomDeclaration,
+      sequence(choice(g.DirectScssInterpolatedProperty, propertyName), optional(choice(literal('+_'), literal('+'))), literal(':'), g.DirectScssValue, optional(g.DirectScssImportant), optional(literal(';')))
+    ),
     (children) => {
+      // The custom-property arm is a single completed Declaration child; pass it
+      // through so every body that admits a declaration admits a custom property
+      // without respelling the arm at each site.
+      const custom = children[0];
+      if (children.length === 1 && isDeclaration(custom)) {
+        return custom;
+      }
       if (children.length < 3 || children.length > 6) {
         throw new TypeError('DirectScssDeclaration produced unexpected children.');
       }
@@ -2865,6 +3005,14 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rul
     DirectScssValue,
     DirectScssImportant,
     DirectScssInterpolatedProperty,
+    DirectScssCustomPropertyName,
+    DirectScssCustomPart,
+    DirectScssCustomInnerPart,
+    DirectScssCustomParen,
+    DirectScssCustomSquare,
+    DirectScssCustomCurly,
+    DirectScssCustomValue,
+    DirectScssCustomDeclaration,
     DirectScssDeclaration,
     DirectScssStaticNestedPropertyLeaf,
     DirectScssStaticNestedProperty,

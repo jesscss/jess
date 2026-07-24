@@ -499,7 +499,6 @@ const cssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
 // `10/*x*/px` into one Dimension.
 const interstitialTrivia = trivia(oneOrMore(choice(regex(/[ \t\n\r\f]+/), blockComment)));
 const compoundTrivia = trivia(oneOrMore(blockComment));
-const customPropertyName = regex(/--(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const calcWhitespace = regex(/[ \t\n\r\f]+/);
 const calcProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
 const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
@@ -571,12 +570,21 @@ const customSingleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const customEscape = regex(/\\[^\n\r\f]/);
 const customDoubleQuoted = sequence(literal('"'), customDoubleQuotedText, literal('"'));
 const customSingleQuoted = sequence(literal('\''), customSingleQuotedText, literal('\''));
+// A balanced interior stops at the first character of every skipper it is given,
+// so `blockComment` puts `/` in the interior's stop set: a `/` that does NOT open
+// a comment matches no interior arm and truncates the group early (the balanced
+// close is recovered, so the truncation is silent). `url(//host/a;b)` inside a
+// custom-property value is exactly that shape — the group ended at the first `/`
+// and the `;` inside it then terminated the declaration. This arm gives the lone
+// slash somewhere to go. It is ordered after `blockComment` at every skip site,
+// so a real `/*` still opens a comment.
+const customSlash = regex(/\/(?!\*)/);
 // Balanced-group skips shared by the value, import-tail, calc var()-fallback,
 // and at-prelude scanners. One combinator per delimiter, reused at every skip
 // site instead of respelling the identical comment/escape/quote skip set.
-const balancedParens = balanced('(', ')', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
-const balancedBrackets = balanced('[', ']', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
-const balancedBraces = balanced('{', '}', { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] });
+const balancedParens = balanced('(', ')', { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] });
+const balancedBrackets = balanced('[', ']', { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] });
+const balancedBraces = balanced('{', '}', { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] });
 // A general-enclosed payload is grammar-owned arbitrary CSS component text. This
 // raw-template chunk deliberately stops at every structural delimiter; quotes,
 // comments, and balanced groups below own those bytes instead. It is a Parseman
@@ -858,7 +866,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     children => selist(...selectorComplexes(children))
   );
   const CssAstProperty = node('CssAstProperty', g.CssAstSyntaxProperty, children => tokenText(children[0]));
-  const CssAstCustomProperty = node('CssAstCustomProperty', customPropertyName, children => tokenText(children[0]));
+  const CssAstCustomProperty = node('CssAstCustomProperty', g.CssAstSyntaxCustomProperty, children => tokenText(children[0]));
   const CssAstCustomValue = node(
     'CssAstCustomValue',
     customValue,
@@ -871,7 +879,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   // collapsing the whole function or its enclosing calc to raw bytes.
   const CssAstCustomPropertyValue = node(
     'CssAstCustomPropertyValue',
-    customPropertyName,
+    g.CssAstSyntaxCustomProperty,
     children => keyword(tokenText(children[0]))
   );
   const CssAstColor = node('CssAstColor', hexColor, children => color(tokenText(children[0])));

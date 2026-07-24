@@ -68,7 +68,6 @@ const BLOCKERS: Array<[string, RegExp]> = [
   ['@warn / @error / @debug', /@(?:warn|error|debug)\b/],
   ['leading combinator (implicit &)', /^\s*[>+~]\s*\S/m],
   ['interpolated pseudo-element', /::?#\{/],
-  ['plain custom property declaration', /^\s*--[a-zA-Z][\w-]*\s*:/m],
   ['multiline nested paren list', /\(\s*\n(?:[^()\n]*\n)*?\s*\(/],
   ['@while', /@while/],
   ['line comment inside a paren list', /\(\s*\n\s*\/\//]

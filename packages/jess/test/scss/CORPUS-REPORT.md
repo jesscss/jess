@@ -8,7 +8,7 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-07-24T19:05:58.519Z`
+- Generated: `2026-07-24T19:40:58.477Z`
 - Bootstrap: `5.3.8`
 - Runner: `v24.11.1` on `darwin/arm64`
 
@@ -31,7 +31,6 @@ usually hit several blockers, so these counts overlap by design.
 | multiline nested paren list | 4 |
 | interpolated pseudo-element | 3 |
 | @while | 2 |
-| plain custom property declaration | 1 |
 | line comment inside a paren list | 1 |
 
 ### Parse failures
@@ -48,7 +47,7 @@ usually hit several blockers, so these counts overlap by design.
 | `_carousel.scss` | 87:0 | `.carousel-control-prev,` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `_close.scss` | 6:0 | `.btn-close {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block |
 | `_containers.scss` | 5:0 | `@if $enable-container-classes {` | bare-truthy @if condition; @include with a trailing content block |
-| `_dropdown.scss` | 19:0 | `.dropdown-menu {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &); plain custom property declaration |
+| `_dropdown.scss` | 19:0 | `.dropdown-menu {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
 | `_functions.scss` | 7:0 | `@mixin _assert-ascending($map, $map-name) {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; @warn / @error / @debug; @while |
 | `_grid.scss` | 11:0 | `@if $enable-grid-classes {` | bare-truthy @if condition; interpolation as a standalone selector compound; interpolation inside a var() name; leading combinator (implicit &) |
 | `_list-group.scss` | 5:0 | `.list-group {` | interpolation as a standalone selector compound; interpolation inside a var() name; @include with a trailing content block; leading combinator (implicit &) |
