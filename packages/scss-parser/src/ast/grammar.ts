@@ -851,6 +851,13 @@ const scopeAtKeyword = regex(/@scope(?![-\w])/i);
 const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
 const pageAtKeyword = regex(/@page(?![-\w])/i);
 const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
+// Grammar-local property-name recognizer (byte-identical to CssAstSyntaxProperty).
+// Declaration and StaticNestedProperty lead their arm with a `choice(interpolated
+// property, property)`; spelling the plain property locally resolves that arm's
+// first-set to the property opener class (`*`, `-`, an identifier char) so the
+// declaration arms first-char-gate — an ordinary rule (`.x`, `&…`) or block-close
+// no longer enters and rolls back the declaration/nested-property node frames.
+const propertyName = regex(/\*?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
 export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ trivia: whitespace }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
@@ -1323,7 +1330,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   );
   const DirectScssDeclaration = node<Declaration>(
     'DirectScssDeclaration',
-    sequence(choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), optional(choice(literal('+_'), literal('+'))), literal(':'), g.DirectScssValue, optional(g.DirectScssImportant), optional(literal(';'))),
+    sequence(choice(g.DirectScssInterpolatedProperty, propertyName), optional(choice(literal('+_'), literal('+'))), literal(':'), g.DirectScssValue, optional(g.DirectScssImportant), optional(literal(';'))),
     (children) => {
       if (children.length < 3 || children.length > 6) {
         throw new TypeError('DirectScssDeclaration produced unexpected children.');
@@ -1356,7 +1363,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // grammar does not create extensions for them either.
   const DirectScssStaticNestedPropertyLeaf = node<Declaration>(
     'DirectScssStaticNestedPropertyLeaf',
-    sequence(choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectScssValue, optional(literal(';'))),
+    sequence(choice(g.DirectScssInterpolatedProperty, propertyName), literal(':'), g.DirectScssValue, optional(literal(';'))),
     children => decl(isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value, requireValueSlot(children[2]), null, false)
   );
   // Cheap zero-width gate so an ordinary declaration (`color: red;`) does not
@@ -1374,7 +1381,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticNestedProperty = node<Declaration>(
     'DirectScssStaticNestedProperty',
     choice(
-      sequence(directNestedPropertyAhead, choice(g.DirectScssInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), optional(g.DirectScssValue), literal('{'), many(g.DirectScssStaticNestedPropertyLeaf), literal('}'), optional(g.DirectScssImportant), optional(literal(';')))
+      sequence(directNestedPropertyAhead, choice(g.DirectScssInterpolatedProperty, propertyName), literal(':'), optional(g.DirectScssValue), literal('{'), many(g.DirectScssStaticNestedPropertyLeaf), literal('}'), optional(g.DirectScssImportant), optional(literal(';')))
     ),
     (children) => {
       const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
@@ -1449,7 +1456,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // is still the same parenthesized declaration condition used elsewhere.
   const DirectScssStaticImportDeclaration = node<ValueNode>(
     'DirectScssStaticImportDeclaration',
-    sequence(g.CssAstSyntaxProperty, literal(':'), g.DirectScssSupportsAtom),
+    sequence(propertyName, literal(':'), g.DirectScssSupportsAtom),
     children => block(operation(':', keyword(requireToken(children[0]).value), requireValue(children[2])))
   );
   const DirectScssStaticImportSupports = node<FunctionCall>(
@@ -1480,9 +1487,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssStaticImportMediaFeature = node<ValueNode>(
     'DirectScssStaticImportMediaFeature',
     choice(
-      sequence(literal('('), g.CssAstSyntaxProperty, literal(')')),
-      sequence(literal('('), g.CssAstSyntaxProperty, literal(':'), g.DirectScssSupportsAtom, literal(')')),
-      sequence(literal('('), g.CssAstSyntaxProperty, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), g.DirectScssSupportsAtom, literal(')'))
+      sequence(literal('('), propertyName, literal(')')),
+      sequence(literal('('), propertyName, literal(':'), g.DirectScssSupportsAtom, literal(')')),
+      sequence(literal('('), propertyName, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), g.DirectScssSupportsAtom, literal(')'))
     ),
     (children) => {
       const property = keyword(requireToken(children[1]).value);
@@ -1961,9 +1968,9 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssQueryFeature = node<ValueNode>(
     'DirectScssQueryFeature',
     choice(
-      sequence(literal('('), g.CssAstSyntaxProperty, literal(')')),
-      sequence(literal('('), g.CssAstSyntaxProperty, literal(':'), g.DirectScssValue, literal(')')),
-      sequence(literal('('), g.CssAstSyntaxProperty, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), g.DirectScssValue, literal(')'))
+      sequence(literal('('), propertyName, literal(')')),
+      sequence(literal('('), propertyName, literal(':'), g.DirectScssValue, literal(')')),
+      sequence(literal('('), propertyName, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), g.DirectScssValue, literal(')'))
     ),
     (children) => {
       const property = keyword(requireToken(children[1]).value);
@@ -2105,8 +2112,8 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssSupportsFeature = node<ValueNode>(
     'DirectScssSupportsFeature',
     choice(
-      sequence(literal('('), g.CssAstSyntaxProperty, literal(')')),
-      sequence(literal('('), g.CssAstSyntaxProperty, literal(':'), g.DirectScssSupportsAtom, literal(')'))
+      sequence(literal('('), propertyName, literal(')')),
+      sequence(literal('('), propertyName, literal(':'), g.DirectScssSupportsAtom, literal(')'))
     ),
     (children) => {
       const property = keyword(requireToken(children[1]).value);
