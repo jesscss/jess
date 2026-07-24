@@ -412,6 +412,9 @@ importers:
       '@types/lodash-es':
         specifier: ^4.17.8
         version: 4.17.12
+      bootstrap:
+        specifier: ~5.3.8
+        version: 5.3.8(@popperjs/core@2.11.8)
       bootstrap-less-port:
         specifier: ~2.5.1
         version: 2.5.1(less@3.13.1)
@@ -5684,6 +5687,10 @@ packages:
   /@polka/url@1.0.0-next.29:
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
+  /@popperjs/core@2.11.8:
+    resolution: {integrity: sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A==}
+    dev: true
+
   /@puppeteer/browsers@0.5.0(typescript@7.0.1-rc):
     resolution: {integrity: sha512-Uw6oB7VvmPRLE4iKsjuOh8zgDabhNX67dzo8U/BB0f9527qx+4eeUs+korU98OhG5C4ubg7ufBgVi63XYwS6TQ==}
     engines: {node: '>=14.1.0'}
@@ -8559,6 +8566,14 @@ packages:
       less: ^3.9.0
     dependencies:
       less: 3.13.1
+    dev: true
+
+  /bootstrap@5.3.8(@popperjs/core@2.11.8):
+    resolution: {integrity: sha512-HP1SZDqaLDPwsNiqRqi5NcP0SSXciX2s9E+RyqJIIqGo+vJeN5AJVM98CXmW/Wux0nQ5L7jeWUdplCEf0Ee+tg==}
+    peerDependencies:
+      '@popperjs/core': ^2.11.8
+    dependencies:
+      '@popperjs/core': 2.11.8
     dev: true
 
   /boxen@5.1.2:

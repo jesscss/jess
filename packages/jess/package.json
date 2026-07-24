@@ -59,11 +59,12 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
-    "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-css": "workspace:*",
+    "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/lodash-es": "^4.17.8",
+    "bootstrap": "~5.3.8",
     "bootstrap-less-port": "~2.5.1",
     "clinic": "~13.0.0",
     "sass": "~1.101.0"
