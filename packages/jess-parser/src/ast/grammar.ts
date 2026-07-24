@@ -997,9 +997,13 @@ function reduceSelectorList(children: readonly unknown[]): SelectorList {
 }
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
-const whitespace = trivia(rawWhitespace);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
+// Jess `//` comments are trivia, not CSS comments — exactly as in Less: they are
+// recognized between direct AST facts but must never become a renderable
+// `Comment` node, because `//` is not valid CSS and cannot survive into output.
+// URL bodies disable trivia below, so `url(//host/path)` stays URL content.
+const whitespace = trivia(oneOrMore(choice(rawWhitespace, lineComment)));
 const plainDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))*/);
 const plainSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))*/);
 const interpolatedDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))+/);
@@ -1030,6 +1034,10 @@ const jessUnwrappedSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
 // recognition retains a typed argument list and never routes through source.
 const jessGuardUnaryTypePredicate = regex(/\$type\.(?:iscolor|isnumber|isstring|iskeyword|ispixel|ispercentage|isem)(?![-_a-zA-Z0-9\u0080-\uffff])/);
 const jessGuardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uffff])/);
+// The reserved guard-predicate namespace. An expression atom uses this as a
+// negative lookahead so `$type.*` can never take a generic call tail and bypass
+// the closed, arity-checked predicate grammar above.
+const jessTypeNamespace = regex(/\$type\./);
 const jessDollarInterpStructure = noTrivia(choice(
   sequence(literal('$['), literal('$'), jessDollarName, literal(']')),
   sequence(literal('$['), jessDollarName, literal(']')),
@@ -1063,9 +1071,11 @@ const jessKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i)
 const jessKeyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
 export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<JessAstRules>({ trivia: whitespace }, (g: JessAstRules & SharedCssAstSyntax) => {
+  // Only a block comment is CSS output. A `//` line comment is lexical trivia
+  // (see `whitespace`) and is dropped, matching Less.
   const DirectJessComment = node<Comment>(
     'DirectJessComment',
-    choice(blockComment, lineComment),
+    blockComment,
     children => comment(requireToken(children[0]).value)
   );
   const DirectJessVarReference = node<VariableReference>(
@@ -1109,16 +1119,32 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     // `$name` references dominate expression atoms; try VarReference before the
     // `$[` interpolation form (disjoint on the char after `$`) so a plain
     // reference does not first enter and roll back the DollarInterp node frame.
-    // The reference keeps its accessor tail here so a member read is the SAME
-    // grammar fact in condition/arithmetic position that it already is in value
-    // position; a parenthesized sub-group is the explicit precedence boundary.
+    // The reference keeps its accessor AND call tails here so a member read and
+    // a call are the SAME grammar facts in arithmetic position that they already
+    // are in value position — that is what lets `$(…)` nest calls to any depth
+    // (`$($double($double($n)))`), since each argument is itself an ordinary
+    // value. A parenthesized sub-group is the explicit precedence boundary.
+    //
+    // The `$type.` namespace is the one exception, and it gets the second arm:
+    // this atom is shared with `$if`/`when`, where `$type.isnumber($x)` must
+    // keep reducing through the arity-checked `DirectJessGuardCall` predicate
+    // syntax. Letting it take a generic call tail would silently admit
+    // `$type.unknown($x)` and every wrong-arity spelling the guard grammar
+    // exists to reject. Bare-name calls stay out of the atom entirely for the
+    // same reason — `default()` is mixin-only syntax.
     choice(
+      noTrivia(sequence(not(jessTypeNamespace), g.DirectJessVarReference, many(choice(g.DirectJessReferenceCallTail, g.DirectJessReferenceTail)))),
       noTrivia(sequence(g.DirectJessVarReference, many(g.DirectJessReferenceTail))),
       g.DirectJessExpressionDollarInterp,
       g.DirectJessDimension,
       g.DirectJessColor,
       g.DirectJessExpressionQuoted,
       sequence(literal('('), g.DirectJessExpressionCompare, literal(')')),
+      // NOTE: a BARE-name call (`max(1, 2)`) is deliberately NOT an atom here.
+      // This atom is shared with `$if`/`when` conditions, which must keep
+      // rejecting the mixin-only `default()` form; admitting bare calls would
+      // make `default()` a legal condition. Dispatch reaches an expression only
+      // through the `$fn(…)` reference tail above, which cannot spell `default()`.
       g.DirectJessKeyword
     ),
     (children) => {
@@ -1261,15 +1287,25 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   // This is only the already-modelled static escaped-string fact. An escaped
   // interpolation needs a distinct AST representation for its unquoting mode.
+  // Every quoted arm is `noTrivia`: string contents are literal bytes, so the
+  // ambient trivia must not reach inside a string and silently drop a leading
+  // space or swallow a `//` run as a line comment.
+  //
+  // An interpolated `$( … )` inside a string must NOT inherit that `noTrivia`:
+  // the expression rule is SHARED, so a single no-trivia call site strips trivia
+  // from every `$( … )` in the document and `$( 1px + 1px )` stops parsing.
+  // These two re-enter the ambient trivia for the nested expression only.
+  const directJessQuotedExpression = parser({ trivia: whitespace }, g.DirectJessExpression);
+  const directJessQuotedExpressionInterpolation = parser({ trivia: whitespace }, g.DirectJessExpressionInterpolation);
   const directJessEscapedStaticQuoted = choice(
-    sequence(literal('~'), literal('"'), plainDoubleQuotedText, literal('"')),
-    sequence(literal('~'), literal('\''), plainSingleQuotedText, literal('\''))
+    noTrivia(sequence(literal('~'), literal('"'), plainDoubleQuotedText, literal('"'))),
+    noTrivia(sequence(literal('~'), literal('\''), plainSingleQuotedText, literal('\'')))
   );
   // Shared static plain-quoted arms. The escaped, double-, and single-quoted
   // static prefix is identical across the value, static, and expression quoted
   // families; only the interp-bearing arms and the reducer differ.
-  const directJessPlainDoubleQuoted = sequence(literal('"'), plainDoubleQuotedText, literal('"'));
-  const directJessPlainSingleQuoted = sequence(literal('\''), plainSingleQuotedText, literal('\''));
+  const directJessPlainDoubleQuoted = noTrivia(sequence(literal('"'), plainDoubleQuotedText, literal('"')));
+  const directJessPlainSingleQuoted = noTrivia(sequence(literal('\''), plainSingleQuotedText, literal('\'')));
   const DirectJessQuoted = node<Quoted | Interpolation>(
     'DirectJessQuoted',
     choice(
@@ -1280,10 +1316,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // escape drops the quotes, so the value is exactly the Interpolation of
       // its content parts with no quote literals around them. Only the static
       // arm needs the separate `Quoted` escaped fact.
-      sequence(literal('~'), literal('"'), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedDoubleQuotedText)), literal('"')),
-      sequence(literal('~'), literal('\''), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedSingleQuotedText)), literal('\'')),
-      sequence(literal('"'), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedDoubleQuotedText)), literal('"')),
-      sequence(literal('\''), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedSingleQuotedText)), literal('\''))
+      noTrivia(sequence(literal('~'), literal('"'), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('~'), literal('\''), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\''))),
+      noTrivia(sequence(literal('"'), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\'')))
     ),
     (children) => {
       if (requireToken(children[0]).value !== '~') {
@@ -1410,8 +1446,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       directJessEscapedStaticQuoted,
       directJessPlainDoubleQuoted,
       directJessPlainSingleQuoted,
-      sequence(literal('"'), many(choice(g.DirectJessExpressionDollarInterp, g.DirectJessExpressionInterpolation, interpolatedDoubleQuotedText)), literal('"')),
-      sequence(literal('\''), many(choice(g.DirectJessExpressionDollarInterp, g.DirectJessExpressionInterpolation, interpolatedSingleQuotedText)), literal('\''))
+      noTrivia(sequence(literal('"'), many(choice(g.DirectJessExpressionDollarInterp, directJessQuotedExpressionInterpolation, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.DirectJessExpressionDollarInterp, directJessQuotedExpressionInterpolation, interpolatedSingleQuotedText)), literal('\'')))
     ),
     (children) => {
       if (requireToken(children[0]).value !== '~') {
@@ -1837,10 +1873,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // `(args)` — a CALL step on a variable-held value: `$f(1, 2)`, `$f($b: 2)`.
   // It reuses the mixin argument production verbatim, so a lambda call binds
   // positionally, by name, and against defaults through the ONE binder a named
-  // mixin call already uses. It is deliberately NOT part of the shared
-  // `DirectJessReferenceTail`: a `$if`/guard condition reads member ACCESS, not
-  // dispatch, and `$type.*()` stays mixin-guard syntax rather than becoming an
-  // ordinary condition call.
+  // mixin call already uses. It is deliberately NOT folded INTO the shared
+  // `DirectJessReferenceTail`, which stays access-only: `$type.*()` must keep
+  // reducing through the dedicated `DirectJessGuardCall` mixin-guard syntax
+  // instead of collapsing into an ordinary member-call chain. Expression and
+  // condition positions opt in to dispatch by listing this tail alongside the
+  // access tail (see `DirectJessExpressionAtom`, `DirectJessDollarValue`).
   const DirectJessReferenceCallTail = node<JessReferenceTail>(
     'DirectJessReferenceCallTail',
     noTrivia(sequence(

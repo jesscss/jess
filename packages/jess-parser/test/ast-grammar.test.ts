@@ -1299,7 +1299,7 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('preserves public Jess line and block comments as canonical statements', () => {
+  it('preserves block comments as canonical statements and drops `//` line comments as trivia', () => {
     const source = '// root\n$theme: blue; /* between */ .card { // inside\n color: $theme; /* tail */ }';
     const legacy = parseJessCst(source);
     const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
@@ -1308,22 +1308,54 @@ describe('Jess AST grammar facts', () => {
     expect(legacy.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
+    // `//` is not valid CSS, so — exactly as in Less — it is lexical trivia and
+    // never becomes a renderable `Comment` node. `/* */` stays CSS output.
+    expect(result.value).toEqual({
       type: 'Stylesheet',
       children: [
-        { type: 'Comment', text: '// root' },
-        { type: 'VariableDeclaration', name: 'theme' },
+        expect.objectContaining({ type: 'VariableDeclaration', name: 'theme' }),
         { type: 'Comment', text: '/* between */' },
-        {
+        expect.objectContaining({
           type: 'Rule',
           body: [
-            { type: 'Comment', text: '// inside' },
-            { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'theme' } },
+            expect.objectContaining({ type: 'Declaration', name: 'color' }),
             { type: 'Comment', text: '/* tail */' }
           ]
-        }
+        })
       ]
     });
+  });
+
+  it('keeps `//` out of the AST wherever it may appear, matching the Less parser', () => {
+    for (const source of [
+      '// only a comment\n',
+      '.a { color: red; } // trailing\n',
+      '.a {\n  // leading\n  color: red;\n}\n',
+      '.a {\n  color: red; // after a declaration\n}\n',
+      '$x: 1; // after a variable\n',
+      '@media screen {\n  // inside an at-rule\n  .a { color: red; }\n}\n'
+    ]) {
+      const ast = parse(source);
+      expect(JSON.stringify(ast), source).not.toContain('//');
+    }
+  });
+
+  it('renders `/* */` but never renders a `//` line comment', () => {
+    const source = '// dropped\n.card {\n  // dropped\n  color: red; // dropped\n}\n/* kept */\n';
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css)
+      .toBe('.card {\n  color: red;\n}\n/* kept */\n');
+  });
+
+  it('does not let `//` trivia reach inside strings or url() bodies', () => {
+    expect(parse('.a { content: "//not-a-comment"; }')).toMatchObject({
+      children: [{ body: [{ value: { type: 'Quoted', value: '//not-a-comment' } }] }]
+    });
+    // A leading space belongs to the string, not to the ambient trivia.
+    expect(parse('.a { content: " x"; }')).toMatchObject({
+      children: [{ body: [{ value: { type: 'Quoted', value: ' x' } }] }]
+    });
+    expect(() => parse('.a { background: url(//cdn.example.com/x.png); }')).not.toThrow();
+    expect(() => parse('.a { background: url("//cdn.example.com/x.png"); }')).not.toThrow();
   });
 
   it('constructs declarations, static rules, quoted, keyword, numeric, color, call, and variable-reference facts directly', () => {
@@ -2192,6 +2224,67 @@ describe('Jess AST grammar facts', () => {
     expect(parse('$f: @() > some-val;')).toMatchObject({
       children: [{ value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'result', value: { src: 'some-val' } }] } }]
     });
+  });
+
+  it('admits calls as `$(…)` expression atoms and nests them to any depth', () => {
+    // A call is a value, so it is an arithmetic atom. Both spellings work, in
+    // any position an atom may appear, nested arbitrarily.
+    for (const source of [
+      '$d: @($n) > $($n * 2);\n$quad: @($n) > $($d($d($n)));\n.box { width: $quad(2); }',
+      '.box { width: $($d($d($d(2)))); }',
+      '.box { width: $($d(2) * 2); }',
+      '.box { width: $(2 * $d(2)); }',
+      '.box { width: $($d(1) + $d(3)); }',
+      '.box { width: $($map.entry($n)); }'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+    // A BARE-name call stays out of the expression atom: this atom is shared
+    // with `$if`/`when`, whose conditions must keep rejecting mixin-only
+    // `default()`. Dispatch is spelled `$fn(…)`.
+    expect(() => parse('.box { width: $(max(1, 2)); }')).toThrow(SyntaxError);
+    // The call reduces to the same typed fact `$d(2)` already produces in value
+    // position — a Reference carrying a Call step — not to opaque text.
+    expect(parse('.box { width: $($d($d(2))); }')).toMatchObject({
+      children: [{
+        body: [{
+          type: 'Declaration',
+          name: 'width',
+          value: {
+            type: 'Interpolation',
+            parts: [{
+              ref: {
+                type: 'Block',
+                inner: {
+                  type: 'Reference',
+                  base: { type: 'VariableReference', name: 'd' },
+                  steps: [{
+                    type: 'Call',
+                    args: [{
+                      value: {
+                        type: 'Reference',
+                        base: { type: 'VariableReference', name: 'd' },
+                        steps: [{ type: 'Call', args: [{ value: { src: '2' } }] }]
+                      }
+                    }]
+                  }]
+                }
+              }
+            }]
+          }
+        }]
+      }]
+    });
+    // A plain reference is still a plain reference — no empty call step.
+    expect(parse('.box { width: $($n); }')).toMatchObject({
+      children: [{ body: [{ value: { parts: [{ ref: { inner: { type: 'VariableReference', name: 'n' } } }] } }] }]
+    });
+  });
+
+  it('evaluates a nested call', () => {
+    const source = '$d: @($n) > $($n * 2);\n.box {\n  width: $d($d(2px));\n}';
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css)
+      .toBe('.box {\n  width: 8px;\n}\n');
   });
 
   // A block-valued assignment auto-terminates at its closing brace; the block
