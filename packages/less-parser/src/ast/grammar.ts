@@ -3830,8 +3830,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessStaticPseudoCompound = node<CompoundSelector>(
     'DirectLessStaticPseudoCompound',
     noTrivia(sequence(
-      choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticNthPseudo, g.DirectLessStaticPseudo, g.DirectLessStaticAttribute, blockComment),
-      many(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticNthPseudo, g.DirectLessStaticPseudo, g.DirectLessStaticAttribute, blockComment))
+      choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticPseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute, blockComment),
+      many(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticPseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute, blockComment))
     )),
     children => compoundSelectorOf(children.flatMap((child) => {
       if (isSimpleToken(child)) {
@@ -4140,10 +4140,20 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     g.DirectLessStaticNamespaceType,
     staticSimpleSelector,
     staticAmpersand,
+    // Generic and selector pseudos (`:hover`, `::before`, `:not(...)`) dominate
+    // real selectors; the two nth arms and the interpolated-name arm are rare.
+    // DirectLessStaticPseudo carries the generic/selector case and is name-set
+    // disjoint from the other three — its NonSelectorPseudo `not(nth-name)` /
+    // `not(selector-name)` guards and its SelectorPseudo name regex mean it can
+    // never match an nth pseudo or an interpolated-name pseudo (`:@{n}`). So
+    // trying it first lets the common pseudo commit on the first arm instead of
+    // paying four failed `::?`+name re-scans through the nth/interp arms, while a
+    // rare nth/interp pseudo still falls through to its arm with output and PEG
+    // priority unchanged.
+    g.DirectLessStaticPseudo,
     g.DirectLessInterpolatedNthPseudo,
     g.DirectLessStaticNthPseudo,
     g.DirectLessInterpolatedPseudo,
-    g.DirectLessStaticPseudo,
     g.DirectLessStaticAttribute,
     g.DirectLessInterpolatedAttribute
   );
@@ -4222,7 +4232,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const directExtendAll = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const DirectLessStaticExtendCompound = node<CompoundSelector>(
     'DirectLessStaticExtendCompound',
-    noTrivia(oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticNthPseudo, g.DirectLessStaticPseudo, g.DirectLessStaticAttribute, DirectLessSelectorComment))),
+    noTrivia(oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticPseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute, DirectLessSelectorComment))),
     children => compoundSelectorOf(children.filter(child => !isTerminalText(child, '/*')).map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const DirectLessStaticExtendComplexTail = node<ComplexTailFact>(
