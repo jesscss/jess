@@ -3559,7 +3559,7 @@ describe('Less AST grammar facts', () => {
       throw new TypeError('expected Stylesheet');
     }
     expect(serialize(result.value)).toEqual({
-      css: '.card-item,\n#tone-active {\n  color: red;\n}\n.card-item.active,\n#tone-active.active {\n  color: blue;\n}\n'
+      css: '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     });
   });
 

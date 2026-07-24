@@ -867,7 +867,7 @@ describe('public Less parse()', () => {
       ]
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
-      '.card-item,\n#tone-active {\n  color: red;\n}\n.card-item.active,\n#tone-active.active {\n  color: blue;\n}\n'
+      '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     );
     for (const invalid of [
       '. @{name}-item { color: red; }',
