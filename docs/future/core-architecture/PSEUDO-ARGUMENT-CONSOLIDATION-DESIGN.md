@@ -334,6 +334,16 @@ the always-structure landing (§3c) makes per-pseudo argument grammars structure
 also rejects `:not(2n+1)` and the dialects re-converge. Until then this is a known, invalid-CSS-only
 divergence, not a regression to chase.
 
+Second tracked divergence (found in Landing 1c): a **paren-less nth name** (`:nth-child`, `:nth-of-type`
+with NO argument — invalid CSS, the pseudo requires `(…)`). less REJECTS it (explicit
+identifier-boundary guard, kept local in 1c because the shared `(?=\()`-anchored names only fire when a
+paren follows); css and jess ACCEPT it as an opaque keyword pseudo (pre-existing, not introduced by
+this work — both route a paren-less nth name through the generic keyword-pseudo arm). less is correct.
+RESOLUTION: same always-structure landing — a nth name without its required `(…)` is invalid in every
+dialect; unify to less's rejection. Until then, tracked, invalid-CSS-only. The 1c consolidation still
+folds the three divergent nth *argument-recognition* boundaries (the actual one-off-bug class) onto the
+shared consts; only this identifier-boundary exclusion stays local by necessity.
+
 ---
 
 ## 8. Rejected alternatives
