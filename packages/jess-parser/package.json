@@ -46,7 +46,7 @@
   },
   "peerDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "^0.30.0"
+    "parseman": "^0.32.0"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -57,7 +57,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/internal-css-recognition": "workspace:*",
     "@types/color-name": "^1.1.1",
-    "parseman": "0.30.0"
+    "parseman": "0.32.0"
   },
   "type": "module",
   "module": "lib/index.js"
