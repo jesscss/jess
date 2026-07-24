@@ -517,6 +517,34 @@ const declarationAnyCharacter = choice(
 // grammar retains the prelude as grammar-owned bytes while it validates that
 // target; loading and resolution are not parser or AST responsibilities.
 const importAtKeyword = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
+// Grammar-local copy of CssAstSyntaxStatementAtRuleName. Leading the statement
+// at-rule with this resolves the arm's `@` first-set so the compiler first-char
+// gates it, instead of entering the statement node frame speculatively at every
+// declaration and ruleset (the cross-composition reference reads as `any`).
+const statementAtRuleName = regex(/@(?!(?:import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
+// Grammar-local copies of the conditional at-keywords (identical to the shared
+// CssAstSyntax*AtKeyword rules). Same first-set-resolution motive as above: a
+// concrete `@media`/`@supports`/`@container` leading recognizer lets the compiler
+// first-char-gate the conditional-block arms instead of entering them at every
+// top-level statement and conditional-body item.
+const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+const mediaAtKeyword = regex(/@media(?![-\w])/i);
+const containerAtKeyword = regex(/@container(?![-\w])/i);
+// Grammar-local copies of the remaining block at-keywords (identical to the
+// shared CssAstSyntax* rules) so every at-rule block arm in the document/body
+// choices leads with a concrete `@` first-set and the compiler first-char-gates
+// the whole at-rule cluster. NOTE: these mirror packages/internal-css-recognition
+// recognition.ts; genericAtRuleName's exclusion list in particular must stay in
+// sync with the known at-rule names above.
+const descriptorAtKeyword = regex(/@(?:font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition)(?![-\w])/i);
+const scopeAtKeyword = regex(/@scope(?![-\w])/i);
+const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
+const layerAtKeyword = regex(/@layer(?![-\w])/i);
+const pageAtKeyword = regex(/@page(?![-\w])/i);
+const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-\w])/i);
+const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
+const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
+const genericAtRuleName = regex(/@(?!(?:import|media|container|supports|starting-style|page|scope|font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition|-moz-document|document|font-feature-values|layer|(?:-[a-z]+-)?keyframes)(?=[^-\w]|$))-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 const urlName = regex(/url(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
 const importTailWhitespace = regex(/[ \t\n\r\f]+/);
 const importTailText = regex(/[^()[\]"'\/; \t\n\r\f]+/);
@@ -1288,7 +1316,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstAtRuleStatement = node(
     'CssAstAtRuleStatement',
-    sequence(g.CssAstSyntaxStatementAtRuleName, g.CssAstStatementPrelude, literal(';')),
+    sequence(statementAtRuleName, g.CssAstStatementPrelude, literal(';')),
     (children) => {
       const name = tokenText(children[0]);
       return atRuleStatement(name, optionalValue(children[1]));
@@ -1337,7 +1365,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstOpaqueAtRuleBlock = node(
     'CssAstOpaqueAtRuleBlock',
     sequence(
-      g.CssAstSyntaxGenericAtRuleName,
+      genericAtRuleName,
       noTrivia(sequence(
         g.CssAstOpaqueAtPrelude,
         literal('{'),
@@ -1588,12 +1616,12 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const cssBlockBody = choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstStartingStyleBlock, g.CssAstLayerBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset);
   const CssAstLayerBlock = node(
     'CssAstLayerBlock',
-    sequence(g.CssAstSyntaxLayerAtKeyword, g.CssAstAtPrelude, literal('{'), many(cssBlockBody), literal('}')),
+    sequence(layerAtKeyword, g.CssAstAtPrelude, literal('{'), many(cssBlockBody), literal('}')),
     children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), blockStatements(children))
   );
   const CssAstNestedLayerBlock = node(
     'CssAstNestedLayerBlock',
-    sequence(g.CssAstSyntaxLayerAtKeyword, g.CssAstAtPrelude, literal('{'), many(cssNestedBody), literal('}')),
+    sequence(layerAtKeyword, g.CssAstAtPrelude, literal('{'), many(cssNestedBody), literal('}')),
     children => atRuleBlock(tokenText(children[0]!), optionalValue(children[1]), rulesetStatements(children))
   );
   // `@page` accepts only declarations, empty statements, and its sixteen
@@ -1618,7 +1646,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstPageBlock = node(
     'CssAstPageBlock',
     sequence(
-      g.CssAstSyntaxPageAtKeyword,
+      pageAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(choice(g.CssAstComment, g.CssAstDeclaration, g.CssAstMarginBox, literal(';'))),
@@ -1651,7 +1679,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstKeyframes = node(
     'CssAstKeyframes',
-    sequence(g.CssAstSyntaxKeyframesAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstKeyframeBlock)), literal('}')),
+    sequence(keyframesAtKeyword, g.CssAstAtPrelude, literal('{'), many(choice(g.CssAstComment, g.CssAstKeyframeBlock)), literal('}')),
     (children) => {
       return atRuleBlock(tokenText(children[0]), optionalValue(children[1]), blockStatements(children));
     }
@@ -1680,7 +1708,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstConditionalBlock',
     choice(
       sequence(
-        g.CssAstSyntaxSupportsAtKeyword,
+        supportsAtKeyword,
         many(blockComment),
         parser({ trivia: interstitialTrivia }, g.CssAstSupportsPrelude),
         many(blockComment),
@@ -1689,14 +1717,14 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxMediaAtKeyword,
+        mediaAtKeyword,
         g.CssAstQueryPrelude,
         literal('{'),
         many(cssConditionalBody),
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxContainerAtKeyword,
+        containerAtKeyword,
         not(g.CssAstSyntaxQueryOnly),
         g.CssAstQueryPrelude,
         literal('{'),
@@ -1712,7 +1740,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstNestedConditionalBlock',
     choice(
       sequence(
-        g.CssAstSyntaxSupportsAtKeyword,
+        supportsAtKeyword,
         many(blockComment),
         parser({ trivia: interstitialTrivia }, g.CssAstSupportsPrelude),
         many(blockComment),
@@ -1721,14 +1749,14 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxMediaAtKeyword,
+        mediaAtKeyword,
         g.CssAstQueryPrelude,
         literal('{'),
         many(cssNestedBody),
         literal('}')
       ),
       sequence(
-        g.CssAstSyntaxContainerAtKeyword,
+        containerAtKeyword,
         not(g.CssAstSyntaxQueryOnly),
         g.CssAstQueryPrelude,
         literal('{'),
@@ -1743,7 +1771,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDescriptorBlock = node(
     'CssAstDescriptorBlock',
     sequence(
-      g.CssAstSyntaxDescriptorAtKeyword,
+      descriptorAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(cssDeclarationBody),
@@ -1776,7 +1804,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstFontFeatureValuesBlock = node(
     'CssAstFontFeatureValuesBlock',
     sequence(
-      g.CssAstSyntaxFontFeatureValuesAtKeyword,
+      fontFeatureValuesAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(choice(g.CssAstComment, g.CssAstFontFeatureValueBlock)),
@@ -1791,7 +1819,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstScopeBlock = node(
     'CssAstScopeBlock',
     sequence(
-      g.CssAstSyntaxScopeAtKeyword,
+      scopeAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       // `@scope` has the public declaration-list body model, so a nested
@@ -1805,7 +1833,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstStartingStyleBlock = node(
     'CssAstStartingStyleBlock',
     sequence(
-      g.CssAstSyntaxStartingStyleAtKeyword,
+      startingStyleAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(choice(g.CssAstComment, g.CssAstAtRuleStatement, g.CssAstConditionalBlock, g.CssAstDescriptorBlock, g.CssAstFontFeatureValuesBlock, g.CssAstScopeBlock, g.CssAstLayerBlock, g.CssAstStartingStyleBlock, g.CssAstPageBlock, g.CssAstKeyframes, g.CssAstDocumentBlock, g.CssAstOpaqueAtRuleBlock, g.CssAstRuleset)),
@@ -1816,7 +1844,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstNestedStartingStyleBlock = node(
     'CssAstNestedStartingStyleBlock',
     sequence(
-      g.CssAstSyntaxStartingStyleAtKeyword,
+      startingStyleAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(cssNestedBody),
@@ -1827,7 +1855,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDocumentBlock = node(
     'CssAstDocumentBlock',
     sequence(
-      g.CssAstSyntaxDocumentAtKeyword,
+      documentAtKeyword,
       g.CssAstAtPrelude,
       literal('{'),
       many(cssBlockBody),
