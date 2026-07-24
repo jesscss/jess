@@ -2465,6 +2465,29 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     ),
     children => interpolation(interpolationPartsFrom(children, false))
   );
+  // An interpolated property name always carries a `@{`/`${` marker before the
+  // declaration `:`; a plain property never does. DirectLessInterpolatedProperty
+  // is tried first in the property choice (its literal prefix arm can begin a
+  // property like `color-@{n}`), so a plain `color:` otherwise scans the whole
+  // property ident through the interpolated-property-start production before
+  // failing at the required interpolation. This positive lookahead is the cheap
+  // commit signal: only enter the interpolated-property arm when a marker is
+  // actually present before the delimiter, so plain properties fall straight to
+  // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
+  // off the declaration reducer's `children[0]` property slot.
+  const directLessInterpolatedPropertyAhead = not(not(regex(/[^:;{}]*[@$]\{/)));
+  const directLessGatedInterpolatedProperty = node<Interpolation>(
+    'DirectLessGatedInterpolatedProperty',
+    sequence(directLessInterpolatedPropertyAhead, g.DirectLessInterpolatedProperty),
+    (children) => {
+      const property = children.find(isInterp);
+      if (property === undefined) {
+        throw new TypeError('Direct Less interpolated-property gate lost its interpolation.');
+      }
+      return property;
+    },
+    { collapse: true }
+  );
   // A block comment between a property and `:` is authored declaration-name
   // syntax. Preserve it through the existing structural Interpolation name
   // representation; ordinary whitespace is retained only when such a comment
@@ -2482,7 +2505,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     noTrivia(sequence(
       sequence(
         choice(
-          g.DirectLessInterpolatedProperty,
+          directLessGatedInterpolatedProperty,
           g.LessAstSyntaxNumericMapKey,
           g.LessAstSyntaxDeclarationProperty
         ),
