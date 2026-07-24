@@ -14,6 +14,7 @@ import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelect
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
+type JessOperatorFact = { readonly value: string; readonly src: string };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
 type JessComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
 type JessStaticAtQueryProperty = { readonly property: Keyword };
@@ -28,6 +29,7 @@ type JessAstRules = {
   DirectJessReferenceTail: Combinator<JessReferenceTail>;
   DirectJessDollarValue: Combinator<ValueNode>;
   DirectJessDollarInterp: Combinator<Interpolation>;
+  DirectJessInterpolatedValue: Combinator<Interpolation>;
   DirectJessExpressionDollarInterp: Combinator<ExpressionFact>;
   DirectJessExpression: Combinator<Interpolation>;
   DirectJessExpressionInterpolation: Combinator<ExpressionFact>;
@@ -58,6 +60,7 @@ type JessAstRules = {
   DirectJessCollectionEntry: Combinator<Declaration>;
   DirectJessCollection: Combinator<Collection>;
   DirectJessValueAtom: Combinator<ValueNode>;
+  DirectJessValueSpaceGroup: Combinator<ValueSlot>;
   DirectJessValueTerm: Combinator<ValueSlot>;
   DirectJessValue: Combinator<ValueSlot>;
   DirectJessImportant: Combinator<true>;
@@ -100,6 +103,7 @@ type JessAstRules = {
   DirectJessForBinding: Combinator<ForBinding>;
   DirectJessForRangeBound: Combinator<ValueNode>;
   DirectJessForRange: Combinator<Range>;
+  DirectJessForSource: Combinator<ValueNode>;
   DirectJessFor: Combinator<For>;
   DirectJessIfCondition: Combinator<GuardNode>;
   DirectJessIfGuardValue: Combinator<GuardNode>;
@@ -569,14 +573,28 @@ function requireExpressionFact(value: unknown): ExpressionFact {
   return { value: value.value, src: value.src };
 }
 
+// An arithmetic/comparison operator boundary carries two facts: the operator
+// symbol itself and the exact authored bytes around it. They are identical for a
+// plain whitespace-flanked operator token, and differ only when the boundary
+// also carries a block comment, which `DirectJessExpressionOperator` recognizes
+// as grammar structure rather than trimming out of a token.
+function requireOperatorFact(value: unknown): JessOperatorFact {
+  if (typeof value === 'object' && value !== null && 'value' in value && 'src' in value
+    && typeof value.value === 'string' && typeof value.src === 'string') {
+    return { value: value.value, src: value.src };
+  }
+  const token = requireToken(value);
+  return { value: token.value.trim(), src: token.value };
+}
+
 function foldExpression(children: readonly unknown[]): ExpressionFact {
   let fact = requireExpressionFact(children[0]);
   for (let index = 1; index < children.length; index += 2) {
-    const operatorText = requireToken(children[index]).value;
+    const operator = requireOperatorFact(children[index]);
     const right = requireExpressionFact(children[index + 1]);
     fact = {
-      value: operation(operatorText.trim(), fact.value, right.value),
-      src: `${fact.src}${operatorText}${right.src}`
+      value: operation(operator.value, fact.value, right.value),
+      src: `${fact.src}${operator.src}${right.src}`
     };
   }
   return fact;
@@ -648,6 +666,21 @@ function quotedInterpolationFromChildren(children: readonly unknown[]): Quoted |
     }
   }
   parts.push({ lit: open.value });
+  return interpolation(parts);
+}
+
+// `~"…"` drops its quotes, so an escaped string that carries interpolation is
+// exactly the Interpolation of its content — the `~` and both quote tokens are
+// authored escape syntax, not output bytes, and never become literal parts.
+function escapedInterpolationFromChildren(children: readonly unknown[]): Interpolation {
+  const parts: Interpolation['parts'] = [];
+  for (const child of children.slice(2, -1)) {
+    if (isInterpolation(child)) {
+      parts.push(...child.parts);
+    } else {
+      parts.push({ lit: requireToken(child).value });
+    }
+  }
   return interpolation(parts);
 }
 
@@ -919,9 +952,14 @@ const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))+/);
 // Jess's live `$` grammar does not permit CSS escapes in names. Keep that
 // dialect-local fact explicit while the value keyword leaf remains shared.
 const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-const jessExprProductOperator = regex(/[ \t\n\r\f]+[*/%][ \t\n\r\f]+/);
-const jessExprSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
-const jessExprCompareOperator = regex(/[ \t\n\r\f]+(?:>=|<=|>|<|=)[ \t\n\r\f]+/);
+// An operator boundary inside a Jess expression is whitespace, and a block
+// comment is ordinary whitespace there (`$(2px /* nudge */ * 2)`). Recognizing
+// the comment as part of the boundary keeps the operator symbol a separate
+// grammar fact, so no reduction has to strip comment bytes back out of a token.
+const jessExprBoundary = regex(/(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+const jessExprProductSymbol = regex(/[*/%]/);
+const jessExprSumSymbol = regex(/[-+]/);
+const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
 // `$if` conditions retain the CST's comparison spelling, which permits both
 // adjacent (`$a>5`) and spaced (`$a > 5`) operators. This is distinct from
 // expression interpolation, whose arithmetic/comparison grammar requires
@@ -945,6 +983,13 @@ const jessDollarInterpStructure = noTrivia(choice(
 ));
 const jessCustomPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+// The literal tail an authored value-position interpolation may carry: a unit
+// (`$(20)px`), a percent sign, or an identifier suffix (`$[name]-suffix`).
+const jessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
+// One value-term slash boundary, with its authored whitespace on either side.
+// The negative lookahead keeps a comment opener (`/*`) out of the boundary so a
+// commented value still fails exactly where it did before.
+const jessValueSlashBoundary = regex(/[ \t\n\r\f]*\/(?!\*)[ \t\n\r\f]*/);
 const jessGeneralTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 // An unquoted Jess URL keeps literal URL-token bytes and `$[…]` segments as
 // separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
@@ -989,13 +1034,52 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     jessDollarInterpStructure,
     (children, _fields, span) => ({ value: interpolationFromChildren(children, span), src: tokenSource(children) })
   );
+  const DirectJessExpressionProductOperator = node<JessOperatorFact>(
+    'DirectJessExpressionProductOperator',
+    noTrivia(sequence(jessExprBoundary, jessExprProductSymbol, jessExprBoundary)),
+    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+  );
+  const DirectJessExpressionSumOperator = node<JessOperatorFact>(
+    'DirectJessExpressionSumOperator',
+    noTrivia(sequence(jessExprBoundary, jessExprSumSymbol, jessExprBoundary)),
+    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+  );
+  const DirectJessExpressionCompareOperator = node<JessOperatorFact>(
+    'DirectJessExpressionCompareOperator',
+    noTrivia(sequence(jessExprBoundary, jessExprCompareSymbol, jessExprBoundary)),
+    children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
+  );
   const DirectJessExpressionAtom = node<ExpressionFact>(
     'DirectJessExpressionAtom',
     // `$name` references dominate expression atoms; try VarReference before the
     // `$[` interpolation form (disjoint on the char after `$`) so a plain
     // reference does not first enter and roll back the DollarInterp node frame.
-    choice(g.DirectJessVarReference, g.DirectJessExpressionDollarInterp, g.DirectJessDimension, g.DirectJessColor, g.DirectJessExpressionQuoted, g.DirectJessKeyword),
+    // The reference keeps its accessor tail here so a member read is the SAME
+    // grammar fact in condition/arithmetic position that it already is in value
+    // position; a parenthesized sub-group is the explicit precedence boundary.
+    choice(
+      noTrivia(sequence(g.DirectJessVarReference, many(g.DirectJessReferenceTail))),
+      g.DirectJessExpressionDollarInterp,
+      g.DirectJessDimension,
+      g.DirectJessColor,
+      g.DirectJessExpressionQuoted,
+      sequence(literal('('), g.DirectJessExpressionCompare, literal(')')),
+      g.DirectJessKeyword
+    ),
     (children) => {
+      if (isToken(children[0]) && requireToken(children[0]).value === '(') {
+        const inner = requireExpressionFact(children[1]);
+        return { value: block(inner.value), src: `(${inner.src})` };
+      }
+      if (isJessReferenceTail(children[1])) {
+        const base = requireValueNode(children[0]);
+        if (base.type !== 'VariableReference') {
+          throw new TypeError('Direct Jess expression reference base must be a variable reference.');
+        }
+        const tails = children.slice(1).map(requireJessReferenceTail);
+        const raw = `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`;
+        return { value: reference(base, tails.map(tail => tail.step), raw), src: raw };
+      }
       if (isExpressionFact(children[0])) {
         return requireExpressionFact(children[0]);
       }
@@ -1005,26 +1089,26 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessExpressionProduct = node<ExpressionFact>(
     'DirectJessExpressionProduct',
-    noTrivia(sequence(g.DirectJessExpressionAtom, many(sequence(jessExprProductOperator, g.DirectJessExpressionAtom)))),
+    noTrivia(sequence(g.DirectJessExpressionAtom, many(sequence(DirectJessExpressionProductOperator, g.DirectJessExpressionAtom)))),
     children => foldExpression(children)
   );
   const DirectJessExpressionSum = node<ExpressionFact>(
     'DirectJessExpressionSum',
-    noTrivia(sequence(g.DirectJessExpressionProduct, many(sequence(jessExprSumOperator, g.DirectJessExpressionProduct)))),
+    noTrivia(sequence(g.DirectJessExpressionProduct, many(sequence(DirectJessExpressionSumOperator, g.DirectJessExpressionProduct)))),
     children => foldExpression(children)
   );
   const DirectJessExpressionCompare = node<ExpressionFact>(
     'DirectJessExpressionCompare',
-    noTrivia(sequence(g.DirectJessExpressionSum, optional(sequence(jessExprCompareOperator, g.DirectJessExpressionSum)))),
+    noTrivia(sequence(g.DirectJessExpressionSum, optional(sequence(DirectJessExpressionCompareOperator, g.DirectJessExpressionSum)))),
     (children) => {
       if (children.length === 1) {
         return requireExpressionFact(children[0]);
       }
       const left = requireExpressionFact(children[0]);
-      const operatorText = requireToken(children[1]).value;
+      const operator = requireOperatorFact(children[1]);
       const right = requireExpressionFact(children[2]);
-      const src = `${left.src}${operatorText}${right.src}`;
-      return { value: condition({ g: 'cmp', op: operatorText.trim(), left: left.value, right: right.value }, src), src };
+      const src = `${left.src}${operator.src}${right.src}`;
+      return { value: condition({ g: 'cmp', op: operator.value, left: left.value, right: right.value }, src), src };
     }
   );
   // Shared sum-level operand for unwrapped arithmetic: an ExpressionAtom folded
@@ -1101,20 +1185,23 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessExpression = node<Interpolation>(
     'DirectJessExpression',
-    sequence(literal('$('), g.DirectJessExpressionCompare, literal(')')),
+    sequence(literal('$('), many(blockComment), g.DirectJessExpressionCompare, many(blockComment), literal(')')),
     // `$()` is the explicit arithmetic boundary. Preserve that execution fact
     // in the canonical value graph so division operates under parens-division.
-    children => interpolation([{ ref: block(requireExpressionFact(children[1]).value), unquote: true }])
+    children => interpolation([{ ref: block(requireExpressionFact(children.find(isExpressionFact)).value), unquote: true }])
   );
   const DirectJessExpressionInterpolation = node<ExpressionFact>(
     'DirectJessExpressionInterpolation',
-    sequence(literal('$('), g.DirectJessExpressionCompare, literal(')')),
+    sequence(literal('$('), many(blockComment), g.DirectJessExpressionCompare, many(blockComment), literal(')')),
     (children) => {
-      const body = requireExpressionFact(children[1]);
+      const body = requireExpressionFact(children.find(isExpressionFact));
       // Quoted/template positions retain the same explicit `$()` evaluation
       // boundary as a standalone expression. Otherwise the AST silently loses
       // parens-division semantics depending on where the expression appears.
-      return { value: interpolation([{ ref: block(body.value), unquote: true }]), src: `${requireToken(children[0]).value}${body.src}${requireToken(children[2]).value}` };
+      return {
+        value: interpolation([{ ref: block(body.value), unquote: true }]),
+        src: children.map(child => isExpressionFact(child) ? body.src : requireToken(child).value).join('')
+      };
     }
   );
   // This is only the already-modelled static escaped-string fact. An escaped
@@ -1134,12 +1221,21 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       directJessEscapedStaticQuoted,
       directJessPlainDoubleQuoted,
       directJessPlainSingleQuoted,
+      // An escaped string that carries interpolation IS representable: the
+      // escape drops the quotes, so the value is exactly the Interpolation of
+      // its content parts with no quote literals around them. Only the static
+      // arm needs the separate `Quoted` escaped fact.
+      sequence(literal('~'), literal('"'), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedDoubleQuotedText)), literal('"')),
+      sequence(literal('~'), literal('\''), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedSingleQuotedText)), literal('\'')),
       sequence(literal('"'), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedDoubleQuotedText)), literal('"')),
       sequence(literal('\''), many(choice(g.DirectJessDollarInterp, g.DirectJessExpression, interpolatedSingleQuotedText)), literal('\''))
     ),
     (children) => {
       if (requireToken(children[0]).value !== '~') {
         return quotedInterpolationFromChildren(children);
+      }
+      if (children.some(isInterpolation)) {
+        return escapedInterpolationFromChildren(children);
       }
       const quote = requireToken(children[1]).value;
       const content = requireToken(children[2]).value;
@@ -1574,8 +1670,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessCallComponent = node<ValueSlot>(
     'DirectJessCallComponent',
     sequence(
-      g.DirectJessValueTerm,
-      optional(sequence(optional(rawWhitespace), literal('/'), optional(rawWhitespace), g.DirectJessValueTerm))
+      g.DirectJessValueSpaceGroup,
+      optional(sequence(optional(rawWhitespace), literal('/'), optional(rawWhitespace), g.DirectJessValueSpaceGroup))
     ),
     (children) => {
       const values = children.filter((child): child is ValueSlot => Array.isArray(child) || isValueNode(child));
@@ -1754,19 +1850,48 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.CssAstSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
-  // The three `$`-headed arms (DollarValue `$name`, Expression `$(`, DollarInterp
-  // `$[`) are mutually exclusive on the character after `$`, so their relative
-  // order is behaviour-neutral. Plain `$name` references dominate real values, so
-  // DollarValue leads the `$` group: parseman tries it first on any `$`, matching
-  // references without first entering (and rolling back) the `$(` / `$[` node
-  // frames. `$(`/`$[` cost one fast VarReference reject instead.
+  // A value-position interpolation may carry an authored literal tail — the unit
+  // in `$(20)px`, a suffix in `$[name]-suffix`. That tail is grammar structure
+  // (one more Interpolation part), never a re-scan of the interpolation's bytes.
+  // Recognizing the `$(`/`$[` head ONCE and folding the optional tail here keeps
+  // the plain (tail-free) form a single parse with its existing Interpolation.
+  const DirectJessInterpolatedValue = node<Interpolation>(
+    'DirectJessInterpolatedValue',
+    noTrivia(sequence(
+      choice(g.DirectJessExpression, g.DirectJessDollarInterp),
+      many(choice(jessInterpolatedValueTail, g.DirectJessExpression, g.DirectJessDollarInterp))
+    )),
+    (children) => {
+      if (children.length === 1) {
+        return requireInterpolation(children[0]);
+      }
+      const parts: InterpPart[] = [];
+      for (const child of children) {
+        if (isInterpolation(child)) {
+          parts.push(...child.parts);
+        } else {
+          parts.push({ lit: requireToken(child).value });
+        }
+      }
+      return interpolation(parts);
+    }
+  );
+  // The three `$`-headed arms (DollarValue `$name`, the `$(`/`$[` interpolation
+  // family, and the `$[` accessor inside it) are mutually exclusive on the
+  // character after `$`, so their relative order is behaviour-neutral. Plain
+  // `$name` references dominate real values, so DollarValue leads the `$` group:
+  // parseman tries it first on any `$`, matching references without first
+  // entering (and rolling back) the `$(` / `$[` node frames. `$(`/`$[` cost one
+  // fast VarReference reject instead.
   const DirectJessValueAtom = node<ValueNode>(
     'DirectJessValueAtom',
-    choice(g.DirectJessCollection, g.DirectJessDollarValue, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessCustomPropertyValue, g.DirectJessKeyword),
+    choice(g.DirectJessCollection, g.DirectJessDollarValue, g.DirectJessInterpolatedValue, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessCustomPropertyValue, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
-  const DirectJessValueTerm = node<ValueSlot>(
-    'DirectJessValueTerm',
+  // The authored space-adjacency run: the value atoms between two slash
+  // boundaries, or the whole term when the value carries no slash.
+  const DirectJessValueSpaceGroup = node<ValueSlot>(
+    'DirectJessValueSpaceGroup',
     noTrivia(sequence(g.DirectJessValueAtom, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), g.DirectJessValueAtom)))),
     (children, fields) => {
       const values = children.filter(isValueSlotValue);
@@ -1779,6 +1904,20 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
             ? separator.value
             : requireToken(separator.value).value);
       return withValueLayout(values, separators);
+    }
+  );
+  // `/` is a structural component boundary in plain CSS (`grid-area: 1 / 2`,
+  // `font: 12px/1.5 sans-serif`), so it has to be recognized for every value,
+  // not only for a `$`-headed left side or a modern function component. This
+  // lifts the slash `List` those two already build to the whole value term:
+  // each side stays ONE authored space group (flattening it would render
+  // `1 / 2 / sans-serif`), and `/` still never becomes unwrapped arithmetic.
+  const DirectJessValueTerm = node<ValueSlot>(
+    'DirectJessValueTerm',
+    noTrivia(sequence(g.DirectJessValueSpaceGroup, many(sequence(jessValueSlashBoundary, g.DirectJessValueSpaceGroup)))),
+    (children) => {
+      const groups = children.filter(isValueSlotValue);
+      return groups.length === 1 ? groups[0]! : list(groups, '/');
     }
   );
   const DirectJessValue = node<ValueSlot>(
@@ -2669,6 +2808,20 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return range(bounds[0]!, bounds[1]!, bounds[2] ?? null, !tokens.some(token => token.value === '>'), !tokens.some(token => token.value === '<'));
     }
   );
+  // `$for (\u2026 of \u2026)` iterates ONE typed source: a range, a reference, a call, a
+  // collection, or an authored comma list. It deliberately does NOT admit a
+  // space-adjacency run, which has no iteration semantics and cannot reduce to
+  // a single iterable value \u2014 `$for ($i of 1 through 3)` (the Sass `@for`
+  // spelling; Jess ranges are `1 to 3` / `1 to <3`) must fail as a positioned
+  // parse error at `through`, not as an internal reduction throw.
+  const DirectJessForSource = node<ValueNode>(
+    'DirectJessForSource',
+    sequence(g.DirectJessValueAtom, many(sequence(literal(','), optional(rawWhitespace), g.DirectJessValueAtom))),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : list(values, ',');
+    }
+  );
   const DirectJessFor = node<For>(
     'DirectJessFor',
     sequence(
@@ -2676,7 +2829,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       literal('('),
       g.DirectJessForBinding,
       regex(/of(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      choice(g.DirectJessForRange, g.DirectJessValue),
+      choice(g.DirectJessForRange, g.DirectJessForSource),
       literal(')'),
       literal('{'),
       many(directJessNestedBodyStatement),
@@ -2938,7 +3091,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessCall,
     DirectJessCollectionEntry,
     DirectJessCollection,
+    DirectJessInterpolatedValue,
     DirectJessValueAtom,
+    DirectJessValueSpaceGroup,
     DirectJessValueTerm,
     DirectJessValue,
     DirectJessImportant,
@@ -2981,6 +3136,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessForBinding,
     DirectJessForRangeBound,
     DirectJessForRange,
+    DirectJessForSource,
     DirectJessFor,
     DirectJessIfGuardValue,
     DirectJessIfGuardCompare,

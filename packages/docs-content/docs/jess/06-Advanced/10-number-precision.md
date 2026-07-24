@@ -42,7 +42,7 @@ rounding does not apply:
 $n: pi();
 .a {
   width: $n * 1px;   // declaration value -> rounded
-  --raw: ~"$[n]";    // interpolation -> full precision
+  --raw: $[n];       // interpolation -> full precision
 }
 ```
 
@@ -53,15 +53,19 @@ $n: pi();
 }
 ```
 
-:::caution Interpolation is not yet spliced here
+:::note Where interpolation splices
 
 Interpolation is written `$[name]` in string, selector, and property-name
-position (`$( … )` is value-position only). The `width` line above is current
-behavior. The `--raw` line is **not**: a custom property's value is a verbatim
-token stream, so `~"$[n]"` is emitted as written rather than spliced. The
-`.jess` parser also does not yet accept interpolation inside an escaped `~"…"`
-string in an ordinary declaration. Interpolation in a plain quoted string —
-`content: "fonts/$[family].css"` — does work today.
+position (`$( … )` is value-position only). A `$[…]` splice is grammar
+structure everywhere it is accepted, including inside a custom-property name
+and value (`--raw: $[n]`, `--$[name]: 1`), inside a plain quoted string
+(`content: "fonts/$[family].css"`), and inside an escaped `~"…"` string
+(`raw: ~"$[n]"` emits `3.141592653589793`).
+
+The one place it is *not* spliced is a quoted string nested inside a
+custom-property value: `--raw: "$[n]"` keeps the whole string as authored CSS
+bytes, because a custom property's value is a verbatim token stream. Splice the
+value directly (`--raw: $[n]`) instead of wrapping it in quotes.
 
 :::
 

@@ -437,10 +437,127 @@ describe('Jess AST grammar facts', () => {
       '.asset {\n  double: theme;\n  single: tone;\n}\n'
     );
 
-    // Escaped interpolation needs its own AST fact; this static reduction must not claim it.
-    for (const invalid of ['.asset { value: ~"$[theme]"; }', '.asset { value: ~\'$(theme)\'; }']) {
+    // The static reduction must not claim an escaped string that carries
+    // interpolation: dropping the quotes makes that value exactly the
+    // Interpolation of its content parts, with no `Quoted` wrapper.
+    expect(parse('$theme: dark; .asset { value: ~"$[theme]"; }')).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'theme' },
+        { type: 'Rule', body: [{
+          type: 'Declaration',
+          name: 'value',
+          value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'theme' }, unquote: true }] }
+        }] }
+      ]
+    });
+  });
+
+  // Documented at docs/jess/02-Language/08-interpolation.mdx ("Any plain output").
+  it('constructs escaped Jess strings that carry interpolation as unwrapped Interpolation values', () => {
+    const source = '$color-name: "red"; $w: 4px; .container { color: ~"$[color-name]"; tone: ~\'$($w * 2)\'; }';
+    expect(parse(source)).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'color-name' },
+        { type: 'VariableDeclaration', name: 'w' },
+        { type: 'Rule', body: [
+          { name: 'color', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'color-name' }, unquote: true }] } },
+          { name: 'tone', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren' }, unquote: true }] } }
+        ] }
+      ]
+    });
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+      '.container {\n  color: red;\n  tone: 8px;\n}\n'
+    );
+    expect(serialize(
+      parse('$n: 3.5; .a { width: ~"calc(100% - $[n]px)"; }'),
+      { evaluator: buildEvaluator(makeBuiltinRegistry()) }
+    ).css).toBe('.a {\n  width: calc(100% - 3.5px);\n}\n');
+  });
+
+  it('constructs plain CSS slash-separated declaration values as explicit slash lists', () => {
+    expect(parse('.x { grid-area: 1 / 2; }')).toMatchObject({
+      children: [{ type: 'Rule', body: [{
+        name: 'grid-area',
+        value: { type: 'List', sep: '/', value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '2' }] }
+      }] }]
+    });
+    // Each side stays ONE authored space group, exactly as a modern function
+    // component already does: flattening would render `12px / 1.5 / sans-serif`.
+    expect(parse('.x { font: 12px/1.5 sans-serif; }')).toMatchObject({
+      children: [{ type: 'Rule', body: [{
+        name: 'font',
+        value: { type: 'List', sep: '/', value: [
+          { type: 'Dimension', src: '12px' },
+          [{ type: 'Dimension', src: '1.5' }, { type: 'Keyword', src: 'sans-serif' }]
+        ] }
+      }] }]
+    });
+    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    expect(serialize(parse('.x { grid-area: 1 / 2; a: 1 / 2 / 3; b: a / b; }'), { evaluator }).css).toBe(
+      '.x {\n  grid-area: 1 / 2;\n  a: 1 / 2 / 3;\n  b: a / b;\n}\n'
+    );
+    // A `$`-headed left side keeps its existing left-factored slash reduction,
+    // and a modern function component still admits exactly one separator.
+    expect(serialize(parse('$w: 1; .x { slash: $w / 2; color: rgb(15 23 42 / 0.22); }'), { evaluator }).css).toBe(
+      '.x {\n  slash: 1 / 2;\n  color: rgb(15 23 42 / 0.22);\n}\n'
+    );
+    for (const invalid of ['.x { a: / 2; }', '.x { a: 1 /; }', '.x { color: rgb(15 23 42 / 0.22 / 1); }']) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+  });
+
+  it('reads a collection member in condition position exactly as in value position', () => {
+    const source = '$c: { x: 4px; }; $if ($c.x > 0) { .a { width: $($c.x * 2); } }';
+    expect(parse(source)).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'c' },
+        { type: 'If', branches: [{ guard: { g: 'cmp', op: '>', left: { type: 'Reference', raw: '$c.x' } } }] }
+      ]
+    });
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+      '.a {\n  width: 8px;\n}\n'
+    );
+  });
+
+  it('constructs parenthesized sub-groups and comments inside $( … )', () => {
+    expect(parse('.a { width: $(2px * (2 + 1)); }')).toMatchObject({
+      children: [{ type: 'Rule', body: [{
+        name: 'width',
+        value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', inner: { type: 'Operation', operator: '*', right: { type: 'Block' } } } }] }
+      }] }]
+    });
+    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    expect(serialize(parse('.a { width: $(2px * (2 + 1)); height: $(2px /* nudge */ * 2); depth: $(/* lead */ 1px + 1px); }'), { evaluator }).css).toBe(
+      '.a {\n  width: 6px;\n  height: 4px;\n  depth: 2px;\n}\n'
+    );
+  });
+
+  it('constructs an authored literal tail after a value-position interpolation', () => {
+    expect(parse('$w: 20; .a { width: $($w)px; }')).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'w' },
+        { type: 'Rule', body: [{
+          name: 'width',
+          value: { type: 'Interpolation', parts: [{ ref: { type: 'Block' }, unquote: true }, { lit: 'px' }] }
+        }] }
+      ]
+    });
+    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    expect(serialize(parse('$w: 20; $side: left; .a { width: $($w)px; margin-$[side]: $[w]px; ratio: $[w]%; }'), { evaluator }).css).toBe(
+      '.a {\n  width: 20px;\n  margin-left: 20px;\n  ratio: 20%;\n}\n'
+    );
+  });
+
+  // `through` is the Sass `@for` spelling; a Jess range is `1 to 3` / `1 to <3`.
+  // It has to fail as a positioned parse error, never as an internal reduction
+  // throw from a space-adjacency run that has no iteration semantics.
+  it('keeps a non-iterable $for source out of the route as a parse error', () => {
+    for (const invalid of ['$for ($i of 1 through 3) { .a { c: $i; } }', '$for ($i of red blue) { .a { c: $i; } }']) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+    expect(parse('$for ($i of 1 to 3) { .a { c: $i; } }')).toMatchObject({
+      children: [{ type: 'For', iterable: { type: 'Range' } }]
+    });
   });
 
   it('keeps ordinary CSS declaration priority as a typed Declaration field', () => {
