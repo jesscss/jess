@@ -667,6 +667,33 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('restricts `<An+B> of S` to the nth-child index, rejecting it on nth-of-type (Selectors-4 §6.6.2)', () => {
+    // `of S` is defined ONLY for `:nth-child()`/`:nth-last-child()`; the
+    // type-index families take a bare `<An+B>`. Mirroring the CSS reference, the
+    // nth name now dispatches child vs of-type, so an `of` tail on the of-type
+    // families fails to parse rather than being captured as opaque selector text.
+    for (const invalid of [
+      'a:nth-of-type(2n of .a) { color: red; }',
+      'a:nth-of-type(n of .a) { color: red; }',
+      'a:nth-last-of-type(-n+3 of .a) { color: red; }',
+      'a:nth-last-of-type(even of .a) { color: red; }'
+    ]) {
+      const rejected = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+    // `of S` on the child index and a bare `<An+B>` on the of-type index stay
+    // accepted, serialized byte-identically to the authored argument.
+    for (const [source, expected] of [
+      ['a:nth-child(2n of .a) { color: red; }', 'a:nth-child(2n of .a) {\n  color: red;\n}\n'],
+      ['a:nth-child(n of .a) { color: red; }', 'a:nth-child(n of .a) {\n  color: red;\n}\n'],
+      ['a:nth-of-type(2n+1) { color: red; }', 'a:nth-of-type(2n+1) {\n  color: red;\n}\n'],
+      ['a:nth-last-of-type(odd) { color: red; }', 'a:nth-last-of-type(odd) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toEqual(expected);
+    }
+  });
+
   it('constructs static Jess stylesheet and module import facts directly without resolving them', () => {
     const source = [
       '@-compose "./theme.jess" as theme;',

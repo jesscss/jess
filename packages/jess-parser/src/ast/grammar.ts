@@ -8,6 +8,7 @@ import { attempt, choice, composeLeaf, field, literal, many, noTrivia, node, not
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
+import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
 import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
@@ -158,6 +159,10 @@ type SharedCssAstSyntax = {
   CssAstSyntaxKeyframesAtKeyword: Combinator<string>;
   CssAstSyntaxKeyword: Combinator<string>;
   CssAstSyntaxNth: Combinator<string>;
+  CssAstSyntaxNthChildName: Combinator<string>;
+  CssAstSyntaxNthTypeName: Combinator<string>;
+  CssAstSyntaxOfKeyword: Combinator<string>;
+  CssAstSyntaxPseudoCloseAhead: Combinator<string>;
   CssAstSyntaxNumber: Combinator<string>;
   CssAstSyntaxProperty: Combinator<string>;
   CssAstSyntaxInterpolatedPropertyStart: Combinator<string>;
@@ -900,7 +905,7 @@ const jessPropertyAtRuleName = regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i)
 const jessKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessKeyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
-export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, rules<JessAstRules>({ trivia: whitespace }, (g: JessAstRules & SharedCssAstSyntax) => {
+export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<JessAstRules>({ trivia: whitespace }, (g: JessAstRules & SharedCssAstSyntax) => {
   const DirectJessComment = node<Comment>(
     'DirectJessComment',
     choice(blockComment, lineComment),
@@ -1336,16 +1341,88 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     children => simpleSelector(children.map(requireToken).map(token => token.value).join(''))
   );
+  // `:nth-child`/`:nth-last-child` argument: a bare `<An+B>` OR `<An+B> of S`
+  // (Selectors-4 §6.6.2, https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo).
+  // The shared `g.CssAstSyntaxNth`/`g.CssAstSyntaxOfKeyword`/`g.CssAstSyntaxPseudoCloseAhead`
+  // recognitions replace the inlined `<An+B> of` regex; `of` keeps its authored
+  // surrounding whitespace (explicit `rawWhitespace`, not trivia) so `2n+1of .a`
+  // cannot be silently normalized into the distinct `2n+1 of .a` syntax. The
+  // selector fallback keeps a previously-opaque selector arg (`:nth-child(.a)`)
+  // accepted as before; typed An+B is tried first so `-n+2` is not claimed as a
+  // static `-n` selector.
+  const DirectJessStaticNthChildArgument = node<SelectorList | string>(
+    'DirectJessStaticNthChildArgument',
+    choice(
+      sequence(
+        g.CssAstSyntaxNth,
+        optional(sequence(rawWhitespace, g.CssAstSyntaxOfKeyword, rawWhitespace, parser({ trivia: whitespace }, g.DirectJessStaticSelector))),
+        g.CssAstSyntaxPseudoCloseAhead
+      ),
+      parser({ trivia: whitespace }, g.DirectJessStaticSelector)
+    ),
+    (children) => {
+      const selector = children.find(isSelectorList);
+      const nth = children.find(isToken);
+      if (nth === undefined) {
+        if (selector === undefined) {
+          throw new TypeError('Direct Jess nth-child pseudo argument lost its selector.');
+        }
+        return selector;
+      }
+      return selector === undefined ? nth.value : `${nth.value} of ${staticSelectorText(selector)}`;
+    }
+  );
+  // `:nth-of-type`/`:nth-last-of-type` argument: a BARE `<An+B>` only — Selectors-4
+  // §6.6.2 defines no `of S` tail for the type-index families. The bare arm's
+  // close-ahead rejects a trailing `of …`, and the selector fallback (which keeps
+  // a previously-opaque `:nth-of-type(.a)` accepted) is guarded by a negative
+  // lookahead for an `<An+B>` immediately followed by `of` so `2n of .a`,
+  // `n of .a`, `-n+3 of .a` fail rather than being re-captured as a descendant
+  // selector — the CSS-aligned owner decision (PSEUDO-ARGUMENT-CONSOLIDATION §7.1).
+  const DirectJessStaticNthTypeArgument = node<SelectorList | string>(
+    'DirectJessStaticNthTypeArgument',
+    choice(
+      sequence(g.CssAstSyntaxNth, g.CssAstSyntaxPseudoCloseAhead),
+      sequence(
+        not(parser({ trivia: whitespace }, sequence(g.CssAstSyntaxNth, g.CssAstSyntaxOfKeyword))),
+        parser({ trivia: whitespace }, g.DirectJessStaticSelector)
+      )
+    ),
+    (children) => {
+      const selector = children.find(isSelectorList);
+      const nth = children.find(isToken);
+      if (nth === undefined) {
+        if (selector === undefined) {
+          throw new TypeError('Direct Jess nth-of-type pseudo argument lost its selector.');
+        }
+        return selector;
+      }
+      return nth.value;
+    }
+  );
   const DirectJessPseudo = node<SimpleToken>(
     'DirectJessPseudo',
     // Insignificant whitespace may surround a functional pseudo's argument inside
     // its parens (`:not( .b )`, `:nth-child( 2n+1 )`). Consume it here so valid
     // CSS is accepted in the .jess dialect exactly as the canonical CSS grammar
     // accepts it; it is trivia, so the serialized argument stays normalized.
+    // The nth families dispatch by NAME (shared `g.CssAstSyntaxNthChildName`/
+    // `g.CssAstSyntaxNthTypeName`) so `of S` is accepted only on the child index
+    // and rejected on the type index; every other pseudo takes the generic
+    // selector argument (with the nth names excluded so a malformed nth argument
+    // rejects rather than falling through to the opaque path).
     sequence(
       g.CssAstSyntaxPseudoColon,
-      g.CssAstSyntaxKeyword,
-      optional(sequence(literal('('), optional(rawWhitespace), g.DirectJessStaticPseudoArgument, optional(rawWhitespace), literal(')')))
+      choice(
+        sequence(g.CssAstSyntaxNthChildName, literal('('), optional(rawWhitespace), DirectJessStaticNthChildArgument, optional(rawWhitespace), literal(')')),
+        sequence(g.CssAstSyntaxNthTypeName, literal('('), optional(rawWhitespace), DirectJessStaticNthTypeArgument, optional(rawWhitespace), literal(')')),
+        sequence(
+          not(g.CssAstSyntaxNthChildName),
+          not(g.CssAstSyntaxNthTypeName),
+          g.CssAstSyntaxKeyword,
+          optional(sequence(literal('('), optional(rawWhitespace), g.DirectJessStaticPseudoArgument, optional(rawWhitespace), literal(')')))
+        )
+      )
     ),
     (children) => {
       const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
@@ -1405,43 +1482,23 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     parser({ trivia: whitespace }, sequence(g.DirectJessStaticComplex, many(g.DirectJessStaticSelectorTail))),
     reduceSelectorList
   );
-  // The selector-list shared by ordinary selectors and `*[…]` is deliberately
-  // limited to authored static pseudo arguments and typed An+B forms. CSS's
-  // generic raw pseudo-argument arm is not used here: it would hide dynamic
-  // Jess interpolation as source text.
-  // Try typed An+B first: otherwise `-n+2` is prematurely claimed as a static
-  // `-n` selector. `of` needs an authored separator, so `2n+1of .item` cannot
-  // be silently normalized into the distinct `2n+1 of .item` syntax.
-  const directJessStaticNthOfHead = regex(/(?:even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+)[ \t\n\r\f]+of(?![-_a-zA-Z0-9\u0080-\uffff])[ \t\n\r\f]+/i);
-  // The trailing lookahead tolerates insignificant whitespace before `)` so a
-  // valid CSS `:nth-child( 2n+1 )` argument is recognized; `DirectJessPseudo`
-  // consumes that surrounding paren whitespace (Selectors-4 §6.6.2,
-  // https://www.w3.org/TR/selectors-4/#anb-microsyntax).
-  const directJessStaticNthPseudoArgument = choice(
-    sequence(directJessStaticNthOfHead, parser({ trivia: whitespace }, g.DirectJessStaticSelector), regex(/(?=[ \t\n\r\f]*\))/)),
-    sequence(g.CssAstSyntaxNth, regex(/(?=[ \t\n\r\f]*\))/))
-  );
-  // Retain the parsed `SelectorList` rather than collapsing it to text: a
-  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
-  // `args` and never canonicalizes at parse (the inner `_canon` memos stay
-  // unpopulated). The typed An+B / `2n+1 of …` arm still yields scanned text;
-  // `DirectJessPseudo` derives opaque SimpleSelector text from either shape.
+  // The generic (non-nth) functional-pseudo argument: a static `SelectorList`
+  // only (`:not(.a, .b)`, `:is(.a)`, `:lang(en)`). The nth families dispatch by
+  // name to their own arguments above; CSS's generic raw pseudo-argument arm is
+  // deliberately NOT used here — it would hide dynamic Jess interpolation as
+  // source text. Retain the parsed `SelectorList` rather than collapsing it to
+  // text: a whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as
+  // structured `args` and never canonicalizes at parse (the inner `_canon` memos
+  // stay unpopulated); `DirectJessPseudo` derives opaque SimpleSelector text otherwise.
   const DirectJessStaticPseudoArgument = node<SelectorList | string>(
     'DirectJessStaticPseudoArgument',
-    choice(
-      directJessStaticNthPseudoArgument,
-      parser({ trivia: whitespace }, g.DirectJessStaticSelector)
-    ),
+    parser({ trivia: whitespace }, g.DirectJessStaticSelector),
     (children) => {
       const selector = children.find(isSelectorList);
-      const nth = children.find(isToken);
-      if (nth === undefined) {
-        if (selector === undefined) {
-          throw new TypeError('Direct Jess static pseudo argument lost its selector.');
-        }
-        return selector;
+      if (selector === undefined) {
+        throw new TypeError('Direct Jess static pseudo argument lost its selector.');
       }
-      return selector === undefined ? nth.value : `${nth.value}${staticSelectorText(selector)}`;
+      return selector;
     }
   );
   const DirectJessSelectorCapture = node<SelectorCapture>(
