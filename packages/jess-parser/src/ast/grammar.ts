@@ -888,7 +888,11 @@ const jessGeneralTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 // separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
 // form remain outside this closed URL slice rather than becoming raw payload.
 const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-const jessGenericCssAtRuleName = regex(/@(?!-|(?:charset|import|supports|property|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+// Media and container are excluded here so the header choice can lead every arm
+// with a concrete `@` first-set (their dedicated arms own those names). Keeping
+// `media`/`container` out of the generic name is what lets the whole at-rule
+// subtree be `@`-dispatched instead of speculatively entered at every rule.
+const jessGenericCssAtRuleName = regex(/@(?!-|(?:charset|import|supports|property|media|container|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
 const jessCharsetAtRuleName = regex(/@charset(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessImportAtRuleName = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessSupportsAtRuleName = regex(/@supports(?![-_a-zA-Z0-9\u0080-\uffff])/i);
@@ -1787,16 +1791,20 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   // Statement headers remain fully static. The documented deferred media form
   // is a block-only construct, so it cannot silently become `@media $(x);`.
+  // Every arm leads with a concrete `@`-first recognizer (no leading `not(...)`),
+  // so the whole header — and the `DirectJessAtRuleStatement`/`AtRuleBlock` that
+  // wrap it — keeps a `{@}` first-set. That lets parseman fast-reject non-`@`
+  // statements at the leading char instead of entering this node frame and
+  // running the media/container lookaheads at every rule. The former arm-2
+  // `not(@media)` / `not(@container only)` guards are folded into the dedicated
+  // media/container arms plus the `media`/`container` exclusion in
+  // `jessGenericCssAtRuleName`, preserving the exact accept/reject set.
   const DirectJessStaticAtRuleHeader = node<JessAtRuleHeader>(
     'DirectJessStaticAtRuleHeader',
     choice(
       sequence(g.CssAstSyntaxMediaAtKeyword, not(choice(literal('{'), literal(';'))), g.DirectJessStaticAtPrelude),
-      sequence(
-        not(sequence(g.CssAstSyntaxContainerAtKeyword, g.CssAstSyntaxQueryOnly)),
-        not(g.CssAstSyntaxMediaAtKeyword),
-        jessGenericCssAtRuleName,
-        g.DirectJessStaticAtPrelude
-      )
+      sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly), g.DirectJessStaticAtPrelude),
+      sequence(jessGenericCssAtRuleName, g.DirectJessStaticAtPrelude)
     ),
     (children) => {
       const name = requireToken(children.find(isToken)!).value;
