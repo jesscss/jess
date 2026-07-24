@@ -229,6 +229,15 @@ export interface Block {
   readonly delimiter: 'paren' | 'square';
   /** Less `~(...)` emits without the authored delimiters. */
   readonly escaped?: boolean;
+  /**
+   * The delimiters belong to an enclosing form's SYNTAX, not to the value —
+   * jess's `$( … )`, whose parens are consumed by the `$(`/`)` spelling itself.
+   * Such a block opens the same math context an authored group does (so
+   * `$(4px / 2)` divides) but never emits delimiters, whatever its inner
+   * evaluates to. This is NOT {@link escaped}, which drops the delimiters AND
+   * the math context.
+   */
+  readonly boundary?: boolean;
 }
 
 /**
@@ -1076,6 +1085,9 @@ export const funcCall = (name: string, args: ValueSlot[], modern = false): Funct
   ({ type: 'FunctionCall', name, args, modern });
 export const block = (inner: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', inner, delimiter, escaped: true } : { type: 'Block', inner, delimiter };
+/** The `$( … )` math boundary — see {@link Block.boundary}. */
+export const boundaryBlock = (inner: ValueSlot): Block =>
+  ({ type: 'Block', inner, delimiter: 'paren', boundary: true });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
 export const variableDeclaration = (
   name: string,

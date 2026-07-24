@@ -9,7 +9,7 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
 import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -1269,7 +1269,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     sequence(literal('$('), many(blockComment), g.DirectJessExpressionCompare, many(blockComment), literal(')')),
     // `$()` is the explicit arithmetic boundary. Preserve that execution fact
     // in the canonical value graph so division operates under parens-division.
-    children => interpolation([{ ref: block(requireExpressionFact(children.find(isExpressionFact)).value), unquote: true }])
+    // The block is a BOUNDARY, not an authored group: the parens are the `$(`
+    // and `)` of this very spelling, so they open the math context without ever
+    // reaching output — otherwise `$(foo)` emits a paren pair nobody wrote.
+    children => interpolation([{ ref: boundaryBlock(requireExpressionFact(children.find(isExpressionFact)).value), unquote: true }])
   );
   const DirectJessExpressionInterpolation = node<ExpressionFact>(
     'DirectJessExpressionInterpolation',
@@ -1280,7 +1283,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // boundary as a standalone expression. Otherwise the AST silently loses
       // parens-division semantics depending on where the expression appears.
       return {
-        value: interpolation([{ ref: block(body.value), unquote: true }]),
+        value: interpolation([{ ref: boundaryBlock(body.value), unquote: true }]),
         src: children.map(child => isExpressionFact(child) ? body.src : requireToken(child).value).join('')
       };
     }

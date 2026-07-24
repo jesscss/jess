@@ -1580,10 +1580,16 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
   return undefined;
 }
 
+/** {@link lookupVar} keeping the OWNING frame, for chain walks that must keep
+ *  resolving in the scope each link came from rather than the scope they started in. */
+function lookupVarIn(frame: Frame | null, name: string): { value: Binding; frame: Frame } | undefined {
+  return lookupScopedBinding(frame, name)
+    ?? lookupLiveCell(frame, name)
+    ?? lookupLeakedBinding(frame, name);
+}
+
 function lookupVar(frame: Frame | null, name: string): Binding | undefined {
-  return lookupScopedBinding(frame, name)?.value
-    ?? lookupLiveCell(frame, name)?.value
-    ?? lookupLeakedBinding(frame, name)?.value;
+  return lookupVarIn(frame, name)?.value;
 }
 
 /**
@@ -2454,17 +2460,25 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         return literal(out);
       });
     }
-    case 'Block':
+    case 'Block': {
       // Less `~(...)` retains its typed inner value for list operations but
       // escapes the delimiters at emission time.
       if (node.escaped) {
         return evalValueSlot(node.inner, frame, e);
       }
+      const inner = evalValueSlot(node.inner, frame, node.delimiter === 'paren'
+        ? { ...e, parenDepth: (e.parenDepth ?? 0) + 1 }
+        : e);
+      // A `$( … )` boundary opens the math context above but owns no output
+      // delimiters — its parens are the enclosing form's spelling. It stays
+      // transparent even when the inner folds to bytes, which an authored
+      // group does not (`$(foo)` -> `foo`, but `$((foo))` -> `(foo)`).
+      if (node.boundary) {
+        return inner;
+      }
       // Transparent to computed bytes: a materialized (operated) inner strips the
       // paren (matching the legacy oracle); an un-forced literal keeps its parens.
-      return mapMaybe(evalValueSlot(node.inner, frame, node.delimiter === 'paren'
-        ? { ...e, parenDepth: (e.parenDepth ?? 0) + 1 }
-        : e), (v) => {
+      return mapMaybe(inner, (v) => {
         if (isLiteral(v)) {
           const open = node.delimiter === 'square' ? '[' : '(';
           const close = node.delimiter === 'square' ? ']' : ')';
@@ -2472,6 +2486,7 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         }
         return node.delimiter === 'square' ? makeBlock(v, 'square', node.escaped) : v;
       });
+    }
     case 'Condition':
       // [condition-grammar] The logical fns (`if`/`boolean`/…) read a condition's
       // `guard` DIRECTLY (see `evalLogical`), so a `Condition` reaching this value
@@ -6518,6 +6533,12 @@ function resolveToMixinCall(node: Binding | undefined, frame: Frame | null): Mix
 function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): ValueBlock | undefined {
   const seen = new Set<Binding>();
   let cur: Binding | undefined = node;
+  // Each hop lands in the scope that OWNS the link — a lambda call yields its
+  // `result:` in the activation frame holding the params. Re-resolving the next
+  // link in the frame this walk STARTED from loses those bindings, so a
+  // `result:` that calls on through (`$q: @($n) > { result: $d($n); }`) failed
+  // to find `$n` while merely probing whether the value is a ruleset.
+  let cursor = frame;
   while (cur && !seen.has(cur)) {
     seen.add(cur);
     if (isValueSlotArray(cur)) {
@@ -6527,16 +6548,19 @@ function resolveValueBlock(node: Binding, frame: Frame | null, e: EvalCtx): Valu
       return cur;
     }
     if (cur.type === 'VariableReference') {
-      cur = lookupVar(frame, cur.name);
+      const hit = lookupVarIn(cursor, cur.name);
+      cur = hit?.value;
+      cursor = hit?.frame ?? cursor;
       continue;
     }
     if (cur.type === 'Reference') {
-      const resolved = resolveReferenceResult(cur, frame, e);
+      const resolved = resolveReferenceResult(cur, cursor, e);
       cur = resolved?.value;
+      cursor = resolved?.frame ?? cursor;
       continue;
     }
     if (cur.type === 'FunctionCall' && cur.name.toLowerCase() === 'if') {
-      cur = pickIfBranch(cur, frame, e);
+      cur = pickIfBranch(cur, cursor, e);
       continue;
     }
     return undefined;
