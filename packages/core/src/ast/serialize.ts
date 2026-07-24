@@ -3345,11 +3345,11 @@ function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string
 /* ---------------------------------------------------- selector composition */
 
 /**
- * [nesting] Cartesian-expand every `&` in `canon` independently over the FULL
- * `parents` array — plain parent×child nesting expands, it does NOT compact to
- * `:is(a, b, …)`. Each `&` is its own odometer digit with the LEFTMOST `&`
- * most-significant, so `& > &` over parents `[p0,p1]` emits
- * `p0>p0, p0>p1, p1>p0, p1>p1` (see the 16-row `& > &` golden in selectors.less).
+ * [nesting] LEGACY cartesian `&` expansion, retained ONLY for the exotic
+ * quoted-selector-interpolation parent that carried a top-level comma into a single
+ * parent branch (`composeOne`/`composeHeader` route the normal multi-parent case
+ * through `resolveComplexAmp`, which is position-aware and spec-faithful). Each `&`
+ * is its own odometer digit with the LEFTMOST `&` most-significant.
  */
 function joinAmpersand(canon: string, parents: string[]): string[] {
   const segs = canon.split('&');
@@ -3548,23 +3548,117 @@ function resolveComplexSync(c: ComplexSelector, frame: Frame | null, e: EvalCtx)
   return value;
 }
 
-/** Compose ONE child complex over ALL `parents`, cartesian-expanded (child-major,
- * parent-minor). `&`-bearing children expand each `&` over every parent; `&`-less
- * children take an implicit descendant prefix, one branch per parent. */
-function composeOne(parents: string[], child: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const canon = resolveComplex(child, frame, e);
-  return mapMaybe(canon, (text) => {
-    if (complexHasAmpersand(child)) {
-    // A quoted selector interpolation can preserve a comma list as one parent
-    // branch. It cannot be substituted into a non-leading `&` merge template
-    // such as `.fruit-&`: Less rejects that ambiguous template rather than
-    // treating its commas as a source-text selector list.
-      if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
-        throw ERR.commaListInterpolation({ node: child, meta: { selector: text } });
-      }
-      return joinAmpersand(text, parents);
+/** [nesting] The `&` SUBJECT-slot substitution over MULTIPLE parents: the parent
+ *  list wraps once in `:is(a, b, …)`; a single parent substitutes bare. Only a bare
+ *  LEADING `&` (the compound's subject) uses this — a name-merged `&` distributes. */
+function ampSub(parents: string[]): string {
+  return parents.length === 1 ? parents[0]! : `:is(${parents.join(', ')})`;
+}
+
+/** [nesting] One `&`-bearing token resolved against `parents`, position-aware.
+ *  A list-accepting pseudo (`:is`/`:where`/`:not`/`:has`/`:matches`) whose args
+ *  reference `&` recurses so the `&` becomes the BARE parent list inside the pseudo
+ *  (`:not(&)` over `.a, .b` → `:not(.a, .b)`, not the De-Morgan-wrong
+ *  `:not(.a), :not(.b)`). A bare LEADING `&` (`first`, the compound SUBJECT — `&`,
+ *  `&.mod`, `& + &`) wraps in `:is(parents)`, which keeps the subject even for a
+ *  complex parent (`:is(.foo .bar).mod` ≡ `.foo .bar.mod`). Every OTHER `&` — a
+ *  fused append (`&__el`) or a `&` merged after a preceding name (`.qux&`,
+ *  `.fruit-&`) — is a name concatenation and DISTRIBUTES per parent (a group cannot
+ *  splice into a name; `:is(.foo .bar)` would also relocate the subject). Returns
+ *  one variant per distribution — the branch-multiplying case. */
+function resolveTokenAmp(sim: SimpleToken, parents: string[], sub: string, first: boolean, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  if (sim.type === 'PseudoSelector' && sim.args !== null && selectorListHasAmpersand(sim.args)) {
+    return mapMaybe(resolveSelectorListAmp(sim.args, parents, frame, e),
+      branches => [`${sim.name}(${branches.join(', ')})`]);
+  }
+  return mapMaybe(resolveSimpleText(sim, frame, e), (text) => {
+    if (!text.includes('&')) {
+      return [text];
     }
-    return parents.map(p => p + ' ' + text);
+    if (first && text === '&') {
+      return [sub];
+    }
+    return parents.map(p => text.split('&').join(p));
+  });
+}
+
+/** [nesting] One compound resolved against `parents`, its tokens concatenated;
+ *  a distributing `&` (append/merge) multiplies its variants (cartesian). */
+function resolveCompoundAmp(cmp: CompoundSelector, parents: string[], sub: string, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  const tokens = cmp.simples.map((sim, i) => resolveTokenAmp(sim, parents, sub, i === 0, frame, e));
+  return combineAll(tokens, (lists) => {
+    let acc = [''];
+    for (const variants of lists) {
+      const next: string[] = [];
+      for (const head of acc) {
+        for (const v of variants) {
+          next.push(head + v);
+        }
+      }
+      acc = next;
+    }
+    return acc;
+  });
+}
+
+/** [nesting] Resolve one `&`-bearing complex against MULTIPLE `parents` with
+ *  position-aware substitution — the spec-faithful CSS-Nesting parent resolution
+ *  that replaces the old context-blind cartesian odometer. A whole selector branch
+ *  that is a bare `&` expands to the parent list itself (branch-multiplying); every
+ *  interior `&` resolves by role in `resolveCompoundAmp`. */
+function resolveComplexAmp(c: ComplexSelector, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  if ((c.leadingComb === undefined || c.leadingComb === ' ') && c.tail.length === 0 && c.head.simples.length === 1) {
+    const only = c.head.simples[0]!;
+    if (only.type === 'SimpleSelector' && only.interp === null && only.text === '&') {
+      return parents.slice();
+    }
+  }
+  const sub = ampSub(parents);
+  const compounds = [resolveCompoundAmp(c.head, parents, sub, frame, e),
+    ...c.tail.map(seg => resolveCompoundAmp(seg.compound, parents, sub, frame, e))];
+  return combineAll(compounds, (variants) => {
+    const lead = c.leadingComb !== undefined && c.leadingComb !== ' '
+      ? renderCombinator(c.leadingComb).trimStart()
+      : '';
+    let acc = variants[0]!.map(v => lead + v);
+    for (let i = 0; i < c.tail.length; i++) {
+      const comb = renderCombinator(c.tail[i]!.comb);
+      const next: string[] = [];
+      for (const head of acc) {
+        for (const t of variants[i + 1]!) {
+          next.push(head + comb + t);
+        }
+      }
+      acc = next;
+    }
+    return acc;
+  });
+}
+
+/** [nesting] Resolve a selector list against `parents`, flattening each complex's
+ *  branch variants. Reused for a list-accepting pseudo's args. */
+function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  return combineAll(list.selectors.map(c => resolveComplexAmp(c, parents, frame, e)), values => values.flat());
+}
+
+/** Compose ONE child complex over ALL `parents`. A MULTI-parent `&`-bearing child
+ * resolves each `&` by structural position (`resolveComplexAmp`); `&`-less children
+ * take an implicit descendant prefix, one branch per parent. A SINGLE parent — the
+ * common BEM/`&:hover` nesting — keeps the fast `joinAmpersand` string splice (byte-
+ * identical to the structural walk for one parent), which also carries the legacy
+ * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`). */
+function composeOne(parents: string[], child: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  if (!complexHasAmpersand(child)) {
+    return mapMaybe(resolveComplex(child, frame, e), text => parents.map(p => p + ' ' + text));
+  }
+  if (parents.length >= 2 && !parents.some(hasTopLevelComma)) {
+    return resolveComplexAmp(child, parents, frame, e);
+  }
+  return mapMaybe(resolveComplex(child, frame, e), (text) => {
+    if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
+      throw ERR.commaListInterpolation({ node: child, meta: { selector: text } });
+    }
+    return joinAmpersand(text, parents);
   });
 }
 
@@ -3582,24 +3676,28 @@ function composeSync(parents: string[], child: SelectorList, frame: Frame | null
 }
 
 /**
- * [nesting] The EMITTED-header branches for `child` under `parents`. Identical to
- * `compose` EXCEPT an `&`-less child under MULTIPLE parents compacts to a single
- * `:is(p0, p1, …) child` prefix (alpha v5 header form), instead of one cartesian
- * branch per parent. `compose` (the parent-list carried into further `&` nesting)
- * stays fully cartesian — the two forms diverge only for `&`-less multi-parent.
- * Only called with `parents.length >= 2` (callers use `compose` for the rest).
+ * [nesting] The EMITTED-header branches for `child` under `parents`. An `&`-less
+ * child under MULTIPLE parents compacts to a single `:is(p0, p1, …) child` prefix
+ * (alpha v5 header form); an `&`-bearing child resolves each `&` by structural
+ * position (`resolveComplexAmp`). Only called with `parents.length >= 2` (callers
+ * use `compose` for the rest).
  */
 function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const isPrefix = `:is(${parents.join(', ')}) `;
-  const parts = child.selectors.map(c => mapMaybe(resolveComplex(c, frame, e), (canon) => {
-    if (complexHasAmpersand(c)) {
-      if (parents.some(hasTopLevelComma) && !canon.startsWith('&')) {
-        throw ERR.commaListInterpolation({ node: c, meta: { selector: canon } });
-      }
-      return joinAmpersand(canon, parents);
+  const parts = child.selectors.map((c) => {
+    if (!complexHasAmpersand(c)) {
+      return mapMaybe(resolveComplex(c, frame, e), canon => [isPrefix + canon]);
     }
-    return [isPrefix + canon];
-  }));
+    if (parents.some(hasTopLevelComma)) {
+      return mapMaybe(resolveComplex(c, frame, e), (canon) => {
+        if (!canon.startsWith('&')) {
+          throw ERR.commaListInterpolation({ node: c, meta: { selector: canon } });
+        }
+        return joinAmpersand(canon, parents);
+      });
+    }
+    return resolveComplexAmp(c, parents, frame, e);
+  });
   return combineAll(parts, values => values.flat());
 }
 
