@@ -36,6 +36,19 @@ const acceptedDivergences = new Map<string, string>([
   // property value now throws eval/ruleset-on-property (declaration.ts).
   ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
   ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  // Same root-call-without-root GAP, newly VISIBLE: these fixtures load their
+  // plugin through an EXTENSIONLESS `@plugin "…/plugin-tree-nodes"` specifier.
+  // That specifier never resolved before, so the fixtures "errored" on a missing
+  // file rather than on the behaviour under test. Now that a `@plugin` path
+  // resolves against script extensions, the plugin loads, the call runs, and the
+  // real gap shows: Jess emits the returned value at root instead of rejecting a
+  // root-level call whose result is not a root node. Closing root-call-without-root
+  // graduates all five together.
+  ['tests-error/eval/root-func-undefined-2.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  ['tests-error/eval/functions-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  ['tests-error/eval/functions-7-dimension.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  ['tests-error/eval/functions-12-quoted.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  ['tests-error/eval/functions-15-value.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
   // ampersand-merge-template-invalid GRADUATED — its parent `@{list-quoted}` is a
   // comma-list value in selector position, so it now throws selector/comma-list-interpolation
   // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw

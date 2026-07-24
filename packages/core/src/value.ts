@@ -21,6 +21,8 @@ export type {
   Block,
   EvalModes,
   PluginHost,
+  PluginCallCtx,
+  PluginVariableHit,
   PluginRawArgument,
   PluginDetachedRuleset,
   PluginDetachedDeclaration

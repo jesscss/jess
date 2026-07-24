@@ -286,6 +286,37 @@ export interface PluginDetachedDeclaration {
 /** A raw recursive value-sequence is the legacy `tree.Expression` source. */
 export type PluginRawArgument = ValueObj | PluginDetachedRuleset | readonly ValueGroup[];
 
+/**
+ * One `!important`-flagged binding fact, alongside the value itself. Less's
+ * `importantScope` lets a variable's importance ride out to the declaration
+ * that read it; a legacy plugin reads the pair, so the shim carries both.
+ */
+export interface PluginVariableHit {
+  readonly value: PluginRawArgument;
+  readonly important: boolean;
+}
+
+/**
+ * The live-frame capabilities a LEGACY plugin function body needs but the
+ * value-domain `Fn` contract deliberately does not expose: reading a variable
+ * from the call-site scope, calling a built-in by name, the source position the
+ * call was written at, and a sink for `less.logger` output. Supplied only on the
+ * `invokeRawFunction` seam — the ordinary function contract stays
+ * value-domain-only.
+ */
+export interface PluginCallCtx extends FnCtx {
+  /** Resolve `@name` against the LIVE call-site frame chain. */
+  readonly lookupVariable: (name: string) => PluginVariableHit | null;
+  /** Evaluate a built-in function by name on already-typed arguments. */
+  readonly callFunction: (name: string, args: readonly ValueGroup[]) => ValueGroup | undefined;
+  /** The file the call was written in, and the entry file of the render. */
+  readonly currentFileInfo: { readonly filename: string; readonly entryPath: string };
+  /** Records one `less.logger` record emitted while the plugin ran. */
+  readonly log: (record: { level: string; message: string }) => void;
+  /** Hoists `!important` onto the declaration whose value this call folds into. */
+  readonly markImportant: () => void;
+}
+
 export interface PluginHost {
   /**
    * GLOBAL functions contributed by config-injected `install`-style Less plugins
@@ -301,15 +332,17 @@ export interface PluginHost {
    */
   loadPlugin?(request: PluginRequest): MaybePromise<readonly Fn[]>;
   /**
-   * Optional legacy-plugin escape hatch for a function selected from this host
-   * whose argument list contains a detached ruleset. The ordinary `Fn` contract
-   * stays value-domain-only; this method is never consulted for normal calls.
+   * Legacy-plugin invocation seam. A function selected from this host receives
+   * its arguments in raw form (detached rulesets survive as declaration maps)
+   * plus the live-frame {@link PluginCallCtx}, because a Less 4 plugin body
+   * reads scope and built-ins directly. The ordinary `Fn` contract stays
+   * value-domain-only; this method is never consulted for a built-in call.
    * `undefined` declines the call and leaves normal function dispatch intact.
    */
   invokeRawFunction?(
     fn: Fn,
     args: readonly PluginRawArgument[],
-    ctx: FnCtx
+    ctx: PluginCallCtx
   ): MaybePromise<ValueGroup | undefined>;
 }
 

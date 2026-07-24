@@ -1200,6 +1200,25 @@ export class Compiler {
     }
   }
 
+  /**
+   * Emits whatever the render collected. A SUCCESSFUL render can still have
+   * recorded real problems (a plugin function that threw, an unresolved
+   * function); dropping those on the floor is how a broken plugin stays
+   * invisible, so they are always surfaced here.
+   */
+  private reportCollected(context: Context, options?: Partial<ConfigOptions>): void {
+    if (context.errors.length === 0 && context.warnings.length === 0) {
+      return;
+    }
+    outputDiagnostics(context.errors, context.warnings, {
+      suppressWarnings: options?.suppressWarnings ?? false,
+      breakOnError: options?.breakOnError ?? true,
+      verbose: options?.verbose ?? false,
+      warnings: options?.warnings,
+      errors: options?.errors
+    });
+  }
+
   async render(filePath: string, options?: Partial<ConfigOptions>) {
     const { resolved, context, profile } = await this.prepareRender(filePath, options);
     try {
@@ -1209,6 +1228,8 @@ export class Compiler {
         context,
         profile
       );
+      context.finalizeWarnings();
+      this.reportCollected(context, options);
       finalizeRenderProfile(profile, {
         method: 'render',
         filePath,
@@ -1217,6 +1238,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
+      this.reportCollected(context, options);
       if (!(err && typeof err === 'object' && 'code' in err)) {
         logger.error(String(err));
       }
@@ -1248,6 +1270,8 @@ export class Compiler {
         context,
         profile
       );
+      context.finalizeWarnings();
+      this.reportCollected(context, renderOptions);
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,
@@ -1256,6 +1280,7 @@ export class Compiler {
       });
       return css;
     } catch (err: unknown) {
+      this.reportCollected(context, renderOptions);
       logger.error(String(err));
       finalizeRenderProfile(profile, {
         method: 'renderString',

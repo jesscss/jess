@@ -362,6 +362,13 @@ export class TreeContext extends DocumentContext {
  * Most of context represents "state" while evaluating.
  * There should only ever be one Context singleton per parse & evaluation.
  */
+/**
+ * Extensions an executable `@plugin` script may carry. Used only to expand an
+ * extensionless plugin specifier; the actual runtime dispatch still goes through
+ * a plugin that declares the resolved extension.
+ */
+const PLUGIN_SCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'];
+
 export class Context {
   readonly plugins: PluginInterface[];
   readonly opts: ContextOptions;
@@ -414,6 +421,15 @@ export class Context {
   /** Active canonical AST source identity, independent of legacy tree state. */
   get documentContext(): DocumentContext | undefined {
     return this._documentContext;
+  }
+
+  /**
+   * Absolute path of the render's ENTRY file, when one is known. Legacy Less
+   * plugins report diagnostics relative to it (`this.currentFileInfo.entryPath`).
+   */
+  get entryFilePath(): string {
+    const entry = this.document ? this.documentContexts.get(this.document) : undefined;
+    return entry?.file?.fullPath ?? '';
   }
 
   private setDocumentContext(dc: DocumentContext | undefined): void {
@@ -1423,12 +1439,38 @@ export class Context {
   }
 
   /**
+   * Resolve a `@plugin` specifier. Less lets a plugin be named without an
+   * extension (`@plugin "../plugins/breakpoints"`), and the stylesheet
+   * candidate expansion the dialect supplies looks for `.less`, never a script.
+   * Script extensions are therefore tried FIRST for an extensionless specifier,
+   * with the literal spelling last so an explicit path still wins.
+   */
+  private async _getPluginPath(importPath: string) {
+    const candidates = path.extname(importPath) === ''
+      ? [...PLUGIN_SCRIPT_EXTENSIONS.map(ext => importPath + ext), importPath]
+      : [importPath];
+    const tried: string[] = [];
+    let lastError: unknown;
+    for (const candidate of candidates) {
+      try {
+        return await this._getPath(candidate);
+      } catch (err) {
+        tried.push(candidate);
+        lastError = err;
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Plugin not found: ${importPath} (tried ${tried.join(', ')})`);
+  }
+
+  /**
    * Load an executable Plugin module through the same Context-owned path and
    * extension dispatch used by ordinary modules. The active dialect adapter
    * interprets the returned module; Context does not know a dialect ABI.
    */
   async getPluginModule(importPath: string, options: string | null = null) {
-    const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
+    const { resolvedPath, triedPaths, friendlyPath } = await this._getPluginPath(importPath);
     const ext = path.extname(resolvedPath);
     let plugin = this.plugins.find(candidate =>
       candidate.supportedExtensions?.includes(ext) && candidate.importPlugin);

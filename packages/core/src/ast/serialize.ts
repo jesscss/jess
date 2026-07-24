@@ -99,8 +99,10 @@ import {
   literal,
   type EvalModes,
   type FnScope,
+  type PluginCallCtx,
   type PluginHost,
   type PluginRawArgument,
+  type PluginVariableHit,
   type Value,
   type ValueEvaluator,
   type ValueGroup,
@@ -596,12 +598,29 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
           ? statement.target.value.value
           : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
-      const loaded = load({ specifier, options });
+      // A `@plugin` that cannot be resolved, or whose script throws while
+      // installing, is a hard failure attributed to the `@plugin` statement —
+      // never a silently skipped registration.
+      const failed = (error: unknown): never => {
+        throw error instanceof JessError
+          ? error
+          : ERR.pluginLoadFailed({
+              node: statement,
+              ...callSiteLocation(statement, e),
+              meta: { specifier, reason: error instanceof Error ? error.message : String(error) }
+            });
+      };
+      let loaded: MaybePromise<readonly Fn[]>;
+      try {
+        loaded = load({ specifier, options });
+      } catch (error) {
+        return failed(error);
+      }
       if (isThenable(loaded)) {
         return loaded.then((fns) => {
           addScopedFns(frame, fns, e);
           return run(index + 1);
-        });
+        }, failed);
       }
       addScopedFns(frame, loaded, e);
     }
@@ -3110,9 +3129,22 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
       bindingFrame = hit.frame;
     }
   }
+  return pluginDetachedProjection(binding, bindingFrame, e) ?? evalTypedSlot(slot, frame, e);
+}
+
+/**
+ * The declaration-map projection of a value block, or `undefined` when the
+ * binding is not block-like. Shared by argument projection and by the plugin
+ * variable lookup, so a legacy plugin sees the same map shape either way.
+ */
+function pluginDetachedProjection(
+  binding: Binding,
+  bindingFrame: Frame | null,
+  e: EvalCtx
+): MaybePromise<PluginRawArgument> | undefined {
   const detached = resolveValueBlock(binding, bindingFrame, e);
   if (!detached) {
-    return evalTypedSlot(slot, frame, e);
+    return undefined;
   }
   const closure = detachedBinding(bindingFrame, detached);
   const definitionFrame = closure?.lexicalFrame ?? bindingFrame;
@@ -3132,11 +3164,91 @@ function pluginRawArgument(slot: ValueSlot, frame: Frame | null, e: EvalCtx): Ma
   }));
 }
 
-const pluginFnContext = (e: EvalCtx): FnCtx => ({
-  modes: e.modes,
-  stringify: value => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value),
-  ...(e.io === undefined ? {} : { io: e.io })
-});
+/**
+ * Resolve `@name` for a legacy plugin body against the LIVE frame chain at the
+ * call site. Returns `null` for an unbound name (less.js's own answer) and for a
+ * binding whose value is a mixin call, which has no value projection. This is
+ * SYNCHRONOUS by contract: the plugin bridge reads scope inside a synchronous
+ * function body, so a binding that would need to await cannot be served.
+ */
+function pluginVariableHit(name: string, frame: Frame | null, e: EvalCtx): PluginVariableHit | null {
+  // A Less plugin names a variable WITH its sigil (`'@grid-breakpoints'`);
+  // bindings are keyed without it.
+  const bare = name.startsWith('@') || name.startsWith('$') ? name.slice(1) : name;
+  const hit = resolveVarRef(frame, bare, 'scoped', e)
+    ?? resolveVarRef(frame, bare, 'live', e);
+  if (!hit) {
+    return null;
+  }
+  const projected = pluginDetachedProjection(hit.value, hit.frame, e);
+  const resolved = projected ?? (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall'
+    ? evalTypedSlot(hit.value, hit.frame, e)
+    : undefined);
+  if (resolved === undefined || isThenable(resolved)) {
+    return null;
+  }
+  return { value: resolved, important: false };
+}
+
+/**
+ * The capability bundle handed to a legacy `@plugin` function. Unlike the
+ * value-domain `FnCtx`, it is bound to this call's frame and source position so
+ * the plugin can read scope, reach built-ins, and attribute its own logging.
+ */
+function pluginFnContext(node: FunctionCall, frame: Frame | null, e: EvalCtx): PluginCallCtx {
+  const file = e.context?.sourceContext?.file;
+  return {
+    modes: e.modes,
+    stringify: value => !isValueGroupArray(value) && value.type === 'Quoted' ? value.value : emitValue(value),
+    ...(e.io === undefined ? {} : { io: e.io }),
+    lookupVariable: name => pluginVariableHit(name, frame, e),
+    callFunction: (name, args) => {
+      if (!e.ev) {
+        return undefined;
+      }
+      const result = e.ev.call(name, makeList([...args], ','), e.modes, null, e.io);
+      return isThenable(result) ? undefined : result;
+    },
+    currentFileInfo: {
+      filename: file?.fullPath ?? '',
+      entryPath: e.context?.entryFilePath ?? ''
+    },
+    log: record => reportPluginLog(node, record, e),
+    markImportant: () => {
+      if (e.importantSink) {
+        e.importantSink.hit = true;
+      } else if (e.mergeImportant !== undefined) {
+        e.mergeImportant = true;
+      }
+    }
+  };
+}
+
+/** Source position of a call node, for a diagnostic that points at the call site. */
+function callSiteLocation(node: object, e: EvalCtx): {
+  filePath?: string; source?: string; line?: number; column?: number;
+} {
+  const file = e.context?.sourceContext?.file;
+  const source = file?.source;
+  const span = source === undefined ? undefined : sourceSpanOf(node);
+  const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
+  return { filePath: file?.fullPath, source, line: location?.line, column: location?.column };
+}
+
+/**
+ * Surface one `less.logger` record from a legacy plugin as a real diagnostic at
+ * the call site. A plugin that reports a problem must not do so into a void.
+ */
+function reportPluginLog(node: FunctionCall, record: { level: string; message: string }, e: EvalCtx): void {
+  if (record.level !== 'warn' && record.level !== 'error') {
+    return;
+  }
+  e.context?.warn(WARN.pluginLog({
+    node,
+    ...callSiteLocation(node, e),
+    meta: { name: node.name, level: record.level, message: record.message }
+  }));
+}
 
 function needsPluginRawArguments(args: readonly ValueSlot[], frame: Frame | null, e: EvalCtx): boolean {
   for (const arg of args) {
@@ -3221,16 +3333,23 @@ function evalCall(
   const scope = e.anyScopedFns ? makeFnScope(frame) : null;
   const selected = scope?.lookup(node.name);
   const rawInvoker = e.pluginHost?.invokeRawFunction;
-  if (selected && rawInvoker && needsPluginRawArguments(node.args, frame, e)) {
+  // A function registered by this document (`@plugin`/`@use`) is USER CODE, so it
+  // always runs on the legacy seam: it needs raw arguments (a detached ruleset
+  // survives as a declaration map) and the live-frame capabilities. `undefined`
+  // from the host means "not mine", which falls back to ordinary dispatch.
+  if (selected && rawInvoker) {
     const raw = node.args.map(arg => pluginRawArgument(arg, frame, e));
     return combineAll(raw, (args) => {
       try {
-        const result = rawInvoker(selected, args, pluginFnContext(e));
-        return mapMaybe(result, value => value === undefined
+        const result = rawInvoker(selected, args, pluginFnContext(node, frame, e));
+        const settled = isThenable(result)
+          ? result.catch((error: unknown) => pluginCallFailure(node, error, frame, e))
+          : result;
+        return mapMaybe(settled, value => value === undefined
           ? evalCall(node, frame, { ...e, pluginHost: undefined }, demanded)
           : value);
       } catch (error) {
-        return invalidFunctionCall(node, error, e);
+        return pluginCallFailure(node, error, frame, e);
       }
     });
   }
@@ -3241,18 +3360,9 @@ function evalCall(
     try {
       const result = ev.call(node.name, args, e.modes, scope, e.io, (error) => {
         const reason = error instanceof Error ? error.message : String(error);
-        const file = e.context?.sourceContext?.file;
-        const source = file?.source;
-        const span = source === undefined ? undefined : sourceSpanOf(node);
-        const location = source === undefined || span === undefined
-          ? undefined
-          : lineColAt(source, span.start);
         e.context?.warn(WARN.unresolvedFunction({
           node,
-          filePath: file?.fullPath,
-          source,
-          line: location?.line,
-          column: location?.column,
+          ...callSiteLocation(node, e),
           meta: { name: node.name, reason }
         }));
       });
@@ -3265,23 +3375,53 @@ function evalCall(
   });
 }
 
+/**
+ * A `@plugin`/`@use` function FAILED — it threw, or the sandbox could not run
+ * it. That is a fault in user-supplied code, categorically different from a
+ * built-in that merely declines an argument shape, and it must never be
+ * swallowed into a verbatim re-emission with nothing said.
+ *
+ * Under `functionMode: 'error'` (what `breakOnError` selects) it aborts with the
+ * function name, the underlying throw, and the call site. Otherwise the call is
+ * preserved — but a `plugin/function-threw` warning carrying the same
+ * attribution is always recorded first, so "keep compiling" never means
+ * "say nothing".
+ */
+function pluginCallFailure(
+  node: FunctionCall,
+  error: unknown,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<Value> {
+  if (error instanceof JessError) {
+    throw error;
+  }
+  const reason = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error && typeof error.stack === 'string' ? error.stack : undefined;
+  const attribution = {
+    node,
+    ...callSiteLocation(node, e),
+    ...(stack === undefined ? {} : { note: stack }),
+    meta: { name: node.name, reason }
+  };
+  // `breakOnError` is the render-level "stop at the first real problem" switch,
+  // and a plugin fault IS a real problem: it aborts unless the caller explicitly
+  // opted into collecting failures instead (`breakOnError: false`).
+  if (e.modes.functionMode === 'error' || e.context?.opts.breakOnError !== false) {
+    throw ERR.pluginFunctionThrew(attribution);
+  }
+  e.context?.warn(WARN.pluginFunctionThrew(attribution));
+  return preserveCall(node, frame, e);
+}
+
 function invalidFunctionCall(node: FunctionCall, error: unknown, e: EvalCtx): never {
   if (error instanceof JessError) {
     throw error;
   }
   const reason = error instanceof Error ? error.message : String(error);
-  const file = e.context?.sourceContext?.file;
-  const source = file?.source;
-  const span = source === undefined ? undefined : sourceSpanOf(node);
-  const location = source === undefined || span === undefined
-    ? undefined
-    : lineColAt(source, span.start);
   throw ERR.invalidFunction({
     node,
-    filePath: file?.fullPath,
-    source,
-    line: location?.line,
-    column: location?.column,
+    ...callSiteLocation(node, e),
     meta: { name: node.name, reason }
   });
 }
@@ -6497,6 +6637,20 @@ function dispatch(
     }
     return b;
   };
+  // A default that NAMES a value block (`@breakpoints: @grid-breakpoints`) binds
+  // the block by reference, matching what `substituteClosureVarArgs` already does
+  // for a block passed explicitly. Anything else falls through to byte resolution.
+  const resolveDefaultBlock = (v: ValueSlot, boundSoFar: Map<string, CallValue>, def: MixinDef): ValueSlot | undefined => {
+    if (isValueSlotArray(v) || v.type !== 'VariableReference') {
+      return undefined;
+    }
+    const home = homes?.get(def);
+    const overlay: Frame = home && home !== frame
+      ? { parent: home, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null, fallback: frame }
+      : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
+    const bound = lookupVar(overlay, v.name);
+    return bound && !isValueSlotArray(bound) && isValueBlock(bound) ? bound : undefined;
+  };
   // [spread] `.mixin(@args...)` splats a list variable into positional args at the
   // call site (Less variadic forwarding) BEFORE binding, so overloads select on the
   // splatted arity.
@@ -6506,7 +6660,7 @@ function dispatch(
   // eager byte-resolver never tries to serialize a ruleset as a value.
   const call2 = substituteClosureVarArgs(call1, frame);
   try {
-    return selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes, resolveDefault);
+    return selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes, resolveDefault, resolveDefaultBlock);
   } catch (error) {
     if (error instanceof DefaultGuardAmbiguityError) {
       throw ERR.ambiguousDefault({ node: call, meta: { callee: `${call.name}()` } });
@@ -7146,6 +7300,14 @@ function emitImportAtRule(
             throw error;
           }
         };
+        // An imported document executes IN the importing frame, so a `@plugin`
+        // it declares registers its functions THERE — exactly like Less, where a
+        // plugin loaded from an imported file is visible to the importer. Without
+        // this, every `@plugin` behind an `@import` silently registers nothing.
+        // It must run inside the loaded document's own context so a relative
+        // plugin specifier resolves against the file that wrote it.
+        const emitWithPlugins = (): MaybePromise<void> =>
+          mapMaybe(prepareBodyPlugins(loaded.document!.children, frame, e), emit);
         const multiple = importHasOption(request.options, 'multiple');
         const reference = e.referenceImportDepth > 0 || importHasOption(request.options, 'reference');
         if (multiple || reference) {
@@ -7157,7 +7319,7 @@ function emitImportAtRule(
           }
           let result: MaybePromise<void>;
           try {
-            result = loaded.withinDocument ? loaded.withinDocument(emit) : emit();
+            result = loaded.withinDocument ? loaded.withinDocument(emitWithPlugins) : emitWithPlugins();
           } catch (error) {
             if (reference) {
               e.referenceImportDepth--;
@@ -7196,7 +7358,7 @@ function emitImportAtRule(
           }
           return result;
         }
-        return loaded.withinDocument ? loaded.withinDocument(emit) : emit();
+        return loaded.withinDocument ? loaded.withinDocument(emitWithPlugins) : emitWithPlugins();
       }
       emitCssImportAtRule(node, frame, e);
     });

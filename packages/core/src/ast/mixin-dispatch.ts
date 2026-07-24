@@ -60,6 +60,17 @@ export class DefaultGuardAmbiguityError extends Error {
  * frame. Absent (dispatch without a frame context), defaults fall back to the
  * caller resolver.
  */
+/**
+ * Resolves a param DEFAULT that names a value block (`@breakpoints: @grid-breakpoints`)
+ * to the block itself, so it binds BY REFERENCE exactly like a block passed
+ * explicitly. Returns `undefined` when the default is an ordinary value.
+ */
+export type DefaultBlockResolver = (
+  value: ValueSlot,
+  boundSoFar: Map<string, CallValue>,
+  def: MixinDef
+) => ValueSlot | undefined;
+
 export type DefaultResolver = (
   v: ValueSlot,
   boundSoFar: Map<string, CallValue>,
@@ -77,7 +88,8 @@ export function bindArgs(
   def: MixinDef,
   call: MixinCall,
   resolveCaller: ValueResolver,
-  resolveDefault?: DefaultResolver
+  resolveDefault?: DefaultResolver,
+  resolveDefaultBlock?: DefaultBlockResolver
 ): Map<string, CallValue> | null {
   const params = def.params;
   const positional: CallArg[] = [];
@@ -119,7 +131,7 @@ export function bindArgs(
       // it can reference an earlier param), overlaid on the mixin's DEFINITION
       // scope (`@parameter: @parameterDefault` reads the def-scope `@parameterDefault`,
       // not a same-name caller var) — not the caller frame.
-      argVal = resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault);
+      argVal = resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault, resolveDefaultBlock);
     } else {
       return null; // required slot unfilled
     }
@@ -220,10 +232,19 @@ function resolveEagerDefault(
   boundSoFar: Map<string, CallValue>,
   def: MixinDef,
   resolveCaller: ValueResolver,
-  resolveDefault?: DefaultResolver
+  resolveDefault?: DefaultResolver,
+  resolveDefaultBlock?: DefaultBlockResolver
 ): CallValue {
   if ('type' in v && isValueBlock(v)) {
     return v;
+  }
+  // `#m(@map: @some-detached-ruleset)` must bind the BLOCK, not its bytes — the
+  // same by-reference rule an explicitly passed block already gets. Without this
+  // the callee sees a flattened literal and every structural read of the block
+  // (a plugin's `ruleset.rules`, a lookup) fails.
+  const block = resolveDefaultBlock?.(v, boundSoFar, def);
+  if (block !== undefined) {
+    return block;
   }
   if (isTypedGuardValue(v)) {
     return v;
@@ -257,13 +278,14 @@ export function selectDefinitions(
   ) => TypedResolver,
   ev: ValueEvaluator | null,
   modes: EvalModes,
-  resolveDefault?: DefaultResolver
+  resolveDefault?: DefaultResolver,
+  resolveDefaultBlock?: DefaultBlockResolver
 ): Selection[] {
   // Arity + literal-pattern pre-filter (guard-independent).
   const viable: Array<{ def: MixinDef; bindings: Map<string, CallValue> | null; order: number }> = [];
   for (let i = 0; i < candidates.length; i++) {
     const def = candidates[i]!;
-    const bindings = bindArgs(def, call, resolveCaller, resolveDefault);
+    const bindings = bindArgs(def, call, resolveCaller, resolveDefault, resolveDefaultBlock);
     if (bindings === null) {
       continue;
     }

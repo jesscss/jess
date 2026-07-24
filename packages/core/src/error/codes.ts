@@ -23,6 +23,9 @@ export type JessErrorCode =
   | 'extend/not-found'
   | 'extend/not-accessible'
   | 'plugin/unsupported-feature'
+  | 'plugin/function-threw'
+  | 'plugin/load-failed'
+  | 'plugin/log'
   | 'eval/deprecated'
   | 'resolve/unused-variable'
   | 'selector/duplicate'
@@ -172,6 +175,24 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Function "${name}" left as-is',
     reason: '"${name}" matched a registered function but could not be evaluated: ${reason}',
     fix: 'Fix the arguments, or set functionMode: \'error\' to make this fail.'
+  }],
+  ['plugin/function-threw', {
+    summary: 'Plugin function "${name}" threw',
+    reason: 'The @plugin function "${name}" failed while evaluating this call: ${reason}',
+    fix: 'Fix the plugin function (its stack is attached), or stop calling it here. Run with breakOnError to stop at the first failure.'
+  }],
+  ['plugin/load-failed', {
+    // The summary carries the underlying failure verbatim: a load error is only
+    // actionable if it says WHY, and the summary is what a thrown error's
+    // message shows.
+    summary: 'Plugin "${specifier}" could not be loaded: ${reason}',
+    reason: 'Loading the @plugin failed: ${reason}',
+    fix: 'Check the plugin path and that the script runs without throwing at load time.'
+  }],
+  ['plugin/log', {
+    summary: 'Plugin function "${name}" reported a problem',
+    reason: '${level}: ${message}',
+    fix: 'Address what the plugin reported, or stop calling it here.'
   }]
 ]);
 

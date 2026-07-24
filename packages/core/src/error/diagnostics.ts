@@ -236,6 +236,18 @@ export const ERR = {
   // Plugin
   pluginUnsupported(args: Common & { meta: { plugin: string; feature: string } }) {
     return makeJessError({ code: 'plugin/unsupported-feature', phase: 'plugin', ...args });
+  },
+  /** A `@plugin`/`@use` function raised — user code failed, not a value mismatch. */
+  pluginFunctionThrew(args: Common & { meta: { name: string; reason: string } }) {
+    return makeJessError({ code: 'plugin/function-threw', phase: 'plugin', ...args });
+  },
+  /**
+   * A `@plugin` could not be loaded — the path did not resolve, or the script
+   * threw while installing. The phase is `eval` because the load happens while
+   * the enclosing body evaluates, at the `@plugin` statement's position.
+   */
+  pluginLoadFailed(args: Common & { meta: { specifier: string; reason: string } }) {
+    return makeJessError({ code: 'plugin/load-failed', phase: 'eval', ...args });
   }
 };
 
@@ -267,6 +279,18 @@ export const WARN = {
   },
   extendNotAccessible(args: Common & { meta: { target: string } }) {
     return makeJessError({ severity: 'warn', code: 'extend/not-accessible', phase: 'extend', ...args });
+  },
+  /**
+   * A `@plugin`/`@use` function raised and the render continued. The call is
+   * preserved verbatim, but never silently: this names the function, the throw,
+   * and the call site.
+   */
+  pluginFunctionThrew(args: Common & { meta: { name: string; reason: string } }) {
+    return makeJessError({ severity: 'warn', code: 'plugin/function-threw', phase: 'plugin', ...args });
+  },
+  /** A record a plugin emitted through `less.logger`, attributed to its call site. */
+  pluginLog(args: Common & { meta: { name: string; level: string; message: string } }) {
+    return makeJessError({ severity: 'warn', code: 'plugin/log', phase: 'plugin', ...args });
   }
 };
 

@@ -15,17 +15,36 @@ import {
   makeKeyword,
   makeList,
   makeQuoted,
+  sniffLiteral,
   type Fn,
+  type PluginCallCtx,
   type PluginHost,
   type PluginRawArgument,
   type ValueGroup,
   type ValueObj
 } from '@jesscss/core/value';
+
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
 import { parse as parseLess } from '@jesscss/less-parser';
+
+/**
+ * A `@plugin` function bound to its live call-site capabilities. Structurally
+ * identical to `@jesscss/plugin-js`'s export; declared here so the Less adapter
+ * does not take a hard dependency on the sandbox package.
+ */
+type ContextualPluginFunction = (
+  args: readonly unknown[],
+  capabilities: {
+    lookupVariable?(name: string): { value: unknown; important?: boolean } | null;
+    callFunction?(name: string, args: unknown[]): unknown;
+    currentFileInfo?: { filename: string; entryPath: string };
+    log?(record: { level: string; message: string }): void;
+    markImportant?(): void;
+  }
+) => unknown | Promise<unknown>;
 
 export type LessPluginOptions = LessOptions;
 
@@ -135,10 +154,14 @@ function fromNativeLessValue(value: unknown): ValueGroup {
       return makeList(candidate.value.map(item => fromNativeLessValue(item)), separator);
     }
     if (typeof candidate.value === 'string') {
-      return makeKeyword(candidate.value);
+      // A Less plugin's `Anonymous`/`Keyword` result is BYTES. Sniffing them back
+      // into a typed literal is what lets `darken(theme-color(primary), 15%)`
+      // see a colour rather than an opaque keyword — the same materialization
+      // the engine performs on any other computed byte string.
+      return sniffLiteral(candidate.value);
     }
     if (typeof candidate.valueOf === 'function') {
-      return makeKeyword(String(candidate.valueOf()));
+      return sniffLiteral(String(candidate.valueOf()));
     }
   }
   return makeKeyword(value == null ? '' : String(value));
@@ -146,6 +169,36 @@ function fromNativeLessValue(value: unknown): ValueGroup {
 
 function invokeNativeLessFunction(fn: NativeLessFunction, args: readonly PluginRawArgument[]): ValueGroup | Promise<ValueGroup> {
   const result = fn(...args.map(toNativeLessValue));
+  return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
+    ? Promise.resolve(result).then(fromNativeLessValue)
+    : fromNativeLessValue(result);
+}
+
+/**
+ * Run one `@plugin`-loaded function. Unlike a config-injected `install` plugin,
+ * a `@plugin` script's body reads the live evaluation scope, so its call-site
+ * capabilities are forwarded verbatim to the sandbox bridge.
+ */
+function invokeContextualPluginFunction(
+  fn: ContextualPluginFunction,
+  args: readonly PluginRawArgument[],
+  ctx: PluginCallCtx
+): ValueGroup | Promise<ValueGroup> {
+  const result = fn(args.map(toNativeLessValue), {
+    lookupVariable: (name) => {
+      const hit = ctx.lookupVariable(name);
+      return hit === null ? null : { value: toNativeLessValue(hit.value), important: hit.important };
+    },
+    callFunction: (name, callArgs) => {
+      const answer = ctx.callFunction(name, callArgs.map(fromNativeLessValue));
+      return answer === undefined ? undefined : toNativeLessValue(answer);
+    },
+    currentFileInfo: ctx.currentFileInfo,
+    log: record => ctx.log(record),
+    markImportant: () => ctx.markImportant()
+  });
+  // A synchronous bridge keeps the result synchronous, which is what lets a
+  // plugin value be read from a guard condition.
   return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
     ? Promise.resolve(result).then(fromNativeLessValue)
     : fromNativeLessValue(result);
@@ -159,8 +212,26 @@ function nativeLessFn(name: string, fn: NativeLessFunction): Fn {
   });
 }
 
+/**
+ * A `@plugin` function's value-domain façade. It is never invoked through this
+ * body — `invokeRawFunction` always claims it first, because the body has no way
+ * to supply the live-frame capabilities the plugin needs. Reaching here means
+ * the host seam was bypassed, which is a wiring bug, not a plugin fault.
+ */
+function contextualLessFn(name: string): Fn {
+  return defineFunction(name.toLowerCase(), {
+    variadic: true,
+    params: [],
+    body: () => {
+      throw new Error(
+        `Less @plugin function "${name}" needs the plugin invocation seam; it cannot run through plain function dispatch.`
+      );
+    }
+  });
+}
+
 type LoadedPluginModule = {
-  readonly functions?: Record<string, NativeLessFunction>;
+  readonly functions?: Record<string, ContextualPluginFunction>;
 };
 
 function isLoadedPluginModule(value: unknown): value is LoadedPluginModule {
@@ -374,9 +445,16 @@ export class LessPlugin extends AbstractPlugin {
     if (!host) {
       const fns: Fn[] = [];
       const nativeFns = new WeakMap<Fn, NativeLessFunction>();
+      const contextualFns = new WeakMap<Fn, ContextualPluginFunction>();
       const addNativeFn = (name: string, fn: NativeLessFunction): Fn => {
         const adapted = nativeLessFn(name, fn);
         nativeFns.set(adapted, fn);
+        fns.push(adapted);
+        return adapted;
+      };
+      const addContextualFn = (name: string, fn: ContextualPluginFunction): Fn => {
+        const adapted = contextualLessFn(name);
+        contextualFns.set(adapted, fn);
         fns.push(adapted);
         return adapted;
       };
@@ -415,9 +493,13 @@ export class LessPlugin extends AbstractPlugin {
           if (!functions) {
             return [];
           }
-          return Object.entries(functions).map(([name, fn]) => addNativeFn(name, fn));
+          return Object.entries(functions).map(([name, fn]) => addContextualFn(name, fn));
         },
-        invokeRawFunction: (fn, args) => {
+        invokeRawFunction: (fn, args, ctx) => {
+          const contextual = contextualFns.get(fn);
+          if (contextual) {
+            return invokeContextualPluginFunction(contextual, args, ctx);
+          }
           const native = nativeFns.get(fn);
           return native ? invokeNativeLessFunction(native, args) : undefined;
         }

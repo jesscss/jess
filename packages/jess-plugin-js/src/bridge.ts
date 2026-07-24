@@ -5,7 +5,8 @@ import {
   makeKeyword,
   makeList,
   makeQuoted,
-  RGB,
+  sniffLiteral,
+  HEX,
   type PluginDetachedRuleset,
   type ValueGroup,
   type ValueObj
@@ -152,11 +153,18 @@ export function encodeBridgeValue(value: unknown): unknown {
 
 function decodeValue(value: JsBridgeValue): ValueGroup {
   switch (value.kind) {
-    case 'scalar': return makeKeyword(String(value.value));
+    case 'scalar': return typeof value.value === 'number' ? makeDimension(value.value) : sniffLiteral(String(value.value));
     case 'dimension': return makeDimension(value.value, value.unit ?? '');
-    case 'color': return makeColorRgb(value.rgb, value.alpha ?? 1, RGB);
+    // less.js renders a plugin-built colour as hex (`#b8daff`), not `rgb(...)`;
+    // matching that keeps the bytes Less-shaped and keeps the value sniffable as
+    // a colour when it later travels through a byte lane.
+    case 'color': return makeColorRgb(value.rgb, value.alpha ?? 1, HEX);
     case 'quoted': return makeQuoted(value.value, value.quote ?? '"', value.escaped === true);
-    case 'anonymous': return makeKeyword(value.value);
+    // A Less `Anonymous`/`Keyword` result is BYTES. Sniffing them back into a
+    // typed literal is what lets `darken(theme-color(primary), 15%)` see a
+    // colour instead of an opaque keyword — the same materialization the engine
+    // performs on any other computed byte string.
+    case 'anonymous': return sniffLiteral(value.value);
     case 'expression': return value.items.map(decodeValue);
     case 'list': return makeList(value.items.map(decodeValue), value.separator === ';' ? ',' : value.separator);
     case 'mixin': return makeKeyword('');

@@ -4,10 +4,31 @@ import {
 } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { decodeBridgeValue, encodeBridgeArgs } from './bridge.js';
+import { decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
+
+/**
+ * A failure raised BY a `@plugin` script (its own `throw`, or a shim member it
+ * cannot use), as distinct from a value the engine simply could not compute.
+ * The distinction is what lets the compiler report a plugin fault loudly and
+ * attributably instead of preserving the call verbatim.
+ */
+export class PluginFunctionError extends Error {
+  readonly functionName: string;
+  readonly pluginStack: string | undefined;
+  readonly originalName: string;
+
+  constructor(functionName: string, reason: string, pluginStack?: string, originalName = 'Error') {
+    super(`Less @plugin function "${functionName}" threw: ${reason}`);
+    this.name = 'PluginFunctionError';
+    this.functionName = functionName;
+    this.pluginStack = pluginStack;
+    this.originalName = originalName;
+  }
+}
 
 /**
  * Child-process stdio streams are typed as bare `Writable`/`Readable`, which do
@@ -139,6 +160,13 @@ const isFnsPath = (importPath: string): boolean => {
   );
 };
 
+/** `EAGAIN` on a non-blocking FIFO means "no reply yet", not a failure. */
+const isRetryableRead = (error: unknown): boolean =>
+  typeof error === 'object'
+  && error !== null
+  && 'code' in error
+  && error.code === 'EAGAIN';
+
 const isJsonValue = (value: unknown) => {
   try {
     JSON.stringify(value);
@@ -163,11 +191,67 @@ type BrokerResponse = {
   reason?: string;
 };
 
+/**
+ * One scope/built-in fact resolved on the HOST and handed to the sandbox so a
+ * synchronous Less-4 plugin body can read it. See {@link PluginCallCapabilities}.
+ */
+export type PluginCallFacts = {
+  vars: Record<string, { value: unknown; important?: boolean } | null>;
+  calls: Record<string, unknown>;
+  fileInfo: { filename: string; entryPath: string } | null;
+};
+
+type PluginFactNeed =
+  | { kind: 'variable'; name: string }
+  | { kind: 'call'; name: string; args: unknown[]; key: string };
+
+export type PluginLogRecord = { level: 'warn' | 'error' | 'info' | 'debug'; message: string };
+
+/**
+ * The compiler-side capabilities a legacy `@plugin` function body needs. The
+ * dialect adapter supplies these bound to the LIVE evaluation frame of the call
+ * site; the sandbox reaches them only through the resolve-and-replay protocol,
+ * never as a live object.
+ */
+export interface PluginCallCapabilities {
+  /** Resolve `@name` at the call site. `null` means "no such variable". */
+  lookupVariable?(name: string): { value: unknown; important?: boolean } | null;
+  /** Evaluate a built-in function (`less.functions.functionRegistry.get(...)`). */
+  callFunction?(name: string, args: unknown[]): unknown;
+  /** The file/entry pair a plugin reads through `this.currentFileInfo`. */
+  currentFileInfo?: { filename: string; entryPath: string };
+  /** Records a diagnostic emitted by the plugin through `less.logger`. */
+  log?(record: PluginLogRecord): void;
+  /** Propagates `!important` picked up while resolving a variable. */
+  markImportant?(): void;
+}
+
+/** A `@plugin` function bound to the live call-site capabilities. */
+export type ContextualPluginFunction = (
+  args: readonly unknown[],
+  capabilities: PluginCallCapabilities
+) => unknown | Promise<unknown>;
+
+/**
+ * Ceiling on resolve-and-replay rounds for a single call. Each round satisfies
+ * exactly one fact, so this also bounds a pathological plugin that asks for an
+ * unbounded number of distinct variables.
+ */
+const MAX_FACT_ROUNDS = 64;
+
 type RpcRequest =
   | { id: number; type: 'load'; modulePath: string }
   | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
   | { id: number; type: 'loadLessPlugin'; modulePath: string; options: string | null }
-  | { id: number; type: 'invokeLessPluginFunction'; modulePath: string; options: string | null; functionName: string; args: unknown[] };
+  | {
+    id: number;
+    type: 'invokeLessPluginFunction';
+    modulePath: string;
+    options: string | null;
+    functionName: string;
+    args: unknown[];
+    facts: PluginCallFacts;
+  };
 
 type RpcResult =
   | {
@@ -176,8 +260,19 @@ type RpcResult =
     exports?: Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>;
     functions?: string[];
     value?: unknown;
+    logs?: PluginLogRecord[];
+    important?: boolean;
   }
-  | { id: number; ok: false; error: string };
+  | {
+    id: number;
+    ok: false;
+    /** Present when the sandbox paused for one unresolved scope/built-in fact. */
+    need?: PluginFactNeed;
+    error?: string;
+    errorName?: string;
+    stack?: string;
+    logs?: PluginLogRecord[];
+  };
 
 type RuntimeState =
   | { status: 'idle' }
@@ -205,6 +300,30 @@ export class JsPlugin extends AbstractPlugin {
   }>();
 
   private idleTimer: NodeJS.Timeout | undefined;
+
+  /**
+   * Variable names each legacy plugin function has been observed to read,
+   * keyed by module+options+function. Prefetching them turns the steady-state
+   * call into a single round trip instead of one round trip per read.
+   */
+  private readonly factMemo = new Map<string, Set<string>>();
+
+  /**
+   * The synchronous request channel: a FIFO pair the host writes requests to and
+   * blocks on for replies. Present only where POSIX FIFOs exist.
+   */
+  private syncChannel: {
+    readonly dir: string;
+    readonly requestPath: string;
+    readonly responsePath: string;
+    readonly requestFd: number;
+    readonly responseFd: number;
+  } | undefined;
+
+  /** Scratch buffers for the synchronous channel; reused across calls. */
+  private readonly syncReadBuffer = Buffer.alloc(1 << 16);
+  private syncPending = '';
+  private readonly syncSleeper = new Int32Array(new SharedArrayBuffer(4));
 
   constructor(public opts: JsPluginOptions = {}) {
     super();
@@ -312,7 +431,20 @@ export class JsPlugin extends AbstractPlugin {
     if (jsReadRoot && isPathInside(requestedPath, jsReadRoot)) {
       return true;
     }
+    if (this.isSyncChannelPath(value)) {
+      return true;
+    }
     return requestedPath.includes(`${path.sep}node_modules${path.sep}`);
+  }
+
+  /** True only for the two FIFOs this host created for the synchronous channel. */
+  private isSyncChannelPath(value: string | null): boolean {
+    const normalized = normalizePermissionPath(value);
+    if (!normalized || !this.syncChannel) {
+      return false;
+    }
+    const resolved = path.resolve(normalized);
+    return resolved === this.syncChannel.requestPath || resolved === this.syncChannel.responsePath;
   }
 
   private isNetAllowed(value: string | null): boolean {
@@ -345,11 +477,16 @@ export class JsPlugin extends AbstractPlugin {
         return this.isNetAllowed(request.value)
           ? { id: request.id, result: 'allow' }
           : deny('Network access denied by Jess policy.');
+      case 'write':
+        // The only writable path is the worker's own reply FIFO, which the host
+        // created and owns. Everything else stays denied.
+        return this.isSyncChannelPath(request.value)
+          ? { id: request.id, result: 'allow' }
+          : deny('write permission denied by Jess policy.');
       case 'env':
       case 'run':
       case 'ffi':
       case 'sys':
-      case 'write':
         return deny(`${request.permission} permission denied by Jess policy.`);
       default:
         return deny(`Permission "${request.permission}" denied by Jess policy.`);
@@ -411,9 +548,16 @@ export class JsPlugin extends AbstractPlugin {
       ? compiledWorkerPath
       : sourceWorkerPath;
     const runtimeApi = this.opts.runtimeApi ?? 'module';
+    const sync = this.syncChannel;
     const child = spawn(
       denoCommand,
-      ['run', '--no-prompt', workerScriptPath, `--runtime-api=${runtimeApi}`],
+      [
+        'run',
+        '--no-prompt',
+        workerScriptPath,
+        `--runtime-api=${runtimeApi}`,
+        ...(sync ? [`--sync-req=${sync.requestPath}`, `--sync-res=${sync.responsePath}`] : [])
+      ],
       {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
@@ -490,8 +634,52 @@ export class JsPlugin extends AbstractPlugin {
     });
   }
 
+  /**
+   * Creates the FIFO pair backing the synchronous channel. A legacy `@plugin`
+   * function must be callable from a synchronous position (a guard condition,
+   * a mixin pattern), which an async stdio round trip cannot serve. FIFOs are
+   * POSIX-only; elsewhere the channel stays absent and calls fall back to the
+   * async path.
+   */
+  private createSyncChannel(): void {
+    if (process.platform === 'win32') {
+      return;
+    }
+    try {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-sync-'));
+      const requestPath = path.join(dir, 'req');
+      const responsePath = path.join(dir, 'res');
+      // `mkfifo` is POSIX-standard and needs no privileges; a failure here just
+      // means the synchronous channel is unavailable.
+      spawnSync('mkfifo', [requestPath, responsePath], { stdio: 'ignore' });
+      if (!fs.existsSync(requestPath) || !fs.existsSync(responsePath)) {
+        return;
+      }
+      // Both ends are opened HERE, before the worker spawns. Opening a FIFO
+      // O_RDWR never blocks, and holding both ends means the worker's own
+      // `open` never waits for a peer — otherwise it would stall before its
+      // stdin loop ever started.
+      const flags = fs.constants.O_RDWR | fs.constants.O_NONBLOCK;
+      this.syncChannel = {
+        dir,
+        requestPath,
+        responsePath,
+        requestFd: fs.openSync(requestPath, flags),
+        responseFd: fs.openSync(responsePath, flags)
+      };
+    } catch {
+      this.syncChannel = undefined;
+    }
+  }
+
+  /** True when a legacy plugin call can be served without awaiting. */
+  get supportsSynchronousPluginCalls(): boolean {
+    return this.syncChannel !== undefined;
+  }
+
   private async startRuntime(): Promise<void> {
     this.ensureRuntimeAvailable();
+    this.createSyncChannel();
     const socketPath = await this.startBroker();
     try {
       await this.startWorker(socketPath);
@@ -547,11 +735,18 @@ export class JsPlugin extends AbstractPlugin {
       | { type: 'load'; modulePath: string }
       | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
       | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
-      | { type: 'invokeLessPluginFunction'; modulePath: string; options: string | null; functionName: string; args: unknown[] }
+      | {
+        type: 'invokeLessPluginFunction';
+        modulePath: string;
+        options: string | null;
+        functionName: string;
+        args: unknown[];
+        facts: PluginCallFacts;
+      }
   ): Promise<RpcResult> {
     await this.ensureRuntime();
     this.clearIdleTimer();
-    if (!this.worker || !this.worker.stdin.writable) {
+    if (!this.worker?.stdin.writable) {
       throw new Error('Deno worker is not available.');
     }
     const id = this.nextRequestId++;
@@ -564,6 +759,88 @@ export class JsPlugin extends AbstractPlugin {
       this.pending.set(id, { resolve, reject, timeout });
       this.worker!.stdin.write(`${JSON.stringify(payload)}\n`);
     });
+  }
+
+  /**
+   * Issues one request on the synchronous channel and BLOCKS until the reply
+   * arrives. The FIFOs are opened non-blocking so a dead worker can never wedge
+   * the compiler: the read spins briefly (a reply typically lands in tens of
+   * microseconds) and then sleeps in 1 ms steps until the deadline.
+   */
+  private callWorkerSync(request: Omit<Extract<RpcRequest, { type: 'invokeLessPluginFunction' }>, 'id'>): RpcResult {
+    const channel = this.syncChannel;
+    if (!channel) {
+      throw new Error('The synchronous plugin channel is not available on this platform.');
+    }
+    if (channel.requestFd === undefined || channel.responseFd === undefined) {
+      throw new Error('The synchronous plugin channel is not open.');
+    }
+    const id = this.nextRequestId++;
+    const payload: RpcRequest = { ...request, id };
+    fs.writeSync(channel.requestFd, `${JSON.stringify(payload)}\n`);
+
+    const deadline = Date.now() + REQUEST_TIMEOUT_MS;
+    let spins = 0;
+    for (;;) {
+      const newline = this.syncPending.indexOf('\n');
+      if (newline >= 0) {
+        const line = this.syncPending.slice(0, newline).trim();
+        this.syncPending = this.syncPending.slice(newline + 1);
+        if (line) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; the id is checked below
+          const parsed = JSON.parse(line) as RpcResult;
+          if (parsed.id === id) {
+            return parsed;
+          }
+        }
+        continue;
+      }
+      let read = 0;
+      try {
+        read = fs.readSync(channel.responseFd, this.syncReadBuffer, 0, this.syncReadBuffer.length, null);
+      } catch (err) {
+        // A non-blocking FIFO with no data yet reports EAGAIN; anything else is
+        // a real I/O failure and must not be swallowed into a spin.
+        if (!isRetryableRead(err)) {
+          throw err;
+        }
+        read = 0;
+      }
+      if (read > 0) {
+        this.syncPending += this.syncReadBuffer.subarray(0, read).toString('utf8');
+        continue;
+      }
+      if (Date.now() > deadline) {
+        throw new Error('Timed out waiting for a synchronous Deno worker response.');
+      }
+      spins++;
+      if (spins > 256) {
+        Atomics.wait(this.syncSleeper, 0, 0, 1);
+      }
+    }
+  }
+
+  private closeSyncChannel(): void {
+    const channel = this.syncChannel;
+    if (!channel) {
+      return;
+    }
+    for (const fd of [channel.requestFd, channel.responseFd]) {
+      if (fd !== undefined) {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    try {
+      fs.rmSync(channel.dir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+    this.syncChannel = undefined;
+    this.syncPending = '';
   }
 
   private shutdown() {
@@ -590,6 +867,7 @@ export class JsPlugin extends AbstractPlugin {
       }
     }
     this.brokerSocketPath = undefined;
+    this.closeSyncChannel();
   }
 
   dispose() {
@@ -667,7 +945,7 @@ export class JsPlugin extends AbstractPlugin {
    * @deprecated Less `@plugin` is deprecated. Prefer `@-from` for
    * ESM-style script imports or `@-use` for Sass-module-style namespace imports.
    */
-  async importLessPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
+  async importLessPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
     const ext = path.extname(absoluteFilePath);
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import Less plugin "${absoluteFilePath}"`);
@@ -677,29 +955,134 @@ export class JsPlugin extends AbstractPlugin {
     const modulePath = path.resolve(absoluteFilePath);
     const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath, options });
     if (!loadResult.ok) {
-      throw new Error(loadResult.error);
+      throw new PluginFunctionError(path.basename(modulePath), loadResult.error ?? 'an unknown sandbox failure', loadResult.stack);
     }
-    const functions: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+    const functions: Record<string, ContextualPluginFunction> = {};
     for (const functionName of loadResult.functions ?? []) {
-      functions[functionName] = async (...args: unknown[]) => {
-        const invokeResult = await this.callWorker({
-          type: 'invokeLessPluginFunction',
-          modulePath,
-          options,
-          functionName,
-          args: encodeBridgeArgs(args)
-        });
-        if (!invokeResult.ok) {
-          throw new Error(invokeResult.error);
-        }
-        return decodeBridgeValue(invokeResult.value);
-      };
+      functions[functionName] = (args, capabilities) =>
+        this.invokePluginFunction(modulePath, options, functionName, args, capabilities);
     }
     return { functions };
   }
 
+  /**
+   * Runs one legacy `@plugin` function, resolving the scope/built-in facts its
+   * body reads. The sandbox reports one unmet fact at a time; the host answers
+   * it from the LIVE call-site capabilities and replays. The names a function
+   * asked for are remembered per function, so steady-state calls ship the facts
+   * up front and complete in a single round trip.
+   */
+  private invokePluginFunction(
+    modulePath: string,
+    options: string | null,
+    functionName: string,
+    args: readonly unknown[],
+    capabilities: PluginCallCapabilities
+  ): unknown | Promise<unknown> {
+    const memoKey = `${modulePath} ${options ?? ''} ${functionName}`;
+    const known = this.factMemo.get(memoKey) ?? new Set<string>();
+    const facts: PluginCallFacts = {
+      vars: {},
+      calls: {},
+      fileInfo: capabilities.currentFileInfo ?? null
+    };
+    for (const name of known) {
+      facts.vars[name] = this.resolveVariableFact(name, capabilities);
+    }
+    const request = {
+      type: 'invokeLessPluginFunction' as const,
+      modulePath,
+      options,
+      functionName,
+      args: encodeBridgeArgs([...args]),
+      facts
+    };
+
+    /**
+     * Folds one reply. Returns the decoded value, or `undefined` to signal that
+     * `facts` has been extended and the call must be replayed.
+     */
+    const settle = (result: RpcResult): { value: unknown } | undefined => {
+      for (const record of result.logs ?? []) {
+        capabilities.log?.(record);
+      }
+      if (result.ok) {
+        if (result.important) {
+          capabilities.markImportant?.();
+        }
+        return { value: decodeBridgeValue(result.value) };
+      }
+      if (!result.need) {
+        throw new PluginFunctionError(
+          functionName,
+          result.error ?? 'an unknown sandbox failure',
+          result.stack,
+          result.errorName
+        );
+      }
+      if (result.need.kind === 'variable') {
+        const name = result.need.name;
+        facts.vars[name] = this.resolveVariableFact(name, capabilities);
+        known.add(name);
+        this.factMemo.set(memoKey, known);
+        return undefined;
+      }
+      facts.calls[result.need.key] = this.resolveCallFact(result.need, capabilities);
+      return undefined;
+    };
+
+    const exhausted = () => new PluginFunctionError(
+      functionName,
+      `resolving its scope reads did not settle after ${MAX_FACT_ROUNDS} rounds.`
+    );
+
+    // A Less 4 plugin function is synchronous, and its result may be consumed in
+    // a synchronous position (a guard condition, a mixin pattern). Serve it on
+    // the blocking channel when one exists, so the value never becomes awaitable.
+    if (this.syncChannel && this.runtimeState.status === 'ready') {
+      for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
+        const settled = settle(this.callWorkerSync(request));
+        if (settled) {
+          return settled.value;
+        }
+      }
+      throw exhausted();
+    }
+
+    const replay = async (): Promise<unknown> => {
+      for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
+        const settled = settle(await this.callWorker(request));
+        if (settled) {
+          return settled.value;
+        }
+      }
+      throw exhausted();
+    };
+    return replay();
+  }
+
+  private resolveVariableFact(
+    name: string,
+    capabilities: PluginCallCapabilities
+  ): { value: unknown; important?: boolean } | null {
+    const hit = capabilities.lookupVariable?.(name);
+    if (!hit) {
+      return null;
+    }
+    return { value: encodeBridgeValue(hit.value), important: hit.important === true };
+  }
+
+  private resolveCallFact(
+    need: { name: string; args: unknown[] },
+    capabilities: PluginCallCapabilities
+  ): unknown {
+    const decoded = need.args.map(decodeBridgeValue);
+    const answer = capabilities.callFunction?.(need.name, decoded);
+    return answer === undefined ? null : encodeBridgeValue(answer);
+  }
+
   /** Context-facing executable-plugin capability used by the direct AST path. */
-  async importPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
+  async importPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
     return this.importLessPlugin(absoluteFilePath, options);
   }
 }
