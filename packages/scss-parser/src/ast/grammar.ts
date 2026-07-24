@@ -1645,13 +1645,24 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // check. The `@import` arm stays ahead of the cluster because its authored
   // order there predates the cluster; keeping it out preserves precedence.
   const directScssNestedAtStatement = choice(g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf);
-  const directScssNestedBodyPrefix = choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, directScssNestedAtStatement);
+  // The `@`-led cluster is tried LAST in every body, after `Rule`. Every cluster
+  // arm opens with a literal `@` at-keyword, so it is disjoint from `Rule` (a
+  // selector never opens with `@`), from `@keyframes`/`@extend` (distinct
+  // at-keywords with no cluster arm), and from every prefix arm (`Declaration`,
+  // `StaticNestedProperty`, `VarDeclaration`, `Comment` never open with `@`, and
+  // `Import`'s `@use`/`@forward`/`@import` are distinct at-keywords). Because no
+  // input can match both the cluster and any arm ahead of it, moving it last is
+  // firstMatch-order-preserving (byte-identical) while letting the common
+  // non-`@` statements — ordinary rules and `&`-selectors, the bulk of a
+  // stylesheet — reach `Rule` without first walking all thirteen at-rule
+  // recognizers on a doomed speculation.
+  const directScssNestedBodyPrefix = choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, g.DirectScssStaticNestedProperty, g.DirectScssDeclaration);
   // Nested body ending in `Rule` (mixin/each/for/nested-scope bodies).
-  const directScssNestedBody = many(choice(directScssNestedBodyPrefix, g.DirectScssRule));
+  const directScssNestedBody = many(choice(directScssNestedBodyPrefix, g.DirectScssRule, directScssNestedAtStatement));
   // Nested bubbling at-rule bodies additionally accept `@keyframes` before `Rule`.
-  const directScssNestedKeyframesBody = many(choice(directScssNestedBodyPrefix, g.DirectScssKeyframes, g.DirectScssRule));
+  const directScssNestedKeyframesBody = many(choice(directScssNestedBodyPrefix, g.DirectScssKeyframes, g.DirectScssRule, directScssNestedAtStatement));
   // The ruleset body adds one extra arm (`DirectScssExtend`) before `Rule`.
-  const directScssRuleBody = many(choice(directScssNestedBodyPrefix, g.DirectScssExtend, g.DirectScssRule));
+  const directScssRuleBody = many(choice(directScssNestedBodyPrefix, g.DirectScssExtend, g.DirectScssRule, directScssNestedAtStatement));
   // Statement-level bubbling at-rule bodies (media/supports/container and the
   // starting-style/layer variant) each list a fixed ordered arm set shared
   // across their own arms; hoist each distinct signature to one combinator.
