@@ -9,8 +9,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
 import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
-import { any, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -25,8 +25,13 @@ type JessAstRules = {
   JessAstDocument: Combinator<Stylesheet>;
   DirectJessComment: Combinator<Comment>;
   DirectJessVarDeclaration: Combinator<VariableDeclaration>;
+  DirectJessValueBlockDeclaration: Combinator<VariableDeclaration>;
+  DirectJessBlockLambda: Combinator<AnonymousMixin>;
+  DirectJessExprLambda: Combinator<AnonymousMixin>;
+  DirectJessValueBlock: Combinator<ValueNode>;
   DirectJessVarReference: Combinator<VariableReference>;
   DirectJessReferenceTail: Combinator<JessReferenceTail>;
+  DirectJessReferenceCallTail: Combinator<JessReferenceTail>;
   DirectJessDollarValue: Combinator<ValueNode>;
   DirectJessDollarInterp: Combinator<Interpolation>;
   DirectJessInterpolatedValue: Combinator<Interpolation>;
@@ -636,6 +641,22 @@ function interpolationFromChildren(
   return interpolation([{ ref: propertyReference(text, tokenSource(children)), unquote: true }]);
 }
 
+// The authored-ish source of one reference-call argument, used only to rebuild a
+// `Reference.raw` fallback string. It never feeds recognition, and it never
+// throws: a value with no direct spelling contributes nothing rather than
+// failing the parse.
+function referenceArgSource(value: ValueSlot): string {
+  if (Array.isArray(value)) {
+    return value.map(referenceArgSource).join(' ');
+  }
+  switch (value.type) {
+    case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
+    case 'VariableReference': return `$${value.name}`;
+    case 'Reference': case 'PropertyReference': return value.raw;
+    default: return '';
+  }
+}
+
 function tokenSource(children: readonly unknown[]): string {
   return children.map(requireToken).map(token => token.value).join('');
 }
@@ -921,6 +942,37 @@ function reduceGuardOr(children: readonly unknown[]): GuardNode {
     result = { g: 'or', left: result, right: requireGuardNode(children[index]) };
   }
   return result;
+}
+function reduceVarDeclaration(children: readonly unknown[]): VariableDeclaration {
+  const operatorIndex = children.findIndex(child => isToken(child)
+    && (child.value === ':' || child.value === '?:' || child.value === ':='));
+  if (operatorIndex < 1) {
+    throw new TypeError('Direct Jess variable declaration lost its assignment operator.');
+  }
+  const operator = requireToken(children[operatorIndex]).value;
+  const lookup = operatorIndex === 3 ? 'scoped' as const : 'live' as const;
+  const write = operator === '?:'
+    ? { mode: 'if-absent' as const, lookup }
+    : operator === ':='
+      ? { mode: 'reassign' as const, lookup }
+      : { mode: 'declare' as const };
+  return variableDeclaration(
+    requireToken(children[operatorIndex - 1]).value,
+    valueSlot(requireValueSlot(children[operatorIndex + 1])),
+    write
+  );
+}
+// Every block-bodied lambda spelling reduces the same way: an `AnonymousMixin`
+// over the body statements, carrying the declared params. The `params` field is
+// OMITTED for an empty list so the plain `@{ … }` block keeps the monomorphic
+// shape core's value paths already expect.
+function reduceLambda(children: readonly unknown[]): AnonymousMixin {
+  const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
+  if (bodyOpen < 0) {
+    throw new TypeError('Direct Jess AST grammar produced a lambda without a body.');
+  }
+  const params = children.find(Array.isArray) as Param[] | undefined ?? [];
+  return anonymousMixin(collectBodyStatements(children, bodyOpen + 1), params.length > 0 ? params : undefined);
 }
 // Shared selector reducers. The static and dynamic selector families differ only
 // in their recognition arms (static excludes interpolation); the compound,
@@ -1779,6 +1831,29 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       }
     )
   );
+  // `(args)` — a CALL step on a variable-held value: `$f(1, 2)`, `$f($b: 2)`.
+  // It reuses the mixin argument production verbatim, so a lambda call binds
+  // positionally, by name, and against defaults through the ONE binder a named
+  // mixin call already uses. It is deliberately NOT part of the shared
+  // `DirectJessReferenceTail`: a `$if`/guard condition reads member ACCESS, not
+  // dispatch, and `$type.*()` stays mixin-guard syntax rather than becoming an
+  // ordinary condition call.
+  const DirectJessReferenceCallTail = node<JessReferenceTail>(
+    'DirectJessReferenceCallTail',
+    noTrivia(sequence(
+      literal('('),
+      parser({ trivia: whitespace }, optional(sequence(g.DirectJessMixinCallArg, many(sequence(literal(','), g.DirectJessMixinCallArg))))),
+      optional(rawWhitespace),
+      literal(')')
+    )),
+    (children) => {
+      const args = children.filter(isJessMixinCallArgument);
+      return {
+        step: { type: 'Call', args },
+        src: `(${args.map(arg => (arg.name === undefined ? '' : `$${arg.name}: `) + referenceArgSource(arg.value)).join(', ')})`
+      };
+    }
+  );
   // Left-factored `$`/`$$`+name so the ubiquitous dollar value is parsed ONCE.
   // The leading `DirectJessVarReference` is shared across all four continuations
   // — plain reference, accessor-tail chain, unwrapped `/` slash list, and
@@ -1805,7 +1880,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
           sequence(many(sequence(jessUnwrappedProductOperator, g.DirectJessExpressionAtom)), oneOrMore(sequence(jessUnwrappedSumOperator, g.DirectJessUnwrappedProductRest)))
         ),
         // Accessor-tail chain (`.name`, `[key]`).
-        oneOrMore(g.DirectJessReferenceTail)
+        oneOrMore(choice(g.DirectJessReferenceCallTail, g.DirectJessReferenceTail))
       ))
     )),
     (children) => {
@@ -1883,16 +1958,22 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // parseman tries it first on any `$`, matching references without first
   // entering (and rolling back) the `$(` / `$[` node frames. `$(`/`$[` cost one
   // fast VarReference reject instead.
+  // Every value atom EXCEPT a brace-delimited block. A block is self-terminating,
+  // which is exactly why it may only ever be a value's FIRST atom: once a value
+  // has started, a following `{ … }` would have no unambiguous end for the value
+  // that precedes it. Keeping the block out of the continuation set is what makes
+  // `$foo: bar { … }` a positioned parse error instead of a silent two-value read.
+  const directJessNonBlockValueAtom = choice(g.DirectJessDollarValue, g.DirectJessExprLambda, g.DirectJessInterpolatedValue, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessCustomPropertyValue, g.DirectJessKeyword);
   const DirectJessValueAtom = node<ValueNode>(
     'DirectJessValueAtom',
-    choice(g.DirectJessCollection, g.DirectJessDollarValue, g.DirectJessInterpolatedValue, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessCustomPropertyValue, g.DirectJessKeyword),
+    choice(g.DirectJessCollection, directJessNonBlockValueAtom),
     children => requireValueNode(children[0])
   );
   // The authored space-adjacency run: the value atoms between two slash
   // boundaries, or the whole term when the value carries no slash.
   const DirectJessValueSpaceGroup = node<ValueSlot>(
     'DirectJessValueSpaceGroup',
-    noTrivia(sequence(g.DirectJessValueAtom, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), g.DirectJessValueAtom)))),
+    noTrivia(sequence(g.DirectJessValueAtom, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), directJessNonBlockValueAtom)))),
     (children, fields) => {
       const values = children.filter(isValueSlotValue);
       if (values.length === 1) {
@@ -2281,7 +2362,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // trying Rule first means a non-`@` statement never enters (and rolls back) the
   // at-rule recognizers — only genuine `@` statements reach the cluster.
   const directJessAtBlockStatement = choice(
-    g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessVarDeclaration, g.DirectJessDeclaration,
+    g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration,
     g.DirectJessMixinDef, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend,
     g.DirectJessFor, g.DirectJessIf,
     g.DirectJessRule,
@@ -2290,7 +2371,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   // Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
   // 15-rule choice with no bare `;` or `$extend` arm.
-  const directJessNestedBodyStatement = choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement);
+  const directJessNestedBodyStatement = choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement);
   const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
     'DirectJessSupportsAtRuleBlock',
     sequence(
@@ -2419,37 +2500,32 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     ),
     children => atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), requireStatements(children.slice(3, -1)))
   );
+  // The `$name` + assignment-operator head shared by the ordinary and the
+  // block-valued variable declaration. Both reduce with `reduceVarDeclaration`,
+  // which reads the operator by position, so the head must stay one shape.
+  const directJessAssignHead = choice(
+    noTrivia(sequence(literal('$'), literal('$'), jessDollarName, literal('?:'))),
+    noTrivia(sequence(literal('$'), jessDollarName, literal('?:'))),
+    sequence(noTrivia(sequence(literal('$'), literal('$'), jessDollarName)), choice(literal(':='), literal(':'))),
+    sequence(noTrivia(sequence(literal('$'), jessDollarName)), choice(literal(':='), literal(':')))
+  );
   const DirectJessVarDeclaration = node<VariableDeclaration>(
     'DirectJessVarDeclaration',
-    sequence(
-      choice(
-        noTrivia(sequence(literal('$'), literal('$'), jessDollarName, literal('?:'))),
-        noTrivia(sequence(literal('$'), jessDollarName, literal('?:'))),
-        sequence(noTrivia(sequence(literal('$'), literal('$'), jessDollarName)), choice(literal(':='), literal(':'))),
-        sequence(noTrivia(sequence(literal('$'), jessDollarName)), choice(literal(':='), literal(':')))
-      ),
-      g.DirectJessValue,
-      literal(';')
-    ),
-    (children) => {
-      const operatorIndex = children.findIndex(child => isToken(child)
-        && (child.value === ':' || child.value === '?:' || child.value === ':='));
-      if (operatorIndex < 1) {
-        throw new TypeError('Direct Jess variable declaration lost its assignment operator.');
-      }
-      const operator = requireToken(children[operatorIndex]).value;
-      const lookup = operatorIndex === 3 ? 'scoped' as const : 'live' as const;
-      const write = operator === '?:'
-        ? { mode: 'if-absent' as const, lookup }
-        : operator === ':='
-          ? { mode: 'reassign' as const, lookup }
-          : { mode: 'declare' as const };
-      return variableDeclaration(
-        requireToken(children[operatorIndex - 1]).value,
-        valueSlot(requireValueSlot(children[operatorIndex + 1])),
-        write
-      );
-    }
+    sequence(directJessAssignHead, g.DirectJessValue, literal(';')),
+    reduceVarDeclaration
+  );
+  // A block-valued assignment AUTO-TERMINATES at its closing brace: the block is
+  // its own unambiguous end, so `$foo: { … }`, `$foo: @{ … }`, and
+  // `$foo: @() > { … }` need no `;` and whatever follows the brace begins a new
+  // statement. Less has the same rule for a detached ruleset bound to a variable.
+  // The block must be the WHOLE value — a value can never precede it (there is no
+  // `DirectJessValueBlock` arm in the space-group continuation), because that is
+  // exactly the case where the value's end would be ambiguous. Compose instead:
+  // bind the block first (`$foo: {}`), then use it (`$bar: $foo bar;`).
+  const DirectJessValueBlockDeclaration = node<VariableDeclaration>(
+    'DirectJessValueBlockDeclaration',
+    sequence(directJessAssignHead, g.DirectJessValueBlock, optional(literal(';'))),
+    reduceVarDeclaration
   );
   // Priority is a Declaration field in the canonical AST, so this is ordinary
   // direct grammar construction rather than a Jess-specific compatibility path.
@@ -2754,6 +2830,57 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       );
     }
   );
+  // The lambda parameter list is the SAME production a named mixin declares, but
+  // a lambda literal is reachable from a `noTrivia` value term while a mixin
+  // definition is not. Re-establish the ordinary trivia scope at the reference so
+  // the one shared rule keeps one recognition mode in both positions.
+  const directJessLambdaParams = parser({ trivia: whitespace }, g.DirectJessMixinParams);
+  // A value-position lambda literal. `@(params)` is the same parameter list a
+  // named mixin declares, and `>` is the same "yield one value" marker the mixin
+  // CALL spelling (`$ > name()`) uses: `@(params) > { … }` is a FUNCTION whose
+  // block body yields its `result:` entry, `@(params) { … }` / `@{ … }` is a
+  // plain anonymous mixin whose body is spliced. There is no `$function` node —
+  // this is the same `AnonymousMixin` (with the same `params` shape a `MixinDef`
+  // uses) that an SCSS user `@function` already lowers to, so one core binder and
+  // one `result:` convention serve both dialects.
+  //
+  // Left-factored on the leading `@` and then on `(`, so a `@`-headed value costs
+  // one parameter-list parse rather than one per shape. The block-bodied family
+  // is a SEPARATE rule from the expression-bodied one because only a block
+  // auto-terminates its assignment: `$f: @() > { }` needs no `;`, while
+  // `$f: @() > expr;` does.
+  const DirectJessBlockLambda = node<AnonymousMixin>(
+    'DirectJessBlockLambda',
+    sequence(
+      literal('@'),
+      choice(
+        sequence(directJessLambdaParams, optional(literal('>')), literal('{'), many(directJessNestedBodyStatement), literal('}')),
+        sequence(literal('{'), many(directJessNestedBodyStatement), literal('}'))
+      )
+    ),
+    reduceLambda
+  );
+  // `@(params) > <expr>` — the single-expression body, sugar for a block whose
+  // only statement is `result: <expr>`. Normalizing it here keeps a function
+  // uniformly "an anonymous mixin that assigns `result`", so evaluation never
+  // has to know which spelling produced it.
+  const DirectJessExprLambda = node<AnonymousMixin>(
+    'DirectJessExprLambda',
+    parser({ trivia: whitespace }, sequence(literal('@'), g.DirectJessMixinParams, literal('>'), not(literal('{')), g.DirectJessValue)),
+    (children) => {
+      const params = children.find(Array.isArray) as Param[] | undefined ?? [];
+      const value = children.at(-1);
+      return anonymousMixin([decl('result', requireValueSlot(value))], params.length > 0 ? params : undefined);
+    }
+  );
+  // The value-position `{ … }` block family. A block is the ONLY value that can
+  // terminate an assignment without a `;`, so it has its own rule: everything
+  // that reaches this rule is brace-delimited and self-terminating.
+  const DirectJessValueBlock = node<ValueNode>(
+    'DirectJessValueBlock',
+    choice(g.DirectJessBlockLambda, g.DirectJessCollection),
+    children => requireValueNode(children[0])
+  );
   const DirectJessForName = node<string>(
     'DirectJessForName',
     sequence(literal('$'), jessDollarName),
@@ -2989,7 +3116,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessRule = node<Rule>(
     'DirectJessRule',
-    sequence(g.DirectJessSelector, literal('{'), many(choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement)), literal('}')),
+    sequence(g.DirectJessSelector, literal('{'), many(choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement)), literal('}')),
     (children) => {
       requireExactToken(children[1], '{');
       requireExactToken(children.at(-1), '}');
@@ -3004,8 +3131,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // Compiler directives and variable declarations may precede a CSS import:
       // a `$[...]` import target is a live read and therefore needs its binding
       // activated in source order. CSS imports still cannot appear after a rule.
-      many(choice(g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessVarDeclaration, g.DirectJessCssImport)),
-      many(choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessVarDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessPropertyAtRule, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement))
+      many(choice(g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessCssImport)),
+      many(choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessPropertyAtRule, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement))
     ),
     children => stylesheet(requireStatements(children.flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])))
   );
@@ -3014,8 +3141,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     JessAstDocument,
     DirectJessComment,
     DirectJessVarDeclaration,
+    DirectJessValueBlockDeclaration,
+    DirectJessBlockLambda,
+    DirectJessExprLambda,
+    DirectJessValueBlock,
     DirectJessVarReference,
     DirectJessReferenceTail,
+    DirectJessReferenceCallTail,
     DirectJessDollarValue,
     DirectJessDollarInterp,
     DirectJessExpressionDollarInterp,

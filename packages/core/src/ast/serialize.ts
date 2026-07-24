@@ -2734,13 +2734,18 @@ function declMapFromMixinCall(
   return { byVar, byProp, list, varFrames };
 }
 
-/** The value yielded by a called value-lambda: the FIRST top-level `result:`
- *  declaration in its body (the lowered form of an SCSS `@return`). A `@return`
- *  nested inside a `@if`/`@each` branch is not surfaced here — see the invoke. */
+/** The value yielded by a called value-lambda: the LAST top-level `result:`
+ *  declaration in its body (the lowered form of an SCSS `@return`). A function
+ *  has no early return — it is "a mixin whose final assignment to a property
+ *  named `result` is its value" — so a later `result:` overrides an earlier one,
+ *  exactly as a repeated declaration does everywhere else. A `result:` nested
+ *  inside a `$if`/`@if`/`$for` branch is not surfaced here; only a top-level one
+ *  yields. */
 function lambdaResultValue(body: Statement[]): ValueSlot | undefined {
-  for (const s of body) {
-    if (s.type === 'Declaration' && s.name === 'result') {
-      return s.value;
+  for (let index = body.length - 1; index >= 0; index -= 1) {
+    const statement = body[index]!;
+    if (statement.type === 'Declaration' && statement.name === 'result') {
+      return statement.value;
     }
   }
   return undefined;
@@ -2777,13 +2782,27 @@ function invokeValueLambda(
     }
     return b;
   };
-  const bindings = bindArgs(syntheticDef, call, resolveCaller, resolveDefault);
+  // A lambda is a first-class value: `$twice($inc, 1)` passes `$inc` BY REFERENCE
+  // so the callee can call it, instead of byte-flattening the block to ''. This is
+  // the same substitution a named mixin call already performs on its args.
+  const bindings = bindArgs(
+    syntheticDef,
+    callerFrame ? substituteClosureVarArgs(call, callerFrame) : call,
+    resolveCaller,
+    resolveDefault
+  );
   if (bindings === null) {
-    return null;
+    throw ERR.arity({
+      node: lambda,
+      meta: { callee: 'function', expectedCount: syntheticDef.params.length, gotCount: args.length }
+    });
   }
   const result = lambdaResultValue(lambda.body);
   if (result === undefined) {
-    return null;
+    throw ERR.invalidFunction({
+      node: lambda,
+      meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
+    });
   }
   const activation: Frame = {
     parent: defFrame,
@@ -2827,8 +2846,19 @@ function resolveReferenceResult(
       // the body, yield `result:`. An `AnonymousMixin` WITHOUT a `result:` entry is
       // an ordinary detached ruleset (spliced elsewhere); leave it untouched so its
       // existing value-position behavior is preserved.
+      // `$alias: $fn; $alias(1)` — a variable bound to another variable is still
+      // the same callable. Follow the binding chain before deciding what a call
+      // means, or the call silently becomes a no-op on the reference itself.
+      while (!isValueSlotArray(value) && value.type === 'VariableReference') {
+        const aliased = resolveVarRef(valueFrame, value.name, value.lookup, e);
+        if (!aliased) {
+          break;
+        }
+        value = aliased.value;
+        valueFrame = aliased.frame;
+      }
       if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
-        && lambdaResultValue(value.body) !== undefined) {
+        && (lambdaResultValue(value.body) !== undefined || value.params !== undefined || step.args.length > 0)) {
         const invoked = invokeValueLambda(value, step.args, valueFrame, frame, e);
         if (invoked === null) {
           return null;
