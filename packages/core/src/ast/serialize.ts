@@ -2068,6 +2068,8 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // policy. An operation or typed function argument needs the callable's
       // result, not its authored bytes.
       return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
+    case 'Condition':
+      return makeBool(evalGuard(node.guard, guardDeps(frame, e)));
     case 'Range':
       // Ranges are consumed structurally by `forItems`; a value-position use
       // retains authored range syntax rather than inventing a flattened list.

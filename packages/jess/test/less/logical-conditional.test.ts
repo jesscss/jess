@@ -15,11 +15,13 @@ describe('Less logical / conditional functions', () => {
   a: boolean(not(2 < 1));
   b: boolean(not(2 > 1) and (true));
   c: boolean(not(boolean(true)));
+  f: boolean((2 > 1) = (3 > 2));
 }`);
     expect(css).toBe(`#boolean {
   a: true;
   b: false;
   c: false;
+  f: true;
 }
 `);
   });

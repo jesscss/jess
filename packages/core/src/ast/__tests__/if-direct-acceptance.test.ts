@@ -2,12 +2,39 @@ import { describe, expect, it } from 'vitest';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { atRuleBlock } from '../at-rule.js';
-import { decl, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
+import { condition, decl, dimension, funcCall, ifNode, keyword, mixinCall, mixinDef, stylesheet, rule, variableDeclaration, variableReference } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
 const evaluator = buildEvaluator(makeBuiltinRegistry());
 
 describe('If canonical AST emission', () => {
+  it('evaluates condition values as typed operands for logical function comparisons', () => {
+    const gtLeft = condition({
+      g: 'cmp',
+      op: '>',
+      left: dimension(2),
+      right: dimension(1)
+    }, '(2 > 1)');
+    const gtRight = condition({
+      g: 'cmp',
+      op: '>',
+      left: dimension(3),
+      right: dimension(2)
+    }, '(3 > 2)');
+    const document = stylesheet([
+      rule('.boolean', [
+        decl('value', funcCall('boolean', [condition({
+          g: 'cmp',
+          op: '=',
+          left: gtLeft,
+          right: gtRight
+        }, '(2 > 1) = (3 > 2)')]))
+      ])
+    ]);
+
+    expect(serialize(document, { evaluator }).css).toBe('.boolean {\n  value: true;\n}\n');
+  });
+
   it('evaluates ordered guards left-to-right and emits only the selected branch', () => {
     const document = stylesheet([
       variableDeclaration('theme', keyword('dark'), { mode: 'declare' }),

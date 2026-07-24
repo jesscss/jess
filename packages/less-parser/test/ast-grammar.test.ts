@@ -1397,13 +1397,41 @@ describe('Less AST grammar facts', () => {
   });
 
   it('constructs a comparison condition in a Less function argument', () => {
-    const full = run(lessAstGrammar.LessAstDocument, '#boolean { a: boolean(not(2 < 1)); b: boolean(not(2 > 1) and (true)); c: boolean(not(boolean(true))); }', { trivia: lessAstGrammar.whitespace });
+    const full = run(lessAstGrammar.LessAstDocument, '#boolean { a: boolean(not(2 < 1)); b: boolean(not(2 > 1) and (true)); c: boolean(not(boolean(true))); f: boolean((2 > 1) = (3 > 2)); }', { trivia: lessAstGrammar.whitespace });
     expect(full.ok).toBe(true);
     expect(full.unconsumedFrom).toBeNull();
     const result = run(lessAstGrammar.LessAstDocument, 'x: boolean(not(2 < 1));', { trivia: lessAstGrammar.whitespace });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({ children: [{ value: { args: [{ type: 'Condition', guard: { g: 'not', inner: { g: 'cmp', op: '<' } } }] } }] });
+  });
+
+  it('constructs a Less function condition comparison between parenthesized conditions', () => {
+    const result = run(lessAstGrammar.LessAstDocument, 'x: boolean((2 > 1) = (3 > 2));', { trivia: lessAstGrammar.whitespace });
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      children: [{
+        value: {
+          type: 'FunctionCall',
+          name: 'boolean',
+          args: [{
+            type: 'Condition',
+            guard: {
+              g: 'cmp',
+              op: '=',
+              left: { type: 'Condition', guard: { g: 'cmp', op: '>' } },
+              right: { type: 'Condition', guard: { g: 'cmp', op: '>' } }
+            }
+          }]
+        }
+      }]
+    });
+  });
+
+  it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
+    const result = run(lessAstGrammar.LessAstDocument, 'x: boolean(2 > 1 = 3 > 2);', { trivia: lessAstGrammar.whitespace });
+    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
 
   it('constructs a truth condition in a multi-argument Less function call', () => {

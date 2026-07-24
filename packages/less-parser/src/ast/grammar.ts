@@ -2005,10 +2005,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
         guard = left.guard;
         src = left.src;
       } else {
-        if (right === undefined || left.guard.g !== 'truth' || right.guard.g !== 'truth') {
+        if (right === undefined) {
           throw new TypeError('Direct Less comparison requires value operands.');
         }
-        guard = { g: 'cmp', op: operator, left: left.guard.value, right: right.guard.value };
+        const leftValue = left.guard.g === 'truth' ? left.guard.value : condition(left.guard, left.src);
+        const rightValue = right.guard.g === 'truth' ? right.guard.value : condition(right.guard, right.src);
+        guard = { g: 'cmp', op: operator, left: leftValue, right: rightValue };
         src = `${left.src} ${operator} ${right.src}`;
       }
       const negated = children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not');
