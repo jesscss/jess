@@ -2711,9 +2711,14 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     sequence(noTrivia(sequence(literal('$'), literal('$'), jessDollarName)), choice(literal(':='), literal(':'))),
     sequence(noTrivia(sequence(literal('$'), jessDollarName)), choice(literal(':='), literal(':')))
   );
+  // A variable assignment IS a declaration, so `;` separates it from the next
+  // declaration rather than terminating it (css-syntax-3 §5.4.7) — exactly the
+  // rule `DirectJessDeclaration` already follows. The last declaration in a list
+  // needs no `;`, so the terminator is optional here too; there is no separate
+  // "variable assignment" termination category.
   const DirectJessVarDeclaration = node<VariableDeclaration>(
     'DirectJessVarDeclaration',
-    sequence(directJessAssignHead, g.DirectJessValue, literal(';')),
+    sequence(directJessAssignHead, g.DirectJessValue, optional(literal(';'))),
     reduceVarDeclaration
   );
   // A block-valued assignment AUTO-TERMINATES at its closing brace: the block is
