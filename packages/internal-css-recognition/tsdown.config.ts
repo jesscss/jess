@@ -2,7 +2,7 @@ import { defineConfig } from 'tsdown';
 import parseman from 'parseman/plugin';
 
 export default defineConfig({
-  entry: { recognition: './src/recognition.ts', 'opaque-at-rule': './src/opaque-at-rule.ts' },
+  entry: { recognition: './src/recognition.ts', 'opaque-at-rule': './src/opaque-at-rule.ts', 'pseudo-consts': './src/pseudo-consts.ts' },
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,

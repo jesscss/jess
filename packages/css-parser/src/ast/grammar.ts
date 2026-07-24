@@ -9,6 +9,7 @@ import { balanced, choice, composeLeaf, expect, field, literal, many, noTrivia, 
 import type { Combinator, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
+import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
 import {
   any,
   atRuleBlock,
@@ -75,8 +76,11 @@ type CssAstLocalRules = {
   CssAstAttribute: Combinator<SimpleSelector>;
   CssAstPseudo: Combinator<SimpleToken>;
   CssAstPseudoArgument: Combinator<string>;
+  CssAstOfTypePseudoArgument: Combinator<string>;
   CssAstLeadingDashPseudoArgument: Combinator<string>;
   CssAstTypedNthPseudoArgument: Combinator<string>;
+  CssAstLeadingDashOfTypePseudoArgument: Combinator<string>;
+  CssAstTypedOfTypePseudoArgument: Combinator<string>;
   CssAstLeadingDashRawPseudoArgument: Combinator<string>;
   CssAstNestingSelector: Combinator<SimpleSelector>;
   CssAstProperty: Combinator<string>;
@@ -502,7 +506,11 @@ const calcSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
 const genericFunctionName = regex(/(?!(?:calc)(?=\())-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 // Only the Selectors An+B pseudo families give a leading numeric argument the
 // special An+B meaning. Every other functional pseudo retains its raw argument.
-const nthPseudoNameWithArgument = regex(/nth-(?:last-)?(?:child|of-type)(?=\()/i);
+// The two families diverge on the `of S` tail: `:nth-child`/`:nth-last-child`
+// accept it (Selectors-4 §6.6.2), `:nth-of-type`/`:nth-last-of-type` do not.
+// The `g`-free name recognitions live in the shared `cssAstPseudoSyntax`
+// artifact and are referenced as `g.CssAstSyntaxNthChildName` /
+// `g.CssAstSyntaxNthTypeName`.
 // Public `anyValue` is intentionally permissive. The direct declaration
 // extension needs only its punctuation-run branch: identifier-shaped values
 // already lower through CssAstKeyword, and `#` stays reserved for the strict
@@ -611,7 +619,7 @@ const importTailSquareGroup = sequence(
   }),
   expect(literal(']'), ']')
 );
-export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, rules<CssAstLocalRules>({ trivia: whitespace }, (g) => {
+export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<CssAstLocalRules>({ trivia: whitespace }, (g) => {
   const pseudoRawDoubleQuoted = sequence(literal('"'), g.CssAstSyntaxDoubleQuotedText, literal('"'));
   const pseudoRawSingleQuoted = sequence(literal('\''), g.CssAstSyntaxSingleQuotedText, literal('\''));
   const pseudoRawArgument = scanTo(literal(')'), {
@@ -643,8 +651,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstLeadingDashPseudoArgument',
     parser({ trivia: whitespace }, sequence(
       noTrivia(sequence(literal('-'), g.CssAstSyntaxNth)),
-      optional(sequence(optional(blockComment), regex(/of(?![-\w])/i), g.CssAstSelector)),
-      regex(/(?=\))/)
+      optional(sequence(optional(blockComment), g.CssAstSyntaxOfKeyword, g.CssAstSelector)),
+      g.CssAstSyntaxPseudoCloseAhead
     )),
     (children) => {
       const nth = `-${tokenText(children[1])}`;
@@ -681,8 +689,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstTypedNthPseudoArgument',
     parser({ trivia: whitespace }, sequence(
       g.CssAstSyntaxNth,
-      optional(sequence(optional(blockComment), regex(/of(?![-\w])/i), g.CssAstSelector)),
-      regex(/(?=\))/)
+      optional(sequence(optional(blockComment), g.CssAstSyntaxOfKeyword, g.CssAstSelector)),
+      g.CssAstSyntaxPseudoCloseAhead
     )),
     (children) => {
       const nth = tokenText(children[0]);
@@ -691,12 +699,48 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       return selector === undefined ? nth : `${nth}${comment === undefined ? '' : tokenText(comment)} of ${selectorArgumentText(selector)}`;
     }
   );
+  // `:nth-of-type`/`:nth-last-of-type` accept only a BARE `<An+B>` — Selectors-4
+  // §6.6.2 does not define an `of S` tail for the type-index families. These arms
+  // mirror the child arms above but omit the optional `of <selector>` clause, so
+  // a `... of ...` argument no longer matches here and falls to the raw/reject
+  // path (the CSS-aligned owner decision, §7.1).
+  const CssAstLeadingDashOfTypePseudoArgument = node<string>(
+    'CssAstLeadingDashOfTypePseudoArgument',
+    parser({ trivia: whitespace }, sequence(
+      noTrivia(sequence(literal('-'), g.CssAstSyntaxNth)),
+      g.CssAstSyntaxPseudoCloseAhead
+    )),
+    children => `-${tokenText(children[1])}`
+  );
+  const CssAstTypedOfTypePseudoArgument = node<string>(
+    'CssAstTypedOfTypePseudoArgument',
+    parser({ trivia: whitespace }, sequence(
+      g.CssAstSyntaxNth,
+      g.CssAstSyntaxPseudoCloseAhead
+    )),
+    children => tokenText(children[0])
+  );
   const CssAstPseudoArgument = node<string>(
     'CssAstPseudoArgument',
     choice(
       g.CssAstLeadingDashPseudoArgument,
       g.CssAstLeadingDashRawPseudoArgument,
       g.CssAstTypedNthPseudoArgument,
+      parser({ trivia: interstitialTrivia }, g.CssAstSelector),
+      sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), pseudoRawArgument)
+    ),
+    children => selectorArgumentText(children[0])
+  );
+  // The `:nth-of-type` family's argument: identical to `CssAstPseudoArgument`
+  // except the An+B arms are the bare (no-`of`) variants. Non-An+B fallbacks
+  // (dash-raw, selector, raw) are unchanged, so every argument that does not use
+  // an `of S` tail stays byte-identical.
+  const CssAstOfTypePseudoArgument = node<string>(
+    'CssAstOfTypePseudoArgument',
+    choice(
+      g.CssAstLeadingDashOfTypePseudoArgument,
+      g.CssAstLeadingDashRawPseudoArgument,
+      g.CssAstTypedOfTypePseudoArgument,
       parser({ trivia: interstitialTrivia }, g.CssAstSelector),
       sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), pseudoRawArgument)
     ),
@@ -725,8 +769,9 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     sequence(
       pseudoColon,
       choice(
-        sequence(nthPseudoNameWithArgument, literal('('), g.CssAstPseudoArgument, literal(')')),
-        sequence(not(nthPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
+        sequence(g.CssAstSyntaxNthChildName, literal('('), g.CssAstPseudoArgument, literal(')')),
+        sequence(g.CssAstSyntaxNthTypeName, literal('('), g.CssAstOfTypePseudoArgument, literal(')')),
+        sequence(not(g.CssAstSyntaxNthChildName), not(g.CssAstSyntaxNthTypeName), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
       )
     ),
     (children) => {
@@ -1893,8 +1938,11 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     CssAstAttribute,
     CssAstPseudo,
     CssAstPseudoArgument,
+    CssAstOfTypePseudoArgument,
     CssAstLeadingDashPseudoArgument,
     CssAstTypedNthPseudoArgument,
+    CssAstLeadingDashOfTypePseudoArgument,
+    CssAstTypedOfTypePseudoArgument,
     CssAstLeadingDashRawPseudoArgument,
     CssAstNestingSelector,
     CssAstProperty,
