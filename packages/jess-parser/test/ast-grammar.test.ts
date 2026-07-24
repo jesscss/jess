@@ -2568,14 +2568,58 @@ describe('Jess AST grammar facts', () => {
     for (const source of ['$foo: bar { }', '$foo: bar @() > { }', '$foo: bar @() > { };', '$foo: bar { };']) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
-    // An expression body is not a block, so it still needs its `;`.
-    expect(() => parse('$foo: @() > some-val')).toThrow(SyntaxError);
+    // `;` SEPARATES declarations, so a non-block value that is last in its run
+    // needs no terminator either — the block exception is about a `;` staying
+    // optional when more declarations FOLLOW, not about non-blocks requiring one.
+    expect(() => parse('$foo: @() > some-val')).not.toThrow();
+  });
+
+  it('separates declarations with `;` rather than terminating them', () => {
+    // `;` is a SEPARATOR (css-syntax-3 §5.4.7). A declaration that is last in
+    // its run — before `}`, before EOF, or before something that is not another
+    // declaration — needs no `;`. A variable assignment IS a declaration, so
+    // every case below holds identically for `$c:` and for `color:`.
+    for (const source of [
+      '.a { color: red }',
+      '.a { color: red; background: blue }',
+      '$c: red',
+      '$c: red\n.a { color: $c; }',
+      '$c: red\n@media screen { .a { color: $c; } }',
+      '.a { $c: red }',
+      '$c: red;\n$d: blue',
+      // The block exception: a variable declaration whose SOLE value is a curly
+      // block auto-terminates at `}`, so its `;` is optional. (A CSS property
+      // declaration takes no block value, so the exception cannot arise there.)
+      '$m: { family: serif; }\n.a { color: red; }',
+      '$mx: @() { color: red; }\n.a { $mx(); }',
+      // A trailing separator is allowed and an empty declaration is skipped.
+      '.a { color: red; }',
+      '.a { color: red;; }',
+      '.a { ; }',
+      '.a { ; color: red }'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+    // An unterminated declaration before a NESTED RULE stays invalid — `{`
+    // makes the value's end ambiguous. This holds for `$c:` exactly as it does
+    // for `color:`; it is the one shape a missing separator must not buy.
+    for (const source of ['a { color: red b { x: 1 } }', 'a { $c: red b { x: 1 } }']) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
+    // Two declarations still need the separator BETWEEN them.
+    for (const source of ['.a { color: red background: blue }', '.a { $c: red $d: blue }']) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
+    // Making the separator optional must NOT buy the dropped permissive form:
+    // a value may never precede the block, with OR without a `;`.
+    for (const source of ['$foo: bar { }', '$foo: bar { };', '$foo: bar @() > { }', '$foo: bar @() > { };']) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
   });
 
   it('does not widen the closed direct declaration/value subset', () => {
     for (const source of [
       'color: red;',
-      '$tone: red',
       '$tone: $;',
       '$tone: 17px-1px;',
       '$\\66 oo: blue;',
