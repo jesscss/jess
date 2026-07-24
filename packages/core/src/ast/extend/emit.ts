@@ -555,14 +555,34 @@ export function computeExtends(
    * sub-substitution of the parent compound from being mistaken for a `&`-crossing. */
   const extendedParentHeader = (p: PlanSubject): string[] => {
     const base = flatBySubject.get(p) ?? rawOf(p);
-    const out = base.map(branchText);
     const rawKeys = new Set(rawOf(p).map(branchText));
+    // Partition the extenders whole-matching one of the parent's raw branches into:
+    //  - PARTIAL in-place rewrites of the parent compound (`.replace` →
+    //    `:is(.replace, .rep_ace)`) — the child still textually descends from the
+    //    rewritten parent, so their composed forms EXTEND the descends-from header;
+    //  - EXACT (`!partial`) whole-complex folds — a FOREIGN SPLIT ALIAS: the sibling
+    //    exact extender folds into the parent's FLAT solve but SPLITS to a top-level
+    //    rule carrying only the parent's direct decls, and cannot nest the parent's
+    //    surviving children. Treating it as a header the child descends from silently
+    //    absorbs an exact cross-`&` extender that then has nowhere to nest — so
+    //    exclude these from `base`, keeping such an extender routed to cross().
+    const splitAliases = new Set<string>();
+    const partialAliases: string[] = [];
     for (const inst of reachingOf(p)) {
-      if (inst.partial && rawKeys.has(branchText(inst.target))) {
-        for (const e of composePath(inst.extenderPath)) {
-          out.push(branchText(e));
+      if (!rawKeys.has(branchText(inst.target))) {
+        continue;
+      }
+      for (const e of composePath(inst.extenderPath)) {
+        if (inst.partial) {
+          partialAliases.push(branchText(e));
+        } else {
+          splitAliases.add(branchText(e));
         }
       }
+    }
+    const out = base.map(branchText).filter(t => !splitAliases.has(t));
+    for (const a of partialAliases) {
+      out.push(a);
     }
     return out;
   };

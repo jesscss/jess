@@ -207,4 +207,43 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       + '}\n'
     );
   });
+
+  it('EXACT cross-& extender past a foreign split alias hoists in nested mode (not dropped)', () => {
+    // `.button { color; &:hover { color } } .submit { &:extend(.button); &:hover:extend(.button:hover) {} }`
+    // The sibling EXACT `.submit:extend(.button)` folds `.submit` into `.button`'s FLAT
+    // solve, but that alias is a top-level SPLIT — it does NOT nest `.button`'s children.
+    // The exact cross-`&` extender `.submit:hover` targets the nested `.button:hover` leaf;
+    // treating `.submit` as a header it descends from would silently DROP the extension
+    // (dev bug: `.submit { color: black }` with no `:hover`). The split alias must be
+    // excluded from the parent header so the extender routes to cross() and hoists to
+    // `:is(.button, .submit):hover` — byte-identical to the flat solve (the oracle).
+    const buttonHover = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('.button'), simpleSelector(':hover')])
+    }]);
+    const ampHover = complexSelector([{
+      compound: compoundSelectorOf([simpleSelector('&'), simpleSelector(':hover')])
+    }]);
+    const document = () => stylesheet([
+      rule('.button', [
+        decl('color', keyword('black')),
+        rule(ampHover, [decl('color', keyword('inherit'))])
+      ]),
+      rule('.submit',
+        [rule(ampHover, [], [{ target: selist(buttonHover), partial: false }])],
+        [{ target: selist(sel('.button')), partial: false }]
+      )
+    ]);
+
+    const expected =
+      '.button,\n'
+      + '.submit {\n'
+      + '  color: black;\n'
+      + '}\n'
+      + ':is(.button, .submit):hover {\n'
+      + '  color: inherit;\n'
+      + '}\n';
+    expect(nested(document())).toBe(expected);
+    // The nested projection must equal the flat solve (the semantic oracle).
+    expect(nested(document())).toBe(flat(document()));
+  });
 });
