@@ -272,8 +272,9 @@ if (!options.dryRun) {
 }
 
 // Resolve the fresh lockstep candidate before the expensive preflight, but do
-// not write package manifests until every check passes.  The candidate is
-// forwarded only to the nested publish dry-run; see runWithPreflightVersion.
+// not write package manifests until every check passes. The candidate is still
+// forwarded to preflight-only guards that need to know the intended alpha
+// version, while pack/publish validation runs exactly once below.
 let resolution = null;
 if (!options.skipVersion) {
   const { plan: versionPlan } = getReleaseState(rootDir);
@@ -288,7 +289,7 @@ if (!options.skipVersion) {
 if (options.skipCheck) {
   console.log('\nSkipping preflight suite (--skip-check); assuming the current tree is already verified.');
 } else {
-  runWithPreflightVersion(resolution, () => run('pnpm', ['run', 'release:alpha:check'], rootDir));
+  runWithPreflightVersion(resolution, () => run('pnpm', ['run', 'release:alpha:preflight'], rootDir));
 }
 
 if (!options.skipVersion) {
