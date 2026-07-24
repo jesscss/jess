@@ -523,6 +523,21 @@ const importTailText = regex(/[^()[\]"'\/; \t\n\r\f]+/);
 const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
+// A pseudo selector always opens with `:`/`::`. Spelling this leading colon as a
+// grammar-local recognizer (identical to the shared CssAstSyntaxPseudoColon) lets
+// the compiler resolve the pseudo arm's first-set to `:` and first-char-gate it in
+// the compound-selector choice, instead of treating a cross-composition reference
+// as an `any` first-set and speculatively entering the pseudo node at every simple
+// selector.
+const pseudoColon = regex(/::?/);
+// Grammar-local copies of the leading hex-color and number recognizers (identical
+// to CssAstSyntaxHexColor / CssAstSyntaxNumber). Leading a component-value choice
+// arm with a cross-composition `g.CssAstSyntax*` reference leaves that arm's
+// first-set unresolved (`any`), so the compiler enters the Color / Dimension node
+// frame speculatively at every value atom. A local leading recognizer resolves the
+// arm's first-set (`#` / `[+-.0-9]`) so it is first-char-gated instead.
+const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
+const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 const customDoubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const customSingleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
 const customEscape = regex(/\\[^\n\r\f]/);
@@ -680,7 +695,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstPseudo = node<SimpleToken>(
     'CssAstPseudo',
     sequence(
-      g.CssAstSyntaxPseudoColon,
+      pseudoColon,
       choice(
         sequence(nthPseudoNameWithArgument, literal('('), g.CssAstPseudoArgument, literal(')')),
         sequence(not(nthPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
@@ -748,10 +763,10 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     customPropertyName,
     children => keyword(tokenText(children[0]))
   );
-  const CssAstColor = node('CssAstColor', g.CssAstSyntaxHexColor, children => color(tokenText(children[0])));
+  const CssAstColor = node('CssAstColor', hexColor, children => color(tokenText(children[0])));
   const CssAstDimension = node(
     'CssAstDimension',
-    noTrivia(sequence(g.CssAstSyntaxNumber, optional(g.CssAstSyntaxDimensionUnit))),
+    noTrivia(sequence(numberValue, optional(g.CssAstSyntaxDimensionUnit))),
     (children) => {
       const numberText = tokenText(children[0]);
       const unit = children.length > 1 ? tokenText(children[1]) : '';
