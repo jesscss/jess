@@ -3072,7 +3072,32 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     },
     { collapse: true }
   );
-  const directLessBlockStatement = choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'));
+  // Chevrotain disambiguated a nested rule from a declaration on the colon's
+  // trailing trivia, not a full selector speculation: `foo: bar` (colon then
+  // whitespace) is always a declaration, never a selector, because a selector
+  // pseudo requires its name glued to the colon (`foo:hover`). Ruleset is tried
+  // before Declaration (a bare type-selector nested rule must win over a property
+  // name), so every `foo: value` otherwise parses `foo` as a type-selector
+  // compound and only fails at the missing `{`. This negative lookahead skips the
+  // Ruleset arm for the unambiguous `<ident><ws?>:<ws>` declaration shape, leaving
+  // the rarer `foo:bar` / `@{p}:` / `foo+:` forms on the original
+  // Ruleset-then-Declaration path. No real selector matches `<ident>:<ws>`, so the
+  // emitted AST and PEG priority are unchanged; a `node()` boundary keeps the
+  // lookahead marker from splicing into the statement list.
+  const directLessRulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
+  const directLessGuardedRuleset = node<Rule>(
+    'DirectLessGuardedRuleset',
+    sequence(directLessRulesetNotDeclaration, g.DirectLessRuleset),
+    (children) => {
+      const ruleset = children.find(isRule);
+      if (ruleset === undefined) {
+        throw new TypeError('Direct Less declaration-guarded ruleset lost its rule.');
+      }
+      return ruleset;
+    },
+    { collapse: true }
+  );
+  const directLessBlockStatement = choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, directLessGuardedRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'));
   const directLessBlockBody = many(directLessBlockStatement);
   // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
@@ -3113,7 +3138,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     directLessAtStatement,
     directLessMixinStatement,
     g.DirectLessInlineExtendRule,
-    g.DirectLessRuleset,
+    directLessGuardedRuleset,
     g.DirectLessEach,
     g.DirectLessFunctionStatement,
     g.DirectLessDeclaration,
@@ -4356,7 +4381,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'LessAstDocument',
     // A standalone root block comment must reduce before selector productions
     // may treat it as selector trivia for the following ruleset.
-    sequence(many(choice(g.DirectLessComment, directLessAtStatement, directLessMixinStatement, g.DirectLessInlineExtendRule, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
+    sequence(many(choice(g.DirectLessComment, directLessAtStatement, directLessMixinStatement, g.DirectLessInlineExtendRule, g.DirectLessEach, g.DirectLessFunctionStatement, directLessGuardedRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
     children => stylesheet(requireStatements(children)),
     { trailingTrivia: true }
   );
