@@ -1665,7 +1665,17 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // non-`@` statements — ordinary rules and `&`-selectors, the bulk of a
   // stylesheet — reach `Rule` without first walking all thirteen at-rule
   // recognizers on a doomed speculation.
-  const directScssNestedBodyPrefix = choice(g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, g.DirectScssStaticNestedProperty, g.DirectScssDeclaration);
+  // Declarations (`prop: value`) and nested-property blocks (`prop: { … }`) are
+  // by far the most common body statements, so they lead the prefix. Both open
+  // on a property token (an identifier, `--custom`, or `#{…}`) that is first-char
+  // disjoint from `Comment` (`/`), `Import` (`@`) and `VarDeclaration` (`$`), so
+  // no input matches both a leading arm and a following one — the reorder is
+  // firstMatch-order-preserving (byte-identical). `StaticNestedProperty` keeps
+  // its own cheap `not([^{};]*[;}])` block-ahead gate and stays ahead of
+  // `Declaration` (the two share the `prop:` prefix). Leading with them means an
+  // ordinary declaration no longer enters and rolls back the Comment/Import/
+  // VarDeclaration node frames before matching.
+  const directScssNestedBodyPrefix = choice(g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration);
   // Nested body ending in `Rule` (mixin/each/for/nested-scope bodies).
   const directScssNestedBody = many(choice(directScssNestedBodyPrefix, g.DirectScssRule, directScssNestedAtStatement));
   // Nested bubbling at-rule bodies additionally accept `@keyframes` before `Rule`.
