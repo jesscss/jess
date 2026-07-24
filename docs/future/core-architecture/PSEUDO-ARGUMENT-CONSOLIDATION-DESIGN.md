@@ -4,7 +4,9 @@ Status: DESIGN — REVISED after the §5.0 spike FAILED (2026-07-23). The origin
 (a shared recognition artifact referencing consumer `g.` names, resolved at `composeLeaf` fuse) is
 **not expressible** in parseman 0.30.0: a standalone `rules()` artifact drops to interpreter the
 moment it references ANY name outside its own map (even a sibling recognition rule), and
-`composeLeaf` then hard-errors. See §5.0-RESULT and §9. The viable in-scope mechanism is shared
+`composeLeaf` then hard-errors. CAUSE CORRECTED 2026-07-24 (parseman 0.33.0): the outcome still
+reproduces, but the blocker is the macro plugin's `compileRuleMap` pre-pass, not a codegen or
+`composeLeaf` limitation — see §5.0-CORRECTION, §5.1-CORRECTION, §5.2, §8. The viable in-scope mechanism is shared
 `g`-free combinator CONSTS + shared plain reducer HELPERS, with each dialect's inline block
 assembling them into an identical shape. Owner decisions §7 RESOLVED. NOT yet implemented. Byte-gated. Owner-flagged: "no downstream parser of CSS should be
 re-inventing the wheel here; valid CSS should be valid code in all dialects." Follow-up to
@@ -249,6 +251,34 @@ once the arg is a structured `SelectorList`, core serialization emits `:not(.b)`
    (`g.CssAstSyntaxNth`) also fails — so the blocker is ANY cross-map reference, not the consumer
    name specifically. Cross-refs resolve ONLY inside the FINAL inline `composeLeaf` block, never in a
    pre-compiled imported artifact. → design revised to the shared-consts mechanism below.
+
+   **§5.0-CORRECTION (2026-07-24, parseman 0.33.0): the OUTCOME above still reproduces, but the
+   recorded CAUSE is wrong.** Verified empirically against 0.33.0 source (parseman line numbers below
+   drift between releases — locate by SYMBOL). The failure is NOT a codegen limitation and NOT a
+   `composeLeaf` limitation:
+
+   - `compileLinkable` handles unresolved external refs as a **first-class, documented feature**. It
+     runs a `scanExternal` pre-pass (`src/compiler/codegen.ts:4207-4231`) that walks each rule, finds
+     every `lazy` node whose thunk does not resolve, and pre-registers the named `ref` as
+     `_r_<Name>` in `ctx.namedParsers`. `emitLazy` then emits a plain by-name call instead of a
+     runtime fallback, and the linker's winner-map supplies the body at fuse. The in-source comment
+     states the intent outright: it is what lets a fragment reference a consumer/base rule without
+     its source.
+   - **The macro plugin never reaches `compileLinkable`.** `compileRulesFactory`
+     (`src/plugin/index.ts:547-556`) calls `compileRuleMap` FIRST, and `compileRuleMap` has no
+     `scanExternal` pre-pass. The unresolved ref therefore lands in `emitRuntimeFallback`, which
+     pushes onto `ctx.runtimeParsers`; `canInline = ctx.runtimeParsers.length === 0 && mfCovered &&
+     buildCovered` (`codegen.ts:3993-3994`) goes false and `compileRuleMap` returns `null`. The
+     plugin warns `rule map couldn't be inlined` and returns `null`, and `if (!compiledRules)
+     continue` (`plugin/index.ts:1204`) skips the rest of the branch — so the export-carry block that
+     WOULD have called `compileLinkable` and stamped `composedPieces` is **dead code for exactly the
+     artifacts that need it**. No `composedPieces` literal is emitted, and `composeLeaf` correctly
+     hard-errors because the imported value carries nothing to fuse.
+
+   So the true gate is: *the plugin only offers an exported artifact to `compileLinkable` after
+   `compileRuleMap` has already inlined it*. Everything downstream of that gate is capable. The
+   §5.0 conclusion "cross-refs resolve ONLY inside the FINAL inline block, never in a pre-compiled
+   imported artifact" is a statement about the plugin's ordering, not about the artifact format.
 1. **CSS** (reference, already structured): introduce `cssAstPseudoRecognition`, move CSS onto it;
    split the nth name (child/of-type, §7.1); delete `selectorArgumentText`. Byte-identity vs current
    CSS suite + core. NOTE: dropping `:nth-of-type(2n of .a)` acceptance is an intended tightening —
@@ -279,8 +309,87 @@ reducer-bearing/`linkable` exports) — a separate, out-of-scope decision. → *
 §3's shared-consts + core-reducer-helpers form** (the sanctioned Wave-1 dedup path), which needs no
 parseman change and still eliminates the recognition-divergence bug class.
 
+**§5.1-CORRECTION (2026-07-24, parseman 0.33.0): the recorded blocker above is STALE and factually
+wrong.** The claim "the plugin attaches fusable carried pieces ONLY to pure-recognition
+(reducer-free) exports" is not what the code does. The export-carry gate
+(`src/plugin/index.ts:1231`, inside the `isRulesCall` branch) reads:
+
+```js
+if (pieces && !pieces.mfFns.length && !pieces.buildFns.length) { … withCarriedPieces(…) }
+```
+
+`isRecognitionOnly` is **never consulted** there. And per `codegen.ts:4356-4357`, `mfFns` and
+`buildFns` are emitted as `[]` whenever `mfSrcs`/`buildSrcs` exist — i.e. whenever the macro
+captured every callback's SOURCE:
+
+```js
+mfFns:    mfSrcs    ? [] : (ctx.mapFns   as …),
+buildFns: buildSrcs ? [] : (ctx.buildFns as …),
+```
+
+**The real gate is callback INLINABILITY, not reducer-freedom.** A reducer whose source the macro
+can capture and re-emit passes; a callback that only exists as a live function value does not.
+Proven in both directions in the 0.33.0 spike: a macro-compiled `rules()` map **carrying a `node()`
+reducer** yields `buildFns: 0` and PASSES the gate; the byte-identical map built through the runtime
+API (no macro source capture) yields `buildFns: 1` and is BLOCKED. So "reducer-bearing ⇒ not
+carryable" was never true — the 0.30.0 spike's runtime-API construction is what failed, and the
+reducer was an innocent bystander.
+
+The companion claim "the plugin has NO `linkable` code path at all" is likewise wrong at 0.33.0: the
+plugin imports `compileLinkable` (`src/plugin/index.ts:27`) and calls it inside that same carry
+block. Per §5.0-CORRECTION the call is simply unreachable for an artifact with an unresolved
+external ref, because `compileRuleMap` has already returned `null` upstream.
+
+This does not by itself revive full-DRY (see §5.2 for what actually remains, and §8 for the
+independent reason generic `compose()` is closed to jess), but the reason recorded above must not be
+cited again.
+
 Each landing: all four parser suites + core + jess ratchet green and byte-identical; each parser's
 `*macro-compiled*.test.ts` green (proves fusion, not interpreter fallback).
+
+### §5.2 — What actually unblocks a shared external-ref shape (2026-07-24)
+
+Recorded from the 0.33.0 spike so the next attempt starts from the real state, not from §5.0/§5.1's
+superseded causes. Status labels are load-bearing.
+
+**IN FLIGHT (parseman PR targeting 0.34.0 — NOT landed; do not plan a landing against it yet).**
+Two scoped changes, both on the plugin/codegen seam identified in §5.0-CORRECTION:
+
+- (a) **Stamp `composedPieces` when `compileRuleMap` can't inline but `compileLinkable` can.** The
+  `isRulesCall` branch currently bails at `if (!compiledRules) continue` (`plugin/index.ts:1204`)
+  before ever reaching the carry block at `:1231`. An exported artifact whose ONLY inline blocker is
+  an unresolved external ref is exactly the case `compileLinkable`'s `scanExternal` pre-pass already
+  handles.
+- (b) **Stop `hasSemanticReduction` failing closed on an unresolved `lazy`.** Its `lazy` arm is
+  `try { return visit(def.thunk()) } catch { return true }` (`codegen.ts`, in
+  `hasSemanticReduction`) — an unresolvable thunk is reported as semantic reduction, so
+  `isRecognitionOnly` (`codegen.ts:4355`) comes out FALSE for an artifact that is pure recognition
+  and merely has an external ref. That is the flag `composeLeaf` reads for its non-final-arg gate,
+  so the very shape §3a wants is misclassified.
+
+**VERIFIED NOW — the machinery a shared shape needs already exists.** `codegen.ts:4332-4338`
+deliberately leaves leading ref names UNRESOLVED in `firstSetRecipes` so the WINNING rule supplies
+their first char post-override (the in-source comment says so). The emitted artifact from the spike
+carried `ref: "Value"` verbatim with `deps: [["Ratio", ["Value"]]]` — i.e. the external ref survives
+serialization as a name plus a dependency edge, which is precisely what fuse-time dispatch needs.
+
+**Residual limits (VERIFIED, and NOT addressed by the in-flight PR):**
+
+- **Reducer-bearing shared shapes stay blocked — by design.** `composeLeaf`'s non-final-argument gate
+  requires recognition-only; only a recognition-only shared shape can ride the `composeLeaf` route,
+  whatever the carry gate does. §3a's `g`-free/recognition-only framing therefore stands; what would
+  change is that such a shape could also carry EXTERNAL REFS.
+- **Generic `compose()` does not thread `captureTerminals` the way `composeLeaf` does.** Compare the
+  two `materializeCarried` call sites: `plugin/index.ts:996` (compose) passes only
+  `(carried, composing)`, while `:1066` (composeLeaf) passes the third argument
+  `plainLocalPiece.hasDirectBuilders === true`. Without it, externally-supplied children are silently
+  lost. Irrelevant to the `composeLeaf` route this design uses, but a real gap for any future
+  generic-compose work.
+
+**STILL UNKNOWN.** Whether (a)+(b) together are sufficient for the §3a-shaped artifact end-to-end
+(byte-identity across all four parsers, `*macro-compiled*.test.ts` still proving fusion) — that is a
+re-run of the §5.0 spike against 0.34.0 once the PR lands, and the entire effort stays gated on it
+exactly as §5.0 specifies. Until then the LOCKED mechanism is §3's shared consts, unchanged.
 
 ---
 
@@ -355,6 +464,34 @@ shared consts; only this identifier-boundary exclusion stays local by necessity.
   semantic artifacts with external refs). Rejected: invasive rewrite of the composition mechanism for
   four parsers, and the `*macro-compiled*.test.ts` suite asserts `not.toMatch(/composeLeaf/)` — this
   would rewrite the tests' own premise. Disproportionate to the goal.
+
+  **CORRECTION (2026-07-24, parseman 0.33.0): conclusion UNCHANGED — do not migrate — but the reason
+  above is incomplete, and its PREMISE is wrong.**
+
+  - **A shared shape does not require migrating off `composeLeaf`.** The stated trade-off ("we'd have
+    to rewrite the composition mechanism, and the tests assert no `composeLeaf`") assumed the two were
+    coupled. They are not: all four grammars keep `composeLeaf` verbatim and the shared shape enters
+    as ONE MORE pre-final argument alongside `cssAstSyntax` / `cssAstPseudoSyntax` — the position
+    §3a already uses. Verified: the per-parser `*macro-compiled*.test.ts` assertions
+    (`expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/)`) keep passing, because the
+    assertion is about the EMITTED output being fused, not about the source's argument count. So
+    "shared shapes force generic `compose()`" must not be repeated as a reason for anything.
+  - **The stronger — and decisive — reason generic `compose()` is closed to jess.** Every `node()`
+    reducer in these grammars calls **imported** core AST constructors: see
+    [css grammar.ts:13-40](../../../packages/css-parser/src/ast/grammar.ts) importing `comment`,
+    `simpleSelector`, `pseudoSelector`, … from `@jesscss/core/ast` (less:6, scss:12, jess:12 import
+    the same way), plus module-local helpers such as css `tokenText`
+    ([css grammar.ts:170](../../../packages/css-parser/src/ast/grammar.ts)) — both are LEXICAL reads.
+    `compose()` serializes the local map via `serializeRuleMap`, and
+    `directBuilderUnsupportedBindings` (`src/plugin/direct-builder-static.ts`) hard-rejects any
+    callback that reads an imported or otherwise lexical binding — it is an Oxc binding check, not a
+    text heuristic, so there is no spelling that evades it. **`composeLeaf` exists precisely so those
+    builders stay lexical** (its own source comment: local direct builders stay lexical and are not
+    carried/recomposable). That door is closed to this repo regardless of any plugin gate change,
+    including the §5.2 in-flight PR.
+
+  Net: the rejection stands on the second reason, which no parseman change is expected to move. The
+  first reason (invasiveness) is real but secondary, and the premise it rested on is retired.
 - **Shared parameterless combinator consts only** (no external-ref artifact). Would share the leaves
   but NOT the arm ORDERING / structure where the bugs actually live (each dialect still assembles the
   arms). Weaker; keep external-ref parameterization so the STRUCTURE is shared once.
