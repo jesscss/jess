@@ -2132,14 +2132,39 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rul
       return denominator === undefined ? numerator : operation('/', numerator, denominator);
     }
   );
+  const directScssQueryComparisonOperator = choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('='));
+  // media-queries-4 §2.4.3 lets `<mf-range>` lead with the value rather than the
+  // feature name — `(100px < width)` and the two-sided `(100px < width < 200px)`
+  // — so a name-first comparison is only half of the production. This is plain
+  // CSS, and plain CSS parses in every dialect, so SCSS carries the same arm and
+  // the same typed shape as the css/less/jess grammars: the outer comparison
+  // wraps the inner one, giving Block(paren, Operation('<', Operation('<', …))).
+  // Building it on DirectScssQueryValue is what gives the range form `<ratio>`
+  // bounds (`(16/9 < aspect-ratio < 2/1)`) without restating the ratio grammar.
   const DirectScssQueryFeature = node<ValueNode>(
     'DirectScssQueryFeature',
     choice(
       sequence(literal('('), propertyName, literal(')')),
       sequence(literal('('), propertyName, literal(':'), DirectScssQueryValue, literal(')')),
-      sequence(literal('('), propertyName, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), DirectScssQueryValue, literal(')'))
+      sequence(literal('('), propertyName, directScssQueryComparisonOperator, DirectScssQueryValue, literal(')')),
+      sequence(
+        literal('('), DirectScssQueryValue, directScssQueryComparisonOperator, propertyName,
+        optional(sequence(directScssQueryComparisonOperator, DirectScssQueryValue)), literal(')')
+      )
     ),
     (children) => {
+      // The value-first arm is the only one holding a value where the other three
+      // hold the feature name, so that child alone settles which arm matched.
+      if (isValue(children[1])) {
+        const values = children.filter(isValue);
+        const property = keyword(requireToken(children[3]).value);
+        let comparison = operation(requireToken(children[2]).value, requireValue(values[0]), property);
+        const upper = values[1];
+        if (upper !== undefined) {
+          comparison = operation(requireToken(children[children.length - 3]).value, comparison, upper);
+        }
+        return block(comparison);
+      }
       const property = keyword(requireToken(children[1]).value);
       if (children.length === 3) {
         return block(property);

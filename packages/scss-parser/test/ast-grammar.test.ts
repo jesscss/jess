@@ -1009,6 +1009,76 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  it('constructs the value-first media-feature range, including a <ratio> bound', () => {
+    const width = { type: 'Keyword', src: 'width' };
+    const ratio = (numerator: string, denominator: string) => ({
+      type: 'Operation', operator: '/',
+      left: { type: 'Dimension', src: numerator },
+      right: { type: 'Dimension', src: denominator }
+    });
+
+    // media-queries-4 §2.4.3 `<mf-range>`: the value may lead, on one side or
+    // both. The outer comparison wraps the inner one, which is the identical
+    // shape the css/less/jess grammars build for these same bytes.
+    for (const [source, inner] of [
+      [
+        '@media (100px < width < 200px) { .card { color: red; } }',
+        {
+          type: 'Operation', operator: '<',
+          left: { type: 'Operation', operator: '<', left: { type: 'Dimension', src: '100px' }, right: width },
+          right: { type: 'Dimension', src: '200px' }
+        }
+      ],
+      [
+        '@media (400px <= width <= 700px) { .card { color: red; } }',
+        {
+          type: 'Operation', operator: '<=',
+          left: { type: 'Operation', operator: '<=', left: { type: 'Dimension', src: '400px' }, right: width },
+          right: { type: 'Dimension', src: '700px' }
+        }
+      ],
+      // Reusing DirectScssQueryValue is what gives the range form its `<ratio>`
+      // bounds, rather than the range restating the ratio grammar.
+      [
+        '@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }',
+        {
+          type: 'Operation', operator: '<',
+          left: { type: 'Operation', operator: '<', left: ratio('16', '9'), right: { type: 'Keyword', src: 'aspect-ratio' } },
+          right: ratio('2', '1')
+        }
+      ],
+      // One-sided: the trailing comparison is optional, not implied.
+      ['@media (100px < width) { .card { color: red; } }', { type: 'Operation', operator: '<', left: { type: 'Dimension', src: '100px' }, right: width }],
+      ['@container (100px < width < 200px) { .card { color: red; } }', {
+        type: 'Operation', operator: '<',
+        left: { type: 'Operation', operator: '<', left: { type: 'Dimension', src: '100px' }, right: width },
+        right: { type: 'Dimension', src: '200px' }
+      }],
+      // A bound may be any SCSS feature value, so a variable reads as one too.
+      ['@media ($min < width) { .card { color: red; } }', { type: 'Operation', operator: '<', left: { type: 'VariableReference', name: 'min' }, right: width }]
+    ] as const) {
+      expect(parseScssCst(source).errors, source).toHaveLength(0);
+      const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      expect(parse(source).children[0], source).toMatchObject({
+        type: 'AtRuleBlock',
+        prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner }] }
+      });
+    }
+
+    expect(serialize(parse('@media (100px < width < 200px) { .card { color: red; } }'))).toEqual({
+      css: '@media (100px < width < 200px) {\n  .card {\n    color: red;\n  }\n}\n'
+    });
+
+    // The name-first comparison keeps its own operand order.
+    expect(parse('@media (width < 200px) { .card { color: red; } }').children[0]).toMatchObject({
+      prelude: {
+        type: 'SpacedValue',
+        parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<', left: width, right: { type: 'Dimension', src: '200px' } } }]
+      }
+    });
+  });
+
   it('documents the intentional CST-only SCSS query-interpolation route until the AST has typed prelude segments', () => {
     for (const source of [
       '@media #{$query} { .card { color: red; } }',
