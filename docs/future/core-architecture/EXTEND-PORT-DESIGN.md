@@ -111,6 +111,13 @@ Given the ampersand-boundary marker (§2.3), classify the match by its position 
 This is `EXTEND_RULES.md §5` + `detectAndHandleBoundaryCrossing`; the emit-layer hoist triggers already
 exist (`emit.ts`), so this piece is "feed the boundary classification into the existing hoist," not new.
 
+> **Standing note — nested output is the Jess default, per-boundary hoist is PRIMARY.**
+> Jess renders **NESTED** by default (`collapseNesting:false`); nested extend placement and the
+> per-boundary ampersand hoist above are first-class shipped behavior, **not deferrable** and not a
+> flat-mode afterthought. The flat all-less/extend corpus is a testing convenience, not the target — do
+> NOT treat the §3a hoist as "moot because no flat fixture hits it." It must be honored and tested (add
+> nested fixtures where the corpus is a coverage gap).
+
 ## 4. Port pieces (re-scoped after adversarial review — most of the old ladder already exists)
 
 Each piece: reference `extend-selector-algorithm` cases (and alpha `.css`, the real oracle) as ast-v2
