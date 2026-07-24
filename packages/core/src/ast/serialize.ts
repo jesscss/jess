@@ -5682,22 +5682,13 @@ function walkBody(
             ...(applyExpansion ? { fromApply: true } : {})
           }, forceLeading);
         };
-        if (isCollectionValue(node.value)) {
-          // An SCSS nested-property Collection flattens to hyphenated declarations
-          // here: the carrier's own `base` value (when present) first, then each
-          // leaf entry with its outer name joined by `-`, in source order.
-          const coll = node.value;
-          if (coll.base !== undefined) {
-            pushDeclLeaf(decl(node.name, coll.base, node.merge, node.important));
-          }
-          for (const entry of coll.entries) {
-            // An SCSS nested-property carrier's entries are always plain declarations
-            // (`family: serif`); a variable-declaration entry only appears in a Less/Jess
-            // data-map Collection, which never reaches this property-flatten path.
-            if (entry.type !== 'Declaration') {
-              continue;
-            }
-            pushDeclLeaf(decl(joinNestedPropertyName(node.name, entry.name), entry.value, entry.merge, entry.important));
+        // [nested-property] A property-root `{ … }` block expands to hyphenated
+        // declarations. Shared with the nested emitter — see
+        // {@link nestedPropertyDeclarations}.
+        const parts = nestedPropertyDeclarations(node);
+        if (parts !== null) {
+          for (const part of parts) {
+            pushDeclLeaf(part);
           }
           break;
         }
@@ -7532,6 +7523,76 @@ function joinNestedPropertyName(prefix: string | Interpolation, leaf: string | I
   return interpolation(parts);
 }
 
+/**
+ * A custom property name (`--foo`, or an interpolation whose literal head is `--`).
+ * A custom property's value is an arbitrary token stream, so `--foo: { … }` is
+ * already valid CSS; a superset may not reassign its meaning.
+ */
+function isCustomPropertyName(name: string | Interpolation): boolean {
+  if (typeof name === 'string') {
+    return name.startsWith('--');
+  }
+  const head = name.parts[0];
+  return head !== undefined && 'lit' in head && head.lit.startsWith('--');
+}
+
+/** [nested-property] Append one carrier level's declarations to `out`, recursing
+ * through an entry that is itself a `{ … }` block (`font: { family: { weight: bold } }`). */
+function collectNestedProperty(
+  name: string | Interpolation,
+  block: Collection,
+  merge: Declaration['merge'],
+  important: boolean,
+  out: Declaration[]
+): void {
+  if (block.base !== undefined) {
+    out.push(decl(name, block.base, merge, important));
+  }
+  for (const entry of block.entries) {
+    // A nested-property carrier's entries are always plain declarations
+    // (`family: serif`); a variable-declaration entry only appears in a Less/Jess
+    // data-map Collection, which never reaches this property-flatten path.
+    if (entry.type !== 'Declaration') {
+      continue;
+    }
+    const joined = joinNestedPropertyName(name, entry.name);
+    if (isCollectionValue(entry.value)) {
+      collectNestedProperty(joined, entry.value, entry.merge, entry.important, out);
+    } else {
+      out.push(decl(joined, entry.value, entry.merge, entry.important));
+    }
+  }
+}
+
+/**
+ * [nested-property] A `Collection` has two roles selected by POSITION: in
+ * value/argument position it is DATA (serialized as `{ a: 1; b: 2 }`); at a
+ * PROPERTY ROOT it is STRUCTURE and expands to hyphenated declarations — the
+ * carrier's own `base` value first, then each entry with its outer name joined
+ * by `-`, in source order.
+ *
+ * The trigger is the literal block SYNTAX in property position (`node.value` is
+ * an unevaluated `Collection` node), not a value that merely evaluates to a
+ * Collection.
+ *
+ * Carve-out: a custom property takes the DATA role. `--foo: { a: 1 }` is already
+ * valid CSS, and `--foo-a` bears no CSS-defined relationship to `--foo`, so
+ * flattening would mint names into an open namespace we do not control.
+ *
+ * Returns `null` when `node` is not a nested-property carrier. BOTH emitters
+ * (flattened `walkBody` and nested `emitNestedBody`) route through this one
+ * function: a second implementation would drift, and an emitter divergence is
+ * exactly the defect this guards.
+ */
+function nestedPropertyDeclarations(node: Declaration): Declaration[] | null {
+  if (!isCollectionValue(node.value) || isCustomPropertyName(node.name)) {
+    return null;
+  }
+  const out: Declaration[] = [];
+  collectNestedProperty(node.name, node.value, node.merge, node.important, out);
+  return out;
+}
+
 /** Emit one folded `name: combined[ !important];` line. */
 function emitMergedLine(e: Emit, name: string, combined: string, important: boolean, idt: string): void {
   const start = e.off;
@@ -9253,12 +9314,26 @@ function emitNestedBody(
       }
       switch (node.type) {
         case 'Declaration':
-        case 'Comment':
+        case 'Comment': {
           if (e.referenceImportDepth > 0) {
             break;
           }
-          buf.push({ node, frame, ...(imp ? { important: true } : {}), ...(applyExpansion ? { fromApply: true } : {}) });
+          const pushLeaf = (leafNode: Declaration | Comment): void => {
+            buf.push({ node: leafNode, frame, ...(imp ? { important: true } : {}), ...(applyExpansion ? { fromApply: true } : {}) });
+          };
+          // [nested-property] A property-root `{ … }` block expands to hyphenated
+          // declarations here exactly as in the flattened emitter, so both modes
+          // produce the same declarations — see {@link nestedPropertyDeclarations}.
+          const parts = node.type === 'Declaration' ? nestedPropertyDeclarations(node) : null;
+          if (parts !== null) {
+            for (const part of parts) {
+              pushLeaf(part);
+            }
+            break;
+          }
+          pushLeaf(node);
           break;
+        }
         case 'Rule': {
           if (e.referenceImportDepth > 0) {
             break;
