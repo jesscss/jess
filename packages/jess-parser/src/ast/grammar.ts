@@ -1992,15 +1992,23 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // generic at-rules): identical 16-rule choice plus a bare `;` arm. Mirrors the
   // less-parser `directLessBlockStatement` const so the macro fuses a single
   // shared choice instead of re-emitting it per block.
+  //
+  // The `@`-headed cluster is placed AFTER DirectJessRule: a rule requires a
+  // selector (never `@`) and every at-rule requires `@`, so the two are disjoint
+  // and this ordering is behaviour-neutral. Because rules dominate block bodies,
+  // trying Rule first means a non-`@` statement never enters (and rolls back) the
+  // at-rule recognizers — only genuine `@` statements reach the cluster.
   const directJessAtBlockStatement = choice(
     g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration,
     g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend,
-    g.DirectJessFor, g.DirectJessIf, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement,
-    g.DirectJessRule, literal(';')
+    g.DirectJessFor, g.DirectJessIf,
+    g.DirectJessRule,
+    g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement,
+    literal(';')
   );
   // Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
   // 15-rule choice with no bare `;` or `$extend` arm.
-  const directJessNestedBodyStatement = choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement, g.DirectJessRule);
+  const directJessNestedBodyStatement = choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement);
   const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
     'DirectJessSupportsAtRuleBlock',
     sequence(
@@ -2580,7 +2588,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessRule = node<Rule>(
     'DirectJessRule',
-    sequence(g.DirectJessSelector, literal('{'), many(choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement, g.DirectJessRule)), literal('}')),
+    sequence(g.DirectJessSelector, literal('{'), many(choice(g.DirectJessComment, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement)), literal('}')),
     (children) => {
       requireExactToken(children[1], '{');
       requireExactToken(children.at(-1), '}');
@@ -2596,7 +2604,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // a `$[...]` import target is a live read and therefore needs its binding
       // activated in source order. CSS imports still cannot appear after a rule.
       many(choice(g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessVarDeclaration, g.DirectJessCssImport)),
-      many(choice(g.DirectJessComment, g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessVarDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessSupportsAtRuleBlock, g.DirectJessPropertyAtRule, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement, g.DirectJessRule))
+      many(choice(g.DirectJessComment, g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessVarDeclaration, g.DirectJessMixinDef, g.DirectJessMixinCall, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessPropertyAtRule, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement))
     ),
     children => stylesheet(requireStatements(children.flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])))
   );
