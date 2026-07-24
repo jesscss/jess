@@ -170,6 +170,7 @@ type LessAstLocalRules = {
   DirectLessStaticPseudo: Combinator<SimpleToken>;
   DirectLessInterpolatedPseudo: Combinator<SimpleSelector>;
   DirectLessInterpolatedNthPseudo: Combinator<SimpleSelector>;
+  DirectLessInterpolatedArgumentPseudo: Combinator<SimpleSelector>;
   DirectLessStaticNthPseudo: Combinator<SimpleSelector>;
   DirectLessStaticNthArgument: Combinator<string>;
   DirectLessStaticNonSelectorPseudoArgument: Combinator<string>;
@@ -3907,6 +3908,33 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
       ]));
     }
   );
+  // A functional pseudo's ARGUMENT may be interpolated (`:lang(@{lang})`,
+  // `:dir(@{d})`), which no static argument grammar can recognize because the
+  // argument's bytes do not exist until evaluation. Keep it structural: the
+  // whole atom becomes one Interpolation-backed SimpleSelector holding typed
+  // literal/ref parts, exactly like the interpolated nth and name pseudos. The
+  // parser never joins it into text and never re-scans the span.
+  // At least one interpolation is required, so a fully static argument stays on
+  // the DirectLessStaticPseudo route it already had.
+  const DirectLessInterpolatedArgumentPseudo = node<SimpleSelector>(
+    'DirectLessInterpolatedArgumentPseudo',
+    parser({ trivia: staticSelectorTrivia }, sequence(
+      choice(literal('::'), literal(':')),
+      g.LessAstSyntaxIdentifier,
+      literal('('),
+      many(directLessStaticPseudoChunk),
+      g.DirectLessVariableInterpolation,
+      many(choice(g.DirectLessVariableInterpolation, directLessStaticPseudoChunk)),
+      literal(')')
+    )),
+    (children) => {
+      const delimiter = requireTerminalText(children[0]);
+      const name = requireTerminalText(children[1]);
+      const parts = interpolationPartsFrom(children.slice(3, -1), true, `${delimiter}${name}(`);
+      parts.push({ lit: ')' });
+      return interpolatedSimpleSelector(interpolation(parts));
+    }
+  );
   const DirectLessStaticPseudoQuoted = node<string>(
     'DirectLessStaticPseudoQuoted',
     staticQuotedBody,
@@ -4282,6 +4310,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
     g.DirectLessStaticPseudo,
     g.DirectLessInterpolatedNthPseudo,
     g.DirectLessStaticNthPseudo,
+    g.DirectLessInterpolatedArgumentPseudo,
     g.DirectLessInterpolatedPseudo,
     g.DirectLessStaticAttribute,
     g.DirectLessInterpolatedAttribute
@@ -4622,6 +4651,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
     DirectLessStaticPseudo,
     DirectLessInterpolatedPseudo,
     DirectLessInterpolatedNthPseudo,
+    DirectLessInterpolatedArgumentPseudo,
     DirectLessStaticNthPseudo,
     DirectLessStaticNthArgument,
     DirectLessStaticNonSelectorPseudoArgument,

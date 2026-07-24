@@ -283,6 +283,47 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps an interpolated pseudo argument structural', () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '.a { &:lang(@{lang}) ~ .b::after { content: @value; } }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', body: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: '&', interp: null },
+        // The argument is typed parts, never a joined string.
+        { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+          { lit: ':lang(' },
+          { ref: { type: 'VariableReference', name: 'lang' }, unquote: true },
+          { lit: ')' }
+        ] } }
+      ] } }] } }] }]
+    });
+  });
+
+  it('accepts an interpolated argument on non-selector and selector pseudos alike', () => {
+    for (const source of [':lang(@{l}) { a: b; }', ':dir(@{d}) { a: b; }', ':not(@{s}) { a: b; }', ':lang(x@{l}y) { a: b; }']) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+    }
+  });
+
+  it('leaves a fully static pseudo argument on the static route', () => {
+    const result = run(lessAstGrammar.LessAstDocument, ':lang(en) { a: b; }', { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ selector: { selectors: [{ head: { simples: [{ type: 'SimpleSelector', text: ':lang(en)', interp: null }] } }] } }]
+    });
+  });
+
   it('keeps a CSS escape hack as a typed declaration-value suffix', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
@@ -4048,13 +4089,19 @@ describe('Less AST grammar facts', () => {
       { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':' }, { ref: { name: 'state' } }] } }
     ]);
 
-    // A `@{…}`-interpolation-bearing arg never reaches the static SelectorList
-    // arm: the whitelisted structured path requires a fully static arg, so this
-    // form does not parse (byte-identical to pre-change recognition).
-    for (const source of ['.x:is(@{sel}) { color: red; }', '.x:not(.a@{b}) { color: red; }']) {
-      const rejected = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), source).toBe(false);
-    }
+    // A `@{…}`-interpolation-bearing arg cannot reach the static SelectorList
+    // arm — its bytes do not exist until evaluation — so it becomes one
+    // interpolation-backed SimpleSelector instead of a structured PseudoSelector.
+    // Less 4.8.0 models this same case structurally (literal chunks and refs as
+    // separate elements), so the parts stay typed and are never joined to text.
+    expect(headSimples('.x:is(@{sel}) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':is(' }, { ref: { name: 'sel' } }, { lit: ')' }] } }
+    ]);
+    expect(headSimples('.x:not(.a@{b}) { color: red; }')).toMatchObject([
+      { type: 'SimpleSelector', text: '.x' },
+      { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':not(.a' }, { ref: { name: 'b' } }, { lit: ')' }] } }
+    ]);
 
     // `:extend(...)` is a Less extend directive, not a pseudo: it is never
     // structured and leaves the compound with only the subject SimpleSelector.
@@ -4112,13 +4159,21 @@ describe('Less AST grammar facts', () => {
       '.card:nth-last-of-type(2n of .item) { color: blue; }',
       '.card:nth-child { color: blue; }',
       '.card:nth-of-type { color: blue; }',
-      '.card:lang(@{locale}) { color: blue; }',
-      '.card::part(icon-@{name}) { color: blue; }',
+      // Less splices a non-`@{…}` pseudo argument as an opaque text blob and
+      // never re-parses it. Jess keeps pseudo arguments structural, so these
+      // stay rejected — an intentional divergence, not a recognition gap.
       '.card:lang(@locale) { color: blue; }',
       '.card:lang(@@locale) { color: blue; }'
     ]) {
       const direct = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
+    }
+
+    // A `@{…}` argument is interpolation-bearing, which Less models structurally
+    // too, so it parses as one interpolation-backed SimpleSelector.
+    for (const interpolated of ['.card:lang(@{locale}) { color: blue; }', '.card::part(icon-@{name}) { color: blue; }']) {
+      const direct = run(lessAstGrammar.LessAstDocument, interpolated, { trivia: lessAstGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), interpolated).toBe(true);
     }
   });
 

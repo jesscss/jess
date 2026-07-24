@@ -1168,8 +1168,8 @@ describe('public Less parse()', () => {
       '.card:lang(en-US)::part(icon):state(foo[bar]) {\n  color: red;\n}\n'
     );
     for (const source of [
-      '.card:lang(@{locale}) { color: red; }',
-      '.card::part(icon-@{name}) { color: red; }',
+      // Less splices these as opaque text blobs; jess keeps pseudo arguments
+      // structural and rejects them instead. Intentional divergence.
       '.card:lang(@locale) { color: red; }',
       '.card:lang(@@locale) { color: red; }',
       '.card:nth-of-type(2n of .item) { color: red; }',
@@ -1177,6 +1177,15 @@ describe('public Less parse()', () => {
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+
+    // An `@{…}` argument is structural in Less too, so it round-trips as one
+    // interpolation-backed selector token rather than being rejected.
+    expect(parse('.card:lang(@{locale}) { color: red; }')).toMatchObject({
+      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { text: '.card' },
+        { text: null, interp: { parts: [{ lit: ':lang(' }, { ref: { name: 'locale' } }, { lit: ')' }] } }
+      ] } }] } }]
+    });
   });
 
   it('returns and renders bounded typed static @supports conditions from the public route', () => {
