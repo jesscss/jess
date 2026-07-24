@@ -828,6 +828,13 @@ const directScssCustomPropertyValue = regex(/--(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0
 const pseudoColon = regex(/::?/);
 const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
 const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
+// Grammar-local block/line comment recognizers (byte-identical to the shared
+// CssAstSyntaxBlockComment / ScssAstSyntaxLineComment). Both open on `/`, so a
+// local copy lets the statement-comment arm resolve its first-set to `/` and be
+// first-char-gated in the body-prefix choice instead of entering the comment
+// node frame speculatively at every rule/at-statement position.
+const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lineComment = regex(/\/\/[^\n\r]*/);
 
 export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ trivia: whitespace }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
@@ -909,7 +916,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   );
   const DirectScssComment = node<Comment>(
     'DirectScssComment',
-    choice(g.CssAstSyntaxBlockComment, g.ScssAstSyntaxLineComment),
+    choice(blockComment, lineComment),
     children => comment(requireToken(children[0]).value)
   );
   const DirectScssKeyword = node<Keyword>(
