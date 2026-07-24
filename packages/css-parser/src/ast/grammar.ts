@@ -524,10 +524,26 @@ const declarationAnyCharacter = choice(
 // (concrete 16-char first-set) instead of a `not('/*')` guard lets the compiler
 // resolve CssAstDeclarationAny's first-set and first-char-gate it; the `/` cases
 // keep their adjacent-comment guard in the dedicated slash arm.
+// An at-keyword may not BEGIN a declaration-value component. `;` separates
+// declarations rather than terminating them (css-syntax-3 §5.4.7), so the last
+// declaration in a block ends at whatever follows it — and when that is a nested
+// at-rule, `a { color: red @media all { … } }`, the value run would otherwise
+// swallow `@` as permissive punctuation and strand the `{` with no statement to
+// open. A nested at-rule can only start where a value component could start, so
+// rejecting the at-keyword exactly there is the whole boundary: `@` keeps its
+// permissive reading everywhere it is not an at-keyword (`@`, `@1`, `@(`), and
+// mid-run `@` is untouched because no statement can begin inside a punctuation
+// run. The lookahead is css-syntax-3 §4.3.1 "would start an ident sequence",
+// the same spelling the at-rule name terminals use.
+// This const is the value-component START only; `declarationAnyCharacter` stays
+// unguarded because it also carries the `var()` fallback, where an at-keyword is
+// a legal `<declaration-value>` token (css-variables-1 §2.1).
 const nonSlashDeclarationAnyCharacter = choice(
   literal('+'), literal('-'), literal('*'), literal('='),
   literal('<'), literal('>'), literal('|'), literal('~'), literal('^'),
-  literal('?'), literal('$'), literal('@'), literal('%'), literal('&'),
+  literal('?'), literal('$'),
+  regex(/@(?!-?(?:[-_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])))/),
+  literal('%'), literal('&'),
   literal(':'), literal('.')
 );
 // `@import` is a CSS statement at-rule with a required target. Its dedicated
@@ -550,7 +566,17 @@ const relativeSelectorCombinator = choice(literal('>'), literal('+'), literal('~
 // the compound-selector choice, instead of treating a cross-composition reference
 // as an `any` first-set and speculatively entering the pseudo node at every simple
 // selector.
-const pseudoColon = regex(/::?/);
+// The colon and the pseudo name are ADJACENT tokens: selectors-4 §3.5 spells a
+// pseudo-class as `':' <ident-token>` / `':' <function-token>`, with no
+// <whitespace-token> between them. The pseudo arm runs under `interstitialTrivia`
+// so that its ARGUMENT may be spaced (`:not( .b )`) and so a comment may sit
+// where tokenization already removes one (`:/*c*/hover` is still `:hover`), but
+// that same trivia was silently swallowing a whitespace token here and accepting
+// `a : hover` — and, worse, letting `color: red b` read as the compound
+// `color` + `:red` followed by ` b`, which is what made a declaration whose value
+// strands a `{` look like a valid nested rule. Rejecting only the whitespace
+// keeps the comment case and restores the token adjacency.
+const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
 // Grammar-local copy of CssAstSyntaxSimple. As the fallback arm of the compound
 // selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
 // `*`) so the compiler first-char-gates the whole compound choice; a cross-

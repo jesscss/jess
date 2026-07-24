@@ -1894,7 +1894,18 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
   // `Declaration` (the two share the `prop:` prefix). Leading with them means an
   // ordinary declaration no longer enters and rolls back the Comment/Import/
   // VarDeclaration node frames before matching.
-  const directScssNestedBodyPrefix = choice(g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration);
+  // `;` SEPARATES declarations rather than terminating them (css-syntax-3 §5.4.7
+  // "consume a list of declarations": a declaration ends at `;` OR at the end of
+  // the block, and an empty declaration between two separators is discarded, not
+  // an error). The declaration productions already make their own `;` optional,
+  // so what was missing is the empty declaration — `a { ; }`, `a { color: red;; }`
+  // and a leading `;`. A skipped bare `;` arm IS that discard: `statementChildren`
+  // drops the token, so the arm contributes no node. It goes last because `;` is
+  // first-char disjoint from every arm ahead of it (property tokens, `/`, `@`,
+  // `$`), so no input matches both and the placement is firstMatch-order-
+  // preserving — while an empty declaration stays rare enough not to belong in
+  // front of the two arms this prefix deliberately leads with.
+  const directScssNestedBodyPrefix = choice(g.DirectScssStaticNestedProperty, g.DirectScssDeclaration, g.DirectScssComment, g.DirectScssImport, g.DirectScssVarDeclaration, literal(';'));
   // Nested body ending in `Rule` (mixin/each/for/nested-scope bodies).
   const directScssNestedBody = many(choice(directScssNestedBodyPrefix, g.DirectScssRule, directScssNestedAtStatement));
   // Nested bubbling at-rule bodies additionally accept `@keyframes` before `Rule`.

@@ -2351,9 +2351,24 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   // different value shape — so the `@` boundary is a zero-width separator here.
   // One shared piece-tail keeps declaration values and `@name:` variable values
   // on the same rule instead of diverging on the glued spelling.
+  // The piece separator stops the value before a nested at-rule. `;` separates
+  // declarations rather than terminating them (css-syntax-3 §5.4.7), so the last
+  // declaration in a block ends at whatever follows it — and in Less that
+  // successor may be `@media all { … }`, whose at-keyword this term would
+  // otherwise take as an ordinary `@name` variable reference, leaving the `{`
+  // with no statement to open. Less cannot resolve this by reserving the CSS
+  // at-rule names the way css/scss/jess do: `@name` IS Less's variable spelling,
+  // so `color: red @media` must stay a two-piece value. The discriminator is
+  // therefore the shape that follows, not the name — an at-keyword run that
+  // reaches `{` before any `;`, `}`, group, or quote is a nested at-rule header
+  // and nothing else, because a value piece can never contain a top-level `{`.
+  // The lookahead is name-independent (so `@foo all { … }` works too) and costs
+  // nothing on ordinary values: it fails on its first character unless the next
+  // non-space character is `@`, and even then stops at the declaration's own
+  // terminator a few characters later.
   const DirectLessValueTerm = node<ValueSlot>(
     'DirectLessValueTerm',
-    noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+|(?=@)/)), DirectLessValuePiece)), many(noTrivia(g.DirectLessValueComment)))),
+    noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/(?![ \t\n\r\f]*@[^;{}()'"]*\{)(?:[ \t\n\r\f]+|(?=@))/)), DirectLessValuePiece)), many(noTrivia(g.DirectLessValueComment)))),
     (children, fields) => valuePieceReducer(children, fields)
   );
   // Function bodies use their own argument boundary rule, but comments *inside*

@@ -57,8 +57,16 @@ describe('CSS canonical-AST grammar', () => {
     expectExplicitListSeparators(document);
   });
 
+  // The nested-rule header is spelled `b:c`, not `b: c`. A pseudo-class is
+  // `':' <ident-token>` with no whitespace token between (selectors-4 §3.5), so
+  // `b: c` is not a selector — and it is not a declaration either, because
+  // css-syntax-3 §5.4.6 returns nothing when a value holds a top-level `{}` block
+  // plus other content. The spaced form is invalid CSS both ways and is now
+  // rejected; `conditional-at-rule-value.test.ts` owns that decision. What this
+  // case is actually for — a nested-rule header must not be swallowed by the
+  // permissive declaration-value grammar — is unchanged by the spelling.
   it('keeps declaration-only permissive component values out of calc and nested-rule headers', () => {
-    const document = parseAst('.a { x: (foo); ratio: 1 / 2; filter: alpha(opacity=50); flag: foo|bar; color: red ! IMPORTANT; b: c { color: blue; } }');
+    const document = parseAst('.a { x: (foo); ratio: 1 / 2; filter: alpha(opacity=50); flag: foo|bar; color: red ! IMPORTANT; b:c { color: blue; } }');
     expect(document.children[0]).toMatchObject({
       type: 'Rule',
       body: [
