@@ -74,7 +74,7 @@ Example: `hsl(90, 100%, 50%)`
 Output: `#80ff00`
 
 This is useful if you want to create a new color based on another color's channel, for example:
-`@let newColor: hsl(hue($oldColor), 45%, 90%);`
+`$newColor: hsl(hue($oldColor), 45%, 90%);`
 
 `newColor` will have `oldColor`'s *hue*, and its own saturation and lightness.
 

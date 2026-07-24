@@ -6,59 +6,74 @@ audiences:
   - jess
 origin: jess
 ---
-### iif(_condition_, _ifValue_, _elseValue_)
 
-```css
-@-from '@jesscss/fns' import (iif);
-.box {
-  width: iif($(value > 10), 20px, 10px);
-}
-```
+Jess has no logical *functions*. Conditional evaluation is a language form,
+`$if` / `$else`, not something you import from `@jesscss/fns`.
 
-#### Advanced Example
+:::caution `iif()` is retired
 
-:::info
-
-This example demonstrates a pattern of using `iif` like Less's `when` guards, including a `default()` (fallback) mixin guard. It's verbose, but this is just to prove that with the power of JavaScript behind it, there's nothing you can do in Less or Sass that you can't do in Jess.
+Pre-2.x Jess spelled conditionals `iif(cond, a, b)` and
+`@include $iif(cond, mixin());`. That syntax no longer exists: `iif` is not
+registered in the Jess built-in function set, and `@let` / `@mixin` / `@include`
+are not Jess at-rules. Use `$if` / `$else` instead. (The `iif()` helper still
+ships in `@jesscss/fns` for **Less** sources — it is Less's `if()`, not a Jess
+API.)
 
 :::
 
+## `$if` / `$else`
+
 ```css
-@-from '@jesscss/fns' import (iif);
+$value: 20;
 
-@mixin one(value) {
-  @mixin one_1 {
-    width: 2px;
-  }
-  @let one_1_cond: $(value > 1);
-  @mixin one_2 {
-    height: 10px;
-  }
-  @let one_2_cond: $(value > 5);
-
-  @mixin def {
-    width: 4px;
-  }
-  
-  @include $iif(one_1_cond, one_1());
-  @include $iif(one_2_cond, one_2());
-  @include $iif(!one_1_cond && !one_2_cond, def());
-}
-
-.box-0 {
-  @include one($(0));
-}
-.box-2 {
-  @include one($(2));
-}
-.box-10 {
-  @include one($(10));
-  color: iif($(true), #333, #555);
-  background-color: iif($(false), #333, #555);
+.box {
+  $if ($value > 10) { width: 20px; } $else { width: 10px; }
 }
 ```
 
-This would produce:
+Outputs:
+```css
+.box {
+  width: 20px;
+}
+```
+
+### Guard-style dispatch
+
+This is the Jess equivalent of Less's `when` guards with a `default()` fallback:
+nested mixin definitions selected by `$if`.
+
+```css
+one($value) {
+  one_1() {
+    width: 2px;
+  }
+  one_2() {
+    height: 10px;
+  }
+  def() {
+    width: 4px;
+  }
+
+  $if ($value > 1) { $ > one_1(); }
+  $if ($value > 5) { $ > one_2(); }
+  $if (not ($value > 1) and not ($value > 5)) { $ > def(); }
+}
+
+.box-0 {
+  $ > one(0);
+}
+.box-2 {
+  $ > one(2);
+}
+.box-10 {
+  $ > one(10);
+  $if (true) { color: #333; } $else { color: #555; }
+  $if (false) { background-color: #333; } $else { background-color: #555; }
+}
+```
+
+This produces:
 ```css
 .box-0 {
   width: 4px;
@@ -73,3 +88,13 @@ This would produce:
   background-color: #555;
 }
 ```
+
+:::info
+
+Logical operators are condition-position forms: write `not`, `and`, and `or`
+inside a `$if (…)` header rather than `!`, `&&`, and `||`.
+
+:::
+
+See [Conditionals & iteration](/docs/Language/conditionals-iteration) for
+`$else if`, comparison operators, and scoping rules.

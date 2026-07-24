@@ -4,6 +4,18 @@ audiences:
   - jess
 origin: jess
 ---
+:::danger This page describes a planned feature
+
+Stylesheet-defined functions are **not implemented** in the 2.x alpha. Neither
+the `@() > { result: … }` definition form nor the `$name()` call form is accepted
+by the `.jess` parser today. This page is the design; none of the samples below
+compile yet.
+
+Working alternatives right now: [mixins](./mixins) for reusable rule bodies, and
+the [built-in function set](/docs/Functions/about) for value computation.
+
+:::
+
 :::info
 
 This section refers to functions defined in stylesheets. For importing functions from other languages, see [the `@-use` and `@-from` at-rules](./atrules#-use-and--from).

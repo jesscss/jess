@@ -5,6 +5,17 @@ audiences:
   - jess
 origin: jess
 ---
+:::caution `&` is not in the `.jess` parser yet
+
+Plain descendant nesting and at-rule bubbling work today. The **parent selector
+`&`** — including the `&()` / `&(nil)` templates below — is deliberately held out
+of the `.jess` route until it has a dedicated semantic reduction rather than
+being treated as static selector text. A `.jess` file containing `&` is currently
+a parse error. Everything on this page describing `&` is the intended design, not
+current behavior.
+
+:::
+
 Jess supports CSS nesting syntax, and unlike Sass and Less 1.x-4.x, will:
  - preserve `&` if possible
  - will "join" with dashes or numerical suffixes (which CSS Nesting does not support)
@@ -92,16 +103,16 @@ For example:
 ```
 This will produce:
 ```css
-html {
+.box {
   font-size: 10px;
 }
 @media (min-width: 800px) {
-  html {
+  .box {
     font-size: 12px;
   }
 }
 @media (min-width: 1200px) {
-  html {
+  .box {
     font-size: 14px;
   }
 }

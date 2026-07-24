@@ -115,10 +115,11 @@ Cited against `docs/README-POSITIONING.md` §1 "Claims to NOT make":
    reference. Per positioning this is **Tier-2 roadmap (`.jess` = final language
    milestone)** and must not sit in the alpha nav unlabelled.
 
-5. **`03-Features/**` stale layer** — `IA-PROPOSAL.md` §0 documents that
-   `03-Features/05-mixins.md` still teaches **Sass `@mixin/@include` for Jess** and
-   `03-Features/04-variables.md` shows a `#(...)` interpolation form used nowhere
-   else. Retire/harvest per that proposal.
+5. **`03-Features/**` thin layer** — historically where stale pre-2021 syntax
+   survived (`@mixin`/`@include`/`@let`/`@import … from`); that syntax has since
+   been swept out and the pages now carry explicit not-yet-implemented callouts
+   where they describe unwired behavior. Still retire/harvest per
+   `IA-PROPOSAL.md` §0 — the layer overlaps `02-Language/**`.
 
 6. **Config chrome** — `packages/docs/docusaurus.config.ts`
    - Footer still links **Gitter** (`gitter.im/jesscss/community`, lines 66–70) —

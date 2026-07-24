@@ -111,7 +111,7 @@ otherwise. The argument is evaluated lazily.
 
 ```css
 @-from '@jesscss/fns' import (isruleset);
-@-let rules: {
+$rules: {
   color: red;
 };
 .box {

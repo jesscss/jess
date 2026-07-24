@@ -42,10 +42,10 @@ should split into per-audience pages — addressed concretely in §5.
 
 A second structural fact from the inventory: the current Jess tree has **two
 overlapping layers** — `docs/jess/02-Language/**` (`.mdx`, deep, current,
-authoritative) and `docs/jess/03-Features/**` (`.md`, thin, and in places
-syntactically *stale* — `03-Features/05-mixins.md` still teaches Sass
-`@mixin/@include` for Jess, `04-variables.md` shows a `#(...)` interpolation form
-that appears nowhere else). **`02-Language` is canonical; `03-Features` is
+authoritative) and `docs/jess/03-Features/**` (`.md`, thin, and historically the
+place stale syntax survived — the pre-2021 `@mixin`/`@include`/`@let`/
+`@import … from` spellings lived here until they were swept
+out). **`02-Language` is canonical; `03-Features` is
 harvested for its unique material (nesting, the "CSS-in-CSS"/"JS-in-CSS" framing)
 and otherwise retired.** This is baked into the merge map (§4).
 
@@ -184,9 +184,9 @@ facings.
   color-channel                A:[jess,less,sass]  hue/saturation/red/alpha/luma…
   color-operations             A:[jess,less,sass]  lighten/darken/mix/fade/tint/shade…
   color-blending               A:[jess,less,sass]  multiply/screen/overlay…
-  math                         A:[jess,less,sass]  ceil/floor/round/sqrt… (Jess `op(...)`; gate call form)
-  list                         A:[jess,less,sass]  length/extract/range/each (gate: 0- vs 1-based)
-  logical                      A:[jess,less,sass]  if/boolean (Less) vs iif (Jess). gate.
+  math                         A:[jess,less,sass]  ceil/floor/round/sqrt… (Jess arithmetic is `$( … )`, not a fn; gate call form)
+  list                         A:[jess,less,sass]  length/extract/range/each (Jess iterates with `$for`; keys are 1-based)
+  logical                      A:[jess,less,sass]  if/boolean (Less) vs `$if`/`$else` (Jess, a language form). gate.
   string                       A:[less]            escape/e/%/replace (confirm Jess parity; tag up if present)
   type                         A:[less]            isnumber/iscolor/isstring… (confirm Jess parity)
   misc                         A:[less]            image-size/svg-gradient/unit… (confirm Jess parity)
@@ -304,12 +304,12 @@ has no existing source.
 | Proposed page | Folds in (existing) | Work |
 | --- | --- | --- |
 | language/overview | `docs/jess/02-Language/01-overview.mdx`; `docs/jess/03-Features/01-css.md` (CSS-in-CSS framing) | Merge; gate the sigil line; add Less/Sass "valid CSS is valid X". |
-| language/variables | `docs/jess/02-Language/02-variables.mdx` (basics only); `docs/less/features/variables.md`; **retire** `docs/jess/03-Features/04-variables.md` (stale `#(...)`) | Merge concept; gate syntax; harvest theming snippet into guides/theming. |
+| language/variables | `docs/jess/02-Language/02-variables.mdx` (basics only); `docs/less/features/variables.md`; **retire** `docs/jess/03-Features/04-variables.md` | Merge concept; gate syntax; harvest theming snippet into guides/theming. |
 | language/variables-advanced | `docs/jess/02-Language/02-variables.mdx` (live binding/`:=`/readonly/private/scoping) | Split the deep half out; jess-only. |
 | language/nesting | `docs/jess/03-Features/02-nesting.md`; `docs/less/features/nested.md`; `docs/less/features/parent-selectors.md` | Merge — **only Features page worth keeping**; gate `&-1`/`:is()` notes. |
 | language/operations-and-math | `docs/jess/02-Language/03-expressions.mdx` (math part); `docs/less/features/strictmath.md` | Merge concept; gate. |
 | language/expressions | `docs/jess/02-Language/03-expressions.mdx` (full `$(…)`/`?`) | jess-only deep page. |
-| language/mixins | `docs/jess/02-Language/05-mixins.mdx`; `docs/less/features/mixins.md` (consolidated hub, absorbs `mixin-guards/mixin-loops/mixins-aliasing/mixins-as-functions/mixins-parametric.md` stubs); **retire** `docs/jess/03-Features/05-mixins.md` (stale Sass-syntax) | Merge; heavy gate; **net-new** Sass `@mixin/@include` column. |
+| language/mixins | `docs/jess/02-Language/05-mixins.mdx`; `docs/less/features/mixins.md` (consolidated hub, absorbs `mixin-guards/mixin-loops/mixins-aliasing/mixins-as-functions/mixins-parametric.md` stubs); **retire** `docs/jess/03-Features/05-mixins.md` | Merge; heavy gate; **net-new** Sass `@mixin/@include` column. |
 | language/functions | `docs/jess/02-Language/06-functions.mdx`; `docs/jess/03-Features/07-functions.md` (importing-JS-fns angle); `docs/less/features/mixins-as-functions.md` | Merge "defining functions"; gate. |
 | language/control-flow | `docs/jess/02-Language/07-conditionals-iteration.mdx`; `docs/less/features/mixin-guards.md` + `mixin-loops.md` | Merge by task; gate 3 mechanisms; **net-new** Sass `@each/@while`. |
 | language/modules-and-imports | `docs/jess/02-Language/04-atrules.mdx` (import parts); `docs/jess/03-Features/06-imports.md`; `docs/less/features/imports.md`; **align with** `docs/shared/less-v5-breaking-changes.mdx` (`@import` deprecation) | Merge; this is the flagship gate; **net-new** Sass `@use/@forward`. |
@@ -333,9 +333,9 @@ has no existing source.
 | functions/color-channel | `…/03-color-channel.md`; `docs/less/functions/color-channel.md` | Merge. |
 | functions/color-operations | `…/04-color-operations.md`; `docs/less/functions/color-operations.md` | Merge. |
 | functions/color-blending | `…/05-color-blending.md`; `docs/less/functions/color-blending.md` | Merge. |
-| functions/math | `…/08-math.md`; `docs/less/functions/math-functions.md` | Merge; gate `op(...)` vs global. |
-| functions/list | `…/06-list.md`; `docs/less/functions/list-functions.md` | Merge; gate 0- vs 1-based + `each`. |
-| functions/logical | `…/07-logical.md`; `docs/less/functions/logical-functions.md` | Merge; gate `iif` vs `if/boolean`. |
+| functions/math | `…/08-math.md`; `docs/less/functions/math-functions.md` | Merge; gate Jess `$( … )` vs global. |
+| functions/list | `…/06-list.md`; `docs/less/functions/list-functions.md` | Merge; gate Less `each` vs Jess `$for` (1-based keys). |
+| functions/logical | `…/07-logical.md`; `docs/less/functions/logical-functions.md` | Merge; gate Jess `$if`/`$else` vs Less `if/boolean`. |
 | functions/string | `docs/less/functions/string-functions.md` | less-only until Jess parity confirmed. |
 | functions/type | `docs/less/functions/type-functions.md` | less-only until parity confirmed. |
 | functions/misc | `docs/less/functions/misc-functions.md`; `docs/less/functions/examples/examples.md` | less-only until parity confirmed. |

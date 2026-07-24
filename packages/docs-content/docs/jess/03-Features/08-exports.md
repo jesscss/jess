@@ -9,7 +9,7 @@ Jess currently keeps exporting simple and predictable.
 
 ## Current practical export patterns
 
-- In stylesheet space, share reusable APIs through imported modules (mixins, variables, and JS module values via `@import`).
+- In stylesheet space, share reusable APIs through modules: `@-compose` for another stylesheet, `@-from` / `@-use` for JS/TS module values. (Note that module **resolution** is not wired up yet in the alpha — see [Imports](/docs/Features/imports).)
 - In bundler space, `rollup-plugin-jess` currently exports the compiled CSS string as the default JS export and emits a CSS asset.
 
 ## Notes

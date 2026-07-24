@@ -5,18 +5,20 @@ audiences:
   - jess
 origin: jess
 ---
-You can, of course, import functions and call them in a JS expression, like:
 
-```less
-@-from './functions.js' import (myFunction);
+:::danger Imported functions are not resolved yet
 
-.box {
-  content: $myFunction();
-}
-```
-However, Jess has a feature where, like Less, it will attempt to evaluate CSS functions as JS functions calls if that call was imported in scope.
+`@-from` parses and is preserved, but there is no module resolver in the 2.x
+alpha, so an imported function is never loaded or called. A call like
+`double(10px)` is passed through to the output verbatim. The syntax below is
+current; the behavior is the target.
 
-The reason you might want to do that is to parse a function value as, say, a dimension, like:
+Jess's **built-in** functions (`mix`, `hsl`, `luma`, …) do work today — and they
+resolve by name, without an import.
+
+:::
+
+You import functions and call them like any other function:
 
 ```less
 @-from './functions.js' import (double);
@@ -25,9 +27,21 @@ The reason you might want to do that is to parse a function value as, say, a dim
   width: double(10px);
 }
 ```
-Your `double` function may output something like:
+
+Like Less, Jess will attempt to evaluate a CSS-shaped function call as a JS
+function call when that name was imported in scope. The reason you might want
+that is to have the function receive and return typed values — for example a
+dimension, so units are preserved:
+
 ```css
 .box {
   width: 20px;
 }
 ```
+
+:::note
+
+The `$myFunction()` spelling (a `$`-prefixed call) is **not** valid Jess and does
+not parse. Call imported functions by their bare name.
+
+:::

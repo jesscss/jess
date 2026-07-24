@@ -59,13 +59,18 @@ growing toward looks more like this:
 // Jess keeps stylesheet authoring in CSS-space, but gives it richer composition.
 .card {
   color: $theme.primary-color;
-  $rounded(8px);
+  $ > rounded(8px);
 
   & > .title {
     font-weight: 700;
   }
 }
 ```
+
+Two caveats on that snippet, since it is the shape and not the state of things:
+module resolution is not wired up yet (`@-compose` currently round-trips
+verbatim), and the parent selector `&` is deliberately still out of the `.jess`
+parser.
 
 ## Repo layout
 

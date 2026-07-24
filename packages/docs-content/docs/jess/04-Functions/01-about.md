@@ -20,7 +20,9 @@ To use, import them like:
 
 :::info
 
-Unlike Less, all functions must be imported! This keeps the Jess runtime small and fast. It also prevents conflicts with CSS function names, because you can do the following, using the power of module syntax!
+Unlike Less, functions are meant to be imported explicitly. This keeps the Jess
+runtime small and fast, and it lets you rename a helper so it never collides with
+a CSS function of the same name.
 
 :::
 
@@ -32,10 +34,24 @@ Unlike Less, all functions must be imported! This keeps the Jess runtime small a
   background-color: rgb(255 255 255 / 0.8);
 }
 ```
-This will produce:
+This is intended to produce:
 ```css
 .color {
   color: rgb(1, 2, 3);
   background-color: rgb(255 255 255 / 0.8);
 }
 ```
+
+:::caution Import resolution is not wired yet
+
+In the 2.x alpha the `@-from` line parses and round-trips, but no module is
+resolved. Two consequences today:
+
+- **Import aliasing does not work.** `jessRgb(1, 2, 3)` above is passed through
+  verbatim — it is not evaluated as `rgb()`.
+- **Built-in helpers resolve by name whether or not you import them.** The `mix`
+  example above produces `#800080` even with the `@-from` line removed. Keep
+  writing the import — it is the intended contract — but don't rely on the
+  import being what makes it work.
+
+:::

@@ -174,12 +174,24 @@ JavaScript, TypeScript, or JSON — and to load Jess's built-in `#less/*` and
 
 .box {
   width: $my-module.width;
-  value: $myFunc();
+  value: myFunc();
 }
 ```
 
+Values are read with a `$`-prefixed reference; imported **functions** are called
+by their bare name (there is no `$myFunc()` call form).
+
 JSON is a pure data import; evaluating local/package JS/TS while compiling needs
 `@jesscss/plugin-js` (which isolates execution on Deno).
+
+:::caution Resolution is not wired yet
+
+In the 2.x alpha the module at-rules parse and round-trip to the output, but no
+resolver exists: nothing is loaded, inlined, or evaluated, and referencing an
+imported name raises `Name not found`. The syntax on this page is settled; the
+loading behavior is the target.
+
+:::
 
 ## `@-import` is a legacy bridge (discouraged)
 

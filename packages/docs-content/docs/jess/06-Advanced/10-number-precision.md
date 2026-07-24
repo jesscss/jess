@@ -42,7 +42,7 @@ rounding does not apply:
 $n: pi();
 .a {
   width: $n * 1px;   // declaration value -> rounded
-  --raw: ~"$(n)";    // interpolation -> full precision
+  --raw: ~"$[n]";    // interpolation -> full precision
 }
 ```
 
@@ -52,6 +52,18 @@ $n: pi();
   --raw: 3.141592653589793;
 }
 ```
+
+:::caution Interpolation is not yet spliced here
+
+Interpolation is written `$[name]` in string, selector, and property-name
+position (`$( … )` is value-position only). The `width` line above is current
+behavior. The `--raw` line is **not**: a custom property's value is a verbatim
+token stream, so `~"$[n]"` is emitted as written rather than spliced. The
+`.jess` parser also does not yet accept interpolation inside an escaped `~"…"`
+string in an ordinary declaration. Interpolation in a plain quoted string —
+`content: "fonts/$[family].css"` — does work today.
+
+:::
 
 If you need the rounded form inside an interpolation, round it explicitly with
 [`round()`](../04-Functions/08-math.md). This is the same behavior as the Less 5.x

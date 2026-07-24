@@ -6,39 +6,72 @@ audiences:
   - jess
 origin: jess
 ---
-### each(_collection_, _mixin_)
+
+Jess has no list-iteration *function*. Iterating a list is a language form,
+`$for`, not something you import from `@jesscss/fns`.
+
+:::caution `each()` is retired
+
+Pre-2.x Jess spelled list iteration `@include $each(list, mixin);` with an
+`@mixin` definition. That syntax no longer exists: `each` is not registered in
+the Jess built-in function set, and `@let` / `@mixin` / `@include` are not Jess
+at-rules. Use `$for` instead. (The `each()` helper still ships in `@jesscss/fns`
+for **Less** sources — it is Less's `each()`, not a Jess API.)
+
+:::
+
+## Iterating a list with `$for`
 
 ```css
-@-from '@jesscss/fns' import (each);
-@let list: 1, 2, 3;
+$list: 1, 2, 3;
 
-@mixin iterate (value, key) {
-  .icon-$(value) {
+iterate($value, $key) {
+  .icon-$[value] {
     width: $value;
     height: $key;
   }
 }
-@include $each(list, iterate);
+
+$for ($value, $key of $list) {
+  $ > iterate($value, $key);
+}
 ```
-
-:::info
-
-Unlike Less, keys in lists align with JavaScript, and are therefore *0-based* instead of *1-based*. _NOTE: Is that ideal?_
-
-:::
 
 This outputs:
 ```css
 .icon-1 {
   width: 1;
-  height: 0;
+  height: 1;
 }
 .icon-2 {
   width: 2;
-  height: 1;
+  height: 2;
 }
 .icon-3 {
   width: 3;
-  height: 2;
+  height: 3;
 }
 ```
+
+:::info
+
+For a list, the key is its **1-based** source-order position. (In the example
+above the values happen to equal their positions, so `width` and `height` match.)
+For a Jess collection the key is the declaration name.
+
+:::
+
+You don't need a mixin at all if the body is simple:
+
+```css
+$sections: header, sidebar, footer;
+
+$for ($section, $i of $sections) {
+  .box-$[section] {
+    padding-left: $($i * 20px);
+  }
+}
+```
+
+See [Conditionals & iteration](/docs/Language/conditionals-iteration) for ranges,
+collection destructuring, and the full set of `$for` header shapes.
