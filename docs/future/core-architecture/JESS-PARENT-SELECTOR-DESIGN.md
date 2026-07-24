@@ -17,9 +17,32 @@ dialect and is scoped separately below.
 
 ## 1. What "dedicated semantic reduction" meant
 
-The phrase is not `.jess`-specific. It was written for the whole direct-AST cutover
-(`6734da512`, which introduced both the `.jess` exclusion test and the Less
-ampersand terminal) and it is defined by what Less did four commits later.
+The phrase is not `.jess`-specific, and the current wording is a **reword**. The
+exclusion was introduced by `e93231b2f` ("feat(jess-parser): structure static
+rules") as:
+
+> The direct slice rejects nested rules until it owns their parent-selector
+> semantics rather than treating `&` as text.
+
+and `6734da512` ("feat: establish direct AST v2 parser architecture") rewrote that
+comment into today's "dedicated semantic reduction" phrasing without changing the
+gate.
+
+**The strongest staleness evidence is `e93231b2f`'s own HANDOFF entry**, which lists
+what the Jess selector slice deliberately excluded at that moment:
+
+> Separation/duplication: the slice is intentionally one selector token only
+> (`.card`, `#id`, `button`, `*`). **Pseudo, attribute, percentage, compound,
+> combinator, `$[]`, and nested parent-selector forms** are proven production forms
+> but explicitly rejected until their typed reductions exist.
+
+Every other item on that list has since landed in `.jess` — pseudo, attribute,
+percentage, compound, combinator, and `$[…]` selector interpolation all parse
+today. `&` is the last unretired entry from one commit's staging list, not a
+standing semantic objection.
+
+What the "dedicated semantic reduction" *is* was then defined by what Less did four
+commits later.
 
 `d18c4bfe3` ("feat(less-parser): structure parent selectors") recorded the intent in
 `HANDOFF.md` verbatim:
@@ -121,7 +144,36 @@ The delta mirrors Less one-for-one:
    document statement route to admit a rule whose selector head is `&`. Less's
    direct route already permits it; verify rather than assume.
 
+`DirectJessStaticCompound` is not optional here. The `.jess` **CST** route already
+accepts `&` in `$extend` and `$apply` targets — `packages/jess-parser/src/grammar.ts`
+`extendTargetPart` and `applyTargetPart` both list `literal('&')` — so leaving it out
+of the static family would be a new direct-vs-CST divergence, not a smaller change.
+
+**Token granularity: fuse, like Less — do not split like SCSS/CSS.** SCSS and CSS
+recognize `&` as a bare `literal('&')` and let `&__el` become two simples in one
+compound, re-concatenated by `compoundCanonical`; Less recognizes `&[-\w…]*` as ONE
+token. Both work with `resolveTokenAmp`, but the fused form is the better fit for
+`.jess`:
+
+- The bare-`&`-whole-branch fast path in `resolveComplexAmp` requires
+  `c.head.simples.length === 1`, so a split representation costs an extra token on
+  the exact shape (`& { … }`) the excluded test and the fixture use.
+- `resolveTokenAmp`'s `first && text === '&'` subject test reads ONE token's text.
+  Fusing keeps "is this compound's subject a bare `&`?" a single string compare
+  instead of a token-run inspection.
+- `.jess` needs the fused form anyway for `&$[name]` (below), and Less's
+  `DirectLessInterpolatedParentSuffix` already leads with the fused terminal.
+
 No core change. No new node type. No new `Rule` field.
+
+**Placement caveat.**
+`docs/future/parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` earmarks
+"ampersand-suffix selector concat" as sigil-neutral machinery for the planned shared
+`preprocessorBase`. A `.jess`-local terminal would be the **fourth** copy of a
+one-line regex. That is acceptable as an interim — the terminal is one regex and one
+choice arm, `preprocessorBase` does not exist yet, and blocking `&` on that rebase
+inverts the dependency — but the `.jess` arm should be listed as a `preprocessorBase`
+migration candidate when that work starts, not silently forgotten.
 
 ## 3. Should `.jess` `&` differ from Less `&`?
 
@@ -180,15 +232,43 @@ there is no dialect where they work, and no shipped semantics to match.
 
 Why they are a real design problem and not a grammar arm:
 
+- **AST v2 has no carrier for them.** The only model that ever existed is the
+  LEGACY node-class tree: `packages/core/src/tree/ampersand.ts` carries
+  `appendValue?: string` ("Set to an empty string to hoist to root", `:70`) and
+  derives `hoistToRoot: appendValue !== undefined || source.hoistToRoot === true`
+  (`:114`) on an `Ampersand extends SimpleSelector` class (`:293`). The `ast/`
+  plain-data model has no equivalent field, no `Ampersand` node, and no
+  hoist concept. So this is a **core AST change**, not a grammar reduction — which
+  is exactly what "typed semantic payloads … constructed by grammar reductions" was
+  deferring.
 - `&()` is an **output-placement** instruction, not a selector-text instruction. It
   says "compile this rule's selector fully and emit it at root" — meaningful only
-  because `.jess` output is nested by default. Nothing in `Rule` carries that today;
-  it would need a typed field on `Rule` (or a dedicated selector node), and core's
-  emit path would have to honour it. `SimpleSelector.text` cannot express it,
-  because text is exactly what core substitutes into.
-- `&(nil)` suppresses the parent for a branch. `resolveTokenAmp` has no
-  "drop the parent" outcome; it maps a token to one-or-more resolved strings.
-- `&(X)` is pure sugar for `&X` once the other two exist.
+  because `.jess` output is nested by default. `SimpleSelector.text` cannot express
+  it, because text is exactly what core substitutes *into*.
+- `&(nil)` suppresses the parent for a branch. `resolveTokenAmp` maps a token to
+  one-or-more resolved strings; it has no "drop the parent" outcome.
+- `&(X)` is sugar for `&X`. Note the deleted `packages/less-parser/test/selectors.test.ts`
+  (recoverable at `3081a94fe^`) pinned this precisely: "`&(…)` is a suffix-append
+  only (`&(-foo)`, `&(1)`, `&(-1)`) — it appends the parent. It is NOT an
+  'insertion point' that splices the parent inside the parens; that merge-template
+  behavior was removed."
+
+**Unreconciled spec conflict — flag for the owner.** In that same deleted file the
+two template tests were `it.skip`, and **both** asserted `appendValue === ''`:
+
+```ts
+it.skip('should parse empty quoted ampersand template as an explicit empty parent template', …
+  expect(amp?.appendValue).toBe('');
+it.skip('should parse &(nil) as an explicit nil parent template', …
+  expect(amp?.appendValue).toBe('');
+```
+
+But `ampersand.ts:70` documents `''` as **"hoist to root"** — i.e. the `&()`
+meaning — while the docs page says `&(nil)` **drops the parent**. One representation
+cannot mean both. `&(nil)` has never been implemented anywhere (both its tests were
+skipped, and `git log --all -S '&(nil)'` shows it only in docs, that deleted test
+file, and legacy `tree/` files). Resolving `&()` vs `&(nil)` vs `&('')` is a
+prerequisite for any implementation, and is why ledger row P10 is OPEN.
 
 Recommended scoping: land plain `&` first (§2), and treat the template family as its
 own design with its own owner ruling — specifically whether `&()`/`&(nil)` become
@@ -205,6 +285,19 @@ acceptance, restore `packages/jess/test/files/nested.jess` from `17403a0a0~1`
 (its `&` set is `&:hover`, `[foo]&`, `& + &`, root `&`, `&, &` — all plain forms),
 and add collapsed-output assertions mirroring the table in §3.
 
+Two things to fix while there, both discovered by this survey:
+
+- `packages/jess/test/index.ts:8` is `describe.skip('Output files', …)`, so the whole
+  glob-driven `*.jess` → `*.css` fixture suite — including `nested.jess` — **does not
+  run at all**. Restoring the `&` fixture is worthless until that is unskipped; do
+  both in the same landing or the fixture is decorative.
+- `docs/future/core-architecture/AST-REMAINING-DEBT-KILL-LIST.md:126,133` records the
+  `&`-as-substring model as upstream debt and says the fix "belongs to the parser,
+  not this module". This design deliberately does NOT take that on: making `&` a
+  discrete token is a cross-dialect core+parser change, and doing it as a side effect
+  of adding `.jess` support would be exactly the "blind rewrite over an existing
+  tuned implementation" the P0 guardrails ban. Keep them separate.
+
 **Effort — templates (§4): large and blocked on an owner ruling.** Do not bundle.
 
 **Risk: low.**
@@ -220,6 +313,14 @@ parse error today, and the fixture that used it was rewritten in `17403a0a0` to
 remove it. Every currently-passing `.jess` byte stays byte-identical; the diff is
 previously-failing → passing. The Less/SCSS/CSS corpora are untouched.
 
-**Docs to update when it lands:** the `:::caution` banner at the top of
-`docs/jess/03-Features/02-nesting.md` narrows from "`&` is not in the `.jess` parser
-yet" to "the `&()` / `&(nil)` templates are not implemented in any dialect yet".
+**Docs to update when it lands:**
+
+- `docs/jess/03-Features/02-nesting.md` — the `:::caution` banner **narrows**, it is
+  not deleted: from "`&` is not in the `.jess` parser yet" to "the `&()` / `&(nil)`
+  templates are not implemented in any dialect yet". The `&()`/`&(nil)` section
+  itself stays marked as intended design.
+- `docs/future/core-architecture/DOC-COVERAGE.md:58` — the
+  `Nesting / parent selectors (&, &-1, &())` row's L1 column is `~`; it becomes `✓`
+  for the plain forms with the `&()` gap called out.
+- Ledger rows `P9` / `P10` in `DESIGN-DECISIONS.md` move from PROPOSED/OPEN as the
+  owner rules.
