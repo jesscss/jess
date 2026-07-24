@@ -3721,14 +3721,59 @@ function wrapIsList(branches: string[]): string {
   return branches.length === 1 ? branches[0]! : `:is(${branches.join(', ')})`;
 }
 
+/** [nesting] A branch that opens with a real combinator (`> .col`) is a RELATIVE
+ * selector. `:is()` takes a `<forgiving-selector-list>` of COMPLEX selectors, so a
+ * relative branch is invalid there and every browser drops it — the compacted group
+ * then matches nothing. Such a branch must join the ancestor directly. The namespace
+ * pipe (`|h1`) is part of the compound, not a combinator, so it stays groupable. */
+function leadsWithCombinator(c: ComplexSelector): boolean {
+  const comb = c.leadingComb;
+  return comb !== undefined && comb !== ' ' && comb !== '|';
+}
+
 /** [nesting] Join opaque ancestor `A` with an all-`&`-less child list, prefix
  * factored: `A` is emitted ONCE and the multi-branch child list wraps in a single
  * `:is(...)` (never cartesian-distributed, never repeated inside the `:is()`).
  * `#…#deux` + `#fourth,#five,#six` → `#…#deux :is(#fourth, #five, #six)`; a single
- * child joins plainly (`A child`, honouring its leading combinator). */
-function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+ * child joins plainly (`A child`, honouring its leading combinator).
+ *
+ * A branch that LEADS WITH A COMBINATOR cannot enter the group ({@link
+ * leadsWithCombinator}); it is emitted as its own header branch with the combinator
+ * hoisted out — `.no-gutters` + `> .col, > [class*="col-"]` becomes
+ * `.no-gutters > .col, .no-gutters > [class*="col-"]`, the CSS-Nesting desugaring.
+ * Descendant branches keep the compaction, so a MIXED list splits by shape:
+ * `.nav-fill` + `> .nav-link, .nav-item` → `.nav-fill > .nav-link, .nav-fill .nav-item`.
+ * Consecutive descendant branches stay one group, preserving authored order. */
+function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const canons = child.selectors.map(c => resolveComplex(c, frame, e));
-  return combineAll(canons, values => values.length === 1 ? a + ' ' + values[0]! : a + ' :is(' + values.join(', ') + ')');
+  return combineAll(canons, (values) => {
+    if (values.length === 1) {
+      return [a + ' ' + values[0]!];
+    }
+    if (!child.selectors.some(leadsWithCombinator)) {
+      return [a + ' :is(' + values.join(', ') + ')'];
+    }
+    const out: string[] = [];
+    let run: string[] = [];
+    const flushRun = (): void => {
+      if (run.length === 1) {
+        out.push(a + ' ' + run[0]!);
+      } else if (run.length > 1) {
+        out.push(a + ' :is(' + run.join(', ') + ')');
+      }
+      run = [];
+    };
+    for (let i = 0; i < values.length; i++) {
+      if (leadsWithCombinator(child.selectors[i]!)) {
+        flushRun();
+        out.push(a + ' ' + values[i]!);
+      } else {
+        run.push(values[i]!);
+      }
+    }
+    flushRun();
+    return out;
+  });
 }
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
@@ -4888,8 +4933,7 @@ function flattenResolved(
     // raw composed list is already the correct parent context for children.
     childAncestor = wrapIsList(rawComposed);
   } else {
-    const joined = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
-    headerComposed = mapMaybe(joined, value => [value]);
+    headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
     childAncestor = rawComposed[0] ?? '';
   }
   return mapMaybe(headerComposed, headerComposed => flattenWithHeader(
