@@ -835,6 +835,22 @@ const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)
 // node frame speculatively at every rule/at-statement position.
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
+// Grammar-local CSS bubbling-at-rule keyword recognizers (byte-identical to the
+// shared CssAstSyntax*AtKeyword leaves). Every nested at-statement arm must have
+// a resolvable first-set for the whole `@`-cluster choice to first-char-gate: the
+// mixin/control-flow arms already lead with local `@…` regexes, so spelling these
+// CSS block keywords locally too resolves the cluster's first-set to `@` and lets
+// the compiler skip the entire cluster on any non-`@` statement (ordinary rules,
+// and every block-close where the cluster is otherwise entered speculatively).
+const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+const mediaAtKeyword = regex(/@media(?![-\w])/i);
+const containerAtKeyword = regex(/@container(?![-\w])/i);
+const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
+const layerAtKeyword = regex(/@layer(?![-\w])/i);
+const scopeAtKeyword = regex(/@scope(?![-\w])/i);
+const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
+const pageAtKeyword = regex(/@page(?![-\w])/i);
+const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
 
 export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ trivia: whitespace }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
@@ -1892,11 +1908,11 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssIfStaticConditionalBlock = node<AtRuleBlock>(
     'DirectScssIfStaticConditionalBlock',
     choice(
-      sequence(g.CssAstSyntaxSupportsAtKeyword, g.DirectScssSupportsPrelude, g.DirectScssIfBody),
-      sequence(choice(g.CssAstSyntaxMediaAtKeyword, sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssQueryPrelude, g.DirectScssIfBody),
-      sequence(choice(g.CssAstSyntaxMediaAtKeyword, sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssStaticMediaPrelude, g.DirectScssIfBody),
-      sequence(g.CssAstSyntaxStartingStyleAtKeyword, g.DirectScssStaticAtPrelude, g.DirectScssIfBody),
-      sequence(g.CssAstSyntaxLayerAtKeyword, g.DirectScssStaticAtPrelude, g.DirectScssIfBody)
+      sequence(supportsAtKeyword, g.DirectScssSupportsPrelude, g.DirectScssIfBody),
+      sequence(choice(mediaAtKeyword, sequence(containerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssQueryPrelude, g.DirectScssIfBody),
+      sequence(choice(mediaAtKeyword, sequence(containerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssStaticMediaPrelude, g.DirectScssIfBody),
+      sequence(startingStyleAtKeyword, g.DirectScssStaticAtPrelude, g.DirectScssIfBody),
+      sequence(layerAtKeyword, g.DirectScssStaticAtPrelude, g.DirectScssIfBody)
     ),
     (children) => {
       const body = children[2];
@@ -2229,7 +2245,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssScopeBlock = node<AtRuleBlock>(
     'DirectScssScopeBlock',
     sequence(
-      g.CssAstSyntaxScopeAtKeyword,
+      scopeAtKeyword,
       g.DirectScssStaticAtPrelude,
       literal('{'),
       many(choice(
@@ -2249,7 +2265,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssNestedScopeBlock = node<AtRuleBlock>(
     'DirectScssNestedScopeBlock',
     sequence(
-      g.CssAstSyntaxScopeAtKeyword,
+      scopeAtKeyword,
       g.DirectScssStaticAtPrelude,
       literal('{'),
       directScssNestedBody,
@@ -2260,20 +2276,20 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssConditionalBlock = node<AtRuleBlock>(
     'DirectScssConditionalBlock',
     choice(
-      sequence(g.CssAstSyntaxSupportsAtKeyword, g.DirectScssSupportsPrelude, literal('{'), directScssConditionalBody, literal('}')),
-      sequence(choice(g.CssAstSyntaxMediaAtKeyword, sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssQueryPrelude, literal('{'), directScssConditionalBody, literal('}')),
-      sequence(choice(g.CssAstSyntaxMediaAtKeyword, sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssStaticMediaPrelude, literal('{'), directScssConditionalBody, literal('}'))
+      sequence(supportsAtKeyword, g.DirectScssSupportsPrelude, literal('{'), directScssConditionalBody, literal('}')),
+      sequence(choice(mediaAtKeyword, sequence(containerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssQueryPrelude, literal('{'), directScssConditionalBody, literal('}')),
+      sequence(choice(mediaAtKeyword, sequence(containerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssStaticMediaPrelude, literal('{'), directScssConditionalBody, literal('}'))
     ),
     children => atRuleBlock(requireToken(children[0]).value, requireValue(children[1]), statements(children.slice(3, -1)))
   );
   const DirectScssStartingStyleBlock = node<AtRuleBlock>(
     'DirectScssStartingStyleBlock',
-    sequence(g.CssAstSyntaxStartingStyleAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssStartingLayerBody, literal('}')),
+    sequence(startingStyleAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssStartingLayerBody, literal('}')),
     children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1)))
   );
   const DirectScssLayerBlock = node<AtRuleBlock>(
     'DirectScssLayerBlock',
-    sequence(g.CssAstSyntaxLayerAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssStartingLayerBody, literal('}')),
+    sequence(layerAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssStartingLayerBody, literal('}')),
     children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1)))
   );
   // Deprecated CSS document blocks still have a precise structural shape: a
@@ -2284,7 +2300,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssDocumentBlock = node<AtRuleBlock>(
     'DirectScssDocumentBlock',
     sequence(
-      g.CssAstSyntaxDocumentAtKeyword,
+      documentAtKeyword,
       g.DirectScssStaticAtPrelude,
       literal('{'),
       many(choice(
@@ -2339,7 +2355,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssPageBlock = node<AtRuleBlock>(
     'DirectScssPageBlock',
     sequence(
-      g.CssAstSyntaxPageAtKeyword,
+      pageAtKeyword,
       g.DirectScssStaticAtPrelude,
       literal('{'),
       many(choice(g.DirectScssComment, g.DirectScssDeclaration, g.DirectScssPageMarginBox, literal(';'))),
@@ -2372,7 +2388,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssFontFeatureValuesBlock = node<AtRuleBlock>(
     'DirectScssFontFeatureValuesBlock',
     sequence(
-      g.CssAstSyntaxFontFeatureValuesAtKeyword,
+      fontFeatureValuesAtKeyword,
       g.DirectScssStaticAtPrelude,
       literal('{'),
       many(choice(g.DirectScssComment, g.DirectScssFontFeatureValueBlock)),
@@ -2387,20 +2403,20 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   const DirectScssNestedConditionalBlock = node<AtRuleBlock>(
     'DirectScssNestedConditionalBlock',
     choice(
-      sequence(g.CssAstSyntaxSupportsAtKeyword, g.DirectScssSupportsPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
-      sequence(choice(g.CssAstSyntaxMediaAtKeyword, sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssQueryPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
-      sequence(choice(g.CssAstSyntaxMediaAtKeyword, sequence(g.CssAstSyntaxContainerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssStaticMediaPrelude, literal('{'), directScssNestedKeyframesBody, literal('}'))
+      sequence(supportsAtKeyword, g.DirectScssSupportsPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
+      sequence(choice(mediaAtKeyword, sequence(containerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssQueryPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
+      sequence(choice(mediaAtKeyword, sequence(containerAtKeyword, not(g.CssAstSyntaxQueryOnly))), g.DirectScssStaticMediaPrelude, literal('{'), directScssNestedKeyframesBody, literal('}'))
     ),
     children => atRuleBlock(requireToken(children[0]).value, requireValue(children[1]), statements(children.slice(3, -1), true))
   );
   const DirectScssNestedStartingStyleBlock = node<AtRuleBlock>(
     'DirectScssNestedStartingStyleBlock',
-    sequence(g.CssAstSyntaxStartingStyleAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
+    sequence(startingStyleAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
     children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1), true))
   );
   const DirectScssNestedLayerBlock = node<AtRuleBlock>(
     'DirectScssNestedLayerBlock',
-    sequence(g.CssAstSyntaxLayerAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
+    sequence(layerAtKeyword, g.DirectScssStaticAtPrelude, literal('{'), directScssNestedKeyframesBody, literal('}')),
     children => atRuleBlock(requireToken(children[0]).value, optionalValue(children[1]), statements(children.slice(3, -1), true))
   );
   const DirectScssFontFace = node<AtRuleBlock>(
