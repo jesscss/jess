@@ -18,6 +18,7 @@ export type JessErrorCode =
   | 'eval/invalid-statement'
   | 'eval/property-in-root'
   | 'eval/ruleset-on-property'
+  | 'eval/async-in-sync-position'
   | 'eval/unit-conversion'
   | 'extend/protected-boundary'
   | 'extend/not-found'
@@ -180,6 +181,11 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     summary: 'Plugin function "${name}" threw',
     reason: 'The @plugin function "${name}" failed while evaluating this call: ${reason}',
     fix: 'Fix the plugin function (its stack is attached), or stop calling it here. Run with breakOnError to stop at the first failure.'
+  }],
+  ['eval/async-in-sync-position', {
+    summary: 'Value needs to be awaited in a position that cannot wait',
+    reason: 'The ${where} still requires an already-settled value, but this one resolves asynchronously (typically a function call that returns a promise).',
+    fix: 'Bind the value to a variable evaluated outside this position, or call the mixin directly instead of through a namespace path.'
   }],
   ['plugin/load-failed', {
     // The summary carries the underlying failure verbatim: a load error is only

@@ -218,6 +218,14 @@ export const ERR = {
   rulesetOnProperty(args: Common & { meta: { what: string } }) {
     return makeJessError({ code: 'eval/ruleset-on-property', phase: 'eval', ...args });
   },
+  /**
+   * A value resolved asynchronously in one of the few positions still confined
+   * to the synchronous lane. A real limitation, not a wrong answer: it names the
+   * position and the site rather than silently picking a branch.
+   */
+  asyncInSyncPosition(args: Common & { meta: { where: string } }) {
+    return makeJessError({ code: 'eval/async-in-sync-position', phase: 'eval', ...args });
+  },
 
   // Extend
   extendBoundary(args: Common & { meta: { target: string } }) {

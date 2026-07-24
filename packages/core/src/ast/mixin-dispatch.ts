@@ -20,6 +20,7 @@
  *   - ALL matching bodies expand, in definition order.
  */
 
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { MixinCall, MixinDef, ValueSlot } from './nodes.js';
 import { any, isLiteralNode, isTypedLiteral, isValueBlock } from './nodes.js';
 import type { EvalModes, ValueEvaluator } from './value-eval.js';
@@ -306,6 +307,25 @@ export function selectDefinitions(
     };
   };
 
+  // TODO(maybe-promise-dispatch): mixin dispatch is still a SYNCHRONOUS lane.
+  // `evalGuard` is a MaybePromise everywhere else; here the two-pass `default()`
+  // decision (pass 2 runs only if pass 1 matched nothing) and the arity/pattern
+  // prefilter still assume settled booleans. Until that is restructured, a guard
+  // operand that can only be produced by awaiting fails LOUDLY and by name here
+  // rather than silently picking the wrong overload.
+  // Tracked in docs/future/core-architecture/HANDOFF.md.
+  const settledGuard = (value: MaybePromise<boolean>, def: MixinDef): boolean => {
+    if (isThenable(value)) {
+      throw new Error(
+        `A mixin guard on "${def.name || '<anonymous>'}" resolved to an awaitable value `
+        + '(typically a @plugin function result). Mixin-dispatch guards are not yet on the '
+        + 'MaybePromise lane; move the value into a variable used outside the guard, or '
+        + 'await it before dispatch.'
+      );
+    }
+    return value;
+  };
+
   // First pass: non-default guarded/unguarded matches.
   const matched: typeof viable = [];
   const defaultCandidates: typeof viable = [];
@@ -314,7 +334,7 @@ export function selectDefinitions(
       defaultCandidates.push(v);
       continue;
     }
-    const ok = !v.def.guard || evalGuard(v.def.guard, guardDeps(v.def, v.bindings, () => false));
+    const ok = !v.def.guard || settledGuard(evalGuard(v.def.guard, guardDeps(v.def, v.bindings, () => false)), v.def);
     if (ok) {
       matched.push(v);
     }
@@ -324,10 +344,10 @@ export function selectDefinitions(
   const noNonDefaultMatch = matched.length === 0;
   if (noNonDefaultMatch && defaultCandidates.length > 0) {
     const selectedWhenDefault = defaultCandidates.filter(v =>
-      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => true))
+      settledGuard(evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => true)), v.def)
     );
     const selectedWhenNotDefault = defaultCandidates.filter(v =>
-      evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false))
+      settledGuard(evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false)), v.def)
     );
     const conflictingSingleSelections = selectedWhenDefault.length === 1
       && selectedWhenNotDefault.length === 1
@@ -343,7 +363,7 @@ export function selectDefinitions(
     matched.push(...selectedWhenDefault);
   } else {
     for (const v of defaultCandidates) {
-      const ok = evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false));
+      const ok = settledGuard(evalGuard(v.def.guard!, guardDeps(v.def, v.bindings, () => false)), v.def);
       if (ok) {
         matched.push(v);
       }

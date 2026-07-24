@@ -109,7 +109,7 @@ import {
   type ValueObj
 } from './value-eval.js';
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
-import { type MaybePromise, isThenable } from '@jesscss/awaitable-pipe';
+import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
@@ -1254,7 +1254,7 @@ function findPathInScope(
         } else {
           // Rulesets are namespace containers too, so a false Less `when` guard
           // prevents descent just as it prevents ordinary rule emission.
-          if (!ruleGuardPasses(s, scope, e)) {
+          if (!settledGuard(ruleGuardPasses(s, scope, e), 'namespace-path index build', s, e)) {
             continue;
           }
           // This Rule may have executed imports in its render-local placement.
@@ -1685,16 +1685,15 @@ function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
 
 /**
  * [R2/guards] A TYPED resolver: materializes a value node to a typed `ValueObj`
- * (guard leaves compare typed values / call type-fns). Sync for the same reason.
+ * (guard leaves compare typed values / call type-fns).
+ *
+ * This is a {@link MaybePromise} lane: a guard operand may name a value that
+ * cannot be produced without awaiting (a `@plugin` function result). It is
+ * returned UNWRAPPED when it is already settled, so the overwhelmingly common
+ * synchronous guard costs nothing extra.
  */
 function makeTypedResolver(frame: Frame | null, e: EvalCtx): TypedResolver {
-  return (v: ValueSlot) => {
-    const val = evalTypedSlot(v, frame, e);
-    if (isThenable(val)) {
-      throw new Error('async value in a synchronous guard position');
-    }
-    return val;
-  };
+  return (v: ValueSlot) => evalTypedSlot(v, frame, e);
 }
 
 /* ---------------------------------------------------- typed value eval */
@@ -2088,7 +2087,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // result, not its authored bytes.
       return mapMaybe(evalCall(node, frame, e, true), v => force(e, v));
     case 'Condition':
-      return makeBool(evalGuard(node.guard, guardDeps(frame, e)));
+      return mapMaybe(evalGuard(node.guard, guardDeps(frame, e)), makeBool);
     case 'Range':
       // Ranges are consumed structurally by `forItems`; a value-position use
       // retains authored range syntax rather than inventing a flattened list.
@@ -3098,16 +3097,33 @@ const LOGICAL_FNS = new Set(['if', 'boolean', 'not', 'and', 'or']);
  *  LAZY — only the taken branch folds; an absent else is empty bytes. */
 function evalLogical(name: string, node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
   const deps = guardDeps(frame, e);
-  const truthOf = (a: ValueSlot | undefined): boolean => a !== undefined && evalGuard(condGuard(a), deps);
-  switch (name) {
-    case 'if': {
-      const branch = truthOf(node.args[0]) ? node.args[1] : node.args[2];
-      return branch === undefined ? literal('') : evalValueSlot(branch, frame, e);
+  const truthOf = (a: ValueSlot | undefined): MaybePromise<boolean> =>
+    a === undefined ? false : evalGuard(condGuard(a), deps);
+  /**
+   * Fold the argument conditions left-to-right, SHORT-CIRCUITING on `stopOn`
+   * exactly as `Array.every`/`Array.some` did. The walk stays synchronous until
+   * one condition actually needs to await, so an all-sync `and`/`or` never
+   * allocates a promise and never evaluates an argument the old code skipped.
+   */
+  const fold = (stopOn: boolean, index: number): MaybePromise<boolean> => {
+    if (index >= node.args.length) {
+      return !stopOn;
     }
-    case 'not': return makeBool(!truthOf(node.args[0]));
-    case 'and': return makeBool(node.args.every(a => evalGuard(condGuard(a), deps)));
-    case 'or': return makeBool(node.args.some(a => evalGuard(condGuard(a), deps)));
-    default: return makeBool(truthOf(node.args[0])); // boolean
+    return mapMaybe(truthOf(node.args[index]), value => value === stopOn
+      ? stopOn
+      : fold(stopOn, index + 1));
+  };
+  switch (name) {
+    case 'if':
+      // LAZY: only the taken branch folds.
+      return mapMaybe(truthOf(node.args[0]), (taken) => {
+        const branch = taken ? node.args[1] : node.args[2];
+        return branch === undefined ? literal('') : evalValueSlot(branch, frame, e);
+      });
+    case 'not': return mapMaybe(truthOf(node.args[0]), value => makeBool(!value));
+    case 'and': return mapMaybe(fold(false, 0), makeBool);
+    case 'or': return mapMaybe(fold(true, 0), makeBool);
+    default: return mapMaybe(truthOf(node.args[0]), makeBool); // boolean
   }
 }
 
@@ -4379,28 +4395,29 @@ function collectPlacedExtendFacts(
         continue;
       }
       if (statement.type === 'For' && bodyMayPlanExtend(statement.rules)) {
-        const items = forItems(statement.iterable, frame, e);
-        const tokens = items.map(() => ({}));
-        (e.plannedForExtendPlacements ??= new WeakMap()).set(statement, tokens);
-        recordAstExtendProfile?.('astExtend.preflight.loopBodies');
-        recordAstExtendProfile?.('astExtend.preflight.loopPlacements', items.length);
-        const iterations = (itemIndex: number): MaybePromise<void> => {
-          for (let i = itemIndex; i < items.length; i++) {
-            const item = items[i]!;
-            const bindings = bindForEntry(statement, item.value, item.key, dimension(i + 1));
-            const loopFrame: Frame = {
-              parent: frame, mixins: collectMixins(statement.rules),
-              declIndex: collectDeclIndex(statement.rules, bindings), cells: cellsForParams(bindings), reassign: null,
-              statements: statement.rules, extendPlacement: tokens[i]!
-            };
-            const nested = collectPlacedExtendFacts(statement.rules, loopFrame, e, overlay, path, scope, parent, hidden, referenceBoundary);
-            if (isThenable(nested)) {
-              return nested.then(() => iterations(i + 1));
+        return mapMaybe(forItems(statement.iterable, frame, e), (items) => {
+          const tokens = items.map(() => ({}));
+          (e.plannedForExtendPlacements ??= new WeakMap()).set(statement, tokens);
+          recordAstExtendProfile?.('astExtend.preflight.loopBodies');
+          recordAstExtendProfile?.('astExtend.preflight.loopPlacements', items.length);
+          const iterations = (itemIndex: number): MaybePromise<void> => {
+            for (let i = itemIndex; i < items.length; i++) {
+              const item = items[i]!;
+              const bindings = bindForEntry(statement, item.value, item.key, dimension(i + 1));
+              const loopFrame: Frame = {
+                parent: frame, mixins: collectMixins(statement.rules),
+                declIndex: collectDeclIndex(statement.rules, bindings), cells: cellsForParams(bindings), reassign: null,
+                statements: statement.rules, extendPlacement: tokens[i]!
+              };
+              const nested = collectPlacedExtendFacts(statement.rules, loopFrame, e, overlay, path, scope, parent, hidden, referenceBoundary);
+              if (isThenable(nested)) {
+                return nested.then(() => iterations(i + 1));
+              }
             }
-          }
-          return run(index + 1);
-        };
-        return iterations(0);
+            return run(index + 1);
+          };
+          return iterations(0);
+        });
       }
     }
   };
@@ -4901,11 +4918,34 @@ function emitDocumentStatements(
 }
 
 /**
+ * The three positions still confined to the SYNCHRONOUS lane, each behind an
+ * explicit, positioned failure rather than a silent wrong answer.
+ *
+ * TODO(maybe-promise-sync-islands): move these onto the MaybePromise lane.
+ *   1. namespace-descent index building (`findPathInScope`) — its result is
+ *      memoized on `frame.orderedMixins`, and a memo cannot hold a promise
+ *      without every reader becoming awaitable;
+ *   2. `$if` arm selection (`selectedIfBody`) — one of its callers is a
+ *      synchronous at-rule body walk;
+ *   3. `if(cond, A, B)` block resolution (`pickIfBranch`) — reached from the
+ *      synchronous `resolveValueBlock`.
+ * These ARE reachable by ordinary code: any function call may resolve
+ * asynchronously, so this is a real limitation, not merely a legacy-plugin one.
+ * Tracked in docs/future/core-architecture/HANDOFF.md.
+ */
+function settledGuard(value: MaybePromise<boolean>, where: string, node: object, e: EvalCtx): boolean {
+  if (isThenable(value)) {
+    throw ERR.asyncInSyncPosition({ node, ...callSiteLocation(node, e), meta: { where } });
+  }
+  return value;
+}
+
+/**
  * [guards] Whether a rule's `when (...)` guard passes in the scope where the rule
  * is defined (`frame`). An unguarded rule always emits; a CSS ruleset guard never
  * uses `default()` (that is a mixin-dispatch decision), so `isDefault` is `false`.
  */
-function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): boolean {
+function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): MaybePromise<boolean> {
   if (!rule.guard) {
     return true;
   }
@@ -4933,7 +4973,7 @@ function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): boolean {
  */
 function selectedIfBody(node: If, frame: Frame, e: Emit): Statement[] | null {
   for (const branch of node.branches) {
-    if (branch.guard !== null && !evalGuard(branch.guard, guardDeps(frame, e))) {
+    if (branch.guard !== null && !settledGuard(evalGuard(branch.guard, guardDeps(frame, e)), '$if arm selection', node, e)) {
       continue;
     }
     return branch.body;
@@ -5031,12 +5071,14 @@ function visibleHeader(rule: Rule, header: string[], frame: Frame, e: Emit): str
 
 function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, frame: Frame, e: Emit, imp = false): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true.
-  if (!ruleGuardPasses(rule, frame, e)) {
-    return;
-  }
-  const rawComposed =
-    parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
-  return mapMaybe(rawComposed, rawComposed => flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed));
+  return mapMaybe(ruleGuardPasses(rule, frame, e), (passes) => {
+    if (!passes) {
+      return;
+    }
+    const rawComposed =
+      parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
+    return mapMaybe(rawComposed, rawComposed => flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed));
+  });
 }
 
 /** Continue a flatten after its selector interpolation has resolved. Keeping this
@@ -5298,20 +5340,26 @@ function walkBody(
         // single-block output (`.x { width; color; height }`) for `.x { width; &
         // when(c){color} & when(c){height} }`.
         if (composed !== null && isSelfComposed(rule, composed, frame, e)) {
-          if (ruleGuardPasses(rule, frame, e)) {
+          const rComposedSelf = composed;
+          const emitSelf = (passes: boolean): MaybePromise<void> => {
+            if (!passes) {
+              return;
+            }
             const selfFrame: Frame = {
               parent: frame,
               mixins: collectMixins(rule.body),
               declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
               statements: rule.body
             };
-            const emitted = walkBody(rule.body, composed, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
-            if (isThenable(emitted)) {
-              return emitted.then(() => walkBody(
-                statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
-              ));
-            }
+            return walkBody(rule.body, rComposedSelf, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+          };
+          const passes = ruleGuardPasses(rule, frame, e);
+          const emitted = mapMaybe(passes, emitSelf);
+          if (isThenable(emitted)) {
+            return emitted.then(() => walkBody(
+              statements.slice(index + 1), rComposedSelf, ancestor, frame, group, flush,
+              partition, e, imp, forceLeading, propertyScope, applyExpansion
+            ));
           }
           break;
         }
@@ -5845,6 +5893,10 @@ function expandApply(
   propertyScope: Frame = frame
 ): MaybePromise<void> {
   const selected: Array<{ rule: Rule; home: Frame }> = [];
+  // [guards] Selecting which ruleset-mixin bodies apply may need an awaitable
+  // guard value, so candidates are gathered first and their guards folded in
+  // order — the fold stays fully synchronous until a guard actually awaits.
+  const candidates: Array<{ rule: Rule; home: Frame }> = [];
   for (const selector of node.selectors) {
     const key = compoundCanonical(selector);
     for (let scope: Frame | null = frame; scope; scope = scope.parent) {
@@ -5853,12 +5905,18 @@ function expandApply(
         continue;
       }
       for (const rule of matches) {
-        if (!parentExcludes(frame, rule.body) && ruleGuardPasses(rule, scope, e)) {
-          selected.push({ rule, home: scope });
+        if (!parentExcludes(frame, rule.body)) {
+          candidates.push({ rule, home: scope });
         }
       }
     }
   }
+  const gather = serialForEach(candidates, ({ rule, home }) =>
+    mapMaybe(ruleGuardPasses(rule, home, e), (passes) => {
+      if (passes) {
+        selected.push({ rule, home });
+      }
+    }));
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < selected.length; index++) {
       const { rule, home } = selected[index]!;
@@ -5882,7 +5940,7 @@ function expandApply(
       }
     }
   };
-  return run(0);
+  return mapMaybe(gather, () => run(0));
 }
 
 /**
@@ -6064,7 +6122,8 @@ function publishExplicitRulesets(frame: Frame, body: Statement[], callFrame: Fra
  *  `else` branch may be absent, so the result can be `undefined`. */
 function pickIfBranch(node: FunctionCall, frame: Frame | null, e: EvalCtx): ValueSlot | undefined {
   const cond = node.args[0];
-  const taken = cond !== undefined && evalGuard(condGuard(cond), guardDeps(frame, e));
+  const taken = cond !== undefined
+    && settledGuard(evalGuard(condGuard(cond), guardDeps(frame, e)), 'if() block resolution', node, e);
   return taken ? node.args[1] : node.args[2];
 }
 
@@ -6420,7 +6479,7 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): ForItem[
 }
 
 /** The ordered items an `each()` iterable expands to. */
-function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): ForItem[] {
+function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): MaybePromise<ForItem[]> {
   // [each mixin-call iterable] `.mixin()` output → iterate its declarations.
   if (isMixinCallValue(node)) {
     return frame === null ? [] : forItemsFromMixinCall(node, frame, e);
@@ -6469,11 +6528,11 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Fo
   if (base.type === 'Any' || base.type === 'Keyword') {
     return splitListBytes(base.src).map(b => ({ value: any(b), key: null }));
   }
-  const v = evalTyped(base, baseFrame, e);
-  if (isThenable(v)) {
-    throw new Error('async value in an each() iterable is unsupported');
-  }
-  return groupItems(v).map(item => ({ value: any(emitValue(item)), key: null }));
+  // [each] The iterable may name a value the engine can only produce by awaiting
+  // (a `@plugin` result, a module-provided list). It resolves in place when it is
+  // already settled, so the ordinary `each()` never becomes awaitable.
+  return mapMaybe(evalTyped(base, baseFrame, e), v =>
+    groupItems(v).map(item => ({ value: any(emitValue(item)), key: null })));
 }
 
 function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
@@ -6560,30 +6619,31 @@ function expandFor(
   propertyScope: Frame = frame,
   applyExpansion = false
 ): MaybePromise<void> {
-  const items = forItems(node.iterable, frame, e);
-  const run = (start: number): MaybePromise<void> => {
-    for (let i = start; i < items.length; i++) {
-      const item = items[i]!;
-      const { value, key } = item;
-      const index = dimension(i + 1);
-      const bindings = bindForEntry(node, value, key, index);
-      const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
-      const loopFrame: Frame = {
-        parent: frame,
-        mixins: collectMixins(node.rules),
-        declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
-        statements: node.rules,
-        sourceOwner: frame.sourceOwner ?? null,
-        ...(extendPlacement ? { extendPlacement } : {})
-      };
-      bindForDetached(loopFrame, bindings, item);
-      const emitted = walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
-      if (isThenable(emitted)) {
-        return emitted.then(() => run(i + 1));
+  return mapMaybe(forItems(node.iterable, frame, e), (items) => {
+    const run = (start: number): MaybePromise<void> => {
+      for (let i = start; i < items.length; i++) {
+        const item = items[i]!;
+        const { value, key } = item;
+        const index = dimension(i + 1);
+        const bindings = bindForEntry(node, value, key, index);
+        const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
+        const loopFrame: Frame = {
+          parent: frame,
+          mixins: collectMixins(node.rules),
+          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
+          statements: node.rules,
+          sourceOwner: frame.sourceOwner ?? null,
+          ...(extendPlacement ? { extendPlacement } : {})
+        };
+        bindForDetached(loopFrame, bindings, item);
+        const emitted = walkBody(node.rules, composed, ancestor, loopFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+        if (isThenable(emitted)) {
+          return emitted.then(() => run(i + 1));
+        }
       }
-    }
-  };
-  return run(0);
+    };
+    return run(0);
+  });
 }
 
 /**
@@ -8897,9 +8957,20 @@ function emitNestedRule(
 ): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true (the
   // flattened path applies the same gate in `flatten`).
-  if (!ruleGuardPasses(rule, frame, e)) {
-    return;
-  }
+  return mapMaybe(ruleGuardPasses(rule, frame, e), passes => passes
+    ? emitNestedRuleGuarded(rule, frame, e, imp, source, placement, outerHoist)
+    : undefined);
+}
+
+function emitNestedRuleGuarded(
+  rule: Rule,
+  frame: Frame,
+  e: Emit,
+  imp: boolean,
+  source: NestedHeaderSource | null,
+  placement: NestedRuleMixinPlacement | null,
+  outerHoist?: HoistEntry[]
+): MaybePromise<void> {
   if (!e.collapse) {
     const shells = transparentShells(rule, frame, e);
     if (shells !== null) {
@@ -9198,6 +9269,10 @@ function expandNestedApply(
   sharedLeaves?: NestedLeafBuffer
 ): MaybePromise<void> {
   const selected: Array<{ rule: Rule; home: Frame }> = [];
+  // [guards] Selecting which ruleset-mixin bodies apply may need an awaitable
+  // guard value, so candidates are gathered first and their guards folded in
+  // order — the fold stays fully synchronous until a guard actually awaits.
+  const candidates: Array<{ rule: Rule; home: Frame }> = [];
   for (const selector of node.selectors) {
     const key = compoundCanonical(selector);
     for (let scope: Frame | null = frame; scope; scope = scope.parent) {
@@ -9206,12 +9281,18 @@ function expandNestedApply(
         continue;
       }
       for (const rule of matches) {
-        if (!parentExcludes(frame, rule.body) && ruleGuardPasses(rule, scope, e)) {
-          selected.push({ rule, home: scope });
+        if (!parentExcludes(frame, rule.body)) {
+          candidates.push({ rule, home: scope });
         }
       }
     }
   }
+  const gather = serialForEach(candidates, ({ rule, home }) =>
+    mapMaybe(ruleGuardPasses(rule, home, e), (passes) => {
+      if (passes) {
+        selected.push({ rule, home });
+      }
+    }));
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < selected.length; index++) {
       const { rule, home } = selected[index]!;
@@ -9232,7 +9313,7 @@ function expandNestedApply(
       }
     }
   };
-  return run(0);
+  return mapMaybe(gather, () => run(0));
 }
 
 /** Expand a detached-ruleset call in nested mode. */
@@ -9286,33 +9367,34 @@ function expandNestedFor(
   sharedLeaves?: NestedLeafBuffer,
   applyExpansion = false
 ): MaybePromise<void> {
-  const items = forItems(node.iterable, frame, e);
-  const run = (start: number): MaybePromise<void> => {
-    for (let i = start; i < items.length; i++) {
-      const item = items[i]!;
-      const { value, key } = item;
-      const index = dimension(i + 1);
-      const bindings = bindForEntry(node, value, key, index);
-      const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
-      const loopFrame: Frame = {
-        parent: frame,
-        mixins: collectMixins(node.rules),
-        declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
-        statements: node.rules,
-        sourceOwner: frame.sourceOwner ?? null,
-        ...(extendPlacement ? { extendPlacement } : {})
-      };
-      bindForDetached(loopFrame, bindings, item);
-      const emitted = mapMaybe(
-        prepareBodyPlugins(node.rules, loopFrame, e),
-        () => emitNestedBody(node.rules, loopFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion)
-      );
-      if (isThenable(emitted)) {
-        return emitted.then(() => run(i + 1));
+  return mapMaybe(forItems(node.iterable, frame, e), (items) => {
+    const run = (start: number): MaybePromise<void> => {
+      for (let i = start; i < items.length; i++) {
+        const item = items[i]!;
+        const { value, key } = item;
+        const index = dimension(i + 1);
+        const bindings = bindForEntry(node, value, key, index);
+        const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
+        const loopFrame: Frame = {
+          parent: frame,
+          mixins: collectMixins(node.rules),
+          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
+          statements: node.rules,
+          sourceOwner: frame.sourceOwner ?? null,
+          ...(extendPlacement ? { extendPlacement } : {})
+        };
+        bindForDetached(loopFrame, bindings, item);
+        const emitted = mapMaybe(
+          prepareBodyPlugins(node.rules, loopFrame, e),
+          () => emitNestedBody(node.rules, loopFrame, e, undefined, imp, source, null, sharedLeaves, applyExpansion)
+        );
+        if (isThenable(emitted)) {
+          return emitted.then(() => run(i + 1));
+        }
       }
-    }
-  };
-  return run(0);
+    };
+    return run(0);
+  });
 }
 
 /**

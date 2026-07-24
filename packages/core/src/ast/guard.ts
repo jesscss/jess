@@ -18,6 +18,7 @@
  * `iscolor(@a)`) reach the evaluator.
  */
 
+import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 import type { ValueSlot } from './nodes.js';
 import { emitValue, type EvalModes, type ValueEvaluator, type ValueGroup } from './value-eval.js';
 import { makeList } from './value-factory.js';
@@ -35,8 +36,16 @@ export type GuardNode =
 /** Resolve a value node to its (variable-resolved, un-evaluated) source bytes. */
 export type ValueResolver = (v: ValueSlot) => string;
 
-/** Resolve a value node to a materialized TYPED value object. */
-export type TypedResolver = (v: ValueSlot) => ValueGroup;
+/**
+ * Resolve a value node to a materialized TYPED value object.
+ *
+ * A guard operand can name a value the engine cannot produce without awaiting —
+ * a `@plugin` function result, say — so this is a {@link MaybePromise}. It stays
+ * SYNCHRONOUS whenever the value is: the resolver returns the value itself, and
+ * every consumer below checks `isThenable` before reaching for a promise. No
+ * guard that could already be answered synchronously gains a microtask hop.
+ */
+export type TypedResolver = (v: ValueSlot) => MaybePromise<ValueGroup>;
 
 export interface GuardEvalDeps {
   /** Typed resolver (comparison / type-fn leaves compare typed values). */
@@ -53,37 +62,66 @@ export interface GuardEvalDeps {
  * materialized value objects — real Less semantics by construction; logic/
  * negation/truthiness/default are owned here.
  */
-export function evalGuard(node: GuardNode, deps: GuardEvalDeps): boolean {
+export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<boolean> {
   switch (node.g) {
-    case 'and': {
-      const l = evalGuard(node.left, deps);
-      const r = evalGuard(node.right, deps);
-      return l && r;
-    }
+    case 'and':
     case 'or': {
+      // Both operands are evaluated (a guard is side-effect-free, and this
+      // preserves the existing evaluation order exactly); only the COMBINE waits.
       const l = evalGuard(node.left, deps);
       const r = evalGuard(node.right, deps);
-      return l || r;
+      const join = node.g === 'and'
+        ? (a: boolean, b: boolean) => a && b
+        : (a: boolean, b: boolean) => a || b;
+      return isThenable(l) || isThenable(r)
+        ? Promise.all([l, r]).then(([a, b]) => join(a, b))
+        : join(l, r);
     }
-    case 'not':
-      return !evalGuard(node.inner, deps);
-    case 'truth':
+    case 'not': {
+      const inner = evalGuard(node.inner, deps);
+      return isThenable(inner) ? inner.then(value => !value) : !inner;
+    }
+    case 'truth': {
       // Less: a bare-value guard is true only if it evaluates to `true`.
-      return emitValue(deps.resolveTyped(node.value)).trim() === 'true';
+      const value = deps.resolveTyped(node.value);
+      const test = (v: ValueGroup): boolean => emitValue(v).trim() === 'true';
+      return isThenable(value) ? value.then(test) : test(value);
+    }
     case 'cmp': {
-      if (!deps.ev) {
+      const ev = deps.ev;
+      if (!ev) {
         return false;
       }
       const left = deps.resolveTyped(node.left);
       const right = deps.resolveTyped(node.right);
-      return deps.ev.compare(node.op, left, right, deps.modes);
+      const compare = (a: ValueGroup, b: ValueGroup): boolean => ev.compare(node.op, a, b, deps.modes);
+      return isThenable(left) || isThenable(right)
+        ? Promise.all([left, right]).then(([a, b]) => compare(a, b))
+        : compare(left, right);
     }
     case 'call': {
-      if (!deps.ev) {
+      const ev = deps.ev;
+      if (!ev) {
         return false;
       }
-      const items = node.args.map(a => deps.resolveTyped(a));
-      return deps.ev.typeCheck(node.name, makeList(items, ','), deps.modes);
+      // Resolve into `settled` while every operand stays synchronous; the first
+      // awaitable one moves the whole list into `pending`, so the common case
+      // allocates exactly the one array the old `.map` did.
+      const settled: ValueGroup[] = [];
+      let pending: Array<MaybePromise<ValueGroup>> | null = null;
+      for (const arg of node.args) {
+        const value = deps.resolveTyped(arg);
+        if (pending) {
+          pending.push(value);
+        } else if (isThenable(value)) {
+          pending = [...settled, value];
+        } else {
+          settled.push(value);
+        }
+      }
+      const check = (values: ValueGroup[]): boolean =>
+        ev.typeCheck(node.name, makeList(values, ','), deps.modes);
+      return pending ? Promise.all(pending).then(check) : check(settled);
     }
     case 'default':
       return deps.isDefault();
