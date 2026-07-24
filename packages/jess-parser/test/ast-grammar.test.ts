@@ -2111,6 +2111,94 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  // css-syntax-3 §5.4.7 "consume a list of declarations": `;` SEPARATES
+  // declarations, it does not terminate them. The last declaration in a block
+  // needs no `;`, and an empty declaration between two separators is skipped
+  // rather than being an error. Replicated as a matrix in
+  // `conditional-at-rule-value.test.ts` for every dialect.
+  it('treats `;` as a declaration-list separator, not a required terminator', () => {
+    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    for (const source of [
+      'a { color: red }',
+      'a { color: red; }',
+      'a { color: red;; }',
+      'a { ; color: red }',
+      'a { color: red; background: blue }',
+      'a { color: red !important }',
+      'a { --x: 1px }',
+      'a { color: red; b { x: 1 } }',
+      'a { color: red; @media all { x: 1 } }'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+    expect(serialize(parse('a { ; color: red;; background: blue }'), { evaluator }).css).toBe(
+      'a {\n  color: red;\n  background: blue;\n}\n'
+    );
+  });
+
+  // A function is an anonymous mixin that yields one value: `@(params)` is the
+  // parameter list a named mixin declares and `>` is the "yield one value"
+  // marker. It reduces to the SAME `AnonymousMixin` an SCSS `@function` lowers
+  // to, so one binder and one `result:` convention serve both dialects.
+  it('constructs a stylesheet-defined function as a params-carrying AnonymousMixin', () => {
+    expect(parse('$foo: @($arg1, $arg2) > {\n  result: bar;\n}\n\n.box {\n  output: $foo(1, 2);\n}')).toMatchObject({
+      children: [
+        {
+          type: 'VariableDeclaration',
+          name: 'foo',
+          value: {
+            type: 'AnonymousMixin',
+            params: [{ name: 'arg1' }, { name: 'arg2' }],
+            body: [{ type: 'Declaration', name: 'result', value: { type: 'Keyword', src: 'bar' } }]
+          }
+        },
+        {
+          type: 'Rule',
+          body: [{
+            type: 'Declaration',
+            name: 'output',
+            value: {
+              type: 'Reference',
+              base: { type: 'VariableReference', name: 'foo' },
+              steps: [{ type: 'Call', args: [{ value: { src: '1' } }, { value: { src: '2' } }] }]
+            }
+          }]
+        }
+      ]
+    });
+    // The single-expression body is sugar for a body whose only statement is
+    // `result: <expr>`, so evaluation never sees which spelling was authored.
+    expect(parse('$f: @() > some-val;')).toMatchObject({
+      children: [{ value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'result', value: { src: 'some-val' } }] } }]
+    });
+  });
+
+  // A block-valued assignment auto-terminates at its closing brace; the block
+  // must be the WHOLE value, since a value preceding it would have no
+  // unambiguous end. Less has the same rule for a detached ruleset.
+  it('auto-terminates a block-valued assignment and rejects a value before the block', () => {
+    for (const source of [
+      '$foo: { }', '$foo: @{}', '$foo: @() > { }',
+      '$foo: { };', '$foo: @{};', '$foo: @() > { };'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+    // Whatever follows the closing brace begins a NEW statement.
+    expect(parse('$foo: {} $bar: 1;')).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'foo', value: { type: 'Collection' } },
+        { type: 'VariableDeclaration', name: 'bar' }
+      ]
+    });
+    // Nothing may precede the block — with OR without a `;`. Compose instead:
+    // `$foo: {}` then `$bar: $foo bar;`.
+    for (const source of ['$foo: bar { }', '$foo: bar @() > { }', '$foo: bar @() > { };', '$foo: bar { };']) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+    }
+    // An expression body is not a block, so it still needs its `;`.
+    expect(() => parse('$foo: @() > some-val')).toThrow(SyntaxError);
+  });
+
   it('does not widen the closed direct declaration/value subset', () => {
     for (const source of [
       'color: red;',
@@ -2121,7 +2209,6 @@ describe('Jess AST grammar facts', () => {
       '$tone: rgb(1,);',
       '$tone: #12345;',
       '$tone: #123456789;',
-      '.card { color: blue }',
       // `--` alone is reserved by css-variables-1 §2, so it is not a custom
       // property name in any dialect. (`--$[property]` IS one, and is asserted
       // in custom-property.test.ts alongside the less/scss equivalents.)

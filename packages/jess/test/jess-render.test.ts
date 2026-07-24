@@ -70,6 +70,50 @@ describe('Jess parser plugin render-through', () => {
     expect(css).toBe('.entry {\n  color: #06c;\n  first: 10px;\n  padding: 30px;\n}\n');
   });
 
+  // A stylesheet-defined function is a value-position lambda bound to a `$name`.
+  // Argument binding is the SAME path a named mixin call uses (positional, named,
+  // defaults, arity), and the yielded value is the FINAL `result:` assignment.
+  it('renders stylesheet-defined functions through the public Jess route', async () => {
+    const render = async (source: string): Promise<string> =>
+      new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' });
+
+    // The documented shape, verbatim.
+    expect(await render('$foo: @($arg1, $arg2) > {\n  result: bar;\n}\n\n.box {\n  output: $foo(1, 2);\n}'))
+      .toBe('.box {\n  output: bar;\n}\n');
+    // Positional binding, then the same call by NAME, then a param default.
+    expect(await render('$add: @($a, $b) > { result: $($a + $b); } .box { w: $add(1px, 2px); }'))
+      .toBe('.box {\n  w: 3px;\n}\n');
+    expect(await render('$add: @($a, $b) > { result: $($a + $b); } .box { w: $add($b: 2px, $a: 1px); }'))
+      .toBe('.box {\n  w: 3px;\n}\n');
+    expect(await render('$add: @($a, $b: 10px) > { result: $($a + $b); } .box { w: $add(1px); }'))
+      .toBe('.box {\n  w: 11px;\n}\n');
+    // The single-expression body.
+    expect(await render('$f: @() > $(1 + 2); .box { v: $f(); }')).toBe('.box {\n  v: 3;\n}\n');
+    // No early return: the LAST `result:` assignment wins.
+    expect(await render('$f: @() > {\n  $if(true) {\n    result: one;\n  }\n  result: two;\n}\n.box { v: $f(); }'))
+      .toBe('.box {\n  v: two;\n}\n');
+  });
+
+  // A function is an ordinary value, so it can be passed to another function and
+  // called there — the arg binds BY REFERENCE rather than byte-flattening.
+  it('passes a function as a value and calls it', async () => {
+    const render = async (source: string): Promise<string> =>
+      new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' });
+
+    expect(await render('$twice: @($fn, $v) > { result: $fn($fn($v)); }\n$inc: @($n) > { result: $($n + 1); }\n.box { v: $twice($inc, 1); }'))
+      .toBe('.box {\n  v: 3;\n}\n');
+    // A bare `$name` is just a variable that happens to hold a function.
+    expect(await render('$inc: @($n) > { result: $($n + 1); }\n$alias: $inc;\n.box { v: $alias(1); }'))
+      .toBe('.box {\n  v: 2;\n}\n');
+  });
+
+  it('reports an arity mismatch on a function call rather than emitting the raw call', async () => {
+    await expect(new Compiler().renderString(
+      '$f: @($a, $b) > { result: 1; } .box { v: $f(1); }',
+      { filePath: 'entry.jess', extension: '.jess' },
+    )).rejects.toThrow(/arity/i);
+  });
+
   it('loads a `.jess` entry file through Context plugin resolution', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-plugin-jess-'));
     const entry = path.join(directory, 'entry.jess');

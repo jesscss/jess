@@ -186,6 +186,35 @@ describe('Jess conditional at-rule value holes', () => {
     });
   });
 
+  /**
+   * `;` is a declaration-list SEPARATOR, not a terminator — css-syntax-3 §5.4.7
+   * "consume a list of declarations" ends a declaration at `;` OR at the end of
+   * the block, and an empty declaration between two separators is discarded
+   * rather than being an error. Valid CSS must parse in every dialect, so a
+   * missing trailing `;` cannot be a dialect difference.
+   *
+   * Cross-dialect status when this landed: css and less accept all of these;
+   * scss rejects `;;`, `{ ; }`, and a leading `;`; less and css reject a
+   * declaration with no `;` directly before a nested at-rule. Those are gaps in
+   * those dialects, not intended divergence.
+   */
+  for (const [label, source] of [
+    ['a block with no trailing semicolon', 'a { color: red }'],
+    ['a block with a trailing semicolon', 'a { color: red; }'],
+    ['a doubled separator', 'a { color: red;; }'],
+    ['an empty declaration', 'a { ; }'],
+    ['a leading separator', 'a { ; color: red }'],
+    ['a final declaration among several', 'a { color: red; background: blue }'],
+    ['an unterminated custom property', 'a { --x: 1px }'],
+    ['an unterminated important declaration', 'a { color: red !important }'],
+    ['a declaration before a nested rule', 'a { color: red; b { x: 1 } }'],
+    ['a declaration before a nested at-rule', 'a { color: red; @media all { x: 1 } }']
+  ] as Array<[string, string]>) {
+    it(`declaration list: accepts ${label}`, () => {
+      expect(() => parse(source), source).not.toThrow();
+    });
+  }
+
   it('preserves a custom-property value verbatim inside a conditional at-rule', () => {
     expect(parse('@media (min-width: 600px) { a { --x: 1px solid black; } }')).toMatchObject({
       children: [{ type: 'AtRuleBlock', body: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]

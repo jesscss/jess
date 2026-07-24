@@ -194,6 +194,7 @@ type SharedCssAstSyntax = {
   CssAstSyntaxQueryAndOr: Combinator<string>;
   CssAstSyntaxQueryNot: Combinator<string>;
   CssAstSyntaxQueryOnly: Combinator<string>;
+  CssAstSyntaxQueryComparisonOperator: Combinator<string>;
   CssAstSyntaxContainerAtKeyword: Combinator<string>;
   CssAstSyntaxSingleQuotedText: Combinator<string>;
   CssAstSyntaxDimensionUnit: Combinator<string>;
@@ -645,9 +646,12 @@ function interpolationFromChildren(
 // `Reference.raw` fallback string. It never feeds recognition, and it never
 // throws: a value with no direct spelling contributes nothing rather than
 // failing the parse.
-function referenceArgSource(value: ValueSlot): string {
+function referenceArgSource(value: JessMixinCallArgument['value']): string {
   if (Array.isArray(value)) {
     return value.map(referenceArgSource).join(' ');
+  }
+  if (!isValueNode(value)) {
+    return '';
   }
   switch (value.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
@@ -2042,30 +2046,35 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.CssAstSyntaxKeyword,
     children => ({ property: keyword(requireToken(children[0]).value) })
   );
-  const directJessStaticAtQueryComparisonOperator = choice(literal('<='), literal('>='), literal('<'), literal('='), literal('>'));
   const DirectJessStaticAtComparisonQuery = node<ValueNode>(
     'DirectJessStaticAtComparisonQuery',
     choice(
       sequence(
         literal('('), optional(rawWhitespace), DirectJessStaticAtQueryProperty, optional(rawWhitespace),
-        directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), DirectJessStaticAtQueryValue,
+        field('comparison', g.CssAstSyntaxQueryComparisonOperator), optional(rawWhitespace), DirectJessStaticAtQueryValue,
         optional(rawWhitespace), literal(')')
       ),
       sequence(
         literal('('), optional(rawWhitespace), DirectJessStaticAtQueryValue, optional(rawWhitespace),
-        directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), DirectJessStaticAtQueryProperty,
-        optional(sequence(optional(rawWhitespace), directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), DirectJessStaticAtQueryValue)),
+        field('comparison', g.CssAstSyntaxQueryComparisonOperator), optional(rawWhitespace), DirectJessStaticAtQueryProperty,
+        optional(sequence(optional(rawWhitespace), field('comparison', g.CssAstSyntaxQueryComparisonOperator), optional(rawWhitespace), DirectJessStaticAtQueryValue)),
         optional(rawWhitespace), literal(')')
       )
     ),
-    (children) => {
+    (children, fields) => {
       const propertyFact = children.find((child): child is JessStaticAtQueryProperty => typeof child === 'object' && child !== null && 'property' in child);
       if (propertyFact === undefined) {
         throw new TypeError('Direct Jess static query comparison lost its property.');
       }
       const values = children.filter(isValueNode);
-      const operators = children.filter(isToken).map(requireToken).map(token => token.value)
-        .filter(value => value === '<' || value === '<=' || value === '=' || value === '>=' || value === '>');
+      // Read the operators back from the shared terminal's captures. Restating the
+      // operator set as a runtime filter would be a second, drift-prone copy of a
+      // spelling `internal-css-recognition` already owns — and PEG `choice` is
+      // ordered, so every hand-maintained copy is a fresh chance to put `<` before
+      // `<=` and mis-parse a range without erroring.
+      const operators = fields?.comparison === undefined
+        ? []
+        : requireFields(fields, 'comparison').map(capture => typeof capture.value === 'string' ? capture.value : requireToken(capture.value).value);
       if (values.length === 0 || operators.length === 0) {
         throw new TypeError('Direct Jess static query comparison lost an operand.');
       }
@@ -2371,7 +2380,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   // Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
   // 15-rule choice with no bare `;` or `$extend` arm.
-  const directJessNestedBodyStatement = choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement);
+  const directJessNestedBodyStatement = choice(literal(';'), g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement);
   const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
     'DirectJessSupportsAtRuleBlock',
     sequence(
@@ -2666,7 +2675,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     // value leaf already stops before the marker (and before the whitespace
     // preceding it), so this tail simply claims it, exactly like the ordinary
     // declaration tail below.
-    sequence(g.DirectJessCustomPropertyName, literal(':'), g.DirectJessCustomValue, optional(g.DirectJessImportant), literal(';')),
+    sequence(g.DirectJessCustomPropertyName, literal(':'), g.DirectJessCustomValue, optional(g.DirectJessImportant), optional(literal(';'))),
     (children) => {
       const name = children[0];
       if (typeof name !== 'string' && !isInterpolation(name)) {
@@ -2685,7 +2694,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessDeclaration',
     choice(
       g.DirectJessCustomDeclaration,
-      sequence(choice(DirectJessInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectJessValue, optional(g.DirectJessImportant), literal(';'))
+      sequence(choice(DirectJessInterpolatedProperty, g.CssAstSyntaxProperty), literal(':'), g.DirectJessValue, optional(g.DirectJessImportant), optional(literal(';')))
     ),
     (children) => {
       // The custom-property arm is a single completed Declaration child; pass it
@@ -3116,7 +3125,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessRule = node<Rule>(
     'DirectJessRule',
-    sequence(g.DirectJessSelector, literal('{'), many(choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement)), literal('}')),
+    sequence(g.DirectJessSelector, literal('{'), many(choice(literal(';'), g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement)), literal('}')),
     (children) => {
       requireExactToken(children[1], '{');
       requireExactToken(children.at(-1), '}');
