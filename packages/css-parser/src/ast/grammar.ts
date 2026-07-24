@@ -1217,7 +1217,13 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   // cannot become declaration values or block the `!important` reduction.
   const CssAstImportant = node(
     'CssAstImportant',
-    sequence(many(blockComment), literal('!'), many(blockComment), g.CssAstSyntaxImportant, many(blockComment)),
+    // Lead with `!` (the cheap disambiguating signal) so this arm resolves a
+    // concrete first-set and optional(Important) is first-char-gated instead of
+    // entering the node frame at every declaration's value boundary. The former
+    // leading many(blockComment) was dead: the enclosing declaration already
+    // consumes any comments before the `!` marker, and this reducer ignores its
+    // children, so dropping it is output-identical.
+    sequence(literal('!'), many(blockComment), g.CssAstSyntaxImportant, many(blockComment)),
     () => true
   );
   const CssAstDeclaration = node(
