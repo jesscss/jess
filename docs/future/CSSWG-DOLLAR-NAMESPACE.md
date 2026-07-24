@@ -109,13 +109,39 @@ Stated honestly, because a filing should not overclaim:
   Being stricter is a different failure mode from squatting, but it is not
   nothing, and the filing should not imply Jess is a pure CSS superset.
 
-**Open detail to pre-empt, not gloss:** `@-` is visually adjacent to CSS's vendor
-prefixes (`@-webkit-keyframes`, `@-moz-document`). Those are `@-<vendor>-<name>`
-with a second dash; Jess's are `@-<name>` with none, so they are formally
-distinguishable — but the WG will notice the resemblance, and a reader could read
-`@-import` as a vendor prefix with an empty vendor. Raise it in the filing as a
-known naming question rather than waiting to be caught by it. If a better marker
-exists, we would take it.
+**On the choice of `@-`, pre-empted:** the WG will notice that `@-` resembles
+CSS's vendor prefixes (`@-webkit-keyframes`, `@-moz-document`). The resemblance
+is superficial, and the choice is deliberate.
+
+**It is structurally unambiguous, not merely visually distinguishable.** A
+vendor-specific extension requires *two* segments. [CSS 2.2 §4.1.2.1
+"Vendor-specific extensions"](https://www.w3.org/TR/CSS22/syndata.html#vendor-keywords)
+gives the format as
+
+> `'-' + vendor identifier + '-' + meaningful name`
+
+— a leading dash, a vendor identifier, a **second dash**, then the name;
+`-webkit-keyframes` is `-` + `webkit` + `-` + `keyframes`. Jess's `@-import` has
+one dash and one segment. Read as a vendor prefix it would parse as vendor
+`import` with no name following, which is not a well-formed vendor extension. The
+two forms cannot collide. (That section speaks normatively of keywords and
+property names rather than at-rules; at-rule names are identifiers, and vendor
+at-rules follow the same two-segment shape in practice.)
+
+**`@--` was rejected on principle, not taste.** `--` already carries a specific,
+established meaning in CSS: the **author** user space, at **runtime**. Reusing it
+to mark **compiler build-time** at-rules would overload one marker with two
+unrelated user spaces — exactly the namespace muddle this proposal exists to
+prevent. A single dash keeps the three spaces lexically distinct:
+
+| Marker | Space |
+|---|---|
+| `--` | author, runtime (custom properties) |
+| `@-` | compiler, build-time (Jess at-rules) |
+| `$` | tooling, build-time (proposed) |
+
+Secondarily, and much less importantly: the double dash is noisier for a marker
+authors type constantly.
 
 ### The generalized rule
 
