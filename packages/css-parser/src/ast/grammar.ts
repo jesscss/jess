@@ -1092,8 +1092,12 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   // and the outer not(calc) guard preserve their exact error paths.
   const CssAstDeclarationIdent = node<ValueNode>(
     'CssAstDeclarationIdent',
+    // Lead with genericFunctionName (a grammar-local regex) so this arm resolves a
+    // concrete identifier first-set and the compiler first-char-gates it, instead
+    // of entering it speculatively at every value-atom boundary. The former
+    // not(urlOpen) guard is unreachable here: `url(` is always consumed (or
+    // hard-errored) by the preceding CssAstUrl arm, so it never reaches this arm.
     sequence(
-      not(g.CssAstSyntaxUrlOpen),
       genericFunctionName,
       optional(sequence(
         literal('('),
