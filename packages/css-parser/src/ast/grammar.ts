@@ -732,17 +732,27 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     children => selectorArgumentText(children[0])
   );
   // The `:nth-of-type` family's argument: identical to `CssAstPseudoArgument`
-  // except the An+B arms are the bare (no-`of`) variants. Non-An+B fallbacks
-  // (dash-raw, selector, raw) are unchanged, so every argument that does not use
-  // an `of S` tail stays byte-identical.
+  // except the An+B arms are the bare (no-`of`) variants. The two bare An+B arms
+  // reject an `of` tail via their close-ahead, but the selector and raw fallbacks
+  // would otherwise re-capture `<An+B> of …` as opaque text (the selector arm as a
+  // compound selector, the raw arm as a scanned span). A negative lookahead for an
+  // `<An+B>` immediately followed by `of` closes both leaks so the whole of-type
+  // branch fails — Selectors-4 §6.6.2 defines `of S` only for nth-child/last-child
+  // (§7.1). The guard fires ONLY on an An+B-prefixed `of` tail, so every argument
+  // that does not use one (a plain selector or opaque raw arg) stays byte-identical.
   const CssAstOfTypePseudoArgument = node<string>(
     'CssAstOfTypePseudoArgument',
     choice(
       g.CssAstLeadingDashOfTypePseudoArgument,
       g.CssAstLeadingDashRawPseudoArgument,
       g.CssAstTypedOfTypePseudoArgument,
-      parser({ trivia: interstitialTrivia }, g.CssAstSelector),
-      sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), pseudoRawArgument)
+      sequence(
+        not(parser({ trivia: whitespace }, sequence(g.CssAstSyntaxNth, g.CssAstSyntaxOfKeyword))),
+        choice(
+          parser({ trivia: interstitialTrivia }, g.CssAstSelector),
+          sequence(not(g.CssAstSyntaxMalformedPseudoNumericArgument), pseudoRawArgument)
+        )
+      )
     ),
     children => selectorArgumentText(children[0])
   );
