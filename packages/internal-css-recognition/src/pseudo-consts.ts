@@ -21,6 +21,23 @@ import { regex, rules } from 'parseman' with { type: 'macro' };
 const nthChildNameWithArg = regex(/nth-(?:last-)?child(?=\()/i);
 /** `:nth-of-type(` / `:nth-last-of-type(` name, boundary-anchored on the `(`. */
 const nthTypeNameWithArg = regex(/nth-(?:last-)?of-type(?=\()/i);
+/**
+ * Every `:nth-*` family name, anchored on the IDENTIFIER boundary rather than a
+ * following `(`. A generic keyword-pseudo arm excludes this so a paren-less nth
+ * name (`:nth-child`, `:nth-of-type`) cannot be reclassified as a bare keyword
+ * pseudo — it must reach the structured nth arms with an immediate `(` or be
+ * rejected. This is the shared form of Less's `directStaticNthPseudoNameBoundary`.
+ */
+const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9-￿])/i);
+/**
+ * The selector-argument functional pseudos (`:is`/`:where`/`:not`/`:has`/
+ * `:matches`), anchored on the opening `(`. A dialect routes these names to a
+ * selector-ONLY argument (no general-any fallback), so a non-selector argument
+ * such as `:not(2n+1)` fails the selector and rejects the whole pseudo. The
+ * generic keyword-pseudo arm excludes these so a failed selector cannot fall
+ * through to the general-any scan.
+ */
+const selectorArgPseudoName = regex(/(?:is|where|not|has|matches)(?=\()/i);
 /** The `of` keyword introducing a `<selector>` in an nth-child argument. */
 const pseudoOfKeyword = regex(/of(?![-\w])/i);
 /** Zero-width close check: whitespace-tolerant lookahead at the argument `)`. */
@@ -29,6 +46,8 @@ const pseudoCloseAhead = regex(/(?=[ \t\n\r\f]*\))/i);
 export const cssAstPseudoSyntax = rules(_g => ({
   CssAstSyntaxNthChildName: nthChildNameWithArg,
   CssAstSyntaxNthTypeName: nthTypeNameWithArg,
+  CssAstSyntaxNthName: nthNameBoundary,
+  CssAstSyntaxSelectorArgPseudoName: selectorArgPseudoName,
   CssAstSyntaxOfKeyword: pseudoOfKeyword,
   CssAstSyntaxPseudoCloseAhead: pseudoCloseAhead
 }));

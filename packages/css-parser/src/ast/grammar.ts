@@ -569,6 +569,10 @@ const importTailText = regex(/[^()[\]"'\/; \t\n\r\f]+/);
 const keyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
+// A relative selector (a `:has()` argument) may open with a combinator. Only the
+// child/sibling combinators lead a relative selector; a leading `|`/`||` is
+// namespace syntax, not a relative combinator.
+const relativeSelectorCombinator = choice(literal('>'), literal('+'), literal('~'));
 // A pseudo selector always opens with `:`/`::`. Spelling this leading colon as a
 // grammar-local recognizer (identical to the shared CssAstSyntaxPseudoColon) lets
 // the compiler resolve the pseudo arm's first-set to `:` and first-char-gate it in
@@ -785,6 +789,41 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ),
     children => isSelectorList(children[0]) ? children[0] : selectorArgumentText(children[0])
   );
+  // A `:has()` argument is a relative selector, so an individual complex may open
+  // with a combinator (`:has(> .b)`). The outer selector grammar forbids a leading
+  // combinator, so this pseudo-private complex admits an optional relative one and
+  // rides it on the ComplexSelector's `leadingComb`. A leading `|` is namespace
+  // syntax, not a relative combinator, so it is excluded (mirrors Less's
+  // `relativeSelectorCombinator`).
+  const CssAstRelativeComplex = node<ComplexSelector>(
+    'CssAstRelativeComplex',
+    sequence(optional(relativeSelectorCombinator), g.CssAstComplex),
+    (children) => {
+      const complex = children.find(isComplex);
+      if (complex === undefined) {
+        throw new Error('CssAstRelativeComplex requires a complex selector');
+      }
+      if (children.length === 1) {
+        return complex;
+      }
+      const lead = tokenText(children[0]);
+      if (lead !== '>' && lead !== '+' && lead !== '~') {
+        throw new Error('CssAstRelativeComplex produced an invalid leading combinator');
+      }
+      return { ...complex, leadingComb: lead };
+    }
+  );
+  // The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+  // selector-ONLY argument: a (relative) selector list with no general-any text
+  // fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
+  // non-relative shape reduces byte-identically to `CssAstSelector` (both assemble
+  // `selist(...selectorComplexes(children))`); the retained `SelectorList` becomes
+  // structured `PseudoSelector.args` in `CssAstPseudo`, never joined at parse.
+  const CssAstSelectorOnlyPseudoArgument = node<SelectorList>(
+    'CssAstSelectorOnlyPseudoArgument',
+    parser({ trivia: interstitialTrivia }, sequence(CssAstRelativeComplex, many(sequence(literal(','), CssAstRelativeComplex)))),
+    children => selist(...selectorComplexes(children))
+  );
   // Both pseudo arms share the leading `:`/`::` colon. Left-factor it so that
   // sub-rule runs once per pseudo instead of once per arm; the An+B and generic
   // branches then differ only after the colon. Both original reducers already
@@ -797,7 +836,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       choice(
         sequence(g.CssAstSyntaxNthChildName, literal('('), g.CssAstPseudoArgument, literal(')')),
         sequence(g.CssAstSyntaxNthTypeName, literal('('), g.CssAstOfTypePseudoArgument, literal(')')),
-        sequence(not(g.CssAstSyntaxNthChildName), not(g.CssAstSyntaxNthTypeName), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
+        sequence(g.CssAstSyntaxSelectorArgPseudoName, literal('('), CssAstSelectorOnlyPseudoArgument, literal(')')),
+        sequence(not(g.CssAstSyntaxSelectorArgPseudoName), not(g.CssAstSyntaxNthName), g.CssAstSyntaxKeyword, optional(sequence(literal('('), CssAstGenericPseudoArgument, literal(')'))))
       )
     ),
     (children) => {

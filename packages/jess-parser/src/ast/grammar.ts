@@ -161,6 +161,7 @@ type SharedCssAstSyntax = {
   CssAstSyntaxNth: Combinator<string>;
   CssAstSyntaxNthChildName: Combinator<string>;
   CssAstSyntaxNthTypeName: Combinator<string>;
+  CssAstSyntaxNthName: Combinator<string>;
   CssAstSyntaxOfKeyword: Combinator<string>;
   CssAstSyntaxPseudoCloseAhead: Combinator<string>;
   CssAstSyntaxNumber: Combinator<string>;
@@ -1409,16 +1410,17 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     // The nth families dispatch by NAME (shared `g.CssAstSyntaxNthChildName`/
     // `g.CssAstSyntaxNthTypeName`) so `of S` is accepted only on the child index
     // and rejected on the type index; every other pseudo takes the generic
-    // selector argument (with the nth names excluded so a malformed nth argument
-    // rejects rather than falling through to the opaque path).
+    // selector argument. The generic arm excludes every nth name at its identifier
+    // boundary (`g.CssAstSyntaxNthName`) so a malformed nth argument — or a bare,
+    // paren-less nth name (`:nth-child`) — rejects rather than falling through to
+    // a keyword pseudo or the opaque path.
     sequence(
       g.CssAstSyntaxPseudoColon,
       choice(
         sequence(g.CssAstSyntaxNthChildName, literal('('), optional(rawWhitespace), DirectJessStaticNthChildArgument, optional(rawWhitespace), literal(')')),
         sequence(g.CssAstSyntaxNthTypeName, literal('('), optional(rawWhitespace), DirectJessStaticNthTypeArgument, optional(rawWhitespace), literal(')')),
         sequence(
-          not(g.CssAstSyntaxNthChildName),
-          not(g.CssAstSyntaxNthTypeName),
+          not(g.CssAstSyntaxNthName),
           g.CssAstSyntaxKeyword,
           optional(sequence(literal('('), optional(rawWhitespace), g.DirectJessStaticPseudoArgument, optional(rawWhitespace), literal(')')))
         )

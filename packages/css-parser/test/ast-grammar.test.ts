@@ -276,6 +276,58 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
+  it('makes selector-argument pseudos selector-only and rejects paren-less nth names (cross-dialect divergence unification)', () => {
+    // Two tracked css/jess/less divergences close here (design §7). (1) The
+    // selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+    // selector-ONLY argument with no general-any fallback, so a non-selector
+    // argument such as `:not(2n+1)` rejects the whole pseudo (less/jess already
+    // reject). (2) A bare, paren-less nth name is not a keyword pseudo — it must
+    // reach the structured nth arms with an immediate `(` or be rejected, matching
+    // Less's identifier-boundary guard.
+    for (const source of [
+      '.x:not(2n+1) { color: red; }',
+      '.x:is(2n+1) { color: red; }',
+      '.x:where(2n+1) { color: red; }',
+      '.x:has(2n+1) { color: red; }',
+      '.x:matches(2n+1) { color: red; }',
+      '.x:nth-child { color: red; }',
+      '.x:nth-of-type { color: red; }',
+      '.x:nth-last-child { color: red; }',
+      '.x:nth-last-of-type { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).toThrow();
+    }
+
+    // Valid selector arguments (including `:has()` relative selectors), the
+    // general-any pseudos (`:lang`/`:dir`/unknown — verbatim any-value, unchanged),
+    // and parenthesized nth still parse.
+    for (const source of [
+      '.x:not(.a) { color: red; }',
+      '.x:is(.a, .b) { color: red; }',
+      '.x:where(.a, .b) { color: red; }',
+      '.x:matches(.a) { color: red; }',
+      '.x:has(> .b) { color: red; }',
+      '.x:has(.card > .icon) { color: red; }',
+      '.x:not(::before) { color: red; }',
+      '.x:is(:not(.a)) { color: red; }',
+      '.x:nth-child(2n+1) { color: red; }',
+      '.x:lang(en) { color: red; }',
+      '.x:dir(rtl) { color: red; }',
+      '.x:unknown(2n+1) { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).not.toThrow();
+    }
+
+    // `:has()` relative selectors are structured and serialize back byte-identically.
+    for (const [source, expected] of [
+      ['.x:has(> .b) { color: red; }', '.x:has(> .b) {\n  color: red;\n}\n'],
+      ['.x:has(+ .b) { color: red; }', '.x:has(+ .b) {\n  color: red;\n}\n'],
+      ['.x:has(~ .b) { color: red; }', '.x:has(~ .b) {\n  color: red;\n}\n']
+    ] as const) {
+      expect(serialize(parseAst(source)).css, source).toEqual(expected);
+    }
+  });
+
   it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
     // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign in
     // the `<An+B>` microsyntax (https://www.w3.org/TR/selectors-4/#anb-microsyntax);

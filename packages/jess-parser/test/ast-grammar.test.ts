@@ -649,6 +649,35 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('rejects paren-less nth pseudo names at the identifier boundary (cross-dialect divergence unification)', () => {
+    // A bare, paren-less nth name is not a keyword pseudo — it must reach the
+    // structured nth arms with an immediate `(` or be rejected, matching Less's
+    // identifier-boundary guard (design §7). Jess is already selector-only for
+    // `:not`, so `:not(2n+1)` already rejects; this closes the remaining bare-nth
+    // divergence with css/less.
+    for (const source of [
+      '.x:nth-child { color: red; }',
+      '.x:nth-of-type { color: red; }',
+      '.x:nth-last-child { color: red; }',
+      '.x:nth-last-of-type { color: red; }',
+      '.x:not(2n+1) { color: red; }'
+    ]) {
+      const rejected = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
+    }
+
+    for (const source of [
+      '.x:nth-child(2n+1) { color: red; }',
+      '.x:nth-of-type(2n) { color: red; }',
+      '.x:not(.a) { color: red; }',
+      '.x:is(.a, .b) { color: red; }',
+      '.x:lang(en) { color: red; }'
+    ]) {
+      const accepted = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(accepted.ok && accepted.unconsumedFrom === null, source).toBe(true);
+    }
+  });
+
   it('accepts An+B and selector pseudo whitespace as valid CSS, normalizing surrounding argument space', () => {
     // Valid CSS is valid .jess: Selectors-4 §6.6.2 permits OPTIONAL whitespace
     // around the `+`/`-` sign, and CSS permits insignificant whitespace
