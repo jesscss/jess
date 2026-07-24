@@ -38,6 +38,14 @@ const scssStaticMediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
 // grammars own the surrounding `!` and AST reduction.
 const important = regex(/important/i);
 const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
+// A CSS `<urange>` (`U+26`, `U+0-7F`, `U+0025-00FF`, `U+4??`) is ONE lexical
+// terminal — css-syntax-3 §4.4 consumes it as a unicode-range token before any
+// numeric token, so the `+`/`-` inside it are never operators or signs.
+// @see https://drafts.csswg.org/css-syntax/#urange-syntax
+// Without this fact a dialect re-reads `+0`/`-7F` as signed numbers and turns
+// valid CSS into arithmetic or a space list, silently emitting `U + 0 - 7F`.
+// Recognition only: dialect reductions own the verbatim value node.
+const unicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/);
 // CSS at-keywords are ASCII-case-insensitive. Dialect reductions own the
 // header/body shape; these leaves only establish the keyword boundary.
 const conditionalAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
@@ -206,6 +214,7 @@ export const cssAstSyntax = rules(_g => ({
   ScssAstSyntaxStaticMediaModifier: scssStaticMediaModifier,
   CssAstSyntaxImportant: important,
   CssAstSyntaxHexColor: hexColor,
+  CssAstSyntaxUnicodeRange: unicodeRange,
   CssAstSyntaxConditionalAtKeyword: conditionalAtKeyword,
   CssAstSyntaxMediaContainerAtKeyword: mediaContainerAtKeyword,
   CssAstSyntaxMediaAtKeyword: mediaAtKeyword,

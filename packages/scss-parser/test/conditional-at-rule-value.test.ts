@@ -363,4 +363,34 @@ describe('SCSS conditional at-rule value holes', () => {
       children: [{ type: 'AtRuleBlock', body: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: '1px solid black' } }] }] }]
     });
   });
+
+  /**
+   * `<mf-value>` is ONE component value (mediaqueries-4 §4). A multi-part or
+   * comma-separated operand is therefore not a feature at all: mediaqueries-5
+   * §3.1 makes it `<general-enclosed>`, which no dialect implements for
+   * media/container yet, so all four reject it today.
+   *
+   * What is pinned here is the CONTRACT, not the rejection. css used to MATCH
+   * this shape and then throw a raw internal `Error` out of its reduction, so a
+   * consumer could not tell "your CSS is malformed" from "the parser crashed".
+   * Whichever way the general-enclosed gap is closed, a failure must reach the
+   * caller as the package's typed parse error — a `SyntaxError` subclass
+   * carrying `code: 'parse/syntax-error'` — and never as a bare `Error`.
+   */
+  for (const [label, source] of [
+    ['a space-separated feature value', '@media (foo: bar baz) { a { color: red; } }'],
+    ['a comma-separated feature value', '@media (foo: a, b) { a { color: red; } }'],
+    ['a space-separated @container feature value', '@container (foo: bar baz) { a { color: red; } }']
+  ] as Array<[string, string]>) {
+    it(`non-<mf-value>: reports ${label} as a typed parse error, never a raw Error`, () => {
+      let thrown: unknown;
+      try {
+        parse(source);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, source).toBeInstanceOf(SyntaxError);
+      expect(thrown, source).toMatchObject({ code: 'parse/syntax-error' });
+    });
+  }
 });

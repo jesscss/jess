@@ -88,6 +88,7 @@ type CssAstLocalRules = {
   CssAstCustomValue: Combinator<ValueNode>;
   CssAstKeyword: Combinator<Keyword>;
   CssAstColor: Combinator<Color>;
+  CssAstUnicodeRange: Combinator<ValueNode>;
   CssAstDimension: Combinator<Dimension>;
   CssAstQuoted: Combinator<Quoted>;
   CssAstUrl: Combinator<ValueNode>;
@@ -919,6 +920,14 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     children => keyword(tokenText(children[0]))
   );
   const CssAstColor = node('CssAstColor', hexColor, children => color(tokenText(children[0])));
+  // A `<urange>` is one opaque CSS token, so it must be recognized before the
+  // numeric/keyword atoms: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be
+  // re-read as signed numbers, which serializes valid CSS back out as `U +0 -7F`.
+  const CssAstUnicodeRange = node<ValueNode>(
+    'CssAstUnicodeRange',
+    g.CssAstSyntaxUnicodeRange,
+    children => any(tokenText(children[0]))
+  );
   const CssAstDimension = node(
     'CssAstDimension',
     noTrivia(sequence(numberValue, optional(g.CssAstSyntaxDimensionUnit))),
@@ -1285,7 +1294,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     // and the compiler first-char-gates the whole value atom.
     choice(
       g.CssAstCalcCall,
-      g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationIdent, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstDeclarationAny
+      g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstUnicodeRange, g.CssAstDeclarationIdent, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstDeclarationAny
     ),
     children => firstValue(children)
   );
@@ -1331,7 +1340,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstValueAtom = node(
     'CssAstValueAtom',
-    choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCall, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword),
+    choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstCalcCall, g.CssAstCall, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstUnicodeRange, g.CssAstKeyword),
     children => firstValue(children)
   );
   const CssAstValueTerm = node('CssAstValueTerm', noTrivia(sequence(CssAstValueAtom, many(choice(
@@ -1539,25 +1548,28 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   // value language has no top-level slash (only the permissive declaration
   // fallback carries one), so the query value takes the ratio's slash tail
   // explicitly and reduces it to the same typed Operation the prelude already
-  // uses for `:` and the range comparisons. Left-factored on CssAstValue: the
+  // uses for `:` and the range comparisons. Left-factored on the atom: the
   // no-slash majority parses one value and takes an absent optional tail
   // instead of speculating a doomed ratio arm first.
-  const CssAstQueryValue = node<ValueSlot>(
+  //
+  // `<mf-value>` is ONE component value (media-queries-4 §4: `<number>`,
+  // `<dimension>`, `<ident>` or `<ratio>`), so this takes CssAstValueAtom, not
+  // the space/comma-list CssAstValue. A list-valued operand (`(foo: bar baz)`)
+  // is `<general-enclosed>` per §3.1, and the whole-list production could not
+  // represent one anyway: its multi-part slot is an array, which the enclosing
+  // feature reducers cannot place in an Operation. Matching that shape here and
+  // failing in the reduction is what let a raw `Error` escape `parse()`; the
+  // shape now fails to MATCH, so the caller gets a positioned CssParseError,
+  // and `@supports` falls through to its general-enclosed arm as intended.
+  const CssAstQueryValue = node<ValueNode>(
     'CssAstQueryValue',
-    sequence(g.CssAstValue, optional(sequence(literal('/'), g.CssAstValue))),
+    sequence(g.CssAstValueAtom, optional(sequence(literal('/'), g.CssAstValueAtom))),
     (children) => {
-      const values = valueSlotChildren(children);
+      const values = valueChildren(children);
       const numerator = values[0]!;
       const denominator = values[1];
       if (denominator === undefined) {
         return numerator;
-      }
-      if (!isValue(numerator) || !isValue(denominator)) {
-        // Not a `<ratio>`: a multi-part operand only reaches here on a doomed
-        // speculative arm (`@supports (a b / c)` belongs to general-enclosed).
-        // Keep every authored part in one slot so the enclosing feature fails
-        // on its own terms instead of the grammar losing the slash.
-        return [numerator, keyword('/'), denominator];
       }
       return operation('/', numerator, denominator);
     }
@@ -2080,6 +2092,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     CssAstCustomValue,
     CssAstKeyword,
     CssAstColor,
+    CssAstUnicodeRange,
     CssAstDimension,
     CssAstQuoted,
     CssAstUrl,

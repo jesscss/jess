@@ -37,6 +37,7 @@ type ScssAstRules = {
   DirectScssKeyword: Combinator<Keyword>;
   DirectScssCustomPropertyValue: Combinator<Keyword>;
   DirectScssColor: Combinator<Color>;
+  DirectScssUnicodeRange: Combinator<ValueNode>;
   DirectScssDimension: Combinator<Dimension>;
   DirectScssUrl: Combinator<ValueNode>;
   DirectScssInterpolatedUrlValue: Combinator<Interpolation>;
@@ -1046,6 +1047,14 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
     hexColor,
     children => color(requireToken(children[0]).value)
   );
+  // A `<urange>` is one opaque CSS token, so it must be recognized before the
+  // keyword atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be folded as
+  // SCSS arithmetic, which serializes valid CSS back out as `U + 0 - 7F`.
+  const DirectScssUnicodeRange = node<ValueNode>(
+    'DirectScssUnicodeRange',
+    g.CssAstSyntaxUnicodeRange,
+    children => any(requireToken(children[0]).value)
+  );
   const DirectScssDimension = node<Dimension>(
     'DirectScssDimension',
     noTrivia(sequence(numberValue, optional(g.CssAstSyntaxDimensionUnit))),
@@ -1234,7 +1243,7 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
   // `DirectScssInterpolation` arm after it is therefore unreachable.
   const DirectScssValueAtom = node<ValueNode>(
     'DirectScssValueAtom',
-    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssMap, g.DirectScssParen, g.DirectScssSquare, g.DirectScssCustomPropertyValue, DirectScssKeywordOrInterpolatedValue),
+    choice(g.DirectScssQuoted, g.DirectScssInterpolatedValue, g.DirectScssVarReference, g.DirectScssColor, g.DirectScssDimension, g.DirectScssUrl, g.DirectScssCall, g.DirectScssMap, g.DirectScssParen, g.DirectScssSquare, g.DirectScssCustomPropertyValue, g.DirectScssUnicodeRange, DirectScssKeywordOrInterpolatedValue),
     children => requireValue(children[0])
   );
   // Signed numerics are one Dimension leaf. Unary signs only own a variable or
@@ -3141,6 +3150,7 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
     DirectScssKeyword,
     DirectScssCustomPropertyValue,
     DirectScssColor,
+    DirectScssUnicodeRange,
     DirectScssDimension,
     DirectScssUrl,
     DirectScssInterpolatedUrlValue,

@@ -1471,11 +1471,6 @@ const directPreservedSlashBoundary = sequence(
 // `*`/`/`/`%` product operators above, which DO admit comment trivia. The three
 // arms are symmetric-ws | glued-to-number | asymmetric-reject guard.
 const directSumOperator = regex(/(?:[ \t\n\r\f]+[-+][ \t\n\r\f]+|[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*)/);
-// CSS unicode-range is one opaque CSS token, not Less arithmetic.  Keep this
-// terminal byte-for-byte equivalent to the public CST grammar.  It belongs in
-// `DirectLessValueTerm`, but intentionally not `DirectLessMathAtom`: Less
-// rejects `U+0-7F + 1` rather than applying numeric operations to the range.
-const directUnicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/);
 // Generic Less at-rule names are grammar terminals. This direct slice keeps
 // their prelude/body semantic only where the existing canonical AST has a
 // truthful structured representation; it never captures a block as text.
@@ -1913,9 +1908,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
       return dimension(Number(numberText), unit, `${numberText}${unit}`);
     }
   );
+  // CSS unicode-range is one opaque CSS token, not Less arithmetic. It belongs
+  // in `DirectLessValueTerm`, but intentionally not `DirectLessMathAtom`: Less
+  // rejects `U+0-7F + 1` rather than applying numeric operations to the range.
   const DirectLessUnicodeRange = node<Any>(
     'DirectLessUnicodeRange',
-    directUnicodeRange,
+    g.CssAstSyntaxUnicodeRange,
     children => any(requireToken(children[0]).value)
   );
   // CSS declaration hacks such as `#000 \\9` are a real one-token value

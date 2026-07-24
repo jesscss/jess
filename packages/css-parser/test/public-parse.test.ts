@@ -183,4 +183,49 @@ describe('public CSS parse()', () => {
       }] }]
     });
   });
+
+  /**
+   * A `<urange>` is one lexical token — css-syntax-3 §4.4 consumes it before any
+   * numeric token, so its `+`/`-` are never signs or operators. Splitting it left
+   * `+0`/`-7F` to be re-read as signed numbers, and the retained `src` came back
+   * out as `U +0 -7F`: valid CSS silently turned into different CSS, with nothing
+   * to signal it. Each range keeps its authored bytes as one opaque `Any`.
+   */
+  it('keeps CSS unicode-range tokens opaque instead of splitting them into signed numbers', () => {
+    expect(parse('@font-face { unicode-range: U+??????, U+0???, U+0-7F, U+A5; } .range { values: U+0-7F 1, U+A5; }')).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        {
+          type: 'AtRuleBlock', name: '@font-face', body: [{
+            type: 'Declaration', name: 'unicode-range', value: {
+              type: 'List', sep: ',', value: [
+                { type: 'Any', src: 'U+??????' },
+                { type: 'Any', src: 'U+0???' },
+                { type: 'Any', src: 'U+0-7F' },
+                { type: 'Any', src: 'U+A5' }
+              ]
+            }
+          }]
+        },
+        {
+          type: 'Rule', body: [{
+            type: 'Declaration', name: 'values', value: {
+              type: 'List', sep: ',', value: [
+                [{ type: 'Any', src: 'U+0-7F' }, { type: 'Dimension', src: '1' }],
+                { type: 'Any', src: 'U+A5' }
+              ]
+            }
+          }]
+        }
+      ]
+    });
+  });
+
+  it('accepts every authored unicode-range spelling as one token', () => {
+    for (const token of ['U+26', 'U+0-7F', 'U+0025-00FF', 'U+4??', 'U+??????', 'u+0-7f']) {
+      expect(parse(`@font-face { unicode-range: ${token}; }`), token).toMatchObject({
+        children: [{ body: [{ type: 'Declaration', value: { type: 'Any', src: token } }] }]
+      });
+    }
+  });
 });
