@@ -5444,9 +5444,21 @@ function flattenResolved(
   // onto (a multi-branch header collapses to `:is(...)`).
   let headerComposed: MaybePromise<string[]>;
   let childAncestor: string;
+  // [nesting] At a ROOT context `rootStrings` resolves a parentless `&` to EMPTY.
+  // An empty branch is not a selector: it must not prefix a nested rule with a bare
+  // descendant space, and when NO branch survives (`& when (…) { … }`, `& { … }`)
+  // the block is a transparent root group whose children compose as ROOT rules.
+  // `null` here is what makes them take the `rootStrings` path rather than compose
+  // against `''`. Only the CHILD context is filtered — the rule's own header keeps
+  // every branch `rootStrings` produced.
+  let childComposed: string[] | null = rawComposed;
   if (parent === null) {
     headerComposed = rawComposed;
-    childAncestor = wrapIsList(rawComposed);
+    if (rawComposed.some(s => s === '')) {
+      const kept = rawComposed.filter(s => s !== '');
+      childComposed = kept.length > 0 ? kept : null;
+    }
+    childAncestor = childComposed === null ? '' : wrapIsList(childComposed);
   } else if (selectorListHasAmpersand(rule.selector)) {
     headerComposed = parent.length < 2 ? rawComposed : composeHeader(parent, rule.selector, frame, e);
     // `headerComposed` can be pending only for an interpolated selector. The
@@ -5457,7 +5469,7 @@ function flattenResolved(
     childAncestor = rawComposed[0] ?? '';
   }
   return mapMaybe(headerComposed, headerComposed => flattenWithHeader(
-    rule, parent, frame, e, imp, rawComposed, headerComposed, childAncestor
+    rule, parent, frame, e, imp, childComposed, headerComposed, childAncestor
   ));
 }
 
@@ -5467,7 +5479,10 @@ function flattenWithHeader(
   frame: Frame,
   e: Emit,
   imp: boolean,
-  rawComposed: string[],
+  // [nesting] the parent context this rule's BODY composes against — `rawComposed`,
+  // minus the empty branches a root parentless `&` resolves to (`null` when the rule
+  // is a transparent root group, so its children compose as root rules).
+  childComposed: string[] | null,
   headerComposed: string[],
   childAncestor: string
 ): MaybePromise<void> {
@@ -5543,7 +5558,7 @@ function flattenWithHeader(
   };
   const executeBody = () => mapMaybe(
     prepareBodyPlugins(rule.body, childFrame, e),
-    () => walkBody(rule.body, rawComposed, childAncestor, childFrame, group, flush, partition, e, imp, false)
+    () => walkBody(rule.body, childComposed, childComposed === null ? null : childAncestor, childFrame, group, flush, partition, e, imp, false)
   );
   // A Rule can be rendered from an imported document before it is later called
   // as a ruleset-mixin. Its canonical body owns the imported document's source

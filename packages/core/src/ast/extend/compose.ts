@@ -160,6 +160,72 @@ function composeLevel(childBranches: Branch[], parentBranches: Branch[]): Branch
   return childBranches.map(c => composeOne(token, c));
 }
 
+/** Strip every `&` from a ROOT-context branch, returning `null` when nothing but
+ * `&` (and combinators) is left. A segment emptied by the strip is dropped along
+ * with its combinator, so `& .x` yields `.x` — the structural equivalent of the
+ * serializer's `value.split('&').join('').trim()`. The first surviving segment
+ * takes a descendant combinator so a leading `>`/`+`/`~` never trails a parent
+ * that no longer exists. Always returns a FRESH branch: path levels are shared by
+ * reference across every descendant subject, so this must not mutate.
+ *
+ * A root branch with no `&` at all — every root level in a document that never
+ * writes one — takes the plain clone this replaced, so its cost and its `bnd`
+ * origin are unchanged. `hidden`/`ext` are provenance, not text, and survive the
+ * strip; `bnd` cannot, since the strip drops segments it was aligned with (an
+ * absent `bnd` reads as all-own-local, which is what a root level is). */
+function stripRootAmp(b: Branch): Branch | null {
+  if (!branchHasAmp(b)) {
+    return cloneBranch(b);
+  }
+  const segs: Seg[] = [];
+  for (const seg of b.segs) {
+    const simples: Simple[] = [];
+    for (const s of seg.compound.simples) {
+      if (s.t !== 'text') {
+        simples.push(cloneSimple(s));
+        continue;
+      }
+      const text = s.text.split('&').join('');
+      if (text.length > 0) {
+        simples.push({ t: 'text', text });
+      }
+    }
+    if (simples.length > 0) {
+      segs.push({ comb: segs.length === 0 ? ' ' : seg.comb, compound: { simples } });
+    }
+  }
+  if (segs.length === 0) {
+    return null;
+  }
+  const out = mkBranch(segs);
+  if (b.hidden) {
+    out.hidden = true;
+  }
+  if (b.ext) {
+    out.ext = true;
+  }
+  return out;
+}
+
+/**
+ * [nesting] Normalize the ROOT level of a path — the IR mirror of the serializer's
+ * `rootStrings`. At a root context a parentless `&` resolves to EMPTY, so a branch
+ * that is nothing but `&` is not a selector: it contributes no header branch and no
+ * descendant prefix to the rules nested inside it. Dropping it here is what stops a
+ * root `& when (…) { … }` guard block from projecting a literal `&` into its
+ * children's flat branches.
+ */
+function rootLevel(level: Level): Branch[] {
+  const out: Branch[] = [];
+  for (const b of level) {
+    const stripped = stripRootAmp(b);
+    if (stripped !== null) {
+      out.push(stripped);
+    }
+  }
+  return out;
+}
+
 /**
  * Compose an ancestor path (outermost → own local) into a flat selector list,
  * wrapping a multi-branch inner level in `:is(...)` before composing (so the
@@ -167,10 +233,27 @@ function composeLevel(childBranches: Branch[], parentBranches: Branch[]): Branch
  * per-segment `bnd` origin.
  */
 export function composePath(levels: Level[]): Branch[] {
-  // The outermost level's own segments are own-local at this stage (`bnd = 0`); each
+  // [nesting] Peel the leading levels that root-normalize to nothing (a parentless
+  // `&` guard block wrapping the real rules). The first level that survives IS the
+  // root context; the levels above it were never a `&`-boundary hop, so the peeled
+  // branches carry no `bnd` origin for them either.
+  let result: Branch[] = [];
+  let i = 0;
+  for (; i < levels.length; i++) {
+    result = rootLevel(levels[i]!);
+    if (result.length > 0) {
+      i++;
+      break;
+    }
+  }
+  if (result.length === 0) {
+    // Every level was a bare root `&` (the guard block itself is the subject).
+    // Keep the authored innermost level rather than resolving to nothing.
+    return levels[levels.length - 1]!.map(cloneBranch);
+  }
+  // The root level's own segments are own-local at this stage (`bnd = 0`); each
   // `composeLevel` step lifts the accumulated parent one hop deeper.
-  let result = levels[0]!.map(cloneBranch);
-  for (let i = 1; i < levels.length; i++) {
+  for (; i < levels.length; i++) {
     result = composeLevel(levels[i]!, result);
   }
   return result;
