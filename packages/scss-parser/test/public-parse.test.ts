@@ -3,7 +3,19 @@ import { parse } from '@jesscss/scss-parser';
 import { parseScssCst, parseScssDoc } from '@jesscss/scss-parser/cst';
 import { makeBuiltinRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
-import { serialize } from '../../core/src/ast/serialize.js';
+import { serialize as serializeMaybeAsync, type SerializeResult } from '../../core/src/ast/serialize.js';
+
+// `serialize` lifts to `Promise<SerializeResult>` only when an async built-in
+// forces a leaf onto the async branch — never for these all-sync SCSS fixtures.
+// Asserting that here is what lets every case below read `.css` directly, and it
+// fails loudly rather than silently comparing against a pending Promise.
+function serialize(...args: Parameters<typeof serializeMaybeAsync>): SerializeResult {
+  const result = serializeMaybeAsync(...args);
+  if (result instanceof Promise) {
+    throw new TypeError('This SCSS test expects a synchronous serialize result.');
+  }
+  return result;
+}
 
 describe('@jesscss/scss-parser public parse API', () => {
   it('exposes @supports general-enclosed facts without evaluating their contents', () => {

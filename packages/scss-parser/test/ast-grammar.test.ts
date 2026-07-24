@@ -3,10 +3,22 @@ import { makeBuiltinRegistry } from '@jesscss/fns';
 import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
-import { serialize } from '../../core/src/ast/serialize.js';
+import { serialize as serializeMaybeAsync, type SerializeResult } from '../../core/src/ast/serialize.js';
 import { scssAstGrammar } from '../src/ast/grammar.js';
 import { parseScssCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
+
+// `serialize` lifts to `Promise<SerializeResult>` only when an async built-in
+// forces a leaf onto the async branch — never for these all-sync SCSS fixtures.
+// Asserting that here is what lets every case below read `.css` directly, and it
+// fails loudly rather than silently comparing against a pending Promise.
+function serialize(...args: Parameters<typeof serializeMaybeAsync>): SerializeResult {
+  const result = serializeMaybeAsync(...args);
+  if (result instanceof Promise) {
+    throw new TypeError('This SCSS test expects a synchronous serialize result.');
+  }
+  return result;
+}
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Stylesheet'

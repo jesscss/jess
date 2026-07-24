@@ -6,7 +6,7 @@
  * CST APIs remain for language-service use while direct grammar coverage closes.
  */
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Combinator } from 'parseman';
+import type { Combinator, FusedRule } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
 import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
@@ -908,7 +908,7 @@ const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
 // no longer enters and rolls back the declaration/nested-property node frames.
 const propertyName = regex(/\*?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
-export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rules<ScssAstRules>({ trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] }, (g) => {
+export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rules<ScssAstRules>({ trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
   // valid for closed value facts, but admits CSS escapes that SCSS variables do
   // not: `scssVar` in the production grammar is deliberately unescaped.
