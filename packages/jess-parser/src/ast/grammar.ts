@@ -124,7 +124,10 @@ type JessAstRules = {
   DirectJessStyleImport: Combinator<StyleImport>;
   DirectJessModuleSpecifier: Combinator<ModuleImportSpecifier>;
   DirectJessModuleImport: Combinator<ModuleImport>;
-  DirectJessStaticAtAtom: Combinator<ValueNode>;
+  DirectJessStaticValueAtom: Combinator<ValueNode>;
+  DirectJessStaticValue: Combinator<ValueSlot>;
+  DirectJessStaticCallArgument: Combinator<ValueSlot>;
+  DirectJessStaticCall: Combinator<FunctionCall>;
   DirectJessStaticAtNonOnlyKeyword: Combinator<Keyword>;
   DirectJessStaticAtNonOnlyAtom: Combinator<ValueNode>;
   DirectJessStaticAtQuery: Combinator<ValueNode>;
@@ -153,10 +156,6 @@ type JessAstRules = {
   DirectJessCssImport: Combinator<AtRuleStatement>;
   DirectJessSupportsAtRuleBlock: Combinator<AtRuleBlock>;
   DirectJessPropertyName: Combinator<Keyword>;
-  DirectJessStaticPropertyValueAtom: Combinator<ValueNode>;
-  DirectJessStaticPropertyValue: Combinator<ValueSlot>;
-  DirectJessStaticPropertyCallArgument: Combinator<ValueSlot>;
-  DirectJessStaticPropertyCall: Combinator<FunctionCall>;
   DirectJessStaticPropertyDescriptor: Combinator<Declaration>;
   DirectJessPropertyAtRule: Combinator<AtRuleBlock>;
   DirectJessKeyframeSelector: Combinator<SimpleSelector>;
@@ -2013,14 +2012,62 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return values.length === 1 ? values[0]! : list(values, ',');
     }
   );
-  // A CSS at-rule header must stay structural. This deliberately admits only
-  // static CSS atoms plus the two common query-group forms; `$…`, `$[…]`, and
-  // `$(…)` are excluded rather than being hidden in an Any/raw prelude. Extend
-  // this with another typed header form when Jess gives that form semantics.
-  const DirectJessStaticAtAtom = node<ValueNode>(
-    'DirectJessStaticAtAtom',
-    choice(g.DirectJessUrl, g.DirectJessStaticQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
+  // The static CSS component value: the leaves an authored CSS position admits
+  // once every Jess execution form (`$…`, `$[…]`, `$(…)`, arithmetic, lambdas,
+  // collections) is excluded. Both static positions — a conditional at-rule
+  // header and an `@property` descriptor — take exactly this set, so they share
+  // one production instead of drifting two copies apart.
+  //
+  // A CSS at-rule header must stay structural: a header form Jess does not model
+  // is rejected rather than hidden in an Any/raw prelude. Extend this with
+  // another typed form when Jess gives that form semantics.
+  const DirectJessStaticValueAtom = node<ValueNode>(
+    'DirectJessStaticValueAtom',
+    choice(g.DirectJessUrl, g.DirectJessStaticCall, g.DirectJessStaticQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessCustomPropertyValue, g.DirectJessKeyword),
     children => requireValueNode(children[0])
+  );
+  const DirectJessStaticValue = node<ValueSlot>(
+    'DirectJessStaticValue',
+    noTrivia(sequence(
+      g.DirectJessStaticValueAtom,
+      many(sequence(regex(/[ \t\n\r\f]+/), g.DirectJessStaticValueAtom))
+    )),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : values;
+    }
+  );
+  const DirectJessStaticCallArgument = node<ValueSlot>(
+    'DirectJessStaticCallArgument',
+    sequence(literal(','), optional(regex(/[ \t\n\r\f]+/)), g.DirectJessStaticValue),
+    (children) => {
+      const value = children.at(-1);
+      return Array.isArray(value) ? value : requireValueSlot(value);
+    }
+  );
+  // css-syntax-3 §4.3.4: an ident is a function token only when `(` follows it
+  // with nothing between, so the name and its opener are one glued shape. That
+  // glue is the whole disambiguation this production needs — `screen and (hover)`
+  // stays three prelude atoms because the `(` is detached.
+  //
+  // No function NAME is excluded. Which functions carry meaning in a media
+  // feature or an `@property` descriptor is a language-service fact; a parser
+  // that rejects `var()` here turns a diagnosable squiggle into a lost file.
+  // `url(` needs no exclusion either: the dedicated Url leaf precedes this arm
+  // in DirectJessStaticValueAtom and takes it first.
+  const DirectJessStaticCall = node<FunctionCall>(
+    'DirectJessStaticCall',
+    sequence(
+      noTrivia(sequence(g.CssAstSyntaxKeyword, literal('('))),
+      optional(sequence(g.DirectJessStaticValue, many(g.DirectJessStaticCallArgument))),
+      literal(')')
+    ),
+    (children) => {
+      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
+        throw new TypeError('Direct Jess static function call lost its call boundaries.');
+      }
+      return funcCall(requireToken(children[0]).value, children.slice(2, -1).filter(isValueSlotValue));
+    }
   );
   // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
   // `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. The static header
@@ -2031,8 +2078,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessStaticAtQueryValue = node<ValueNode>(
     'DirectJessStaticAtQueryValue',
     sequence(
-      g.DirectJessStaticAtAtom,
-      optional(sequence(optional(rawWhitespace), literal('/'), optional(rawWhitespace), g.DirectJessStaticAtAtom))
+      g.DirectJessStaticValueAtom,
+      optional(sequence(optional(rawWhitespace), literal('/'), optional(rawWhitespace), g.DirectJessStaticValueAtom))
     ),
     (children) => {
       const values = children.filter(isValueNode);
@@ -2119,7 +2166,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessStaticAtNonOnlyAtom',
     choice(
       g.DirectJessStaticAtQuery,
-      sequence(not(g.CssAstSyntaxQueryOnly), g.DirectJessStaticAtAtom)
+      sequence(not(g.CssAstSyntaxQueryOnly), g.DirectJessStaticValueAtom)
     ),
     children => requireValueNode(children.at(-1))
   );
@@ -2216,9 +2263,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // parenthesis and logical connective.  Keep this deliberately static until a
   // typed model exists for general-enclosed forms such as `selector(...)`.
   // In particular, do not hide their arguments in Any/raw header bytes.
+  // A supported declaration's value is the same static CSS component value a
+  // media feature takes — `@supports (width: min(1px, 2px))` and
+  // `@supports (background: url(a.png))` are ordinary CSS. A third private copy
+  // of the leaf set is what let those degrade to opaque GeneralEnclosed text.
   const DirectJessSupportsAtom = node<ValueNode>(
     'DirectJessSupportsAtom',
-    choice(g.DirectJessStaticQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
+    g.DirectJessStaticValueAtom,
     children => requireValueNode(children[0])
   );
   const DirectJessGeneralTemplateParen = node<Interpolation>(
@@ -2404,56 +2455,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     noTrivia(sequence(literal('--'), g.CssAstSyntaxKeyword)),
     children => keyword(`${requireToken(children[0]).value}${requireToken(children[1]).value}`)
   );
-  // Registered-property descriptors are authored CSS component values, but
-  // they are not Jess value positions: retain only static, typed leaves and
-  // recursive CSS function calls. In particular, do not borrow DirectJessValue
-  // (which admits variable references, interpolation, arithmetic, collections,
-  // and other Jess execution forms) or hide a descriptor in Any/raw source.
-  const DirectJessStaticPropertyValueAtom = node<ValueNode>(
-    'DirectJessStaticPropertyValueAtom',
-    choice(g.DirectJessStaticPropertyCall, g.DirectJessStaticQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
-    children => requireValueNode(children[0])
-  );
-  const DirectJessStaticPropertyValue = node<ValueSlot>(
-    'DirectJessStaticPropertyValue',
-    noTrivia(sequence(
-      g.DirectJessStaticPropertyValueAtom,
-      many(sequence(regex(/[ \t\n\r\f]+/), g.DirectJessStaticPropertyValueAtom))
-    )),
-    (children) => {
-      const values = children.filter(isValueNode);
-      return values.length === 1 ? values[0]! : values;
-    }
-  );
-  const DirectJessStaticPropertyCallArgument = node<ValueSlot>(
-    'DirectJessStaticPropertyCallArgument',
-    sequence(literal(','), optional(regex(/[ \t\n\r\f]+/)), g.DirectJessStaticPropertyValue),
-    (children) => {
-      const value = children.at(-1);
-      return Array.isArray(value) ? value : requireValueSlot(value);
-    }
-  );
-  const DirectJessStaticPropertyCall = node<FunctionCall>(
-    'DirectJessStaticPropertyCall',
-    sequence(
-      // var()/env() are references, even though their spelling is a CSS
-      // function. url() has its own Url node and needs a separate static-path
-      // reduction rather than an opaque FunctionCall argument.
-      not(regex(/(?:url|var|env)(?![-_a-zA-Z0-9\u0080-\uffff])/i)), g.CssAstSyntaxKeyword,
-      literal('('),
-      optional(sequence(g.DirectJessStaticPropertyValue, many(g.DirectJessStaticPropertyCallArgument))),
-      literal(')')
-    ),
-    (children) => {
-      if (children.length < 3 || requireToken(children[1]).value !== '(' || requireToken(children.at(-1)).value !== ')') {
-        throw new TypeError('Direct Jess static @property function lost its call boundaries.');
-      }
-      return funcCall(requireToken(children[0]).value, children.slice(2, -1).filter(isValueSlotValue));
-    }
-  );
+  // Registered-property descriptors are authored CSS component values, but they
+  // are not Jess value positions: they take the shared static component value
+  // above, never DirectJessValue (which admits variable references,
+  // interpolation, arithmetic, and collections) and never Any/raw source.
   const DirectJessStaticPropertyDescriptor = node<Declaration>(
     'DirectJessStaticPropertyDescriptor',
-    sequence(g.CssAstSyntaxProperty, literal(':'), g.DirectJessStaticPropertyValue, literal(';')),
+    sequence(g.CssAstSyntaxProperty, literal(':'), g.DirectJessStaticValue, literal(';')),
     (children) => {
       const value = children[2];
       return decl(requireToken(children[0]).value, Array.isArray(value) ? value : valueSlot(requireValueNode(value)));
@@ -3181,7 +3189,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessStyleImport,
     DirectJessModuleSpecifier,
     DirectJessModuleImport,
-    DirectJessStaticAtAtom,
+    DirectJessStaticValueAtom,
+    DirectJessStaticValue,
+    DirectJessStaticCallArgument,
+    DirectJessStaticCall,
     DirectJessStaticAtNonOnlyKeyword,
     DirectJessStaticAtNonOnlyAtom,
     DirectJessStaticAtQuery,
@@ -3211,10 +3222,6 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessCssImport,
     DirectJessSupportsAtRuleBlock,
     DirectJessPropertyName,
-    DirectJessStaticPropertyValueAtom,
-    DirectJessStaticPropertyValue,
-    DirectJessStaticPropertyCallArgument,
-    DirectJessStaticPropertyCall,
     DirectJessStaticPropertyDescriptor,
     DirectJessPropertyAtRule,
     DirectJessKeyframeSelector,

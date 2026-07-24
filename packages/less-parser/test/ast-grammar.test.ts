@@ -1761,7 +1761,7 @@ describe('Less AST grammar facts', () => {
       type: 'Stylesheet', children: [{ body: [{
         type: 'Declaration', name: 'color', value: {
           type: 'FunctionCall', name: 'rgba', args: [{
-            type: 'FunctionCall', name: 'var', args: [{ type: 'Any', src: '--color-accent' }]
+            type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--color-accent' }]
           }, { type: 'Dimension', src: '0.2' }]
         }
       }] }]

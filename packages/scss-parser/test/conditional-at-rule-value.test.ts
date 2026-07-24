@@ -29,6 +29,8 @@ const dim = (src: string) => ({ type: 'Dimension', src });
 const paren = (inner: unknown) => ({ type: 'Block', delimiter: 'paren', inner });
 const op = (operator: string, left: unknown, right: unknown) => ({ type: 'Operation', operator, left, right });
 const ratio = (n: string, d: string) => op('/', dim(n), dim(d));
+const call = (name: string, args: unknown[]) => ({ type: 'FunctionCall', name, args });
+const staticUrl = (src: string) => ({ type: 'Url', value: { type: 'Any', src } });
 const list = (...value: unknown[]) => ({ type: 'List', sep: ',', value });
 
 /**
@@ -95,6 +97,51 @@ const FEATURE_VALUE: Array<[string, string, object]> = [
   ['a boolean pointer feature', '@media (pointer) { a { color: red; } }', paren(kw('pointer'))],
   ['a boolean color feature', '@media (color) { a { color: red; } }', paren(kw('color'))],
   ['a plain @container size feature', '@container (min-width: 400px) { a { color: red; } }', paren(op(':', kw('min-width'), dim('400px')))]
+];
+
+/**
+ * A function in a value position. mediaqueries-5 §2.4 takes whatever `<mf-value>`
+ * the feature's own type allows, and css-values-4 §11 makes `var()` and `env()`
+ * substitutable wherever a component value is — so the set of functions that can
+ * appear here is open-ended and grows with the platform.
+ *
+ * The parser's job stops at the css-syntax-3 §4.3.4 function token: an ident with
+ * `(` glued directly to it. WHICH function is meaningful in WHICH feature is a
+ * language-service fact, and a parser that name-checks it turns a diagnosable
+ * squiggle into a lost file — so every name below reduces the same way, including
+ * one the grammar has never heard of.
+ */
+const FUNCTION_VALUE: Array<[string, string, object]> = [
+  ['a var() feature value', '@media (min-width: var(--w)) { a { color: red; } }', paren(op(':', kw('min-width'), call('var', [kw('--w')])))],
+  ['an env() feature value', '@media (min-width: env(safe-area-inset-top)) { a { color: red; } }', paren(op(':', kw('min-width'), call('env', [kw('safe-area-inset-top')])))],
+  ['an env() feature value with a fallback', '@media (min-width: env(safe-area-inset-top, 10px)) { a { color: red; } }', paren(op(':', kw('min-width'), call('env', [kw('safe-area-inset-top'), dim('10px')])))],
+  ['a min() feature value', '@media (min-width: min(100px, 200px)) { a { color: red; } }', paren(op(':', kw('min-width'), call('min', [dim('100px'), dim('200px')])))],
+  ['a clamp() feature value', '@media (min-width: clamp(1px, 2px, 3px)) { a { color: red; } }', paren(op(':', kw('min-width'), call('clamp', [dim('1px'), dim('2px'), dim('3px')])))],
+  ['a function the grammar has never heard of', '@media (min-width: -webkit-foo(1px)) { a { color: red; } }', paren(op(':', kw('min-width'), call('-webkit-foo', [dim('1px')])))],
+  ['a function as a name-first range bound', '@media (width >= var(--w)) { a { color: red; } }', paren(op('>=', kw('width'), call('var', [kw('--w')])))],
+  ['a function as a value-first range bound', '@media (var(--w) < width) { a { color: red; } }', paren(op('<', call('var', [kw('--w')]), kw('width')))],
+  ['a function value in an and chain', '@media screen and (min-width: var(--w)) { a { color: red; } }',
+    { type: 'SpacedValue', parts: [kw('screen'), kw('and'), paren(op(':', kw('min-width'), call('var', [kw('--w')])))] }],
+  ['a function value in @container', '@container (min-width: var(--w)) { a { color: red; } }', paren(op(':', kw('min-width'), call('var', [kw('--w')])))],
+  ['a function value in a named @container', '@container card (min-width: env(x)) { a { color: red; } }',
+    { type: 'SpacedValue', parts: [kw('card'), paren(op(':', kw('min-width'), call('env', [kw('x')])))] }]
+];
+
+/**
+ * `@property` descriptors — css-properties-values-api-1 §3. A descriptor value is
+ * an ordinary CSS component value, so the same rule holds one level down: the
+ * registered syntax decides whether `var()` is USEFUL in an `initial-value`, and
+ * that decision is not the parser's. `url()` is the one name that legitimately
+ * changes the shape, because css-syntax-3 §4.3.6 makes it a distinct token type
+ * with its own consume algorithm and its own `Url` node — a token, not a function
+ * the grammar dislikes.
+ */
+const DESCRIPTOR: Array<[string, string, object]> = [
+  ['a var() initial-value', '@property --x { initial-value: var(--y); }', call('var', [kw('--y')])],
+  ['an env() initial-value', '@property --x { initial-value: env(safe-area-inset-top); }', call('env', [kw('safe-area-inset-top')])],
+  ['a url() initial-value', '@property --x { initial-value: url(a.png); }', staticUrl('a.png')],
+  ['a min() initial-value', '@property --x { initial-value: min(1px, 2px); }', call('min', [dim('1px'), dim('2px')])],
+  ['a modern rgb() initial-value', '@property --x { initial-value: rgb(1 2 3); }', call('rgb', [[dim('1'), dim('2'), dim('3')]])]
 ];
 
 /**
@@ -165,6 +212,18 @@ const SUPPORTS: Array<[string, string, object]> = [
   ['a custom-property test', '@supports (--x: red) { a { color: red; } }', { type: 'GeneralEnclosed' }]
 ];
 
+function descriptorValue(source: string): unknown {
+  const first = parse(source).children[0];
+  if (first === undefined || !('body' in first)) {
+    throw new TypeError(`Expected an at-rule block for: ${source}`);
+  }
+  const declaration = first.body[0];
+  if (declaration === undefined || !('value' in declaration)) {
+    throw new TypeError(`Expected an @property descriptor for: ${source}`);
+  }
+  return declaration.value;
+}
+
 function prelude(source: string): unknown {
   const first = parse(source).children[0];
   if (first === undefined || !('prelude' in first)) {
@@ -176,13 +235,20 @@ function prelude(source: string): unknown {
 describe('SCSS conditional at-rule value holes', () => {
   for (const [group, cases] of [
     ['<ratio>', RATIO], ['<mf-range>', RANGE], ['<mf-value>', FEATURE_VALUE],
-    ['query composition', COMPOSITION], ['@supports', SUPPORTS], ['not a linter', NOT_A_LINTER]
+    ['query composition', COMPOSITION], ['@supports', SUPPORTS],
+    ['<mf-value> functions', FUNCTION_VALUE], ['not a linter', NOT_A_LINTER]
   ] as const) {
     for (const [label, source, expected] of cases) {
       it(`${group}: accepts ${label}`, () => {
         expect(prelude(source), source).toMatchObject(expected);
       });
     }
+  }
+
+  for (const [label, source, expected] of DESCRIPTOR) {
+    it(`@property descriptor: accepts ${label}`, () => {
+      expect(descriptorValue(source), source).toMatchObject(expected);
+    });
   }
 
   /**

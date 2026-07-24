@@ -1180,13 +1180,34 @@ describe('Jess AST grammar facts', () => {
     for (const invalid of [
       '@property --accent { syntax: "<color>"; initial-value: rgb($red 0 0); }',
       '@property --accent { syntax: "<color>"; initial-value: rgb(1, $green, 3); }',
-      '@property --accent { syntax: "<color>"; initial-value: var(--theme); }',
+      // css-syntax-3 §4.3.4: an ident is a function token only when `(` follows
+      // it immediately. A detached paren is a different shape, not a function.
       '@property --accent { syntax: "<color>"; initial-value: var (--theme); }',
-      '@property --accent { syntax: "<color>"; initial-value: env(theme); }',
       '@property --accent { syntax: "<color>"; initial-value: $(rgb)(1 2 3); }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
+  });
+
+  /**
+   * WHICH function may appear in a descriptor is a language-service fact — the
+   * registered-property syntax decides whether `var()` is meaningful in an
+   * `initial-value`, and a wrong one deserves a diagnostic, not a lost file. The
+   * grammar's job stops at the function-token shape, so every function name
+   * reduces the same way. `url()` keeps its own Url leaf, which is a real
+   * css-syntax-3 §4.3.6 token type rather than a name the parser dislikes.
+   */
+  it('admits any static function shape in an @property descriptor, naming none', () => {
+    const source = '@property --a { initial-value: var(--theme); } @property --b { initial-value: env(safe-area-inset-top); } @property --c { initial-value: url(a.png); }';
+
+    expect(parse(source).children).toMatchObject([
+      { name: '@property', body: [{ name: 'initial-value', value: { type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--theme' }] } }] },
+      { name: '@property', body: [{ name: 'initial-value', value: { type: 'FunctionCall', name: 'env', args: [{ type: 'Keyword', src: 'safe-area-inset-top' }] } }] },
+      { name: '@property', body: [{ name: 'initial-value', value: { type: 'Url', value: { type: 'Any', src: 'a.png' } } }] }
+    ]);
+    expect(serialize(parse(source))).toEqual({
+      css: '@property --a {\n  initial-value: var(--theme);\n}\n@property --b {\n  initial-value: env(safe-area-inset-top);\n}\n@property --c {\n  initial-value: url(a.png);\n}\n'
+    });
   });
 
   it('retains Jess @supports general-enclosed bodies as structural interpolation templates', () => {

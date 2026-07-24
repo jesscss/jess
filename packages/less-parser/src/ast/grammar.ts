@@ -104,7 +104,7 @@ type LessAstLocalRules = {
   DirectLessCustomSquare: Combinator<readonly CustomValuePart[]>;
   DirectLessCustomCurly: Combinator<readonly CustomValuePart[]>;
   DirectLessCustomValue: Combinator<ValueNode>;
-  DirectLessCssCustomPropertyValue: Combinator<Any>;
+  DirectLessCssCustomPropertyValue: Combinator<Keyword>;
   DirectLessCustomDeclaration: Combinator<Declaration>;
   DirectLessPunctuationMapDeclaration: Combinator<Declaration>;
   DirectLessDeclaration: Combinator<Declaration>;
@@ -2488,12 +2488,15 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
     noTrivia(many(g.DirectLessCustomPart)),
     children => customValueFromParts(customPartsFromChildren(children))
   );
-  // A CSS custom-property token is a valid opaque value argument in Less
+  // A CSS custom-property token is an ordinary component value in Less
   // functions such as `var(--accent)`. It is not a Less declaration name here.
-  const DirectLessCssCustomPropertyValue = node<Any>(
+  // It reduces to the same Keyword the css/scss/jess grammars produce, and the
+  // same one DirectLessStaticAtRuleCustomProperty already produces for the
+  // identical token in an at-rule header.
+  const DirectLessCssCustomPropertyValue = node<Keyword>(
     'DirectLessCssCustomPropertyValue',
     g.LessAstSyntaxCustomProperty,
-    children => any(requireToken(children[0]).value)
+    children => keyword(requireToken(children[0]).value)
   );
   const DirectLessCustomDeclaration = node<Declaration>(
     'DirectLessCustomDeclaration',
@@ -3005,27 +3008,25 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   );
   const DirectLessMixinGuardOperand = node<ValueNode>(
     'DirectLessMixinGuardOperand',
-    // `default` has no bare guard spelling in Less. A complete `default()` is
-    // a typed FunctionCall when used as a comparison operand; the evaluator
-    // already supplies its mixin-dispatch value in that exact context.
+    // A complete `default()` is a typed FunctionCall when used as a comparison
+    // operand; the evaluator already supplies its mixin-dispatch value in that
+    // exact context. Leading with that arm is the whole disambiguation needed —
+    // a bare `default` is an ordinary ident SHAPE and reduces to a Keyword, as
+    // less.js does (`@a: default; .m() when (@a = default)` matches there).
+    // Whether that comparison means anything is a language-service fact.
     choice(
       DirectLessMixinGuardDefaultOperand,
-      noTrivia(sequence(
-        not(regex(/default(?![-\w])/)),
-        choice(
-          // Guard operands reuse the ordinary typed access References. The
-          // namespace branch must backtrack for ordinary non-accessor colors.
-          attempt(g.DirectLessMixinReference),
-          g.DirectLessVarReferenceChain,
-          g.DirectLessQuoted,
-          g.DirectLessEscapedQuoted,
-          g.DirectLessDimension,
-          g.DirectLessColor,
-          g.DirectLessNamedColor,
-          g.DirectLessFunction,
-          g.DirectLessKeyword
-        )
-      ))
+      // Guard operands reuse the ordinary typed access References. The
+      // namespace branch must backtrack for ordinary non-accessor colors.
+      attempt(g.DirectLessMixinReference),
+      g.DirectLessVarReferenceChain,
+      g.DirectLessQuoted,
+      g.DirectLessEscapedQuoted,
+      g.DirectLessDimension,
+      g.DirectLessColor,
+      g.DirectLessNamedColor,
+      g.DirectLessFunction,
+      g.DirectLessKeyword
     ),
     children => requireValueNode(children[0])
   );
