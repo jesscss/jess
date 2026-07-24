@@ -9388,37 +9388,68 @@ interface TransparentShell {
  * containing exactly one call whose sole selected target is a synthesized
  * ruleset-mixin.  Anything less exact remains authored nested output.
  */
-function transparentShells(rule: Rule, frame: Frame, e: Emit): TransparentShell[] | null {
+function transparentShells(rule: Rule, frame: Frame, e: Emit): MaybePromise<TransparentShell[] | null> {
   if (rule.body.length === 0) {
     return null;
   }
   const shells: TransparentShell[] = [];
-  for (const child of rule.body) {
-    if (child.type !== 'Rule' || !selectorListHasAmpersand(child.selector) || child.body.length !== 1) {
-      return null;
+  // Nested output is the v5 default, so this probe carries real documents and
+  // cannot be a synchronous island: candidate lookup and dispatch may await.
+  // Children are examined in order and the walk stays synchronous until one does.
+  const step = (index: number): MaybePromise<TransparentShell[] | null> => {
+    for (let i = index; i < rule.body.length; i++) {
+      const child = rule.body[i]!;
+      if (child.type !== 'Rule' || !selectorListHasAmpersand(child.selector) || child.body.length !== 1) {
+        return null;
+      }
+      const call = child.body[0];
+      if (call?.type !== 'MixinCall') {
+        return null;
+      }
+      const shellFrame: Frame = {
+        parent: frame,
+        mixins: collectMixins(child.body),
+        declIndex: collectDeclIndex(child.body), cells: null, reassign: null,
+        statements: child.body
+      };
+      const homes = new Map<MixinDef, Frame>();
+      const at = i;
+      const take = (selected: Selection[]): MaybePromise<TransparentShell[] | null> => {
+        if (selected.length !== 1 || selected[0]!.def.ruleMixin !== true) {
+          return null;
+        }
+        const selectedOne = selected[0]!;
+        shells.push({
+          rule: child,
+          call,
+          def: selectedOne.def,
+          bindings: selectedOne.bindings,
+          home: homes.get(selectedOne.def) ?? shellFrame
+        });
+        return step(at + 1);
+      };
+      const candidates = call.path.length > 0
+        ? findPathCandidates(shellFrame, call, e, homes)
+        : lookupCandidates(shellFrame, call.name, e, homes);
+      if (isThenable(candidates)) {
+        return candidates.then(list => mapMaybe(dispatch(list, call, shellFrame, e, homes), take));
+      }
+      const selected = dispatch(candidates, call, shellFrame, e, homes);
+      if (isThenable(selected)) {
+        return selected.then(take);
+      }
+      const outcome = take(selected);
+      if (isThenable(outcome)) {
+        return outcome;
+      }
+      if (outcome === null) {
+        return null;
+      }
+      return outcome;
     }
-    const call = child.body[0];
-    if (call?.type !== 'MixinCall') {
-      return null;
-    }
-    const shellFrame: Frame = {
-      parent: frame,
-      mixins: collectMixins(child.body),
-      declIndex: collectDeclIndex(child.body), cells: null, reassign: null,
-      statements: child.body
-    };
-    const homes = new Map<MixinDef, Frame>();
-    const candidates = call.path.length > 0
-      ? findPathCandidates(shellFrame, call, e, homes)
-      : settledCandidates(lookupCandidates(shellFrame, call.name, e, homes), call, e);
-    const selected = settledDispatch(dispatch(candidates, call, shellFrame, e, homes), call, e);
-    if (selected.length !== 1 || selected[0]!.def.ruleMixin !== true) {
-      return null;
-    }
-    const selectedOne = selected[0]!;
-    shells.push({ rule: child, call, def: selectedOne.def, bindings: selectedOne.bindings, home: homes.get(selectedOne.def) ?? shellFrame });
-  }
-  return shells;
+    return shells;
+  };
+  return step(0);
 }
 
 function emitTransparentShells(
@@ -9509,17 +9540,28 @@ function emitNestedRuleGuarded(
   outerHoist?: HoistEntry[]
 ): MaybePromise<void> {
   if (!e.collapse) {
-    const shells = transparentShells(rule, frame, e);
-    if (shells !== null) {
-      return emitTransparentShells(
-        shells,
-        { parent: source, selector: rule.selector, frame },
-        frame,
-        e,
-        imp
-      );
-    }
+    return mapMaybe(transparentShells(rule, frame, e), shells => (shells !== null
+      ? emitTransparentShells(
+          shells,
+          { parent: source, selector: rule.selector, frame },
+          frame,
+          e,
+          imp
+        )
+      : emitNestedRuleAuthored(rule, frame, e, imp, source, placement, outerHoist)));
   }
+  return emitNestedRuleAuthored(rule, frame, e, imp, source, placement, outerHoist);
+}
+
+function emitNestedRuleAuthored(
+  rule: Rule,
+  frame: Frame,
+  e: Emit,
+  imp: boolean,
+  source: NestedHeaderSource | null,
+  placement: NestedRuleMixinPlacement | null,
+  outerHoist?: HoistEntry[]
+): MaybePromise<void> {
   const plan = extendProjection(frame, e)?.nestedPlan.get(rule);
   if (plan?.collapseTransparent) {
     // [extend] decl-less `&&` self-collapse: emit the body (the pure-`&` child,
@@ -9550,118 +9592,123 @@ function emitNestedRuleGuarded(
   // `placement` only originates at a selected synthesized ruleset mixin.  Its
   // header is composed structurally from the original selector nodes and their
   // render frames; it does not rewrite selector strings or re-render a body.
-  const own = plan
+  // The nested header may name a value that must be awaited (an interpolated
+  // selector built from an async function). Nested output is the v5 DEFAULT, so
+  // this path carries the plugin corpus and cannot be a synchronous island.
+  const ownMaybe = plan
     ? plan.header
     : placement === null
-      ? ownStringsSync(rule.selector, frame, e)
-      : composeSync(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
-  const header = idt ? own.join(',\n' + idt) : own.join(',\n');
-  // Less only coalesces this nested-output root seam after an authored header
-  // has been evaluated. Static same-selector root rules remain distinct.
-  const rootSibling = frame.parent === null && e.depth === 0
-    && rule.selector.selectors.some(complexHasInterp);
-  const lb = e.lastBlock;
-  const reopen = rootSibling && lb.parentKey === frame && lb.depth === e.depth
-    && lb.header === header && lb.endChunks === e.chunks.length;
-  if (reopen) {
-    popClose(e, idt);
-  } else {
-    if (idt) {
-      put(e, idt);
-    }
-    const selStart = e.off;
-    put(e, header);
-    if (e.positions) {
-      e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off });
-    }
-    put(e, ' {\n');
-  }
-  const afterHeader = e.chunks.length;
-  const childFrame: Frame = {
-    parent: frame,
-    mixins: collectMixins(rule.body),
-    declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
-    statements: rule.body
-  };
-  const childSource: NestedHeaderSource = { parent: source, selector: rule.selector, frame };
-  // Nested output owns the same lexical placement facts as flattened output:
-  // a later namespace call must enter this exact child frame to see imports that
-  // executed inside the Rule.
-  (frame.rulePlacements ??= new Map()).set(rule, childFrame);
-  // [extend] children that flatten (extend crossed the `&`) bubble out to this
-  // rule's depth; collect them and emit flat after the block closes.
-  const hoist: HoistEntry[] = [];
-  e.depth++;
-  const finish = (): MaybePromise<void> => {
-    e.depth--;
-    if (e.chunks.length === afterHeader) {
-    // Nothing emitted in the block: drop the header/braces (rewind).
-      e.chunks.length = markChunks;
-      e.off = markOff;
-      if (e.positions) {
-        e.positions.length = markPos;
-      }
+      ? ownStrings(rule.selector, frame, e)
+      : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
+  return mapMaybe(ownMaybe, (own) => {
+    const header = idt ? own.join(',\n' + idt) : own.join(',\n');
+    // Less only coalesces this nested-output root seam after an authored header
+    // has been evaluated. Static same-selector root rules remain distinct.
+    const rootSibling = frame.parent === null && e.depth === 0
+      && rule.selector.selectors.some(complexHasInterp);
+    const lb = e.lastBlock;
+    const reopen = rootSibling && lb.parentKey === frame && lb.depth === e.depth
+      && lb.header === header && lb.endChunks === e.chunks.length;
+    if (reopen) {
+      popClose(e, idt);
     } else {
       if (idt) {
         put(e, idt);
       }
-      put(e, '}\n');
+      const selStart = e.off;
+      put(e, header);
       if (e.positions) {
-        e.positions.push({ node: rule, type: rule.type, start, end: e.off });
+        e.positions.push({ node: rule.selector, type: rule.selector.type, start: selStart, end: e.off });
       }
-      if (rootSibling) {
-        lb.parentKey = frame;
-        lb.header = header;
-        lb.depth = e.depth;
-        lb.endChunks = e.chunks.length;
-      }
+      put(e, ' {\n');
     }
-    // [extend] split-out exact extenders (target has surviving nested children):
-    // sibling rules carrying only the target's DIRECT declarations (empty → drop).
-    const direct: Leaf[] = [];
-    if (plan && plan.splits.length > 0) {
-      for (const st of rule.body) {
-        if (st.type === 'Declaration' || st.type === 'Comment') {
-          direct.push({ node: st, frame: childFrame });
-        }
-      }
-    }
-    const emitSplits = (index: number): MaybePromise<void> => {
-      if (!plan || direct.length === 0) {
-        return;
-      }
-      for (let splitIndex = index; splitIndex < plan.splits.length; splitIndex++) {
-        const emitted = flushBlock(plan.splits[splitIndex]!, direct, e);
-        if (isThenable(emitted)) {
-          return emitted.then(() => emitSplits(splitIndex + 1));
-        }
-      }
+    const afterHeader = e.chunks.length;
+    const childFrame: Frame = {
+      parent: frame,
+      mixins: collectMixins(rule.body),
+      declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
+      statements: rule.body
     };
-    // [extend] hoisted (flattened) children at this rule's depth: a `renest` child
-    // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
-    // emits FLAT. A `bubble > 1` child must rise FURTHER: re-push it (decremented) to
-    // THIS rule's enclosing hoist queue so it keeps bubbling up the ancestor chain,
-    // landing exactly `bubble` blocks above its origin (its stripped header re-nests
-    // under the wrapper ancestors it lands inside). When there is no outer queue (an
-    // outermost block), it lands here — the highest reachable level.
-    const runHoist = (index: number): MaybePromise<void> => {
-      for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
-        const h = hoist[hoistIndex]!;
-        if (h.bubble > 1 && outerHoist) {
-          outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1 });
-          continue;
+    const childSource: NestedHeaderSource = { parent: source, selector: rule.selector, frame };
+    // Nested output owns the same lexical placement facts as flattened output:
+    // a later namespace call must enter this exact child frame to see imports that
+    // executed inside the Rule.
+    (frame.rulePlacements ??= new Map()).set(rule, childFrame);
+    // [extend] children that flatten (extend crossed the `&`) bubble out to this
+    // rule's depth; collect them and emit flat after the block closes.
+    const hoist: HoistEntry[] = [];
+    e.depth++;
+    const finish = (): MaybePromise<void> => {
+      e.depth--;
+      if (e.chunks.length === afterHeader) {
+        // Nothing emitted in the block: drop the header/braces (rewind).
+        e.chunks.length = markChunks;
+        e.off = markOff;
+        if (e.positions) {
+          e.positions.length = markPos;
         }
-        const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
-          ? emitNestedRule(h.rule, h.frame, e, imp)
-          : emitHoisted(h.rule, h.frame, e);
-        if (isThenable(emitted)) {
-          return emitted.then(() => runHoist(hoistIndex + 1));
+      } else {
+        if (idt) {
+          put(e, idt);
+        }
+        put(e, '}\n');
+        if (e.positions) {
+          e.positions.push({ node: rule, type: rule.type, start, end: e.off });
+        }
+        if (rootSibling) {
+          lb.parentKey = frame;
+          lb.header = header;
+          lb.depth = e.depth;
+          lb.endChunks = e.chunks.length;
         }
       }
+      // [extend] split-out exact extenders (target has surviving nested children):
+      // sibling rules carrying only the target's DIRECT declarations (empty → drop).
+      const direct: Leaf[] = [];
+      if (plan && plan.splits.length > 0) {
+        for (const st of rule.body) {
+          if (st.type === 'Declaration' || st.type === 'Comment') {
+            direct.push({ node: st, frame: childFrame });
+          }
+        }
+      }
+      const emitSplits = (index: number): MaybePromise<void> => {
+        if (!plan || direct.length === 0) {
+          return;
+        }
+        for (let splitIndex = index; splitIndex < plan.splits.length; splitIndex++) {
+          const emitted = flushBlock(plan.splits[splitIndex]!, direct, e);
+          if (isThenable(emitted)) {
+            return emitted.then(() => emitSplits(splitIndex + 1));
+          }
+        }
+      };
+      // [extend] hoisted (flattened) children at this rule's depth: a `renest` child
+      // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
+      // emits FLAT. A `bubble > 1` child must rise FURTHER: re-push it (decremented) to
+      // THIS rule's enclosing hoist queue so it keeps bubbling up the ancestor chain,
+      // landing exactly `bubble` blocks above its origin (its stripped header re-nests
+      // under the wrapper ancestors it lands inside). When there is no outer queue (an
+      // outermost block), it lands here — the highest reachable level.
+      const runHoist = (index: number): MaybePromise<void> => {
+        for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
+          const h = hoist[hoistIndex]!;
+          if (h.bubble > 1 && outerHoist) {
+            outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1 });
+            continue;
+          }
+          const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
+            ? emitNestedRule(h.rule, h.frame, e, imp)
+            : emitHoisted(h.rule, h.frame, e);
+          if (isThenable(emitted)) {
+            return emitted.then(() => runHoist(hoistIndex + 1));
+          }
+        }
+      };
+      return mapMaybe(emitSplits(0), () => runHoist(0));
     };
-    return mapMaybe(emitSplits(0), () => runHoist(0));
-  };
-  return mapMaybe(emitNestedBody(rule.body, childFrame, e, hoist, imp, childSource), finish);
+    return mapMaybe(emitNestedBody(rule.body, childFrame, e, hoist, imp, childSource), finish);
+  });
 }
 
 /** Emit a flattened rule (and its descendants) via the flat path at `e.depth`,
