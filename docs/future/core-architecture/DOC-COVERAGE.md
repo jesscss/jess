@@ -55,7 +55,7 @@ flagged for the feature agents to fill; this docs task only fills location 3.
 |---|---|---|---|---|
 | Variables (live `$`, scoped/final `$$`, `:=`, member access) | ~ | ✓ DD `R1`–`R7` | ✓ `features/variables` | ✓ `02-Language/02-variables` |
 | Mixins (parametric, guards, loops, aliasing, as-functions) | ~ | ~ | ✓ `features/mixins*` (7 pages) | ✓ `02-Language/05-mixins`, `03-Features/05-mixins` |
-| Nesting / parent selectors (`&`, `&-1`, `&()`) | ~ | ✓ DD `O1` | ✓ `features/nested`, `features/parent-selectors` | ✓ `03-Features/02-nesting` |
+| Nesting / parent selectors (`&`, `&(-1)`; `&('')` at-root NOT implemented) | ✓ | ✓ DD `O1` | ✓ `features/nested`, `features/parent-selectors` | ✓ `03-Features/02-nesting` |
 | Selector capture | ~ | n/a | ✓ `features/selector-capture` (shared) | ✓ shared `15-selector-capture` |
 | Imports (`@import`) | ~ | ✓ DD `A1`,`A2` | ✓ `features/imports` | ✓ `02-Language/04-atrules` |
 | Modules (`@use`/`@compose`/`@forward`/`@-*`) | ~ | ✓ DD `A1`,`A2`,`A4` | ✓ `features/modules-and-imports` (shared) | ✓ `02-Language/04-atrules` |

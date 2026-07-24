@@ -5,13 +5,12 @@ audiences:
   - jess
 origin: jess
 ---
-:::caution `&` is not in the `.jess` parser yet
+:::caution The `&('')` at-root template is not implemented yet
 
-Plain descendant nesting and at-rule bubbling work today. The **parent selector
-`&`** — including the `&()` / `&(nil)` templates below — is deliberately held out
-of the `.jess` route until it has a dedicated semantic reduction rather than
-being treated as static selector text. A `.jess` file containing `&` is currently
-a parse error. Everything on this page describing `&` is the intended design, not
+The parent selector `&`, the name concatenation (`&__el`, `&--mod`, `&-suffix`),
+and its explicit `&(X)` spelling all work today. The **`&('')` at-root template**
+described below does not: it is an output-PLACEMENT instruction rather than
+selector text, and no dialect implements it. That section is intended design, not
 current behavior.
 
 :::
@@ -39,13 +38,14 @@ Here's a basic example of nesting:
 
 ### Advanced ampersand templates
 
-Jess's selector model distinguishes three explicit parent forms:
+Jess's selector model distinguishes two explicit parent forms:
 
 - `&` means "render the parent normally"
-- `&()` means "render the parent, but hoist this selector to root"
-- `&(nil)` means "do not render the parent at all"
+- `&('')` means "render this selector at the root, not under the parent" — the equivalent of Sass's `@at-root`
 
-A template without another `&` is shorthand for inserting the parent at that exact slot. So `&-primary` and `&(-primary)` mean the same thing.
+`&(X)` is the explicit spelling of the name concatenation, so `&-primary` and `&(-primary)` mean the same thing.
+
+The explicit form matters because Jess only fuses `&` with a **valid identifier**. Less lexes `&-1` as one token and appends `-1`; Jess rejects it, because `-1` is not an identifier. Write `&(-1)` instead — it produces exactly what Less's `&-1` produces.
 
 ```less
 .button {
@@ -53,12 +53,12 @@ A template without another `&` is shorthand for inserting the parent at that exa
     font-weight: 700;
   }
 
-  &() .icon {
-    inline-size: 1em;
+  &(-1) {
+    order: 1;
   }
 
-  &(nil).utility {
-    display: contents;
+  &('') .icon {
+    inline-size: 1em;
   }
 }
 ```
@@ -70,16 +70,16 @@ Conceptually, this lowers to:
   font-weight: 700;
 }
 
-.button .icon {
-  inline-size: 1em;
+.button-1 {
+  order: 1;
 }
 
-.utility {
-  display: contents;
+.icon {
+  inline-size: 1em;
 }
 ```
 
-When you are working in Less syntax specifically, the equivalent null-parent form is `&('')` rather than `&(nil)`.
+`nil` is not a Jess keyword, so `&(nil)` is not a supported spelling of anything.
 
 ### At-Rule bubbling
 

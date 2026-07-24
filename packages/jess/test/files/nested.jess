@@ -31,3 +31,51 @@ a {
     four: 4;
   }
 }
+
+a, b {
+  &:hover {
+    background: blue;
+  }
+}
+
+a, b, c {
+  [foo]& {
+    background: blue;
+  }
+}
+
+a, b {
+  & + & {
+    background: blue;
+  }
+}
+
+.parent {
+  & .child {
+    color: blue;
+  }
+  & > .direct {
+    color: red;
+  }
+  .outer & {
+    color: green;
+  }
+  :not(&) {
+    color: teal;
+  }
+}
+
+.block {
+  &__el {
+    color: blue;
+  }
+  &--mod {
+    color: red;
+  }
+  &-suffix {
+    color: green;
+  }
+  &(-1) {
+    color: teal;
+  }
+}

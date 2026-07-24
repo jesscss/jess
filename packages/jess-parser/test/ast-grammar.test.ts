@@ -285,7 +285,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'CompoundSelector' }
       ]
     }] });
-    for (const invalid of ['$apply $[.rounded];', '$apply .rounded-$[tone];', '$apply &;']) {
+    for (const invalid of ['$apply $[.rounded];', '$apply .rounded-$[tone];']) {
       const rejected = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null).toBe(false);
     }
@@ -337,7 +337,7 @@ describe('Jess AST grammar facts', () => {
       '.target,\n.source {\n  color: red;\n}\n'
     );
 
-    for (const invalid of ['$extend .target;', '.source { $extend .target-$[tone]; }', '.source { $extend $type; }', '.source { $extend &; }']) {
+    for (const invalid of ['$extend .target;', '.source { $extend .target-$[tone]; }', '.source { $extend $type; }']) {
       const direct = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
     }
@@ -1778,17 +1778,115 @@ describe('Jess AST grammar facts', () => {
     });
   });
 
-  it('keeps selector forms without a faithful direct template reduction out of the route', () => {
-    // A bare parent selector has no valid document-level production route, but
-    // Jess accepts it inside a rule. This direct selector route owns ordinary
-    // nested rules; parent-selector templates stay out until they have a
-    // dedicated semantic reduction rather than being treated as static text.
-    const nestedParent = '.parent { & { color: blue; } }';
-    const legacy = parseJessCst(nestedParent);
-    const direct = run(jessAstGrammar.JessAstDocument, nestedParent, { trivia: jessAstGrammar.whitespace });
+  it('constructs parent selectors as canonical `&`-bearing SimpleSelector text', () => {
+    // `SimpleSelector.text` retaining `&` IS the dedicated semantic reduction:
+    // core's selector path identifies a parent reference from that text and owns
+    // both the spec substitution and the name concatenation.
+    const source = '.parent { & { color: blue; } &:hover { color: red; } & + & { color: green; } [foo]& { color: teal; } }';
+    const legacy = parseJessCst(source);
+    const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
-    expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value)).toBe(false);
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+
+    expect(stylesheet(direct.value).children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { selector: { selectors: [{ head: { simples: [{ type: 'SimpleSelector', text: '&', interp: null }] }, tail: [] }] } },
+        { selector: { selectors: [{ head: { simples: [{ text: '&' }, { type: 'SimpleSelector', text: ':hover' }] } }] } },
+        { selector: { selectors: [{ head: { simples: [{ text: '&' }] }, tail: [{ comb: '+', compound: { simples: [{ text: '&' }] } }] }] } },
+        { selector: { selectors: [{ head: { simples: [{ text: '[foo]' }, { text: '&' }] } }] } }
+      ]
+    });
+  });
+
+  it('fuses a parent selector with its identifier suffix into one selector atom', () => {
+    // The name-concatenation extension. One token keeps "is this compound's
+    // subject a bare `&`?" a single string compare, and `&(X)` is the explicit
+    // spelling of the same append for suffixes that are not identifiers.
+    const source = '.block { &__el { color: blue; } &--mod { color: red; } &-suffix { color: green; } &(-1) { color: teal; } }';
+    const legacy = parseJessCst(source);
+    const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+
+    expect(stylesheet(direct.value).children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { selector: { selectors: [{ head: { simples: [{ text: '&__el', interp: null }] } }] } },
+        { selector: { selectors: [{ head: { simples: [{ text: '&--mod', interp: null }] } }] } },
+        { selector: { selectors: [{ head: { simples: [{ text: '&-suffix', interp: null }] } }] } },
+        { selector: { selectors: [{ head: { simples: [{ text: '&-1', interp: null }] } }] } }
+      ]
+    });
+  });
+
+  it('fuses a parent selector with a glued $[…] template into one selector atom', () => {
+    // A split representation would resolve the bare `&` to `:is(parents)` first
+    // and append to that; only the fused atom distributes per parent.
+    const source = '$tone: primary; .a, .b { &-$[tone] { color: blue; } }';
+    const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    expect(stylesheet(direct.value).children[1]).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Rule',
+        selector: {
+          selectors: [{
+            head: {
+              simples: [{
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [{ lit: '&-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }]
+                }
+              }]
+            }
+          }]
+        }
+      }]
+    });
+  });
+
+  it('keeps `&` suffixes that are not identifiers, and the at-root template, out of the route', () => {
+    // `&-1` is rejected because `-1` is not an identifier: `&(-1)` is how the
+    // append is spelled. `&('')` is an output-PLACEMENT instruction (Sass's
+    // `@at-root`), which has no AST v2 carrier, and `nil` is not a Jess keyword,
+    // so neither may degrade into an append of nothing.
+    for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }']) {
+      const legacy = parseJessCst(source);
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(legacy.errors.length).toBeGreaterThan(0);
+      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value)).toBe(false);
+    }
+  });
+
+  it('accepts `&` and its append spelling in $extend and $apply targets', () => {
+    const source = '.a { color: blue; } .b { .c { $extend &; $apply &(-1); } }';
+    const legacy = parseJessCst(source);
+    const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+
+    expect(stylesheet(direct.value).children[1]).toMatchObject({
+      type: 'Rule',
+      body: [{
+        type: 'Rule',
+        extendInstructions: [{ target: { selectors: [{ head: { simples: [{ text: '&' }] } }] }, partial: true }],
+        body: [{ type: 'Apply', selectors: [{ simples: [{ text: '&-1' }] }] }]
+      }]
+    });
   });
 
   it('constructs public $[…] selector templates as Interp-backed SimpleSelector atoms', () => {

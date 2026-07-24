@@ -88,7 +88,9 @@ type JessAstRules = {
   DirectJessExtend: Combinator<ExtendInstruction[]>;
   DirectJessMixinDef: Combinator<MixinDef>;
   DirectJessSimple: Combinator<SimpleSelector>;
+  DirectJessParent: Combinator<SimpleSelector>;
   DirectJessInterpolatedSimple: Combinator<SimpleSelector>;
+  DirectJessInterpolatedParentSuffix: Combinator<SimpleSelector>;
   DirectJessAttribute: Combinator<SimpleSelector>;
   DirectJessPseudo: Combinator<SimpleToken>;
   DirectJessStaticPseudoArgument: Combinator<SelectorList | string>;
@@ -1053,6 +1055,26 @@ const jessDollarInterpStructure = noTrivia(choice(
 ));
 const jessCustomPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const jessSelectorTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
+// The parent selector. `&` alone is a selector reference; `&` fused with an
+// identifier is the parent-NAME concatenation extension (`&__el`, `&--mod`,
+// `&-suffix`). `SimpleSelector.text` retaining `&` is already the canonical AST:
+// core's selector path identifies parent references from that text and performs
+// both the spec substitution and the name concatenation.
+//
+// Unlike Less's `staticAmpersand`, which fuses any `[-_a-zA-Z0-9\u0080-\uffff]*`
+// run, the fused tail here must be a valid CSS identifier. `&-1` is therefore a
+// positioned parse error in `.jess` \u2014 `-1` is not an identifier \u2014 and `&(-1)` is
+// its explicit spelling.
+const jessAmpersand = regex(/&(?:--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
+// `&(X)` is the explicit spelling of the fused append: `&(-1)` appends `-1` to
+// the parent name exactly as Less's `&-1` does. It is the escape hatch for the
+// suffixes the fused form rejects, so its payload is Less's fused tail run.
+//
+// `&('')` (at-root output placement) and `&(nil)` are NOT append payloads and
+// stay out: `''` is an output-placement instruction with no AST v2 carrier, and
+// `nil` is not a Jess keyword. Neither may degrade into "append nothing", so the
+// payload is non-empty and excludes a bare `nil`.
+const jessAmpersandAppendPayload = regex(/(?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+/);
 // The literal tail an authored value-position interpolation may carry: a unit
 // (`$(20)px`), a percent sign, or an identifier suffix (`$[name]-suffix`).
 const jessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff%]+/);
@@ -1543,6 +1565,18 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.CssAstSyntaxSimple,
     children => simpleSelector(requireToken(children[0]).value)
   );
+  // The fused form and its explicit `&(X)` spelling reduce to one canonical
+  // `SimpleSelector.text`, so `&(-1)` and Less's `&-1` hand core identical input.
+  // The parenthesized arm leads: the fused terminal would otherwise commit the
+  // bare `&` of `&(-1)` and strand its payload.
+  const DirectJessParent = node<SimpleSelector>(
+    'DirectJessParent',
+    choice(sequence(literal('&('), jessAmpersandAppendPayload, literal(')')), jessAmpersand),
+    (children) => {
+      const head = requireToken(children[0]).value;
+      return simpleSelector(head === '&(' ? `&${requireToken(children[1]).value}` : head);
+    }
+  );
   // Cheap superset lookahead so an ordinary `.card` simple selector does not
   // consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
   // re-parse through DirectJessSimple. The predicate mirrors this arm's own
@@ -1585,6 +1619,28 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       }
       return interpolatedSimpleSelector(interpolation(parts));
     }
+  );
+  // `&` glued to a `$[…]` template is ONE parent-suffix selector atom, not a
+  // parent reference followed by a second compound member. Only the fused shape
+  // distributes the concatenation per parent; a split one would resolve the bare
+  // `&` to `:is(parents)` first and then append to that.
+  //
+  // The literal run between `&` and the template is a template FRAGMENT, not a
+  // completed identifier, so the fused terminal's identifier rule does not apply
+  // to it: `&-$[tone]` is the authored spelling of `&-primary`. The lookahead is
+  // the same fast reject `DirectJessInterpolatedSimple` uses, so an ordinary `&`
+  // compound member never pays a failed template scan.
+  const directInterpParentAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$\[/)));
+  const DirectJessInterpolatedParentSuffix = node<SimpleSelector>(
+    'DirectJessInterpolatedParentSuffix',
+    noTrivia(sequence(
+      directInterpParentAhead,
+      literal('&'),
+      many(jessSelectorTextRun),
+      g.DirectJessDollarInterp,
+      many(choice(g.DirectJessDollarInterp, jessSelectorTextRun))
+    )),
+    children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
   );
   const directJessAttributeDoubleQuoted = noTrivia(sequence(literal('"'), g.CssAstSyntaxDoubleQuotedText, literal('"')));
   const directJessAttributeSingleQuoted = noTrivia(sequence(literal('\''), g.CssAstSyntaxSingleQuotedText, literal('\'')));
@@ -1714,7 +1770,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessStaticCompound = node<CompoundSelector>(
     'DirectJessStaticCompound',
-    noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessSimple))),
+    noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessParent, g.DirectJessSimple))),
     reduceCompound
   );
   const directJessCombinator = choice(literal('||'), literal('>'), literal('+'), literal('~'));
@@ -3257,7 +3313,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessCompound = node<CompoundSelector>(
     'DirectJessCompound',
-    noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessInterpolatedSimple, g.DirectJessSimple))),
+    noTrivia(oneOrMore(choice(parser({ trivia: whitespace }, g.DirectJessAttribute), g.DirectJessPseudo, g.DirectJessInterpolatedParentSuffix, g.DirectJessInterpolatedSimple, g.DirectJessParent, g.DirectJessSimple))),
     reduceCompound
   );
   const DirectJessComplexTail = node<JessComplexTail>(
@@ -3440,7 +3496,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessExtend,
     DirectJessMixinDef,
     DirectJessSimple,
+    DirectJessParent,
     DirectJessInterpolatedSimple,
+    DirectJessInterpolatedParentSuffix,
     DirectJessAttribute,
     DirectJessPseudo,
     DirectJessStaticPseudoArgument,

@@ -114,6 +114,105 @@ describe('Jess parser plugin render-through', () => {
     )).rejects.toThrow(/arity/i);
   });
 
+  describe('parent selector', () => {
+    const nested = async (source: string): Promise<string> =>
+      new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' });
+    const flat = async (source: string): Promise<string> =>
+      new Compiler({ output: { collapseNesting: true } })
+        .renderString(source, { filePath: 'entry.jess', extension: '.jess' });
+
+    it('resolves selector-reference `&` exactly as the CSS Nesting spec does', async () => {
+      expect(await flat('.a { & { color: red; } }')).toBe('.a {\n  color: red;\n}\n');
+      expect(await flat('.a { &:hover { color: red; } }')).toBe('.a:hover {\n  color: red;\n}\n');
+      expect(await flat('.a { &.mod { color: red; } }')).toBe('.a.mod {\n  color: red;\n}\n');
+      expect(await flat('.a { & + & { color: red; } }')).toBe('.a + .a {\n  color: red;\n}\n');
+      expect(await flat('.a { & > .b { color: red; } }')).toBe('.a > .b {\n  color: red;\n}\n');
+      expect(await flat('.a { .b & { color: red; } }')).toBe('.b .a {\n  color: red;\n}\n');
+      expect(await flat('.a { [foo]& { color: red; } }')).toBe('[foo].a {\n  color: red;\n}\n');
+      expect(await flat('.a { :not(&) { color: red; } }')).toBe(':not(.a) {\n  color: red;\n}\n');
+      // An omitted `&` is the descendant relation, same as an authored `& .b`.
+      expect(await flat('.a { .b { color: red; } }')).toBe('.a .b {\n  color: red;\n}\n');
+    });
+
+    it('wraps a comma-list parent in `:is()` wherever `&` is a selector reference', async () => {
+      // `:is()` takes the max specificity of its arguments, which is why the
+      // whole parent list is wrapped ONCE rather than distributed per branch.
+      expect(await flat('.a, #b { & .c { color: red; } }')).toBe(':is(.a, #b) .c {\n  color: red;\n}\n');
+      expect(await flat('.a, #b { & + & { color: red; } }')).toBe(':is(.a, #b) + :is(.a, #b) {\n  color: red;\n}\n');
+      expect(await flat('.a, #b { &.c { color: red; } }')).toBe(':is(.a, #b).c {\n  color: red;\n}\n');
+      expect(await flat('.a, #b { .c & { color: red; } }')).toBe('.c :is(.a, #b) {\n  color: red;\n}\n');
+      // A `:not(…)` argument recurses instead: the parent list goes in BARE, so
+      // the result is not the De-Morgan-wrong `:not(.a), :not(#b)`.
+      expect(await flat('.a, #b { :not(&) { color: red; } }')).toBe(':not(.a, #b) {\n  color: red;\n}\n');
+      // A whole-branch `&` substitutes bare, so the parent list is preserved.
+      expect(await flat('.a, #b { & { color: red; } }')).toBe('.a,\n#b {\n  color: red;\n}\n');
+    });
+
+    it('concatenates the parent NAME for a glued identifier suffix and its `&(X)` spelling', async () => {
+      expect(await flat('.block { &__el { color: red; } }')).toBe('.block__el {\n  color: red;\n}\n');
+      expect(await flat('.block { &--mod { color: red; } }')).toBe('.block--mod {\n  color: red;\n}\n');
+      expect(await flat('.button { &-primary { color: red; } }')).toBe('.button-primary {\n  color: red;\n}\n');
+      // `&(X)` is the explicit spelling of the same append: `&(-1)` renders what
+      // Less's `&-1` renders, which `.jess` rejects because `-1` is no identifier.
+      expect(await flat('.button { &(-1) { color: red; } }')).toBe('.button-1 {\n  color: red;\n}\n');
+      expect(await flat('.button { &(1) { color: red; } }')).toBe('.button1 {\n  color: red;\n}\n');
+      // A name concatenation DISTRIBUTES per parent — it never wraps in `:is()`.
+      expect(await flat('.a, .b { &(-1) { color: red; } }')).toBe('.a-1,\n.b-1 {\n  color: red;\n}\n');
+      expect(await flat('.a, .b { &__el { color: red; } }')).toBe('.a__el,\n.b__el {\n  color: red;\n}\n');
+      // A glued `$[…]` template is one atom, so it distributes too.
+      expect(await flat('$t: primary; .a, .b { &-$[t] { color: red; } }'))
+        .toBe('.a-primary,\n.b-primary {\n  color: red;\n}\n');
+    });
+
+    it('rejects a `&` suffix that is not an identifier, and the at-root template', async () => {
+      for (const source of ['.a { &-1 { color: red; } }', '.a { &1 { color: red; } }', '.a { &() { color: red; } }', '.a { &(\'\') { color: red; } }', '.a { &(nil) { color: red; } }']) {
+        await expect(new Compiler().renderString(source, { filePath: 'entry.jess', extension: '.jess' }))
+          .rejects.toThrow(/Jess parser error/);
+      }
+    });
+
+    it('preserves `&` verbatim in the default nested output until a boundary collapses', async () => {
+      // `.jess` output is nested by DEFAULT. `&` only resolves where a boundary
+      // is collapsed, so the authored form survives to the emitted CSS.
+      expect(await nested('.a { &:hover { color: red; } }'))
+        .toBe('.a {\n  &:hover {\n    color: red;\n  }\n}\n');
+      expect(await nested('.a, #b { & + & { color: red; } }'))
+        .toBe('.a,\n#b {\n  & + & {\n    color: red;\n  }\n}\n');
+      expect(await nested('.a { :not(&) { color: red; } }'))
+        .toBe('.a {\n  :not(&) {\n    color: red;\n  }\n}\n');
+      expect(await nested('.block { &__el { color: red; } }'))
+        .toBe('.block {\n  &__el {\n    color: red;\n  }\n}\n');
+      // The `&(X)` spelling normalizes to the fused form it is sugar for.
+      expect(await nested('.button { &(-1) { color: red; } }'))
+        .toBe('.button {\n  &-1 {\n    color: red;\n  }\n}\n');
+      // A `$[…]` template still evaluates; only the parent reference is deferred.
+      expect(await nested('$t: primary; .a { &-$[t] { color: red; } }'))
+        .toBe('.a {\n  &-primary {\n    color: red;\n  }\n}\n');
+    });
+
+    it('hoists `&` per collapsed boundary rather than per document', async () => {
+      // Two nesting levels with only the inner boundary collapsible: the outer
+      // `&` stays authored while the inner one resolves against its own parent.
+      expect(await nested('.a { .b { &:hover { color: red; } } }'))
+        .toBe('.a {\n  .b {\n    &:hover {\n      color: red;\n    }\n  }\n}\n');
+      expect(await flat('.a { .b { &:hover { color: red; } } }'))
+        .toBe('.a .b:hover {\n  color: red;\n}\n');
+      expect(await flat('.a { &-x { &-y { color: red; } } }'))
+        .toBe('.a-x-y {\n  color: red;\n}\n');
+    });
+
+    it('accepts `&` and its append spelling as $extend and $apply targets', async () => {
+      // The direct route matches the CST route, which has always admitted `&`
+      // here. Resolving a parent reference in a lookup target is an EVAL gap
+      // both routes share: like Less's `:extend(&)`, the target matches nothing
+      // today. These pin that the forms render without error, not that gap.
+      expect(await flat('.a { color: red; } .b { .c { $extend &; } }'))
+        .toBe('.a {\n  color: red;\n}\n');
+      expect(await flat('.a-1 { color: red; } .a { .b { $apply &(-1); } }'))
+        .toBe('.a-1 {\n  color: red;\n}\n');
+    });
+  });
+
   it('loads a `.jess` entry file through Context plugin resolution', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-plugin-jess-'));
     const entry = path.join(directory, 'entry.jess');

@@ -83,7 +83,19 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const selTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
   const InterpolatedSelector = node(
     noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), g.DollarInterp, many(choice(g.DollarInterp, selTextRun)))));
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, { gate: (s: any) => !!(s && s.inner), combinator: literal('&') }, g.InterpolatedSelector, basicSel);
+  // ── Parent selector ─────────────────────────────────────────────────────────
+  // `&` is the parent reference; a glued identifier (`&__el`) is a second
+  // `basicSel` part of the same compound, so the concatenation needs no token of
+  // its own here. `&(X)` is the explicit spelling of that append and DOES: its
+  // payload is not a selector, so it stays one recognition token. `&('')`
+  // (at-root) and `&(nil)` are not append payloads and stay out.
+  const parentAppend = regex(/&\((?!nil\))[-_a-zA-Z0-9\u0080-\uffff]+\)/);
+  // A `--`-led BEM modifier is a valid CSS identifier that `basicSel`'s single
+  // optional leading dash cannot spell, so `&--mod` needs the glued form here.
+  // Every other glued suffix (`&__el`, `&-suffix`) is already a `basicSel` part.
+  const parentDashedAppend = regex(/&--[-_a-zA-Z0-9\u0080-\uffff]*/);
+  const parentSelector = choice(parentAppend, parentDashedAppend, literal('&'));
+  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, { gate: (s: any) => !!(s && s.inner), combinator: parentSelector }, g.InterpolatedSelector, basicSel);
 
   // ── Variable declarations ───────────────────────────────────────────────────
   // `$name: value;` — the variable's name is `name` (no `$`). Assignment ops:
@@ -407,7 +419,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // NOTE: a `*[…]` capture is NOT an extend target — the target position already
   // accepts a selector directly; `*[…]` (SelectorCapture) is value-position only.
   const extendNs = regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\|/);
-  const extendTargetPart = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
+  const extendTargetPart = choice(g.AttributeSelector, g.PseudoSelector, parentSelector, g.InterpolatedSelector, basicSel);
   // Reference (`$type`) tried first so a `$…` is claimed before the selector fallback.
   const extendTarget = choice(
     g.Reference,
@@ -440,7 +452,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Each listed selector lowers to a mixin CALL of the shape `$ > *[.sel]()` — a
   // `Call` whose name is a base-less `type:'mixin'` Reference keyed by a selector
   // capture (`$apply .foo` ≈ `$ > *[.foo]`). A comma list → one Call per selector.
-  const applyTargetPart = choice(g.AttributeSelector, g.PseudoSelector, literal('&'), g.InterpolatedSelector, basicSel);
+  const applyTargetPart = choice(g.AttributeSelector, g.PseudoSelector, parentSelector, g.InterpolatedSelector, basicSel);
   const applyTarget = oneOrMore(applyTargetPart);
   const Apply = node(
     sequence(
