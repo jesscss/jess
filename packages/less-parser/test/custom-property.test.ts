@@ -12,7 +12,7 @@ import { parse } from '@jesscss/less-parser';
  * top-level `;`. The name is a `<dashed-ident>` (css-syntax-3 §4.3.9) except
  * bare `--`, which css-variables-1 §2 reserves.
  */
-const ACCEPTED: Array<[string, string, string]> = [
+const ACCEPTED: Array<[string, string, string, boolean?]> = [
   ['static keyword value', 'a { --x: red; }', 'red'],
   ['numeric value', 'a { --x: 0; }', '0'],
   ['multi-term value', 'a { --x: 1px solid black; }', '1px solid black'],
@@ -25,16 +25,21 @@ const ACCEPTED: Array<[string, string, string]> = [
   ['a protocol-relative url', 'a { --x: url(//e.com/a;b.png); }', 'url(//e.com/a;b.png)'],
   ['an escape and a non-ASCII byte', 'a { --x: \\2014 é; }', '\\2014 é'],
   ['a lone solidus', 'a { --x: a/b; }', 'a/b'],
-  ['a trailing priority marker', 'a { --x: red !important; }', 'red !important']
+  // css-syntax-3 §5.5.6 strips a trailing `!important` and sets the priority flag
+  // before the custom-property original-text step, so the preserved value excludes
+  // the marker and the whitespace in front of it. Asserted in all four dialects.
+  ['a trailing priority marker', 'a { --x: red !important; }', 'red', true],
+  ['a bare priority marker', 'a { --x: !important; }', '', true],
+  ['a non-final priority marker', 'a { --x: red !important b; }', 'red !important b']
 ];
 
 const NAMES = ['--x', '--X', '--x-y', '--0', '---x', '--_x', '--é'];
 
 describe('Less custom properties', () => {
-  for (const [label, source, expected] of ACCEPTED) {
+  for (const [label, source, expected, important = false] of ACCEPTED) {
     it(`accepts ${label}`, () => {
       expect(parse(source)).toMatchObject({
-        children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected } }] }]
+        children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: expected }, important }] }]
       });
     });
   }

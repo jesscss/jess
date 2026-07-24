@@ -1394,6 +1394,55 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  it('strips a trailing custom-property priority marker into the declaration flag', () => {
+    // css-syntax-3 §5.5.6 removes a trailing `!important` and sets the priority
+    // flag before the custom-property original-text step, so the preserved value
+    // excludes the marker *and* the whitespace in front of it. css-variables-1
+    // §2.1 confirms the `<declaration-value>` top-level `!` ban does not apply.
+    const document = parseAst('.theme { --a: red !important; --b: red    !important; --c: red!important; --d: red ! important; --e: red !IMPORTANT; --f: red ! /*c*/ important; --g: !important; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red' }, important: true },
+        { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'red' }, important: true },
+        { type: 'Declaration', name: '--c', value: { type: 'Any', src: 'red' }, important: true },
+        { type: 'Declaration', name: '--d', value: { type: 'Any', src: 'red' }, important: true },
+        { type: 'Declaration', name: '--e', value: { type: 'Any', src: 'red' }, important: true },
+        { type: 'Declaration', name: '--f', value: { type: 'Any', src: 'red' }, important: true },
+        { type: 'Declaration', name: '--g', value: { type: 'Any', src: '' }, important: true }
+      ]
+    });
+  });
+
+  it('keeps a custom-property priority marker that is not the declaration trailer inside the value', () => {
+    const document = parseAst('.theme { --a: red !importantx; --b: a !important b; --c: "a !important"; --d: f(a !important); --e: [a !important]; --f: red; }');
+
+    expect(document.children[0]).toMatchObject({
+      type: 'Rule',
+      body: [
+        { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red !importantx' }, important: false },
+        { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'a !important b' }, important: false },
+        { type: 'Declaration', name: '--c', value: { type: 'Any', src: '"a !important"' }, important: false },
+        { type: 'Declaration', name: '--d', value: { type: 'Any', src: 'f(a !important)' }, important: false },
+        { type: 'Declaration', name: '--e', value: { type: 'Any', src: '[a !important]' }, important: false },
+        { type: 'Declaration', name: '--f', value: { type: 'Any', src: 'red' }, important: false }
+      ]
+    });
+    // Only the final marker is priority; the earlier one stays value text.
+    expect(parseAst('.theme { --a: a !important !important; }').children[0]).toMatchObject({
+      body: [{ type: 'Declaration', name: '--a', value: { type: 'Any', src: 'a !important' }, important: true }]
+    });
+  });
+
+  it('round-trips a custom-property priority marker through serialization', () => {
+    const document = parseAst('.theme { --accent: red !important; color: blue !important; }');
+
+    expect(serialize(document)).toEqual({
+      css: '.theme {\n  --accent: red !important;\n  color: blue !important;\n}\n'
+    });
+  });
+
   it('does not classify an ordinary declaration or a malformed custom-property boundary as a custom declaration', () => {
     expect(parseAst('.theme { color: red; }').children[0]).toMatchObject({
       type: 'Rule',

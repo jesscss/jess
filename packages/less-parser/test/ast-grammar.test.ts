@@ -3514,6 +3514,80 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('strips a trailing custom-property priority marker into the declaration flag', () => {
+    // css-syntax-3 §5.5.6 removes a trailing `!important` and sets the priority
+    // flag before the custom-property original-text step, so the preserved value
+    // excludes the marker *and* the whitespace in front of it. css-variables-1
+    // §2.1 confirms the `<declaration-value>` top-level `!` ban does not apply.
+    // Less matches CSS here: a custom property is CSS declaration-value text.
+    const source = '@n: accent; .x { --a: red !important; --b: red    !important; --c: red!important; --d: red ! important; --e: red !IMPORTANT; --f: red ! /*c*/ important; --g: !important; --h: @{n} !important; --@{n}: red !important; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'n' },
+        {
+          type: 'Rule', body: [
+            { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red' }, important: true },
+            { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'red' }, important: true },
+            { type: 'Declaration', name: '--c', value: { type: 'Any', src: 'red' }, important: true },
+            { type: 'Declaration', name: '--d', value: { type: 'Any', src: 'red' }, important: true },
+            { type: 'Declaration', name: '--e', value: { type: 'Any', src: 'red' }, important: true },
+            { type: 'Declaration', name: '--f', value: { type: 'Any', src: 'red' }, important: true },
+            { type: 'Declaration', name: '--g', value: { type: 'Any', src: '' }, important: true },
+            {
+              type: 'Declaration',
+              name: '--h',
+              value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'n' }, unquote: true }] },
+              important: true
+            },
+            {
+              type: 'Declaration',
+              name: { type: 'Interpolation', parts: [{ lit: '--' }, { ref: { type: 'VariableReference', name: 'n' } }] },
+              value: { type: 'Any', src: 'red' },
+              important: true
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it('keeps a custom-property priority marker that is not the declaration trailer inside the value', () => {
+    const source = '.x { --a: red !importantx; --b: a !important b; --c: "a !important"; --d: f(a !important); --e: [a !important]; --f: a !important !important; --g: red; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      children: [{
+        type: 'Rule', body: [
+          { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red !importantx' }, important: false },
+          { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'a !important b' }, important: false },
+          { type: 'Declaration', name: '--c', value: { type: 'Any', src: '"a !important"' }, important: false },
+          { type: 'Declaration', name: '--d', value: { type: 'Any', src: 'f(a !important)' }, important: false },
+          { type: 'Declaration', name: '--e', value: { type: 'Any', src: '[a !important]' }, important: false },
+          // Only the final marker is priority; the earlier one stays value text.
+          { type: 'Declaration', name: '--f', value: { type: 'Any', src: 'a !important' }, important: true },
+          { type: 'Declaration', name: '--g', value: { type: 'Any', src: 'red' }, important: false }
+        ]
+      }]
+    });
+  });
+
+  it('round-trips a custom-property priority marker through serialization', () => {
+    const source = '.x { --accent: red !important; color: blue !important; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
+      '.x {\n  --accent: red !important;\n  color: blue !important;\n}\n'
+    );
+  });
+
   it('keeps malformed interpolation rejected by both public CST and direct AST property/value routes', () => {
     for (const source of [
       '.x { pre-@{ spaced }-post: red; }',

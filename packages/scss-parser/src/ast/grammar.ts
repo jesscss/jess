@@ -1450,7 +1450,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rul
   );
   const DirectScssCustomDeclaration = node<Declaration>(
     'DirectScssCustomDeclaration',
-    sequence(g.DirectScssCustomPropertyName, literal(':'), g.DirectScssCustomValue, optional(literal(';'))),
+    // A trailing `!important` is declaration priority, not value text: css-syntax-3
+    // §5.5.6 strips it before the custom-property original-text step. The shared
+    // value leaf already stops before the marker (and before the whitespace
+    // preceding it), so this tail simply claims it, exactly like the ordinary
+    // declaration tail below.
+    sequence(g.DirectScssCustomPropertyName, literal(':'), g.DirectScssCustomValue, optional(g.DirectScssImportant), optional(literal(';'))),
     (children) => {
       const name = children[0];
       if (typeof name !== 'string' && !isInterpolation(name)) {
@@ -1462,7 +1467,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rul
       if (!isValue(value)) {
         throw new TypeError('Direct SCSS AST grammar produced an incomplete custom declaration.');
       }
-      return decl(name, valueSlot(value));
+      return decl(name, valueSlot(value), null, children.includes(true));
     }
   );
   const DirectScssDeclaration = node<Declaration>(

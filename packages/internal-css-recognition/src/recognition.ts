@@ -145,7 +145,16 @@ const customPropertyName = regex(/--(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-
 // that does not open a comment is matched here rather than halting the run.
 // The inner variant drops `;` from the stop set: inside a balanced group a
 // semicolon is ordinary content, not a declaration terminator.
-const customOuterContent = regex(/(?:\\[^\n\r\f]|[^(){}[\];'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
+// The outer leaf additionally stops before a *trailing* `!important`: css-syntax-3
+// §5.5.6 removes that marker and sets the declaration's priority flag before the
+// custom-property original-text step, so it is never part of the preserved value.
+// The guard leads with `[ \t\n\r\f]*` so the run also stops before the whitespace
+// that precedes `!` (the value keeps no trailing space), and requires `[;}]` after
+// the marker so a non-final `!important` stays ordinary value text. Only the outer
+// leaf carries this: inside a balanced group the marker is never the declaration's.
+// The `i` flag is inert for the rest of the pattern — its remaining classes are
+// punctuation or already span both cases.
+const customOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n\r\f]|[^(){}[\];'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({])))+/i);
 const customInnerContent = regex(/(?:\\[^\n\r\f]|[^(){}[\]'"\\/#$]|\/(?!\*)|#(?!\{)|\$(?![[({]))+/);
 const customSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const customDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
@@ -165,7 +174,16 @@ const lessInterpolatedValueTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 // (not `*`) keeps the reserved bare `--` out, matching css-variables-1 §2 and
 // the other three dialects.
 const lessCustomProperty = regex(/--[-_a-zA-Z0-9\u0080-\uffff]+/);
-const lessCustomOuterContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\];'"\/\\])+|\/(?!\*)/);
+// The outer leaf additionally stops before a *trailing* `!important`: css-syntax-3
+// §5.5.6 removes that marker and sets the declaration's priority flag before the
+// custom-property original-text step, so it is never part of the preserved value.
+// The guard leads with `[ \t\n\r\f]*` so the run also stops before the whitespace
+// that precedes `!` (the value keeps no trailing space), and requires `[;}]` after
+// the marker so a non-final `!important` stays ordinary value text. Only the outer
+// leaf carries this: inside a balanced group the marker is never the declaration's.
+// The `i` flag is inert for the rest of the pattern — its remaining classes are
+// punctuation or already span both cases.
+const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*[;}])(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\];'"\/\\]))+|\/(?!\*)/i);
 const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\]'"\/\\])+|\/(?!\*)/);
 const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const lessCustomDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);

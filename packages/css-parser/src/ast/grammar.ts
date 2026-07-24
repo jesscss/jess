@@ -594,7 +594,17 @@ const generalEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/'"()[\]{}]+)+/);
 // captured as one value while its balanced groups, quoted strings, and comments
 // cannot terminate the declaration. This is a Parseman grammar combinator, not
 // a secondary scanner or a post-parse source slice.
-const customValue = scanTo(choice(literal(';'), literal('}')), {
+// css-syntax-3 §5.5.6 strips a trailing `!important` and sets the declaration's
+// priority flag *before* the custom-property original-text step, so the preserved
+// text excludes the marker. css-variables-1 §2.1 confirms the `<declaration-value>`
+// ban on a top-level `!` does not apply, because the removal happens first.
+// The marker is a scan sentinel rather than a post-parse text slice: the leading
+// `[ \t\n\r\f]*` makes the scan stop *before* the whitespace that precedes `!`, so
+// the captured value keeps no trailing space. Only a marker that is genuinely last
+// qualifies — the `(?=[;}])` tail is what leaves `--x: a !important b` untouched and
+// what makes `--x: a !important !important` strip only the final one.
+const customImportantTail = regex(/[ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*important(?:[ \t\n\r\f]|\/\*(?:[^*]|\*(?!\/))*\*\/)*(?=[;}])/i);
+const customValue = scanTo(choice(literal(';'), literal('}'), customImportantTail), {
   skip: [
     blockComment,
     customEscape,
@@ -1335,7 +1345,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDeclaration = node(
     'CssAstDeclaration',
     choice(
-      sequence(g.CssAstCustomProperty, literal(':'), g.CssAstCustomValue, optional(literal(';'))),
+      sequence(g.CssAstCustomProperty, literal(':'), g.CssAstCustomValue, optional(g.CssAstImportant), optional(literal(';'))),
       sequence(
         g.CssAstProperty,
         many(blockComment),
@@ -1372,7 +1382,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         if (value === undefined) {
           throw new Error('CssAstDeclaration requires a captured custom-property value');
         }
-        return decl(name, valueSlot(value));
+        return decl(name, valueSlot(value), null, children.includes(true));
       }
       const value = children.find(isValueSlotValue);
       if (value === undefined) {

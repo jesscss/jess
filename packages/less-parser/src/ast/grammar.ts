@@ -2497,7 +2497,18 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   );
   const DirectLessCustomDeclaration = node<Declaration>(
     'DirectLessCustomDeclaration',
-    sequence(g.DirectLessCustomPropertyName, literal(':'), g.DirectLessCustomValue, optional(literal(';'))),
+    // A trailing `!important` is declaration priority, not value text: css-syntax-3
+    // §5.5.6 strips it before the custom-property original-text step. The value leaf
+    // already stops before the marker (and before the whitespace preceding it), so
+    // this tail simply claims it. It mirrors the ordinary-declaration tail exactly —
+    // `!`, interspersed block comments, case-insensitive `important`.
+    sequence(
+      g.DirectLessCustomPropertyName,
+      literal(':'),
+      g.DirectLessCustomValue,
+      optional(sequence(literal('!'), many(blockComment), g.CssAstSyntaxImportant)),
+      optional(literal(';'))
+    ),
     (children) => {
       const name = children[0];
       // A custom property name may itself be an `Interpolation`, so choose the final
@@ -2507,7 +2518,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
       if (name === undefined || value === undefined) {
         throw new TypeError('Direct Less AST grammar produced an incomplete custom declaration.');
       }
-      return decl(isInterp(name) ? name : requireTerminalText(name), valueSlot(value));
+      return decl(
+        isInterp(name) ? name : requireTerminalText(name),
+        valueSlot(value),
+        null,
+        children.some(child => isTerminalText(child, '!'))
+      );
     }
   );
   const DirectLessInterpolatedProperty = node<Interpolation>(
