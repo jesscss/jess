@@ -2495,6 +2495,57 @@ describe('Jess AST grammar facts', () => {
       .toBe('.box {\n  width: 8px;\n}\n');
   });
 
+  // The `$( … )` block is a math BOUNDARY, not an authored paren group: its
+  // delimiters are the `$(`/`)` of the spelling itself. It must open the
+  // parens-division context without ever emitting a paren, however its inner
+  // folds — a call result and a bare keyword both reach it as plain bytes, and
+  // used to come back wrapped in parens nobody wrote.
+  it('never emits the `$( … )` delimiters, whatever the boundary wraps', () => {
+    const evaluator = { evaluator: buildEvaluator(makeBuiltinRegistry()) };
+    const render = (source: string) => serialize(parse(source), evaluator).css;
+    const double = '$d: @($n) > $($n * 2);\n';
+
+    // A call — directly, and as the sole value of another function's body.
+    expect(render(`${double}.box { width: $($d(2px)); }`)).toBe('.box {\n  width: 4px;\n}\n');
+    expect(render(`${double}$q: @($n) > $($d($d($n)));\n.box { width: $q(2px); }`))
+      .toBe('.box {\n  width: 8px;\n}\n');
+    // Values that never materialize to a typed object reach the boundary as bytes.
+    expect(render('.box { width: $(foo); }')).toBe('.box {\n  width: foo;\n}\n');
+    expect(render('.box { color: $(red); }')).toBe('.box {\n  color: red;\n}\n');
+    expect(render('.box { content: "x$(foo)y"; }')).toBe('.box {\n  content: "xfooy";\n}\n');
+    // An AUTHORED group inside the boundary is a real paren group and stays.
+    expect(render('.box { width: $((foo)); }')).toBe('.box {\n  width: (foo);\n}\n');
+    // The boundary still opens the math context it exists to mark.
+    expect(render('.box { width: $(4px / 2); }')).toBe('.box {\n  width: 2px;\n}\n');
+  });
+
+  // Before emitting a declaration, the serializer probes whether its value is a
+  // detached ruleset by walking the binding chain. Each hop lands in the scope
+  // that OWNS it — a call yields its `result:` in the activation frame holding
+  // the params — so the walk has to keep resolving there. Restarting every hop
+  // in the frame the walk began in loses the params, and a `result:` that calls
+  // on through died with `Name not found` on its own argument.
+  it('keeps a chained call in its own frame while probing a declaration value', () => {
+    const evaluator = { evaluator: buildEvaluator(makeBuiltinRegistry()) };
+    const render = (source: string) => serialize(parse(source), evaluator).css;
+    const double = '$double: @($n) > $($n * 2);\n';
+
+    // A block body calling an OUTER stylesheet function, passing its own param.
+    expect(render(`${double}$q: @($v) > { result: $double($v); }\n.box { width: $q(2px); }`))
+      .toBe('.box {\n  width: 4px;\n}\n');
+    expect(render(`${double}$q: @($v) > { result: $double($double($v)); }\n.box { width: $q(2px); }`))
+      .toBe('.box {\n  width: 8px;\n}\n');
+    // The documented higher-order shape (06-functions.mdx), function by param.
+    expect(render(`${double}$twice: @($fn, $v) > { result: $fn($fn($v)); }\n.box { value: $twice($double, 3); }`))
+      .toBe('.box {\n  value: 12;\n}\n');
+    // The probe still does its job: a ruleset on a property is rejected, direct
+    // or through an alias hop.
+    expect(() => render('$dr: { color: red; }\n.box { width: $dr; }'))
+      .toThrow(/Rulesets cannot be evaluated on a property/);
+    expect(() => render('$dr: { color: red; }\n$a: $dr;\n.box { width: $a; }'))
+      .toThrow(/Rulesets cannot be evaluated on a property/);
+  });
+
   // A block-valued assignment auto-terminates at its closing brace; the block
   // must be the WHOLE value, since a value preceding it would have no
   // unambiguous end. Less has the same rule for a detached ruleset.
