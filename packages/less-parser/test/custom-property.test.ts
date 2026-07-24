@@ -20,6 +20,7 @@ const ACCEPTED: Array<[string, string, string]> = [
   ['whitespace-only value', 'a { --x:   ; }', ''],
   ['nested parens', 'a { --x: foo(bar(1, 2)); }', 'foo(bar(1, 2))'],
   ['a brace block', 'a { --x: { color: red }; }', '{ color: red }'],
+  ['a semicolon inside a string', 'a { --x: "a;b"; }', '"a;b"'],
   ['a semicolon inside a bracket group', 'a { --x: [a;b]; }', '[a;b]'],
   ['a protocol-relative url', 'a { --x: url(//e.com/a;b.png); }', 'url(//e.com/a;b.png)'],
   ['an escape and a non-ASCII byte', 'a { --x: \\2014 é; }', '\\2014 é'],
@@ -67,17 +68,6 @@ describe('Less custom properties', () => {
 
   it('accepts an interpolation as the whole custom-property tail', () => {
     expect(() => parse('@p: q; a { --@{p}: red; }')).not.toThrow();
-  });
-
-  // KNOWN DIVERGENCE: css / scss / jess all keep a wholly-quoted custom-property
-  // value as verbatim `Any`, matching `<declaration-value>`. Less alone re-types
-  // it as a `Quoted` value (`customValueFromParts` in src/ast/grammar.ts). The
-  // input parses everywhere, so the shared matrix above stays dialect-neutral;
-  // this case pins the difference so it cannot drift unnoticed.
-  it('accepts a semicolon inside a string (as a Less-only Quoted value)', () => {
-    expect(parse('a { --x: "a;b"; }')).toMatchObject({
-      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Quoted', src: '"a;b"' } }] }]
-    });
   });
 
   it('accepts a custom-property reference in a var() consumer', () => {

@@ -712,14 +712,10 @@ function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
   if (hasInterpolation) {
     return interpolation(interpolationParts);
   }
-  const src = interpolationParts.map(part => 'lit' in part ? part.lit : '').join('');
-  // A single quoted custom-property value has already been recognized by the
-  // dedicated custom-string leaf. Preserve the established AST literal shape;
-  // this reads only that grammar-produced terminal, never the source input.
-  if ((src.startsWith('"') && src.endsWith('"')) || (src.startsWith('\'') && src.endsWith('\''))) {
-    return quoted(src, src.slice(1, -1), src[0]!, src.includes('\\'));
-  }
-  return any(src);
+  // A custom-property value is verbatim `<declaration-value>` text that is never
+  // evaluated (css-syntax-3 §7.2), so even a wholly-quoted value stays `Any`
+  // rather than being re-typed as a `Quoted` string.
+  return any(interpolationParts.map(part => 'lit' in part ? part.lit : '').join(''));
 }
 
 function customPartsFromChildren(children: readonly unknown[]): CustomValuePart[] {

@@ -3426,7 +3426,7 @@ describe('Less AST grammar facts', () => {
             { type: 'Declaration', name: { type: 'Interpolation' }, value: { type: 'Interpolation' } },
             {
               type: 'Declaration', name: { type: 'Interpolation' },
-              value: { type: 'Quoted', src: '"x"', value: 'x', quote: '"', escaped: false }
+              value: { type: 'Any', src: '"x"' }
             }
           ]
         }
