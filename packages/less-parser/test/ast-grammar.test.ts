@@ -3937,6 +3937,45 @@ describe('Less AST grammar facts', () => {
     ] } }] });
   });
 
+  it('restricts the `of S` nth argument to the child index via the shared cssAstPseudoSyntax recognition', () => {
+    // `of S` is valid only for `:nth-child`/`:nth-last-child` (Selectors-4 §6.6.2);
+    // the type-index families take a bare `<An+B>` (§7.1). The shared
+    // `CssAstSyntaxNthChildName`/`CssAstSyntaxNthTypeName`/`CssAstSyntaxOfKeyword`
+    // recognitions from `@jesscss/internal-css-recognition/pseudo-consts` are what
+    // enforce this split — a stray `of S` on an of-type index must reject rather
+    // than fall through to an opaque descendant-selector parse.
+    for (const rejected of [
+      'a:nth-of-type(2n of .a) { color: red; }',
+      'a:nth-of-type(n of .a) { color: red; }',
+      'a:nth-last-of-type(-n+3 of .a) { color: red; }'
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, rejected, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), rejected).toBe(false);
+    }
+
+    for (const accepted of [
+      'a:nth-child(2n of .a) { color: red; }',
+      'a:nth-of-type(2n+1) { color: red; }',
+      'a:nth-last-of-type(odd) { color: red; }'
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, accepted, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), accepted).toBe(true);
+    }
+
+    // The Less-only `@{…}` interpolated An+B argument stays intact through the
+    // shared-name dispatch: `:nth-child(@{n})` remains an Interpolation-backed
+    // SimpleSelector, not a raw selector reparse.
+    const interp = run(lessAstGrammar.LessAstDocument, 'a:nth-child(@{n}) { color: red; }', { trivia: lessAstGrammar.whitespace });
+    expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(true);
+    expect(interp.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
+        { type: 'SimpleSelector', text: 'a' },
+        { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation' } }
+      ] } }] } }]
+    });
+  });
+
   it('keeps public block-comment trivia inside static selector-valued pseudo arguments', () => {
     const source = '.card:not(/* before */ .disabled, /* between */ .muted):nth-child(/* numeric */ 2n + 1) { color: red; }';
     const cst = parseLessCst(source);

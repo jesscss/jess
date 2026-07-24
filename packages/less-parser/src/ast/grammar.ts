@@ -2,6 +2,7 @@
 import { attempt, choice, composeLeaf, field, leaf, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax, lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
+import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
 import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Comment, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessDynamicCharsetError } from '../parse-error.js';
@@ -223,6 +224,9 @@ type SharedCssAstSyntax = {
   CssAstSyntaxAttributeOperator: Combinator<unknown>;
   CssAstSyntaxHexColor: Combinator<string>;
   CssAstSyntaxNth: Combinator<unknown>;
+  CssAstSyntaxNthChildName: Combinator<string>;
+  CssAstSyntaxNthTypeName: Combinator<string>;
+  CssAstSyntaxOfKeyword: Combinator<string>;
   CssAstSyntaxNumber: Combinator<string>;
   CssAstSyntaxDimensionUnit: Combinator<string>;
   CssAstSyntaxInterpolatedPropertyStart: Combinator<unknown>;
@@ -1471,13 +1475,15 @@ const directFunctionConditionAnd = regex(/[ \t\n\r\f]*and(?![-\w])[ \t\n\r\f]*/i
 const directFunctionConditionOr = regex(/[ \t\n\r\f]*or(?![-\w])[ \t\n\r\f]*/i);
 const directFunctionConditionNot = regex(/not(?![-\w])/i);
 const directFunctionConditionAhead = regex(/>=|<=|=>|=<|=~|[<>=]|(?<![-\w])(?:and|or|not)(?![-\w])/i);
-// This is deliberately narrower than a generic pseudo identifier: direct
-// functional pseudo support currently has a truthful grammar only for the
-// An+B forms named here. Keep the public grammar's case-insensitive spelling.
-const directStaticNthPseudoName = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const directStaticNthChildPseudoName = regex(/nth-(?:last-)?child(?![-_a-zA-Z0-9\u0080-\uffff])/i);
-const directStaticNthTypePseudoName = regex(/nth-(?:last-)?of-type(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const directStaticSelectorPseudoName = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
+// Identifier-boundary exclusion for the generic non-selector pseudo arm. Unlike
+// the shared `(?=\()`-anchored `CssAstSyntaxNthChildName`/`CssAstSyntaxNthTypeName`
+// (which recognize an nth NAME only when it introduces its argument list), this
+// rejects an nth name at the identifier boundary regardless of a following `(`,
+// so a bare `:nth-child` / `:nth-of-type` (or a space before the paren) cannot be
+// reclassified as a plain non-selector pseudo — it must reach the structured nth
+// productions with an immediate `(` or be rejected.
+const directStaticNthPseudoNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9-￿])/i);
 // A non-selector functional pseudo is still one canonical SimpleSelector leaf.
 // A pseudo body cannot quietly turn a Less variable read into static bytes.
 // Keep only `@` that cannot start `@{...}`, `@@name`, or `@name`; nested
@@ -1492,7 +1498,7 @@ const directLessGeneralEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'
 const directLessGeneralEnclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
 const directLessGeneralEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
 
-export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<LessAstLocalRules>({ trivia: whitespace }, (g: LessAstInputRules & SharedCssAstSyntax) => {
+export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPseudoSyntax, rules<LessAstLocalRules>({ trivia: whitespace }, (g: LessAstInputRules & SharedCssAstSyntax) => {
   // `@@name` is a variable reference whose lookup name is the resolved value
   // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
   // sigil is glued just like the production `nestedRef`, so trivia cannot turn
@@ -3782,7 +3788,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'DirectLessStaticNthArgument',
     sequence(
       g.CssAstSyntaxNth,
-      optional(sequence(regex(/of(?![-_a-zA-Z\u0080-\uffff])/i), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector)))
+      optional(sequence(g.CssAstSyntaxOfKeyword, parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector)))
     ),
     (children) => {
       const nth = requireToken(children[0]).value;
@@ -3793,12 +3799,12 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessStaticNthPseudo: Combinator<SimpleSelector> = choice(
     node<SimpleSelector>(
       'DirectLessStaticNthChildPseudo',
-      parser({ trivia: staticSelectorTrivia }, sequence(regex(/::?/), directStaticNthChildPseudoName, literal('('), g.DirectLessStaticNthArgument, literal(')'))),
+      parser({ trivia: staticSelectorTrivia }, sequence(regex(/::?/), g.CssAstSyntaxNthChildName, literal('('), g.DirectLessStaticNthArgument, literal(')'))),
       children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
     ),
     node<SimpleSelector>(
       'DirectLessStaticNthTypePseudo',
-      parser({ trivia: staticSelectorTrivia }, sequence(regex(/::?/), directStaticNthTypePseudoName, literal('('), g.CssAstSyntaxNth, literal(')'))),
+      parser({ trivia: staticSelectorTrivia }, sequence(regex(/::?/), g.CssAstSyntaxNthTypeName, literal('('), g.CssAstSyntaxNth, literal(')'))),
       children => simpleSelector(children.map(requireToken).map(token => token.value).join(''))
     )
   );
@@ -3810,7 +3816,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'DirectLessInterpolatedNthPseudo',
     parser({ trivia: staticSelectorTrivia }, sequence(
       choice(literal('::'), literal(':')),
-      directStaticNthPseudoName,
+      choice(g.CssAstSyntaxNthChildName, g.CssAstSyntaxNthTypeName),
       literal('('),
       g.DirectLessVariableInterpolation,
       literal(')')
@@ -3969,7 +3975,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
       'DirectLessStaticNonSelectorPseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
         regex(/::?/),
-        not(choice(DirectLessExtendPseudoOpen, directStaticSelectorPseudoName, directStaticNthPseudoName)),
+        not(choice(DirectLessExtendPseudoOpen, directStaticSelectorPseudoName, directStaticNthPseudoNameBoundary)),
         g.LessAstSyntaxIdentifier,
         optional(sequence(literal('('), g.DirectLessStaticNonSelectorPseudoArgument, literal(')'))),
         // If a functional argument did not parse, do not fall back to a bare
