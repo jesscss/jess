@@ -3041,7 +3041,38 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   // the whole group behind a single `@` (codepoint 64) check, so a non-`@`
   // statement skips all ten arms with one integer compare.
   const directLessAtStatement = choice(g.DirectLessImport, g.DirectLessPlugin, g.DirectLessValueBlockDeclaration, g.DirectLessVarDeclaration, g.DirectLessSupportsBlock, g.DirectLessMediaContainerBlock, g.DirectLessReferenceCall, g.DirectLessKeyframes, g.DirectLessAtRuleBlock, g.DirectLessAtRuleStatement);
-  const directLessBlockStatement = choice(directLessAtStatement, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'));
+  // Chevrotain funneled every `.foo`/`#foo` block through ONE mixin-or-ruleset
+  // dispatch: a cheap token-only test (`mixinStart` then `(` or `;`) chose the
+  // mixin arm, otherwise the qualified-rule arm ran, so the shared class/id
+  // prefix was never re-scanned by three separate mixin productions. Parseman
+  // already first-set-gates the whole `.`/`#` group behind one codepoint check,
+  // but WITHIN that group the three mixin productions each restart from the name
+  // before the ruleset finally matches. This positive lookahead reproduces
+  // Chevrotain's `testMixin`: a mixin header always reaches a `(` or `;` before
+  // any `{`/`}`, so a plain ruleset — whose selector has no such delimiter before
+  // its block — skips all three mixin productions with one bounded scan instead
+  // of three failed name re-scans. The gate only ever over-accepts (a
+  // parenthesized-pseudo ruleset such as `.a:not(.b){}` still falls through to
+  // the ruleset arm), so PEG priority and output stay identical.
+  const directLessMixinStatementAhead = not(not(regex(/[.#][^{};]*[(;]/)));
+  // A `node()` reduction boundary keeps the gated group's single mixin fact from
+  // splicing the zero-width lookahead marker into the parent statement list; the
+  // reducer returns the inner MixinDef/MixinCall/MixinCall (bare) node unchanged,
+  // so the emitted AST and its `type`-keyed shape are identical to the ungrouped
+  // arms. `collapse` lets parseman drop the transparent wrapper allocation.
+  const directLessMixinStatement = node<Statement>(
+    'DirectLessMixinStatement',
+    sequence(directLessMixinStatementAhead, choice(g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall)),
+    (children) => {
+      const statement = children.find(isStatement);
+      if (statement === undefined) {
+        throw new TypeError('Direct Less mixin-or-ruleset gate lost its mixin statement.');
+      }
+      return statement;
+    },
+    { collapse: true }
+  );
+  const directLessBlockStatement = choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessInlineExtendRule, g.DirectLessRuleset, g.DirectLessDeclaration, g.DirectLessComment, literal(';'));
   const directLessBlockBody = many(directLessBlockStatement);
   // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
@@ -3080,9 +3111,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
   const DirectLessBodyStatement = choice(
     DirectLessPunctuationMapDeclaration,
     directLessAtStatement,
-    g.DirectLessMixinDefinition,
-    g.DirectLessMixinCall,
-    g.DirectLessBareMixinCall,
+    directLessMixinStatement,
     g.DirectLessInlineExtendRule,
     g.DirectLessRuleset,
     g.DirectLessEach,
@@ -4317,7 +4346,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, rules<Le
     'LessAstDocument',
     // A standalone root block comment must reduce before selector productions
     // may treat it as selector trivia for the following ruleset.
-    sequence(many(choice(g.DirectLessComment, directLessAtStatement, g.DirectLessMixinDefinition, g.DirectLessInlineExtendRule, g.DirectLessMixinCall, g.DirectLessBareMixinCall, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
+    sequence(many(choice(g.DirectLessComment, directLessAtStatement, directLessMixinStatement, g.DirectLessInlineExtendRule, g.DirectLessEach, g.DirectLessFunctionStatement, g.DirectLessRuleset, g.DirectLessDeclaration)), optional(g.DirectLessFunction)),
     children => stylesheet(requireStatements(children)),
     { trailingTrivia: true }
   );
