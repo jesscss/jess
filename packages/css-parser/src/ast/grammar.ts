@@ -5,7 +5,7 @@
  * reaches public CSS coverage, the package-stylesheet `parse()` API must run it and
  * return `Stylesheet`; explicit CST APIs remain for language-service use.
  */
-import { balanced, choice, composeLeaf, expect, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { balanced, choice, composeLeaf, expect, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sepBy, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
@@ -948,7 +948,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstCall = node(
     'CssAstCall',
-    sequence(genericFunctionName, literal('('), optional(cssValueTrivia), optional(sequence(g.CssAstValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstValueTerm)))), optional(cssValueTrivia), literal(')')),
+    sequence(genericFunctionName, literal('('), optional(cssValueTrivia), sepBy(g.CssAstValueTerm, field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia))))), optional(cssValueTrivia), literal(')')),
     (children, fields) => {
       const name = tokenText(children[0]);
       const args = children.slice(1).filter(isValueSlotValue);
@@ -1185,7 +1185,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstDeclarationCall = node(
     'CssAstDeclarationCall',
-    sequence(not(g.CssAstSyntaxUrlOpen), genericFunctionName, literal('('), optional(cssValueTrivia), optional(sequence(g.CssAstDeclarationValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstDeclarationValueTerm)))), optional(cssValueTrivia), literal(')')),
+    sequence(not(g.CssAstSyntaxUrlOpen), genericFunctionName, literal('('), optional(cssValueTrivia), sepBy(g.CssAstDeclarationValueTerm, field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia))))), optional(cssValueTrivia), literal(')')),
     (children, fields) => {
       const name = children.find((child): child is { value: string } => typeof child === 'object' && child !== null && 'value' in child);
       if (name === undefined) {
@@ -1215,7 +1215,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       optional(sequence(
         literal('('),
         optional(cssValueTrivia),
-        optional(sequence(g.CssAstDeclarationValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstDeclarationValueTerm)))),
+        sepBy(g.CssAstDeclarationValueTerm, field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia))))),
         optional(cssValueTrivia),
         literal(')')
       ))
