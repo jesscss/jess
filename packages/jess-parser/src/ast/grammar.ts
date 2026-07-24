@@ -929,7 +929,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessExpressionAtom = node<ExpressionFact>(
     'DirectJessExpressionAtom',
-    choice(g.DirectJessExpressionDollarInterp, g.DirectJessVarReference, g.DirectJessDimension, g.DirectJessColor, g.DirectJessExpressionQuoted, g.DirectJessKeyword),
+    // `$name` references dominate expression atoms; try VarReference before the
+    // `$[` interpolation form (disjoint on the char after `$`) so a plain
+    // reference does not first enter and roll back the DollarInterp node frame.
+    choice(g.DirectJessVarReference, g.DirectJessExpressionDollarInterp, g.DirectJessDimension, g.DirectJessColor, g.DirectJessExpressionQuoted, g.DirectJessKeyword),
     (children) => {
       if (isExpressionFact(children[0])) {
         return requireExpressionFact(children[0]);
@@ -1627,9 +1630,15 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return requireExpressionFact(foldExpression(sumParts)).value;
     }
   );
+  // The three `$`-headed arms (DollarValue `$name`, Expression `$(`, DollarInterp
+  // `$[`) are mutually exclusive on the character after `$`, so their relative
+  // order is behaviour-neutral. Plain `$name` references dominate real values, so
+  // DollarValue leads the `$` group: parseman tries it first on any `$`, matching
+  // references without first entering (and rolling back) the `$(` / `$[` node
+  // frames. `$(`/`$[` cost one fast VarReference reject instead.
   const DirectJessValueAtom = node<ValueNode>(
     'DirectJessValueAtom',
-    choice(g.DirectJessCollection, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessDollarValue, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
+    choice(g.DirectJessCollection, g.DirectJessDollarValue, g.DirectJessExpression, g.DirectJessDollarInterp, g.DirectJessSelectorCapture, g.DirectJessUrl, g.DirectJessInterpolatedUrl, g.DirectJessCall, g.DirectJessQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
   const DirectJessValueTerm = node<ValueSlot>(
