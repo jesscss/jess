@@ -6,7 +6,10 @@
  * means a `@plugin`-based test passes without the async lane being involved at
  * all. A config-injected `Fn` with real latency is the honest probe.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { Compiler } from '../../src/index.js';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
@@ -29,6 +32,14 @@ const slowWidth = defineFunction('awidth', {
     // Deliberately SLOWER than `aslow`, so completion order inverts source order.
     await new Promise(resolve => setTimeout(resolve, 25));
     return makeDimension(576, 'px');
+  }
+});
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -115,6 +126,62 @@ describe('awaitable values in at-rule preludes', () => {
     );
     expect(result.errors).toEqual([]);
     expect(result.css.indexOf('.first')).toBeLessThan(result.css.indexOf('.second'));
+  }, 20000);
+});
+
+/**
+ * Ordering regressions the emission-order probe cannot see.
+ *
+ * The mixin INDEX is built per frame and consumed assuming it is rank-sorted.
+ * When a rule's key is interpolated from an awaitable value, deferring that
+ * rule's index insert past later statements silently INVERTS dispatch order —
+ * output positions all look right, so an emission-order check misses it
+ * entirely. This asserts candidate order directly.
+ */
+describe('index-build order under async', () => {
+  it('keeps mixin candidates in source order when a key must be awaited', async () => {
+    const result = await render(
+      '@n: aslow();\n'
+      // `.zed` is defined twice: first via an AWAITABLE interpolated selector,
+      // then statically. Less dispatches both, in source order.
+      + '.@{n} { first: 1; }\n'
+      + '.zed { second: 2; }\n'
+      + '.use { .zed(); }\n'
+    );
+    expect(result.errors).toEqual([]);
+    const use = result.css.slice(result.css.indexOf('.use'));
+    expect(use).toContain('first: 1');
+    expect(use).toContain('second: 2');
+    expect(use.indexOf('first'), 'interpolated-key rule must dispatch BEFORE the later static one')
+      .toBeLessThan(use.indexOf('second'));
+  }, 20000);
+});
+
+/**
+ * Imported facts publish in SOURCE ORDER, interleaved as authored. A rule-mixin
+ * and a parametric def of the same name both land in one per-name candidate
+ * list, so batching the rule-mixins to the end of the import silently sorts
+ * every imported `MixinDef` ahead of them. Synchronous — no async needed to
+ * expose it — and the Less corpus does not cover it.
+ */
+describe('imported mixin publication order', () => {
+  it('interleaves an imported rule-mixin and parametric def in source order', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-import-order-'));
+    tempDirs.push(dir);
+    fs.writeFileSync(path.join(dir, 'imp.less'), '.m { a: rule-mixin; }\n.m() { b: parametric; }\n', 'utf8');
+    const entry = path.join(dir, 'main.less');
+    fs.writeFileSync(entry, '@import "imp.less";\n.out { .m(); }\n', 'utf8');
+
+    const compiler = new Compiler({
+      compile: { plugins: [lessPlugin()] },
+      output: { collapseNesting: true }
+    });
+    const result = await compiler.renderToResult(entry, { suppressWarnings: true, breakOnError: false });
+
+    expect(result.errors).toEqual([]);
+    const out = result.css.slice(result.css.indexOf('.out'));
+    expect(out.indexOf('a: rule-mixin'), 'imported facts must dispatch in source order')
+      .toBeLessThan(out.indexOf('b: parametric'));
   }, 20000);
 });
 

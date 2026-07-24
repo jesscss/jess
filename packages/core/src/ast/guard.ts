@@ -33,8 +33,13 @@ export type GuardNode =
   | { readonly g: 'call'; readonly name: string; readonly args: ValueSlot[] }
   | { readonly g: 'default' };
 
-/** Resolve a value node to its (variable-resolved, un-evaluated) source bytes. */
-export type ValueResolver = (v: ValueSlot) => string;
+/**
+ * Resolve a value node to its (variable-resolved, un-evaluated) source bytes.
+ * Awaitable for the same reason {@link TypedResolver} is: a mixin argument may
+ * name a value the engine can only produce by awaiting. Settled values are
+ * returned unwrapped, so ordinary dispatch never touches a promise.
+ */
+export type ValueResolver = (v: ValueSlot) => MaybePromise<string>;
 
 /**
  * Resolve a value node to a materialized TYPED value object.
