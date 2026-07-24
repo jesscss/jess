@@ -576,6 +576,12 @@ const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'
 // as an `any` first-set and speculatively entering the pseudo node at every simple
 // selector.
 const pseudoColon = regex(/::?/);
+// Grammar-local copy of CssAstSyntaxSimple. As the fallback arm of the compound
+// selector choice it must resolve a concrete first-set (`.`/`#`/`-`/letter/digit/
+// `*`) so the compiler first-char-gates the whole compound choice; a cross-
+// composition reference reads as `any`, entering the simple-selector node frame
+// at every compound-selector boundary (`{`, `,`, whitespace).
+const simpleSelectorToken = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
 // Grammar-local copies of the leading hex-color and number recognizers (identical
 // to CssAstSyntaxHexColor / CssAstSyntaxNumber). Leading a component-value choice
 // arm with a cross-composition `g.CssAstSyntax*` reference leaves that arm's
@@ -642,7 +648,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     ]
   });
   const CssAstComment = node('CssAstComment', blockComment, children => comment(tokenText(children[0])));
-  const CssAstSimple = node('CssAstSimple', g.CssAstSyntaxSimple, children => simpleSelector(tokenText(children[0])));
+  const CssAstSimple = node('CssAstSimple', simpleSelectorToken, children => simpleSelector(tokenText(children[0])));
   const CssAstAttribute = node<SimpleSelector>(
     'CssAstAttribute',
     sequence(
