@@ -1440,4 +1440,27 @@ describe('public Less parse()', () => {
     expect(serialize(parse('.a:extend(.b) { e("i"); }'), { evaluator }).css).toBe('.a {\n  i\n}\n');
     expect(() => parse('e("x") e("y")')).toThrow(SyntaxError);
   });
+
+  it('does not mistake a condition operator hidden inside a string function argument (ambient scanSkip)', () => {
+    // Regression for the raw-scanTo footgun: `directFunctionConditionAhead` scanned
+    // a function argument for a comparison/logical operator and matched the `or`
+    // INSIDE the quoted string, mis-committing the argument to a Less condition.
+    // The grammar-level `scanSkip` now treats the string as opaque during the scan.
+    const evaluator = buildEvaluator(makeBuiltinRegistry());
+
+    // `or` inside a plain string → a Quoted argument, not a condition
+    expect(parse('.x { p: error("a or b"); }')).toMatchObject({
+      children: [{ body: [{ value: { type: 'FunctionCall', name: 'error', args: [{ type: 'Quoted' }] } }] }]
+    });
+    // the exact bootstrap shape: interpolation + `or` inside the string
+    expect(parse('.x { p: error("@{u} or x"); }')).toMatchObject({
+      children: [{ body: [{ value: { type: 'FunctionCall', name: 'error', args: [{ type: 'Interpolation' }] } }] }]
+    });
+    // comparison chars inside a string are also opaque
+    expect(parse('.x { p: fn("1 < 2"); }')).toMatchObject({
+      children: [{ body: [{ value: { type: 'FunctionCall', name: 'fn', args: [{ type: 'Quoted' }] } }] }]
+    });
+    // sanity: a REAL condition (operator OUTSIDE any string) still parses as one
+    expect(serialize(parse('.x { p: if((1 < 2), a, b); }'), { evaluator }).css).toContain('p:');
+  });
 });

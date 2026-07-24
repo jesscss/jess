@@ -836,6 +836,12 @@ const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)
 // node frame speculatively at every rule/at-statement position.
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
+// Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: a scan
+// with no per-call skip treats a string as one atomic unit, so a sentinel hidden
+// inside it (an arg terminator, `with(`, etc.) is never matched. Consumes
+// quote-to-quote including escapes; used only as a scan hole (builds nothing).
+const scssScanSkipDoubleString = noTrivia(sequence(literal('"'), regex(/(?:[^"\\]|\\.)*/), literal('"')));
+const scssScanSkipSingleString = noTrivia(sequence(literal('\''), regex(/(?:[^'\\]|\\.)*/), literal('\'')));
 // Grammar-local CSS bubbling-at-rule keyword recognizers (byte-identical to the
 // shared CssAstSyntax*AtKeyword leaves). Every nested at-statement arm must have
 // a resolvable first-set for the whole `@`-cluster choice to first-char-gate: the
@@ -860,7 +866,7 @@ const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
 // no longer enters and rolls back the declaration/nested-property node frames.
 const propertyName = regex(/\*?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
-export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rules<ScssAstRules>({ trivia: whitespace }, (g) => {
+export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rules<ScssAstRules>({ trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
   // valid for closed value facts, but admits CSS escapes that SCSS variables do
   // not: `scssVar` in the production grammar is deliberately unescaped.

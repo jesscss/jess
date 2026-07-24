@@ -639,7 +639,7 @@ const importTailSquareGroup = sequence(
   }),
   expect(literal(']'), ']')
 );
-export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<CssAstLocalRules>({ trivia: whitespace }, (g) => {
+export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<CssAstLocalRules>({ trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }, (g) => {
   const pseudoRawDoubleQuoted = sequence(literal('"'), g.CssAstSyntaxDoubleQuotedText, literal('"'));
   const pseudoRawSingleQuoted = sequence(literal('\''), g.CssAstSyntaxSingleQuotedText, literal('\''));
   const pseudoRawArgument = scanTo(literal(')'), {

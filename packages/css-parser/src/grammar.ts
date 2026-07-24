@@ -89,7 +89,7 @@ const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 // combinator → its terminals bubble into the nearest enclosing node()).
 // ---------------------------------------------------------------------------
 
-export const cssGrammar = rules({ trivia: rw }, (g: any) => {
+export const cssGrammar = rules({ trivia: rw, scanSkip: [singleStr, doubleStr] }, (g: any) => {
   // ── Stylesheet ────────────────────────────────────────────────────────────
   // Two structural FRAMES model the CSS "two starting points" (CSS Syntax):
   //   • Frame 1 — `stylesheetBody`: a run of qualified rules + at-rules, NO bare

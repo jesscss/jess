@@ -1330,6 +1330,13 @@ const whitespace = trivia(oneOrMore(choice(
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+// Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: a
+// `scanTo`/`balanced` with no per-call skip consults these so a sentinel (an
+// arg terminator, or a `directFunctionConditionAhead` operator like `or`)
+// hidden INSIDE a string is never matched. Consumes quote-to-quote including
+// escapes; used only as a scan hole, so it builds nothing.
+const scanSkipDoubleString = noTrivia(sequence(literal('"'), regex(/(?:[^"\\]|\\.)*/), literal('"')));
+const scanSkipSingleString = noTrivia(sequence(literal('\''), regex(/(?:[^'\\]|\\.)*/), literal('\'')));
 // Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
 // whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
 // where `*` and `/` need no whitespace and comments are freely allowed around
@@ -1521,7 +1528,7 @@ const directLessGeneralEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'
 const directLessGeneralEnclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
 const directLessGeneralEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
 
-export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPseudoSyntax, rules<LessAstLocalRules>({ trivia: whitespace }, (g: LessAstInputRules & SharedCssAstSyntax) => {
+export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPseudoSyntax, rules<LessAstLocalRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, (g: LessAstInputRules & SharedCssAstSyntax) => {
   // `@@name` is a variable reference whose lookup name is the resolved value
   // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
   // sigil is glued just like the production `nestedRef`, so trivia cannot turn
