@@ -189,6 +189,7 @@ reference"* framing is superseded by this row. Source:
 |---|--------|--------|-----------------|
 | Z1 | Jess = spiritual successor to Less.js + Sass + CSS Modules + CSS-in-JS + PostCSS (no Stylus). | SETTLED | `memory:positioning-spiritual-successor` |
 | Z2 | Immediate goal = v5 ALPHA matching Less 4.x perf on `.less` (benchmark.less, not bootstrap). SCSS perf = non-goal for the alpha. | SETTLED | `memory:immediate-goal-less-alpha-4x-perf` |
+| Z3 | Petition the CSSWG to define `$`-led shapes (`$ident`, `$(…)`, `$[…]`, `${…}`) as a BUILD-TIME tooling user space, specified like `--*` (permissive token grammar CSS commits to never assign meaning to). Excludes the existing `$=` attribute selector. Evidence = the `@if`→`@when` collision (still-open csswg-drafts#6684) + the contested `@` sigil. TODO — issue NOT filed; coordinate with Sass as co-proposers. | OPEN (TODO — not filed) | `../CSSWG-DOLLAR-NAMESPACE.md` |
 
 ## 10. Documentation scope
 

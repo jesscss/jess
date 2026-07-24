@@ -9,6 +9,8 @@ Current topics:
   current eval/render architecture routing and pass rules
 - [Core architecture focii](./core-architecture/FOCII.md) — goal-settable focus
   prompts, boundaries, stop rules, and queue ownership
+- [`$` as CSS's build-time tooling user space](./CSSWG-DOLLAR-NAMESPACE.md) —
+  unfiled CSSWG proposal to reserve the `$`-led shapes the way `--*` is reserved
 
 Historical transition docs were removed from the working tree. Use git history
 for archaeology.
