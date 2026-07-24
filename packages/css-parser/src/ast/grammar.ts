@@ -521,6 +521,16 @@ const declarationAnyCharacter = choice(
   literal('?'), literal('$'), literal('@'), literal('%'), literal('&'),
   literal(':'), literal('.')
 );
+// declarationAnyCharacter minus `/`. Leading the punctuation-run arm with this
+// (concrete 16-char first-set) instead of a `not('/*')` guard lets the compiler
+// resolve CssAstDeclarationAny's first-set and first-char-gate it; the `/` cases
+// keep their adjacent-comment guard in the dedicated slash arm.
+const nonSlashDeclarationAnyCharacter = choice(
+  literal('+'), literal('-'), literal('*'), literal('='),
+  literal('<'), literal('>'), literal('|'), literal('~'), literal('^'),
+  literal('?'), literal('$'), literal('@'), literal('%'), literal('&'),
+  literal(':'), literal('.')
+);
 // `@import` is a CSS statement at-rule with a required target. Its dedicated
 // grammar retains the prelude as grammar-owned bytes while it validates that
 // target; loading and resolution are not parser or AST responsibilities.
@@ -1119,9 +1129,21 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     // that slash as one structured punctuation component so `/ .5` does not
     // swallow the numeric leaf into opaque bytes; punctuation runs such as
     // `//` remain losslessly represented as one Any node.
+    //
+    // Both original arms led with not('/*'), collapsing this node's first-set to
+    // 'any' so it (and the whole value atom it terminates) entered speculatively
+    // at every value-term boundary. This value path runs under the enclosing
+    // value-term noTrivia, so the '/*' guard is adjacent-only; split on the first
+    // char instead: the '/' arm consumes '/', rejects an adjacent '*' (comment),
+    // then keeps the single-slash-before-number/ws case or continues the run; the
+    // non-slash arm leads with the 16 non-'/' punctuation literals. Every arm now
+    // resolves a concrete first-set, so the compiler first-char-gates it.
     choice(
-      noTrivia(sequence(not(sequence(literal('/'), literal('*'))), literal('/'), regex(/(?=[.0-9 \t\n\r\f])/))),
-      sequence(not(sequence(literal('/'), literal('*'))), oneOrMore(declarationAnyCharacter))
+      noTrivia(sequence(literal('/'), not(literal('*')), choice(
+        regex(/(?=[.0-9 \t\n\r\f])/),
+        many(declarationAnyCharacter)
+      ))),
+      sequence(nonSlashDeclarationAnyCharacter, many(declarationAnyCharacter))
     ),
     children => any(children.map(tokenText).join(''))
   );
@@ -1190,15 +1212,18 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   const CssAstDeclarationValueAtom = node(
     'CssAstDeclarationValueAtom',
     // `calc()` is a declaration component just like url()/var()/a generic
-    // function, including after a prior component (`0 calc(...)`). It must
-    // still be selected at its own opener: the guard keeps a malformed calc
-    // from degrading into Keyword("calc") followed by a permissive paren.
+    // function, including after a prior component (`0 calc(...)`). It is selected
+    // at its own opener by the leading CssAstCalcCall arm. The former
+    // not(?=calc\() guard on the second arm was redundant AND poisoned this
+    // node's first-set to 'any' (so it entered speculatively at every value-term
+    // boundary): a malformed `calc(` cannot degrade into Keyword+paren here
+    // because CssAstDeclarationIdent's genericFunctionName already excludes
+    // `calc(`, so it fails and the atom is rejected exactly as before. Dropping
+    // the guard flattens the choice so every arm leads with a concrete first-set
+    // and the compiler first-char-gates the whole value atom.
     choice(
       g.CssAstCalcCall,
-      sequence(
-        not(regex(/(?=calc\()/i)),
-        choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationIdent, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstDeclarationAny)
-      )
+      g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationIdent, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstDeclarationAny
     ),
     children => firstValue(children)
   );
