@@ -125,16 +125,29 @@ Given the per-segment `bnd` marker (§2.3), `classifyMatchBoundary` reads the ma
 - Match **crosses** the boundary (span mixed `bnd = 0` and `bnd > 0`) ⟹ **HOIST**.
 - Match falls **entirely own-local** (span all `bnd === 0`) ⟹ apply in place, **NO hoist**.
 
-**Hoist LEVEL — per-boundary vs always-root (owner review point).** tree-v1 always hoists to ROOT.
-Per-boundary would hoist to the nesting level of the nearest crossed `&` = `min positive bnd in the
-span`. RUNG P-amp landed the FLAT-mode structural fix (a crossing sub-span now grafts in place —
-`.outer :is(.mid .leaf, .z)` — byte-identical to always-root at root, since flat mode has no nesting).
-The **NESTED-mode** hoist placement is a **deferred follow-on**: wiring `classifyMatchBoundary`'s
-`'crossing'` verdict into `emit.ts`'s existing flatten machinery makes the rule hoist, but the current
-hoist queue drains **one nesting level up** (correct for the one-level-deep trigger-P/X cases it was
-built for), so a two-level-deep crossing (Case G) double-composes its ancestor (`.outer { .outer :is(…) }`).
-Correct per-boundary (or always-root) placement needs a bubble-to-level mechanism in the serializer's
-nested hoist queue — that is the remaining P-amp work, gated on the owner's per-boundary-vs-always-root call.
+**Hoist LEVEL — per-boundary, LANDED (owner review point).** tree-v1 always hoists to ROOT. Per-boundary
+hoists to the nesting level of the crossed `&`, keeping the strictly-outer ancestors as wrappers. RUNG
+P-amp landed the FLAT-mode structural fix (a crossing sub-span grafts in place — `.outer :is(.mid .leaf,
+.z)` — byte-identical to always-root at root, since flat mode has no nesting). The **NESTED-mode**
+per-boundary placement is now **implemented** (committed, owner-review-gated): `matchBoundarySpan` reports
+the crossed span's `maxBnd` (the deepest ancestor `&` the match reaches); emit's **trigger C** detects the
+multi-segment `all` sub-span crossing that triggers P (single-compound) and X (whole-branch) miss — and
+that dev **silently dropped** in nested mode — and sets `NestedRulePlan.hoistBubble = maxBnd`; the
+serializer's hoist queue **re-hoists** a `bubble > 1` entry up the ancestor chain (decrementing each level)
+so it lands exactly `maxBnd` blocks up, with the flat solve's leading wrapper-ancestor segments STRIPPED
+(the enclosing blocks re-supply them). Case G (`.outer { .mid { & .leaf } }` + `.z:extend(.mid .leaf all)`)
+now renders `.outer { :is(.mid .leaf, .z) { … } }` — NO double-compose. No top-level hoist queue is needed:
+a rule bubbling `k` levels from depth `D` lands via the ancestor at depth `D − k`, which drains at root when
+`D − k == 0`.
+
+**NOTE — the hoist distance is `MAX positive bnd` in the span, not `min`.** The earlier wording above said
+`min positive bnd`; that is imprecise. A contiguous span that includes own-local (`bnd 0`) and reaches an
+outermost ancestor `bnd = maxBnd` must clear ALL `maxBnd` crossed levels — hoisting only `min` would leave a
+crossed ancestor both absorbed into the graft AND standing as a wrapper (a double-compose). For a
+single-boundary crossing (the required Case-G / interior-`&` fixtures) `min == max`, so the distinction only
+bites a match that crosses ≥ 2 nesting levels (a 3+-level nest whose target spans ≥ 2 ancestors); the landed
+code uses `max` and an `extend-nested-boundary` fixture pins the `bubble = 2` re-hoist. This `max` vs
+`min`/`always-root` choice is the standing **owner-review point**.
 
 **Text-heuristic retirement (partial).** `classifyMatchBoundary` replaces the *match-span* input the old
 triggers approximated with text prefixes. It does NOT by itself replace trigger X's `descendsFrom`, which
@@ -177,14 +190,18 @@ acceptance tests FIRST (red), implement, green, byte-identity on the full extend
   §3a partial-wrap) and the EXISTING emit hoist triggers (§3a boundary rule).
 - **P3 (verify, not build) — bitset gate**: adopt `requiredKeySet ∩ visible` (drop the parent union);
   op-budget zero-on-extend-free + linear. The partial prefilter (`branchSharesAtom`) already holds.
-- **P-amp (PARTIALLY LANDED) — structural ampersand boundary marker + hoist**: the composed branch now
-  carries the per-segment `bnd` marker (§2.3) via a parent-segment-splicing `composePath`, and
-  `classifyMatchBoundary` gives the §3a three-way verdict. LANDED: the FLAT-mode structural fix (a
-  crossing sub-span grafts in place; Case G/F red→green; within-ampersand + local byte-identical; whole
-  corpus — 721 core extend tests + all-less — byte-identical). DEFERRED (owner-review-gated): feeding
-  `'crossing'` into emit's NESTED-mode hoist with correct per-boundary/always-root PLACEMENT (the queue
-  currently drains one level up), and the full retirement of `descendsFrom`/`extendedParentHeader` (needs
-  the extender-parent relationship, not just the match-span `bnd`). See §3a.
+- **P-amp (LANDED — nested hoist owner-review-gated) — structural ampersand boundary marker + hoist**: the
+  composed branch carries the per-segment `bnd` marker (§2.3) via a parent-segment-splicing `composePath`,
+  and `matchBoundarySpan`/`classifyMatchBoundary` give the §3a three-way verdict plus the crossed-span
+  `maxBnd`. LANDED: (a) the FLAT-mode structural fix (a crossing sub-span grafts in place; Case G/F
+  red→green; whole corpus — 721 core extend tests + all-less flat — byte-identical); (b) the **NESTED-mode
+  per-boundary hoist** — emit trigger C (multi-segment sub-span crossing) → `NestedRulePlan.hoistBubble =
+  maxBnd`, serializer re-hoist queue bubbles the rule `maxBnd` levels with the wrapper-ancestor prefix
+  stripped; new `extend-nested-boundary` fixtures cover crossing at 1 level, 2 levels deep (Case G — no
+  double-compose), 2 boundaries (`bubble = 2`), interior `&` (Case F), surviving sibling, within, and local;
+  flat mode + tree-v1 oracle unchanged. STILL DEFERRED (owner-review-gated): the `max`-vs-`min`/`always-root`
+  policy call (§3a NOTE) and the full retirement of `descendsFrom`/`extendedParentHeader` (needs the
+  extender-parent relationship, not just the match-span `bnd`; triggers P/X remain in place). See §3a.
 - **P5 (verify, not build) — scope/reachability** (`reaches`, media/layer scope, `referenceBoundary`)
   already exists in ast-v2 (`plan.ts`/`solve.ts`); confirm it still holds under the new matcher.
 

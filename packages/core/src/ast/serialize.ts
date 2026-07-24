@@ -8223,11 +8223,25 @@ interface NestedLeafBuffer {
   readonly flush: () => void;
 }
 
+/**
+ * [extend] A rule deferred to an enclosing block's hoist queue (an extend match that
+ * crosses the `&`). `bubble` is the PER-BOUNDARY hoist distance (`NestedRulePlan.
+ * hoistBubble`): the number of enclosing blocks the rule must rise out of. `1` (the
+ * classic single-level trigger-P/X hoist) emits at the immediate parent's level; `k > 1`
+ * re-hoists the entry up the ancestor chain (decrementing each level) until it lands
+ * `k` blocks up, so a match that crosses `k` nesting boundaries clears exactly those.
+ */
+interface HoistEntry {
+  rule: Rule;
+  frame: Frame;
+  bubble: number;
+}
+
 function emitNestedBody(
   statements: Statement[],
   frame: Frame,
   e: Emit,
-  hoist?: { rule: Rule; frame: Frame }[],
+  hoist?: HoistEntry[],
   imp = false, // [important] call-level `!important` forced onto this body's decls
   source: NestedHeaderSource | null = null,
   placement: NestedRuleMixinPlacement | null = null,
@@ -8275,16 +8289,18 @@ function emitNestedBody(
           }
           flushBuf();
           // [extend] a rule whose extend match crosses the `&` FLATTENS: defer it to
-          // the enclosing rule's hoist queue (emitted flat at that rule's depth).
+          // the enclosing rule's hoist queue. `hoistBubble` (default 1) is how many
+          // enclosing blocks it must rise out of — the per-boundary hoist distance.
           if (hoist && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten) {
-            hoist.push({ rule: node, frame });
+            const plan = extendProjection(frame, e)!.nestedPlan.get(node)!;
+            hoist.push({ rule: node, frame, bubble: plan.hoistBubble ?? 1 });
             break;
           }
           // Only a selected synthesized ruleset mixin gets a placement fact.  It
           // is consumed by the first `&`-bearing nested header; ordinary authored
           // nesting has no fact and stays literal in collapse:false mode.
           const appliesPlacement = placement !== null && selectorListHasAmpersand(node.selector);
-          const emitted = emitNestedRule(node, frame, e, imp, source, appliesPlacement ? placement : null);
+          const emitted = emitNestedRule(node, frame, e, imp, source, appliesPlacement ? placement : null, hoist);
           if (isThenable(emitted)) {
             return emitted.then(() => {
               if (appliesPlacement) {
@@ -8567,7 +8583,11 @@ function emitNestedRule(
   e: Emit,
   imp = false,
   source: NestedHeaderSource | null = null,
-  placement: NestedRuleMixinPlacement | null = null
+  placement: NestedRuleMixinPlacement | null = null,
+  // [extend] the ENCLOSING block's hoist queue: a crossing child that must rise more
+  // than one level (`bubble > 1`) is re-pushed here (decremented) instead of emitted
+  // at this rule's level, so it keeps bubbling up the ancestor chain until it lands.
+  outerHoist?: HoistEntry[]
 ): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true (the
   // flattened path applies the same gate in `flatten`).
@@ -8656,7 +8676,7 @@ function emitNestedRule(
   (frame.rulePlacements ??= new Map()).set(rule, childFrame);
   // [extend] children that flatten (extend crossed the `&`) bubble out to this
   // rule's depth; collect them and emit flat after the block closes.
-  const hoist: { rule: Rule; frame: Frame }[] = [];
+  const hoist: HoistEntry[] = [];
   e.depth++;
   const finish = (): MaybePromise<void> => {
     e.depth--;
@@ -8705,10 +8725,18 @@ function emitNestedRule(
     };
     // [extend] hoisted (flattened) children at this rule's depth: a `renest` child
     // emits NESTED (composed cross-`&` header, children literal); a `collapse` child
-    // emits FLAT.
+    // emits FLAT. A `bubble > 1` child must rise FURTHER: re-push it (decremented) to
+    // THIS rule's enclosing hoist queue so it keeps bubbling up the ancestor chain,
+    // landing exactly `bubble` blocks above its origin (its stripped header re-nests
+    // under the wrapper ancestors it lands inside). When there is no outer queue (an
+    // outermost block), it lands here — the highest reachable level.
     const runHoist = (index: number): MaybePromise<void> => {
       for (let hoistIndex = index; hoistIndex < hoist.length; hoistIndex++) {
         const h = hoist[hoistIndex]!;
+        if (h.bubble > 1 && outerHoist) {
+          outerHoist.push({ rule: h.rule, frame: h.frame, bubble: h.bubble - 1 });
+          continue;
+        }
         const emitted = extendProjection(h.frame, e)?.nestedPlan.get(h.rule)?.hoistNested
           ? emitNestedRule(h.rule, h.frame, e, imp)
           : emitHoisted(h.rule, h.frame, e);

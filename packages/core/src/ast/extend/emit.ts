@@ -45,7 +45,7 @@ import {
 } from './ir.js';
 import type { Branch, Compound, Level, Simple } from './ir.js';
 import { composePath } from './compose.js';
-import { branchWholeMatches } from './match.js';
+import { branchWholeMatches, matchBoundarySpan } from './match.js';
 import { collectPlan, documentHasExtend, reaches } from './plan.js';
 import type { PlanInstruction, PlanOverlay, PlanSubject } from './plan.js';
 import { buildContribs, runFixpoint, solveComposed } from './solve.js';
@@ -68,6 +68,18 @@ export interface NestedRulePlan {
    * hoist queue; the serializer picks the nested emission when this is true.
    */
   hoistNested?: boolean;
+  /**
+   * [&-boundary] PER-BOUNDARY hoist distance: the number of enclosing rule blocks
+   * this `hoistNested` rule must rise out of before it is emitted (the `maxBnd` of
+   * the crossed span — the deepest ancestor `&` the extend match reaches). `1` (the
+   * default when absent) is the classic single-level hoist trigger-P/X land on: the
+   * rule emits at its immediate parent's level. `k > 1` bubbles it up `k` levels via
+   * the serializer's re-hoist queue, so a match that crosses `k` nesting boundaries
+   * leaves the strictly-outer `bnd > k` ancestors as wrappers (not blindly one level,
+   * not always root). Its `header` is the flat solve with those wrapper ancestor
+   * segments STRIPPED — the enclosing blocks re-supply them.
+   */
+  hoistBubble?: number;
   /**
    * A decl-less parent whose single child is a pure-`&` self-compound (`.e { &&
    * {…} }`) is TRANSPARENT: it emits no wrapper of its own; the child is emitted
@@ -122,6 +134,41 @@ export interface ExtendResults {
 /** The single compound of a one-segment branch, or null. */
 function branchSingleCompound(b: Branch): Compound | null {
   return b.segs.length === 1 ? b.segs[0]!.compound : null;
+}
+
+/** [&-boundary] The number of LEADING segments of a composed branch whose `bnd`
+ * origin is deeper than `maxBnd` — the strictly-outer ancestor wrappers a crossing
+ * hoist does NOT reach (and so leaves in place as enclosing blocks). `bnd` is
+ * monotonically decreasing left-to-right (outermost ancestor first), so these form a
+ * clean prefix. Zero when the crossing reaches the outermost ancestor (hoist to root). */
+function leadingWrapperSegs(b: Branch, maxBnd: number): number {
+  if (!b.bnd) {
+    return 0;
+  }
+  let n = 0;
+  while (n < b.segs.length && (b.bnd[n] ?? 0) > maxBnd) {
+    n++;
+  }
+  return n;
+}
+
+/** [&-boundary] Drop the first `n` segments of a branch, re-heading the remainder
+ * (the new head's leading combinator becomes ' ', as a head carries none). Used to
+ * strip the preserved wrapper-ancestor prefix from a hoisted crossing header — the
+ * enclosing blocks the rule re-nests under already supply that prefix. */
+function dropLeadingSegs(b: Branch, n: number): Branch {
+  if (n <= 0) {
+    return cloneBranch(b);
+  }
+  const segs = b.segs.slice(n).map(cloneSeg);
+  if (segs.length > 0) {
+    segs[0] = { comb: ' ', compound: segs[0]!.compound };
+  }
+  const out = mkBranch(segs);
+  if (b.hidden) {
+    out.hidden = true;
+  }
+  return out;
 }
 
 /** True when `target`'s text-simples are ⊆ some compound in `level`. */
@@ -570,6 +617,45 @@ export function computeExtends(
     }
     return 'none';
   };
+  // ---- trigger C: structural ampersand-CROSSING sub-span (per-boundary hoist) ----
+  // The `bnd`-read replacement for the match-span heuristics: a MULTI-segment `all`
+  // sub-span match whose span straddles the `&` (some own-local `bnd === 0`, some
+  // ancestor `bnd > 0`) — the exact gap triggers P (single-compound) and X (whole
+  // branch) do NOT cover, so on dev such a crossing was SILENTLY DROPPED in nested
+  // mode. `bubble` = the deepest ancestor `&` the span reaches (`maxBnd`): the rule
+  // hoists out of that many enclosing blocks; `drop` = the leading wrapper-ancestor
+  // segments (`bnd > maxBnd`) the enclosing blocks re-supply and the header strips.
+  const crossOf = new Map<PlanSubject, { bubble: number; drop: number }>();
+  const detectCrossHoist = (s: PlanSubject): { bubble: number; drop: number } | null => {
+    if (s.parent === null) {
+      return null;
+    }
+    const raw = rawOf(s);
+    let maxBnd = 0;
+    for (const inst of reachingOf(s)) {
+      // Single-compound (one segment) can never straddle the boundary; whole-branch
+      // matches stay with trigger X (which keeps the extender-descends-from-parent
+      // guard the match span alone cannot express).
+      if (!inst.partial || inst.target.segs.length < 2) {
+        continue;
+      }
+      for (const b of raw) {
+        if (branchWholeMatches(b, inst.target, inst.partial)) {
+          continue;
+        }
+        const span = matchBoundarySpan(b, inst.target, inst.partial);
+        if (span.boundary === 'crossing' && span.maxBnd > maxBnd) {
+          maxBnd = span.maxBnd;
+        }
+      }
+    }
+    if (maxBnd === 0) {
+      return null;
+    }
+    // The ancestor prefix is shared across a subject's own-local alternatives (same
+    // `s.path`), so the wrapper-segment count reads off any composed branch.
+    return { bubble: maxBnd, drop: leadingWrapperSegs(raw[0]!, maxBnd) };
+  };
   for (const s of plan.subjects) {
     // Only candidates can flatten (a non-candidate has no seed on its path, so
     // ownMode is 'none' and no ancestor collapsed); leave them out of the map so they
@@ -583,6 +669,11 @@ export function computeExtends(
       flattenModeOf.set(s, own);
     } else if (s.parent !== null && flattenModeOf.get(s.parent) === 'collapse') {
       flattenModeOf.set(s, 'collapse');
+    } else {
+      const cross = detectCrossHoist(s);
+      if (cross) {
+        crossOf.set(s, cross);
+      }
     }
   }
 
@@ -625,6 +716,22 @@ export function computeExtends(
       } else {
         projectionFor(s).nestedPlan.set(s.rule, { flatten: true, header: [], splits: [] });
       }
+      continue;
+    }
+    const cross = crossOf.get(s);
+    if (cross !== undefined) {
+      // [&-boundary] PER-BOUNDARY crossing hoist: emit the rule NESTED `bubble` levels
+      // up (the serializer's re-hoist queue rises it out of the crossed blocks), with
+      // the flat solve's leading wrapper-ancestor segments STRIPPED — the enclosing
+      // blocks re-supply that prefix, so the header renders once, not twice. `drop === 0`
+      // (the span reaches the outermost ancestor) hoists the whole rule to root with the
+      // full flat header, exactly like the always-root single-level trigger-P/X path.
+      const solved = flatBySubject.get(s)!;
+      const subPath = cross.drop > 0 ? solved.map(b => dropLeadingSegs(b, cross.drop)) : solved;
+      const header = siblingCompact(subPath, true).map(branchText);
+      projectionFor(s).nestedPlan.set(s.rule, {
+        flatten: true, hoistNested: true, header, splits: [], hoistBubble: cross.bubble
+      });
       continue;
     }
     // A collapsed `&&` child is keyed on its COMPOSED complex, so it takes the

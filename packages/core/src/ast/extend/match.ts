@@ -216,42 +216,63 @@ const NO_MATCH = -2;
  */
 export type MatchBoundary = 'none' | 'local' | 'within' | 'crossing';
 
-function spanBoundary(bnd: Int8Array | undefined, start: number, len: number): MatchBoundary {
-  if (!bnd) {
-    return 'local';
-  }
-  let hasOwn = false;
-  let hasAncestor = false;
-  for (let i = start; i < start + len && i < bnd.length; i++) {
-    if (bnd[i] === 0) {
-      hasOwn = true;
-    } else {
-      hasAncestor = true;
-    }
-  }
-  if (hasOwn && hasAncestor) {
-    return 'crossing';
-  }
-  return hasAncestor ? 'within' : 'local';
+/**
+ * [&-boundary] A boundary verdict PLUS the deepest ancestor `&`-hop the matched span
+ * reaches (`maxBnd` = the largest `bnd` over the span; `0` for a purely own-local
+ * span). `maxBnd` is the per-boundary HOIST LEVEL: a `'crossing'` match hoists out of
+ * exactly `maxBnd` enclosing rule blocks (the nesting levels its span reaches into),
+ * leaving strictly-outer ancestors (`bnd > maxBnd`) as wrappers — not blindly one
+ * level, not always root. `'none'`/`'local'` carry `maxBnd = 0`.
+ */
+export interface SpanBoundary {
+  boundary: MatchBoundary;
+  maxBnd: number;
 }
 
-export function classifyMatchBoundary(b: Branch, target: Branch, partial: boolean): MatchBoundary {
+function classifySpan(bnd: Int8Array | undefined, start: number, len: number): SpanBoundary {
+  if (!bnd) {
+    return { boundary: 'local', maxBnd: 0 };
+  }
+  let hasOwn = false;
+  let maxBnd = 0;
+  for (let i = start; i < start + len && i < bnd.length; i++) {
+    const v = bnd[i]!;
+    if (v === 0) {
+      hasOwn = true;
+    } else if (v > maxBnd) {
+      maxBnd = v;
+    }
+  }
+  const hasAncestor = maxBnd > 0;
+  const boundary: MatchBoundary = hasOwn && hasAncestor
+    ? 'crossing'
+    : hasAncestor ? 'within' : 'local';
+  return { boundary, maxBnd };
+}
+
+/**
+ * Locate the matched span exactly as `applyInstruction` does, then classify it from
+ * `b.bnd` and report the deepest ancestor hop it reaches (`{@link SpanBoundary}`).
+ * `undefined` `bnd` (a branch that never went through an `&`-compose) reads as all
+ * own-local.
+ */
+export function matchBoundarySpan(b: Branch, target: Branch, partial: boolean): SpanBoundary {
   // Whole-branch (exact/all) append: the span is the ENTIRE branch.
   if (branchWholeMatch(b, target, false) || (partial && branchWholeMatch(b, target, true))) {
-    return spanBoundary(b.bnd, 0, b.segs.length);
+    return classifySpan(b.bnd, 0, b.segs.length);
   }
   if (!partial) {
-    return 'none';
+    return { boundary: 'none', maxBnd: 0 };
   }
   // Single-compound `all` sub-match: the first segment the target compound subsets.
   if (target.segs.length === 1) {
     const need = textSimples(target.segs[0]!.compound);
     for (let i = 0; i < b.segs.length; i++) {
       if (multisetSubset(need, textSimples(b.segs[i]!.compound))) {
-        return spanBoundary(b.bnd, i, 1);
+        return classifySpan(b.bnd, i, 1);
       }
     }
-    return 'none';
+    return { boundary: 'none', maxBnd: 0 };
   }
   // Multi-segment `all` sub-match: the first aligned span (mirrors substituteMultiCompound).
   const P = target.segs.length;
@@ -268,10 +289,14 @@ export function classifyMatchBoundary(b: Branch, target: Branch, partial: boolea
       }
     }
     if (ok) {
-      return spanBoundary(b.bnd, start, P);
+      return classifySpan(b.bnd, start, P);
     }
   }
-  return 'none';
+  return { boundary: 'none', maxBnd: 0 };
+}
+
+export function classifyMatchBoundary(b: Branch, target: Branch, partial: boolean): MatchBoundary {
+  return matchBoundarySpan(b, target, partial).boundary;
 }
 
 /**
