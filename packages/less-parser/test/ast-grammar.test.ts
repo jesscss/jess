@@ -246,6 +246,43 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('reads a lookup-bearing mixin reference as a variable value', () => {
+    // The bare-call arms of the variable-value choice must not claim the call
+    // half of `#m(@a)[…]`; the whole reference is one value, exactly as it
+    // already is in property position.
+    for (const source of ['@v: #m(@a)[];', '@v: #m(@a)[key];', '@v: #m()[];', '@v: .m(@a)[];', '@v: #ns > .m(@a)[];']) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+    }
+  });
+
+  it('keeps a bare mixin call as a variable value when no lookup follows', () => {
+    const result = run(lessAstGrammar.LessAstDocument, '@v: #m(@a);', { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'VariableDeclaration', name: 'v', value: { type: 'MixinCall' } }]
+    });
+  });
+
+  it('lowers an inline detached-ruleset each() iterable with a parameterized callback', () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      'each({ margin: m; padding: p; }, #(@abbrev, @prop) { .@{abbrev} { @{prop}: 0; } });',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'For', binding: { kind: 'comma', names: ['abbrev', 'prop', undefined] } }]
+    });
+  });
+
   it('keeps a CSS escape hack as a typed declaration-value suffix', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,

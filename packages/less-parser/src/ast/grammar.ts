@@ -1840,9 +1840,15 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
       return { type: 'Plugin', target, options: optionValue };
     }
   );
+  // A call arm here is a COMPLETE variable value, so it must not claim the call
+  // half of a lookup-bearing mixin reference (`#m(@a)[]`). Without this the
+  // choice commits to the bare call and the trailing `[…]` can never be read,
+  // even though DirectLessValueAtom already recognizes the whole reference —
+  // which is why the same value parsed in property position and not here.
+  const directMixinValueWithoutLookup = not(noTrivia(literal('[')));
   const DirectLessVarDeclaration = node<VariableDeclaration>(
     'DirectLessVarDeclaration',
-    sequence(literal('@'), g.LessAstSyntaxVariableName, literal(':'), choice(g.DirectLessNamespacedMixinValue, g.DirectLessImportant, g.DirectLessFlatMixinCall, sequence(not(literal('{')), g.DirectLessVariableValue)), literal(';')),
+    sequence(literal('@'), g.LessAstSyntaxVariableName, literal(':'), choice(sequence(g.DirectLessNamespacedMixinValue, directMixinValueWithoutLookup), g.DirectLessImportant, sequence(g.DirectLessFlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.DirectLessVariableValue)), literal(';')),
     (children) => {
       // The sigil and name are distinct grammar children, so AST `name` is not
       // recovered from authored text or sliced from a source span.
@@ -3302,7 +3308,11 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   );
   const DirectLessEach = node<For>(
     'DirectLessEach',
-    sequence(regex(/each(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('), choice(g.DirectLessNamespacedMixinCall, g.DirectLessFlatMixinCall, g.DirectLessValue), choice(literal(','), literal(';')), g.DirectLessEachCallback, literal(')'), optional(literal(';'))),
+    // An inline detached ruleset is an ordinary `each()` iterable
+    // (`each({ margin: m; padding: p; }, \u2026)`). It is listed here rather than in
+    // DirectLessValue because the call-only `{ \u2026 }` first set must stay out of
+    // ordinary declaration values.
+    sequence(regex(/each(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('), choice(g.DirectLessNamespacedMixinCall, g.DirectLessFlatMixinCall, g.DirectLessValueBlock, g.DirectLessValue), choice(literal(','), literal(';')), g.DirectLessEachCallback, literal(')'), optional(literal(';'))),
     (children) => {
       const callback = children[4];
       if (!isLessEachCallback(callback)) {
