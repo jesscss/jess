@@ -4,7 +4,6 @@ import {
 } from '@jesscss/core';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -308,23 +307,6 @@ export class JsPlugin extends AbstractPlugin {
    */
   private readonly factMemo = new Map<string, Set<string>>();
 
-  /**
-   * The synchronous request channel: a FIFO pair the host writes requests to and
-   * blocks on for replies. Present only where POSIX FIFOs exist.
-   */
-  private syncChannel: {
-    readonly dir: string;
-    readonly requestPath: string;
-    readonly responsePath: string;
-    readonly requestFd: number;
-    readonly responseFd: number;
-  } | undefined;
-
-  /** Scratch buffers for the synchronous channel; reused across calls. */
-  private readonly syncReadBuffer = Buffer.alloc(1 << 16);
-  private syncPending = '';
-  private readonly syncSleeper = new Int32Array(new SharedArrayBuffer(4));
-
   constructor(public opts: JsPluginOptions = {}) {
     super();
     JsPlugin.liveInstances.add(this);
@@ -431,20 +413,7 @@ export class JsPlugin extends AbstractPlugin {
     if (jsReadRoot && isPathInside(requestedPath, jsReadRoot)) {
       return true;
     }
-    if (this.isSyncChannelPath(value)) {
-      return true;
-    }
     return requestedPath.includes(`${path.sep}node_modules${path.sep}`);
-  }
-
-  /** True only for the two FIFOs this host created for the synchronous channel. */
-  private isSyncChannelPath(value: string | null): boolean {
-    const normalized = normalizePermissionPath(value);
-    if (!normalized || !this.syncChannel) {
-      return false;
-    }
-    const resolved = path.resolve(normalized);
-    return resolved === this.syncChannel.requestPath || resolved === this.syncChannel.responsePath;
   }
 
   private isNetAllowed(value: string | null): boolean {
@@ -477,16 +446,11 @@ export class JsPlugin extends AbstractPlugin {
         return this.isNetAllowed(request.value)
           ? { id: request.id, result: 'allow' }
           : deny('Network access denied by Jess policy.');
-      case 'write':
-        // The only writable path is the worker's own reply FIFO, which the host
-        // created and owns. Everything else stays denied.
-        return this.isSyncChannelPath(request.value)
-          ? { id: request.id, result: 'allow' }
-          : deny('write permission denied by Jess policy.');
       case 'env':
       case 'run':
       case 'ffi':
       case 'sys':
+      case 'write':
         return deny(`${request.permission} permission denied by Jess policy.`);
       default:
         return deny(`Permission "${request.permission}" denied by Jess policy.`);
@@ -548,16 +512,9 @@ export class JsPlugin extends AbstractPlugin {
       ? compiledWorkerPath
       : sourceWorkerPath;
     const runtimeApi = this.opts.runtimeApi ?? 'module';
-    const sync = this.syncChannel;
     const child = spawn(
       denoCommand,
-      [
-        'run',
-        '--no-prompt',
-        workerScriptPath,
-        `--runtime-api=${runtimeApi}`,
-        ...(sync ? [`--sync-req=${sync.requestPath}`, `--sync-res=${sync.responsePath}`] : [])
-      ],
+      ['run', '--no-prompt', workerScriptPath, `--runtime-api=${runtimeApi}`],
       {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
@@ -634,52 +591,8 @@ export class JsPlugin extends AbstractPlugin {
     });
   }
 
-  /**
-   * Creates the FIFO pair backing the synchronous channel. A legacy `@plugin`
-   * function must be callable from a synchronous position (a guard condition,
-   * a mixin pattern), which an async stdio round trip cannot serve. FIFOs are
-   * POSIX-only; elsewhere the channel stays absent and calls fall back to the
-   * async path.
-   */
-  private createSyncChannel(): void {
-    if (process.platform === 'win32') {
-      return;
-    }
-    try {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-sync-'));
-      const requestPath = path.join(dir, 'req');
-      const responsePath = path.join(dir, 'res');
-      // `mkfifo` is POSIX-standard and needs no privileges; a failure here just
-      // means the synchronous channel is unavailable.
-      spawnSync('mkfifo', [requestPath, responsePath], { stdio: 'ignore' });
-      if (!fs.existsSync(requestPath) || !fs.existsSync(responsePath)) {
-        return;
-      }
-      // Both ends are opened HERE, before the worker spawns. Opening a FIFO
-      // O_RDWR never blocks, and holding both ends means the worker's own
-      // `open` never waits for a peer — otherwise it would stall before its
-      // stdin loop ever started.
-      const flags = fs.constants.O_RDWR | fs.constants.O_NONBLOCK;
-      this.syncChannel = {
-        dir,
-        requestPath,
-        responsePath,
-        requestFd: fs.openSync(requestPath, flags),
-        responseFd: fs.openSync(responsePath, flags)
-      };
-    } catch {
-      this.syncChannel = undefined;
-    }
-  }
-
-  /** True when a legacy plugin call can be served without awaiting. */
-  get supportsSynchronousPluginCalls(): boolean {
-    return this.syncChannel !== undefined;
-  }
-
   private async startRuntime(): Promise<void> {
     this.ensureRuntimeAvailable();
-    this.createSyncChannel();
     const socketPath = await this.startBroker();
     try {
       await this.startWorker(socketPath);
@@ -761,88 +674,6 @@ export class JsPlugin extends AbstractPlugin {
     });
   }
 
-  /**
-   * Issues one request on the synchronous channel and BLOCKS until the reply
-   * arrives. The FIFOs are opened non-blocking so a dead worker can never wedge
-   * the compiler: the read spins briefly (a reply typically lands in tens of
-   * microseconds) and then sleeps in 1 ms steps until the deadline.
-   */
-  private callWorkerSync(request: Omit<Extract<RpcRequest, { type: 'invokeLessPluginFunction' }>, 'id'>): RpcResult {
-    const channel = this.syncChannel;
-    if (!channel) {
-      throw new Error('The synchronous plugin channel is not available on this platform.');
-    }
-    if (channel.requestFd === undefined || channel.responseFd === undefined) {
-      throw new Error('The synchronous plugin channel is not open.');
-    }
-    const id = this.nextRequestId++;
-    const payload: RpcRequest = { ...request, id };
-    fs.writeSync(channel.requestFd, `${JSON.stringify(payload)}\n`);
-
-    const deadline = Date.now() + REQUEST_TIMEOUT_MS;
-    let spins = 0;
-    for (;;) {
-      const newline = this.syncPending.indexOf('\n');
-      if (newline >= 0) {
-        const line = this.syncPending.slice(0, newline).trim();
-        this.syncPending = this.syncPending.slice(newline + 1);
-        if (line) {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any; the id is checked below
-          const parsed = JSON.parse(line) as RpcResult;
-          if (parsed.id === id) {
-            return parsed;
-          }
-        }
-        continue;
-      }
-      let read = 0;
-      try {
-        read = fs.readSync(channel.responseFd, this.syncReadBuffer, 0, this.syncReadBuffer.length, null);
-      } catch (err) {
-        // A non-blocking FIFO with no data yet reports EAGAIN; anything else is
-        // a real I/O failure and must not be swallowed into a spin.
-        if (!isRetryableRead(err)) {
-          throw err;
-        }
-        read = 0;
-      }
-      if (read > 0) {
-        this.syncPending += this.syncReadBuffer.subarray(0, read).toString('utf8');
-        continue;
-      }
-      if (Date.now() > deadline) {
-        throw new Error('Timed out waiting for a synchronous Deno worker response.');
-      }
-      spins++;
-      if (spins > 256) {
-        Atomics.wait(this.syncSleeper, 0, 0, 1);
-      }
-    }
-  }
-
-  private closeSyncChannel(): void {
-    const channel = this.syncChannel;
-    if (!channel) {
-      return;
-    }
-    for (const fd of [channel.requestFd, channel.responseFd]) {
-      if (fd !== undefined) {
-        try {
-          fs.closeSync(fd);
-        } catch {
-          // ignore
-        }
-      }
-    }
-    try {
-      fs.rmSync(channel.dir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
-    this.syncChannel = undefined;
-    this.syncPending = '';
-  }
-
   private shutdown() {
     this.clearIdleTimer();
     if (this.worker && !this.worker.killed) {
@@ -867,7 +698,6 @@ export class JsPlugin extends AbstractPlugin {
       }
     }
     this.brokerSocketPath = undefined;
-    this.closeSyncChannel();
   }
 
   dispose() {
@@ -978,7 +808,7 @@ export class JsPlugin extends AbstractPlugin {
     functionName: string,
     args: readonly unknown[],
     capabilities: PluginCallCapabilities
-  ): unknown | Promise<unknown> {
+  ): Promise<unknown> {
     const memoKey = `${modulePath} ${options ?? ''} ${functionName}`;
     const known = this.factMemo.get(memoKey) ?? new Set<string>();
     const facts: PluginCallFacts = {
@@ -1036,19 +866,9 @@ export class JsPlugin extends AbstractPlugin {
       `resolving its scope reads did not settle after ${MAX_FACT_ROUNDS} rounds.`
     );
 
-    // A Less 4 plugin function is synchronous, and its result may be consumed in
-    // a synchronous position (a guard condition, a mixin pattern). Serve it on
-    // the blocking channel when one exists, so the value never becomes awaitable.
-    if (this.syncChannel && this.runtimeState.status === 'ready') {
-      for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
-        const settled = settle(this.callWorkerSync(request));
-        if (settled) {
-          return settled.value;
-        }
-      }
-      throw exhausted();
-    }
-
+    // A `@plugin` result is an ORDINARY awaitable value. It used to travel over a
+    // blocking channel so it never reached the engine as a promise; that channel
+    // is gone, so plugin calls exercise the same lane every other async value does.
     const replay = async (): Promise<unknown> => {
       for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
         const settled = settle(await this.callWorker(request));

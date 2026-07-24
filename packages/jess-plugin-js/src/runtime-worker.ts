@@ -1092,60 +1092,8 @@ const handleRequest = async (req) => {
   send(await computeResponse(req));
 };
 
-const argValue = (flag) => {
-  const hit = Deno.args.find(arg => arg.startsWith(`${flag}=`));
-  return hit ? hit.slice(flag.length + 1) : null;
-};
-
-/**
- * The SYNCHRONOUS request channel.
- *
- * A Less 4 plugin function body is synchronous: it reads scope and returns a
- * value with no `await` anywhere. Serving those calls over an async channel
- * would force every consumer of a plugin result — including guard conditions,
- * which are synchronous by construction — to become awaitable. A FIFO pair lets
- * the host block on a reply instead, so a plugin call stays a plain function
- * call end to end. POSIX only; without the flags the worker serves stdin alone.
- */
-const serveSyncChannel = async () => {
-  const requestPath = argValue('--sync-req');
-  const responsePath = argValue('--sync-res');
-  if (!requestPath || !responsePath) {
-    return;
-  }
-  const requests = await Deno.open(requestPath, { read: true });
-  const responses = await Deno.open(responsePath, { write: true });
-  const buffer = new Uint8Array(1 << 16);
-  let pending = '';
-  for (;;) {
-    const read = await requests.read(buffer);
-    if (read === null) {
-      return;
-    }
-    pending += decoder.decode(buffer.subarray(0, read), { stream: true });
-    let index = pending.indexOf('\n');
-    while (index >= 0) {
-      const line = pending.slice(0, index).trim();
-      pending = pending.slice(index + 1);
-      index = pending.indexOf('\n');
-      if (!line) {
-        continue;
-      }
-      let req;
-      try {
-        req = JSON.parse(line);
-      } catch {
-        continue;
-      }
-      const payload = await computeResponse(req);
-      await responses.write(encoder.encode(`${JSON.stringify(payload)}\n`));
-    }
-  }
-};
-
 async function main() {
   send({ type: 'ready' });
-  void serveSyncChannel();
 
   let buffer = '';
   for await (const chunk of Deno.stdin.readable) {
