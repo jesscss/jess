@@ -1,5 +1,5 @@
-@import { area } from './imports/compute.js'
+@-from "./imports/compute.js" import (area);
 
 .box {
-  area: $area(5);
+  area: area(5);
 }

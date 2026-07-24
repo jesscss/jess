@@ -1,35 +1,7 @@
-@import styles from './imports/rule.jess';
+@-compose "./imports/rule.jess";
 
 *, *::before, *::after {
   box-sizing: inherit;
-}
-
-.nested {
-  @include styles();
-}
-
-a, b {
-  &:hover {
-    background: blue;
-  }
-}
-
-a, b {
-  + c {
-    background: blue;
-  }
-}
-
-a, b, c {
-  [foo]& {
-    background: blue;
-  }
-}
-
-a, b {
-  & + & {
-    background: blue;
-  }
 }
 
 @media all {
@@ -42,7 +14,7 @@ a, b {
 
 a {
   color: blue;
-  @media all { 
+  @media all {
     color: rebeccapurple;
   }
 }
@@ -50,9 +22,6 @@ a {
 a {
   b {
     one: 1;
-    &:hover {
-      two: 2;
-    }
   }
   c {
     three: 3;
@@ -62,7 +31,3 @@ a {
     four: 4;
   }
 }
-
-& { .box { a: b; } }
-
-&, & { .box { a: b; } }

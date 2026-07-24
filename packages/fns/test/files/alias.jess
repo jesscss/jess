@@ -1,4 +1,4 @@
-@import { rgb as jessRgb } from '@jesscss/fns';
+@-from "#jess/fns" import (rgb as jessRgb);
 
 .color {
   color: jessRgb(1, 2, 3);

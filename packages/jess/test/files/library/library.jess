@@ -1,7 +1,4 @@
-@import colors from './colors.jess';
-@import { config as baseConfig } from './config.jess';
+@-compose "./config.jess" as cfg;
+@-compose "./colors.jess";
 
-@let config: $baseConfig;
-
-@include colors($config);
-@include nav($config);
+$config: $cfg.config;

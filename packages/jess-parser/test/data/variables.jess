@@ -4,27 +4,32 @@ $collection: {
   foo: {
     bar: {
       deeper: collection;
-    }
-  }
+    };
+  };
   sibling: declaration;
-}
+};
 
-$($value.class) {}
-.class$[something] {}
+.$[value] {}
+.class$[value] {}
 
-$foo: $(value.foo and $value.bar);
-$bar: $(value.foo or $value.bar);
-$compare: $(foo > bar);
+$one: 1;
+$two: 2;
+$foo: $($one = 1);
+$bar: $($two = 2);
+$compare: $($one > $two);
+
+// Logical operators are condition-position forms
+$if (($one = 1) and ($two = 2)) { .and-branch {} }
+$if (($one = 1) or ($two = 3)) { .or-branch {} }
 
 .box {
   one: $collection.foo.bar.deeper;
-  two: $($some(call, with, args).foo[ ident ].stuff);
   three: $(
-    var // )
+    $one
   ) four;
-  four: $url("???");
-  width: $(20)px;
-  width: $(1 + 1)px;
+  four: url("$[value]");
+  width: $(20px);
+  width: $(1px + 1px);
 
   $values: 1px 2px 3px;
   $value1: $values[0]; // 1px
@@ -37,11 +42,11 @@ $compare: $(foo > bar);
   // $[myVar] — braced variable reference
   var: $collection[foo];
   // $['prop'] — braced property reference (quoted key)
-  prop: $collection['bar'];
+  prop: $collection['sibling'];
   // $[$var] — variable member name lookup
   dynamic: $collection[$value];
 }
 
 .box {
-  area: $area(5);
+  area: area(5);
 }
