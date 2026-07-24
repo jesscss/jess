@@ -847,7 +847,15 @@ function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorL
   return selist(...selectors);
 }
 
-const whitespace = trivia(regex(/[ \t\n\r\f]+/));
+// Sass `//` comments are trivia, not CSS comments: they must be recognized
+// between direct AST facts but must never become a renderable `Comment` node,
+// because `//` is silent in Sass and is not valid CSS. Same shape as Less.
+// URL bodies and quoted strings run under `noTrivia`, so `url(//host/path)`
+// stays URL content and `"//u"` stays string content.
+const whitespace = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  regex(/\/\/[^\n\r]*/)
+)));
 // These productions run under `noTrivia`: each operator owns the precise
 // whitespace that Sass uses to distinguish arithmetic from a space list.
 // A whitespace-before, no-whitespace-after minus (`1 -2`) remains a list whose
@@ -990,28 +998,37 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
   // be guessed or resolved here.
   const directStaticDoubleQuotedPath = regex(/(?:[^"\\#]|#(?!\{))*/);
   const directStaticSingleQuotedPath = regex(/(?:[^'\\#]|#(?!\{))*/);
+  // `noTrivia`: a module path is literal bytes, so the ambient `//` trivia arm
+  // must not reach inside the quotes and swallow `@use "//host/lib"` as a line
+  // comment. Both arms are closed regex/literal, so disabling trivia here
+  // cannot propagate into a shared rule.
   const DirectScssStaticQuoted = node<Quoted>(
     'DirectScssStaticQuoted',
     choice(
-      sequence(literal('"'), directStaticDoubleQuotedPath, literal('"')),
-      sequence(literal('\''), directStaticSingleQuotedPath, literal('\''))
+      noTrivia(sequence(literal('"'), directStaticDoubleQuotedPath, literal('"'))),
+      noTrivia(sequence(literal('\''), directStaticSingleQuotedPath, literal('\'')))
     ),
     staticQuoted
   );
   // Static values retain escapes, unlike module paths (whose classification
   // deliberately rejects them). A real `#{` opener remains outside this fact
   // so a supports condition can never flatten interpolation into a Quoted node.
+  // `noTrivia` for the same reason as the module-path fact above: a supports
+  // condition's string is literal bytes, not a place the `//` trivia arm may
+  // reach. Closed regex/literal arms, so nothing shared is affected.
   const DirectScssStaticValueQuoted = node<Quoted>(
     'DirectScssStaticValueQuoted',
     choice(
-      sequence(literal('"'), directDoubleQuotedText, literal('"')),
-      sequence(literal('\''), directSingleQuotedText, literal('\''))
+      noTrivia(sequence(literal('"'), directDoubleQuotedText, literal('"'))),
+      noTrivia(sequence(literal('\''), directSingleQuotedText, literal('\'')))
     ),
     staticQuoted
   );
+  // Only a block comment is CSS output. A `//` line comment is lexical trivia
+  // (see `whitespace`) and is dropped, matching Sass and Less.
   const DirectScssComment = node<Comment>(
     'DirectScssComment',
-    choice(blockComment, lineComment),
+    blockComment,
     children => comment(requireToken(children[0]).value)
   );
   const DirectScssKeyword = node<Keyword>(
@@ -2774,8 +2791,12 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
       optional(sequence(
         g.CssAstSyntaxAttributeOperator,
         choice(
-          sequence(literal('"'), directDoubleQuotedText, literal('"')),
-          sequence(literal('\''), directSingleQuotedText, literal('\'')),
+          // `noTrivia` on the quoted arms only: the attribute itself re-enters
+          // the ambient trivia (see the selector production) so `[a = "b"]`
+          // keeps its spacing, but the string body must stay literal bytes so
+          // `[href="//host"]` is not swallowed by the `//` trivia arm.
+          noTrivia(sequence(literal('"'), directDoubleQuotedText, literal('"'))),
+          noTrivia(sequence(literal('\''), directSingleQuotedText, literal('\''))),
           g.CssAstSyntaxKeyword
         ),
         optional(g.CssAstSyntaxAttributeModifier)

@@ -448,10 +448,11 @@ describe('@jesscss/scss-parser public parse API', () => {
 
   it('keeps static module directives in the comment/variable document prefix', () => {
     const source = '/* head */ $theme: red; // before use\n @use "./theme.scss" as theme; /* between */ @forward "./public.scss"; @import "print.css";';
+    // `// before use` is trivia and leaves no node; the `/* */` pair remain.
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet', children: [
         { type: 'Comment' }, { type: 'VariableDeclaration', name: 'theme' },
-        { type: 'Comment' }, { type: 'StyleImport', path: { value: './theme.scss' }, forward: false },
+        { type: 'StyleImport', path: { value: './theme.scss' }, forward: false },
         { type: 'Comment' }, { type: 'StyleImport', path: { value: './public.scss' }, forward: true },
         { type: 'ImportAtRule' }
       ]

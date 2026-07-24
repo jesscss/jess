@@ -919,7 +919,7 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('preserves public-SCSS block and line comments as direct AST statements', () => {
+  it('preserves block comments as direct AST statements and drops `//` line comments as trivia', () => {
     const source = '// root\n$theme: blue; /* between */ .card { // inside\n color: $theme; /* tail */ }';
     expect(parseScssCst(source).errors).toHaveLength(0);
     const result = run(
@@ -930,21 +930,69 @@ describe('SCSS canonical-AST grammar', () => {
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
+    // A Sass `//` comment is silent and is not valid CSS, so — exactly as in
+    // Less — it is lexical trivia and never becomes a renderable `Comment`
+    // node. `/* */` stays CSS output.
+    expect(result.value).toEqual({
       type: 'Stylesheet',
       children: [
-        { type: 'Comment', text: '// root' },
-        { type: 'VariableDeclaration', name: 'theme' },
+        expect.objectContaining({ type: 'VariableDeclaration', name: 'theme' }),
         { type: 'Comment', text: '/* between */' },
-        {
+        expect.objectContaining({
           type: 'Rule',
           body: [
-            { type: 'Comment', text: '// inside' },
-            { type: 'Declaration', name: 'color' },
+            expect.objectContaining({ type: 'Declaration', name: 'color' }),
             { type: 'Comment', text: '/* tail */' }
           ]
-        }
+        })
       ]
+    });
+  });
+
+  it('keeps `//` out of the AST wherever it may appear, matching the Less parser', () => {
+    for (const source of [
+      '// only a comment\n',
+      '.a { color: red; } // trailing\n',
+      '.a {\n  // leading\n  color: red;\n}\n',
+      '.a {\n  color: red; // after a declaration\n}\n',
+      '$x: 1; // after a variable\n',
+      '@media screen {\n  // inside an at-rule\n  .a { color: red; }\n}\n',
+      '@mixin m {\n  // inside a mixin\n  color: red;\n}\n.a { @include m; }\n',
+      '@each $i in 1, 2 {\n  // inside a loop\n  .a-#{$i} { color: red; }\n}\n'
+    ]) {
+      expect(JSON.stringify(parse(source)), source).not.toContain('//');
+    }
+  });
+
+  it('renders `/* */` but never renders a `//` line comment', () => {
+    const source = '// dropped\n.card {\n  // dropped\n  color: red; // dropped\n}\n/* kept */\n';
+    expect(serialize(parse(source)).css).toBe('.card {\n  color: red;\n}\n/* kept */\n');
+    // A rule whose only content was a `//` comment is empty once the comment is
+    // trivia, so it renders nothing at all — as Sass does.
+    expect(serialize(parse('a {b: c}\nd {\n  @extend a //\n}\n')).css).toBe('a,\nd {\n  b: c;\n}\n');
+    expect(serialize(parse('.a {\n  // only a comment\n}\n')).css).toBe('');
+  });
+
+  it('does not let `//` trivia reach inside strings or url() bodies', () => {
+    expect(parse('.a { content: "//not-a-comment"; }')).toMatchObject({
+      children: [{ body: [{ value: { type: 'Quoted', value: '//not-a-comment' } }] }]
+    });
+    // A leading space belongs to the string, not to the ambient trivia.
+    expect(parse('.a { content: " x"; }')).toMatchObject({
+      children: [{ body: [{ value: { type: 'Quoted', value: ' x' } }] }]
+    });
+    expect(() => parse('.a { background: url(//cdn.example.com/x.png); }')).not.toThrow();
+    expect(() => parse('.a { background: url("//cdn.example.com/x.png"); }')).not.toThrow();
+    // The three productions whose quoted arms are NOT reached through the
+    // already-`noTrivia` value chain, and so needed their own `noTrivia`.
+    expect(() => parse('@use "//cdn.example.com/lib";')).not.toThrow();
+    expect(() => parse('@forward "//cdn.example.com/lib";')).not.toThrow();
+    expect(() => parse('.a[href="//cdn.example.com"] { color: red; }')).not.toThrow();
+    expect(() => parse('@supports (content: "//x") { .a { color: red; } }')).not.toThrow();
+    // Disabling trivia on those arms must not cost them their literal spacing.
+    expect(parse('@use " sp ";')).toMatchObject({ children: [{ path: { type: 'Quoted', value: ' sp ' } }] });
+    expect(parse('.a[href=" sp "] { color: red; }')).toMatchObject({
+      children: [{ selector: { selectors: [{ head: { simples: [{ text: '.a' }, { text: '[href=" sp "]' }] } }] } }]
     });
   });
 
@@ -965,7 +1013,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' }, body: [{ type: 'Comment' }, { type: 'Rule' }] },
+        // The `// media` line comment is trivia and leaves no node behind.
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' }, body: [{ type: 'Rule' }] },
         { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'only' }, { type: 'Keyword', src: 'screen' }] }, body: [{ type: 'Rule' }] },
         { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'SpacedValue' }, body: [{ type: 'Rule' }] },
         { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue' }, body: [{ type: 'Rule' }] },
