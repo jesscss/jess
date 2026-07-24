@@ -28,6 +28,12 @@ $colors: {
 
 You'll notice that the assigned namespace `theme` acts as a collection of values, and the `colors` variable is just another collection of values. Just like JavaScript objects, you can access the values in the collection using the dot (`.`) syntax.
 
+Note that there is no `;` after the collection's closing brace. A block-valued
+assignment ends at its closing brace, so the semicolon is optional and the next token
+begins a new statement. See
+[block-valued assignments](./variables#block-valued-assignments-auto-terminate) for
+the full rule, including why nothing may appear before the block.
+
 Speaking of JavaScript objects... did you know you can use them in Jess?
 ```js
 // tokens.js

@@ -51,6 +51,101 @@ $theme: blue;       // creates both bindings (`$$theme: blue` does too)
 SCSS retains its own `$name: value`, `!default`, and `!global` syntax at the
 input boundary; see [Sass (SCSS) compatibility](/docs/guides/coming-from-sass/scss-compatibility).
 
+## Block-valued assignments auto-terminate
+
+A variable can be bound to a **block** — a [collection](./namespaces-and-maps), an
+anonymous mixin, or a [function](./functions). When the value is a block, the
+assignment ends at the block's closing brace, so the trailing `;` is **optional**:
+
+```less
+$colors: {
+  primary: #06c;
+}
+$mixin: @{
+  color: red;
+}
+$double: @($n) > {
+  result: $($n * 2);
+}
+```
+
+All three are also valid written with a `;` after the closing brace. Write whichever
+you prefer, but you never need one.
+
+### Whatever follows the brace begins a new statement
+
+Because the assignment is already complete at `}`, the next token starts a new
+statement — even on the same line. This is two statements, not one:
+
+```less
+$colors: {
+  primary: #06c;
+} $gap: 8px;
+
+.box {
+  color: $colors.primary;
+  gap: $gap;
+}
+```
+→
+```css
+.box {
+  color: #06c;
+  gap: 8px;
+}
+```
+
+### Nothing may precede the block
+
+A block can only ever be a value's **first** atom. Putting anything in front of it is
+a parse error — with or without a trailing `;`:
+
+```less
+$foo: bar {         // ✗ parse error
+  primary: #06c;
+}
+
+$foo: bar @() > { result: red; }; // ✗ parse error, semicolon or not
+```
+
+This is deliberate: it fails loudly at the source position rather than silently
+reading `bar { … }` as a two-value list. To combine a block with other values, bind
+the block first and compose from the binding:
+
+```less
+$shadow: {
+  blur: 4px;
+}
+$rule: 0 0 $shadow.blur #000;
+
+.box {
+  box-shadow: $rule;
+}
+```
+→
+```css
+.box {
+  box-shadow: 0 0 4px #000;
+}
+```
+
+:::info[Coming from Less]
+
+Less already applies this rule to a detached ruleset bound to a variable, so the
+behavior should feel familiar:
+
+```less
+@foo: {
+  color: red;
+}
+.box { @foo(); }
+```
+
+Jess extends the same rule to every block-valued assignment — collections, anonymous
+mixins, and function literals alike.
+
+:::
+
 ## Private and readonly names
 
 The reference distinction stays the same for private and readonly bindings:

@@ -41,7 +41,9 @@ dimension, so units are preserved:
 
 :::note
 
-The `$myFunction()` spelling (a `$`-prefixed call) is **not** valid Jess and does
-not parse. Call imported functions by their bare name.
+The `$myFunction()` spelling is a **different** thing: it calls a function that was
+defined in a stylesheet and bound to a variable, which is a value, not an imported
+name. See [stylesheet-defined functions](/docs/Language/functions). Call *imported*
+functions by their bare name, as above.
 
 :::
