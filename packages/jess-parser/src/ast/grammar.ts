@@ -1798,6 +1798,25 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     choice(g.DirectJessUrl, g.DirectJessStaticQuoted, g.DirectJessColor, g.DirectJessDimension, g.DirectJessKeyword),
     children => requireValueNode(children[0])
   );
+  // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
+  // `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. The static header
+  // atoms carry no slash of their own, so the query value takes the ratio tail
+  // explicitly and reduces to the same typed Operation the prelude already uses
+  // for `:` and the range comparisons. Left-factored on the atom: the no-slash
+  // majority takes an absent optional tail instead of a doomed ratio arm.
+  const DirectJessStaticAtQueryValue = node<ValueNode>(
+    'DirectJessStaticAtQueryValue',
+    sequence(
+      g.DirectJessStaticAtAtom,
+      optional(sequence(optional(rawWhitespace), literal('/'), optional(rawWhitespace), g.DirectJessStaticAtAtom))
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      const numerator = requireValueNode(values[0]);
+      const denominator = values[1];
+      return denominator === undefined ? numerator : operation('/', numerator, denominator);
+    }
+  );
   const DirectJessStaticAtQueryProperty = node<JessStaticAtQueryProperty>(
     'DirectJessStaticAtQueryProperty',
     g.CssAstSyntaxKeyword,
@@ -1809,13 +1828,13 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     choice(
       sequence(
         literal('('), optional(rawWhitespace), DirectJessStaticAtQueryProperty, optional(rawWhitespace),
-        directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), g.DirectJessStaticAtAtom,
+        directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), DirectJessStaticAtQueryValue,
         optional(rawWhitespace), literal(')')
       ),
       sequence(
-        literal('('), optional(rawWhitespace), g.DirectJessStaticAtAtom, optional(rawWhitespace),
+        literal('('), optional(rawWhitespace), DirectJessStaticAtQueryValue, optional(rawWhitespace),
         directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), DirectJessStaticAtQueryProperty,
-        optional(sequence(optional(rawWhitespace), directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), g.DirectJessStaticAtAtom)),
+        optional(sequence(optional(rawWhitespace), directJessStaticAtQueryComparisonOperator, optional(rawWhitespace), DirectJessStaticAtQueryValue)),
         optional(rawWhitespace), literal(')')
       )
     ),
@@ -1849,7 +1868,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessStaticAtQuery',
     noTrivia(choice(
       DirectJessStaticAtComparisonQuery,
-      sequence(literal('('), optional(rawWhitespace), g.CssAstSyntaxKeyword, optional(rawWhitespace), literal(':'), optional(rawWhitespace), g.DirectJessStaticAtAtom, optional(rawWhitespace), literal(')')),
+      sequence(literal('('), optional(rawWhitespace), g.CssAstSyntaxKeyword, optional(rawWhitespace), literal(':'), optional(rawWhitespace), DirectJessStaticAtQueryValue, optional(rawWhitespace), literal(')')),
       sequence(literal('('), optional(rawWhitespace), g.CssAstSyntaxKeyword, optional(rawWhitespace), literal(')'))
     )),
     (children) => {

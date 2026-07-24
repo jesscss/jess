@@ -3435,14 +3435,28 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
     ),
     children => atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), children.filter(isStatement))
   );
+  const directLessQueryLeaf = choice(g.DirectLessVarReferenceChain, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessStaticQuoted, g.DirectLessCalcFunction, g.DirectLessFunction, g.DirectLessKeyword);
   // Media/container query syntax shares CSS's grammar-owned comparison terminal
   // and canonical `Block(paren, Operation)` shape. Less only supplies the additional
   // variable-bearing value leaves; it does not capture a query prelude as raw
   // text or run a second scanner over it.
   const DirectLessQueryValue = node<ValueNode>(
     'DirectLessQueryValue',
-    choice(g.DirectLessPreservedDivision, g.DirectLessVarReferenceChain, g.DirectLessDimension, g.DirectLessColor, g.DirectLessNamedColor, g.DirectLessStaticQuoted, g.DirectLessCalcFunction, g.DirectLessFunction, g.DirectLessKeyword),
+    choice(g.DirectLessPreservedDivision, directLessQueryLeaf),
     children => requireValueNode(children[0])
+  );
+  // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
+  // `<number> [ / <number> ]?` — as in `(aspect-ratio >= 16/9)`. The colon form
+  // already folds that slash into a typed `/` Operation through its math value;
+  // the comparison and range forms took the value-position leaf, where Less's
+  // `parens-division` slash group turned the same ratio into a SpacedValue. Fold
+  // it here so every feature form — and every dialect — carries one ratio shape.
+  // `style(--x: …)` keeps DirectLessQueryValue above: that payload is a
+  // declaration, so its slash stays a value-position slash group.
+  const DirectLessQueryFeatureValue = node<ValueNode>(
+    'DirectLessQueryFeatureValue',
+    sequence(directLessQueryLeaf, many(sequence(literal('/'), directLessQueryLeaf))),
+    foldOperation
   );
   const DirectLessQueryBareFeature = node<ValueNode>(
     'DirectLessQueryBareFeature',
@@ -3452,8 +3466,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   const DirectLessQueryComparisonFeature = node<ValueNode>(
     'DirectLessQueryComparisonFeature',
     sequence(
-      literal('('), g.CssAstSyntaxProperty, g.CssAstSyntaxQueryComparisonOperator, g.DirectLessQueryValue,
-      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, g.DirectLessQueryValue)), literal(')')
+      literal('('), g.CssAstSyntaxProperty, g.CssAstSyntaxQueryComparisonOperator, DirectLessQueryFeatureValue,
+      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, DirectLessQueryFeatureValue)), literal(')')
     ),
     (children) => {
       const values = children.filter(isValueNode);
@@ -3477,8 +3491,8 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   const DirectLessQueryRangeFeature = node<ValueNode>(
     'DirectLessQueryRangeFeature',
     sequence(
-      literal('('), g.DirectLessQueryValue, g.CssAstSyntaxQueryComparisonOperator, g.CssAstSyntaxProperty,
-      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, g.DirectLessQueryValue)), literal(')')
+      literal('('), DirectLessQueryFeatureValue, g.CssAstSyntaxQueryComparisonOperator, g.CssAstSyntaxProperty,
+      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, DirectLessQueryFeatureValue)), literal(')')
     ),
     (children) => {
       const values = children.filter(isValueNode);

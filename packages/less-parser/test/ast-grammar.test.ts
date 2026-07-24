@@ -2210,6 +2210,51 @@ describe('Less AST grammar facts', () => {
     );
   });
 
+  it('folds a media feature <ratio> into one typed operation in every feature form', () => {
+    const ratio = {
+      type: 'Operation', operator: '/',
+      left: { type: 'Dimension', src: '16' },
+      right: { type: 'Dimension', src: '9' }
+    };
+
+    for (const [source, operator] of [
+      ['@media (aspect-ratio: 16/9) { .card { color: red; } }', ':'],
+      ['@media (aspect-ratio: 16 / 9) { .card { color: red; } }', ':'],
+      ['@media (min-aspect-ratio: 16/9) { .card { color: red; } }', ':'],
+      ['@container (aspect-ratio: 16/9) { .card { color: red; } }', ':'],
+      // The comparison form used to take the value-position slash group and
+      // reduce `16/9` to a SpacedValue instead of the ratio operation.
+      ['@media (aspect-ratio >= 16/9) { .card { color: red; } }', '>=']
+    ] as const) {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      expect(result.value, source).toMatchObject({
+        children: [{ prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator, right: ratio } } }]
+      });
+    }
+
+    const range = run(lessAstGrammar.LessAstDocument, '@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }', { trivia: lessAstGrammar.whitespace });
+    expect(range.ok && range.unconsumedFrom === null).toBe(true);
+    expect(range.value).toMatchObject({
+      children: [{ prelude: { type: 'Block', delimiter: 'paren', inner: {
+        type: 'Operation', operator: '<',
+        left: { type: 'Operation', operator: '<', left: ratio, right: { type: 'Keyword', src: 'aspect-ratio' } },
+        right: { type: 'Operation', operator: '/', left: { type: 'Dimension', src: '2' }, right: { type: 'Dimension', src: '1' } }
+      } } }]
+    });
+    expect(serialize(stylesheet(range.value)).css).toBe(
+      '@media (16 / 9 < aspect-ratio < 2 / 1) {\n  .card {\n    color: red;\n  }\n}\n'
+    );
+
+    // `style()` carries a declaration, so its slash stays a value-position
+    // slash group rather than becoming a ratio operation.
+    const styleQuery = run(lessAstGrammar.LessAstDocument, '@container style(--ratio: 16/9) { .card { color: red; } }', { trivia: lessAstGrammar.whitespace });
+    expect(styleQuery.ok && styleQuery.unconsumedFrom === null).toBe(true);
+    expect(styleQuery.value).toMatchObject({
+      children: [{ prelude: { type: 'FunctionCall', name: 'style', args: [{ type: 'Operation', operator: ':', right: { type: 'SpacedValue' } }] } }]
+    });
+  });
+
   it('stores parenthesized colon features as typed values for later media interpolation', () => {
     const source = '@size: 640px; @tablet: (min-width: @size); @media @{tablet} { .card { color: red; } }';
     const feature = run(lessAstGrammar.DirectLessQueryColonFeature, '(min-width: @size)', { trivia: lessAstGrammar.whitespace });

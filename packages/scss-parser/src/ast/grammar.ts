@@ -2112,12 +2112,32 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rul
   // but direct `parse() -> Stylesheet` intentionally rejects that CST-only form
   // until the AST owns typed query-prelude interpolation. Never lower it to raw
   // prelude text merely to erase that deliberate acceptance mismatch.
+  //
+  // A media/container feature value is a single CSS component value, not one of
+  // SCSS's comma/space/slash lists, and it may be a `<ratio>` — media-queries-4
+  // §2.1, `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. Building it
+  // on the pre-list math term keeps the feature's `/` a ratio operator (the same
+  // typed Operation the prelude uses for `:` and the comparisons) instead of
+  // SCSS's value-position slash list, so every dialect carries one ratio shape.
+  const DirectScssQueryValue = node<ValueNode>(
+    'DirectScssQueryValue',
+    noTrivia(sequence(
+      g.DirectScssMathTopSum,
+      optional(sequence(optional(directScssSpace), literal('/'), optional(directScssSpace), g.DirectScssMathTopSum))
+    )),
+    (children) => {
+      const values = children.filter(isValue);
+      const numerator = requireValue(values[0]);
+      const denominator = values[1];
+      return denominator === undefined ? numerator : operation('/', numerator, denominator);
+    }
+  );
   const DirectScssQueryFeature = node<ValueNode>(
     'DirectScssQueryFeature',
     choice(
       sequence(literal('('), propertyName, literal(')')),
-      sequence(literal('('), propertyName, literal(':'), g.DirectScssValue, literal(')')),
-      sequence(literal('('), propertyName, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), g.DirectScssValue, literal(')'))
+      sequence(literal('('), propertyName, literal(':'), DirectScssQueryValue, literal(')')),
+      sequence(literal('('), propertyName, choice(literal('>='), literal('<='), literal('>'), literal('<'), literal('=')), DirectScssQueryValue, literal(')'))
     ),
     (children) => {
       const property = keyword(requireToken(children[1]).value);

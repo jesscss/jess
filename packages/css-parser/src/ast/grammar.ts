@@ -1498,6 +1498,34 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       return opaqueAtRuleBlock(tokenText(children[0]!), prelude, rawBody);
     }
   );
+  // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
+  // `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. The component
+  // value language has no top-level slash (only the permissive declaration
+  // fallback carries one), so the query value takes the ratio's slash tail
+  // explicitly and reduces it to the same typed Operation the prelude already
+  // uses for `:` and the range comparisons. Left-factored on CssAstValue: the
+  // no-slash majority parses one value and takes an absent optional tail
+  // instead of speculating a doomed ratio arm first.
+  const CssAstQueryValue = node<ValueSlot>(
+    'CssAstQueryValue',
+    sequence(g.CssAstValue, optional(sequence(literal('/'), g.CssAstValue))),
+    (children) => {
+      const values = valueSlotChildren(children);
+      const numerator = values[0]!;
+      const denominator = values[1];
+      if (denominator === undefined) {
+        return numerator;
+      }
+      if (!isValue(numerator) || !isValue(denominator)) {
+        // Not a `<ratio>`: a multi-part operand only reaches here on a doomed
+        // speculative arm (`@supports (a b / c)` belongs to general-enclosed).
+        // Keep every authored part in one slot so the enclosing feature fails
+        // on its own terms instead of the grammar losing the slash.
+        return [numerator, keyword('/'), denominator];
+      }
+      return operation('/', numerator, denominator);
+    }
+  );
   const CssAstQueryBareFeature = node(
     'CssAstQueryBareFeature',
     sequence(literal('('), g.CssAstProperty, literal(')')),
@@ -1505,7 +1533,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
   );
   const CssAstQueryColonFeature = node(
     'CssAstQueryColonFeature',
-    sequence(literal('('), g.CssAstProperty, literal(':'), g.CssAstValue, literal(')')),
+    sequence(literal('('), g.CssAstProperty, literal(':'), CssAstQueryValue, literal(')')),
     children => block(operation(':', keyword(tokenText(children[1]!)), firstValue(children)))
   );
   const CssAstQueryComparisonFeature = node(
@@ -1514,8 +1542,8 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       literal('('),
       g.CssAstProperty,
       g.CssAstSyntaxQueryComparisonOperator,
-      g.CssAstValue,
-      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, g.CssAstValue)),
+      CssAstQueryValue,
+      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, CssAstQueryValue)),
       literal(')')
     ),
     children => block(chainedQueryComparison(keyword(tokenText(children[1]!)), children))
@@ -1528,10 +1556,10 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     'CssAstQueryRangeFeature',
     sequence(
       literal('('),
-      g.CssAstValue,
+      CssAstQueryValue,
       g.CssAstSyntaxQueryComparisonOperator,
       g.CssAstProperty,
-      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, g.CssAstValue)),
+      optional(sequence(g.CssAstSyntaxQueryComparisonOperator, CssAstQueryValue)),
       literal(')')
     ),
     (children) => {

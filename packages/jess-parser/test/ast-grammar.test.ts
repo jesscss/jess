@@ -940,6 +940,47 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('constructs a media feature <ratio> value in every static query form', () => {
+    const ratio = {
+      type: 'Operation', operator: '/',
+      left: { type: 'Dimension', src: '16' },
+      right: { type: 'Dimension', src: '9' }
+    };
+
+    for (const [source, operator] of [
+      ['@media (aspect-ratio: 16/9) { .card { color: blue; } }', ':'],
+      ['@media (aspect-ratio: 16 / 9) { .card { color: blue; } }', ':'],
+      ['@media (min-aspect-ratio: 16/9) { .card { color: blue; } }', ':'],
+      ['@container (aspect-ratio: 16/9) { .card { color: blue; } }', ':'],
+      ['@media (aspect-ratio >= 16/9) { .card { color: blue; } }', '>=']
+    ] as const) {
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
+      expect(parse(source).children[0], source).toMatchObject({
+        type: 'AtRuleBlock',
+        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator, right: ratio } }
+      });
+    }
+
+    expect(parse('@media (16/9 < aspect-ratio < 2/1) { .card { color: blue; } }').children[0]).toMatchObject({
+      type: 'AtRuleBlock',
+      prelude: { type: 'Block', delimiter: 'paren', inner: {
+        type: 'Operation', operator: '<',
+        left: { type: 'Operation', operator: '<', left: ratio, right: { type: 'Keyword', src: 'aspect-ratio' } },
+        right: { type: 'Operation', operator: '/', left: { type: 'Dimension', src: '2' }, right: { type: 'Dimension', src: '1' } }
+      } }
+    });
+
+    expect(serialize(parse('@media (aspect-ratio: 16/9) { .card { color: blue; } }'))).toEqual({
+      css: '@media (aspect-ratio: 16 / 9) {\n  .card {\n    color: blue;\n  }\n}\n'
+    });
+
+    // A single `<number>` is a whole ratio, so the slash tail stays optional.
+    expect(parse('@media (aspect-ratio: 1) { .card { color: blue; } }').children[0]).toMatchObject({
+      prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Dimension', src: '1' } } }
+    });
+  });
+
   it('constructs static URL-bearing CSS at-rule preludes without widening generic headers', () => {
     const source = '@namespace svg url("http://www.w3.org/2000/svg"); @document url(site.css) { .icon { color: blue; } }';
     const root = parse(source);

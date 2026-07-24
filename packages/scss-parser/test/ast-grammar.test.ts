@@ -962,6 +962,53 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  it('constructs a media feature <ratio> value instead of a value-position slash list', () => {
+    const ratio = {
+      type: 'Operation', operator: '/',
+      left: { type: 'Dimension', src: '16' },
+      right: { type: 'Dimension', src: '9' }
+    };
+
+    for (const [source, operator] of [
+      ['@media (aspect-ratio: 16/9) { .card { color: red; } }', ':'],
+      // Spaced, this used to reduce to SCSS's slash List rather than a ratio.
+      ['@media (aspect-ratio: 16 / 9) { .card { color: red; } }', ':'],
+      ['@media (min-aspect-ratio: 16/9) { .card { color: red; } }', ':'],
+      ['@container (aspect-ratio: 16/9) { .card { color: red; } }', ':'],
+      ['@media (aspect-ratio >= 16/9) { .card { color: red; } }', '>=']
+    ] as const) {
+      expect(parseScssCst(source).errors, source).toHaveLength(0);
+      const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
+      expect(parse(source).children[0], source).toMatchObject({
+        type: 'AtRuleBlock',
+        prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator, right: ratio } }] }
+      });
+    }
+
+    expect(serialize(parse('@media (aspect-ratio: 16/9) { .card { color: red; } }'))).toEqual({
+      css: '@media (aspect-ratio: 16 / 9) {\n  .card {\n    color: red;\n  }\n}\n'
+    });
+
+    // A single `<number>` is a whole ratio, and a plain feature value keeps its
+    // component value: the slash tail is optional, not implied.
+    for (const [source, inner] of [
+      ['@media (aspect-ratio: 1) { .card { color: red; } }', { type: 'Dimension', src: '1' }],
+      ['@media (min-width: $size) { .card { color: red; } }', { type: 'VariableReference', name: 'size' }],
+      ['@media (min-width: #{$size}) { .card { color: red; } }', { type: 'Interpolation' }]
+    ] as const) {
+      expect(parse(source).children[0], source).toMatchObject({
+        prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: inner } }] }
+      });
+    }
+
+    // SCSS value position is untouched: a declaration slash is still SCSS's own
+    // slash list, not a ratio operation.
+    expect(parse('.card { font: 16px / 9; }').children[0]).toMatchObject({
+      body: [{ type: 'Declaration', name: 'font', value: { type: 'List', sep: '/' } }]
+    });
+  });
+
   it('documents the intentional CST-only SCSS query-interpolation route until the AST has typed prelude segments', () => {
     for (const source of [
       '@media #{$query} { .card { color: red; } }',

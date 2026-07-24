@@ -776,6 +776,60 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  it('constructs a media feature <ratio> value in every feature form', () => {
+    const ratio = {
+      type: 'Operation',
+      operator: '/',
+      left: { type: 'Dimension', src: '16' },
+      right: { type: 'Dimension', src: '9' }
+    };
+
+    for (const source of [
+      '@media (aspect-ratio: 16/9) { .card { color: red; } }',
+      '@media (aspect-ratio: 16 / 9) { .card { color: red; } }',
+      '@media (min-aspect-ratio: 16/9) { .card { color: red; } }',
+      '@container (aspect-ratio: 16/9) { .card { color: red; } }'
+    ]) {
+      expect(parseCssCst(source).errors, source).toHaveLength(0);
+      expect(parseAst(source).children[0], source).toMatchObject({
+        type: 'AtRuleBlock',
+        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: ratio } }
+      });
+    }
+
+    expect(parseAst('@media (aspect-ratio >= 16/9) { .card { color: red; } }').children[0]).toMatchObject({
+      prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>=', right: ratio } }
+    });
+
+    expect(parseAst('@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }').children[0]).toMatchObject({
+      prelude: {
+        type: 'Block', delimiter: 'paren',
+        inner: {
+          type: 'Operation', operator: '<',
+          left: { type: 'Operation', operator: '<', left: ratio, right: { type: 'Keyword', src: 'aspect-ratio' } },
+          right: { type: 'Operation', operator: '/', left: { type: 'Dimension', src: '2' }, right: { type: 'Dimension', src: '1' } }
+        }
+      }
+    });
+
+    // A single `<number>` is still a whole ratio, and a non-ratio feature value
+    // keeps its plain component value: the slash tail is optional, not implied.
+    for (const [source, inner] of [
+      ['@media (aspect-ratio: 1) { .card { color: red; } }', { type: 'Dimension', src: '1' }],
+      ['@media (min-width: 100px) { .card { color: red; } }', { type: 'Dimension', src: '100px' }]
+    ] as const) {
+      expect(parseAst(source).children[0], source).toMatchObject({
+        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: inner } }
+      });
+    }
+
+    // A slash between multi-part operands is not a ratio: `@supports` still
+    // hands the whole payload to general-enclosed instead of hard-failing.
+    expect(parseAst('@supports (a b / c) { .card { color: red; } }').children[0]).toMatchObject({
+      prelude: { type: 'GeneralEnclosed', form: 'paren', name: null }
+    });
+  });
+
   it('uses declaration-list bodies for nested conditional blocks, like the public CST grammar', () => {
     const source = 'a { @media (width: 1px) { color: red; } }';
     const cst = parseCssCst(source);
