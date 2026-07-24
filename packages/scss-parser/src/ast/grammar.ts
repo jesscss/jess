@@ -8,6 +8,7 @@
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
+import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
 import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
@@ -859,7 +860,7 @@ const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
 // no longer enters and rolls back the declaration/nested-property node frames.
 const propertyName = regex(/\*?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
-export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ trivia: whitespace }, (g) => {
+export const scssAstGrammar = composeLeaf([cssAstSyntax, cssAstPseudoSyntax, rules<ScssAstRules>({ trivia: whitespace }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
   // valid for closed value facts, but admits CSS escapes that SCSS variables do
   // not: `scssVar` in the production grammar is deliberately unescaped.
@@ -2604,24 +2605,64 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     sequence(g.DirectScssStaticSelectorPseudoItem, many(g.DirectScssStaticSelectorPseudoTail)),
     joinSourceText
   );
-  const directScssNthPseudoNameWithArgument = regex(/nth-(?:last-)?(?:child|of-type)(?=\()/i);
-  const directScssSelectorPseudoNameWithArgument = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
   // The selector-function pseudos whose argument is retained as a STRUCTURED
-  // `SelectorList` (P0). Narrower than the opaque-text set above: `:global` and
+  // `SelectorList` (P0). Narrower than the opaque set below: `:global` and
   // `:local` stay opaque. Gated on the NAME, and only when the argument parses
   // as a static selector list with no `#{…}` interpolation — an interpolated arg
-  // fails the structured arm and degrades to the opaque/rejecting paths, so its
-  // behaviour is byte-for-byte unchanged. `crossable` is decided in core.
+  // fails the structured arm and there is no text fallback for these names, so it
+  // rejects exactly as before. A non-selector arg (`:not(2n+1)`) also fails the
+  // structured selector and rejects, closing the SCSS divergence. `crossable` is
+  // decided in core.
   const directScssStructuredPseudoNameWithArgument = regex(/(?:is|not|has|where|matches)(?=\()/i);
+  // `:global`/`:local` keep their existing OPAQUE text argument — they are sealed
+  // and never selector-structured. This is the only surviving text selector-arg arm.
+  const directScssGlobalLocalPseudoNameWithArgument = regex(/(?:global|local)(?=\()/i);
+  // A relative selector (a `:has()` argument) may open with a child/sibling
+  // combinator (`:has(> .b)`). The outer selector grammar forbids a leading
+  // combinator, so this pseudo-private complex admits an optional relative one and
+  // rides it on the ComplexSelector's `leadingComb`. A leading `||`/`|` is
+  // namespace syntax, not a relative combinator, so it is excluded (mirrors the
+  // css/less landings).
+  const scssRelativeSelectorCombinator = choice(literal('>'), literal('+'), literal('~'));
+  const DirectScssRelativeComplex = node<ComplexSelector>(
+    'DirectScssRelativeComplex',
+    parser({ trivia: whitespace }, sequence(optional(scssRelativeSelectorCombinator), g.DirectScssComplex)),
+    (children) => {
+      const complex = children.find(isComplexSelector);
+      if (complex === undefined) {
+        throw new TypeError('DirectScssRelativeComplex requires a complex selector.');
+      }
+      if (children.length === 1) {
+        return complex;
+      }
+      const lead = requireToken(children[0]).value;
+      if (lead !== '>' && lead !== '+' && lead !== '~') {
+        throw new TypeError('DirectScssRelativeComplex produced an invalid leading combinator.');
+      }
+      return { ...complex, leadingComb: lead };
+    }
+  );
+  // The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+  // selector-ONLY argument: a (relative) selector list with no general-any text
+  // fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
+  // non-relative shape reduces identically to `g.DirectScssSelector`; the retained
+  // `SelectorList` becomes structured `PseudoSelector.args`, never joined at parse.
+  const DirectScssSelectorOnlyPseudoArgument = node<SelectorList>(
+    'DirectScssSelectorOnlyPseudoArgument',
+    parser({ trivia: whitespace }, sequence(DirectScssRelativeComplex, many(sequence(literal(','), DirectScssRelativeComplex)))),
+    children => selist(...children.filter(isComplexSelector))
+  );
   const DirectScssPseudo = choice(
     node<SimpleSelector>(
       'DirectScssNthPseudo',
-      // An+B input cannot first try the selector-valued arm: `-n+2` has a
-      // valid selector prefix (`-n`) but is not a complete selector argument.
-      // Its complete static grammar owns the whole argument, and the numeric
-      // malformed-prefix gate prevents a broken An+B form from falling through
-      // to ordinary raw pseudo content.
-      sequence(pseudoColon, directScssNthPseudoNameWithArgument, literal('('), not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument, literal(')')),
+      // `:nth-child`/`:nth-last-child`: a bare `<An+B>` OR `<An+B> of <selector>`
+      // (Selectors-4 §6.6.2). Dispatched by the shared `g.CssAstSyntaxNthChildName`
+      // so `of S` is admitted only on the child index. An+B input cannot first try
+      // the selector-valued arm: `-n+2` has a valid selector prefix (`-n`) but is
+      // not a complete selector argument. Its complete static grammar owns the
+      // whole argument, and the numeric malformed-prefix gate prevents a broken
+      // An+B form from falling through to ordinary raw pseudo content.
+      sequence(pseudoColon, g.CssAstSyntaxNthChildName, literal('('), not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument, literal(')')),
       // Insignificant whitespace surrounding the `<An+B>` argument inside the
       // parens (`:nth-child( 2n+1 )`) is normalized away, matching the other
       // dialects; sign whitespace inside the argument (`2n + 1`, `n - 3`) stays
@@ -2629,20 +2670,45 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       // (https://www.w3.org/TR/selectors-4/#anb-microsyntax).
       children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3]).trim()})`)
     ),
+    node<SimpleSelector>(
+      'DirectScssNthTypePseudo',
+      // `:nth-of-type`/`:nth-last-of-type`: a BARE `<An+B>` only — Selectors-4
+      // §6.6.2 defines no `of S` tail for the type-index families. The
+      // `not(sequence(g.CssAstSyntaxNth, g.CssAstSyntaxOfKeyword))` guard rejects
+      // an `<An+B> of …` argument so `:nth-of-type(2n of .a)` fails rather than
+      // being captured as opaque text (the CSS-aligned owner decision), matching
+      // the css/jess landings.
+      sequence(
+        pseudoColon,
+        g.CssAstSyntaxNthTypeName,
+        literal('('),
+        not(g.CssAstSyntaxMalformedPseudoNumericArgument),
+        not(parser({ trivia: whitespace }, sequence(g.CssAstSyntaxNth, g.CssAstSyntaxOfKeyword))),
+        g.DirectScssStaticPseudoArgument,
+        literal(')')
+      ),
+      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3]).trim()})`)
+    ),
     node<SimpleToken>(
       'DirectScssStructuredPseudo',
       // Parser = STRUCTURE + trivia only: keep the parsed `SelectorList` as `args`
       // and DO NOT join — core serialization owns the inline `:is(a, b)` rule
       // (`pseudoCanonical`). The `not(not(...))` positive lookahead confirms the
-      // argument is a fully STATIC selector arg (the existing chunk grammar
-      // rejects `#{`) before the structural parse commits; an interpolated or
-      // non-selector arg fails here and falls through to the opaque/reject arms.
+      // argument is a fully STATIC selector arg (the chunk grammar rejects `#{`)
+      // before the structural parse commits; an interpolated arg fails here and,
+      // with no text fallback for these names, rejects exactly as before.
+      // Insignificant whitespace surrounding the argument inside the parens
+      // (`:not( .b )`) is consumed here; it is trivia, so the structured arg
+      // normalizes it away (`:not(.b)`) via `pseudoCanonical`, matching the other
+      // dialects (Selectors-4; the residual SCSS surrounding-whitespace divergence).
       sequence(
         pseudoColon,
         directScssStructuredPseudoNameWithArgument,
         literal('('),
+        optional(directScssSpace),
         not(not(sequence(g.DirectScssStaticSelectorPseudoArgument, literal(')')))),
-        g.DirectScssSelector,
+        DirectScssSelectorOnlyPseudoArgument,
+        optional(directScssSpace),
         literal(')')
       ),
       children => pseudoSelector(
@@ -2651,13 +2717,20 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       )
     ),
     node<SimpleSelector>(
-      'DirectScssSelectorPseudo',
-      sequence(pseudoColon, directScssSelectorPseudoNameWithArgument, literal('('), g.DirectScssStaticSelectorPseudoArgument, literal(')')),
+      'DirectScssGlobalLocalPseudo',
+      // `:global(…)`/`:local(…)` retain the opaque, comma-normalized selector text
+      // inside the containing SimpleSelector — they are sealed and never structured.
+      sequence(pseudoColon, directScssGlobalLocalPseudoNameWithArgument, literal('('), g.DirectScssStaticSelectorPseudoArgument, literal(')')),
       children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
     ),
     node<SimpleSelector>(
       'DirectScssGenericPseudo',
-      sequence(pseudoColon, not(choice(directScssNthPseudoNameWithArgument, directScssSelectorPseudoNameWithArgument)), g.CssAstSyntaxKeyword, optional(sequence(literal('('), g.DirectScssPseudoArgument, literal(')')))),
+      // Excludes every nth name (identifier-boundary `g.CssAstSyntaxNthName`, so a
+      // paren-less `:nth-child` is not reclassified as a bare keyword pseudo — it
+      // must reach the structured arms with a `(` or reject), the selector-arg
+      // names, and `:global`/`:local`, so a malformed nth or non-selector arg
+      // rejects rather than falling through to this general-any scan.
+      sequence(pseudoColon, not(g.CssAstSyntaxNthName), not(g.CssAstSyntaxSelectorArgPseudoName), not(directScssGlobalLocalPseudoNameWithArgument), g.CssAstSyntaxKeyword, optional(sequence(literal('('), g.DirectScssPseudoArgument, literal(')')))),
       (children) => {
         const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
         return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${requireString(children[3])})`);

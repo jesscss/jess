@@ -1397,6 +1397,61 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
+  it('restricts `of` to nth-child and rejects non-selector selector-pseudo args', () => {
+    const accepted = (source: string): boolean => {
+      const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
+    };
+    // `of <selector>` is defined only for the nth-child index family (Selectors-4
+    // §6.6.2); the type-index families reject it, and a non-selector argument to a
+    // selector-arg pseudo (`:not`/`:is`) now rejects rather than falling through to
+    // opaque text. Bare `:nth-child`/`:nth-of-type` (no parens) reject too. This
+    // closes the SCSS divergences against css/jess/less.
+    for (const source of [
+      '.card:nth-of-type(2n of .a) { color: blue; }',
+      '.card:nth-of-type(n of .a) { color: blue; }',
+      '.card:nth-last-of-type(-n+3 of .a) { color: blue; }',
+      '.card:not(2n+1) { color: blue; }',
+      '.card:is(2n+1) { color: blue; }',
+      '.card:nth-child { color: blue; }',
+      '.card:nth-of-type { color: blue; }'
+    ]) {
+      expect(accepted(source), source).toBe(false);
+    }
+    for (const source of [
+      'a:nth-child(2n of .a) { color: blue; }',
+      'a:nth-of-type(2n+1) { color: blue; }',
+      '.card:not(.a) { color: blue; }',
+      '.card:is(.a, .b) { color: blue; }',
+      '.card:has(> .b) { color: blue; }',
+      '.card:lang(en) { color: blue; }'
+    ]) {
+      expect(accepted(source), source).toBe(true);
+    }
+    // `#{…}` interpolation and the sealed `:global`/`:local` keep their existing
+    // paths: interpolated selector-arg / nth args stay rejected (their segments
+    // are not yet represented in AST v2), `:global`/`:local` stay opaque.
+    for (const source of [
+      '.card:not(#{$x}) { color: blue; }',
+      '.card:is(#{$sel}) { color: blue; }',
+      '.card:nth-child(#{$n}) { color: blue; }'
+    ]) {
+      expect(accepted(source), source).toBe(false);
+    }
+    for (const source of ['.x:global(.a) { color: blue; }', '.x:local(.a) { color: blue; }']) {
+      expect(accepted(source), source).toBe(true);
+    }
+    // Structured selector-arg pseudos normalize the insignificant whitespace
+    // surrounding their argument (`:not( .b )` -> `:not(.b)`) via core's
+    // `pseudoCanonical`, matching the other dialects.
+    for (const [source, expected] of [
+      ['.card:not( .b ) { color: blue; }', '.card:not(.b) {\n  color: blue;\n}\n'],
+      ['.card:is( .b, .c ) { color: blue; }', '.card:is(.b, .c) {\n  color: blue;\n}\n']
+    ] as const) {
+      expect(serialize(parse(source)).css, source).toBe(expected);
+    }
+  });
+
   it('constructs static non-selector pseudo arguments as existing SimpleSelector text', () => {
     const source = '.card:lang(en-US):nth-child(-n+2 of .item)::part(icon) { color: blue; }';
     const cst = parseScssCst(source);
