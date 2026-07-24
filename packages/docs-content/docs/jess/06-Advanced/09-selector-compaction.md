@@ -53,3 +53,49 @@ selectors. This is the same compaction as the Less 5.x engine — see the Less
 [Selector Compaction](https://lesscss.org/docs/advanced/selector-compaction) page for
 the details, and [Extend](./05-extend.md) for the separate extend-driven `:is()`
 grafting.
+
+## Specificity and `:is()` grouping (nesting & extend)
+
+Folding branches into `:is(...)` — from this nesting collapse or from
+[extend](./05-extend.md)'s `:is()` grafting — changes how a browser scores the
+selector, because `:is()` does **not** score as zero. Per the CSS spec, *the
+specificity of an `:is()` is the specificity of its most specific argument*
+([Selectors Level 4 — specificity](https://www.w3.org/TR/selectors-4/#specificity-rules)).
+So a low-specificity branch grouped with a high-specificity one inherits the group's
+**maximum**: `:is(.a, #b)` scores as the ID `#b` — `(1,0,0)` — for *both* branches.
+
+Nesting collapse carries that group score into the join (flattened output):
+
+```jess
+.a, #b {
+  .c { color: red; }
+}
+```
+
+```css
+:is(.a, #b) .c {
+  color: red;
+}
+```
+
+`:is(.a, #b)` scores `(1,0,0)`, so the whole selector scores **`(1,1,0)`** — the
+`.a .c` match now carries ID-level weight it would not have on its own. Extend's
+partial-match grafting behaves the same way: `.a > .c` extended by `#b` renders
+`.a > :is(.c, #b)`, also **`(1,1,0)`**.
+
+**Migration note vs. less.js 4.x.** 4.x expanded these into a comma-separated cascade,
+each row keeping its **own** specificity; 5.x/Jess groups them into one `:is()` scored
+at the maximum:
+
+| Source | 4.x output (per-row specificity) | 5.x output (group specificity) |
+|---|---|---|
+| `.a, #b { .c {} }` | `.a .c` `(0,2,0)`, `#b .c` `(1,1,0)` | `:is(.a, #b) .c` — both `(1,1,0)` |
+| `.a > .c {}` + `#b:extend(.c all)` | `.a > .c` `(0,2,0)`, `.a > #b` `(1,1,0)` | `.a > :is(.c, #b)` — both `(1,1,0)` |
+
+When the grouped branches share specificity (the common all-classes case, `:is(.a, .b)`)
+nothing changes — the shift is observable only when branches of **different**
+specificity are grouped, where the lower-specificity branch inherits the group's higher
+score and can flip a close cascade 4.x resolved per-row. The nesting-collapse grouping
+is the flattened-output form (`collapseNesting: true`); the 5.x-default nested output
+keeps the multi-parent header a plain comma list, so this applies to flattened output.
+Extend's `:is()` grafting appears in **both** nested and flattened output.
