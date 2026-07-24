@@ -109,7 +109,7 @@ describe('@jesscss/scss-parser public parse API', () => {
           { name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ src: '--safe-area' }] } },
           { name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', left: { src: '--size' } }] } }
         ] },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { right: { src: '--viewport' } } }] } },
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', delimiter: 'paren', inner: { right: { src: '--viewport' } } } },
         { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', inner: { right: { src: '--mode' } } } }
       ]
     });

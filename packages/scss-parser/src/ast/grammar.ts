@@ -2205,7 +2205,10 @@ export const scssAstGrammar: Record<keyof ScssAstRules, FusedRule> = composeLeaf
       sequence(g.CssAstSyntaxQueryNot, g.DirectScssQueryInParens),
       sequence(g.DirectScssQueryInParens, many(sequence(g.CssAstSyntaxQueryAndOr, g.DirectScssQueryInParens)))
     ),
-    children => spaced(keywordizeValues(children))
+    (children) => {
+      const values = keywordizeValues(children);
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
   );
   // `only` modifies a media type; it cannot introduce a parenthesized query
   // condition. Keep `not (...)` in DirectScssQueryCondition, where that form

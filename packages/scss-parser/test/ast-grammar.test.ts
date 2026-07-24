@@ -585,7 +585,7 @@ describe('SCSS canonical-AST grammar', () => {
           { type: 'Declaration', name: 'via-env', value: { type: 'FunctionCall', name: 'env', args: [{ type: 'Keyword', src: '--safe-area' }] } },
           { type: 'Declaration', name: 'via-calc', value: { type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '+', left: { src: '--size' } }] } }
         ] },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--viewport' } } }] } },
+        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--viewport' } } } },
         { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'Keyword', src: '--mode' } } } }
       ]
     });
@@ -994,7 +994,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       expect(parse(source).children[0], source).toMatchObject({
         type: 'AtRuleBlock',
-        prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator, right: ratio } }] }
+        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator, right: ratio } }
       });
     }
 
@@ -1010,7 +1010,7 @@ describe('SCSS canonical-AST grammar', () => {
       ['@media (min-width: #{$size}) { .card { color: red; } }', { type: 'Interpolation' }]
     ] as const) {
       expect(parse(source).children[0], source).toMatchObject({
-        prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: inner } }] }
+        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: inner } }
       });
     }
 
@@ -1074,7 +1074,7 @@ describe('SCSS canonical-AST grammar', () => {
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       expect(parse(source).children[0], source).toMatchObject({
         type: 'AtRuleBlock',
-        prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren', inner }] }
+        prelude: { type: 'Block', delimiter: 'paren', inner }
       });
     }
 
@@ -1084,10 +1084,7 @@ describe('SCSS canonical-AST grammar', () => {
 
     // The name-first comparison keeps its own operand order.
     expect(parse('@media (width < 200px) { .card { color: red; } }').children[0]).toMatchObject({
-      prelude: {
-        type: 'SpacedValue',
-        parts: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<', left: width, right: { type: 'Dimension', src: '200px' } } }]
-      }
+      prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<', left: width, right: { type: 'Dimension', src: '200px' } } }
     });
   });
 
