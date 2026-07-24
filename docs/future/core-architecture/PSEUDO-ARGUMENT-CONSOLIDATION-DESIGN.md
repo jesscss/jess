@@ -321,6 +321,21 @@ Each landing: all four parser suites + core + jess ratchet green and byte-identi
 
 ---
 
+## 7a. Tracked cross-dialect divergence (resolve in the always-structure landing)
+
+Landing 1b (jess) closed jess's accidental nth-arg leak into non-nth pseudos, so jess now REJECTS
+`:not(2n+1)` (a non-selector `:not` argument — invalid CSS). CSS still ACCEPTS it via its generic
+raw pseudo-argument arm. Before this work css and jess agreed (both accepted, css via raw, jess via
+the leak); now they diverge on this invalid-CSS edge. Directionally jess is correct (owner: reject
+invalid; `2n+1` is not a selector) and consistent with jess's deliberate no-raw-arm design; CSS is
+the lagging lenient one. No fixture/test depends on the old acceptance (grep-verified). RESOLUTION:
+the always-structure landing (§3c) makes per-pseudo argument grammars structured for ALL dialects —
+`:not`/`:is`/… take a selector, `:lang`/`:dir` take an ident, nth take An+B — at which point CSS
+also rejects `:not(2n+1)` and the dialects re-converge. Until then this is a known, invalid-CSS-only
+divergence, not a regression to chase.
+
+---
+
 ## 8. Rejected alternatives
 
 - **Shared SEMANTIC artifact (with reducers) via `composeLeaf`.** Not expressible — `composeLeaf`
