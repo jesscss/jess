@@ -26,7 +26,8 @@ const slowWidth = defineFunction('awidth', {
   variadic: true,
   params: [],
   body: async () => {
-    await new Promise(resolve => setTimeout(resolve, 5));
+    // Deliberately SLOWER than `aslow`, so completion order inverts source order.
+    await new Promise(resolve => setTimeout(resolve, 25));
     return makeDimension(576, 'px');
   }
 });
@@ -70,6 +71,50 @@ describe('awaitable values in guard conditions', () => {
     );
     expect(result.errors).toEqual([]);
     expect(result.css).toContain('.x-zed');
+  }, 20000);
+});
+
+describe('awaitable values in at-rule preludes', () => {
+  it('resolves a @media query built from an awaitable value', async () => {
+    const result = await render(
+      '@w: awidth();\n'
+      + '@media (min-width: @w) {\n  .a { color: red; }\n}\n'
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('@media (min-width: 576px)');
+    expect(result.css).toContain('color: red');
+  }, 20000);
+
+  it('resolves a @supports prelude built from an awaitable value', async () => {
+    const result = await render(
+      '@v: aslow();\n'
+      + '@supports (color: @v) {\n  .a { color: red; }\n}\n'
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.css).toContain('@supports (color: zed)');
+  }, 20000);
+
+  it('drops an at-rule whose body is empty even when its prelude awaited', async () => {
+    const result = await render(
+      '@w: awidth();\n'
+      + '@media (min-width: @w) {\n}\n'
+      + '.keep { color: red; }\n'
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.css).not.toContain('@media');
+    expect(result.css).toContain('.keep');
+  }, 20000);
+
+  it('keeps declaration order when preludes resolve out of order', async () => {
+    // `awidth` is slower than `aslow`, so completion order is the REVERSE of
+    // source order. Output must still follow the source.
+    const result = await render(
+      '@a: aslow();\n@w: awidth();\n'
+      + '@media (min-width: @w) {\n  .first { color: red; }\n}\n'
+      + '@supports (color: @a) {\n  .second { color: blue; }\n}\n'
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.css.indexOf('.first')).toBeLessThan(result.css.indexOf('.second'));
   }, 20000);
 });
 

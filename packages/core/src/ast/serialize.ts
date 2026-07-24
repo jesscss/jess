@@ -1677,7 +1677,11 @@ function makeResolver(frame: Frame | null, e: EvalCtx): ValueResolver {
   return (v: ValueSlot) => {
     const b = evalBytes(v, frame, e);
     if (isThenable(b)) {
-      throw new Error('async value in a synchronous dispatch position');
+      throw ERR.asyncInSyncPosition({
+        node: v,
+        ...callSiteLocation(v, e),
+        meta: { where: 'mixin argument (pattern matching and @arguments need settled bytes)' }
+      });
     }
     return b;
   };
@@ -2765,7 +2769,11 @@ function invokeValueLambda(
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
     const b = evalBytes(v, overlay, e);
     if (isThenable(b)) {
-      throw new Error('async value in a synchronous function-parameter default position');
+      throw ERR.asyncInSyncPosition({
+        node: v,
+        ...callSiteLocation(v, e),
+        meta: { where: 'lambda parameter default' }
+      });
     }
     return b;
   };
@@ -3492,12 +3500,38 @@ function generalEnclosedBytes(node: GeneralEnclosed, content: string): string {
 }
 
 /** Bytes for a synchronous position (at-rule prelude); async there is out of scope. */
+/**
+ * Byte evaluation for the positions still confined to the synchronous lane —
+ * chiefly the IMPORT REQUEST path (specifier, options, media tail), whose result
+ * feeds path resolution and the extend preflight before any emission happens.
+ *
+ * TODO(maybe-promise-import-lane): move the import request path onto the
+ * awaitable lane so `@import "@{computed}"` and a computed media tail work.
+ * Tracked in docs/future/core-architecture/HANDOFF.md.
+ */
 function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
   const b = evalBytes(node, frame, e);
   if (isThenable(b)) {
-    throw new Error('async value in an at-rule prelude is unsupported');
+    throw ERR.asyncInSyncPosition({
+      node,
+      ...callSiteLocation(node, e),
+      meta: { where: 'import request / synchronous byte position' }
+    });
   }
   return b;
+}
+
+/** As {@link evalBytesSync}, for the media tail of an import request. */
+function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
+  const value = evalQueryPrelude(node, frame, e);
+  if (isThenable(value)) {
+    throw ERR.asyncInSyncPosition({
+      node,
+      ...callSiteLocation(node, e),
+      meta: { where: 'import request media tail' }
+    });
+  }
+  return value;
 }
 
 /* ---------------------------------------------------- selector composition */
@@ -3755,7 +3789,11 @@ function resolveComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): Ma
 function resolveComplexSync(c: ComplexSelector, frame: Frame | null, e: EvalCtx): string {
   const value = resolveComplex(c, frame, e);
   if (isThenable(value)) {
-    throw new Error('async value in a synchronous selector lookup is unsupported');
+    throw ERR.asyncInSyncPosition({
+      node: c,
+      ...callSiteLocation(c, e),
+      meta: { where: 'mixin-index selector name (an interpolated selector used as a mixin key)' }
+    });
   }
   return value;
 }
@@ -3882,7 +3920,11 @@ function compose(parents: string[], child: SelectorList, frame: Frame | null, e:
 function composeSync(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
   const value = compose(parents, child, frame, e);
   if (isThenable(value)) {
-    throw new Error('async value in a synchronous nested selector composition is unsupported');
+    throw ERR.asyncInSyncPosition({
+      node: child,
+      ...callSiteLocation(child, e),
+      meta: { where: 'nested selector composition' }
+    });
   }
   return value;
 }
@@ -3993,7 +4035,11 @@ function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybeP
 function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
   const value = ownStrings(list, frame, e);
   if (isThenable(value)) {
-    throw new Error('async value in a synchronous nested selector header is unsupported');
+    throw ERR.asyncInSyncPosition({
+      node: list,
+      ...callSiteLocation(list, e),
+      meta: { where: 'nested selector header' }
+    });
   }
   return value;
 }
@@ -6641,7 +6687,11 @@ function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
   const end = evalTyped(node.end, frame, e);
   const step = node.step === null ? null : evalTyped(node.step, frame, e);
   if (isThenable(start) || isThenable(end) || isThenable(step)) {
-    throw new Error('async value in a $for range is unsupported');
+    throw ERR.asyncInSyncPosition({
+      node,
+      ...callSiteLocation(node, e),
+      meta: { where: '$for range bound' }
+    });
   }
   if (isValueGroupArray(start) || isValueGroupArray(end) || (step !== null && isValueGroupArray(step))
     || start.type !== 'Dimension' || end.type !== 'Dimension' || (step !== null && step.type !== 'Dimension')) {
@@ -6794,7 +6844,11 @@ function dispatch(
       : { parent: frame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
     const b = evalBytes(v, overlay, e);
     if (isThenable(b)) {
-      throw new Error('async value in a synchronous dispatch position');
+      throw ERR.asyncInSyncPosition({
+        node: v,
+        ...callSiteLocation(v, e),
+        meta: { where: 'mixin parameter default' }
+      });
     }
     return b;
   };
@@ -7901,38 +7955,83 @@ function normalizeSupportsPrelude(parts: readonly SupportsPreludePart[]): string
  * deliberately local to the supports prelude; ordinary declaration values keep
  * their existing evaluation semantics.
  */
-function evalSupportsPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): SupportsPreludePart[] {
+function evalSupportsPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<SupportsPreludePart[]> {
   const plain = (bytes: string): SupportsPreludePart[] => [{ bytes, protected: false }];
   if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
-    return node.flatMap((part, index) => [
-      ...(index === 0 ? [] : plain(authored?.[index - 1] ?? ' ')),
-      ...evalSupportsPreludeSync(part, frame, e)
-    ]);
+    const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
+    for (let index = 0; index < node.length; index += 1) {
+      if (index > 0) {
+        parts.push(plain(authored?.[index - 1] ?? ' '));
+      }
+      parts.push(evalSupportsPrelude(node[index]!, frame, e));
+    }
+    return concatPreludeParts(parts);
   }
   switch (node.type) {
     case 'GeneralEnclosed':
-      // `<general-enclosed>` owns arbitrary CSS syntax. Its bytes must not pass
-      // through the supports-condition whitespace canonicalizer below.
-      return [{ bytes: generalEnclosedBytes(node, evalBytesSync(node.content, frame, e)), protected: true }];
+      return mapMaybe(evalBytes(node.content, frame, e), content =>
+        [{ bytes: generalEnclosedBytes(node, content), protected: true }]);
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
-      return [...plain(open), ...evalSupportsPreludeSync(node.inner, frame, e), ...plain(close)];
+      return concatPreludeParts([plain(open), evalSupportsPrelude(node.inner, frame, e), plain(close)]);
     }
-    case 'Operation': {
-      const left = evalSupportsPreludeSync(node.left, frame, e);
-      const right = evalSupportsPreludeSync(node.right, frame, e);
-      return [...left, ...plain(node.operator === ':' ? ': ' : ` ${node.operator} `), ...right];
-    }
-    case 'SpacedValue':
-      return node.parts.flatMap((part, index) => [
-        ...(index === 0 ? [] : plain(' ')),
-        ...evalSupportsPreludeSync(part, frame, e)
+    case 'Operation':
+      return concatPreludeParts([
+        evalSupportsPrelude(node.left, frame, e),
+        plain(node.operator === ':' ? ': ' : ` ${node.operator} `),
+        evalSupportsPrelude(node.right, frame, e)
       ]);
+    case 'SpacedValue': {
+      const parts: Array<MaybePromise<SupportsPreludePart[]>> = [];
+      for (let index = 0; index < node.parts.length; index += 1) {
+        if (index > 0) {
+          parts.push(plain(' '));
+        }
+        parts.push(evalSupportsPrelude(node.parts[index]!, frame, e));
+      }
+      return concatPreludeParts(parts);
+    }
     default:
-      return plain(evalBytesSync(node, frame, e));
+      return mapMaybe(evalBytes(node, frame, e), plain);
   }
+}
+
+/** The `SupportsPreludePart[]` analogue of {@link joinPreludeParts}. */
+function concatPreludeParts(
+  parts: Array<MaybePromise<SupportsPreludePart[]>>
+): MaybePromise<SupportsPreludePart[]> {
+  const out: SupportsPreludePart[] = [];
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]!;
+    if (isThenable(part)) {
+      return Promise.all(parts.slice(index)).then(rest => [...out, ...rest.flat()]);
+    }
+    out.push(...part);
+  }
+  return out;
+}
+
+/**
+ * Concatenate prelude fragments in SOURCE order. Stays entirely synchronous
+ * while every fragment is settled — the ordinary prelude allocates one array and
+ * no promise — and only the first awaitable fragment moves the join onto
+ * `Promise.all`, which preserves positional order regardless of which fragment
+ * settles first.
+ */
+function joinPreludeParts(parts: Array<MaybePromise<string>>): MaybePromise<string> {
+  let out = '';
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]!;
+    if (isThenable(part)) {
+      // Only the remaining tail needs awaiting; what is already joined stays put,
+      // so the result reads in source order however the tail settles.
+      return Promise.all(parts.slice(index)).then(rest => out + rest.join(''));
+    }
+    out += part;
+  }
+  return out;
 }
 
 /**
@@ -7941,48 +8040,56 @@ function evalSupportsPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCt
  * must not erase the feature delimiters.  Keep that structural spelling while
  * delegating all leaf evaluation to the normal value path.
  */
-function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
+function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   if (isValueSlotArray(node)) {
     const authored = valueLayoutOf(node);
-    let out = '';
+    const parts: Array<MaybePromise<string>> = [];
     for (let index = 0; index < node.length; index += 1) {
       if (index > 0) {
         const separator = authored?.[index - 1];
-        out += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' ';
+        parts.push(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : ' ');
       }
-      out += evalQueryPreludeSync(node[index]!, frame, e);
+      parts.push(evalQueryPrelude(node[index]!, frame, e));
     }
-    return out;
+    return joinPreludeParts(parts);
   }
   switch (node.type) {
     case 'Block': {
       const open = node.delimiter === 'square' ? '[' : '(';
       const close = node.delimiter === 'square' ? ']' : ')';
-      return `${open}${evalQueryPreludeSync(node.inner, frame, e)}${close}`;
+      return mapMaybe(evalQueryPrelude(node.inner, frame, e), inner => `${open}${inner}${close}`);
     }
-    case 'Operation': {
-      const left = evalQueryPreludeSync(node.left, frame, e);
-      const right = evalQueryPreludeSync(node.right, frame, e);
-      return node.operator === ':'
-        ? `${left}: ${right}`
-        : `${left} ${node.operator} ${right}`;
+    case 'Operation':
+      return joinPreludeParts([
+        evalQueryPrelude(node.left, frame, e),
+        node.operator === ':' ? ': ' : ` ${node.operator} `,
+        evalQueryPrelude(node.right, frame, e)
+      ]);
+    case 'SpacedValue': {
+      const parts: Array<MaybePromise<string>> = [];
+      for (let index = 0; index < node.parts.length; index += 1) {
+        if (index > 0) {
+          parts.push(' ');
+        }
+        parts.push(evalQueryPrelude(node.parts[index]!, frame, e));
+      }
+      return joinPreludeParts(parts);
     }
-    case 'SpacedValue':
-      return node.parts.map(part => evalQueryPreludeSync(part, frame, e)).join(' ');
-    case 'List':
+    case 'List': {
       const glue = node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ';
       const authored = valueLayoutOf(node);
-      let out = '';
+      const parts: Array<MaybePromise<string>> = [];
       for (let index = 0; index < node.value.length; index += 1) {
         if (index > 0) {
           const separator = authored?.[index - 1];
-          out += separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue;
+          parts.push(separator !== undefined && /[\r\n]|\/\*/u.test(separator) ? separator : glue);
         }
-        out += evalQueryPreludeSync(node.value[index]!, frame, e);
+        parts.push(evalQueryPrelude(node.value[index]!, frame, e));
       }
-      return out;
+      return joinPreludeParts(parts);
+    }
     default:
-      return evalBytesSync(node, frame, e);
+      return evalBytes(node, frame, e);
   }
 }
 
@@ -8084,7 +8191,40 @@ function normalizeQueryPlainRun(s: string): string {
  * plain declaration/keyframe block (`emitAtRuleBody`) and `ctx` is ignored. An
  * at-rule whose body renders empty is dropped entirely (header + braces).
  */
+/**
+ * The emitted bytes of an at-rule prelude. `@supports` and `@media`/`@container`
+ * own structural spellings the ordinary value path would erase, so each keeps
+ * its own builder; all three resolve on the awaitable lane and stay synchronous
+ * when nothing in the prelude needs awaiting.
+ */
+function atRulePreludeBytes(node: AtRuleBlock, frame: Frame, e: Emit): MaybePromise<string> {
+  if (node.prelude === null) {
+    return '';
+  }
+  const lname = node.name.toLowerCase();
+  if (lname === '@supports') {
+    return mapMaybe(evalSupportsPrelude(node.prelude, frame, e), normalizeSupportsPrelude);
+  }
+  if (lname === '@media' || lname === '@container') {
+    return mapMaybe(evalQueryPrelude(node.prelude, frame, e), normalizeQueryPrelude);
+  }
+  return evalBytes(node.prelude, frame, e);
+}
+
 function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[] | null = null): MaybePromise<void> {
+  // The prelude resolves BEFORE any byte is written, so the rewind marks below
+  // still bracket exactly this at-rule's output.
+  return mapMaybe(atRulePreludeBytes(node, frame, e), prelude =>
+    emitAtRuleBlockResolved(node, frame, e, ctx, prelude));
+}
+
+function emitAtRuleBlockResolved(
+  node: AtRuleBlock,
+  frame: Frame,
+  e: Emit,
+  ctx: string[] | null,
+  prelude: string
+): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
@@ -8094,20 +8234,9 @@ function emitAtRuleBlock(node: AtRuleBlock, frame: Frame, e: Emit, ctx: string[]
     put(e, idt);
   }
   put(e, node.name);
-  if (node.prelude !== null) {
-    const lname = node.name.toLowerCase();
-    let p = lname === '@supports'
-      ? normalizeSupportsPrelude(evalSupportsPreludeSync(node.prelude, frame, e))
-      : lname === '@media' || lname === '@container'
-        ? evalQueryPreludeSync(node.prelude, frame, e)
-        : evalBytesSync(node.prelude, frame, e);
-    if (lname === '@media' || lname === '@container') {
-      p = normalizeQueryPrelude(p);
-    }
-    if (p.length > 0) {
-      put(e, ' ');
-      put(e, p);
-    }
+  if (prelude.length > 0) {
+    put(e, ' ');
+    put(e, prelude);
   }
   put(e, ' {\n');
   const afterHeader = e.chunks.length;
@@ -9510,6 +9639,17 @@ function emitNestedAtRuleBlock(
   e: Emit,
   source: NestedHeaderSource | null = null
 ): MaybePromise<void> {
+  return mapMaybe(atRulePreludeBytes(node, frame, e), prelude =>
+    emitNestedAtRuleBlockResolved(node, frame, e, source, prelude));
+}
+
+function emitNestedAtRuleBlockResolved(
+  node: AtRuleBlock,
+  frame: Frame,
+  e: Emit,
+  source: NestedHeaderSource | null,
+  prelude: string
+): MaybePromise<void> {
   const markChunks = e.chunks.length;
   const markOff = e.off;
   const markPos = e.positions ? e.positions.length : 0;
@@ -9519,20 +9659,9 @@ function emitNestedAtRuleBlock(
     put(e, idt);
   }
   put(e, node.name);
-  if (node.prelude !== null) {
-    const lname = node.name.toLowerCase();
-    let p = lname === '@supports'
-      ? normalizeSupportsPrelude(evalSupportsPreludeSync(node.prelude, frame, e))
-      : lname === '@media' || lname === '@container'
-        ? evalQueryPreludeSync(node.prelude, frame, e)
-        : evalBytesSync(node.prelude, frame, e);
-    if (lname === '@media' || lname === '@container') {
-      p = normalizeQueryPrelude(p);
-    }
-    if (p.length > 0) {
-      put(e, ' ');
-      put(e, p);
-    }
+  if (prelude.length > 0) {
+    put(e, ' ');
+    put(e, prelude);
   }
   put(e, ' {\n');
   const afterHeader = e.chunks.length;
