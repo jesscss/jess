@@ -795,6 +795,39 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('gives an unknown functional pseudo the general any-value argument (Selectors-4 §3.5)', () => {
+    // Whether a pseudo-class exists is a language-service fact, not a parse
+    // decision: an unknown functional pseudo takes `<any-value>`, so rejecting it
+    // turned a diagnosable squiggle into a lost file. The other three dialects
+    // already run this delimiter-aware verbatim scan for the same class.
+    for (const [source, text] of [
+      ['.x:totally-made-up(1) { color: red; }', ':totally-made-up(1)'],
+      ['.x:lang("en-US") { color: red; }', ':lang("en-US")'],
+      // The scan is delimiter-aware: a `)` inside a string or a bracket group is
+      // argument content, not the argument's close.
+      ['.x:future-thing("b(c)") { color: red; }', ':future-thing("b(c)")'],
+      ['.x:future-thing([d]) { color: red; }', ':future-thing([d])']
+    ] as const) {
+      expect(parse(source), source).toMatchObject({
+        children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [{ text: '.x' }, { text }] } }] } }]
+      });
+    }
+
+    // The selector-argument class keeps its selector-ONLY argument: a failed
+    // selector must reject the whole pseudo rather than fall through to the
+    // any-value scan, and a Jess interpolation must stay typed rather than being
+    // flattened into opaque argument text.
+    for (const source of [
+      '.x:not(2n+1) { color: red; }',
+      '.x:is(2n+1) { color: red; }',
+      '.x:has(2n+1) { color: red; }',
+      '.x:totally-made-up($name) { color: red; }'
+    ]) {
+      const rejected = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
+    }
+  });
+
   it('accepts An+B and selector pseudo whitespace as valid CSS, normalizing surrounding argument space', () => {
     // Valid CSS is valid .jess: Selectors-4 §6.6.2 permits OPTIONAL whitespace
     // around the `+`/`-` sign, and CSS permits insignificant whitespace
@@ -976,13 +1009,90 @@ describe('Jess AST grammar facts', () => {
     });
     expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(`${source}\n`);
 
+    // A prelude-less unknown block is the common spelling. The prelude capture is
+    // an `optional(scanTo(...))` that emits no child when it matches nothing, so
+    // this reduces through a different child count than the prelude-bearing case
+    // above; both must land the same raw facts.
+    expect(parse('@vendor-rule { raw: 1; }').children[0]).toMatchObject({
+      type: 'OpaqueAtRuleBlock',
+      name: '@vendor-rule',
+      prelude: null,
+      rawBody: ' raw: 1; '
+    });
+
+    // Which at-rules exist is a language-service fact: a vendor prefix is
+    // ordinary unknown CSS and must pass through, exactly as it does in the other
+    // three dialects. Only Jess's own compiler namespace is reserved.
+    for (const [source, name] of [
+      ['@-webkit-madeup { raw: 1; }', '@-webkit-madeup'],
+      ['@-future raw { value: 1; }', '@-future'],
+      ['@-moz-whatever screen { raw: 1; }', '@-moz-whatever']
+    ] as const) {
+      expect(parse(source).children[0], source).toMatchObject({ type: 'OpaqueAtRuleBlock', name });
+    }
+
     for (const invalid of [
       '@vendor-rule $[name] { raw: 1; }',
       '@vendor-rule $(name) { raw: 1; }',
       '@media { .card { color: red; } }',
-      '@-future raw { value: 1; }'
+      // The compiler namespace a module directive lowers to is never CSS output,
+      // so it must reject rather than degrade to opaque bytes.
+      '@-use raw { value: 1; }',
+      '@-compose raw { value: 1; }',
+      '@-export raw { value: 1; }',
+      '@-import raw { value: 1; }',
+      '@-from raw { value: 1; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+  });
+
+  it('constructs the CSS at-rule header shapes the generic static prelude could not reach', () => {
+    // `@scope (<start>) [to (<end>)]` — css-cascade-6 §3. The prelude is a pair of
+    // SELECTOR lists, not a media-style feature query, so it reduces to the same
+    // verbatim `Any` css and scss carry while the body stays an ordinary
+    // declaration list.
+    expect(parse('@scope (.a) to (.b) { a { color: red; } }')).toMatchObject({
+      children: [{
+        type: 'AtRuleBlock',
+        name: '@scope',
+        prelude: { type: 'Any', src: '(.a) to (.b)' },
+        body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+      }]
+    });
+    expect(parse('@scope (.a) { a { color: red; } }').children[0]).toMatchObject({ prelude: { type: 'Any', src: '(.a)' } });
+    // A prelude-less `@scope` and the statement form keep their existing shapes.
+    expect(parse('@scope { a { color: red; } }').children[0]).toMatchObject({ type: 'AtRuleBlock', name: '@scope', prelude: null });
+    expect(parse('@scope;').children[0]).toMatchObject({ type: 'AtRuleStatement', name: '@scope', prelude: null });
+
+    // A `<dashed-ident>` header name — css-anchor-position-1 §5.1. The CSS ident
+    // leaf admits one leading dash, so only the two-dash spelling was rejected.
+    expect(parse('@position-try --foo { top: 0; }')).toMatchObject({
+      children: [{ type: 'AtRuleBlock', name: '@position-try', prelude: { type: 'Keyword', src: '--foo' }, body: [{ type: 'Declaration', name: 'top' }] }]
+    });
+
+    // The functional `@import` conditions — css-cascade-5 §2.1. `supports(...)`
+    // reuses the typed `@supports` condition rather than restating it.
+    expect(parse('@import "a.css" supports(display: grid);').children[0]).toMatchObject({
+      type: 'AtRuleStatement',
+      name: '@import',
+      prelude: {
+        type: 'SpacedValue',
+        parts: [
+          { type: 'Quoted', value: 'a.css' },
+          { type: 'FunctionCall', name: 'supports', args: [{ type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }] }
+        ]
+      }
+    });
+    expect(parse('@import "a.css" layer(base);').children[0]).toMatchObject({
+      prelude: { parts: [{ type: 'Quoted' }, { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'base' }] }] }
+    });
+
+    // A dynamic header stays rejected: the static prelude capture stops at a
+    // top-level `$`, so nothing is hidden in raw bytes.
+    for (const source of ['@scope ($sel) { a { color: red; } }', '@scope (.a) to ($end) { a { color: red; } }']) {
+      const rejected = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
     }
   });
 

@@ -4,7 +4,7 @@
  * It never composes the CST grammar: Parseman reductions construct canonical
  * core facts directly.
  */
-import { attempt, choice, composeLeaf, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, sequence, trivia } from 'parseman' with { type: 'macro' };
+import { attempt, balanced, choice, composeLeaf, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
@@ -92,6 +92,7 @@ type JessAstRules = {
   DirectJessAttribute: Combinator<SimpleSelector>;
   DirectJessPseudo: Combinator<SimpleToken>;
   DirectJessStaticPseudoArgument: Combinator<SelectorList | string>;
+  DirectJessGenericPseudoArgument: Combinator<SelectorList | string>;
   DirectJessCompound: Combinator<CompoundSelector>;
   DirectJessStaticCompound: Combinator<CompoundSelector>;
   DirectJessStaticComplexTail: Combinator<JessComplexTail>;
@@ -131,6 +132,7 @@ type JessAstRules = {
   DirectJessStaticAtNonOnlyKeyword: Combinator<Keyword>;
   DirectJessStaticAtNonOnlyAtom: Combinator<ValueNode>;
   DirectJessStaticAtQuery: Combinator<ValueNode>;
+  DirectJessStaticAtDashedIdent: Combinator<Keyword>;
   DirectJessStaticAtPreludeTerm: Combinator<ValueNode>;
   DirectJessStaticAtPrelude: Combinator<ValueNode | null>;
   DirectJessMediaVariableExpression: Combinator<Interpolation>;
@@ -151,6 +153,7 @@ type JessAstRules = {
   DirectJessSupportsInParens: Combinator<ValueNode>;
   DirectJessSupportsCondition: Combinator<ValueNode>;
   DirectJessCssImportTarget: Combinator<Quoted | Url>;
+  DirectJessImportTailFunction: Combinator<FunctionCall>;
   DirectJessCssImportPrelude: Combinator<ValueNode>;
   DirectJessCharset: Combinator<AtRuleStatement>;
   DirectJessCssImport: Combinator<AtRuleStatement>;
@@ -161,7 +164,10 @@ type JessAstRules = {
   DirectJessKeyframeSelector: Combinator<SimpleSelector>;
   DirectJessKeyframeBlock: Combinator<Rule>;
   DirectJessKeyframes: Combinator<AtRuleBlock>;
+  DirectJessOpaquePrelude: Combinator<string | null>;
+  DirectJessOpaqueBody: Combinator<string>;
   DirectJessOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  DirectJessScopeBlock: Combinator<AtRuleBlock>;
   DirectJessAtRuleBlock: Combinator<AtRuleBlock>;
   DirectJessAtRuleStatement: Combinator<AtRuleStatement>;
   whitespace: Combinator<unknown>;
@@ -179,6 +185,7 @@ type SharedCssAstSyntax = {
   CssAstSyntaxNthChildName: Combinator<string>;
   CssAstSyntaxNthTypeName: Combinator<string>;
   CssAstSyntaxNthName: Combinator<string>;
+  CssAstSyntaxSelectorArgPseudoName: Combinator<string>;
   CssAstSyntaxOfKeyword: Combinator<string>;
   CssAstSyntaxPseudoCloseAhead: Combinator<string>;
   CssAstSyntaxNumber: Combinator<string>;
@@ -1058,15 +1065,25 @@ const jessGeneralTemplateText = regex(/(?:[^$()\[\]{}'"\\]|\\[\s\S])+/);
 // separate grammar facts. Whitespace, quotes, parentheses, and any other `$`
 // form remain outside this closed URL slice rather than becoming raw payload.
 const jessUrlInterpolatedText = regex(/(?:[^"'()$\ \t\n\r\f\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-// Media and container are excluded here so the header choice can lead every arm
-// with a concrete `@` first-set (their dedicated arms own those names). Keeping
-// `media`/`container` out of the generic name is what lets the whole at-rule
-// subtree be `@`-dispatched instead of speculatively entered at every rule.
-const jessGenericCssAtRuleName = regex(/@(?!-|(?:charset|import|supports|property|media|container|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+// Jess's compiler namespace: the `@-\u2026` names a module directive lowers to. They
+// are not CSS output, so they must never be claimed by the generic at-rule arms
+// or captured as opaque bytes \u2014 their own typed productions own them, and a
+// malformed one must report its own error rather than silently degrade.
+const jessCompilerAtRuleName = regex(/@-(?:use|compose|export|import|from)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+// The exclusion list is dispatch, not vocabulary: every name here HAS a typed
+// production. Media and container are excluded so the header choice can lead
+// every arm with a concrete `@` first-set (their dedicated arms own those
+// names); keeping `media`/`container` out of the generic name is what lets the
+// whole at-rule subtree be `@`-dispatched instead of speculatively entered at
+// every rule. Only the five compiler names are excluded from the `@-\u2026` space \u2014
+// which at-rules exist is a language-service fact, so an ordinary vendor prefix
+// (`@-webkit-anything`, `@-moz-document`) is plain unknown CSS and passes.
+const jessGenericCssAtRuleName = regex(/@(?!(?:charset|import|supports|property|media|container|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uffff]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
 const jessCharsetAtRuleName = regex(/@charset(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessImportAtRuleName = regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessSupportsAtRuleName = regex(/@supports(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessPropertyAtRuleName = regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+const jessScopeAtRuleName = regex(/@scope(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const jessKeyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 
@@ -1652,20 +1669,25 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     // accepts it; it is trivia, so the serialized argument stays normalized.
     // The nth families dispatch by NAME (shared `g.CssAstSyntaxNthChildName`/
     // `g.CssAstSyntaxNthTypeName`) so `of S` is accepted only on the child index
-    // and rejected on the type index; every other pseudo takes the generic
-    // selector argument. The generic arm excludes every nth name at its identifier
-    // boundary (`g.CssAstSyntaxNthName`) so a malformed nth argument — or a bare,
-    // paren-less nth name (`:nth-child`) — rejects rather than falling through to
-    // a keyword pseudo or the opaque path.
+    // and rejected on the type index. The selector-argument pseudos
+    // (`:is`/`:where`/`:not`/`:has`/`:matches`) dispatch by their own shared name
+    // class and take a selector-ONLY argument with no any-value fallback, so
+    // `:not(2n+1)` fails the selector and rejects the whole pseudo. Everything
+    // else is the general-any class. Both guards are restated as negative
+    // lookaheads on that last arm so a failed selector or malformed nth argument
+    // cannot fall through to the any-value scan; a bare, paren-less nth name
+    // (`:nth-child`) still rejects rather than becoming a keyword pseudo.
     sequence(
       g.CssAstSyntaxPseudoColon,
       choice(
         sequence(g.CssAstSyntaxNthChildName, literal('('), optional(rawWhitespace), DirectJessStaticNthChildArgument, optional(rawWhitespace), literal(')')),
         sequence(g.CssAstSyntaxNthTypeName, literal('('), optional(rawWhitespace), DirectJessStaticNthTypeArgument, optional(rawWhitespace), literal(')')),
+        sequence(g.CssAstSyntaxSelectorArgPseudoName, literal('('), optional(rawWhitespace), g.DirectJessStaticPseudoArgument, optional(rawWhitespace), literal(')')),
         sequence(
+          not(g.CssAstSyntaxSelectorArgPseudoName),
           not(g.CssAstSyntaxNthName),
           g.CssAstSyntaxKeyword,
-          optional(sequence(literal('('), optional(rawWhitespace), g.DirectJessStaticPseudoArgument, optional(rawWhitespace), literal(')')))
+          optional(sequence(literal('('), g.DirectJessGenericPseudoArgument, literal(')')))
         )
       )
     ),
@@ -1744,6 +1766,42 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
         throw new TypeError('Direct Jess static pseudo argument lost its selector.');
       }
       return selector;
+    }
+  );
+  // A functional pseudo this grammar has no typed argument for is still
+  // well-formed CSS: Selectors-4 §3.5 gives an unknown functional pseudo-class an
+  // `<any-value>` argument, and WHETHER a pseudo exists is a language-service
+  // fact, not a parse decision — `a:totally-made-up(1)` and `:lang("en-US")` lost
+  // the whole stylesheet. The selector arm is tried first so every argument that
+  // already parsed keeps its structured `SelectorList` byte-for-byte; only what
+  // previously rejected reaches the delimiter-aware verbatim scan the other three
+  // dialects already run for this class (css `pseudoRawArgument`, scss's chunk
+  // grammar, less `DirectLessStaticNonSelectorPseudo`). A top-level `$` ends the
+  // scan, so the required `)` then fails: a Jess interpolation in a pseudo
+  // argument still rejects rather than being flattened into opaque text.
+  const jessPseudoRawDoubleQuoted = sequence(literal('"'), plainDoubleQuotedText, literal('"'));
+  const jessPseudoRawSingleQuoted = sequence(literal('\''), plainSingleQuotedText, literal('\''));
+  const jessPseudoRawArgument = scanTo(choice(literal('$'), literal(')')), {
+    skip: [
+      balanced('(', ')', { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }),
+      balanced('[', ']', { skip: [jessPseudoRawDoubleQuoted, jessPseudoRawSingleQuoted] }),
+      jessPseudoRawDoubleQuoted,
+      jessPseudoRawSingleQuoted,
+      blockComment
+    ]
+  });
+  const DirectJessGenericPseudoArgument = node<SelectorList | string>(
+    'DirectJessGenericPseudoArgument',
+    choice(
+      sequence(optional(rawWhitespace), g.DirectJessStaticPseudoArgument, optional(rawWhitespace)),
+      jessPseudoRawArgument
+    ),
+    (children) => {
+      const selector = children.find(isSelectorList);
+      if (selector !== undefined) {
+        return selector;
+      }
+      return children.length === 0 ? '' : requireToken(children[0]).value;
     }
   );
   const DirectJessSelectorCapture = node<SelectorCapture>(
@@ -2200,10 +2258,22 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     sequence(not(g.CssAstSyntaxQueryOnly), g.DirectJessKeyword),
     children => requireKeyword(children.at(-1))
   );
+  // A `<dashed-ident>` header name (`@position-try --foo`, css-anchor-position-1
+  // §5.1). The CSS ident leaf admits ONE leading dash, so `-foo` already parsed
+  // and only the two-dash spelling was rejected — losing the whole stylesheet
+  // over valid CSS. It is the same production as a custom-property name, so it
+  // reuses that shared leaf rather than restating the character class; the
+  // reduction is the plain `Keyword` less produces for the same header.
+  const DirectJessStaticAtDashedIdent = node<Keyword>(
+    'DirectJessStaticAtDashedIdent',
+    g.CssAstSyntaxCustomProperty,
+    children => keyword(requireToken(children[0]).value)
+  );
   const DirectJessStaticAtNonOnlyAtom = node<ValueNode>(
     'DirectJessStaticAtNonOnlyAtom',
     choice(
       g.DirectJessStaticAtQuery,
+      g.DirectJessStaticAtDashedIdent,
       sequence(not(g.CssAstSyntaxQueryOnly), g.DirectJessStaticValueAtom)
     ),
     children => requireValueNode(children.at(-1))
@@ -2433,11 +2503,29 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return url(inner ?? keyword(requireToken(children[1]).value));
     }
   );
+  // The two functional `@import` conditions — `supports(<condition>)` and
+  // `layer(<layer-name>)`, css-cascade-5 §2.1. Neither is an ordinary media
+  // query term, so the static prelude term could not recognize either and a
+  // conditional import lost the whole stylesheet. `supports(...)` reuses the
+  // typed `@supports` condition this grammar already owns rather than restating
+  // it, and both reduce to the `FunctionCall` scss produces for the same tail.
+  // Kept local to the import tail: the general at-rule value grammar is not
+  // widened, so no other header gains a function-call spelling here.
+  const DirectJessImportTailFunction = node<FunctionCall>(
+    'DirectJessImportTailFunction',
+    choice(
+      // `<supports-condition>` already owns its own parentheses, so the
+      // `supports(` opener IS the condition's leading paren — no second pair.
+      sequence(regex(/supports(?=\()/i), g.DirectJessSupportsCondition),
+      sequence(regex(/layer(?=\()/i), literal('('), g.DirectJessKeyword, literal(')'))
+    ),
+    children => funcCall(requireToken(children[0]).value, [requireValueNode(children.find(isValueNode))])
+  );
   const DirectJessCssImportPrelude = node<ValueNode>(
     'DirectJessCssImportPrelude',
     noTrivia(sequence(
       g.DirectJessCssImportTarget,
-      many(sequence(regex(/[ \t\n\r\f]+/), g.DirectJessStaticAtPreludeTerm))
+      many(sequence(regex(/[ \t\n\r\f]+/), choice(g.DirectJessImportTailFunction, g.DirectJessStaticAtPreludeTerm)))
     )),
     (children) => {
       const values = children.filter(isValueNode);
@@ -2464,12 +2552,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.DirectJessMixinDef, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend,
     g.DirectJessFor, g.DirectJessIf,
     g.DirectJessRule,
-    g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement,
+    g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessScopeBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement,
     literal(';')
   );
   // Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
   // 15-rule choice with no bare `;` or `$extend` arm.
-  const directJessNestedBodyStatement = choice(literal(';'), g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement);
+  const directJessNestedBodyStatement = choice(literal(';'), g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessScopeBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement);
   const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
     'DirectJessSupportsAtRuleBlock',
     sequence(
@@ -2753,6 +2841,32 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return decl(isToken(children[0]) ? requireToken(children[0]).value : requireInterpolation(children[0]), requireValueSlot(children[2]), null, children.includes(true));
     }
   );
+  // `@scope (<scope-start>) [to (<scope-end>)]` — css-cascade-6 §3. Its prelude is
+  // a pair of SELECTOR lists in parens, not a media-style feature query, so the
+  // generic static header (whose parenthesized form is `(<ident>)`/`(<ident>:
+  // <value>)`) cannot recognize it and the whole stylesheet was lost. css and
+  // scss both carry this prelude as one verbatim `Any` and keep the ordinary
+  // declaration-list body; Jess reduces to the byte-identical shape by reusing
+  // the shared static prelude capture — which stops at a top-level `$`, so a
+  // dynamic `@scope ($sel)` still rejects instead of being hidden in raw bytes.
+  // Ordered ahead of `DirectJessAtRuleBlock`, whose generic name also admits
+  // `@scope`; the statement form (`@scope;`) has no `{` and still falls through.
+  const DirectJessScopeBlock = node<AtRuleBlock>(
+    'DirectJessScopeBlock',
+    sequence(
+      jessScopeAtRuleName,
+      noTrivia(sequence(g.DirectJessOpaquePrelude, literal('{'))),
+      many(directJessAtBlockStatement),
+      literal('}')
+    ),
+    (children) => {
+      const prelude = children[1];
+      if (prelude !== null && typeof prelude !== 'string') {
+        throw new TypeError('Direct Jess scope at-rule lost its grammar-owned prelude.');
+      }
+      return atRuleBlock(requireToken(children[0]).value, prelude === null ? null : any(prelude), collectBlockStatements(children, 2));
+    }
+  );
   const DirectJessAtRuleBlock = node<AtRuleBlock>(
     'DirectJessAtRuleBlock',
     sequence(
@@ -2778,21 +2892,40 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // An unknown CSS block is terminal authored syntax. Its shared recognition
   // artifact owns every balanced/string/comment boundary; the Jess reduction
   // only records raw facts and keeps `$` out of an unquoted dynamic header.
+  // Wrap the two raw captures in their own nodes so this family's child count is
+  // fixed: `JessAstOpaqueStaticPrelude` is an `optional(scanTo(...))` that emits
+  // NO child when the prelude is empty, which shifted every positional index
+  // below by one and silently reduced `@foo { … }` to `prelude: '{'` /
+  // `rawBody: '}'`. A node always emits exactly one child. Mirrors the
+  // `DirectScssOpaquePrelude`/`DirectScssOpaqueBody` and css `CssAstOpaqueAtPrelude`/
+  // `CssAstOpaqueBody` spellings.
+  const DirectJessOpaquePrelude = node<string | null>(
+    'DirectJessOpaquePrelude',
+    g.JessAstOpaqueStaticPrelude,
+    (children) => {
+      const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
+      return text === '' ? null : text;
+    }
+  );
+  const DirectJessOpaqueBody = node<string>(
+    'DirectJessOpaqueBody',
+    g.JessAstOpaqueBody,
+    children => children.length === 0 ? '' : requireToken(children[0]).value
+  );
   const DirectJessOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
     'DirectJessOpaqueAtRuleBlock',
     sequence(
-      not(literal('@-')),
+      not(jessCompilerAtRuleName),
       g.CssAstSyntaxGenericAtRuleName,
-      noTrivia(sequence(g.JessAstOpaqueStaticPrelude, literal('{'), g.JessAstOpaqueBody, literal('}')))
+      noTrivia(sequence(g.DirectJessOpaquePrelude, literal('{'), g.DirectJessOpaqueBody, literal('}')))
     ),
     (children) => {
       const prelude = children[1];
       const rawBody = children[3];
-      if ((prelude !== null && prelude !== undefined && !isToken(prelude)) || !isToken(rawBody)) {
+      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
         throw new TypeError('Direct Jess opaque at-rule lost its grammar-owned raw facts.');
       }
-      const preludeText = prelude === null || prelude === undefined ? null : requireToken(prelude).value.trim() || null;
-      return opaqueAtRuleBlock(requireToken(children[0]).value, preludeText, requireToken(rawBody).value);
+      return opaqueAtRuleBlock(requireToken(children[0]).value, prelude, rawBody);
     }
   );
   // Jess shares the core MixinDef/MixinCall model with the other dialects, but
@@ -3171,7 +3304,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessRule = node<Rule>(
     'DirectJessRule',
-    sequence(g.DirectJessSelector, literal('{'), many(choice(literal(';'), g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement)), literal('}')),
+    sequence(g.DirectJessSelector, literal('{'), many(choice(literal(';'), g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessExtend, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessOpaqueAtRuleBlock, g.DirectJessScopeBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement)), literal('}')),
     (children) => {
       requireExactToken(children[1], '{');
       requireExactToken(children.at(-1), '}');
@@ -3187,7 +3320,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // a `$[...]` import target is a live read and therefore needs its binding
       // activated in source order. CSS imports still cannot appear after a rule.
       many(choice(g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessCssImport)),
-      many(choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessPropertyAtRule, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement))
+      many(choice(g.DirectJessComment, g.DirectJessMixinCall, g.DirectJessStyleImport, g.DirectJessModuleImport, g.DirectJessValueBlockDeclaration, g.DirectJessVarDeclaration, g.DirectJessMixinDef, g.DirectJessFor, g.DirectJessIf, g.DirectJessReferenceCall, g.DirectJessApply, g.DirectJessRule, g.DirectJessSupportsAtRuleBlock, g.DirectJessPropertyAtRule, g.DirectJessKeyframes, g.DirectJessOpaqueAtRuleBlock, g.DirectJessScopeBlock, g.DirectJessAtRuleBlock, g.DirectJessAtRuleStatement))
     ),
     children => stylesheet(requireStatements(children.flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])))
   );
@@ -3234,6 +3367,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessStaticAtNonOnlyKeyword,
     DirectJessStaticAtNonOnlyAtom,
     DirectJessStaticAtQuery,
+    DirectJessStaticAtDashedIdent,
     DirectJessStaticAtPreludeTerm,
     DirectJessStaticAtPrelude,
     DirectJessMediaVariableExpression,
@@ -3254,6 +3388,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessSupportsInParens,
     DirectJessSupportsCondition,
     DirectJessCssImportTarget,
+    DirectJessImportTailFunction,
     DirectJessCssImportPrelude,
     DirectJessUrlInterpolatedValue,
     DirectJessCharset,
@@ -3265,7 +3400,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessKeyframeSelector,
     DirectJessKeyframeBlock,
     DirectJessKeyframes,
+    DirectJessOpaquePrelude,
+    DirectJessOpaqueBody,
     DirectJessOpaqueAtRuleBlock,
+    DirectJessScopeBlock,
     DirectJessAtRuleBlock,
     DirectJessAtRuleStatement,
     DirectJessDimension,
@@ -3306,6 +3444,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessAttribute,
     DirectJessPseudo,
     DirectJessStaticPseudoArgument,
+    DirectJessGenericPseudoArgument,
     DirectJessCompound,
     DirectJessStaticCompound,
     DirectJessStaticComplexTail,
