@@ -816,6 +816,18 @@ const directScssGeneralTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{
 // a Parseman lexical production for a static component value, not declaration
 // name recognition or a string post-pass.
 const directScssCustomPropertyValue = regex(/--(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+// Grammar-local copies of the leading pseudo-colon, hex-color and number
+// recognizers (byte-identical to the shared CssAstSyntaxPseudoColon /
+// CssAstSyntaxHexColor / CssAstSyntaxNumber). Leading a choice arm with a
+// cross-composition `g.CssAstSyntax*` reference leaves that arm's first-set
+// unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
+// enters the Pseudo / Color / Dimension node frame SPECULATIVELY at every simple
+// selector and value atom. A grammar-local leading recognizer lets the compiler
+// resolve the arm's first-set (`:`, `#`, a digit/sign) and first-char-gate it,
+// skipping the doomed frame entirely.
+const pseudoColon = regex(/::?/);
+const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
+const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
 
 export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ trivia: whitespace }, (g) => {
   // SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
@@ -912,12 +924,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   );
   const DirectScssColor = node<Color>(
     'DirectScssColor',
-    g.CssAstSyntaxHexColor,
+    hexColor,
     children => color(requireToken(children[0]).value)
   );
   const DirectScssDimension = node<Dimension>(
     'DirectScssDimension',
-    noTrivia(sequence(g.CssAstSyntaxNumber, optional(g.CssAstSyntaxDimensionUnit))),
+    noTrivia(sequence(numberValue, optional(g.CssAstSyntaxDimensionUnit))),
     (children) => {
       const numberText = requireToken(children[0]).value;
       const unit = children.length > 1 ? requireToken(children[1]).value : '';
@@ -2579,7 +2591,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       // Its complete static grammar owns the whole argument, and the numeric
       // malformed-prefix gate prevents a broken An+B form from falling through
       // to ordinary raw pseudo content.
-      sequence(g.CssAstSyntaxPseudoColon, directScssNthPseudoNameWithArgument, literal('('), not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument, literal(')')),
+      sequence(pseudoColon, directScssNthPseudoNameWithArgument, literal('('), not(g.CssAstSyntaxMalformedPseudoNumericArgument), g.DirectScssStaticPseudoArgument, literal(')')),
       // Insignificant whitespace surrounding the `<An+B>` argument inside the
       // parens (`:nth-child( 2n+1 )`) is normalized away, matching the other
       // dialects; sign whitespace inside the argument (`2n + 1`, `n - 3`) stays
@@ -2596,7 +2608,7 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
       // rejects `#{`) before the structural parse commits; an interpolated or
       // non-selector arg fails here and falls through to the opaque/reject arms.
       sequence(
-        g.CssAstSyntaxPseudoColon,
+        pseudoColon,
         directScssStructuredPseudoNameWithArgument,
         literal('('),
         not(not(sequence(g.DirectScssStaticSelectorPseudoArgument, literal(')')))),
@@ -2610,12 +2622,12 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
     ),
     node<SimpleSelector>(
       'DirectScssSelectorPseudo',
-      sequence(g.CssAstSyntaxPseudoColon, directScssSelectorPseudoNameWithArgument, literal('('), g.DirectScssStaticSelectorPseudoArgument, literal(')')),
+      sequence(pseudoColon, directScssSelectorPseudoNameWithArgument, literal('('), g.DirectScssStaticSelectorPseudoArgument, literal(')')),
       children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value}(${requireString(children[3])})`)
     ),
     node<SimpleSelector>(
       'DirectScssGenericPseudo',
-      sequence(g.CssAstSyntaxPseudoColon, not(choice(directScssNthPseudoNameWithArgument, directScssSelectorPseudoNameWithArgument)), g.CssAstSyntaxKeyword, optional(sequence(literal('('), g.DirectScssPseudoArgument, literal(')')))),
+      sequence(pseudoColon, not(choice(directScssNthPseudoNameWithArgument, directScssSelectorPseudoNameWithArgument)), g.CssAstSyntaxKeyword, optional(sequence(literal('('), g.DirectScssPseudoArgument, literal(')')))),
       (children) => {
         const head = `${requireToken(children[0]).value}${requireToken(children[1]).value}`;
         return children.length === 2 ? simpleSelector(head) : simpleSelector(`${head}(${requireString(children[3])})`);
