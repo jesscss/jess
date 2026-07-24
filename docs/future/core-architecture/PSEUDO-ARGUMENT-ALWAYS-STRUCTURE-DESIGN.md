@@ -94,28 +94,49 @@ SCSS today models pseudo args as raw text chunks
 - AST model: selector-list/nth args already fit `PseudoSelector.args` (SelectorList) + a structured
   nth. The open model question is the ident-list / any-value classes (§7 Q1).
 
-## 7. Open questions for owner review
+## 7. Owner resolution (2026-07-23) + concrete per-dialect deltas
 
-1. **How far does "always structure, even for unknowns" go for NON-selector args?** Selector args
-   and nth are clearly structured. But `:lang(en)`, `:dir(rtl)`, and unknown `:foo(bar baz)`:
-   - (a) **Full structure**: model ident-list and a structure-preserving `<any-value>` node; delete
-     the opaque `text` path entirely. Purest to the directive, but a `PseudoSelector.args` model
-     change (args becomes a union beyond `SelectorList`) and the largest surface.
-   - (b) **Structure the selector + nth classes now; keep ident/any-value as retained opaque `text`
-     for this landing** (still no LOSS — text is verbatim source, not a canonicalized join), and do
-     the ident/any-value structuring as a separate follow-on.
-   - Recommendation: (b) for this landing — it closes BOTH divergences, gives scss the of-fix, and
-     deletes `*SelectorText`, at bounded risk; (a)'s any-value model change is separable and lower
-     value (no divergence depends on it). Need your call: is retained-verbatim `text` for
-     `:lang`/unknown acceptable, or must this landing structure them too?
-2. **`:lang`/`:dir` rejection strictness**: if structured (7-a), do we REJECT a malformed
-   `:lang(1.5)` (strict, sass+ style) or keep it opaque? (Consistent with the nth malformed-gate
-   philosophy → reject.)
-3. **Migration order / batching**: css+jess+less already share nth recognition. This landing adds
-   the selector-arg-class + scss. Do it as one landing per dialect (css → jess → less → scss), or
-   batch the css/jess/less selector-arg change (small) and land scss separately (the big one)?
-   Recommendation: land the css/jess/less selector-arg-only change + divergence unification first
-   (small, closes divergences), then scss text→structure as its own gated landing.
+**Q1 RESOLVED — three classes; unknowns use the general-any algorithm.** Owner: "for unknowns they
+can be the general unknown any algorithm (like matching braces and general tokens like quotes and
+comments)." So:
+- **selector-list class** (`:is/:where/:not/:has/:matches` + slotted/host) → dialect selector-list
+  (+ interp), REJECT non-selector.
+- **nth class** (`:nth-child/:nth-last-child` An+B `[of sel]`; `:nth-of-type/:nth-last-of-type` bare
+  An+B) → structured, REQUIRE `(…)`, of-restriction.
+- **general-any class** (`:lang`, `:dir`, unknown `:foo(…)`) → the EXISTING balanced-paren/bracket/
+  quote/comment-aware scan (css `pseudoRawArgument`, scss chunk grammar, less
+  `DirectLessStaticNonSelectorPseudo`) producing a VERBATIM capture. This already IS the "general any"
+  algorithm — kept as-is, not flattened/canonicalized, no per-pseudo typing, no `PseudoSelector.args`
+  model change. Q2 (lang/dir malformed strictness) is therefore moot — verbatim any-value.
+
+The divergence fixes come entirely from tightening the selector + nth classes so they no longer FALL
+THROUGH to the general-any arm; the general-any arm itself is unchanged.
+
+**Per-dialect delta (traced against current grammars):**
+- **less — already correct, NO change.** `:not/:is/…` route through `directStaticSelectorPseudoName`
+  → selector-only (rejects `:not(2n+1)`); the generic-any arm excludes both selector-arg AND nth
+  names; bare `:nth-child` is rejected by its identifier-boundary guard. Done.
+- **jess — one change.** Already selector-only for `:not` (post-1b rejects `:not(2n+1)`). Needs the
+  bare-nth-name guard so `:nth-child`/`:nth-of-type` WITHOUT `(…)` reject (currently accepted as a
+  keyword pseudo).
+- **css — two changes.** (1) Make selector-arg pseudos (`:is/:where/:not/:has/:matches`) selector-only
+  by adding a shared selector-arg-name class and routing those names to `CssAstGenericPseudoArgument`
+  WITHOUT the `pseudoRawArgument` fallback (the fallback stays for the true general-any pseudos only)
+  → rejects `:not(2n+1)`. (2) Add the bare-nth-name guard (reject `:nth-child` with no `(…)`).
+- **scss — the big one (text→structure).** Route `:is/:where/:not/:has/:matches` through
+  `g.DirectScssSelector` (structured) not the text arm; nth → structured child/of-type + of-restriction;
+  add bare-nth guard; keep `#{…}` interp escape + the general-any chunk scan for lang/dir/unknown.
+  Fixes the residual `:not( .b )` whitespace bug. Highest byte-identity risk → last, full-corpus gated.
+
+**`*SelectorText` deletion**: selector-arg pseudos always populate `args: SelectorList` now (never a
+text degrade) → css `selectorArgumentText` / jess `staticSelectorText` selector-degrade uses die.
+Their remaining use is the nth `of <selector>` text join; deleting them fully requires the nth arg to
+carry the of-selector structurally (structured An+B + SelectorList) rather than a joined string —
+included where cheap, else tracked.
+
+**Q3 — migration order (recommended):** (i) css selector-only + css/jess bare-nth guards +
+`*SelectorText` deletion where clean — one landing, closes BOTH divergences, byte-gated; (ii) scss
+text→structure — its own full-corpus-gated landing. less needs nothing.
 
 ## 8. Adversarial review — invariants
 
