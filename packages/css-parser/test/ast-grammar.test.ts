@@ -245,6 +245,37 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
+  it('restricts `of <selector>` to nth-child/nth-last-child and rejects it on nth-of-type (Selectors-4 §6.6.2)', () => {
+    // `<An+B> of <complex-selector-list>` is valid ONLY for :nth-child()/
+    // :nth-last-child(); :nth-of-type()/:nth-last-of-type() take a bare <An+B>
+    // (https://www.w3.org/TR/selectors-4/#the-nth-child-pseudo). The of-type
+    // `of` forms are not valid CSS, so the AST grammar must REJECT them rather
+    // than silently capture the `<An+B> of …` tail as opaque raw / selector text.
+    // This guards the CSS-aligned tightening (§7.1) against regressing to the
+    // prior over-permissive acceptance across every An+B-prefix spelling.
+    for (const source of [
+      ':nth-of-type(2n of .a) { color: red; }',
+      ':nth-of-type(n of .a) { color: red; }',
+      ':nth-of-type(2n + 1 of .a) { color: red; }',
+      ':nth-last-of-type(-n+3 of .a) { color: red; }',
+      ':nth-last-of-type(even of .a) { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).toThrow();
+    }
+
+    // nth-child/last-child still accept `of`; bare of-type An+B is unaffected.
+    for (const source of [
+      'a:nth-child(2n of .a) { color: red; }',
+      'a:nth-last-child(-n+3 of .a) { color: red; }',
+      'a:nth-child(n of .a) { color: red; }',
+      'a:nth-of-type(2n+1) { color: red; }',
+      'a:nth-of-type(-n+3) { color: red; }',
+      'a:nth-last-of-type(odd) { color: red; }'
+    ]) {
+      expect(() => parseAst(source), source).not.toThrow();
+    }
+  });
+
   it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
     // Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign in
     // the `<An+B>` microsyntax (https://www.w3.org/TR/selectors-4/#anb-microsyntax);
