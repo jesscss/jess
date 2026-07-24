@@ -2341,9 +2341,16 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
     }
   );
   const DirectLessValuePiece = choice(g.DirectLessUnicodeRange, DirectLessTopSumMaybeDivision, g.DirectLessValueComment, literal('/'), literal('-'), literal('%'));
+  // Adjacent value pieces are normally separated by authored whitespace, but a
+  // Less variable reference may also be glued straight onto the previous piece
+  // (`1px@v`, `calc(@w + 2vw)@suffix`). Less treats the glued form as the same
+  // space-separated expression as `1px @v` — the missing gap is layout, not a
+  // different value shape — so the `@` boundary is a zero-width separator here.
+  // One shared piece-tail keeps declaration values and `@name:` variable values
+  // on the same rule instead of diverging on the glued spelling.
   const DirectLessValueTerm = node<ValueSlot>(
     'DirectLessValueTerm',
-    noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), DirectLessValuePiece)), many(noTrivia(g.DirectLessValueComment)))),
+    noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+|(?=@)/)), DirectLessValuePiece)), many(noTrivia(g.DirectLessValueComment)))),
     (children, fields) => valuePieceReducer(children, fields)
   );
   // Function bodies use their own argument boundary rule, but comments *inside*
@@ -2352,7 +2359,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
   // above leaves a completed argument's trailing trivia to `functionTrivia`.
   const DirectLessFunctionValueTerm = node<ValueSlot>(
     'DirectLessFunctionValueTerm',
-    noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+/)), DirectLessValuePiece)))),
+    noTrivia(sequence(DirectLessValuePiece, many(sequence(field('separator', regex(/[ \t\n\r\f]+|(?=@)/)), DirectLessValuePiece)))),
     (children, fields) => valuePieceReducer(children, fields)
   );
   const DirectLessValue = node<ValueSlot>(

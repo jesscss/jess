@@ -215,6 +215,37 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
   });
 
+  it('reads a glued variable reference as the same expression as the spaced spelling', () => {
+    // Less 4.x parses `1px@v` as the two-element space-separated expression
+    // `1px @v`, in both `@name:` and property position. The absent gap is
+    // layout, so both spellings must produce the identical value shape.
+    const glued = ['@x: 1px@v;', '.a { b: 1px@v; }', '@x: calc(@w + 2vw)@v;', '.a { b: calc(@w + 2vw)@v; }'];
+    const spaced = ['@x: 1px @v;', '.a { b: 1px @v; }', '@x: calc(@w + 2vw) @v;', '.a { b: calc(@w + 2vw) @v; }'];
+    const shape = (source: string): unknown => {
+      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      expect(result.ok, source).toBe(true);
+      expect(result.unconsumedFrom, source).toBeNull();
+      return JSON.parse(JSON.stringify(result.value, (key, value) => key === 'span' ? undefined : value));
+    };
+    for (let index = 0; index < glued.length; index += 1) {
+      expect(shape(glued[index]!), glued[index]).toEqual(shape(spaced[index]!));
+    }
+  });
+
+  it('keeps a glued variable reference out of the value when the gap is a statement boundary', () => {
+    const result = run(lessAstGrammar.LessAstDocument, '@x: 1px;\n@v: 2px;', { trivia: lessAstGrammar.whitespace });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        { type: 'VariableDeclaration', name: 'x' },
+        { type: 'VariableDeclaration', name: 'v' }
+      ]
+    });
+  });
+
   it('keeps a CSS escape hack as a typed declaration-value suffix', () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
