@@ -102,6 +102,7 @@ type CssAstLocalRules = {
   CssAstCalcParen: Combinator<Block>;
   CssAstDeclarationVarCall: Combinator<FunctionCall>;
   CssAstDeclarationCall: Combinator<FunctionCall>;
+  CssAstDeclarationIdent: Combinator<ValueNode>;
   CssAstDeclarationParen: Combinator<Block>;
   CssAstDeclarationAny: Combinator<ValueNode>;
   CssAstDeclarationValueAtom: Combinator<ValueNode>;
@@ -1038,6 +1039,36 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       return funcCall(name.value, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
     }
   );
+  // A generic-function call and a bare keyword share the same identifier
+  // prefix. Rather than attempt the call (scan the identifier, require `(`,
+  // fail, roll back) and then re-scan the identifier as a keyword, recognize
+  // the identifier ONCE and branch on the optional `(` call tail. This is the
+  // scannerless equivalent of the reference lexer's Function-vs-Value token
+  // split: no shared-prefix re-scan on the hottest value token. url()/var()/
+  // calc() keep their dedicated preceding arms; the retained not(urlOpen) guard
+  // and the outer not(calc) guard preserve their exact error paths.
+  const CssAstDeclarationIdent = node<ValueNode>(
+    'CssAstDeclarationIdent',
+    sequence(
+      not(g.CssAstSyntaxUrlOpen),
+      genericFunctionName,
+      optional(sequence(
+        literal('('),
+        optional(cssValueTrivia),
+        optional(sequence(g.CssAstDeclarationValueTerm, many(sequence(field('separator', noTrivia(sequence(literal(','), optional(cssValueTrivia)))), g.CssAstDeclarationValueTerm)))),
+        optional(cssValueTrivia),
+        literal(')')
+      ))
+    ),
+    (children, fields) => {
+      const name = tokenText(children[0]);
+      if (!children.some(child => isTerminalText(child) && tokenText(child) === '(')) {
+        return keyword(name);
+      }
+      const args = children.filter(isValueSlotValue);
+      return funcCall(name, withAuthoredSeparators(args, fields, Math.max(0, args.length - 1)));
+    }
+  );
   // `var()` has one required custom-property argument and one optional
   // declaration-value fallback. A comma inside that fallback is not a third
   // function argument, and an empty fallback is valid. Reuse the same
@@ -1064,7 +1095,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       g.CssAstCalcCall,
       sequence(
         not(regex(/(?=calc\()/i)),
-        choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationCall, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstKeyword, g.CssAstDeclarationAny)
+        choice(g.CssAstDimension, g.CssAstColor, g.CssAstUrl, g.CssAstDeclarationVarCall, g.CssAstDeclarationIdent, g.CssAstDeclarationParen, g.CssAstQuoted, CssAstCustomPropertyValue, g.CssAstDeclarationAny)
       )
     ),
     children => firstValue(children)
@@ -1836,6 +1867,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
     CssAstCalcParen,
     CssAstDeclarationVarCall,
     CssAstDeclarationCall,
+    CssAstDeclarationIdent,
     CssAstDeclarationParen,
     CssAstDeclarationAny,
     CssAstDeclarationValueAtom,
