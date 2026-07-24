@@ -1644,7 +1644,16 @@ export const scssAstGrammar = composeLeaf([cssAstSyntax, rules<ScssAstRules>({ t
   // and lets parseman first-set-gate the whole cluster behind a single `@`
   // check. The `@import` arm stays ahead of the cluster because its authored
   // order there predates the cluster; keeping it out preserves precedence.
-  const directScssNestedAtStatement = choice(g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssMixinCall, g.DirectScssEach, g.DirectScssFor, g.DirectScssIf);
+  // Cluster arms are ordered most-frequent-first. Every arm opens with a
+  // distinct, word-boundaried `@` at-keyword (`@include`/`@mixin`/`@function`/
+  // `@if`/`@each`/`@for`/`@supports`/`@media`/`@container`/`@starting-style`/
+  // `@layer`/`@scope`/`@document`/`@page`/`@font-feature-values`), so no input
+  // matches two arms — firstMatch order is immaterial to WHICH arm wins and any
+  // permutation is byte-identical. `@include` (mixin call) is by far the most
+  // common nested at-statement, followed by the control-flow forms, so placing
+  // them ahead of the rarely-nested CSS bubbling blocks lets the common case win
+  // on its first recognizer instead of failing the block recognizers first.
+  const directScssNestedAtStatement = choice(g.DirectScssMixinCall, g.DirectScssIf, g.DirectScssEach, g.DirectScssFor, g.DirectScssMixinDef, g.DirectScssFunction, g.DirectScssNestedConditionalBlock, g.DirectScssNestedStartingStyleBlock, g.DirectScssNestedLayerBlock, g.DirectScssNestedScopeBlock, g.DirectScssDocumentBlock, g.DirectScssPageBlock, g.DirectScssFontFeatureValuesBlock);
   // The `@`-led cluster is tried LAST in every body, after `Rule`. Every cluster
   // arm opens with a literal `@` at-keyword, so it is disjoint from `Rule` (a
   // selector never opens with `@`), from `@keyframes`/`@extend` (distinct
