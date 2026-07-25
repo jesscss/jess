@@ -82,6 +82,51 @@ the floor is paid. Spec updated: GRAMMAR-REBUILD-SPEC.md §0.2 / §5.0 now refle
 state with the benchmark table. **Stage 2 (parseman/oracle corpus-digest gate + coverage
 gate + combinator cheat-sheet) is the next work — see `grammar-rewrite-037-plan.md`.**
 
+### 2026-07-25 update (cont.) — Stage 2.1 LANDED on `dev` (commit `a2911a491`)
+
+**Stage 2.1 (parseman/oracle byte-identity gate)** — LANDED on `dev` as `a2911a491`.
+`packages/syntax/less/less-parser/test/oracle-byte-identity.mjs` is the machine-checked
+gate using the real `parseman/oracle` (`loadCorpus`/`digestCorpus`/`compareReports`/
+`formatComparison`) that landed at parseman 0.37.0 (PR #85). Replaces the existing
+short-hash `ast-identity-oracle.mjs` as the operative byte-identity gate for the
+rewrite; that file is kept during the transition for cross-checking per-file
+fingerprints. Three-way verdict: `identical` → exit 0, `moved` → exit 1,
+`incomparable` → exit 2.
+
+Committed baseline `oracle-byte-identity.baseline.json` (707-file corpus, both
+shipping surfaces `ast` (parse) and `cst` (parseLessCst)):
+  aggAst=d436f6e07d267ffad4bfdd06dfa363ad170b64985e1a5c6aef0fcd21d84b290a threw=119
+  aggCst=48e1e9dc0b80b8acae3f9adcb723243cf66a94da288634f81863f708093c3b27 threw=0
+THIS IS THE FLOOR for every Stage 3–6 grammar diff.
+
+Reproducible: `pnpm run oracle:less:byte-identity` (rebuilds then gates against
+the committed baseline); `pnpm run oracle:less:byte-identity:write` writes a
+fresh report to a `.new` file for inspection.
+
+**Stage 2.2 (coverage gate) — discovery: parseman 0.37.0's coverage surface is
+NOT sufficient for jess's four dialects as composed today.** All four jess
+grammars are `compose([cssGrammar, <Dialect delta>])` where `cssGrammar` is a
+macro-compiled opaque artifact. `composedGrammarCoverageDefinitions` deliberately
+throws on opaque artifacts ("semantic coverage needs re-lowerable composed IR;
+this composition contains an opaque artifact"), and
+`compiledGrammarCoverageDefinitions` returns an EMPTY definitions array for the
+macro-built compose-result even when `transformMacro(..., grammarCoverage: true)`
+is run. A grammar-coverage gate for jess therefore cannot use parseman's surface
+off the shelf; either a non-macro build path or a jess-side per-rule collector
+keyed to the grammar's public-surface keys is needed. **Stage 2.2 OPEN**, deferred
+to a dedicated Stage 2.2 subtask; the byte-identity gate (Stage 2.1) is sufficient
+for Stages 3–6 to proceed (every collapse commit's byte-identity verdict is what
+the collapse-pivots on; coverage was a "is this dialect safe to collapse yet?"
+greenfield assessment, not a collapse-pass gate).
+
+**Stage 2.3 (combinator cheat-sheet at 0.37.0)** — OPEN. The original Unit 1
+cheat-sheet was authored against parseman 0.32.0. Now that the bumped tree is
+the authoring target it should be re-cut against 0.37.0 with the new idioms
+(`peek`, `word(caseInsensitive)`, `oneOrMoreSep`, `{min,max}`, `trailing`,
+`gate()` rename of `guard()`, `gating:'error'` with an `accept` allowlist,
+`analyzeDuplication`/`analyzeGatingRules` on the pre-`compose()` map). It does
+not block the Stage 3 collapse work; it lands alongside as a doc-only commit.
+
 | Lane | Where | State |
 | --- | --- | --- |
 | ~~**parseman `0.34.0` adoption + showcase survey**~~ | jess | **SUPERSEDED** — stage 1 of the four-grammar rewrite landed parseman 0.37.0 on `dev` (commit `6908e7b4f`, 2026-07-25); see the 2026-07-25 update above. |

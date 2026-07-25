@@ -127,6 +127,7 @@ reference and is now superseded):
 | `packages/syntax/` packages-by-syntax regroup | `packages/syntax/<lang>/<pkg>/`, move commit `e96d1035d` |
 | `packages/editor/` and `packages/docs/` sibling groups | `packages/editor/<pkg>/`, `packages/docs/<pkg>/` — same commit `e96d1035d` |
 | parseman 0.37.0 bump | pin bump commit `6908e7b4f` |
+| parseman/oracle byte-identity gate (Stage 2 of the rewrite) | `packages/syntax/less/less-parser/test/oracle-byte-identity.mjs` + committed baseline at commit `a2911a491` |
 | The un-awaited-assertion helper | `test/expect-sync.ts` — repo root, **not** under `packages/` (§0.6.1) |
 | The `as any` detector | `pnpm lint:absolute` (§0.6) |
 | The `tree/` cutover inventory | [`../architecture/core/TREE-CUTOVER-SURFACE.md`](../architecture/core/TREE-CUTOVER-SURFACE.md) (§0.7) |
@@ -1664,11 +1665,52 @@ Neither is available at 0.32.0.
 > not have a result.
 
 The oracle that exists on `dev` today —
-`packages/less-parser/test/ast-identity-oracle.mjs`, 707 files, both surfaces,
-baselines `aggAst 0aa9de8c9780273a…` / `aggCst d9fd8da52bf4bebb0…`, 119 expected
-throws — has **no `package.json` script, no CI wiring, and covers `less-parser`
-only**. It always exits 0; "failure" is you diffing before against after. §8.1
-replaces it when PR #75 merges.
+`packages/syntax/less/less-parser/test/ast-identity-oracle.mjs`, 707 files, both
+surfaces, baselines `aggAst 0aa9de8c9780273a…` / `aggCst d9fd8da52bf4bebb0…`, 119
+expected throws (pre-bump, parseman 0.32.0). It is the SHORT-hash oracle: it
+always exits 0; "failure" is you diffing before against after.
+
+**Stage 2.1 has landed the §8.1 replacement on `dev`** (commit `a2911a491`,
+2026-07-25, on the bumped tree at parseman 0.37.0):
+`packages/syntax/less/less-parser/test/oracle-byte-identity.mjs` is the
+machine-checked gate using the real `parseman/oracle`
+(`loadCorpus`/`digestCorpus`/`compareReports`/`formatComparison`). Surfaces still
+`ast` (parse) + `cst` (parseLessCst). Three-way verdict: `identical` → exit 0,
+`moved` → exit 1, `incomparable` → exit 2. Committed baseline
+`packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json`:
+`aggAst=d436f6e07d267ffad4bfdd06dfa363ad170b64985e1a5c6aef0fcd21d84b290a` threw
+119, `aggCst=48e1e9dc0b80b8acae3f9adcb723243cf66a94da288634f81863f708093c3b27`
+threw 0, both across the 707-file Less corpus. The harmonic floor is this
+baseline; every Stage 3–6 grammar diff must keep both aggregates byte-identical
+to it (or, for a deliberate rename, declare the mapping up front and apply it —
+see §8.1b. The residue after applying the mapping must be EMPTY).
+
+Reproducible: `pnpm run oracle:less:byte-identity` (this rebuilds less-parser
+then runs the gate against the committed baseline). Stage 3+ branches off `dev`
+can re-baseline by piping `pnpm run oracle:less:byte-identity:write` to a new
+JSON file and committing it in the same commit that moved the aggregate.
+
+The short-hash oracle (`ast-identity-oracle.mjs`) is kept during the transition
+for cross-checking per-file fingerprints; the new gate subsumes its job.
+
+**Stage 2.2 (coverage gate) — discovery: parseman 0.37.0's coverage surface is
+NOT sufficient for jess's four dialects as composed today.** All four jess
+grammars are `compose([cssGrammar, <Dialect delta>])`, and `cssGrammar` is a
+macro-compiled opaque artifact. `composedGrammarCoverageDefinitions(grammar,
+'<startRule>')` deliberately throws on opaque artifacts ("semantic coverage
+needs re-lowerable composed IR; this composition contains an opaque artifact"),
+and `compiledGrammarCoverageDefinitions(grammar)` returns an EMPTY definitions
+array for the macro-built `compose()` result even when
+`transformMacro(..., grammarCoverage: true)` is invoked — only the rule-ENTER
+hooks are present per rule, while the `GRAMMAR_COVERAGE_DEFINITIONS` symbol map
+on the compiled compose-result carries nothing. A grammar-coverage gate for
+jess therefore cannot use parseman's coverage surface off the shelf; the gate
+either needs a non-macro-build path (which defeats the macro) or a jess-side
+per-rule collector keyed to the grammar's public surface keys. This is OPEN
+work, deferred to a later Stage 2.2 effort; the byte-identity gate (Stage 2.1)
+is sufficient for Stages 3–6 to proceed (every collapse commit's byte-identity
+verdict is what they will pivot on; coverage was a "is it safe to collapse
+THIS dialect yet?" greenfield gate, not a collapse-pass gate).
 
 ### 8.7 The subjective bar — named as subjective, with a named judge
 
