@@ -77,6 +77,14 @@ jobs:
       - name: Macro-buildability check
         run: node scripts/check-macro-buildable.mjs --no-build
 
+      # A `node()` with its own build callback in a CST grammar returns its own
+      # object where the positioned-CST host should have built a node; the CST's
+      # child filter then drops it and the node VANISHES with ok: true. parseman's
+      # `assertHostModeCompatible` cannot catch it on either of jess's CST paths
+      # (see the script header), so this source-level gate is the only guard.
+      - name: CST grammars are all-structural
+        run: node scripts/check-cst-direct-builders.mjs
+
       - name: Lint (pnpm lint)
         run: pnpm run lint
 

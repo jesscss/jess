@@ -106,7 +106,7 @@ function isCssCstChild(value: unknown): value is CssCstChild {
       || (value as { _tag?: string })._tag === 'error');
 }
 
-export const cssCstBuildHost: BuildHost = (
+const cssCstBuildHostImpl: BuildHost = (
   grammarType: string,
   _children: ReadonlyArray<unknown> | undefined,
   _fields: FieldMap | undefined,
@@ -132,6 +132,32 @@ export const cssCstBuildHost: BuildHost = (
     children: rawChildren.filter(isCssCstChild)
   };
 };
+
+/**
+ * This host produces a POSITIONED CST, so it marks itself `_parsemanCstOutput`.
+ * That flag is parseman's contract for "re-route a `node()` that carries its own
+ * `build` callback through this host instead of letting the callback own the result".
+ *
+ * Without it, a direct builder in a CST grammar returns its OWN object into the tree,
+ * `isCssCstChild` above filters that object out of `children`, and the node goes
+ * MISSING — `ok: true`, no error, no warning, nothing downstream able to tell.
+ * Measured A/B on the pinned parseman 0.32.0, one direct builder on the css CST's
+ * `Declaration` rule, the flag as the only difference:
+ *
+ *   flag set    → `.a { color: red }` yields Ruleset > Declaration.   Correct.
+ *   flag absent → the same input yields Ruleset with NO Declaration.  Silent.
+ *
+ * The grammars are all-structural today, so today it changes no output; it is live
+ * insurance, not decoration. `scripts/check-cst-direct-builders.mjs` is the other
+ * half — it keeps them all-structural, which matters because on parseman >= 0.40.0
+ * this flag stops being self-healing (host mode became a COMPILE-time decision) and
+ * the same mistake goes back to losing the node.
+ * See `docs/architecture/parser/CST-DIRECT-BUILDER-GATE.md`.
+ */
+export const cssCstBuildHost: BuildHost = Object.assign(
+  cssCstBuildHostImpl,
+  { _parsemanCstOutput: true as const }
+);
 
 function emptyStyleSheet(): CssCstNode {
   return {
@@ -167,6 +193,11 @@ function cssCstBuildHostFor(options: CssCstParseOptions): BuildHost {
       state
     ),
     {
+      /* The collapse wrapper is a NEW function object, so it has to re-declare the
+       * positioned-CST marker — inheriting it from the wrapped host is not a thing
+       * parseman can do, and losing it here would re-open the gap on exactly the
+       * language-service path that uses `collapse`. */
+      _parsemanCstOutput: true as const,
       _parsemanCstCollapse: (grammarType: string) => COLLAPSIBLE_GRAMMAR_TYPES.has(grammarType)
     }
   );

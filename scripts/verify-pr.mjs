@@ -99,6 +99,16 @@ run('node', ['scripts/verify-compose-integrity.mjs', '--log', buildLogPath]);
 heading('Macro-buildability');
 run('node', ['scripts/check-macro-buildable.mjs', '--no-build']);
 
+/*
+ * 3c. No direct builders in the CST grammars. A source-level check, so it needs no
+ * artifacts and is free to run here. It is the ONLY thing guarding this: parseman's
+ * own `assertHostModeCompatible` cannot see the case, because `parseCst` drives
+ * through `run()` (which never calls it) and because the macro's `emitFusedSource`
+ * does not stamp the `fusedHostElided` symbol the assertion reads.
+ */
+heading('CST grammars are all-structural');
+run('node', ['scripts/check-cst-direct-builders.mjs']);
+
 // 4. Lint + full CI (per-package build+test, includes all parser and core suites).
 heading('Lint');
 run('pnpm', ['run', 'lint']);

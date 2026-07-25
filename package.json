@@ -58,6 +58,7 @@
     "verify:pr": "node scripts/verify-pr.mjs",
     "verify:compose-integrity": "node scripts/verify-compose-integrity.mjs",
     "check:macro": "node scripts/check-macro-buildable.mjs",
+    "check:cst-direct-builders": "node scripts/check-cst-direct-builders.mjs",
     "prepush:changed-packages": "node scripts/prepush-dispatch.mjs",
     "prepush:dev:check": "node scripts/precommit-changed-checks.mjs --mode=upstream",
     "lint:fix": "eslint --ignore-pattern '**/__tests__/**' --fix 'packages/**/src/**/*.{mjs,cjs,js,ts}' 'scripts/**/*.{mjs,cjs,js,ts}' '*.config.{mjs,cjs,js,ts}' 'vitest.d.ts' 'test/setup.ts'",
