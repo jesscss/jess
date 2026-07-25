@@ -51,12 +51,12 @@ describe('formatNumber — the output number policy', () => {
     }
   });
 
-  it('applies the tolerance above 1e10 even to an exact integer', () => {
-    // The tolerance is relative and knows nothing about integer-ness, so an exact
-    // integer carrying more than ~10 significant digits is trimmed like any other
-    // value. Pinned so the behaviour is visible rather than latent.
-    expect(formatNumber(123456789012)).toBe('123456789000');
-    expect(formatNumber(Number.MAX_SAFE_INTEGER)).toBe('9007199255000000');
+  it('never trims an exact integer, however many digits it carries', () => {
+    // An exactly-representable integer has no float noise to remove, so the
+    // tolerance must not touch it: trimming would change a precise value.
+    expect(formatNumber(123456789012)).toBe('123456789012');
+    expect(formatNumber(Number.MAX_SAFE_INTEGER)).toBe('9007199254740991');
+    expect(formatNumber(99999999999)).toBe('99999999999');
     expect(formatNumber(1234567890)).toBe('1234567890');
   });
 

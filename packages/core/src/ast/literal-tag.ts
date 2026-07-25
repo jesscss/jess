@@ -19,7 +19,7 @@ import type { ValueObj } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
-import { round } from './round.js';
+import { formatNumber } from './format-number.js';
 
 // SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
 // PARSED literal reaches materialize already typed (its node), so it never touches
@@ -96,20 +96,23 @@ export function colorFromSrc(src: string): ValueObj {
 /**
  * A parsed `Dimension` leaf → value `Dimension`, reading the pre-split
  * `number`/`unit` (never re-splitting `src`). Un-operated dimensions preserve their
- * SOURCE spelling verbatim (`1.0px`→`1.0px`, `2PX`→`2PX`). The ONE exception is
- * sub-precision float noise: a source whose value cannot be represented at the 8-dp
- * canonical floor (`-0.0000000001` rounds to `0`) is DENOISED to the canonical
- * rounded form; a value that round-trips unchanged at 8 dp keeps its exact `src`.
+ * SOURCE spelling verbatim (`1.0px`→`1.0px`, `2PX`→`2PX`).
+ *
+ * The ONE rewrite is a SPELLING rule, not a precision one: Less serializes a
+ * leading-decimal dimension canonically (`.3s` → `0.3s`, `-.3s` → `-0.3s`) even
+ * when it has not participated in arithmetic. That is a typed numeric decision
+ * from the parsed fields, not a rendered-CSS rewrite.
+ *
+ * There used to be a second rewrite here — a source whose value could not survive
+ * the 8-dp canonical floor was DENOISED to the rounded form, which silently turned
+ * an authored `0.00000000123456789` into `0`. Its only justification was matching a
+ * serializer floor that no longer exists, and it contradicted verbatim preservation
+ * outright, so it is gone: an un-operated literal now keeps its exact value.
  */
 export function dimensionFromFields(number: number, unit: string, src: string): ValueObj {
-  const r = round(number, 8);
-  // Less serializes a leading-decimal dimension canonically (`.3s` → `0.3s`,
-  // `-.3s` → `-0.3s`) even when it has not participated in arithmetic. This is
-  // still a typed numeric decision from the parsed fields, not a rendered-CSS
-  // rewrite; retain other source spelling policy below.
   const numericStart = src.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
-  if (Number.isFinite(number) && (r !== number || src.charCodeAt(numericStart) === 0x2e /* . */)) {
-    return { type: 'Dimension', number: r, unit, bytes: `${r}${unit}` };
+  if (Number.isFinite(number) && src.charCodeAt(numericStart) === 0x2e /* . */) {
+    return { type: 'Dimension', number, unit, bytes: `${formatNumber(number)}${unit}` };
   }
   return { type: 'Dimension', number, unit, bytes: src };
 }

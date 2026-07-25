@@ -53,6 +53,13 @@ const MAX_PRECISION = 17;
  */
 export function formatNumber(n: number): string {
   const s = `${n}`;
+  // An exactly-representable integer carries no float noise, so there is nothing for
+  // the tolerance to remove — and applying it anyway would CHANGE a precise value
+  // (`123456789012` -> `123456789000`). Also the common case: half of what a
+  // stylesheet emits is a small integer.
+  if (Number.isInteger(n)) {
+    return s.indexOf('e') === -1 ? s : positional(s);
+  }
   let sig = 0;
   let seenDigit = false;
   let exponential = false;

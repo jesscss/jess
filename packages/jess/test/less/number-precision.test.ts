@@ -53,11 +53,16 @@ describe('numeric precision is one policy for every position', () => {
   });
 
   it('keeps a computed small magnitude that the old 8-decimal floor flattened to 0', async () => {
-    // NOTE: a source LITERAL below the old floor is still denoised to `0` at parse
-    // (`literal-tag.ts`); this covers the COMPUTED path the policy governs.
     const css = await render('.a { a: 0.0000001 * 0.01; }');
 
     expect(css).toContain('a: 0.000000001;');
+  });
+
+  it('keeps a SOURCE literal below the old floor instead of denoising it to 0', async () => {
+    const css = await render('.a { a: 0.00000000123456789; b: -0.0000000001px; }');
+
+    expect(css).toContain('a: 0.00000000123456789;');
+    expect(css).toContain('b: -0.0000000001px;');
   });
 
   it('leaves an un-operated source literal verbatim', async () => {
@@ -65,5 +70,12 @@ describe('numeric precision is one policy for every position', () => {
 
     expect(css).toContain('a: 1.50000px;');
     expect(css).toContain('b: 2PX;');
+  });
+
+  it('still normalizes a leading-decimal literal', async () => {
+    const css = await render('.a { a: .3s; b: -.3s; }');
+
+    expect(css).toContain('a: 0.3s;');
+    expect(css).toContain('b: -0.3s;');
   });
 });
