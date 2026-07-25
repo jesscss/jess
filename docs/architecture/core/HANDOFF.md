@@ -42,9 +42,49 @@
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
 
+### 2026-07-25 update — four-grammar rewrite, Stages 0–1 LANDED on `dev`
+
+**Stage 0 (WIP salvage)** — settled. Previously-listed salvage candidates confirmed already
+landed on `dev` (`a36ccc75e` sass:color + `ce4e942c1` sass:math). No novel salvage required.
+
+**Stage 0 (packages regroup)** — LANDED on `dev` as commit `e96d1035d`. Co-located parsers
+with their syntax-plugins under `packages/syntax/<lang>/<pkg>/`; editor/LSP subsystem under
+`packages/editor/<pkg>/`; docs under `packages/docs/<pkg>/` (with the old `packages/docs`
+renamed to `packages/docs/docs-jess`). npm package names unchanged. Updated: pnpm-workspace
+(`packages/*` → `packages/**`), tsconfig.json paths + per-package tsconfig `extends`/`include`
+depth, vitest.config.ts glob and css-parser entries, eslint grammar-file globs, every `scripts/`
+path-string literal, per-package vitest/eslint/tsdown configs, `packages/jess`'s missing parser
+devDependencies (added so the moved test corpus resolves), precommit `packageDirs()` (now walks
+to the nearest owning package.json instead of the flat `^packages/[^/]+` regex), and .gitignore
+ignore paths. Verified: build:release 13/13, verify:types 12/12, lint 0 errors, check:macro
+5/5 (0 fallbacks), compose-integrity clean, four parser suites green, jess tests 782 pass /
+13 fail (matches pre-regroup baseline 781/14), AST-identity-oracle per-file AST+CST hashes
+byte-identical across the 707-file Less corpus.
+
+**Stage 1 (parseman 0.37.0 bump)** — LANDED on `dev` as commit `6908e7b4f`, immediately
+after the regroup. Atomic 10-line / 6-manifest bump. Resolved parseman path is
+`node_modules/.pnpm/parseman@0.37.0/node_modules/parseman` for all six packages; lockfile
+has `/parseman@0.37.0:` only (zero `parseman@0.32.0` entries). Gates on the bumped tree:
+build:release 13/13, verify:types 12/12, lint 0 errors, check:macro 5/5 (0 fallbacks),
+compose-integrity clean, css 242/242, less 439/439, scss 290/290, jess-parser 248/248.
+
+**AST-identity-oracle rebaseline** (recorded in the bump commit msg): ast shipping path
+byte-identical across the bump (`aggAst` unchanged). 68 of 707 corpus files moved on CST
+only, from the documented scanSkip default change (parseman 0.33 — sentinels-in-comments);
+the new CST aggregate (`b7c550a8...`) is the floor for every later Stage 3–6 grammar diff.
+
+**Stage 1 perf re-measurement (the owner go/no-go on the floor)** — FASTER, not slower.
+A two-sample parse-bench.mjs run (5-warmup / 15-timed samples per case) at `e96d1035d`
+(parseman 0.32.0) vs `6908e7b4f` (parseman 0.37.0): every case faster on 0.37.0, none
+slower; CST route 25–30% faster; noise floor ~1.4–3.6% (visible in the 0.37.0-vs-0.37.0
+clean-spread). Opposite of the +8–12% Less regression that made 0.36.0 declined (§5.1);
+the floor is paid. Spec updated: GRAMMAR-REBUILD-SPEC.md §0.2 / §5.0 now reflect the paid
+state with the benchmark table. **Stage 2 (parseman/oracle corpus-digest gate + coverage
+gate + combinator cheat-sheet) is the next work — see `grammar-rewrite-037-plan.md`.**
+
 | Lane | Where | State |
 | --- | --- | --- |
-| **parseman `0.34.0` adoption + showcase survey** | jess | Bump from the current `0.32.0` and regenerate every compiled artifact — the version-lock invariant is that artifacts never cross parseman versions. Then a per-parser plan to make the 4 grammars exemplary parseman usage. Gates: AST byte-identity on all four parsers, perf measured. |
+| ~~**parseman `0.34.0` adoption + showcase survey**~~ | jess | **SUPERSEDED** — stage 1 of the four-grammar rewrite landed parseman 0.37.0 on `dev` (commit `6908e7b4f`, 2026-07-25); see the 2026-07-25 update above. |
 | ~~**Gates made reasonable**~~ | jess | **LANDED `c3db7e53e` + `e34bb24b3`** — see "Gate hygiene" below. |
 | ~~**fns per-dialect registry**~~ | jess | **LANDED** — `builtins/` and `builtinLessFns` deleted; registration derives from the composed dialect indexes (`less/index.ts` = `less/` + `shared/`, same for sass); per-dialect evaluators at module scope; exports map publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`, `./shared`, `./registry`, `./less/registry`, `./sass/registry`. Implements ledger C13. Specifier resolution for `#less` / `#sass/<module>` is NOT part of it — see "`#less` / `#sass` specifier resolution" below. |
 | **Numeric precision landing** | jess + less.js fixtures | Tolerance-trim, delete `emitValueInterp`, no-sci-notation guard, `ast/color.ts:118` alpha, integer fast path, `literal-tag.ts:104` fix, fixture graduation. Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md) — **nothing in it had landed as of `e34bb24b3`**. |

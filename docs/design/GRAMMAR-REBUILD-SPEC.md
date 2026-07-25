@@ -71,14 +71,25 @@ Four consequences, none of them optional:
 
 ### 0.2 Current status
 
-**The rewrite has not started.** No line of it is written. Verify:
+**The Stage 1 floor is paid.** parseman is now pinned to **0.37.0** on `dev`
+(bump commit `6908e7b4f`, 2026-07-25, immediately after the packages-by-syntax
+regroup commit `e96d1035d`). `hostMode` reaches the macro: §5.0 below is
+updated; the Less parse-time re-measurement came back **faster on 0.37.0 than
+on 0.32.0** (every benchmark case faster, none slower; CST route 25–30%
+faster). AST/CST byte-identity, the four parser suites, `check:macro`,
+`verify:compose-integrity`, `verify:types` and `lint` are all green at the
+bumped pin.
+
+**The rewrite itself has still not started.** The eight→four collapse is the
+work of Stages 3–6. Verify:
 
 ```sh
-wc -l packages/{css,less,scss,jess}-parser/src/grammar.ts \
-      packages/{css,less,scss,jess}-parser/src/ast/grammar.ts
+wc -l packages/syntax/{css,less,scss,jess}/*-parser/src/grammar.ts \
+      packages/syntax/{css,less,scss,jess}/*-parser/src/ast/grammar.ts
 ```
 
-Eight files, **24,305 lines** at `92d38af4f`.
+Eight files, **24,305 lines** at `e96d1035d` (paths shown at the new
+post-regroup `packages/syntax/<lang>/<pkg>/` locations).
 
 **The work is blocked on a prerequisite only the owner can clear.** The
 mechanism that makes one grammar file serve both the AST and the CST is
@@ -86,33 +97,36 @@ parseman's `hostMode` (§5.3). It does not exist in the version jess pins.
 
 | fact | value at time of writing | how to re-check |
 | --- | --- | --- |
-| parseman version jess pins | **0.32.0**, 10 pin lines across 6 manifests (§0.5) | `grep -rn --include=package.json '"parseman"' . --exclude-dir=node_modules` |
-| parseman published `latest` | **0.36.0** | `npm view parseman dist-tags` |
-| parseman `main` | **0.37.0, unpublished** | `git -C <parseman checkout> show origin/main:package.json \| grep version` |
+| parseman version jess pins | **0.37.0**, 10 pin lines across 6 manifests (§0.5) — bump commit `6908e7b4f` | `grep -rn --include=package.json '"parseman"' . --exclude-dir=node_modules` |
+| parseman published `latest` | **0.37.0** | `npm view parseman dist-tags` |
+| parseman `main` | **0.37.0** | `git -C <parseman checkout> show origin/main:package.json \| grep version` |
 | `hostMode` first ships in | **0.37.0** | parseman `CHANGELOG.md`, the 0.37.0 section |
-| PRs #75, #76, #77, #80, #81, #82, #83, #84 | **merged** | `gh pr list --repo matthew-dean/parseman --state all` |
-| **PR #85 — `hostMode` reaching the macro** | **status unknown at time of writing; it was open** | `gh pr view 85 --repo matthew-dean/parseman` |
+| PRs #75, #76, #77, #80, #81, #82, #83, #84, #85 | **merged** | `gh pr list --repo matthew-dean/parseman --state all` |
+| **PR #85 — `hostMode` reaching the macro** | **merged**, on `dev` in jess via `6908e7b4f` | `gh pr view 85 --repo matthew-dean/parseman` |
 
-> **PR #85 is the keystone.** jess's grammars are compiled through the parseman
-> **macro** (`with { type: 'macro' }`), not through a runtime `compile()` call.
-> `hostMode` landing in `compile()` (PR #80) is not sufficient on its own; it has
-> to reach the macro before one grammar source can produce two artifacts in this
-> repo. **Check #85's real state rather than trusting this line** — it is the
-> single most time-sensitive statement in this document.
+> **PR #85 — the keystone — is merged and the macro carries it.** jess's
+> grammars are compiled through the parseman **macro** (`with { type: 'macro'
+> }`), not through a runtime `compile()` call; `hostMode` now reaches the
+> macro, so one grammar source can produce both the eval-AST and the
+> positioned-CST artifacts in this repo. The Stage 3–6 collapses can
+> proceed.
 
 > **Publishing parseman is owner-only.** Agents never merge or release parseman
-> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). If 0.37.0 is
-> still unpublished, say so and stop; do not vendor it, do not point the
-> workspace at a local checkout, and do not restructure the rebuild to avoid
-> needing it.
+> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). 0.37.0 IS now
+> published and jess pins it on `dev`; any future parseman bump goes through
+> the same owner gate.
 
 **Landed on `dev` and relevant to a rebuild author** — each verifiable at
-`92d38af4f`:
+`6908e7b4f` (current `dev` tip; `92d38af4f` was the pre-bump authoring
+reference and is now superseded):
 
 | what | where |
 | --- | --- |
 | The grammar naming law | [`GRAMMAR-REVIEW-STANDARD.md`](../architecture/parser/GRAMMAR-REVIEW-STANDARD.md) item 14 |
 | `packages/parser-shared` (renamed from `internal-css-recognition`) | `packages/parser-shared/`, rename commit `a74131e8f` |
+| `packages/syntax/` packages-by-syntax regroup | `packages/syntax/<lang>/<pkg>/`, move commit `e96d1035d` |
+| `packages/editor/` and `packages/docs/` sibling groups | `packages/editor/<pkg>/`, `packages/docs/<pkg>/` — same commit `e96d1035d` |
+| parseman 0.37.0 bump | pin bump commit `6908e7b4f` |
 | The un-awaited-assertion helper | `test/expect-sync.ts` — repo root, **not** under `packages/` (§0.6.1) |
 | The `as any` detector | `pnpm lint:absolute` (§0.6) |
 | The `tree/` cutover inventory | [`../architecture/core/TREE-CUTOVER-SURFACE.md`](../architecture/core/TREE-CUTOVER-SURFACE.md) (§0.7) |
@@ -641,7 +655,7 @@ changed the sequencing.** What remains blocking is narrower than it was:
 
 | § | status |
 | --- | --- |
-| 5.0 the version question | **OPEN, and it is the important one.** Authoring targets 0.32.0; the **collapse has a hard floor of 0.37.0**, which is **unpublished** — owner-only to release. Also gated on parseman **PR #85** (`hostMode` reaching the macro) and on a Less re-measurement |
+| 5.0 the version question | **RESOLVED.** parseman 0.37.0 is published and pinned on `dev` (bump commit `6908e7b4f`, 2026-07-25). `hostMode` reaches the macro (PR #85 merged). The Less re-measurement came back **faster on 0.37.0 than on 0.32.0** (every benchmark case faster, none slower; CST 25–30% faster). The architecture floor is paid; Stages 3–6 can proceed |
 | 5.1 the 0.36.0 adoption | **RESOLVED** — measured and declined. Authoring is not blocked on a bump |
 | 5.2 the 0.32.0 hazards | **standing constraints**, not blockers — check per unit. Three now, including the cross-mode fusion hazard |
 | 5.3 `hostMode` | **RESOLVED** — shipped at 0.37.0 as a compile-time flag. Delivery taken; it is now a version-floor question, not a missing mechanism |
@@ -650,8 +664,10 @@ changed the sequencing.** What remains blocking is narrower than it was:
 
 ### 5.0 The version question, stated plainly
 
-**Authoring targets 0.32.0. The eight-to-four collapse has a hard floor of
-0.37.0. These are different questions and the spec keeps them apart.**
+**The collapse's hard floor of 0.37.0 is paid. Authoring on 0.32.0 is now
+historical — the bumped tree at commit `6908e7b4f` is the authoring baseline
+for Stages 3–6, and §0.2 records the AST-identity-oracle aggregate that any
+later grammar change must preserve.**
 
 > **Version-numbering correction, because the old numbers are still in circulation.**
 > This section previously said the floor was **0.40.0**. parseman PR #83 —
@@ -665,11 +681,16 @@ changed the sequencing.** What remains blocking is narrower than it was:
 > **0.37.0 is not published.** `npm view parseman dist-tags` reads `latest:
 > 0.36.0`. parseman `main` carries 0.37.0 unpublished. **Publishing is
 > owner-only** — see §0.2.
+>
+> **UPDATE 2026-07-25 (commit `6908e7b4f`):** 0.37.0 IS now published. jess
+> pins it on `dev` (bump commit `6908e7b4f`), `hostMode` reaches the macro
+> (PR #85 merged), and the Less re-measurement came back favourable — see
+> the benchmark table below.
 
 | what | version | why |
 | --- | --- | --- |
-| Writing the rebuilt rules (Units 1, 3, 4, 5) | **0.32.0**, the pin | 0.36.0 was measured and declined on a Less regression (§5.1). Almost nothing is lost (§5.2) |
-| **Collapsing 8 files to 4** | **≥ 0.37.0** | `compile(g, { hostMode })` is the mechanism that lets one grammar serve both the eval-AST and positioned-CST modes (§5.3). Nothing below 0.37.0 has it |
+| Writing the rebuilt rules (Stages 2–7) | **0.37.0**, the bumped pin — paid | Authoring now happens on the bumped tree; the §5.1 re-measure is paid |
+| **Collapsing 8 files to 4** | **0.37.0 (paid)** | `compile(g, { hostMode })` is the mechanism that lets one grammar serve both the eval-AST and positioned-CST modes (§5.3). jess is on 0.37.0 at `6908e7b4f` |
 
 > **This is not a deferrable perf matter any more. It sits between us and the
 > architecture the owner asked for.** The collapse — the entire point of §3 — is
@@ -678,10 +699,34 @@ changed the sequencing.** What remains blocking is narrower than it was:
 >
 > **What gates it: the Less measurement, nothing else.** Correctness at 0.36.0
 > was already fully clean. A re-measurement at 0.37.0 under the cross-process
-> method is running. If Less recovers, the floor is payable and the collapse
+> method is **DONE**. If Less recovers, the floor is payable and the collapse
 > proceeds. If it does not, the choice is explicit — accept a measured Less
 > regression to get the architecture, or keep eight files — and it is the
 > owner's, not a unit's.
+>
+> **UPDATE 2026-07-25 — the re-measurement came back favourable.** A two-sample
+> parse-bench (`packages/syntax/less/less-parser/test/parse-bench.mjs`,
+> 5-warmup / 15-timed samples per case) on commit `e96d1035d` (parseman 0.32.0,
+> post-regroup) versus `6908e7b4f` (parseman 0.37.0):
+>
+> | case | B 0.32 (ms median) | A avg 0.37 (ms) | Δ A−B | A1–A2 spread |
+> | --- | --- | --- | --- | --- |
+> | `benchmark.less/ast` | 16.93 | 15.82 | **−6.6%** | 2.6% |
+> | `benchmark.less/cst` | 21.54 | 15.18 | **−29.5%** | 2.6% |
+> | `bootstrap-port/ast` | 26.55 | 25.60 | **−3.6%** | 1.4% |
+> | `bootstrap-port/cst` | 26.07 | 18.63 | **−28.5%** | 1.7% |
+> | `test-data-unit/ast` | 26.43 | 26.07 | **−1.4%** | 2.4% |
+> | `test-data-unit/cst` | 24.74 | 18.51 | **−25.2%** | 3.6% |
+>
+> Every case is faster on 0.37.0; none is slower. The noise floor (visible in
+> A1–A2 clean-0.37.0 spread) is ~1.4–3.6%, well below the observed deltas on
+> the CST route. The AST route is byte-identical across the bump (`aggAst`
+> unchanged at §0.2); 68 of 707 corpus files moved on CST only, from the
+> documented scanSkip default change (parseman 0.33 — sentinels-in-comments),
+> recorded in the bump commit message. This is the opposite of the +8–12%
+> Less regression that made 0.36.0 declined in §5.1; 0.35.0's rollback
+> length-guard fix is confirmed to have repaid it on 0.37.0. **The collapse
+> can proceed; the floor is paid.**
 >
 > **Do not resolve this by assuming the re-measurement will be favourable, and do
 > not restructure the rebuild to avoid needing 0.37.0.** Authoring against 0.32.0
