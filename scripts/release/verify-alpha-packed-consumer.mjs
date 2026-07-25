@@ -194,15 +194,6 @@ const esmJess = await import('jess');
 assert.equal(typeof cjsJess.Compiler, 'function');
 assert.equal(typeof esmJess.Compiler, 'function');
 
-// CSS is deliberately explicit: it is a Context document/inlining plugin, not
-// a default Jess compiler mode. Prove a packed consumer can opt in and receives
-// the same direct Stylesheet document boundary without adding it to Jess's
-// built-in plugin registration.
-const { default: cssPluginFactory } = await import('@jesscss/plugin-css');
-const cssPlugin = cssPluginFactory();
-const cssResult = cssPlugin.safeParse('entry.css', '.entry { color: red; }');
-assert.equal(cssResult.errors.length, 0);
-assert.equal(cssResult.document.type, 'Stylesheet');
 console.log(\`ESM/CJS roots ok for \${names.length} packed packages\`);
 `.trimStart());
 

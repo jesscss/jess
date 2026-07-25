@@ -53,7 +53,6 @@ packages/
   syntax/
     css/                     # the shared base syntax
       css-parser/
-      jess-plugin-css/
     less/
       less-parser/
       jess-plugin-less/

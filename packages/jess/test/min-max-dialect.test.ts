@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../src/index.js';
-import cssPlugin from '@jesscss/plugin-css';
 
 /**
  * `min()`/`max()` per dialect. There is no single shared body, and that is the
@@ -13,7 +12,7 @@ import cssPlugin from '@jesscss/plugin-css';
  *                                            max(1px, 1in, 2) → 2
  *   `#jess`      CSS-faithful (same <type>, no unitless-vs-length coercion).
  *                NOT YET IMPLEMENTED — needs the namespace machinery, so
- *                `.jess` and `.css` currently take the Less set.
+ *                `.jess` currently takes the Less set.
  *
  * A failing call is never suppressed by the function. The engine preserves it
  * verbatim in bare position under the default `functionMode: 'preserve'` and
@@ -21,7 +20,7 @@ import cssPlugin from '@jesscss/plugin-css';
  * that split for Sass, and the owner's call-form rule generalises it.
  */
 
-const DIALECTS = ['.css', '.less', '.scss', '.jess'] as const;
+const DIALECTS = ['.less', '.scss', '.jess'] as const;
 
 const render = async (compiler: Compiler, expr: string, extension: string): Promise<string> => {
   const output = await compiler.renderString(`a { b: ${expr}; }`, { extension, suppressWarnings: true });
@@ -68,7 +67,7 @@ const DIVERGENT: Array<[string, string, string]> = [
 ];
 
 describe('min()/max() per dialect', () => {
-  const compiler = new Compiler({ compile: { plugins: [cssPlugin()] } });
+  const compiler = new Compiler();
 
   it.each(AGREED)('%s → %s in every dialect', async (expr, expected) => {
     for (const extension of DIALECTS) {
@@ -78,15 +77,16 @@ describe('min()/max() per dialect', () => {
 
   it.each(DIVERGENT)('%s → %s in Less, %s in Sass', async (expr, lessExpected, sassExpected) => {
     expect(await render(compiler, expr, '.scss'), `${expr} in .scss`).toBe(sassExpected);
-    // `.jess`/`.css` have no dialect fns of their own yet and take the Less set.
-    for (const extension of ['.css', '.less', '.jess']) {
+
+    // `.jess` has no dialect fns of its own yet and takes the Less set.
+    for (const extension of ['.less', '.jess']) {
       expect(await render(compiler, expr, extension), `${expr} in ${extension}`).toBe(lessExpected);
     }
   });
 });
 
 describe('functionMode reaches min()/max()', () => {
-  const strict = new Compiler({ compile: { plugins: [cssPlugin()], functionMode: 'error' } });
+  const strict = new Compiler({ compile: { functionMode: 'error' } });
 
   it('reports a failing call instead of preserving it', async () => {
     for (const extension of DIALECTS) {

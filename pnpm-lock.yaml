@@ -412,9 +412,6 @@ importers:
         specifier: workspace:*
         version: link:../jess-plugin-js
     devDependencies:
-      '@jesscss/plugin-css':
-        specifier: workspace:*
-        version: link:../jess-plugin-css
       '@jesscss/plugin-less-compat':
         specifier: workspace:*
         version: link:../jess-plugin-less-compat
@@ -467,15 +464,6 @@ importers:
       chevrotain:
         specifier: ^12.0.0
         version: 12.0.0
-
-  packages/jess-plugin-css:
-    dependencies:
-      '@jesscss/core':
-        specifier: workspace:*
-        version: link:../core
-      '@jesscss/css-parser':
-        specifier: workspace:*
-        version: link:../css-parser
 
   packages/jess-plugin-jess:
     dependencies:

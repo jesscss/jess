@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
-import cssPlugin from '@jesscss/plugin-css';
 import lessPlugin from '@jesscss/plugin-less';
 
 const invalidCalls = [
@@ -88,17 +87,6 @@ describe('Less built-in argument errors through the public AST route', () => {
     expect(output).toContain('hue: hsla(120, 100%, 66.66666667%, 0.6)');
     expect(output).not.toContain('rgba(#5F59)');
     expect(output).not.toContain('hsla(#5F59)');
-  });
-
-  it('does not apply the Less call policy to a CSS document', async () => {
-    const strict = new Compiler({
-      output: { collapseNesting: true },
-      compile: { functionMode: 'error', plugins: [cssPlugin()] }
-    });
-    await expect(strict.renderString('.entry { color: rgb(1,2, 3); }', {
-      filePath: 'entry.css',
-      extension: '.css'
-    })).resolves.toContain('color: rgb(1, 2, 3)');
   });
 
   it.each(['scss', 'jess'] as const)('does not apply the Less call policy to .%s documents', async (extension) => {
