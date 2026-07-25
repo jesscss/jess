@@ -227,9 +227,11 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
     return null;
   };
 
-  // Absolute span of a `Reference`'s leading `$` sigil leaf, when the grammar
-  // captured the sigil separately from the name. `null` when the reference is a
-  // single leaf (css/less/scss), so those keep one variable token.
+  /*
+   * Absolute span of a `Reference`'s leading `$` sigil leaf, when the grammar
+   * captured the sigil separately from the name. `null` when the reference is a
+   * single leaf (css/less/scss), so those keep one variable token.
+   */
   const sigilLeafSpan = (node: CssCstNode, nodeStart: number): { start: number; end: number } | null => {
     const first = node.children[0];
     if (!first || isCstNode(first)) {
@@ -243,12 +245,14 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
   for (const { node, start, end } of index.nodes) {
     const gt = node.grammarType;
     if (gt === 'Reference') {
-      // .jess treats `$` as a distinct sigil/operator (it also heads control-flow
-      // `$…{}`, scope `${}`, mutation `:=`), so the `$` and the variable name are
-      // coloured as SEPARATE tokens rather than one blob. The jess grammar already
-      // captures them as two leaves (`$` then the bare name), so the split is read
-      // off the CST — never re-derived from source bytes. css/less/scss keep the
-      // conventional single-token variable.
+      /*
+       * .jess treats `$` as a distinct sigil/operator (it also heads control-flow
+       * `$…{}`, scope `${}`, mutation `:=`), so the `$` and the variable name are
+       * coloured as SEPARATE tokens rather than one blob. The jess grammar already
+       * captures them as two leaves (`$` then the bare name), so the split is read
+       * off the CST — never re-derived from source bytes. css/less/scss keep the
+       * conventional single-token variable.
+       */
       const sigil = lang === 'jess' ? sigilLeafSpan(node, start) : null;
       if (sigil) {
         push(sigil.start, sigil.end, 'operator');

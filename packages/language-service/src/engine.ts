@@ -768,8 +768,11 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.duplicateProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.hexColorLength]: DiagnosticSeverity.Error,
     [LINT_CODES.zeroUnits]: DiagnosticSeverity.Hint,
-    // Parsed-but-never-evaluated SCSS forms. The "Unsupported Sass Features"
-    // guide specifies a warning at the use site, not a hard parse error.
+
+    /*
+     * Parsed-but-never-evaluated SCSS forms. The "Unsupported Sass Features"
+     * guide specifies a warning at the use site, not a hard parse error.
+     */
     [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
     /* eslint-enable @typescript-eslint/naming-convention */
   };
@@ -1709,12 +1712,15 @@ export function createEngine(): JessLanguageServiceEngine {
       const diagnostics: Diagnostic[] = [];
       const text = doc.getText();
       const textLength = text.length;
-      // A parser reports where CONSUMPTION stopped, which is the boundary BEFORE
-      // the whitespace preceding the offending token (`a { color: |) ;`). Where
-      // the squiggle goes is an editor concern, not a parser fact: anchor it on
-      // the offending TOKEN so the underline never covers only a space. A
-      // whitespace-only tail keeps the original offset, so a stop at EOF still
-      // produces a range.
+
+      /*
+       * A parser reports where CONSUMPTION stopped, which is the boundary BEFORE
+       * the whitespace preceding the offending token (`a { color: |) ;`). Where
+       * the squiggle goes is an editor concern, not a parser fact: anchor it on
+       * the offending TOKEN so the underline never covers only a space. A
+       * whitespace-only tail keeps the original offset, so a stop at EOF still
+       * produces a range.
+       */
       const skipBlank = (from: number): number => {
         let at = from;
         while (at < textLength && /\s/.test(text.charAt(at))) {

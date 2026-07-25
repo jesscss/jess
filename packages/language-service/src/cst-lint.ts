@@ -30,6 +30,7 @@ export const LINT_CODES = {
   duplicateProperties: 'lint/duplicate-property',
   hexColorLength: 'lint/hex-color-length',
   zeroUnits: 'lint/zero-units',
+
   /**
    * SCSS forms Jess parses (so a converted file still yields a tree) but will
    * never evaluate: `@forward … as <prefix>-*`, `@forward … show/hide`, and the
@@ -194,11 +195,13 @@ export function cstLintDiagnostics(root: CssCstNode, doc: TextDocument, lang: Je
       }
     }
 
-    // --- unsupportedSassForm: parsed-but-never-evaluated SCSS forms. ---
-    // Recognition is STRUCTURAL: `ScssAtRootFilter` is the grammar's own node for
-    // the `@at-root (<filter>)` form, and the `@forward` prelude is the grammar's
-    // own captured leaf. Both diagnostics take the full node span, matching the
-    // spans the SCSS builder used to save before these checks moved editor-side.
+    /*
+     * --- unsupportedSassForm: parsed-but-never-evaluated SCSS forms. ---
+     * Recognition is STRUCTURAL: `ScssAtRootFilter` is the grammar's own node for
+     * the `@at-root (<filter>)` form, and the `@forward` prelude is the grammar's
+     * own captured leaf. Both diagnostics take the full node span, matching the
+     * spans the SCSS builder used to save before these checks moved editor-side.
+     */
     if (unsupportedSev !== null && gt === 'ScssAtRootFilter') {
       push(
         LINT_CODES.unsupportedSassForm, unsupportedSev,
