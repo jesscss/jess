@@ -38,7 +38,7 @@ describe('bootstrap @min-in-guard wall', () => {
     return;
   }
 
-  it("does not fail with \"'min' is not defined\"", async () => {
+  it('does not fail with "\'min\' is not defined"', async () => {
     const file = path.join(bsRoot, 'bootstrap.less');
     const compiler = new Compiler({
       compile: {
@@ -60,8 +60,8 @@ describe('bootstrap @min-in-guard wall', () => {
 
     const message = error instanceof Error ? error.message : String(error ?? '');
     // Regression assertion: the min-in-guard wall must be gone.
-    expect(message).not.toContain("'min' is not defined");
+    expect(message).not.toContain('\'min\' is not defined');
     // Either bootstrap now renders, or it stops at a later, different wall.
-    expect(css.length > 0 || (message.length > 0 && !message.includes("'min' is not defined"))).toBe(true);
+    expect(css.length > 0 || (message.length > 0 && !message.includes('\'min\' is not defined'))).toBe(true);
   }, 120000);
 });

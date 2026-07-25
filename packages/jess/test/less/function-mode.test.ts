@@ -32,7 +32,7 @@ function makeCompiler(compileExtra: Record<string, unknown> = {}) {
 }
 
 describe('functionMode', () => {
-  it("default 'preserve' renders the call as-is and warns", async () => {
+  it('default \'preserve\' renders the call as-is and warns', async () => {
     for (const f of FIXTURES) {
       const r = await makeCompiler().renderToResult(path.join(TD, `${f}.less`), { breakOnError: true } as any);
       // renders (no error) …
@@ -46,7 +46,7 @@ describe('functionMode', () => {
     }
   }, 60000);
 
-  it("'error' throws the underlying Less function error", async () => {
+  it('\'error\' throws the underlying Less function error', async () => {
     for (const f of FIXTURES) {
       const r = await makeCompiler({ functionMode: 'error' })
         .renderToResult(path.join(TD, `${f}.less`), { breakOnError: true } as any)

@@ -8,7 +8,7 @@ const buildFile = async (filePath: string) => {
   const input = path.resolve(__dirname, filePath);
   const bundle = await rollup.rollup({
     input,
-    plugins: [nodeResolve(), commonJs(), jess()],
+    plugins: [nodeResolve(), commonJs(), jess()]
   });
   const { output } = await bundle.generate({ format: 'umd', name: 'jess' });
   return output;

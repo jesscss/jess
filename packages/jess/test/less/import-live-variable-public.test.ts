@@ -12,7 +12,7 @@ describe('Less import live bindings through the public route', () => {
       '@grays: { 100: #f8f9fa; 900: #212529; };',
       '@escaped-characters: { <: %3c; >: %3e; #: %23; (: %28; ): %29; };',
       '@colors: { primary: red; };',
-      '',
+      ''
     ].join('\n'));
     writeFileSync(join(dir, 'root.less'), ':root { each(@colors, #(@value, @name) { color: @value; }); }\n');
     writeFileSync(join(dir, 'entry.less'), '@import "variables";\n@import "root";\n');

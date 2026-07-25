@@ -89,7 +89,6 @@ describe('Conversion Plugins', () => {
       expect((result as Num).number).toBe(42);
     });
   });
-
 });
 
 describe('defineFunction with Conversion Plugins', () => {

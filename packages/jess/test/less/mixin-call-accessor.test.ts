@@ -17,7 +17,10 @@ async function render(src: string): Promise<{ css: string; rej: any[] }> {
     css = await new Compiler({ compile: { plugins: [lessPlugin(), lessCompatPlugin()] } })
       .render(tmp, { suppressWarnings: true, breakOnError: false });
     await new Promise(r => setTimeout(r, 200));
-  } finally { process.off('unhandledRejection', onRej); fs.unlinkSync(tmp); }
+  } finally {
+    process.off('unhandledRejection', onRej);
+    fs.unlinkSync(tmp);
+  }
   return { css, rej };
 }
 

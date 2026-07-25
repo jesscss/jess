@@ -33,7 +33,7 @@ describe('strict preset (compile→eval seam)', () => {
     expect(await guardMatches({})).toBe(true);
   }, 60000);
 
-  it("strict: true sets equalityMode 'exact' — `2px = 2` no longer matches", async () => {
+  it('strict: true sets equalityMode \'exact\' — `2px = 2` no longer matches', async () => {
     expect(await guardMatches({ strict: true })).toBe(false);
   }, 60000);
 

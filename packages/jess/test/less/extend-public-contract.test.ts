@@ -12,7 +12,7 @@ import { Compiler } from '../../src/index.js';
 async function render(source: string): Promise<string> {
   return new Compiler({ output: { collapseNesting: true } }).renderString(source, {
     language: 'less',
-    filePath: '/virtual/extend-contract.less',
+    filePath: '/virtual/extend-contract.less'
   });
 }
 
@@ -23,7 +23,7 @@ describe('public direct-AST extend contracts', () => {
       '  .a { color: red; }',
       '  .b:extend(.a) {}',
       '}',
-      '.a { color: blue; }',
+      '.a { color: blue; }'
     ].join('\n'));
 
     expect(css).toBe([
@@ -36,7 +36,7 @@ describe('public direct-AST extend contracts', () => {
       '.a {',
       '  color: blue;',
       '}',
-      '',
+      ''
     ].join('\n'));
   });
 
@@ -45,7 +45,7 @@ describe('public direct-AST extend contracts', () => {
       '.sidebar { color: red; }',
       '.type1 {',
       '  .sidebar3 { &:extend(.sidebar all); color: green; }',
-      '}',
+      '}'
     ].join('\n'));
 
     expect(css).toBe([
@@ -56,7 +56,7 @@ describe('public direct-AST extend contracts', () => {
       '.type1 .sidebar3 {',
       '  color: green;',
       '}',
-      '',
+      ''
     ].join('\n'));
   });
 
@@ -71,7 +71,7 @@ describe('public direct-AST extend contracts', () => {
       '.ext {',
       '  background: blue;',
       '}',
-      '',
+      ''
     ].join('\n'));
   });
 
@@ -86,14 +86,14 @@ describe('public direct-AST extend contracts', () => {
       '.replacement {',
       '  color: blue;',
       '}',
-      '',
+      ''
     ].join('\n'));
   });
 
   it('rejects a comma-list parent in a non-leading ampersand merge template', async () => {
     await expect(render([
-      "@list-quoted: ~'apple, satsuma, banana, pear';",
-      '@{list-quoted} { .fruit-quoted-& { content: "Quoted"; } }',
+      '@list-quoted: ~\'apple, satsuma, banana, pear\';',
+      '@{list-quoted} { .fruit-quoted-& { content: "Quoted"; } }'
     ].join('\n'))).rejects.toMatchObject({ code: 'selector/comma-list-interpolation' });
   });
 });

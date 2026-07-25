@@ -221,14 +221,18 @@ describe('Less path resolution', () => {
             await Promise.resolve();
             const paths = Array.isArray(candidates) ? candidates : [candidates];
             for (const candidate of paths) {
-              if (candidate.endsWith(`${path.sep}assets${path.sep}note.txt`)) resolvedAssets.add('note.txt');
-              if (candidate.endsWith(`${path.sep}assets${path.sep}icon.png`)) resolvedAssets.add('icon.png');
+              if (candidate.endsWith(`${path.sep}assets${path.sep}note.txt`)) {
+                resolvedAssets.add('note.txt');
+              }
+              if (candidate.endsWith(`${path.sep}assets${path.sep}icon.png`)) {
+                resolvedAssets.add('icon.png');
+              }
             }
             return paths;
-          },
-        }],
+          }
+        }]
       },
-      language: { less: { paths: [includeDir] } },
+      language: { less: { paths: [includeDir] } }
     }).render(entryFile);
 
     expect(asyncResolverCalls).toBeGreaterThan(0);

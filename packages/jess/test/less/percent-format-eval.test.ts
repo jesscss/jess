@@ -28,8 +28,8 @@ describe('%() lowering — eval', () => {
   });
 
   it('preserves single-quote format quoting', async () => {
-    const css = await render(".a { x: %('hello %s', \"single world\"); }");
-    expect(css).toContain("x: 'hello single world'");
+    const css = await render('.a { x: %(\'hello %s\', "single world"); }');
+    expect(css).toContain('x: \'hello single world\'');
   });
 
   it('escaped ~"..." format renders unquoted', async () => {

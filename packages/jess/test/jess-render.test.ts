@@ -10,21 +10,21 @@ describe('Jess parser plugin render-through', () => {
     const context = compiler.createContext('entry.jess');
     const parsed = await context.parseString('.entry { color: red; }', {
       filePath: 'entry.jess',
-      extension: '.jess',
+      extension: '.jess'
     });
 
     expect(parsed.node.type).toBe('Stylesheet');
     expect(context.document).toBe(parsed.node);
     await expect(compiler.renderString('.entry { color: red; }', {
       filePath: 'entry.jess',
-      extension: '.jess',
+      extension: '.jess'
     })).resolves.toContain('color: red');
   });
 
   it('renders bare-truth $if bodies and $apply through the public AST route', async () => {
     const css = await new Compiler().renderString(
       '.paint { color: red; } .entry { $if (true) { $apply .paint; } }',
-      { filePath: 'entry.jess', extension: '.jess' },
+      { filePath: 'entry.jess', extension: '.jess' }
     );
 
     expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n}\n');
@@ -33,7 +33,7 @@ describe('Jess parser plugin render-through', () => {
   it('preserves repeated output from the core $apply operation', async () => {
     const css = await new Compiler().renderString(
       '.paint { color: red; } .entry { $apply .paint; $apply .paint; }',
-      { filePath: 'entry.jess', extension: '.jess' },
+      { filePath: 'entry.jess', extension: '.jess' }
     );
 
     expect(css).toBe('.paint {\n  color: red;\n}\n.entry {\n  color: red;\n  color: red;\n}\n');
@@ -42,18 +42,18 @@ describe('Jess parser plugin render-through', () => {
   it('merges every matching plain ruleset without entering parameterized mixin dispatch', async () => {
     const css = await new Compiler().renderString(
       '.paint { color: red; } .paint { background: blue; } paint() { border: 1px solid; } .entry { $apply .paint; $apply paint; }',
-      { filePath: 'entry.jess', extension: '.jess' },
+      { filePath: 'entry.jess', extension: '.jess' }
     );
 
     expect(css).toBe(
-      '.paint {\n  color: red;\n}\n.paint {\n  background: blue;\n}\n.entry {\n  color: red;\n  background: blue;\n}\n',
+      '.paint {\n  color: red;\n}\n.paint {\n  background: blue;\n}\n.entry {\n  color: red;\n  background: blue;\n}\n'
     );
   });
 
   it('renders documented $for bindings and exclusive ranges through the Jess plugin', async () => {
     const css = await new Compiler().renderString(
       '$items: red, blue; $for ($item, $key, $counter of $items) { .item-${key}-${counter} { color: $item; } } $for ($i of 1 to <3) { .range-${i} { order: $i; } }',
-      { filePath: 'entry.jess', extension: '.jess' },
+      { filePath: 'entry.jess', extension: '.jess' }
     );
 
     expect(css).toBe(
@@ -64,7 +64,7 @@ describe('Jess parser plugin render-through', () => {
   it('renders documented collection member and list-index references through the Jess plugin', async () => {
     const css = await new Compiler().renderString(
       '$theme: { colors: { primary: #06c; }; }; $sizes: 10px, 20px, 30px; .entry { color: $theme.colors.primary; first: $sizes[0]; padding: $sizes[-1]; }',
-      { filePath: 'entry.jess', extension: '.jess' },
+      { filePath: 'entry.jess', extension: '.jess' }
     );
 
     expect(css).toBe('.entry {\n  color: #06c;\n  first: 10px;\n  padding: 30px;\n}\n');
@@ -110,7 +110,7 @@ describe('Jess parser plugin render-through', () => {
   it('reports an arity mismatch on a function call rather than emitting the raw call', async () => {
     await expect(new Compiler().renderString(
       '$f: @($a, $b) > { result: 1; } .box { v: $f(1); }',
-      { filePath: 'entry.jess', extension: '.jess' },
+      { filePath: 'entry.jess', extension: '.jess' }
     )).rejects.toThrow(/arity/i);
   });
 
@@ -226,7 +226,7 @@ describe('Jess parser plugin render-through', () => {
     const source = '@import url(${path}); $path: "images/icon.svg";';
     const result = await new Compiler().renderToResult(
       { source, filePath, extension: '.jess' },
-      { suppressWarnings: true },
+      { suppressWarnings: true }
     );
 
     expect(result.errors).toHaveLength(1);
@@ -235,7 +235,7 @@ describe('Jess parser plugin render-through', () => {
       phase: 'resolve',
       filePath,
       line: 1,
-      column: 13,
+      column: 13
     });
     expect(result.errors[0]?.lines?.[1]).toContain('${path}');
   });

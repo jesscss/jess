@@ -35,7 +35,7 @@ const acceptedDivergences = new Map<string, string>([
   // detached-ruleset-1/-2 GRADUATED — a detached ruleset (Mixin/Rules) used as a
   // property value now throws eval/ruleset-on-property (declaration.ts).
   ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
-  ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)']
   // These five DO error again, so they are no longer accepted divergences — but
   // for a DIFFERENT reason than Less has. Less rejects them because a root-level
   // call returns a non-root node; Jess now rejects them because the `@plugin`
@@ -114,7 +114,7 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
       const errored = errors.length > 0;
       if (file === 'tests-error/eval/plugin-2.less' || file === 'tests-error/eval/plugin-3.less') {
         expect(errors, `${file} should surface a structured eval error`).toEqual(expect.arrayContaining([
-          expect.objectContaining({ phase: 'eval', code: expect.any(String) }),
+          expect.objectContaining({ phase: 'eval', code: expect.any(String) })
         ]));
       }
       if (divergence) {

@@ -25,7 +25,7 @@ const cases = [
       .m(1);
       .m(2);
     }
-  `, 'eval/ambiguous-default'],
+  `, 'eval/ambiguous-default']
 ] as const;
 
 describe('Less structural errors through the public AST route', () => {
@@ -33,7 +33,7 @@ describe('Less structural errors through the public AST route', () => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     await expect(compiler.renderString(source, {
       filePath: 'entry.less',
-      extension: '.less',
+      extension: '.less'
     })).rejects.toMatchObject({ code });
   });
 
@@ -48,7 +48,7 @@ describe('Less structural errors through the public AST route', () => {
       }
     `, {
       filePath: 'entry.less',
-      extension: '.less',
+      extension: '.less'
     })).resolves.toBe('');
   });
 });

@@ -201,5 +201,4 @@ describe('Compiler reuse', () => {
       expect(css).toContain('.a');
     }
   });
-
 });
