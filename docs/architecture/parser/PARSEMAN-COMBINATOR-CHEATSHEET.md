@@ -435,9 +435,23 @@ written. Recording both, with what is true instead.
     (`regex.ts:53-55`), and macro lowering declines `u` entirely plus `/i` on
     anything but a pure literal (`docs/guide/regex-lowering.md:175-178`).
 
-  So: non-ASCII costs the **fast path**, not correctness. If you want a rule,
-  make it "prefer `\uXXXX` so the pattern is greppable and diffable", and do not
-  claim parseman requires it.
+  So: non-ASCII costs the **fast path**, not correctness.
+
+  **This refutes the stated mechanism, not the rule.** The escape rule was
+  justified by first-set gating, and gating is not what it buys — but a different
+  justification survives the probe intact, and it is the stronger one:
+
+  > **Write non-ASCII in a regex as `\uXXXX`.** A literal `é`, `ﬁ`, a Cyrillic `а`
+  > or a zero-width joiner is *invisible to review*. Nobody can eyeball a character
+  > class for a homoglyph, and a grammar is exactly the place where one silently
+  > changes what the language accepts. The escape makes the code point auditable in
+  > a diff. Parseman does not require this and the first-set is identical either
+  > way — it is a reviewability rule, and it holds for that reason alone.
+
+  Do not restate it as a performance or gating rule; that claim is false and will
+  send the next reader hunting for a first-set difference that is not there. The
+  genuine ASCII *performance* boundary is the 128-entry dispatch table above, which
+  is about the first character a rule can match, not about how it is spelled.
 
 ### 4.6 Nullability rules you will otherwise rediscover
 

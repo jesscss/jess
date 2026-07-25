@@ -59,6 +59,38 @@ The two module graphs are independent — nothing under `src/ast/` imports `src/
 A change to one route is **not** a change to the other. If you fix a bug, ask whether the
 other route has the same bug; historically the fix has landed in one copy only.
 
+## Why the AST grammars are terminal leaves (measured, 2026-07-25)
+
+The CST grammars inherit (`compose`); the AST grammars cannot, and each therefore
+restates the whole of CSS. The reason is **not** that `compose()` rejects semantic
+builders — it does not:
+
+- `hasDirectBuilders` is checked at exactly one site, `plugin/index.ts:1102`, inside the
+  **`composeLeaf`** branch. Plain `compose()` has no such check.
+- A two-artifact experiment confirms it: grammar A carrying `node()` builders, built to
+  JS, then `compose([A, delta])` where the delta *also* carries builders and overrides
+  A's rules — **compiles with 0 interpreter fallbacks**, and the override is seen through
+  A's inherited rules across the artifact boundary.
+
+The real gate is `plugin/direct-builder-static.ts`. A builder crossing an artifact
+boundary must be an **arrow with an expression body**, **plain-identifier params**, reading
+**only its params plus 12 globals** (`Array Boolean Date JSON Math NaN Number Object String
+Infinity parseFloat parseInt undefined`). Any other free identifier is fatal —
+`ir-serialize.ts:138` throws `IR direct node builder for X must be macro-static and
+self-contained`. It is a hard build error, not a silent fallback.
+
+Audited against that validator, **576 of 592 builders (97.3%) violate it**: 692
+free-identifier reads over 124 distinct names, plus 258 statement bodies. The free
+identifiers are two unavoidable families — imported `@jesscss/core/ast` constructors
+(`atRuleBlock`, `keyword`, `block`, `funcCall`, `selist`, `simpleSelector`, …) and
+grammar-local helpers and type guards (`requireToken` ×122, `tokenText` ×44,
+`requireValueNode`, `isValueNode`, `isDeclaration`, …).
+
+**So composition is available in principle and unaffordable in practice**: reaching it
+means the builders stop calling core's constructors, which is a semantics change rather
+than a refactor. Treat the AST grammars as terminal leaves unless parseman grows a
+carryable reducer table. Do not re-derive this; re-measure only if the pin moves.
+
 ## parseman, and the macro compiler
 
 Grammars are [parseman](/Users/matthew/git/oss/parser-thing) functional grammars, imported
@@ -107,6 +139,24 @@ Consequences:
   hit/unhit **named rules, choice arms and labels** (not line coverage). Requires a build
   with `parseman.rolldown({ grammarCoverage: true })`. Supports `composeLeaf` roots. Use it
   to prove a branch is exercised rather than asserting it is.
+
+  **Two caveats, or it reads as coverage while measuring nothing:**
+
+  1. **At the pinned 0.32.0 the IDs are rule-level, not branch-level.** The four dialect
+     grammars' own `choice()` arms carry **no IDs at all**, so **not one choice arm in any
+     grammar is protected by the corpus.** A ratio near 1.0 says nothing about arm
+     selection — which is where dialect divergence actually lives.
+  2. **`unhit` ≠ unexercised.** A rule referenced as a bare const gets inlined at its use
+     site and never fires as a named definition, so it reports unhit while being fully
+     exercised. Every raw unhit entry must be probe-resolved before it is believed —
+     and, conversely, the denominator contains unreachable definitions that inflate it.
+
+  Measured 2026-07-25 over 3108 files: css 0.680, less 0.825, scss 0.738, jess 0.747.
+  The real gaps, probe-confirmed: the **entire `var()`-fallback family** (10 rules,
+  `css-parser/src/ast/grammar.ts:1014-1180`) is touched by **zero** files; likewise
+  `@font-feature-values`, 7 Less rules, 13 SCSS control-flow/template rules, and **19 Jess
+  rules covering all three interpolation forms** — the language's headline surface. A
+  rewrite verified against a corpus that never exercises those is not verified.
 - `pnpm run verify:compose-integrity`, and each package's `test/compose-integrity.test.ts`,
   pin the composition chain — a missing rule in a `compose()` is a hard runtime error, and
   the fallback path degrades silently to the interpreter.
