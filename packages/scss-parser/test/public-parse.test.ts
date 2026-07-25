@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/scss-parser';
 import { parseScssCst, parseScssDoc } from '@jesscss/scss-parser/cst';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
 import { serialize as serializeMaybeAsync, type SerializeResult } from '../../core/src/ast/serialize.js';
 
@@ -488,7 +488,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         { type: 'Rule', body: [{ type: 'MixinCall', name: 'paint' }] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) })).toEqual({
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) })).toEqual({
       css: '.after {\n  color: blue;\n}\n'
     });
   });
@@ -521,7 +521,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         { type: 'For', binding: { kind: 'single', name: 'i' }, rules: [{ type: 'If', branches: [{ guard: { g: 'cmp', op: '=' } }] }] }
       ]
     });
-    expect(serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()) })).toEqual({
+    expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) })).toEqual({
       css: '.card {\n  color: red;\n}\n.each {\n  color: blue;\n}\n.step {\n  width: 1px;\n}\n'
     });
 
@@ -557,7 +557,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         { type: 'Rule', body: [{ type: 'AtRuleBlock', name: '@page', prelude: { type: 'Any', src: 'appendix' }, body: [{ type: 'Declaration', name: 'size' }] }] }
       ]
     });
-    expect(serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()) })).toEqual({
+    expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) })).toEqual({
       css: '@page report:left {\n  size: A4;\n  @top-left {\n    content: "head";\n  }\n}\n@media print {\n  @page :right {\n    margin: 1cm;\n    @bottom-center {\n      content: "folio";\n    }\n  }\n}\n@page appendix {\n  size: letter;\n}\n'
     });
   });
@@ -575,7 +575,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         { type: 'Rule', body: [{ type: 'AtRuleBlock', name: '@font-feature-values', prelude: { src: 'Nested' }, body: [{ type: 'AtRuleBlock', name: '@annotation' }] }] }
       ]
     });
-    expect(serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()) })).toEqual({
+    expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) })).toEqual({
       css: '@font-feature-values "Fira Code", Demo {\n  /* family */\n  @stylistic {\n    salt: 1;\n  }\n  @styleset {\n    nice: 2;\n  }\n  @character-variant {\n    cv01: 3;\n  }\n  @swash {\n    swsh: 4;\n  }\n  @ornaments {\n    orn: 5;\n  }\n  @annotation {\n    note: 6;\n  }\n  @historical-forms {\n    hist: 7;\n  }\n}\n@media print {\n  @font-feature-values Print {\n    @styleset {\n      compact: 1;\n    }\n  }\n}\n@font-feature-values Nested {\n  @annotation {\n    label: 1;\n  }\n}\n'
     });
   });
@@ -606,7 +606,7 @@ describe('@jesscss/scss-parser public parse API', () => {
         { type: 'Rule', body: [{ type: 'AtRuleBlock', name: '@document', body: [{ type: 'Rule' }] }] }
       ]
     });
-    expect(serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@-MOZ-DOCUMENT url-prefix("https://example.test/"), domain("example.test") {\n'
       + '  @font-face {\n'
       + '    font-family: Demo;\n'

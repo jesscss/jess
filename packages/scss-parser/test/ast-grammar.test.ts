@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
@@ -50,7 +50,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 
 describe('SCSS canonical-AST grammar', () => {
   it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {

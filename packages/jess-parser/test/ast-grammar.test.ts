@@ -1,7 +1,7 @@
 import { run } from 'parseman';
 import { sourceSpanOf, type Stylesheet, type Rule, type SimpleToken } from '@jesscss/core/ast';
 import { JessError } from '@jesscss/core';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
 import { serialize } from '../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
@@ -91,7 +91,7 @@ describe('Jess AST grammar facts', () => {
         }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.card {\n  color: white;\n}\n');
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.card {\n  color: white;\n}\n');
   });
 
   it('constructs strict logical $if guard trees directly and evaluates their selected branch', () => {
@@ -124,7 +124,7 @@ describe('Jess AST grammar facts', () => {
         }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.card {\n  color: green;\n}\n');
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.card {\n  color: green;\n}\n');
   });
 
   it('retains CST-admitted adjacent $if comparison operators through public parse and render', () => {
@@ -138,7 +138,7 @@ describe('Jess AST grammar facts', () => {
         type: 'If', branches: [{ guard: { g: 'cmp', op: '>' } }, { guard: null }]
       }]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.card {\n  color: green;\n}\n');
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.card {\n  color: green;\n}\n');
   });
 
   it('rejects mixin-only and ungrouped logical forms in direct $if conditions', () => {
@@ -178,7 +178,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Rule' }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.after {\n  live: blue;\n  scoped: navy;\n  nested: green;\n}\n'
     );
   });
@@ -186,7 +186,7 @@ describe('Jess AST grammar facts', () => {
   it('keeps unselected branch declarations isolated and publishes the selected else arm', () => {
     const source = '$tone: gray; $if (false) { $tone := red; $$tone := maroon; } $else { $tone := blue; $$tone := navy; } .after { live: $tone; scoped: $$tone; }';
 
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.after {\n  live: blue;\n  scoped: navy;\n}\n'
     );
   });
@@ -203,12 +203,12 @@ describe('Jess AST grammar facts', () => {
         ] }]
       }]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.after {\n  color: blue;\n}\n'
     );
 
     const beforeDefinition = '$if (true) { .before { $ > paint(); } paint() { color: blue; } }';
-    expect(() => serialize(parse(beforeDefinition), { evaluator: buildEvaluator(makeBuiltinRegistry()) }))
+    expect(() => serialize(parse(beforeDefinition), { evaluator: buildEvaluator(makeLessRegistry()) }))
       .toThrow(/Name not found/);
   });
 
@@ -216,22 +216,22 @@ describe('Jess AST grammar facts', () => {
     const ordered = 'paint() { color: a; } $if (true) { paint() { color: b; } } paint() { color: c; } .after { $ > paint(); }';
     const falseArm = '$if (false) { paint() { color: wrong; } } .after { $ > paint(); }';
 
-    expect(serialize(parse(ordered), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(ordered), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.after {\n  color: a;\n  color: b;\n  color: c;\n}\n'
     );
-    expect(() => serialize(parse(falseArm), { evaluator: buildEvaluator(makeBuiltinRegistry()) }))
+    expect(() => serialize(parse(falseArm), { evaluator: buildEvaluator(makeLessRegistry()) }))
       .toThrow(/Name not found/);
   });
 
   it('keeps selected $if mixin definitions in their parameterized activation closure', () => {
     const source = 'outer($tone) { $if (true) { paint() { color: $tone; } } .inside { $ > paint(); } } .one { $ > outer(red); } .two { $ > outer(blue); }';
 
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.one .inside {\n  color: red;\n}\n.two .inside {\n  color: blue;\n}\n'
     );
 
     const outsideActivation = `${source} .after { $ > paint(); }`;
-    expect(() => serialize(parse(outsideActivation), { evaluator: buildEvaluator(makeBuiltinRegistry()) }))
+    expect(() => serialize(parse(outsideActivation), { evaluator: buildEvaluator(makeLessRegistry()) }))
       .toThrow(/Name not found/);
   });
 
@@ -253,14 +253,14 @@ describe('Jess AST grammar facts', () => {
         ] }] }] }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.host {\n  color: red;\n  background: blue;\n}\n.host .item-one {\n  order: one;\n}\n.host .item-two {\n  order: two;\n}\n'
     );
   });
 
   it('does not execute any newly admitted statement form from a false $if arm', () => {
     const source = 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $if (false) { $ > paint(); $held(); $apply paint; $for ($item of $items) { .item-$[item] { order: $item; } } } }';
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('');
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('');
   });
 
   it('keeps imports held inside direct $if bodies', () => {
@@ -308,7 +308,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Rule', body: [{ type: 'MixinCall', name: 'wrapper' }, { type: 'For', rules: [{ type: 'Apply', selectors: [{ type: 'CompoundSelector' }] }] }] }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.paint {\n  color: red;\n}\n.host {\n  color: red;\n  color: red;\n  color: red;\n}\n'
     );
     expect(() => parse('wrapper() { $apply $[paint]; }')).toThrow(SyntaxError);
@@ -433,7 +433,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: '~\'tone\'', value: 'tone', quote: '\'', escaped: true } }
       ] }]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.asset {\n  double: theme;\n  single: tone;\n}\n'
     );
 
@@ -465,12 +465,12 @@ describe('Jess AST grammar facts', () => {
         ] }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.container {\n  color: red;\n  tone: 8px;\n}\n'
     );
     expect(serialize(
       parse('$n: 3.5; .a { width: ~"calc(100% - $[n]px)"; }'),
-      { evaluator: buildEvaluator(makeBuiltinRegistry()) }
+      { evaluator: buildEvaluator(makeLessRegistry()) }
     ).css).toBe('.a {\n  width: calc(100% - 3.5px);\n}\n');
   });
 
@@ -492,7 +492,7 @@ describe('Jess AST grammar facts', () => {
         ] }
       }] }]
     });
-    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    const evaluator = buildEvaluator(makeLessRegistry());
     expect(serialize(parse('.x { grid-area: 1 / 2; a: 1 / 2 / 3; b: a / b; }'), { evaluator }).css).toBe(
       '.x {\n  grid-area: 1 / 2;\n  a: 1 / 2 / 3;\n  b: a / b;\n}\n'
     );
@@ -514,7 +514,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'If', branches: [{ guard: { g: 'cmp', op: '>', left: { type: 'Reference', raw: '$c.x' } } }] }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.a {\n  width: 8px;\n}\n'
     );
   });
@@ -526,7 +526,7 @@ describe('Jess AST grammar facts', () => {
         value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', inner: { type: 'Operation', operator: '*', right: { type: 'Block' } } } }] }
       }] }]
     });
-    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    const evaluator = buildEvaluator(makeLessRegistry());
     expect(serialize(parse('.a { width: $(2px * (2 + 1)); height: $(2px /* nudge */ * 2); depth: $(/* lead */ 1px + 1px); }'), { evaluator }).css).toBe(
       '.a {\n  width: 6px;\n  height: 4px;\n  depth: 2px;\n}\n'
     );
@@ -542,7 +542,7 @@ describe('Jess AST grammar facts', () => {
         }] }
       ]
     });
-    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    const evaluator = buildEvaluator(makeLessRegistry());
     expect(serialize(parse('$w: 20; $side: left; .a { width: $($w)px; margin-$[side]: $[w]px; ratio: $[w]%; }'), { evaluator }).css).toBe(
       '.a {\n  width: 20px;\n  margin-left: 20px;\n  ratio: 20%;\n}\n'
     );
@@ -580,7 +580,7 @@ describe('Jess AST grammar facts', () => {
       expect(rule.body[0]).toMatchObject(
         { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' }, important: true }
       );
-      expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toContain(
+      expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toContain(
         '  color: red !important;\n'
       );
     }
@@ -592,7 +592,7 @@ describe('Jess AST grammar facts', () => {
       const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok, source).toBe(true);
       expect(direct.unconsumedFrom, source).toBeNull();
-      expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css, source).toContain(
+      expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css, source).toContain(
         'color: red !important;\n'
       );
     }
@@ -642,7 +642,7 @@ describe('Jess AST grammar facts', () => {
         { value: { type: 'Interpolation' } }
       ] }]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  plus: 3px;\n  product: 7px;\n  signed: 2px -1;\n  slash: 2px / 2;\n  wrapped: 1px;\n}\n'
     );
     // Standalone operators are syntax, not a later string heuristic. The
@@ -1007,7 +1007,7 @@ describe('Jess AST grammar facts', () => {
       prelude: 'screen /* header */',
       rawBody: '\n  raw: fn("}", nested({ value: 1; }));\n  // } stays in the raw body\n  @nested { value: "{ }"; }\n'
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(`${source}\n`);
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(`${source}\n`);
 
     // A prelude-less unknown block is the common spelling. The prelude capture is
     // an `optional(scanTo(...))` that emits no child when it matches nothing, so
@@ -1220,7 +1220,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'AtRuleBlock', name: '@document', prelude: { type: 'Url', value: { type: 'Any', src: 'site.css' } }, body: [{ type: 'Rule' }] }
       ]
     });
-    expect(serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@namespace svg url("http://www.w3.org/2000/svg");\n@document url(site.css) {\n  .icon {\n    color: blue;\n  }\n}\n'
     );
 
@@ -1363,7 +1363,7 @@ describe('Jess AST grammar facts', () => {
       type: 'AtRuleBlock',
       prelude: { type: 'SpacedValue', parts: [{ type: 'Block', delimiter: 'paren' }, { type: 'Keyword', src: 'or' }, { type: 'Block', delimiter: 'paren' }] }
     });
-    expect(serialize(root, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(root, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@supports not ((display: grid) and (color)) {\n  .card {\n    color: blue;\n  }\n}\n'
     );
 
@@ -1394,7 +1394,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'AtRuleBlock', name: '@-MOZ-KEYFRAMES', prelude: { type: 'Quoted', value: 'zoom' }, body: [{ type: 'Rule' }] }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@KEYFRAMES fade {\n  from,\n  50% {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}\n@-MOZ-KEYFRAMES "zoom" {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
@@ -1452,7 +1452,7 @@ describe('Jess AST grammar facts', () => {
 
   it('renders `/* */` but never renders a `//` line comment', () => {
     const source = '// dropped\n.card {\n  // dropped\n  color: red; // dropped\n}\n/* kept */\n';
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css)
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css)
       .toBe('.card {\n  color: red;\n}\n/* kept */\n');
   });
 
@@ -1547,7 +1547,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Declaration', name: 'empty', value: { type: 'Url', value: { type: 'Any', src: '' } } }
       ] }]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.asset {\n  quoted: url("images/icon.svg");\n  raw: url(images/icon.svg);\n  empty: url();\n}\n'
     );
   });
@@ -2110,12 +2110,12 @@ describe('Jess AST grammar facts', () => {
 
   it('keeps the documented source-dependent $for list and range behavior on the public Stylesheet route', () => {
     const listDocument = parse('$sections: header, sidebar, footer; $for ($section, $i of $sections) { .box-$[section] { padding-left: $($i * 20px); } }');
-    expect(serialize(listDocument, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(listDocument, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.box-header {\n  padding-left: 20px;\n}\n.box-sidebar {\n  padding-left: 40px;\n}\n.box-footer {\n  padding-left: 60px;\n}\n'
     );
 
     const rangeDocument = parse('$for ($i of 1 to <3) { .box-$[i] { value: $i; } }');
-    expect(serialize(rangeDocument, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(rangeDocument, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.box-1 {\n  value: 1;\n}\n.box-2 {\n  value: 2;\n}\n'
     );
   });
@@ -2241,7 +2241,7 @@ describe('Jess AST grammar facts', () => {
         }]
       }]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.button {\n  color: #1a73e8;\n  padding: 0.25rem;\n}\n');
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.button {\n  color: #1a73e8;\n  padding: 0.25rem;\n}\n');
   });
 
   it('keeps named mixin arguments source-ordered and variable-valued arguments positional', () => {
@@ -2270,7 +2270,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'Rule', body: [{ type: 'Reference', base: { type: 'VariableReference', name: 'my-mixin', lookup: 'live' }, steps: [{ type: 'Call', args: [] }], raw: '$my-mixin()' }] }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.box {\n  color: red;\n}\n'
     );
     expect(() => parse('.box { $my-mixin(red); }')).toThrow(SyntaxError);
@@ -2302,7 +2302,7 @@ describe('Jess AST grammar facts', () => {
       { type: 'MixinDef', name: 'unit', guard: { g: 'call', name: 'isunit', args: [{ type: 'VariableReference', name: 'value' }, { type: 'Keyword', src: 'px' }] } }
     ]);
     expect(parse(source)).toEqual(direct.value);
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.yes {\n  color: red;\n}\n.no {\n  color: blue;\n}\n.or {\n  color: green;\n}\n.number {\n  color: purple;\n}\n.unit {\n  color: orange;\n}\n'
     );
 
@@ -2357,7 +2357,7 @@ describe('Jess AST grammar facts', () => {
         ] }
       ]
     });
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  border-top-right-radius: 12px;\n  accent: blue;\n}\n'
     );
 
@@ -2378,7 +2378,7 @@ describe('Jess AST grammar facts', () => {
   // rather than being an error. Replicated as a matrix in
   // `conditional-at-rule-value.test.ts` for every dialect.
   it('treats `;` as a declaration-list separator, not a required terminator', () => {
-    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    const evaluator = buildEvaluator(makeLessRegistry());
     for (const source of [
       'a { color: red }',
       'a { color: red; }',
@@ -2491,7 +2491,7 @@ describe('Jess AST grammar facts', () => {
 
   it('evaluates a nested call', () => {
     const source = '$d: @($n) > $($n * 2);\n.box {\n  width: $d($d(2px));\n}';
-    expect(serialize(parse(source), { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css)
+    expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css)
       .toBe('.box {\n  width: 8px;\n}\n');
   });
 
@@ -2501,7 +2501,7 @@ describe('Jess AST grammar facts', () => {
   // folds — a call result and a bare keyword both reach it as plain bytes, and
   // used to come back wrapped in parens nobody wrote.
   it('never emits the `$( … )` delimiters, whatever the boundary wraps', () => {
-    const evaluator = { evaluator: buildEvaluator(makeBuiltinRegistry()) };
+    const evaluator = { evaluator: buildEvaluator(makeLessRegistry()) };
     const render = (source: string) => serialize(parse(source), evaluator).css;
     const double = '$d: @($n) > $($n * 2);\n';
 
@@ -2526,7 +2526,7 @@ describe('Jess AST grammar facts', () => {
   // in the frame the walk began in loses the params, and a `result:` that calls
   // on through died with `Name not found` on its own argument.
   it('keeps a chained call in its own frame while probing a declaration value', () => {
-    const evaluator = { evaluator: buildEvaluator(makeBuiltinRegistry()) };
+    const evaluator = { evaluator: buildEvaluator(makeLessRegistry()) };
     const render = (source: string) => serialize(parse(source), evaluator).css;
     const double = '$double: @($n) > $($n * 2);\n';
 

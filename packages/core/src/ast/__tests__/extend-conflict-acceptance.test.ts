@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   compoundSelectorOf, complexSelector, decl, keyword, stylesheet, rule, sel, selist, simpleSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
 

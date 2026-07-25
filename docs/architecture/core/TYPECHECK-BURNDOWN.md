@@ -80,7 +80,7 @@ alone; the other 64 live in downstream packages.
   5  packages/core/src/tree/util/emit-walk.ts
   5  packages/core/src/tree/import-style.ts
   4  packages/less-parser/src/lessRecursiveParser.ts
-  4  packages/fns/src/builtins/format.ts
+  4  packages/fns/src/less/format.ts
   4  packages/core/src/tree/util/check-valid-nodes.ts
   4  packages/core/src/tree/extend.ts
   3  packages/scss-parser/src/interp.ts

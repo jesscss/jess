@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvaluator } from '@jesscss/core';
 import { makeDimension, makeKeyword, makeList, type ValueObj } from '@jesscss/core/value';
-import { makeBuiltinRegistry } from '../registry.js';
+import { makeLessRegistry } from '../registry.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 
 describe('built-in call failures', () => {
   it('lets a resolved rgb() failure escape its implementation', () => {
-    const registry = makeBuiltinRegistry();
+    const registry = makeLessRegistry();
     const args = makeList([makeKeyword('not-a-color')], ',');
 
     expect(() => registry.dispatch('rgb', args, {
@@ -33,7 +33,7 @@ describe('built-in call failures', () => {
   });
 
   it('returns Less min/max survivor calls as successful values, while strict input still escapes', () => {
-    const registry = makeBuiltinRegistry();
+    const registry = makeLessRegistry();
     const args = makeList([makeDimension(1, 'px'), makeDimension(1, 's')], ',');
 
     expect(registry.dispatch('min', args, {
@@ -48,7 +48,7 @@ describe('built-in call failures', () => {
   });
 
   it('reduces each compatible min/max unit group before producing CSS survivors', () => {
-    const registry = makeBuiltinRegistry();
+    const registry = makeLessRegistry();
     const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: ValueObj) => value.bytes };
 
     const minResult = registry.dispatch('min', makeList([
@@ -65,7 +65,7 @@ describe('built-in call failures', () => {
   });
 
   it('does not let extract() or data-uri() manufacture their own fallback calls', () => {
-    const registry = makeBuiltinRegistry();
+    const registry = makeLessRegistry();
     const extractArgs = makeList([makeKeyword('one'), makeDimension(2)], ',');
     const emptyArgs = makeList([], ',');
     const context = {
@@ -85,7 +85,7 @@ describe('built-in call failures', () => {
   });
 
   it('keeps Less singleton extract semantics for a non-finite index through the registry', () => {
-    const registry = makeBuiltinRegistry();
+    const registry = makeLessRegistry();
     const result = registry.dispatch('extract', makeList([
       makeKeyword('only'), makeDimension(Number.POSITIVE_INFINITY)
     ], ','), {

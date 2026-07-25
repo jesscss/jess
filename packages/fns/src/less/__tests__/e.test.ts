@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeKeyword, makeQuoted } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import { e as builtinE } from '../../builtins/e.js';
-import e from '../e.js';
+import { lessFns } from '../registry.js';
+import { e } from '../e.js';
 
 describe('e()', () => {
   it('returns unquoted value for Quoted and unchanged node otherwise', () => {
@@ -14,7 +13,6 @@ describe('e()', () => {
   });
 
   it('uses the canonical implementation registered for Less', () => {
-    expect(e).toBe(builtinE);
-    expect(builtinLessFns.find(fn => fn.name === 'e')).toBe(builtinE);
+    expect(lessFns.find(fn => fn.name === 'e')).toBe(e);
   });
 });

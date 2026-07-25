@@ -4,9 +4,9 @@ import { beforeAll, describe, it, expect } from 'vitest';
 import hue from '../hue.js';
 import saturation from '../saturation.js';
 import lightness from '../lightness.js';
-import lessHue from '../../less/hue.js';
-import lessSaturation from '../../less/saturation.js';
-import lessLightness from '../../less/lightness.js';
+import { hue as lessHue } from '../../less/hue.js';
+import { saturation as lessSaturation } from '../../less/saturation.js';
+import { lightness as lessLightness } from '../../less/lightness.js';
 
 let context: Context;
 
@@ -98,7 +98,7 @@ describe('Sass HSL channel functions', () => {
     it('matches Less behavior for value and percent unit', () => {
       const color = new Color({ format: 2, hsl: [120, 0.25, 0.5] });
       const sassResult = saturation(color) as Dimension;
-      const lessResult = expectDimension(lessSaturation(color));
+      const lessResult = expectDimension(lessSaturation(makeColorHsl([120, 0.25, 0.5], 1, RGB)));
 
       expect(sassResult.number).toBe(25);
       expect(sassResult.unit).toBe('%');
@@ -136,7 +136,7 @@ describe('Sass HSL channel functions', () => {
     it('matches Less behavior for value and percent unit', () => {
       const color = new Color({ format: 2, hsl: [120, 0.5, 0.3] });
       const sassResult = lightness(color) as Dimension;
-      const lessResult = expectDimension(lessLightness(color));
+      const lessResult = expectDimension(lessLightness(makeColorHsl([120, 0.5, 0.3], 1, RGB)));
 
       expect(sassResult.number).toBe(30);
       expect(sassResult.unit).toBe('%');

@@ -27,8 +27,8 @@ describe('Sass color wrapper functions', () => {
     const input = new Color({ rgb: [128, 242, 13], alpha: 0.5 });
     const amount = new Dimension({ number: 10, unit: '%' });
 
-    const opacified = opacify(input, amount) as Color;
-    const fadedIn = fadeIn(input, amount) as Color;
+    const opacified = expectColor(opacify(input, amount));
+    const fadedIn = expectColor(fadeIn(input, amount));
 
     expect(opacified.alpha).toBeCloseTo(0.6);
     expect(fadedIn.alpha).toBeCloseTo(0.6);
@@ -39,8 +39,8 @@ describe('Sass color wrapper functions', () => {
     const input = new Color({ rgb: [128, 242, 13], alpha: 0.5 });
     const amount = new Dimension({ number: 10, unit: '%' });
 
-    const transparentized = transparentize(input, amount) as Color;
-    const fadedOut = fadeOut(input, amount) as Color;
+    const transparentized = expectColor(transparentize(input, amount));
+    const fadedOut = expectColor(fadeOut(input, amount));
 
     expect(transparentized.alpha).toBeCloseTo(0.4);
     expect(fadedOut.alpha).toBeCloseTo(0.4);
@@ -49,7 +49,7 @@ describe('Sass color wrapper functions', () => {
 
   it('adjust-hue() rotates hue like Sass adjust-hue behavior', () => {
     const input = new Color({ hsl: [10, 0.9, 0.5], alpha: 1 });
-    const result = adjustHue(input, new Dimension({ number: 30, unit: 'deg' })) as Color;
+    const result = expectColor(adjustHue(input, new Dimension({ number: 30, unit: 'deg' })));
 
     expect(result.hsl[0]).toBeCloseTo(40);
     expect(result.hsl[1]).toBeCloseTo(0.9);
@@ -58,7 +58,7 @@ describe('Sass color wrapper functions', () => {
 
   it('grayscale() removes saturation from color values', () => {
     const input = new Color({ hsl: [0, 1, 0.5], alpha: 1 });
-    const result = grayscale(input) as Color;
+    const result = expectColor(grayscale(input));
 
     expect(result.hsl[1]).toBeCloseTo(0);
     expect(result.rgb[0]).toBe(result.rgb[1]);

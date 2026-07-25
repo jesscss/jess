@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Dimension as LegacyDimension } from '@jesscss/core';
-import { builtinLessFns } from '../../builtins/index.js';
-import { mod as builtinMod } from '../../builtins/mod.js';
-import { pi as builtinPi } from '../../builtins/pi.js';
+import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core/value';
-import mod, { mod as namedMod } from '../mod.js';
-import pi, { pi as namedPi } from '../pi.js';
+import { mod } from '../mod.js';
+import { pi } from '../pi.js';
 
 type LegacyDimensionOracle = {
   number: number;
@@ -70,12 +68,8 @@ describe('Less pi/mod canonical cutover', () => {
     }
   });
 
-  it('uses the one canonical callable at every Less entrypoint', () => {
-    expect(pi).toBe(namedPi);
-    expect(pi).toBe(builtinPi);
-    expect(mod).toBe(namedMod);
-    expect(mod).toBe(builtinMod);
-    expect(builtinLessFns.find(fn => fn.name === 'pi')).toBe(builtinPi);
-    expect(builtinLessFns.find(fn => fn.name === 'mod')).toBe(builtinMod);
+  it('registers the one canonical callable in the Less registry', () => {
+    expect(lessFns.find(fn => fn.name === 'pi')).toBe(pi);
+    expect(lessFns.find(fn => fn.name === 'mod')).toBe(mod);
   });
 });

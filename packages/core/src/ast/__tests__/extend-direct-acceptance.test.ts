@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { atRuleBlock } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import {
@@ -8,7 +8,7 @@ import {
 import { serialize } from '../serialize.js';
 import { collectPlan } from '../extend/plan.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
 

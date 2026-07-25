@@ -1,45 +1,10 @@
-import {
-  type Context,
-  Color,
-  Dimension,
-  defineFunction,
-  ColorFormat
-} from '@jesscss/core';
-import { preserveHexUnderAlpha } from '../util/preserve-hex.js';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+import { requireColor, withAlpha } from './color-helper.js';
+import { requireDimension } from './math-helper.js';
 
-/**
- * Less `fade()` — set a color's alpha to `amount` (a percentage), replacing any
- * existing transparency.
- * @param color the input `Color`
- * @param amount target opacity as a `Dimension` percentage
- * @returns the `Color` with the new alpha
- */
-const fade = defineFunction(
-  'fade',
-  function(this: Context, color: Color, amount: Dimension) {
-    const newAlpha = amount.number / 100;
-    const inputNode = typeof color.node === 'string' ? color.node : undefined;
-    const outputFormat = preserveHexUnderAlpha(color, inputNode) ? ColorFormat.HEX : ColorFormat.RGB;
-
-    // Create new color with adjusted alpha, preserving original format
-    return new Color({
-      rgb: color._rgb,
-      hsl: color._hsl,
-      alpha: newAlpha
-    }, {
-      format: outputFormat,
-      modernSyntax: color.options.modernSyntax
-    }).inherit(color);
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }, {
-      name: 'amount',
-      type: Dimension
-    }]
-  }
-);
-
-export default fade;
+/** `fade(color, amount)` — SET alpha to `amount`%. Byte-faithful to `less/fade`. */
+export const fade: Fn = defineFunction('fade', {
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }],
+  body: (c, amt) => withAlpha(requireColor(c), requireDimension(amt).number / 100)
+});

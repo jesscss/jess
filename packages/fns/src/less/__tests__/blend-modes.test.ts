@@ -1,25 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { Color } from '@jesscss/core';
 import { makeColorRgb, RGB } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import { average as builtinAverage } from '../../builtins/average.js';
-import { difference as builtinDifference } from '../../builtins/difference.js';
-import { exclusion as builtinExclusion } from '../../builtins/exclusion.js';
-import { multiply as builtinMultiply } from '../../builtins/multiply.js';
-import { screen as builtinScreen } from '../../builtins/screen.js';
-import average from '../average.js';
-import difference from '../difference.js';
-import exclusion from '../exclusion.js';
-import multiply from '../multiply.js';
-import negation from '../negation.js';
-import screen from '../screen.js';
+import { lessFns } from '../registry.js';
+import { average } from '../average.js';
+import { difference } from '../difference.js';
+import { exclusion } from '../exclusion.js';
+import { multiply } from '../multiply.js';
+import { negation } from '../negation.js';
+import { screen } from '../screen.js';
 
 describe('less blend modes', () => {
   it('blends black and white as expected', () => {
     const blackValue = makeColorRgb([0, 0, 0], 1, RGB);
     const whiteValue = makeColorRgb([255, 255, 255], 1, RGB);
-    const legacyBlack = new Color({ rgb: [0, 0, 0], alpha: 1 });
-    const legacyWhite = new Color({ rgb: [255, 255, 255], alpha: 1 });
     expect(average(blackValue, whiteValue)).toMatchObject({
       type: 'Color',
       rgb: [127.5, 127.5, 127.5],
@@ -31,7 +23,7 @@ describe('less blend modes', () => {
     });
     expect(exclusion(blackValue, whiteValue)).toMatchObject({ type: 'Color', bytes: 'rgb(255, 255, 255)' });
     expect(multiply(blackValue, whiteValue)).toMatchObject({ type: 'Color', bytes: 'rgb(0, 0, 0)' });
-    expect(negation(legacyBlack, legacyWhite).rgb).toEqual([255, 255, 255]);
+    expect(negation(blackValue, whiteValue).rgb).toEqual([255, 255, 255]);
     expect(screen(blackValue, whiteValue)).toMatchObject({ type: 'Color', bytes: 'rgb(255, 255, 255)' });
   });
 
@@ -43,15 +35,10 @@ describe('less blend modes', () => {
   });
 
   it('uses the canonical implementation registered for Less', () => {
-    expect(average).toBe(builtinAverage);
-    expect(difference).toBe(builtinDifference);
-    expect(exclusion).toBe(builtinExclusion);
-    expect(multiply).toBe(builtinMultiply);
-    expect(screen).toBe(builtinScreen);
-    expect(builtinLessFns.find(fn => fn.name === 'average')).toBe(builtinAverage);
-    expect(builtinLessFns.find(fn => fn.name === 'difference')).toBe(builtinDifference);
-    expect(builtinLessFns.find(fn => fn.name === 'exclusion')).toBe(builtinExclusion);
-    expect(builtinLessFns.find(fn => fn.name === 'multiply')).toBe(builtinMultiply);
-    expect(builtinLessFns.find(fn => fn.name === 'screen')).toBe(builtinScreen);
+    expect(lessFns.find(fn => fn.name === 'average')).toBe(average);
+    expect(lessFns.find(fn => fn.name === 'difference')).toBe(difference);
+    expect(lessFns.find(fn => fn.name === 'exclusion')).toBe(exclusion);
+    expect(lessFns.find(fn => fn.name === 'multiply')).toBe(multiply);
+    expect(lessFns.find(fn => fn.name === 'screen')).toBe(screen);
   });
 });

@@ -51,6 +51,6 @@ export function requireDimension(value: ValueGroup | undefined): Dimension {
 
 /** Spec builder for a unary `dimension → dimension` math fn. Centralizes the bind-guaranteed cast. */
 export const unaryMath = (fn: (n: number) => number, outUnit: string | null | undefined): FnSpec => ({
-  params: [{ kinds: ['Dimension'] }],
+  params: [{ name: 'value', kinds: ['Dimension'] }],
   body: v => applyMath(fn, outUnit, [requireDimension(v)])
 });

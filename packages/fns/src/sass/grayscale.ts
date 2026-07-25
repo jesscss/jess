@@ -7,4 +7,4 @@
  * @example
  * grayscale(hsl(90, 90%, 50%)) // #808080
  */
-export { default } from '../less/greyscale.js';
+export { greyscale as default } from '../less/greyscale.js';

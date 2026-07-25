@@ -78,8 +78,8 @@ const stringify = (v: ValueGroup): string =>
 /**
  * Build the typed `ValueEvaluator`. No pre-pass: values are computed
  * on demand during the single serialize walk. The fn set is CALLER-INJECTED via
- * `registry` (populate it with `makeBuiltinRegistry()` for the built-in set), so a
- * later stage can register fns from `@jesscss/fns` without touching this module.
+ * `registry` (populate it from a DIALECT INDEX — `makeLessRegistry()` /
+ * `makeSassRegistry()` in `@jesscss/fns`), so registration stays outside core.
  * Core imports no fn bodies here.
  */
 export function buildEvaluator(registry: FnRegistry): ValueEvaluator {

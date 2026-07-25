@@ -1,2 +1,5 @@
-/** Less's public path for the canonical typed `pi()` callable. */
-export { pi, pi as default } from '../builtins/pi.js';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+
+/** `pi()` — the constant π as a unitless dimension. */
+export const pi: Fn = defineFunction('pi', { params: [], body: () => makeDimension(Math.PI) });

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { decl, dimension, forNode, ifNode, keyword, mixinCall, mixinDef, rule, spaced, stylesheet, varIndirect, variableDeclaration, variableReference } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: ReturnType<typeof stylesheet>): string => serialize(document, { evaluator }).css;
 
 describe('R3 live and scoped variable stores', () => {

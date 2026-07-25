@@ -1,8 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeColorRgb, RGB } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import { argb as builtinArgb } from '../../builtins/argb.js';
-import argb from '../argb.js';
+import { lessFns } from '../registry.js';
+import { argb } from '../argb.js';
 
 describe('argb()', () => {
   it('returns ARGB hex with alpha prefixed', () => {
@@ -12,7 +11,6 @@ describe('argb()', () => {
   });
 
   it('uses the canonical implementation registered for Less', () => {
-    expect(argb).toBe(builtinArgb);
-    expect(builtinLessFns.find(fn => fn.name === 'argb')).toBe(builtinArgb);
+    expect(lessFns.find(fn => fn.name === 'argb')).toBe(argb);
   });
 });

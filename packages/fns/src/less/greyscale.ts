@@ -1,32 +1,13 @@
-import {
-  Color,
-  type Context,
-  defineFunction
-} from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorHsl, makeColorHsl, defineFunction } from '@jesscss/core/value';
+import { requireColor } from './color-helper.js';
 
-/**
- * Less `greyscale()` — remove all saturation from a color (HSL saturation set to 0).
- * @param color the input `Color`
- * @returns the desaturated (grey) `Color`
- */
-const greyscale = defineFunction(
-  'greyscale',
-  function(this: Context, color: Color) {
-    const [h, , l] = color._hsl;
-    const result = new Color({
-      hsl: [h, 0, l],
-      alpha: color._alpha
-    }, {
-      format: color.options.format
-    }).inherit(color);
-    return result;
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }]
+/** `greyscale(color)` — zero the saturation. Byte-faithful to `less/greyscale`. */
+export const greyscale: Fn = defineFunction('greyscale', {
+  params: [{ kinds: ['Color'] }],
+  body: (c) => {
+    const color = requireColor(c);
+    const [h, , l] = colorHsl(color);
+    return makeColorHsl([h, 0, l], color.alpha, color.format);
   }
-);
-
-export default greyscale;
+});

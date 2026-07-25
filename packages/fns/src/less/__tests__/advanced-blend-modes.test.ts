@@ -1,12 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { makeColorRgb, RGB } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import { overlay as builtinOverlay } from '../../builtins/overlay.js';
-import { softlight as builtinSoftlight } from '../../builtins/softlight.js';
-import { hardlight as builtinHardlight } from '../../builtins/hardlight.js';
-import overlay, { overlayBase } from '../overlay.js';
-import softlight, { softlightBase } from '../softlight.js';
-import hardlight, { hardLightBase } from '../hardlight.js';
+import { lessFns } from '../registry.js';
+import { overlay, overlayBase } from '../overlay.js';
+import { softlight, softlightBase } from '../softlight.js';
+import { hardlight, hardlightBase } from '../hardlight.js';
 
 describe('advanced blend modes', () => {
   it('overlayBase covers multiply and screen branches', () => {
@@ -20,10 +17,10 @@ describe('advanced blend modes', () => {
     expect(softlightBase(0.2, 0.8)).toBeCloseTo(0.3488, 8);
   });
 
-  it('hardLightBase delegates to overlay with swapped args', () => {
+  it('hardlightBase delegates to overlay with swapped args', () => {
     const cb = 0.3;
     const cs = 0.8;
-    expect(hardLightBase(cb, cs)).toBeCloseTo(overlayBase(cs, cb), 10);
+    expect(hardlightBase(cb, cs)).toBeCloseTo(overlayBase(cs, cb), 10);
   });
 
   it('blend functions produce color outputs', () => {
@@ -36,11 +33,8 @@ describe('advanced blend modes', () => {
   });
 
   it('uses the canonical overlay implementation registered for Less', () => {
-    expect(overlay).toBe(builtinOverlay);
-    expect(softlight).toBe(builtinSoftlight);
-    expect(hardlight).toBe(builtinHardlight);
-    expect(builtinLessFns.find(fn => fn.name === 'overlay')).toBe(builtinOverlay);
-    expect(builtinLessFns.find(fn => fn.name === 'softlight')).toBe(builtinSoftlight);
-    expect(builtinLessFns.find(fn => fn.name === 'hardlight')).toBe(builtinHardlight);
+    expect(lessFns.find(fn => fn.name === 'overlay')).toBe(overlay);
+    expect(lessFns.find(fn => fn.name === 'softlight')).toBe(softlight);
+    expect(lessFns.find(fn => fn.name === 'hardlight')).toBe(hardlight);
   });
 });

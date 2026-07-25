@@ -7,4 +7,4 @@
  * @example
  * fade-out(hsla(90, 90%, 50%, 0.5), 10%) // rgba(128, 242, 13, 0.4)
  */
-export { default } from '../less/fadeout.js';
+export { fadeout as default } from '../less/fadeout.js';

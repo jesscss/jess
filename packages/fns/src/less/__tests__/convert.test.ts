@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeDimension, makeKeyword, makeQuoted } from '@jesscss/core/value';
-import convert from '../convert.js';
+import { convert } from '../convert.js';
 
 describe('convert()', () => {
   it('converts compatible length, duration, and angle units', () => {

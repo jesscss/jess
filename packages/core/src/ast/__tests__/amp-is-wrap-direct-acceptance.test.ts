@@ -5,9 +5,9 @@ import {
   rule, sel, selist, simpleSelector, stylesheet, type ComplexSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const flat = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: true }).css;
 

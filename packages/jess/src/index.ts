@@ -24,6 +24,7 @@ import type { Stylesheet } from '@jesscss/core/ast';
 import {
   getOptions,
   applyStrictPreset,
+  inferLanguage,
   type StylesConfig,
   type OutputOptions
 } from 'styles-config';
@@ -31,12 +32,34 @@ import jessPlugin from '@jesscss/plugin-jess';
 import lessPlugin from '@jesscss/plugin-less';
 import nodeModulesPlugin from '@jesscss/plugin-node-modules';
 import scssPlugin from '@jesscss/plugin-scss';
-import { makeBuiltinRegistry } from '@jesscss/fns/builtins';
+import { makeLessRegistry } from '@jesscss/fns/less/registry';
+import { makeSassRegistry } from '@jesscss/fns/sass/registry';
 import { outputDiagnostics } from './diagnostics.js';
 
-// Built-ins are immutable after assembly. Keep one evaluator for all Compiler
-// instances instead of rebuilding its dispatch table on every AST render.
-const astValueEvaluator = buildEvaluator(makeBuiltinRegistry());
+/**
+ * Each dialect has its OWN built-ins: a dialect's evaluator is built from that
+ * dialect's index in `@jesscss/fns` and nothing else — there is no merged set
+ * and no fallback from one dialect to another. Serving Sass the Less built-ins
+ * is what made `.scss` `unit()`/`length()` answer with Less semantics.
+ *
+ * Built-ins are immutable after assembly, so this is a small FIXED number of
+ * dispatch tables built ONCE at module scope and selected by dialect. Nothing
+ * on the render path may build a registry.
+ */
+const valueEvaluators = {
+  less: buildEvaluator(makeLessRegistry()),
+  scss: buildEvaluator(makeSassRegistry())
+} as const;
+
+/**
+ * The built-in set a source's dialect gets. `.scss` takes the Sass globals;
+ * `.less`, `.jess`, `.css` and unknown inputs take the Less set — `fns` has no
+ * `jess`/`css` folder yet, so those dialects have no globals of their own to
+ * register (tracked separately).
+ */
+function valueEvaluatorFor(language: string | undefined): typeof valueEvaluators.less {
+  return language === 'scss' ? valueEvaluators.scss : valueEvaluators.less;
+}
 
 export type ConfigOptions = StylesConfig & {
   /** Output file path for matching against output config options */
@@ -164,6 +187,8 @@ type ResolvedRenderConfig = {
   resolvedOutputFilePath?: string;
   jsPluginConfig: JsPluginConfig;
   printOptions: { collapseNesting?: boolean };
+  /** Dialect of this render's entry source; selects the built-in fn set. */
+  language?: string;
 };
 
 type RootLessSourceOptions = {
@@ -560,6 +585,9 @@ export class Compiler {
       input: configInputPath,
       output: resolvedOutputFilePath
     });
+    // The entry source's dialect: an explicit `language` wins, else the file (or
+    // virtual `.ext`) extension, via the same map option resolution uses.
+    const language = parseInput.language ?? inferLanguage(configInputPath);
 
     // The output `collapseNesting`, honored whether or not an `outputFile`
     // selects a specific array entry. Returns undefined when nothing sets it —
@@ -614,7 +642,8 @@ export class Compiler {
       activeOptions,
       resolvedOutputFilePath,
       jsPluginConfig,
-      printOptions
+      printOptions,
+      language
     };
   }
 
@@ -1022,7 +1051,7 @@ export class Compiler {
     };
 
     const context = new Context(contextOptions, plugins);
-    context.valueEvaluator = astValueEvaluator;
+    context.valueEvaluator = valueEvaluatorFor(resolved.language);
     if (usesDeprecatedDisablePluginRule) {
       context.warnings.push(toDiagnostic(WARN.deprecated({
         filePath: resolved.filePath,

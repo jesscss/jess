@@ -7,4 +7,4 @@
  * @example
  * ie-hex-str(rgba(90, 23, 148, 0.5)) // #805a1794
  */
-export { default } from '../less/argb.js';
+export { argb as default } from '../less/argb.js';

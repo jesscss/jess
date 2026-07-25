@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   compoundSelectorOf, complexSelector, decl, keyword, stylesheet, rule, sel, selist, simpleSelector, type Stylesheet
@@ -26,7 +26,7 @@ import { serialize } from '../serialize.js';
  *   - multiple / interior `&`: crosses correctly across a spliced multi-segment parent.
  */
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const nested = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: false }).css;
 const flat = (document: Stylesheet): string | undefined =>

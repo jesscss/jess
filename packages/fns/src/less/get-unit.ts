@@ -1,13 +1,13 @@
-import { defineFunction, makeKeyword } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+import { makeKeyword, defineFunction } from '@jesscss/core/value';
+import { requireDimension } from './math-helper.js';
 
 /**
- * Less `get-unit()` — the unit of a `Dimension` as a keyword (empty when unitless).
- * @param value the input `Dimension`
- * @returns the unit as an unquoted keyword
+ * `get-unit(dimension)` — the dimension's unit as a keyword (empty for a unitless
+ * number). The value-domain inverse of `unit(d, u)`. Byte-faithful to legacy
+ * `get-unit` (`new Anonymous(n.unit.toString())`).
  */
-const getUnit = defineFunction('get-unit', {
-  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
-  body: value => makeKeyword(value.unit)
+export const getUnit: Fn = defineFunction('get-unit', {
+  params: [{ kinds: ['Dimension'] }],
+  body: d => makeKeyword(requireDimension(d).unit ?? '')
 });
-
-export default getUnit;

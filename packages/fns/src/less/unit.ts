@@ -1,16 +1,17 @@
-import { defineFunction, makeDimension, textOf } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+import { makeDimension, textOf, defineFunction } from '@jesscss/core/value';
+import { requireDimension } from './math-helper.js';
 
 /**
- * Less `unit()` — return `dimension` with its unit replaced by `unit` (or the unit
- * stripped when `unit` is omitted). Only the unit changes; the number is untouched.
- * @param dimension the input `Dimension`
- * @param unit optional replacement unit keyword/string
- * @returns a `Dimension` with the new (or no) unit
+ * `unit(dimension, unit?)` — replace (or, with no/empty second arg, STRIP) the
+ * dimension's unit. Byte-faithful to legacy `unit`: a falsy resolved unit drops it.
  */
-const unit = defineFunction('unit', {
-  params: [{ name: 'dimension', kinds: ['Dimension'] }, { name: 'unit', kinds: ['Keyword', 'Quoted'], optional: true }] as const,
-  body: (dimension, replacement) => makeDimension(dimension.number, replacement === undefined ? '' : textOf(replacement) || '')
+export const unit: Fn = defineFunction('unit', {
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
+  body: (d, u) => {
+    const resolved = u !== undefined
+      ? (u.type === 'Keyword' || u.type === 'Quoted' ? textOf(u) : '')
+      : '';
+    return makeDimension(requireDimension(d).number, resolved || '');
+  }
 });
-
-export { unit };
-export default unit;

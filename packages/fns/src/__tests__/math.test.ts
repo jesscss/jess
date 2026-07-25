@@ -1,8 +1,4 @@
-import { abs } from '../builtins/abs.js';
-import { ceil } from '../builtins/ceil.js';
-import { floor } from '../builtins/floor.js';
-import { sqrt } from '../builtins/sqrt.js';
-import { acos, asin, atan, cos, sin, tan } from '../less/index.js';
+import { abs, acos, asin, atan, ceil, cos, floor, sin, sqrt, tan } from '../less/index.js';
 
 import { makeDimension } from '@jesscss/core/value';
 import { describe, it, test, expect } from 'vitest';

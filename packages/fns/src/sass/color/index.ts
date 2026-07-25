@@ -6,7 +6,7 @@
  *
  * Usage:
  * ```typescript
- * import { red, green, blue, alpha, mix } from '@jesscss/fns/sass/color';
+ * import { red, green, blue, alpha } from '@jesscss/fns/sass/color';
  * red(rgb(255, 0, 0)); // 255
  * ```
  */
@@ -15,11 +15,12 @@
 export { red, green, blue, alpha } from '../../shared/index.js';
 
 // Color operations (available in color module)
-export { default as mix } from '../../less/mix.js';
+// `mix`/`grayscale`/`ie-hex-str` currently resolve to the LESS implementation
+// (directly or through a thin re-export in `sass/`), which carries the Less
+// dispatch name and Less semantics. A dialect module never borrows another
+// dialect's implementation, so they are absent here until Sass has its own.
 export { default as invert } from '../invert.js'; // TODO: implement
-export { default as grayscale } from '../grayscale.js';
 export { default as complement } from '../complement.js'; // TODO: implement
-export { default as ieHexStr } from '../ie-hex-str.js';
 
 // Color module-specific functions (not available globally)
 export { default as hue } from '../hue.js';

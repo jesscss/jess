@@ -96,7 +96,7 @@ seam. So investment in the shim is bounded and terminal.
 `serialize` threads ONE flat evaluator: `Emit.ev: ValueEvaluator | null`.
 `evalCall` (`serialize.ts:1317`) calls `ev.call(name, list, modes)`, which
 consults a single global `FnRegistry` map (`value-dispatch.ts`) built once by
-`makeBuiltinRegistry()`. The `Frame` chain (`serialize.ts:173`) carries
+`makeLessRegistry()`. The `Frame` chain (`serialize.ts:173`) carries
 `mixins` / `vars` / `rulesets` per scope but **function resolution ignores the
 frame entirely.** There is no way for a function to be visible in one subtree
 and not another — which the `plugin` fixture requires for byte-identity.

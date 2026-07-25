@@ -1,22 +1,28 @@
-import { defineFunction, groupOf, makeDimension, textOf, unitFactor } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+import { makeDimension, textOf, defineFunction, groupOf, unitFactor } from '@jesscss/core/value';
+import { requireDimension } from './math-helper.js';
 
 /**
- * Less `convert()` — convert a `Dimension` to another unit within the same family
- * (length, duration or angle). Incompatible or unknown units are returned unchanged.
- * @param value the input `Dimension`
- * @param unit the target unit keyword/string
- * @returns the converted `Dimension`
+ * `convert(value, unit)` — convert `value` to `unit` when they share a group; else
+ * return the value canonicalized (an incompatible/no-op convert is still a COMPUTED
+ * result, so it emits canonical bytes, matching the adapter's `render()`).
  */
-const convert = defineFunction('convert', {
-  params: [{ name: 'value', kinds: ['Dimension'] }, { name: 'unit', kinds: ['Keyword', 'Quoted'] }] as const,
-  body: (value, targetValue) => {
-    const target = textOf(targetValue);
-    if (!value.unit || !target || value.unit === target || groupOf(value.unit) !== groupOf(target)) {
-      return makeDimension(value.number, value.unit);
+export const convert: Fn = defineFunction('convert', {
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'] }],
+  body: (value, unitArg) => {
+    const v = requireDimension(value);
+    const from = v.unit;
+    if (unitArg.type !== 'Keyword' && unitArg.type !== 'Quoted') {
+      throw new TypeError('Expected a keyword or quoted unit');
     }
-    return makeDimension(value.number * (unitFactor(value.unit)! / unitFactor(target)!), target);
+    const target = textOf(unitArg);
+    if (!from || !target || from === target) {
+      return makeDimension(v.number, v.unit);
+    }
+    const g = groupOf(from);
+    if (g !== undefined && g === groupOf(target)) {
+      return makeDimension(v.number * (unitFactor(from)! / unitFactor(target)!), target);
+    }
+    return makeDimension(v.number, v.unit);
   }
 });
-
-export { convert };
-export default convert;

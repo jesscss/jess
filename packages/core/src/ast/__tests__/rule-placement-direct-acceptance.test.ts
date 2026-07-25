@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { atRuleBlock } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import { decl, keyword, rule, stylesheet } from '../nodes.js';
@@ -16,7 +16,7 @@ describe('canonical flattened rule placement', () => {
     ]);
 
     expect(serialize(document, {
-      evaluator: buildEvaluator(makeBuiltinRegistry()),
+      evaluator: buildEvaluator(makeLessRegistry()),
       collapseNesting: true
     }).css).toBe(
       '.parent {\n'
@@ -44,7 +44,7 @@ describe('canonical flattened rule placement', () => {
     ]);
 
     expect(serialize(document, {
-      evaluator: buildEvaluator(makeBuiltinRegistry()),
+      evaluator: buildEvaluator(makeLessRegistry()),
       collapseNesting: true
     }).css).toBe(
       '@font-face {\n'

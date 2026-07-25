@@ -1,58 +1,17 @@
-import {
-  type Context,
-  Any,
-  Color,
-  Dimension,
-  Quoted,
-  defineFunction,
-  ColorFormat
-} from '@jesscss/core';
-import { preserveHexUnderAlpha } from '../util/preserve-hex.js';
+import type { Fn } from '@jesscss/core/value';
+import { textOf, defineFunction } from '@jesscss/core/value';
+import { requireColor, withAlpha } from './color-helper.js';
+import { requireDimension } from './math-helper.js';
 
-/**
- * Less `fadeout()` — decrease a color's opacity by `amount` (a percentage). With
- * `method: relative`, the decrease is relative to the current alpha.
- * @param color the input `Color`
- * @param amount opacity decrease as a `Dimension` percentage
- * @param method optional `relative` keyword
- * @returns the more-transparent `Color`
- */
-const fadeout = defineFunction(
-  'fadeout',
-  function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {
-    let adjustAmount = amount.number / 100;
-
-    if (method?.valueOf() === 'relative') {
-      adjustAmount = color._alpha * adjustAmount;
+/** `fadeout(color, amount, method?)` — decrease alpha. Byte-faithful to `less/fadeout`. */
+export const fadeout: Fn = defineFunction('fadeout', {
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
+  body: (c, amt, m) => {
+    const color = requireColor(c);
+    let adjust = requireDimension(amt).number / 100;
+    if (m !== undefined && (m.type === 'Keyword' || m.type === 'Quoted') && textOf(m) === 'relative') {
+      adjust = color.alpha * adjust;
     }
-
-    const newAlpha = color._alpha - adjustAmount;
-    const inputNode = typeof color.node === 'string' ? color.node : undefined;
-    const outputFormat = preserveHexUnderAlpha(color, inputNode) ? ColorFormat.HEX : ColorFormat.RGB;
-
-    // Create new color with adjusted alpha, preserving original format
-    return new Color({
-      rgb: color._rgb,
-      hsl: color._hsl,
-      alpha: newAlpha
-    }, {
-      format: outputFormat,
-      modernSyntax: color.options.modernSyntax
-    }).inherit(color);
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }, {
-      name: 'amount',
-      type: Dimension
-    }, {
-      name: 'method',
-      type: [Any, Quoted],
-      optional: true
-    }]
+    return withAlpha(color, color.alpha - adjust);
   }
-);
-
-export default fadeout;
+});

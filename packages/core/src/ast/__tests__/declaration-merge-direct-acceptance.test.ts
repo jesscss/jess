@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { decl, important, keyword, stylesheet, rule, variableDeclaration, variableReference, type Stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
 
 describe('direct canonical declaration merge', () => {

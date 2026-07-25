@@ -21,7 +21,7 @@ describe('acos canonical AST-v2 parity', () => {
       type: 'Dimension',
       number: Math.acos(0.5),
       unit: 'rad',
-      bytes: '1.04719755rad'
+      bytes: '1.0471975512rad'
     });
   });
 

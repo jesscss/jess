@@ -9,7 +9,7 @@ import {
 } from '@jesscss/core/value';
 import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core/value';
 import format, { format as stringFormat, formatPercent } from '../format.js';
-import { builtinLessFns } from '../../builtins/index.js';
+import { lessFns } from '../registry.js';
 
 const ctx: FnCtx = {
   modes: { unitMode: 'preserve' },
@@ -35,8 +35,8 @@ describe('format() / %()', () => {
     expect(format.name).toBe('%');
     expect(format.variadic).toBe(true);
     expect(stringFormat.name).toBe('string-format');
-    expect(builtinLessFns.find(fn => fn.name === '%')).toBe(formatPercent);
-    expect(builtinLessFns.find(fn => fn.name === 'string-format')).toBe(stringFormat);
+    expect(lessFns.find(fn => fn.name === '%')).toBe(formatPercent);
+    expect(lessFns.find(fn => fn.name === 'string-format')).toBe(stringFormat);
   });
 
   it('formats quoted templates and preserves quote style', async () => {

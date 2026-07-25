@@ -1,19 +1,10 @@
-// rgba is an alias of rgb - it uses the same implementation but with a different name
-import { rgbImplementation, rgbOptions } from './rgb.js';
-import { defineFunction, type FunctionThis } from '@jesscss/core';
+import { makeRgb } from './rgb.js';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 
-/**
- * Less `rgba()` — alias of `rgb()` kept for CSS `rgba()` compatibility; shares the
- * same implementation ({@link rgbImplementation}) and overloads.
- */
-const rgba = defineFunction(
-  'rgba',
-  async function(this: FunctionThis, ...args: any[]) {
-    const result = await rgbImplementation.call(this?.context ? this : undefined, ...args);
-
-    return result;
-  },
-  rgbOptions
-);
-
-export default rgba;
+/** `rgba` — an ALIAS of `rgb` (same construction / reformat kernel, distinct name). */
+export const rgba: Fn = defineFunction('rgba', {
+  params: [{ kinds: 'any' }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }, { kinds: 'any', optional: true }],
+  variadic: true,
+  body: list => makeRgb(list)
+});

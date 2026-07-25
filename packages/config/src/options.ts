@@ -67,9 +67,11 @@ const extensionToLanguage = new Map<string, string>([
 ]);
 
 /**
- * Infer language from a file path's extension
+ * Infer language from a file path's extension. Exported so a consumer that has
+ * to route by dialect (built-in function set, plugin choice) reads the SAME
+ * extension map the option resolution uses instead of keeping its own copy.
  */
-function inferLanguage(filePath: string | undefined): string | undefined {
+export function inferLanguage(filePath: string | undefined): string | undefined {
   if (!filePath) {
     return undefined;
   }

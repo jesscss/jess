@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeKeyword, makeList, makeQuoted, type FnCtx } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import { escape as builtinEscape } from '../../builtins/escape.js';
-import escape from '../escape.js';
+import { lessFns } from '../registry.js';
+import { escape } from '../escape.js';
 
 const context: FnCtx = {
   modes: { unitMode: 'preserve' },
@@ -20,8 +19,7 @@ describe('escape()', () => {
   });
 
   it('uses the canonical implementation registered for Less', () => {
-    expect(escape).toBe(builtinEscape);
-    expect(builtinLessFns.find(fn => fn.name === 'escape')).toBe(builtinEscape);
+    expect(lessFns.find(fn => fn.name === 'escape')).toBe(escape);
   });
 
   it('does not accept a non-list direct call for this variadic function', () => {

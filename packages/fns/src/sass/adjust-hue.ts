@@ -7,4 +7,4 @@
  * @example
  * adjust-hue(hsl(10, 90%, 50%), 30deg) // hsl(40, 90%, 50%)
  */
-export { default } from '../less/spin.js';
+export { spin as default } from '../less/spin.js';

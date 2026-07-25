@@ -6,9 +6,9 @@ import {
 } from '../nodes.js';
 import { type Combinator } from '../node.js';
 import { serialize } from '../serialize.js';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const flat = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: true }).css;
 

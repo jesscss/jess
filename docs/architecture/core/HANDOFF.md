@@ -42,7 +42,7 @@ Delete a row the moment it lands or is abandoned.
 | --- | --- | --- |
 | **parseman `0.34.0` adoption + showcase survey** | jess | Bump from the current `0.32.0` and regenerate every compiled artifact — the version-lock invariant is that artifacts never cross parseman versions. Then a per-parser plan to make the 4 grammars exemplary parseman usage. Gates: AST byte-identity on all four parsers, perf measured. |
 | ~~**Gates made reasonable**~~ | jess | **LANDED `c3db7e53e` + `e34bb24b3`** — see "Gate hygiene" below. |
-| **fns per-dialect registry** | jess, branch `fix-per-dialect-registry` | Deletes `builtins/` and `builtinLessFns`; registration derives from the composed dialect indexes (`less/index.ts` = `less/` + `shared/`, same for sass); per-dialect evaluators at module scope; exports map publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`. Implements ledger C13. |
+| ~~**fns per-dialect registry**~~ | jess | **LANDED** — `builtins/` and `builtinLessFns` deleted; registration derives from the composed dialect indexes (`less/index.ts` = `less/` + `shared/`, same for sass); per-dialect evaluators at module scope; exports map publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`, `./shared`, `./registry`, `./less/registry`, `./sass/registry`. Implements ledger C13. Specifier resolution for `#less` / `#sass/<module>` is NOT part of it — see "`#less` / `#sass` specifier resolution" below. |
 | **Numeric precision landing** | jess + less.js fixtures | Tolerance-trim, delete `emitValueInterp`, no-sci-notation guard, `ast/color.ts:118` alpha, integer fast path, `literal-tag.ts:104` fix, fixture graduation. Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md) — **nothing in it had landed as of `e34bb24b3`**. |
 | **parseman prefix-trie choice dispatch** | parseman repo | MEASURING FIRST; may conclude "don't build". |
 | **parseman docs voice sweep** | parseman repo | Removing changelog narrative from the docs. |
@@ -162,21 +162,26 @@ when it goes green; do not let one rot into folklore.
   Undecided which way it should go — it deserves its own commit and an owner ruling.
 - **`--x: foo(] bar`** (arbitrary token stream in a custom property) fails in all four parsers.
   That is the current limit of the shared-surface permissiveness ruling P2.
-- **`packages/fns/src/less/index.ts:31` exports the wrong function.** It re-exports
-  `default as format` from `./format.js`, whose default export is `formatPercent` (the `%`
-  function, `format.ts:73`). The real `string-format` is the *named* `format` export at
-  `format.ts:60` and has no barrel export at all. Ruling A5 names `string-format` as the
-  canonical public name.
-- **fns port backlog.** ~69 files under `packages/fns/src` still import from `@jesscss/core`
-  root (legacy tree nodes). `type-of`, `str-length`, and `comparable` do not exist anywhere in
-  `packages/fns/src`. There is no alias mechanism (`separator`→`list-separator`,
-  `argb`→`ie-hex-str`). `builtins/{abs,ceil,floor}.ts` are dormant and would corrupt Less
-  through `normalizeAngle` if wired in — delete before wiring anything.
+- ~~**`packages/fns/src/less/index.ts:31` exports the wrong function.**~~ **FIXED** with the
+  per-dialect registry: the index now re-exports the *named* `format` (`string-format`) and
+  `formatPercent` (`%`) explicitly, and both register under the names ruling A5 gives them.
+- **fns port backlog.** 35 modules under `packages/fns/src` still import from `@jesscss/core`
+  root (legacy tree nodes): 6 in `less/` (`each`, `iif`, `isdefined`, `isruleset`, `logical`,
+  `math-factory`), 27 in `sass/`, and `shared/math/{max,min}`. They stay on the module surface
+  but are not value-domain `Fn`s, so the dialect index does not register them — converting one
+  in place is what registers it. `type-of`, `str-length`, and `comparable` still do not exist
+  anywhere in `packages/fns/src`. There is still no alias mechanism (`separator`→
+  `list-separator`, `argb`→`ie-hex-str`). The dormant `builtins/{abs,ceil,floor}.ts` that would
+  have corrupted Less through `normalizeAngle` are DELETED; an audit of the landed tree finds
+  zero dormant value-domain fns (92 definitions on disk, 100 registered entries — the 8
+  `shared/` fns register in both dialects).
 - **`extend-exact.less` flake is real cross-compile state contamination**, not test flakiness.
   Two sharing channels: the per-`Compiler` plugin instance caches
   (`packages/jess/src/index.ts:482-485`, plus the `jessPluginInstance` / `scssPluginInstance`
-  singletons at `:491`/`:492`) and the module-scope `astValueEvaluator`
-  (`packages/jess/src/index.ts:39`) shared by *all* Compilers. Diagnostic: a fresh `Compiler`
+  singletons at `:491`/`:492`) and the module-scope value evaluators
+  (now `valueEvaluators` in `packages/jess/src/index.ts`, one per dialect) shared by *all*
+  Compilers. The evaluators hold only an immutable dispatch table, so they carry no per-render
+  state to leak; the plugin caches remain the live suspect. Diagnostic: a fresh `Compiler`
   per file isolates which channel. **Constraint on any fix:** a `Compiler` must stay reusable
   across many files. "New Compiler each time" is not an acceptable fix, and neither is a
   `reset()` that callers have to remember. A separate session is on this.
@@ -387,21 +392,23 @@ explicit tree utility exports are genuinely public through the root entry.
 `src/**/*.ts`, so unexported `lib/tree/**` helpers are generated artifacts but
 must remain until no reachable declaration refers to them.
 
-`@jesscss/fns` is broader and currently inconsistent: its `./*` export map
-claims every generated `lib/*.d.ts/js/cjs` subpath, while `tsdown.config.ts`
-only emits the `index` and `builtins` runtime entries. Legacy Less/Sass/shared/
-util declaration subpaths are therefore published (and advertised by the
-README/docs) even when their matching runtime file is absent. Replace the
-wildcard only after either generating the documented subpaths or explicitly
-withdrawing and testing them; `plugin-js` currently treats all
-`@jesscss/fns/*` paths as trusted.
+`@jesscss/fns` was broader and inconsistent: its `./*` export map claimed every
+generated `lib/*.d.ts/js/cjs` subpath while `tsdown.config.ts` emitted only the
+`index` and `builtins` runtime entries, so declaration-only paths were published
+and advertised without a matching runtime file. **Resolved:** the wildcard stays
+removed and the documented subpaths are now GENERATED — `./less`, `./sass`,
+`./sass/{color,list,map,math,string}`, `./shared`, `./registry`,
+`./less/registry`, `./sass/registry`, each with a real tsdown entry. `plugin-js`
+continues to treat all `@jesscss/fns/*` paths as trusted; that is a sandbox
+boundary, not a package-subpath justification.
 
-**Bounded package cut (2026-07-22).** The first safe export correction removes
-the `@jesscss/fns` `./*` wildcard. A workspace consumer search found only the
-root `@jesscss/fns` import and the explicit `@jesscss/fns/builtins` import; no
-production or test consumer imports a Less/Sass/shared/util subpath. The fns
-build emits runtime entries only for `index` and `builtins`; the former
-wildcard therefore advertised declaration-only paths whose corresponding
+**Bounded package cut (2026-07-22; superseded 2026-07-24).** The first safe
+export correction removed the `@jesscss/fns` `./*` wildcard, when the only
+consumers were the root `@jesscss/fns` import and `@jesscss/fns/builtins`. That
+is no longer the shape — see the paragraph above for the published subpaths. The
+historical record: a workspace consumer search found no production or test
+consumer importing a Less/Sass/shared/util subpath, the fns build emitted runtime
+entries only for `index` and `builtins`, and the former
 `.js`/`.cjs` files do not exist. The README and Sass export-structure note now
 state that those folders are source ownership boundaries, not published
 entrypoints. `plugin-js`'s filesystem trust rule remains a separate sandbox
@@ -458,12 +465,13 @@ clustered as follows:
   would leave the same root-tree consumer and would not advance the deletion
   gate.
 
-The next owner decision is explicit: either rewrite each existing dialect owner
-in place and move the canonical color/list kernels to an approved shared value
-owner, or approve an ownership inversion in which the current `builtins/`
-implementations become direct registry consumers of the rewritten `less/` or
-`sass/` owners. Until that decision and the corresponding red-to-green oracle
-tests exist, do not delete the tree barrel or land a partial alias/bridge.
+**Decided (2026-07-24, ledger C13).** The ownership question above is settled in
+favour of the dialect owner: each converted `builtins/` implementation was moved
+INTO `less/`, replacing the legacy tree-node twin of the same name, and
+`builtins/` is deleted. What remains legacy is listed in the fns port backlog
+above; those modules keep their place on the dialect module surface and are
+simply not registered until converted in place. The tree barrel is still not cut
+— the legacy modules above still import it.
 
 ### `plugin-js` bridge disposition
 
@@ -1278,28 +1286,31 @@ must share the same parser-authored table.
   write is semantic parser work for diagnostics, and its lookup is cold error
   handling; this entry does not assert a global aggressive-cutting gate pass.
 
-### Active correction: dialect function conversion (proof before deletion)
+### Dialect function conversion (registration LANDED 2026-07-24; per-fn conversion continues)
 
-Retract any claim that the function library is fully converted or that
-legacy-node wrappers are an acceptable final state. The July 21 audit found 72
-same-named files in `packages/fns/src/less/` and `src/builtins/`; these are
-different implementations, not interchangeable copies. `builtins/` is frozen
-as comparison evidence, not a destination architecture.
+The July 21 audit found 72 same-named files in `packages/fns/src/less/` and
+`src/builtins/` — different implementations, not interchangeable copies.
+`builtins/` was comparison evidence, never a destination architecture, and it is
+now DELETED: each converted value-domain implementation was collapsed into its
+dialect owner in `less/`, replacing the legacy twin, and registration DERIVES
+from the composed dialect index rather than a hand-maintained assembly array.
+Each dialect registers only its own index — no merged registry, no cross-dialect
+fallback. That closed the live correctness bug in which `.scss` was served
+Less's built-ins.
 
-The active queue is behavior-complete conversion in the existing dialect-owned
-files (`shared/`, `less/`, and `sass/`): first capture the legacy suite baseline,
-then port one small function in place to an AST-v2 `Fn`, prove old and direct-AST
-parity, and only then delete the duplicate implementation when it is identical.
-No wrapper, alias, reduced behavior, or permanent legacy holdout is permitted.
+The remaining queue is behavior-complete conversion of the still-legacy modules
+in the existing dialect-owned files (`shared/`, `less/`, and `sass/`): port one
+small function in place to an AST-v2 `Fn` and prove parity. Adding it to the
+dialect index is what registers it. No wrapper, alias, reduced behavior, or
+permanent legacy holdout is permitted.
 Relative color is a separate first semantic batch: direct AST retains its
 structured clause, but full `calc(r + 40)` needs a typed call-level channel
 evaluation design before a behavior-preserving port.
 
-The public-entrypoint cutover includes `packages/fns/src/index.ts`,
-`less/index.ts`, and `builtins.ts`: none may leave a legacy callable barrel or
-`src/builtins.ts` registry as the destination architecture. The final public
-assembly imports canonical callables from the existing `shared/`, `less/`, and
-`sass/` owners. The corresponding tree-based tests (`Context`, `callWithContext`,
+The public-entrypoint cutover is DONE: `packages/fns/src/index.ts` exposes the
+dialect namespaces plus the registry helpers, `less/index.ts` and `sass/index.ts`
+are the composed dialect indexes (own folder + the `shared/` entries that dialect
+has), and `builtins.ts` is deleted. The corresponding tree-based tests (`Context`, `callWithContext`,
 tree constructors, and `instanceof` assertions) must move to typed direct-call
 or compiler-route tests; their byte/output expectations remain oracle evidence.
 The package wildcard export means legacy subpaths also need an intentional public

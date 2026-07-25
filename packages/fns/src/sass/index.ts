@@ -1,12 +1,23 @@
 /**
- * Sass global functions (legacy/deprecated)
+ * The Sass dialect index — the SINGLE registration unit for Sass globals.
  *
- * These are the global functions that Sass provides for backward compatibility.
- * They are deprecated in favor of module-specific functions (e.g., use math.abs() instead of abs()).
+ * Composition rule (owner spec): a dialect index exports what lives in its own
+ * folder PLUS the entries of `shared/` that this dialect actually has. It is
+ * both the importable module surface and what `registryOf()` registers; nothing
+ * merges it with another dialect and there is no fallback to Less.
+ *
+ * These are Sass's global (deprecated) functions; the module-specific sets live
+ * in `sass/color`, `sass/list`, `sass/map`, `sass/math` and `sass/string`.
+ *
+ * Most entries here are still in the LEGACY tree-node domain. They stay part of
+ * this module's JavaScript-callable surface but are not value-domain `Fn`s, so
+ * registration skips them — converting one in place is what registers it. That
+ * is why an unconverted Sass global currently has NO built-in implementation
+ * rather than silently inheriting the Less one.
  *
  * Usage:
  * ```typescript
- * import { abs, red, mix } from '@jesscss/fns/sass';
+ * import { abs, red } from '@jesscss/fns/sass';
  * abs(-10px); // 10px
  * ```
  */
@@ -23,23 +34,16 @@ export { default as random } from './random.js';
 
 // Global Color Functions (Deprecated - use color.* module instead)
 export { red, green, blue, alpha } from '../shared/index.js';
-export { default as mix } from '../less/mix.js';
-export { default as rgb } from '../less/rgb.js';
-export { default as rgba } from '../less/rgba.js';
-export { default as hsl } from '../less/hsl.js';
-export { default as hsla } from '../less/hsla.js';
-export { default as lighten } from '../less/lighten.js';
-export { default as darken } from '../less/darken.js';
-export { default as saturate } from '../less/saturate.js';
-export { default as desaturate } from '../less/desaturate.js';
-export { default as grayscale } from './grayscale.js';
-export { default as adjustHue } from './adjust-hue.js';
-export { default as opacify } from './opacify.js';
-export { default as fadeIn } from './fade-in.js';
-export { default as transparentize } from './transparentize.js';
-export { default as fadeOut } from './fade-out.js';
+// `mix`/`rgb`/`rgba`/`hsl`/`hsla`/`lighten`/`darken`/`saturate`/`desaturate`:
+// Sass's semantics differ from Less's, and `sass/` has no implementation of its
+// own yet. A dialect index never borrows another dialect's implementation, so
+// these are simply absent until they are written here (tracked port work).
+// `grayscale`/`adjust-hue`/`opacify`/`fade-in`/`transparentize`/`fade-out`/
+// `ie-hex-str`: the modules in this folder are thin re-exports of the LESS
+// implementation, which carries the Less dispatch name. Registering them here
+// would publish a Less built-in under Sass, so they are excluded until a Sass
+// implementation (or an explicit alias mechanism) exists — both tracked.
 export { default as complement } from './complement.js'; // TODO: implement
-export { default as ieHexStr } from './ie-hex-str.js';
 export { default as invert } from './invert.js'; // TODO: implement
 export { default as hue } from './hue.js';
 export { default as saturation } from './saturation.js';

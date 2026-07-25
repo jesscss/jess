@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { defineFunction } from '../value-dispatch.js';
 import { decl, anonymousMixin, funcCall, keyword, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
@@ -8,7 +8,7 @@ import { serialize } from '../serialize.js';
 import type { PluginHost } from '../value-eval.js';
 import { makeKeyword } from '../value-factory.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 
 const fn = (name: string, value: string) => defineFunction(name, {
   params: [],

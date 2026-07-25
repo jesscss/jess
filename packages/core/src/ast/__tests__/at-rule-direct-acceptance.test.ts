@@ -5,9 +5,9 @@ import {
   decl, dimension, generalEnclosed, interpolation, keyword, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
 

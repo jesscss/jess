@@ -8,4 +8,4 @@
  * @example
  * opacify(hsla(90, 90%, 50%, 0.5), 0.1) // rgba(128, 242, 13, 0.6)
  */
-export { default } from '../less/fadein.js';
+export { fadein as default } from '../less/fadein.js';

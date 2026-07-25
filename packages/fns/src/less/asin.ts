@@ -1,15 +1,6 @@
-import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { unaryMath } from './math-helper.js';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
 
-/**
- * Less `asin()` — arc sine, returned in radians.
- * @param value unitless number or `Dimension`
- * @returns the angle as a `rad` `Dimension`
- */
-/** Less `asin(value)` — canonical value-domain callable, returned in radians. */
-const asin = defineFunction('asin', {
-  params: [{ name: 'value', kinds: ['Dimension'] }] as const,
-  body: value => makeDimension(Math.asin(value.number), 'rad')
-});
-
-export { asin };
-export default asin;
+/** `asin(value)` — inverse sine; result in `rad`. */
+export const asin: Fn = defineFunction('asin', unaryMath(Math.asin, 'rad'));

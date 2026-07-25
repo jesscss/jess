@@ -1,44 +1,15 @@
-import {
-  Color,
-  ColorFormat,
-  Dimension,
-  type Context,
-  defineFunction
-} from '@jesscss/core';
-import mix from './mix.js';
+import type { Fn } from '@jesscss/core/value';
+import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
+import { mixColors, reformatColor, requireColor, snapAlpha } from './color-helper.js';
+import { requireDimension } from './math-helper.js';
 
-/**
- * Less `shade()` — mix a color with black by `amount`; shorthand for
- * `mix(#000, color, amount)`.
- * @param color the input `Color`
- * @param amount black mix weight as a `Dimension` percentage
- * @returns the shaded `Color`
- */
-const shade = defineFunction(
-  'shade',
-  function(this: Context, color: Color, amount: Dimension) {
-    const black = new Color({
-      rgb: [0, 0, 0],
-      alpha: 1
-    }, {
-      format: ColorFormat.RGB
-    });
-    const out = mix.call(this, black, color, amount);
-    out.options.format = color.options.format;
-    if (Math.abs(out._alpha - 1) < 1e-12) {
-      out.alpha = 1;
-    }
-    return out;
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }, {
-      name: 'amount',
-      type: Dimension
-    }]
+/** `shade(color, amount)` — mix with black, preserve the input's format. Byte-faithful to `less/shade`. */
+export const shade: Fn = defineFunction('shade', {
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }],
+  body: (c, amt) => {
+    const color = requireColor(c);
+    const black = makeColorRgb([0, 0, 0], 1, RGB);
+    const out = mixColors(black, color, requireDimension(amt).number);
+    return reformatColor({ ...out, alpha: snapAlpha(out.alpha) }, color.format);
   }
-);
-
-export default shade;
+});

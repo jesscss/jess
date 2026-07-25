@@ -1,5 +1,29 @@
 # Fns → `@jesscss/fns` Package Migration Spec
 
+> **Superseded on the registration mechanism (2026-07-24).** Everything below
+> that names `builtins/`, `src/builtins.ts`, `builtinLessFns`, or
+> `makeBuiltinRegistry()` describes a shape that no longer exists. The landed
+> architecture:
+>
+> - `packages/fns/src/builtins/` is DELETED. Its value-domain implementations
+>   were collapsed into their dialect owner (`src/less/`), replacing the legacy
+>   tree-node twins — the "convert in place, then delete the duplicate" outcome
+>   this spec's owner correction called for.
+> - Registration DERIVES from a dialect index. `less/index.ts` and
+>   `sass/index.ts` each export their own folder plus the `shared/` entries that
+>   dialect has, and that index IS the registration unit. There is no assembly
+>   array, no merged registry, and no cross-dialect fallback.
+> - `makeLessRegistry()` / `makeSassRegistry()` (in `less/registry.ts` /
+>   `sass/registry.ts`) build a dialect's dispatch table from its index; the
+>   generic form is `registryOf(index)` in `src/registry.ts`.
+> - The package publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`,
+>   `./shared`, `./registry`, `./less/registry`, `./sass/registry`.
+> - The compiler selects the evaluator by the entry source's dialect
+>   (`packages/jess/src/index.ts`), so `.scss` is never served the Less set.
+>
+> Read the rest for the CONVERSION inventory and rationale, not for the
+> registration surface.
+
 > **Historical/superseded as a parser-cutover authority.** Any text here that
 > treats `core/src/ast/parse-host`, adapters, or a private AST-v2 route as a
 > valid interim architecture is wrong. The live parser architecture is the

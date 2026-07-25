@@ -1,40 +1,16 @@
-import {
-  type Context,
-  Color,
-  Dimension,
-  defineFunction,
-  ColorFormat
-} from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { colorHsl, makeColorHsl, defineFunction } from '@jesscss/core/value';
+import { requireColor } from './color-helper.js';
+import { requireDimension } from './math-helper.js';
 
-/**
- * Less `spin()` — rotate a color's HSL hue by `amount` degrees (wrapping mod 360),
- * leaving saturation and lightness unchanged.
- * @param color the input `Color`
- * @param amount hue rotation as a `Dimension` in degrees
- * @returns the hue-rotated `Color`
- */
-export default defineFunction(
-  'spin',
-  function(this: Context, color: Color, amount: Dimension) {
-    const [h, s, l] = color._hsl;
-    const hue = (h + amount.number) % 360;
+/** `spin(color, amount)` — rotate hue by `amount` degrees (wrapped 0-360). Byte-faithful to `less/spin`. */
+export const spin: Fn = defineFunction('spin', {
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }],
+  body: (c, amt) => {
+    const color = requireColor(c);
+    const [h, s, l] = colorHsl(color);
+    const hue = (h + requireDimension(amt).number) % 360;
     const adjustedHue = hue < 0 ? 360 + hue : hue;
-
-    // Create new color with adjusted hue, preserving original format
-    return new Color({
-      hsl: [adjustedHue, s, l],
-      alpha: color._alpha
-    }, {
-      format: color.options.format
-    }).inherit(color);
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }, {
-      name: 'amount',
-      type: Dimension
-    }]
+    return makeColorHsl([adjustedHue, s, l], color.alpha, color.format);
   }
-);
+});

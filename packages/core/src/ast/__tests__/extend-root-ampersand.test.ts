@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   compoundSelectorOf, complexSelector, decl, keyword, simpleSelector, stylesheet, rule, sel, selist, type Stylesheet
@@ -23,7 +23,7 @@ import { serialize } from '../serialize.js';
  * Every expectation below is Less 4.6.3's output for the equivalent Less source.
  */
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const flat = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: true }).css;
 

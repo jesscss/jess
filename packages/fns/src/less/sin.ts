@@ -1,2 +1,6 @@
-/** Less's public path for the canonical typed `sin()` callable. */
-export { sin, sin as default } from '../builtins/sin.js';
+import { unaryMath } from './math-helper.js';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+
+/** `sin(value)` — angle-normalized (deg/grad/turn → rad); unitless result. */
+export const sin: Fn = defineFunction('sin', unaryMath(Math.sin, ''));

@@ -8,7 +8,7 @@ import {
 } from '@jesscss/core/value';
 import type { Fn, FnCtx, List, ValueGroup } from '@jesscss/core/value';
 import replace from '../replace.js';
-import { builtinLessFns } from '../../builtins/index.js';
+import { lessFns } from '../registry.js';
 
 const ctx: FnCtx = {
   modes: { unitMode: 'preserve' },
@@ -39,7 +39,7 @@ describe('replace()', () => {
       { kinds: 'any' },
       { kinds: 'any', optional: true }
     ]);
-    expect(builtinLessFns.find(fn => fn.name === 'replace')).toBe(replace);
+    expect(lessFns.find(fn => fn.name === 'replace')).toBe(replace);
   });
 
   it('replaces in quoted input and preserves quote style', async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeDimension } from '@jesscss/core/value';
-import pow from '../pow.js';
+import { pow } from '../pow.js';
 
 describe('pow()', () => {
   it('returns exponent result and preserves first unit', () => {

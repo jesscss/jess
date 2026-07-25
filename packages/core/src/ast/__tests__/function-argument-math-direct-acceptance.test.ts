@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { block, decl, dimension, funcCall, operation, quoted, rule, stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 
 describe('direct canonical function-argument math', () => {
   it('evaluates division in Less function arguments when mathMode is always', () => {

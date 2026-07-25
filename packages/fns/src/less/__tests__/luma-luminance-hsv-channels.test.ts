@@ -1,23 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { Color, Dimension } from '@jesscss/core';
 import { makeColorRgb, RGB } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import { hue as builtinHue } from '../../builtins/hue.js';
-import { saturation as builtinSaturation } from '../../builtins/saturation.js';
-import { lightness as builtinLightness } from '../../builtins/lightness.js';
-import { luma as builtinLuma } from '../../builtins/luma.js';
-import { luminance as builtinLuminance } from '../../builtins/luminance.js';
-import { hsvhue as builtinHsvhue } from '../../builtins/hsvhue.js';
-import { hsvsaturation as builtinHsvsaturation } from '../../builtins/hsvsaturation.js';
-import { hsvvalue as builtinHsvvalue } from '../../builtins/hsvvalue.js';
-import hue from '../hue.js';
-import saturation from '../saturation.js';
-import lightness from '../lightness.js';
-import luma from '../luma.js';
-import luminance from '../luminance.js';
-import hsvhue from '../hsvhue.js';
-import hsvsaturation from '../hsvsaturation.js';
-import hsvvalue from '../hsvvalue.js';
+import { lessFns } from '../registry.js';
+import { hue } from '../hue.js';
+import { saturation } from '../saturation.js';
+import { lightness } from '../lightness.js';
+import { luma } from '../luma.js';
+import { luminance } from '../luminance.js';
+import { hsvhue } from '../hsvhue.js';
+import { hsvsaturation } from '../hsvsaturation.js';
+import { hsvvalue } from '../hsvvalue.js';
 import { toHSV } from '../../util/to-hsv.js';
 
 function legacyLuminanceOracle(color: Color): { number: number; bytes: string } {
@@ -84,16 +76,11 @@ describe('luma/luminance/hsv channels', () => {
   });
 
   it('uses the canonical implementations registered for Less', () => {
-    expect(hue).toBe(builtinHue);
-    expect(saturation).toBe(builtinSaturation);
-    expect(lightness).toBe(builtinLightness);
-    expect(luma).toBe(builtinLuma);
-    expect(luminance).toBe(builtinLuminance);
-    expect(builtinLessFns.find(fn => fn.name === 'hue')).toBe(builtinHue);
-    expect(builtinLessFns.find(fn => fn.name === 'saturation')).toBe(builtinSaturation);
-    expect(builtinLessFns.find(fn => fn.name === 'lightness')).toBe(builtinLightness);
-    expect(builtinLessFns.find(fn => fn.name === 'luma')).toBe(builtinLuma);
-    expect(builtinLessFns.find(fn => fn.name === 'luminance')).toBe(builtinLuminance);
+    expect(lessFns.find(fn => fn.name === 'hue')).toBe(hue);
+    expect(lessFns.find(fn => fn.name === 'saturation')).toBe(saturation);
+    expect(lessFns.find(fn => fn.name === 'lightness')).toBe(lightness);
+    expect(lessFns.find(fn => fn.name === 'luma')).toBe(luma);
+    expect(lessFns.find(fn => fn.name === 'luminance')).toBe(luminance);
   });
 
   it('matches the legacy luminance oracle across source shapes and channel bounds', () => {
@@ -165,11 +152,8 @@ describe('luma/luminance/hsv channels', () => {
   });
 
   it('registers the canonical HSV readers without a legacy wrapper', () => {
-    expect(hsvhue).toBe(builtinHsvhue);
-    expect(hsvsaturation).toBe(builtinHsvsaturation);
-    expect(hsvvalue).toBe(builtinHsvvalue);
-    expect(builtinLessFns.find(fn => fn.name === 'hsvhue')).toBe(builtinHsvhue);
-    expect(builtinLessFns.find(fn => fn.name === 'hsvsaturation')).toBe(builtinHsvsaturation);
-    expect(builtinLessFns.find(fn => fn.name === 'hsvvalue')).toBe(builtinHsvvalue);
+    expect(lessFns.find(fn => fn.name === 'hsvhue')).toBe(hsvhue);
+    expect(lessFns.find(fn => fn.name === 'hsvsaturation')).toBe(hsvsaturation);
+    expect(lessFns.find(fn => fn.name === 'hsvvalue')).toBe(hsvvalue);
   });
 });

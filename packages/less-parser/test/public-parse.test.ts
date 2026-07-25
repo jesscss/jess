@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
 import { sourceSpanOf, valueLayoutOf } from '../../core/src/ast/provenance.js';
 import { serialize } from '../../core/src/ast/serialize.js';
@@ -21,7 +21,7 @@ describe('public Less parse()', () => {
         ] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  color: #ff3333;\n  enabled: true;\n  plain: redder;\n  current: currentColor;\n}\n'
     );
     expect(parse('.x { color: redder; }')).toMatchObject({ children: [{ body: [{ value: { type: 'Keyword', src: 'redder' } }] }] });
@@ -170,7 +170,7 @@ describe('public Less parse()', () => {
         { type: 'Keyword', src: 'c' }
       ] }] }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.space {\n  count: 1;\n  first: a b c;\n  third: extract(a b c, 3);\n  args: a b c;\n}\n'
       + '.comma {\n  count: 3;\n  first: a;\n  third: c;\n  args: a b c;\n}\n'
       + '.semi {\n  count: 3;\n  first: 1;\n  third: 3;\n  args: 1 2 3;\n}\n'
@@ -189,7 +189,7 @@ describe('public Less parse()', () => {
       type: 'Stylesheet',
       children: [{ type: 'Rule', body: [{ type: 'Rule' }, { type: 'Rule' }] }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()), collapseNesting: false }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()), collapseNesting: false }).css).toBe(
       '.attributes {\n'
       + '  [data="test"],\n'
       + '  .attribute-test {\n'
@@ -202,7 +202,7 @@ describe('public Less parse()', () => {
   it('preserves declaration and nested-rule source order when collapsing nesting', () => {
     const document = parse('.parent { before: one; .child { inside: two; } after: three; }');
 
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.parent {\n'
       + '  before: one;\n'
       + '}\n'
@@ -344,7 +344,7 @@ describe('public Less parse()', () => {
         value: { type: 'SelectorCapture', branches: ['.notice', '.tail:nth-child(-n+2)'] }
       }, { type: 'Rule', body: [{ type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' } }] }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.notice,\n.tail:nth-child(-n+2) {\n  color: red;\n}\n'
     );
 
@@ -484,7 +484,7 @@ describe('public Less parse()', () => {
         }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@font-face {\n  unicode-range: U+??????, U+0???, U+0-7F, U+A5;\n}\n.range {\n  values: U+0-7F 1, U+A5;\n}\n'
     );
 
@@ -505,7 +505,7 @@ describe('public Less parse()', () => {
         { type: 'Declaration', name: '*zoom', value: { type: 'Dimension', src: '1' } }
       ] }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  \\63 olor: red;\n  *zoom: 1;\n}\n'
     );
 
@@ -556,7 +556,7 @@ describe('public Less parse()', () => {
         }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('@import "theme.less" print;\n');
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('@import "theme.less" print;\n');
 
     for (const invalid of [
       '@import "theme.less" @{media} screen;',
@@ -580,7 +580,7 @@ describe('public Less parse()', () => {
         }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('@import url("//ha.com/file.css") (min-width: 100px);\n');
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('@import url("//ha.com/file.css") (min-width: 100px);\n');
   });
 
   it('renders public typed interpolation in dynamic URL, import, and block-header positions', () => {
@@ -605,7 +605,7 @@ describe('public Less parse()', () => {
         { type: 'AtRuleBlock', name: '@keyframes', prelude: { type: 'Interpolation' } }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.asset {\n  image: url(icons/path.svg);\n  template: url(theme/icon.svg);\n}\n@import url(theme.css);\n@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
@@ -651,7 +651,7 @@ describe('public Less parse()', () => {
   it('renders a detached-ruleset binding and call from the public AST route', () => {
     const document = parse('@theme: { ; @accent: blue; color: @accent; ; };\n.card { @theme(); }');
 
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  color: blue;\n}\n'
     );
   });
@@ -667,7 +667,7 @@ describe('public Less parse()', () => {
         { type: 'For', rules: [{ type: 'Rule' }] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card .nested {\n  color: red;\n}\n@media screen {\n  .card .media {\n    color: blue;\n  }\n}\n.card .item {\n  order: 1;\n  order: 2;\n}\n.entry {\n  order: 3;\n}\n.entry {\n  order: 4;\n}\n'
     );
   });
@@ -683,7 +683,7 @@ describe('public Less parse()', () => {
         { type: 'For', iterable: { type: 'MixinCall', name: '.values', args: [], path: [] }, binding: { kind: 'comma', names: ['value', 'key', undefined] } }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.item {\n  value: red;\n  key: first;\n}\n.item {\n  value: blue;\n  key: second;\n}\n'
     );
     for (const source of [
@@ -704,7 +704,7 @@ describe('public Less parse()', () => {
         { type: 'For', iterable: { type: 'MixinCall', name: '.values', args: [], path: [{ comb: ' ', sel: '.library' }] }, binding: { kind: 'comma', names: ['value', 'key', undefined] } }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.item {\n  value: red;\n  key: first;\n}\n.item {\n  value: blue;\n  key: second;\n}\n'
     );
     for (const invalid of [
@@ -729,7 +729,7 @@ describe('public Less parse()', () => {
         { type: 'Rule', body: [{ type: 'Reference', base: { type: 'VariableReference', name: 'map', lookup: 'scoped' }, steps: [{ type: 'Call', args: [] }] }] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.lookup {\n  color: blue;\n}\n.call {\n  tone: blue;\n}\n'
     );
     // A namespaced mixin call is a valid Less value: it carries the same
@@ -740,7 +740,7 @@ describe('public Less parse()', () => {
       type: 'VariableDeclaration', name: 'map',
       value: { type: 'MixinCall', name: '.make-map', args: [], path: [{ comb: ' ', sel: '.library' }], important: false }
     });
-    expect(serialize(namespaced, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(namespaced, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.lookup {\n  color: blue;\n}\n.call {\n  tone: blue;\n}\n'
     );
     expect(() => parse('@map: .make-map() !important;')).toThrow(SyntaxError);
@@ -762,7 +762,7 @@ describe('public Less parse()', () => {
         }]
       }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.out {\n  value: blue;\n}\n');
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.out {\n  value: blue;\n}\n');
   });
 
   it('retains and renders typed static keyframes from detached-ruleset and each callback bodies', () => {
@@ -777,7 +777,7 @@ describe('public Less parse()', () => {
         { type: 'For', rules: [{ type: 'AtRuleBlock', name: '@-webkit-keyframes', prelude: { type: 'Quoted', value: 'slide' }, body: [{ type: 'Rule' }] }] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n@-webkit-keyframes "slide" {\n  50% {\n    opacity: 1;\n  }\n}\n'
     );
     expect(() => parse('each(1, { @keyframes @name { from { opacity: 0; } } });')).toThrow(SyntaxError);
@@ -817,7 +817,7 @@ describe('public Less parse()', () => {
         { type: 'For', binding: { kind: 'single', name: 'entry' }, rules: [{ type: 'Rule' }] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.simple {\n  order: 1;\n}\n.named {\n  order: 2;\n}\n'
     );
   });
@@ -847,7 +847,7 @@ describe('public Less parse()', () => {
         }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  color: red;\n}\n'
     );
   });
@@ -866,7 +866,7 @@ describe('public Less parse()', () => {
         ] } }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
     );
     for (const invalid of [
@@ -896,7 +896,7 @@ describe('public Less parse()', () => {
         }] }
       }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       ':is(.a, .b):is(.c, .d),\n:is(.a, .b):is(.c, .d) {\n  color: red;\n}\n'
     );
   });
@@ -912,7 +912,7 @@ describe('public Less parse()', () => {
         ] } }]
       }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.button-active,\n.buttonx-y {\n  color: red;\n}\n'
     );
     expect(() => parse('.button { &(1) { color: red; } }')).toThrow(SyntaxError);
@@ -935,7 +935,7 @@ describe('public Less parse()', () => {
         ]
       }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  color: red;\n  border-color: red;\n}\n'
     );
   });
@@ -1008,7 +1008,7 @@ describe('public Less parse()', () => {
         ] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.math {\n  sum: 7;\n  grouped: 9;\n  neg: -3;\n  signed: 1px;\n  unarySpace: - 2;\n  ratio: 12px / 1.5;\n  calc: calc(100% - 10px);\n}\n'
     );
   });
@@ -1022,7 +1022,7 @@ describe('public Less parse()', () => {
         { type: 'Declaration', name: 'modulo', value: { type: 'Operation', operator: '%' } }
       ] }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.math {\n  product: 6;\n  modulo: 1;\n}\n'
     );
     expect(() => parse('.math { product: 2 * // missing operand\n; }')).toThrow();
@@ -1035,12 +1035,12 @@ describe('public Less parse()', () => {
         type: 'Declaration', value: { type: 'FunctionCall', name: '%' }
       }] }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  text: "hello world";\n}\n'
     );
 
     const escaped = parse('.card { text: %(~"hello %s", "world"); }');
-    expect(serialize(escaped, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(escaped, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card {\n  text: hello world;\n}\n'
     );
   });
@@ -1110,7 +1110,7 @@ describe('public Less parse()', () => {
         ] } }] } }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n'
     );
 
@@ -1151,7 +1151,7 @@ describe('public Less parse()', () => {
         { type: 'PseudoSelector', name: ':has', text: null, crossable: false }
       ] } }] } }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card:not(.disabled):has(.child > .grandchild) {\n  color: red;\n}\n'
     );
   });
@@ -1164,7 +1164,7 @@ describe('public Less parse()', () => {
         { text: '.card' }, { text: ':lang(en-US)' }, { text: '::part(icon)' }, { text: ':state(foo[bar])' }
       ] } }] } }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card:lang(en-US)::part(icon):state(foo[bar]) {\n  color: red;\n}\n'
     );
     for (const source of [
@@ -1202,7 +1202,7 @@ describe('public Less parse()', () => {
         ] }
       }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@supports ((display: grid) or (color: red)) and (hover) {\n  .card {\n    color: red;\n  }\n}\n'
     );
   });
@@ -1221,7 +1221,7 @@ describe('public Less parse()', () => {
         { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'sidebar' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<' } }] } }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@media only screen and (min-width: 40rem), print {\n  .card {\n    color: red;\n  }\n}\n@container sidebar (400px < width < 40rem) {\n  .card {\n    color: blue;\n  }\n}\n'
     );
     for (const source of [
@@ -1245,7 +1245,7 @@ describe('public Less parse()', () => {
         ] } }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@media all and (tv) {\n  .card {\n    color: red;\n  }\n}\n'
     );
   });
@@ -1253,7 +1253,7 @@ describe('public Less parse()', () => {
   it('preserves a structural query prelude when a media block is emitted from nested mode', () => {
     const document = parse('@limit: 40rem; .card { @media (min-width: @limit) { color: red; } }');
 
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '@media (min-width: 40rem) {\n  .card {\n    color: red;\n  }\n}\n'
     );
   });
@@ -1268,7 +1268,7 @@ describe('public Less parse()', () => {
         { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
       ] } }] } }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card:not(.disabled, .muted, .a > .b):nth-child(2n + 1) {\n  color: red;\n}\n'
     );
   });
@@ -1284,7 +1284,7 @@ describe('public Less parse()', () => {
     });
     // A glued/comment boundary stays one compound inside the structured arg; the
     // canonical join renders `:not(.x.y, .a .b)` (spaced) via core serialization.
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe(
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.card:not(.x.y, .a .b) {\n  color: red;\n}\n'
     );
   });
@@ -1319,7 +1319,7 @@ describe('public Less parse()', () => {
 
   it('plans a later inline extend for only its attached selector', () => {
     const document = parse('.target { color: navy; } .first, .inline:extend(.target), .sibling {}');
-    const css = serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css;
+    const css = serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css;
 
     expect(css).toContain('.target,\n.inline {');
     expect(css).not.toContain('.first {');
@@ -1369,7 +1369,7 @@ describe('public Less parse()', () => {
       { type: 'Rule' },
       { type: 'Rule', body: [{ type: 'MixinCall' }, { type: 'For' }, { type: 'AtRuleBlock', name: '@media' }] }
     ] });
-    const css = serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css;
+    const css = serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css;
     expect(css).toContain('.inline {');
     expect(css).toContain('color: red;');
     expect(css).toContain('order: 1;');
@@ -1388,7 +1388,7 @@ describe('public Less parse()', () => {
         { type: 'Rule', body: [{ type: 'MixinCall', name: '.mixin', args: [], path: [{ comb: ' ', sel: '#theme' }], important: true }] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.card {\n  color: red;\n}\n.important {\n  color: red !important;\n}\n');
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.card {\n  color: red;\n}\n.important {\n  color: red !important;\n}\n');
   });
 
   it('returns static ruleset guards from the public Stylesheet route', () => {
@@ -1407,7 +1407,7 @@ describe('public Less parse()', () => {
         { type: 'Rule', body: [{ type: 'FunctionCall', name: 'e', args: [{ type: 'Quoted', value: 'y' }] }] }
       ]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('x\n.card {\n  y\n}\n');
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('x\n.card {\n  y\n}\n');
   });
 
   it('returns and renders static escaped quoted values through the public route', () => {
@@ -1420,12 +1420,12 @@ describe('public Less parse()', () => {
         { type: 'Declaration', name: 'ordinary', value: { type: 'Quoted', escaped: false } }
       ] }]
     });
-    expect(serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css).toBe('.x {\n  double: a/b;\n  single: c d;\n  ordinary: "e\\\\ f";\n}\n');
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('.x {\n  double: a/b;\n  single: c d;\n  ordinary: "e\\\\ f";\n}\n');
   });
 
   it('carries static escaped quotes through import facts, URLs, and guards', () => {
     const document = parse('@choice: ~"yes"; @import (css) ~"foo.css"; .m(@value) when (@value = ~"yes") { guarded: ok; } .card { asset: url(~"a b.svg"); .m(@choice); }');
-    const css = serialize(document, { evaluator: buildEvaluator(makeBuiltinRegistry()) }).css;
+    const css = serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css;
 
     expect(document).toMatchObject({
       children: [
@@ -1440,7 +1440,7 @@ describe('public Less parse()', () => {
   });
 
   it('keeps terminal and at-rule-body function calls on the public Less route', () => {
-    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    const evaluator = buildEvaluator(makeLessRegistry());
 
     expect(serialize(parse('e("x")'), { evaluator }).css).toBe('x\n');
     expect(serialize(parse('.card { e("y") }'), { evaluator }).css).toBe('.card {\n  y\n}\n');
@@ -1455,7 +1455,7 @@ describe('public Less parse()', () => {
     // a function argument for a comparison/logical operator and matched the `or`
     // INSIDE the quoted string, mis-committing the argument to a Less condition.
     // The grammar-level `scanSkip` now treats the string as opaque during the scan.
-    const evaluator = buildEvaluator(makeBuiltinRegistry());
+    const evaluator = buildEvaluator(makeLessRegistry());
 
     // `or` inside a plain string → a Quoted argument, not a condition
     expect(parse('.x { p: error("a or b"); }')).toMatchObject({

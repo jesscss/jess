@@ -1,2 +1,8 @@
-/** Less's public path for the canonical typed `e()` callable. */
-export { e as default } from '../builtins/e.js';
+import { makeKeyword, defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+
+/** `e(value)` — escape a quoted value (drop quotes) → bare keyword; else pass through. */
+export const e: Fn = defineFunction('e', {
+  params: [{ kinds: 'any' }],
+  body: v => (v.type === 'Quoted' ? makeKeyword(v.value) : v)
+});
