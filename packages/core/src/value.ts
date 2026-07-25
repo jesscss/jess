@@ -19,6 +19,8 @@ export type {
   List,
   ListSeparator,
   Block,
+  Collection,
+  CollectionEntry,
   EvalModes,
   PluginHost,
   PluginCallCtx,
@@ -40,6 +42,7 @@ export {
   makeBool,
   makeList,
   makeBlock,
+  makeCollection,
   numOf,
   textOf,
   colorHsl,
@@ -55,6 +58,9 @@ export {
   listValueAt,
   isBracketedList
 } from './ast/value-list.js';
+
+// --- value-domain map (Collection) accessors ---
+export { isCollection, collectionEntries, collectionKeyIndex } from './ast/value-collection.js';
 
 // --- value serializer ---
 export { HEX, RGB, HSL, serializeColor, hslToRgb } from './ast/color.js';

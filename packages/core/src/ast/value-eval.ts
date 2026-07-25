@@ -160,7 +160,57 @@ export interface Nil {
   readonly bytes: string;
 }
 
-export type ValueObj = Dimension | Color | Quoted | Keyword | List | Block | Bool | Nil;
+/**
+ * One key/value pair of a {@link Collection}, in AUTHORED order.
+ *
+ * `key` is a full {@link ValueGroup}, not a string: a Sass map key is a VALUE
+ * (`(1: a)` keys on the number `1`, `(red: a)` on the colour), and equality is
+ * value equality, never byte equality. It is a `ValueGroup` rather than a
+ * `ValueObj` so a later parser lifting the current key restriction (see
+ * `mapKeyName` in scss-parser) can hand over a sequence key without a breaking
+ * narrowing here.
+ *
+ * `variable` / `important` are BYTE facts carried from the authoring dialect so
+ * the canonical spelling survives a round trip (`{ @a: 1 }`, `{ a: 1 !important }`).
+ * Both are omitted on the ordinary entry, keeping the common shape monomorphic.
+ */
+export interface CollectionEntry {
+  readonly key: ValueGroup;
+  readonly value: ValueGroup;
+  /** Authored as a VARIABLE declaration (`{ @a: 1 }`) — emits the `@` sigil. */
+  readonly variable?: boolean;
+  readonly important?: boolean;
+}
+
+/**
+ * A MAP result — the value-domain projection of the AST `Collection` node in
+ * `nodes.ts`, module-qualified against it exactly as the value {@link Dimension}
+ * is against the AST `Dimension`.
+ *
+ * This is the DATA half of the Collection two-role model: a `Collection` reaching
+ * a value/arg position is data (this type), while a `Collection` at a property
+ * root is structure (expanded to hyphenated declarations by the serializer's body
+ * walk, which never reaches here).
+ *
+ * Entries are ORDERED and key-equality-sensitive, matching Sass map semantics.
+ * A Collection is also a LIST of pairs: `groupItems` yields each entry as a
+ * two-item `[key, value]` group, so `length((a: 1, b: 2))` is 2 and
+ * `nth((a: 1, b: 2), 1)` is `a 1` with no map-specific code in the list fns.
+ *
+ * `bytes` is the canonical Jess collection spelling `{ a: 1; b: 2 }` (`{}` when
+ * empty) — deliberately NOT the Sass paren-map syntax, which is INPUT syntax the
+ * parser lowers away.
+ */
+export interface Collection {
+  readonly type: 'Collection';
+  readonly entries: readonly CollectionEntry[];
+  /** The carrier's own value in the SCSS nested property `font: 20px { … }`;
+   * omitted when the block has no own value. */
+  readonly base?: ValueGroup;
+  readonly bytes: string;
+}
+
+export type ValueObj = Dimension | Color | Quoted | Keyword | List | Block | Bool | Nil | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default

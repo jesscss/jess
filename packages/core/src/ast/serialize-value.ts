@@ -7,8 +7,8 @@
  * HARD MODULE BOUNDARY: imports only the value-domain types + the number policy
  * (`format-number`) + `color`.
  */
-import type { Dimension, Quoted, ValueGroup } from './value-eval.js';
-import { isValueGroupArray, sepGlue } from './value-eval.js';
+import type { CollectionEntry, Dimension, Quoted, ValueGroup } from './value-eval.js';
+import { emitValue, isValueGroupArray, sepGlue } from './value-eval.js';
 import { formatNumber } from './format-number.js';
 import { serializeColor } from './color.js';
 
@@ -34,6 +34,20 @@ export function serializeQuoted(q: Quoted): string {
   return `${q.escaped ? '~' : ''}${quote}${q.value}${quote}`;
 }
 
+/**
+ * One `key: value` pair of a Collection.
+ *
+ * Members emit through {@link emitValue} — their OWN already-canonical `bytes` —
+ * never through a recursive re-serialization. A container must not re-run the
+ * number policy over a member it merely holds: that would rewrite an un-operated
+ * `1.0px` to `1px` purely by being inside a map.
+ */
+function collectionEntryBytes(entry: CollectionEntry): string {
+  const sigil = entry.variable === true ? '@' : '';
+  const important = entry.important === true ? ' !important' : '';
+  return `${sigil}${emitValue(entry.key)}: ${emitValue(entry.value)}${important}`;
+}
+
 /** Serialize any structural value group to canonical bytes. */
 export function serializeValue(v: ValueGroup): string {
   if (isValueGroupArray(v)) {
@@ -51,6 +65,11 @@ export function serializeValue(v: ValueGroup): string {
       const open = v.delimiter === 'square' ? '[' : '(';
       const close = v.delimiter === 'square' ? ']' : ')';
       return `${v.escaped ? '~' : ''}${open}${serializeValue(v.inner)}${close}`;
+    }
+    case 'Collection': {
+      const body = v.entries.map(collectionEntryBytes).join('; ');
+      const block = body === '' ? '{}' : `{ ${body} }`;
+      return v.base === undefined ? block : `${emitValue(v.base)} ${block}`;
     }
   }
 }

@@ -103,6 +103,7 @@ import {
   type PluginHost,
   type PluginRawArgument,
   type PluginVariableHit,
+  type CollectionEntry,
   type Value,
   type ValueEvaluator,
   type ValueGroup,
@@ -112,7 +113,7 @@ import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scop
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { makeBlock, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
+import { makeBlock, makeCollection, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
 import { evalGuard, guardUsesDefault, type GuardNode, type ValueResolver, type TypedResolver } from './guard.js'; // [guards]
@@ -2194,6 +2195,12 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
           ? makeKeyword(`(${calcInner(value.bytes)})`)
           : value
       );
+    case 'Collection':
+      // A map reaching a TYPED position (a function argument, an operation) is
+      // the value-domain map, not the bytes it renders to — that is the whole
+      // point of the representation. Explicit rather than left to `default:`, so
+      // a map argument can never silently regress to a sniffed keyword.
+      return evalCollection(node, frame, e);
     case 'List': {
       // A comma-list materializes to the value-domain `List`, its items materialized
       // LAZILY here (only now that the list is actually consumed typed — indexed by
@@ -2567,45 +2574,81 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       // condition-grammar / FnCtx capability wave, not this path.)
       return literal('');
     case 'Collection':
-      return collectionBytes(node, frame, e);
+      return evalCollection(node, frame, e);
   }
 }
 
 /**
- * Bytes for a {@link Collection} reaching a value/arg position — an SCSS map
- * literal (`$m: (a: 1, b: 2)`, lowered to a Collection at parse) passed to a
- * function, or the authorable Jess collection `$m: { a: 1; b: 2 }`.
+ * A {@link Collection} reaching a value/arg position — an SCSS map literal
+ * (`$m: (a: 1, b: 2)`, lowered to a Collection at parse) passed to a function, or
+ * the authorable Jess collection `$m: { a: 1; b: 2 }` — evaluated to the
+ * value-domain map (`value-eval.ts` `Collection`). This is the DATA role of the
+ * two-role Collection model; the property-root STRUCTURE role is the hyphenated
+ * flatten in `walkBody` and never reaches here.
  *
- * The emitted form is the CANONICAL Jess collection spelling `{ a: 1; b: 2 }`
- * (`{}` when empty). It is deliberately NOT the Sass paren-map syntax: that is
- * SCSS *input* syntax which the parser lowers away, so by this point there is no
- * paren map left to round-trip to. Entry names may be an {@link Interpolation}
- * (`(#{$k}: 1)`) and resolve through the ordinary declaration-name path; a
- * variable-declaration entry (`{ @a: 1 }`) keeps its `@` sigil, matching every
- * other name-in-bytes site in this file.
+ * Producing a typed map (rather than the bytes it renders to) is what makes map
+ * functions possible: a value-domain `Fn` receives the entries themselves. Its
+ * `bytes` remain the CANONICAL Jess collection spelling `{ a: 1; b: 2 }` (`{}`
+ * when empty), never the Sass paren-map syntax, which is SCSS *input* syntax the
+ * parser lowers away — so every existing byte consumer is unmoved.
  *
- * A `base` (the carrier's own value in the SCSS nested property `font: 20px { … }`)
- * is emitted ahead of the block. That shape only reaches here when the structural
- * flatten in `walkBody` did not run for it; emitting it keeps the authored value
- * visible instead of silently dropping it.
+ * KEY MATERIALIZATION. The parser lowers a map key to a Collection entry NAME
+ * (`string | Interpolation`; see `mapKeyName` in scss-parser), so by this point
+ * the key's own value type is not carried on the node and the name goes through
+ * the `materialize` sniff — the same seam any untagged computed string uses. Every
+ * sniff branch preserves its input bytes verbatim, so this cannot move output; it
+ * only recovers the type (`(1: a)` keys on a Dimension, so `map.get($m, 1)` hits).
+ * A quoted key already lost its quotes at parse, but Sass string equality ignores
+ * quoting, so lookups still land. Lifting the parser's key restriction is what
+ * turns this sniff back into carried structure.
+ *
+ * Entry values are materialized TYPED, so a nested map stays a map rather than
+ * collapsing to its bytes. A `base` (the carrier's own value in the SCSS nested
+ * property `font: 20px { … }`) is kept ahead of the block; that shape only reaches
+ * here when the structural flatten did not run for it, and keeping it makes the
+ * authored value visible instead of silently dropping it.
  */
-function collectionBytes(node: Collection, frame: Frame | null, e: EvalCtx): MaybePromise<Value> {
-  const pieces: Array<MaybePromise<string>> = node.entries.map((entry) => {
-    const name = entry.type === 'Declaration' ? declName(entry, frame, e) : `@${entry.name}`;
-    const important = entry.type === 'Declaration' && entry.important ? ' !important' : '';
-    // `evalBinding` keeps the one deliberate empty-bytes case (`@p: .mk-map()`,
-    // an accessible/callable-only binding) shared with every other binding read.
-    return mapMaybe(evalBinding(entry.value, frame, e), v => `${name}: ${emitValue(v)}${important}`);
-  });
-  if (node.base !== undefined) {
-    pieces.unshift(evalBytes(node.base, frame, e));
+function evalCollection(node: Collection, frame: Frame | null, e: EvalCtx): MaybePromise<ValueObj> {
+  const keys: Array<MaybePromise<ValueGroup>> = [];
+  const values: Array<MaybePromise<ValueGroup>> = [];
+  for (const entry of node.entries) {
+    keys.push(collectionKey(entry, frame, e));
+    // A `@p: .mk-map()` binding is accessible/callable only and is not a value;
+    // it folds to the same empty bytes every other binding read gives it.
+    values.push(isMixinCallValue(entry.value)
+      ? force(e, literal(''))
+      : evalTypedSlot(entry.value, frame, e));
   }
-  const first = node.base === undefined ? 0 : 1;
-  return combineAll(pieces, (bytes) => {
-    const body = bytes.slice(first).join('; ');
-    const block = body === '' ? '{}' : `{ ${body} }`;
-    return literal(first === 0 ? block : `${bytes[0]!} ${block}`);
+  if (node.base !== undefined) {
+    values.push(evalTypedSlot(node.base, frame, e));
+  }
+  return combineAll([...keys, ...values], (resolved) => {
+    const count = node.entries.length;
+    const entries = node.entries.map((entry, index): CollectionEntry => {
+      const key = resolved[index]!;
+      const value = resolved[count + index]!;
+      if (entry.type === 'VariableDeclaration') {
+        return { key, value, variable: true };
+      }
+      return entry.important ? { key, value, important: true } : { key, value };
+    });
+    return makeCollection(entries, node.base === undefined ? undefined : resolved[count * 2]);
   });
+}
+
+/**
+ * A Collection entry's KEY as a typed value. A variable-declaration entry
+ * (`{ @a: 1 }`) is keyed by its bare name; a declaration entry resolves its name
+ * (which may be an {@link Interpolation}, `(#{$k}: 1)`) through the ordinary
+ * declaration-name path. Both then materialize — see {@link evalCollection}.
+ */
+function collectionKey(
+  entry: Declaration | VariableDeclaration,
+  frame: Frame | null,
+  e: EvalCtx
+): MaybePromise<ValueGroup> {
+  const name = entry.type === 'VariableDeclaration' ? entry.name : declName(entry, frame, e);
+  return force(e, literal(name));
 }
 
 /** Resolve an interpolation template to bytes (literals + spliced refs). */

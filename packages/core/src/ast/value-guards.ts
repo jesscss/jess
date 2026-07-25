@@ -125,6 +125,22 @@ function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 
   if (a.type !== b.type) {
     return undefined;
   }
+  if (a.type === 'Collection' && b.type === 'Collection') {
+    // Two maps are equal when they hold the same key→value pairs. Order is NOT
+    // part of map identity (Sass: `(a: 1, b: 2) == (b: 2, a: 1)`), even though the
+    // entries stay ordered for iteration and emit — so this cannot be the default
+    // `bytes` equality, which would call those two unequal.
+    if (a.entries.length !== b.entries.length) {
+      return undefined;
+    }
+    for (const entry of a.entries) {
+      const other = b.entries.find(candidate => compareGroups(candidate.key, entry.key, equalityMode) === 0);
+      if (other === undefined || compareGroups(other.value, entry.value, equalityMode) !== 0) {
+        return undefined;
+      }
+    }
+    return 0;
+  }
   if (a.type === 'List' && b.type === 'List') {
     if (a.sep !== b.sep || a.value.length !== b.value.length) {
       return undefined;
