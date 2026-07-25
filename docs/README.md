@@ -23,6 +23,9 @@ Start here:
   baseline and current debugging focus.
 - [`perf/V8-ARCHITECTURE.md`](./perf/V8-ARCHITECTURE.md) — the 9 hot-path
   invariants and the regression-fixture catalogue.
+- [`architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](./architecture/parser/GRAMMAR-REVIEW-STANDARD.md)
+  — the standing brief for the eight grammar files: the per-`const` checklist,
+  the hard constraints, and the definition of done.
 
 The one rule that keeps this directory useful: **a document that describes
 machinery the repo does not have belongs in `design/` or in git history, never in
