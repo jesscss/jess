@@ -236,6 +236,29 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
 
 ---
 
+## Known gaps found while landing `${…}` (2026-07-24) — NOT fixed
+
+Found by rendering every code sample on the edited docs pages through the real
+compiler and diffing against the pre-edit file. All three are **pre-existing** —
+they reproduce on `origin/dev` before the `${…}` landing — and all three are
+worked around in the docs rather than fixed, so they will otherwise be
+rediscovered.
+
+- **A trailing `//` comment inside a collection entry is a parse error.**
+  `$m: { small: 4px; }` parses; `$m: { small: 4px; // note\n }` does not. A line
+  comment is lexical trivia everywhere else in `.jess`, so the collection-entry
+  production is the outlier. Worked around by moving the comment above the block
+  in `docs/jess/02-Language/10-namespaces-and-maps.mdx`.
+- **`$extend $type;` does not parse.** The documented selector-capture flow
+  (`$type: *[.notice]; .danger { $extend $type; }`) errors at the `$extend`
+  statement. `$extend .notice;` with a literal selector is fine, so the gap is
+  the variable-valued target. Example 4 in
+  `docs/jess/02-Language/08-interpolation.mdx` teaches the failing form.
+- **`$['border-color']` self-lookup renders verbatim.** Reading another
+  declaration's value out of the current scope (`box-shadow: 0 0 0 2px
+  $['border-color']`) emits the source bytes instead of resolving. Example 3 in
+  `docs/jess/02-Language/08-interpolation.mdx`.
+
 ## Docs-vs-parser audit findings (parser CORRECT; docs corrected)
 - **`$(…)` expression form is REJECTED in condition position.** A `when` guard /
   `$if` / `$while` condition's `(…)` IS the expression, so a `$(…)` wrapper there is

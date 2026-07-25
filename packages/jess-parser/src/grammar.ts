@@ -66,13 +66,27 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const Reference = node(
     noTrivia(sequence(dollarVar, many(choice(refDot, refIndex)), optional(literal('?')))));
 
-  // ── Interpolation `$[key]` (identifier-style) ────────────────────────────────
-  // Base-less `$[foo]` (bare → variable) / `$['foo']` (quoted → property), role
-  // 'ident'. Valid in identifiers, selectors, property names, strings, and value
-  // position. Renders back as `$[foo]` / `$['foo']`.
+  // ── Interpolation: `${name}` and the `$[key]` lookup spelling ────────────────
+  // `${foo}` is the plain interpolation form — the VALUE of `$foo`, spliced into
+  // a name, selector, or string position. Its body is a NAME, Less-style.
+  // `$[foo]` (bare → variable) / `$['foo']` (quoted → property) is a LOOKUP whose
+  // receiver is the ambient scope; it remains accepted in the same positions.
+  //
+  // BOTH spellings are arms of the SAME `DollarInterp` node on purpose: every CST
+  // consumer (the language service) already handles that node, so `${…}` needs no
+  // downstream change and nothing sees two forms.
+  //
+  // This CST is deliberately looser than the direct-AST grammar, which admits
+  // `${…}` in name/selector/string positions ONLY. Here it also reaches value
+  // position, because `value` takes the whole node. The editor is therefore
+  // permissive where the compiler is strict, which is the safe direction: a
+  // rejected value-position `${…}` still reports a positioned compile error.
   const interpKey = regex(/'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const DollarInterp = node(
-    noTrivia(sequence(literal('$'), literal('['), interpKey, expect(literal(']'), ']'))));
+  const interpName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const DollarInterp = node(choice(
+    noTrivia(sequence(literal('$'), literal('['), interpKey, expect(literal(']'), ']'))),
+    noTrivia(sequence(literal('$'), literal('{'), interpName, expect(literal('}'), '}')))
+  ));
 
   // ── Interpolation in SELECTORS ───────────────────────────────────────────────
   // `.widget-$[side]` → InterpolatedSelector wrapping an Interpolated (source with
@@ -159,26 +173,27 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // them into an `Interpolated` value — never a byte re-scan).
   //
   // `dqContents`/`sqContents` = the "string contents" primitive: a run up to the
-  // closing quote, an escape, or the next interp opener. The `\$(?![\[(])`
-  // negative-lookahead is the EXACT complement of the two interp openers (`$[`,
-  // `$(`), so a `$` only ends a chunk when it opens interpolation — a lone `$` or
-  // a `$x` (property-ish false start) stays INSIDE the chunk as literal text.
-  const dqContents = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))+/);
-  const sqContents = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))+/);
-  // FAST PATH: a COMPLETE quoted string (quotes included) with no `$[`/`$(` interp
-  // opener matches as a SINGLE flat leaf in one regex — plain strings dominate, so
-  // the common case skips CST-array allocation + builder dispatch. The
-  // `\$(?![\[(])` complement is IDENTICAL to `dqContents`, so the flat arm fails
+  // closing quote, an escape, or the next interp opener. The `\$(?![\[({])`
+  // negative-lookahead is the EXACT complement of the three interp openers (`$[`,
+  // `$(`, `${`), so a `$` only ends a chunk when it opens interpolation — a lone
+  // `$` or a `$x` (property-ish false start) stays INSIDE the chunk as literal text.
+  const dqContents = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))+/);
+  const sqContents = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))+/);
+  // FAST PATH: a COMPLETE quoted string (quotes included) with no interp opener
+  // matches as a SINGLE flat leaf in one regex — plain strings dominate, so the
+  // common case skips CST-array allocation + builder dispatch. The
+  // `\$(?![\[({])` complement is IDENTICAL to `dqContents`, so the flat arm fails
   // precisely when an opener is present and backtracks to the interp `sequence`
   // arm (a single failed regex). The flat arm yields a single-leaf `Quoted` (no
   // interp child) → the builder's no-interp fallback reconstructs the byte-
-  // identical bare-string value (`${…}` Less-style handling stays in that fallback).
-  const dqFlat = regex(/"(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))*"/);
-  const sqFlat = regex(/'(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))*'/);
-  // The two `.jess` interpolation forms (owner-confirmed):
-  //   `$[key]` = KEY interpolation (DollarInterp; body stays a lookup key)
-  //   `$(expr)` = FULL-EXPRESSION interpolation (the `$(…)` Expression form)
-  // Interp tried FIRST in the arm so a `$[`/`$(` opener wins over a contents chunk.
+  // identical bare-string value.
+  const dqFlat = regex(/"(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))*"/);
+  const sqFlat = regex(/'(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))*'/);
+  // The three `.jess` `$` forms, chosen by position:
+  //   `${name}` = INTERPOLATION (DollarInterp; body is a name)
+  //   `$[key]`  = LOOKUP against the ambient scope (DollarInterp; body is the key)
+  //   `$(expr)` = EXPRESSION (the `$(…)` Expression form)
+  // Interp tried FIRST in the arm so an opener wins over a contents chunk.
   const strInterpJess = choice(g.DollarInterp, g.Expression);
   // `noTrivia` on each arm: string spaces are literal content, NOT trivia — the
   // ambient `rw` must not skip them between the quote / contents / interp elements.

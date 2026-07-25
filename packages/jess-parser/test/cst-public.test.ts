@@ -59,6 +59,36 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(stats(result.tree).grammarTypes.get('DollarInterp')).toBe(2);
   });
 
+  // The editor route must recognize `${…}` too, or valid source that compiles
+  // would light up red in the language service. Both spellings are arms of the
+  // SAME `DollarInterp` node, so every existing CST consumer already handles it.
+  it('uses the same structural DollarInterp node for the ${…} interpolation form', () => {
+    const result = parseJessCst('.widget-${side}-${theme} { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('InterpolatedSelector')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('DollarInterp')).toBe(2);
+  });
+
+  // A `${…}` inside a quoted string has to break the string into structured
+  // parts, exactly as `$[…]` does — otherwise the fast flat-string path swallows
+  // it as literal bytes and the editor shows no interpolation at all.
+  it('structures ${…} inside a quoted string without disturbing plain strings', () => {
+    const interpolated = parseJessCst('.a { content: "font-${family}.woff"; }');
+
+    expect(interpolated.errors).toHaveLength(0);
+    expect(interpolated.unconsumedFrom).toBeNull();
+    expect(stats(interpolated.tree).grammarTypes.get('DollarInterp')).toBe(1);
+
+    // A lone `$` that opens nothing stays literal text inside the flat string.
+    const plain = parseJessCst('.a { content: "costs $5 and $x too"; }');
+
+    expect(plain.errors).toHaveLength(0);
+    expect(plain.unconsumedFrom).toBeNull();
+    expect(stats(plain.tree).grammarTypes.get('DollarInterp')).toBeUndefined();
+  });
+
   it('uses structural DollarInterp nodes in ordinary and @import url targets', () => {
     const result = parseJessCst('.asset { image: url(images/$[file].svg); } @import url($[path]) print;');
 
