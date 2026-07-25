@@ -719,13 +719,24 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // but it makes `lessGrammar` a non-final carried piece, and scss-parser's
   // `compose([lessGrammar, …])` then reports `argument 0 isn't a build-resolvable
   // grammar` and degrades to the runtime interpreter — which emits a different tree
-  // (`docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §1). Verified,
-  // not assumed. Revisit when the pin moves or SCSS stops composing on Less.
+  // (`docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §1). Verified
+  // by building it, not assumed.
   //
-  // The two lists are NOT identical: this one additionally admits `currentcolor`,
-  // which the shared rule deliberately excludes as a CSS-wide keyword rather than an
-  // RGB colour value. Deleting this copy is therefore also an acceptance change in
-  // the CST, and which spelling is correct is an owner question.
+  // THE BLOCKER IS SCSS COMPOSING ON LESS, NOT THE COLOUR LIST. `scss-parser`'s CST
+  // is `compose([lessGrammar, …])`; on the intended CSS base it would not sit
+  // downstream of this grammar and this copy would just be deleted. That inversion is
+  // tracked in `docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`
+  // — this is a concrete cleanup it blocks, not a cosmetic concern. Unblocked by
+  // EITHER the dialect re-base or a parseman that resolves deeper compose chains.
+  //
+  // WHEN YOU DELETE THIS, DO NOT RE-LITIGATE THE NAME COUNT. The lists differ: this
+  // copy has 150 names, the shared rule 149. The extra is `currentcolor`, and the
+  // shared rule is RIGHT to exclude it — owner ruling 2026-07-25: it is not a named
+  // colour because it is not computable, it resolves from another property at use
+  // time, so there is no value to materialise. (`transparent` IS included, and
+  // correctly so — it computes to `rgba(0,0,0,0)`.) Losing `currentcolor` from this
+  // node is a FIX, not a regression; it remains an ordinary keyword value, which is
+  // all it ever needed to be.
   const NamedColor = node(keywords([
     'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
     'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',

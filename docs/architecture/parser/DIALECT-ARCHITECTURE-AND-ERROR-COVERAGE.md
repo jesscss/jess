@@ -22,6 +22,28 @@ status elsewhere.
    of holes. Reference implementations are authoritative: dart-sass (sass-spec) for
    SCSS, less.js for Less.
 
+3. **The inversion BLOCKS cleanups in Less, not just in SCSS** — added 2026-07-25,
+   verified by building it. Because `scssGrammar = compose([lessGrammar, …])`,
+   `lessGrammar` may not itself become a non-final carried piece: composing the shared
+   recognition map into the Less CST (`compose([cssGrammar, lessAstSyntax, rules(…)])`
+   — the shape scss-parser's own CST already uses) compiles fine in less-parser, but
+   scss-parser then reports `compose(): argument 0 isn't a build-resolvable grammar`
+   and **degrades to the runtime interpreter, which emits a different tree**
+   ([`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](./PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md)
+   §1). So the Less CST cannot reach the shared recognition surface at all while the
+   inversion stands.
+
+   First concrete casualty: the Less CST keeps a 150-name copy of the CSS named-colour
+   list (`less-parser/src/grammar.ts`, `TODO(parseman-compose-depth)`) that the Less
+   **AST** grammar already gets from the shared rule. The copy is not a design choice
+   and not merely redundant — it is also **wrong**: it admits `currentcolor`, which the
+   shared rule correctly excludes (owner ruling 2026-07-25 — not computable, so not a
+   named colour). Deleting it is a fix, and the re-base is what unblocks it.
+
+   **This makes the re-base load-bearing rather than cosmetic.** Expect more of this
+   class: any CSS-recognition duplicate in the Less CST is stuck for the same reason.
+   Unblocked by EITHER Phase 3 or a parseman that resolves deeper compose chains.
+
 ## Target architecture (owner: shared macro-compiled base, NO sibling inheritance)
 
 - `cssGrammar` (unchanged): CSS tokenizer regexes, plain CSS selectors, CSS
