@@ -175,6 +175,35 @@ flag owned by `jess-plugin-less`.
 **Ref.** DD `O1`, `O2`, `M1` · `memory:less-v5-default-collapsenesting-false`,
 `memory:fixture-v5-vs-4x-legacy-convention`, `memory:spine-merge-last-occurrence-anchor`
 
+### A9 · COMPUTED numbers = shortest decimal within 1e-10, in every position
+
+**Rule.** A **computed** number emits the shortest decimal lying within a
+**relative** tolerance of `1e-10` of the double. Noise removal, not a precision
+limit: `String(n)` is already shortest-round-trip, so it is obliged to print
+`0.30000000000000004`; this is the tolerance-aware variant. **No** significant-figure
+cap, **no** per-unit policy. An **exact integer is never trimmed** (no float noise to
+remove). Scientific notation is never emitted (CSSOM §6.7.2). The same value spells
+itself identically in a declaration value, an interpolation splice, a property name,
+and a selector — there is no per-position variant.
+
+```
+0.1 + 0.2        → 0.3                (noise removed)
+100% / 3         → 33.333333333%      (digits are earned; no cap shortens a third)
+pi()             → 3.1415926536       (same bytes spliced: ~"@{n}" → 3.1415926536)
+1cm in px        → 393.3527559px      (an 8-sig-fig cap would destroy this)
+0.0000001 * 0.01 → 0.000000001        (8 dp used to flatten this to 0)
+123456789012     → 123456789012       (exact integer, untouched)
+1.50000px        → 1.50000px          (un-operated literal → A1, not this rule)
+```
+
+**Why.** One policy with one owner. The predecessor was `round(n, 8)` inlined at
+every emit site plus a full-precision escape on the interpolation path, so `pi()`
+printed two ways in one stylesheet depending on which code reached the serializer.
+A decimal-place floor is also the wrong axis: it annihilates small magnitudes and
+under-trims large ones.
+**Ref.** DD `F6` · `../../design/numeric-precision-policy.md` ·
+`packages/core/src/ast/format-number.ts` · closes SEMANTIC-INVARIANTS `S1`
+
 ---
 
 ## B. Evaluation semantics
@@ -293,7 +322,7 @@ page on both the Less and Jess sites (docs-only landing, 2026-07-18):
   `color-output` (both sites).
 - ~~**A7 compact `:is()` nesting-collapse**~~ → `advanced/selector-compaction`
   (Less) · `06-Advanced/09-selector-compaction` (Jess).
-- ~~**Number precision (8dp values; full-precision interpolation)**~~ →
+- ~~**A9 number precision (shortest decimal within 1e-10, every position)**~~ →
   `advanced/number-precision` · `06-Advanced/10-number-precision`.
 - ~~**Alpha colors → `rgba`; alpha-hex preserved; gamut clamp**~~ →
   `advanced/color-output` · `06-Advanced/11-color-output`.

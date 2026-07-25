@@ -30,8 +30,8 @@ need the exact rule behind a specific output difference.
 - **[Selector Compaction (`:is()` Nesting)](./selector-compaction.md)** — a `&`-less
   nested descendant factors its common ancestor out once, wrapping multi-branch sides
   in `:is(...)` instead of cartesian-expanding.
-- **[Number Precision](./number-precision.md)** — computed declaration values round to
-  8 decimal places; interpolation splices keep full precision.
+- **[Number Precision](./number-precision.md)** — a computed number emits the shortest
+  decimal that is still the same number; un-operated literals stay verbatim.
 - **[Color Output (Alpha, Hex, Gamut)](./color-output.md)** — computed alpha → `rgba`,
   authored alpha-hex preserved, out-of-range channels clamp.
 - **[String Formatting (`%()`)](./string-format.md)** — the `%()` compat alias and how
