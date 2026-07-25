@@ -33,6 +33,7 @@ type JessAstRules = {
   DirectJessReferenceTail: Combinator<JessReferenceTail>;
   DirectJessReferenceCallTail: Combinator<JessReferenceTail>;
   DirectJessDollarValue: Combinator<ValueNode>;
+  DirectJessDollarBrace: Combinator<Interpolation>;
   DirectJessDollarInterp: Combinator<Interpolation>;
   DirectJessInterpolatedValue: Combinator<Interpolation>;
   DirectJessExpressionDollarInterp: Combinator<ExpressionFact>;
@@ -1013,10 +1014,10 @@ const lineComment = regex(/\/\/[^\n\r]*/);
 // `Comment` node, because `//` is not valid CSS and cannot survive into output.
 // URL bodies disable trivia below, so `url(//host/path)` stays URL content.
 const whitespace = trivia(oneOrMore(choice(rawWhitespace, lineComment)));
-const plainDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))*/);
-const plainSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))*/);
-const interpolatedDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[(]))+/);
-const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[(]))+/);
+const plainDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))*/);
+const plainSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))*/);
+const interpolatedDoubleQuotedText = regex(/(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))+/);
+const interpolatedSingleQuotedText = regex(/(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))+/);
 // Jess's live `$` grammar does not permit CSS escapes in names. Keep that
 // dialect-local fact explicit while the value keyword leaf remains shared.
 const jessDollarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
@@ -1047,6 +1048,19 @@ const jessGuardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uff
 // negative lookahead so `$type.*` can never take a generic call tail and bypass
 // the closed, arity-checked predicate grammar above.
 const jessTypeNamespace = regex(/\$type\./);
+// `${name}` — the plain interpolation form: splice the VALUE of `$name` into a
+// name, selector, or string position. Its body is a NAME, Less-style, and
+// deliberately not an expression: an interpolation position is a splice point,
+// not a place to compute. (`${m[key]}` / `${m.key}` are a backward-compatible
+// later extension, so nothing here pre-builds them.)
+//
+// This is the spelling `$[…]` cannot provide. `$[…]` is a LOOKUP whose receiver
+// is the ambient scope, exactly as `$m[…]`'s is an explicit one — so `$[$foo]`
+// already means "the variable NAMED BY `$foo`", a double indirection, and there
+// was no way left to say "just splice `$foo` here". Bare interpolation is
+// impossible because `-` is an identifier byte, so `--$name-color` has no
+// unambiguous name boundary.
+const jessDollarBraceStructure = noTrivia(sequence(literal('${'), jessDollarName, literal('}')));
 const jessDollarInterpStructure = noTrivia(choice(
   sequence(literal('$['), literal('$'), jessDollarName, literal(']')),
   sequence(literal('$['), jessDollarName, literal(']')),
@@ -1128,11 +1142,27 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       span
     )
   );
+  const DirectJessDollarBrace = node<Interpolation>(
+    'DirectJessDollarBrace',
+    jessDollarBraceStructure,
+    (children, _fields, span) => {
+      const ref = variableReference(requireToken(children[1]).value, 'live');
+      if (span) {
+        withSourceSpan(ref, span);
+      }
+      return interpolation([{ ref, unquote: true }]);
+    }
+  );
   const DirectJessDollarInterp = node<Interpolation>(
     'DirectJessDollarInterp',
     jessDollarInterpStructure,
     (children, _fields, span) => interpolationFromChildren(children, span)
   );
+  // The interpolation set an authored NAME, SELECTOR, or STRING position admits.
+  // `${…}` and `$[…]` are disjoint on the character after `$`, so the order here
+  // is behaviour-neutral. Value positions deliberately do NOT take this set:
+  // there, `$name` already IS the value and `$(…)` is the expression form.
+  const directJessNameInterp = choice(g.DirectJessDollarBrace, g.DirectJessDollarInterp);
   const DirectJessExpressionDollarInterp = node<ExpressionFact>(
     'DirectJessExpressionDollarInterp',
     jessDollarInterpStructure,
@@ -1358,10 +1388,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // escape drops the quotes, so the value is exactly the Interpolation of
       // its content parts with no quote literals around them. Only the static
       // arm needs the separate `Quoted` escaped fact.
-      noTrivia(sequence(literal('~'), literal('"'), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
-      noTrivia(sequence(literal('~'), literal('\''), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\''))),
-      noTrivia(sequence(literal('"'), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.DirectJessDollarInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\'')))
+      noTrivia(sequence(literal('~'), literal('"'), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('~'), literal('\''), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\''))),
+      noTrivia(sequence(literal('"'), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\'')))
     ),
     (children) => {
       if (requireToken(children[0]).value !== '~') {
@@ -1524,8 +1554,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessUrlInterpolatedValue',
     noTrivia(sequence(
       optional(jessUrlInterpolatedText),
-      choice(g.DirectJessDollarInterp, g.DirectJessExpression),
-      many(choice(jessUrlInterpolatedText, g.DirectJessDollarInterp, g.DirectJessExpression))
+      choice(directJessNameInterp, g.DirectJessExpression),
+      many(choice(jessUrlInterpolatedText, directJessNameInterp, g.DirectJessExpression))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -1583,18 +1613,19 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // Cheap superset lookahead so an ordinary `.card` simple selector does not
   // consume its `[.#]`+text run, fail the required `$[…]`, and backtrack a
   // re-parse through DirectJessSimple. The predicate mirrors this arm's own
-  // leading shape (optional class/id sigil + selector-text run) and requires a
-  // `$[` immediately after it, so the `$[` is bound to THIS simple selector and
-  // a sibling selector's interpolation never falsely admits a plain one.
-  const directInterpSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$\[/)));
+  // leading shape (optional class/id sigil + selector-text run) and requires an
+  // interpolation opener immediately after it, so the opener is bound to THIS
+  // simple selector and a sibling selector's interpolation never falsely admits
+  // a plain one.
+  const directInterpSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
   const DirectJessInterpolatedSimple = node<SimpleSelector>(
     'DirectJessInterpolatedSimple',
     noTrivia(sequence(
       directInterpSimpleAhead,
       optional(regex(/[.#]/)),
       many(jessSelectorTextRun),
-      g.DirectJessDollarInterp,
-      many(choice(g.DirectJessDollarInterp, jessSelectorTextRun))
+      directJessNameInterp,
+      many(choice(directJessNameInterp, jessSelectorTextRun))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -1633,15 +1664,15 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // to it: `&-$[tone]` is the authored spelling of `&-primary`. The lookahead is
   // the same fast reject `DirectJessInterpolatedSimple` uses, so an ordinary `&`
   // compound member never pays a failed template scan.
-  const directInterpParentAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$\[/)));
+  const directInterpParentAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
   const DirectJessInterpolatedParentSuffix = node<SimpleSelector>(
     'DirectJessInterpolatedParentSuffix',
     noTrivia(sequence(
       directInterpParentAhead,
       literal('&'),
       many(jessSelectorTextRun),
-      g.DirectJessDollarInterp,
-      many(choice(g.DirectJessDollarInterp, jessSelectorTextRun))
+      directJessNameInterp,
+      many(choice(directJessNameInterp, jessSelectorTextRun))
     )),
     children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
   );
@@ -2467,7 +2498,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessGeneralTemplate = node<Interpolation>(
     'DirectJessGeneralTemplate',
     many(choice(
-      g.DirectJessDollarInterp,
+      directJessNameInterp,
       g.DirectJessExpression,
       g.DirectJessGeneralTemplateParen,
       g.DirectJessGeneralTemplateSquare,
@@ -2762,19 +2793,19 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   // Jess owns only its `$[…]` segment grammar and direct AST reduction.
   // Cheap superset lookahead so an ordinary `color: …` declaration does not
   // enter the interpolated-property arm, consume the whole property name via
-  // the optional literal start, fail the required `$[…]`, and backtrack a
+  // the optional literal start, fail the required interpolation, and backtrack a
   // property re-parse through CssAstSyntaxProperty. Skip this arm unless a
-  // `$[` actually precedes the next `:`/`;`/brace. A property name never
+  // `$[` or `${` actually precedes the next `:`/`;`/brace. A property name never
   // contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
   // real interpolated property is never skipped.
-  const directInterpPropertyAhead = not(not(regex(/[^{};:]*\$\[/)));
+  const directInterpPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
   const DirectJessInterpolatedProperty = node<Interpolation>(
     'DirectJessInterpolatedProperty',
     noTrivia(sequence(
       directInterpPropertyAhead,
       optional(g.CssAstSyntaxInterpolatedPropertyStart),
-      g.DirectJessDollarInterp,
-      many(choice(g.CssAstSyntaxInterpolatedPropertyTail, g.DirectJessDollarInterp))
+      directJessNameInterp,
+      many(choice(g.CssAstSyntaxInterpolatedPropertyTail, directJessNameInterp))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -2806,8 +2837,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       noTrivia(sequence(
         literal('--'),
         many(jessCustomPropertyChunk),
-        g.DirectJessDollarInterp,
-        many(choice(jessCustomPropertyChunk, g.DirectJessDollarInterp))
+        directJessNameInterp,
+        many(choice(jessCustomPropertyChunk, directJessNameInterp))
       )),
       g.CssAstSyntaxCustomProperty
     ),
@@ -2842,7 +2873,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     children => children.slice()
   );
   const DirectJessCustomInnerPart: Combinator<unknown> = choice(
-    g.DirectJessDollarInterp,
+    directJessNameInterp,
     g.CssAstSyntaxCustomInnerContent,
     blockComment,
     g.CssAstSyntaxCustomSingleQuoted,
@@ -2852,7 +2883,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.DirectJessCustomCurly
   );
   const DirectJessCustomPart: Combinator<unknown> = choice(
-    g.DirectJessDollarInterp,
+    directJessNameInterp,
     g.CssAstSyntaxCustomOuterContent,
     blockComment,
     g.CssAstSyntaxCustomSingleQuoted,
@@ -3401,6 +3432,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessReferenceTail,
     DirectJessReferenceCallTail,
     DirectJessDollarValue,
+    DirectJessDollarBrace,
     DirectJessDollarInterp,
     DirectJessExpressionDollarInterp,
     DirectJessExpression,

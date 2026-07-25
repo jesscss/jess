@@ -78,9 +78,15 @@ $font-weights: {
 
 ### Key normalization rules
 
+A collection key is a **value**, matched by value equality — the same model Sass
+maps use, where `map.get($m, 1px)` must match the number `1px` and not the text
+`"1px"`.
+
 - **Quoted string keys** with no interpolation are treated as plain keys.
-  - `"regular"` becomes `regular` (no quotes) in the corresponding `Declaration` name.
-- More complex Sass map keys (colors, lists, etc.) are supported by Jess collections, but the SCSS mapping rules depend on how the key can be represented as a stable collection key (see [Namespaces, collections, and maps](/docs/Language/namespaces-and-maps)).
+  - `"regular"` becomes the bare `regular`, which is the string key `"regular"`.
+- Other Sass map keys (numbers, colors, lists) stay the values they are; see
+  [Namespaces, collections, and maps](/docs/Language/namespaces-and-maps) for the
+  key model and for why a numeric subscript is a position rather than a key.
 
 ## `map-get()` and `map.get()` → Reference lookups
 
@@ -134,16 +140,17 @@ This aligns with Jess’s own language model:
 
 Jess distinguishes:
 
-- `Reference`: `$var`
-- `Expression`: `$(...)`
-- `Reference` with `role: 'ident'`: `$[ident]`
+- a variable reference: `$var`
+- an expression: `$(...)`
+- an interpolation: `${ident}` (name, selector, and string positions)
+- a lookup: `$[key]` / `$m[key]` (value position)
 
 ### `#{$...}` in selector/property names
 
 When SCSS interpolation appears in selector or property-name positions:
 
-- `#{$ident}` (single variable reference) maps to `$[ident]`
-- More complex interpolation expressions are rewritten through a generated private temp variable (`_tmp_<n>`), then referenced as `$[_tmp_<n>]`
+- `#{$ident}` (single variable reference) maps to `${ident}`
+- More complex interpolation expressions are rewritten through a generated private temp variable (`_tmp_<n>`), then referenced as `${_tmp_<n>}`
 
 This keeps selector/property interpolation identifier-only while still supporting complex expressions.
 
@@ -151,8 +158,8 @@ This keeps selector/property interpolation identifier-only while still supportin
 
 In value/string contexts, SCSS interpolation may map to:
 
-- `$[ident]` for simple identifier interpolation
-- `$(...)` for expression interpolation
+- `${ident}` inside a string
+- `$(...)` for expression interpolation in value position
 
 For example, `#{$color}` can become `$($color)` when live-reference expression semantics are needed.
 

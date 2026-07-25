@@ -26,7 +26,7 @@ for **Less** sources — it is Less's `each()`, not a Jess API.)
 $list: 1, 2, 3;
 
 iterate($value, $key) {
-  .icon-$[value] {
+  .icon-${value} {
     width: $value;
     height: $key;
   }
@@ -57,7 +57,8 @@ This outputs:
 
 For a list, the key is its **1-based** source-order position. (In the example
 above the values happen to equal their positions, so `width` and `height` match.)
-For a Jess collection the key is the declaration name.
+For a Jess collection the key is the entry's key **value** — a bare name like
+`small` is the string `"small"`.
 
 :::
 
@@ -67,7 +68,7 @@ You don't need a mixin at all if the body is simple:
 $sections: header, sidebar, footer;
 
 $for ($section, $i of $sections) {
-  .box-$[section] {
+  .box-${section} {
     padding-left: $($i * 20px);
   }
 }

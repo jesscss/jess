@@ -88,7 +88,7 @@ bytes** it would print in a declaration value:
 $n: pi();
 .a {
   width: $n;
-  content: "$[n]";
+  content: "${n}";
 }
 ```
 
@@ -104,16 +104,17 @@ a value is emitted, never *how* it is spelled.
 
 :::note Where interpolation splices
 
-Interpolation is written `$[name]` in string, selector, and property-name
-position (`$( … )` is value-position only). A `$[…]` splice is grammar
-structure everywhere it is accepted, including inside a custom-property name
-and value (`--raw: $[n]`, `--$[name]: 1`), inside a plain quoted string
-(`content: "fonts/$[family].css"`), and inside an escaped `~"…"` string.
+Interpolation is written `${name}` in string, selector, and property-name
+position (`$[…]` is a lookup and `$( … )` an expression, both value-position).
+A `${…}` splice is grammar structure everywhere it is accepted, including
+inside a custom-property name and value (`--raw: ${n}`, `--${name}: 1`), inside
+a plain quoted string (`content: "fonts/${family}.css"`), and inside an escaped
+`~"…"` string.
 
 The one place it is *not* spliced is a quoted string nested inside a
-custom-property value: `--raw: "$[n]"` keeps the whole string as authored CSS
+custom-property value: `--raw: "${n}"` keeps the whole string as authored CSS
 bytes, because a custom property's value is a verbatim token stream. Splice the
-value directly (`--raw: $[n]`) instead of wrapping it in quotes.
+value directly (`--raw: ${n}`) instead of wrapping it in quotes.
 
 :::
 

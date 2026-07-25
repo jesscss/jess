@@ -156,8 +156,9 @@ Use:
 
 - `$var` for a direct variable reference
 - `$($var)` when you need that reference inside an expression
-- `$[ident]` for variable identifier interpolation (selector/property-name interpolation)
-- `$['name']` for property lookup interpolation keys (e.g. Less `${name}`)
+- `${ident}` for interpolation in selector, property-name, and string positions —
+  this is Jess's counterpart to Less's `@{name}`, and it is spelled the same way
+- `$['name']` for a property lookup key (a *lookup*, in value position)
 
 #### Less-to-Jess
 

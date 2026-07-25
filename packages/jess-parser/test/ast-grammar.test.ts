@@ -2372,6 +2372,59 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  // `${name}` is the plain interpolation form: splice the VALUE of `$name`.
+  // It is what `$[…]` cannot spell, because `$[…]` is a LOOKUP against the
+  // ambient scope — `$[$foo]` already means "the variable NAMED BY `$foo`".
+  // The body is a NAME (Less-style), not an expression, so an interpolation
+  // position stays a splice point rather than a place to compute.
+  it('constructs ${…} name interpolation in every name, selector, and string position', () => {
+    const evaluator = buildEvaluator(makeLessRegistry());
+    const source = [
+      '$radius: top-right; $property: accent; $side: left; $tone: primary; $family: serif;',
+      '.card-${side} { border-${radius}-radius: 12px; ${property}: blue; --${side}-pad: 4px;',
+      '  content: "font-${family}"; background: url(${family}.woff);',
+      '  &-${tone} { color: red; } }'
+    ].join('\n');
+    expect(serialize(parse(source), { evaluator }).css).toBe(
+      '.card-left {\n'
+      + '  border-top-right-radius: 12px;\n'
+      + '  accent: blue;\n'
+      + '  --left-pad: 4px;\n'
+      + '  content: "font-serif";\n'
+      + '  background: url(serif.woff);\n'
+      + '}\n'
+      + '.card-left-primary {\n'
+      + '  color: red;\n'
+      + '}\n'
+    );
+  });
+
+  // `${name}` builds exactly the Interpolation `$[name]` builds — the two are
+  // the same splice, so nothing downstream has to learn a second shape.
+  it('reduces ${name} to the same Interpolation as the $[name] lookup spelling', () => {
+    const braceName = parse('.card { ${property}: blue; }');
+    const bracketName = parse('.card { $[property]: blue; }');
+    expect(braceName).toEqual(bracketName);
+    expect(parse('.card-${side} { a: b; }')).toEqual(parse('.card-$[side] { a: b; }'));
+  });
+
+  // The body is a NAME. Every richer spelling is reserved for the documented
+  // later extension (`${m[key]}` / `${m.key}`), so it must fail now rather than
+  // degrade into raw bytes — and a value position keeps `$name` / `$(…)`.
+  it('rejects a non-name ${…} body and rejects ${…} in value position', () => {
+    for (const invalid of [
+      '.card { color: ${tone}; }',
+      '.card { ${}: blue; }',
+      '.card { ${ property}: blue; }',
+      '.card { ${$property}: blue; }',
+      '.card { ${m[key]}: blue; }',
+      '.card { ${m.key}: blue; }',
+      '.card { ${property: blue; }'
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+  });
+
   // css-syntax-3 §5.4.7 "consume a list of declarations": `;` SEPARATES
   // declarations, it does not terminate them. The last declaration in a block
   // needs no `;`, and an empty declaration between two separators is skipped

@@ -106,8 +106,8 @@ isunit(7.8%, '%'); // true
 
 ### isruleset(_value_)
 
-Returns `true` when the value is a detached ruleset (or mixin/collection), `false`
-otherwise. The argument is evaluated lazily.
+Returns `true` when the value is an anonymous mixin or a collection (in Less
+source, a detached ruleset), `false` otherwise. The argument is evaluated lazily.
 
 ```css
 @-from '@jesscss/fns' import (isruleset);

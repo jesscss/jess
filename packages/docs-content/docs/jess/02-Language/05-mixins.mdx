@@ -392,7 +392,7 @@ A parametric mixin may call itself with **different** arguments to build a loop.
 
 ```less
 .loop($n) when ($n > 0) {
-  .item-$[n] { width: $n; }
+  .item-${n} { width: $n; }
   .loop($n - 1); // recurse with a smaller value
 }
 .loop(3);

@@ -12,7 +12,7 @@ and does not depend on positional format tokens:
 ```jess
 $name: world;
 .a {
-  content: "hello $[name]";   // -> "hello world"
+  content: "hello ${name}";   // -> "hello world"
 }
 ```
 

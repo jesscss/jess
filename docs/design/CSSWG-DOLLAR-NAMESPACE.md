@@ -91,8 +91,8 @@ What is verifiable in the `.jess` grammar today:
 - **Standard CSS at-rules keep CSS names and CSS meanings.** Bare `@import` in a
   `.jess` file is always a plain CSS `@import`, never a compiler import — no
   heuristic, ever.
-- **The build-time surface is `$`-led**: `$name` variables, `$(…)` and `$[…]`
-  interpolation, and `$`-led block statements for everything Sass spells with an
+- **The build-time surface is `$`-led**: `$name` variables, `${…}` interpolation,
+  `$(…)` expressions, `$[…]` lookups, and `$`-led block statements for everything Sass spells with an
   at-rule — `$if`/`$else`, `$for`, `$extend`, `$apply`.
 
 Stated honestly, because a filing should not overclaim:
@@ -204,19 +204,19 @@ Reserve `$` followed by anything **other than `=`**. The shapes in use today:
 | Shape | Used by |
 |---|---|
 | `$<ident>` | Sass variables; Jess variables (`$$name` = scoped lookup) |
-| `$(…)` | Jess value-position interpolation / expression boundary |
-| `$[…]` | Jess accessor / lookup (`$*[…]` = selector capture) |
-| `${…}` | Less interpolation (alongside `@{…}`) |
+| `$(…)` | Jess value-position expression boundary |
+| `$[…]` | Jess accessor / lookup (`*[…]` = selector capture) |
+| `${…}` | Less interpolation (alongside `@{…}`); Jess interpolation in name, selector, and string positions |
 | `$<ident>` block statements | Jess control flow — `$if`/`$else`, `$for`, `$extend`, `$apply` |
 
 Positions that must be covered — a value-only reservation is not sufficient,
 because build-time syntax appears wherever authors write names:
 
 - **declaration value** — `color: $brand`, `width: $(2 * $w)`
-- **declaration name / property position** — `$[name]: red`
+- **declaration name / property position** — `${name}: red`
 - **statement start** — `$brand: blue`, `$if $cond { … }`
-- **selector position** — `.a$[x]`, `$extend .b`
-- **inside quoted strings and `url()` bodies** — `content: "$[x]"`
+- **selector position** — `.a${x}`, `$extend .b`
+- **inside quoted strings and `url()` bodies** — `content: "${x}"`
 
 The commitment requested is narrow: CSS assigns no meaning to these and defines
 no future feature that claims them. CSS is not asked to parse, evaluate or

@@ -87,10 +87,61 @@ $mixin: @{
 }
 ```
 
-This similarity is on purpose! And, in fact, you can access mixins and rulesets as collections, if you wish. But, the important difference is that collections
+This similarity is on purpose! And, in fact, you can access mixins and rulesets as collections, if you wish. But, the important difference is that
 
-1. cannot contain rulesets, mixin definitions, or at-rules, and
-2. are intended for any arbitrary key/value pairs, not CSS properties & values.
+**a collection is data; an anonymous mixin is code.**
+
+That split is the whole rule, and everything else follows from it:
+
+1. a collection cannot contain rulesets, mixin definitions, or at-rules,
+2. a collection cannot contain **variable declarations** either — a binding inside
+   a block is scope machinery, so a block that declares variables is an anonymous
+   mixin, not a collection, and
+3. a collection is for arbitrary key/value pairs, not CSS properties & values.
+
+Rule 2 is what keeps map functions honest: if `$a: 1` could sit inside a
+collection, every one of them would first have to decide whether `$a` is a key or
+a binding. Nothing is lost by the split — a Less detached ruleset that declares
+variables simply *is* an anonymous mixin, and you can still read its members.
+
+:::
+
+## Collection keys are values
+
+A collection key is a **value**, not a property name, and lookups match by value
+equality:
+
+```less
+// the key here is the STRING "small"
+$m: {
+  small: 4px;
+}
+```
+
+A bare name is unambiguous because `$` is what marks a variable: `small` is the
+string key, `$small` is the variable. So `$m[small]`, `$m["small"]` and
+`$m[$k]` (where `$k` holds `small`) all reach the same entry.
+
+## Subscripts: the key's type decides
+
+Jess also uses `[…]` for positional access into a list, so one rule settles which
+you get — **the subscript's own type, never the receiver's**:
+
+| Subscript | Meaning |
+| --- | --- |
+| a **number** — `$x[1]`, `$x[-1]` | **positional index**; negative counts from the end |
+| **anything else** — `$x[small]`, `$x[$k]`, `$x[red]`, `$x["a"]` | **key lookup** by value equality |
+
+`$x[1]` is positional whether `$x` turns out to be a list or a collection. A
+subscript whose meaning shifted with the receiver's runtime type would be a
+footgun; this way you can read the source and know.
+
+:::caution[Numeric keys are not reachable by bracket]
+
+The trade-off is deliberate: if you use numbers as collection keys, `[…]` will
+not reach them, because a numeric subscript is always a position. Use
+`map.get($m, 1px)` for those. Positional indexing is the common case and numeric
+keys are rare, so the rare case is the one that takes a function.
 
 :::
 

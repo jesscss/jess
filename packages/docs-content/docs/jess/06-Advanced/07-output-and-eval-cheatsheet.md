@@ -122,8 +122,9 @@ optional. There are no cyclic variables — `$a: 1; $a: $a + 1;` yields `2`. See
 
 ## Jess-flavored specifics
 
-- **Interpolation** uses `$(...)` for a full expression and `$[key]` for a single
-  identifier (bare `$[theme]`, quoted `$['--custom-color']`) — see
+- **Three `$` forms**, chosen by position: `${name}` is interpolation (name,
+  selector, and string positions; its body is a name); `$[key]` is a lookup and
+  `$(...)` an expression, both in value position — see
   [Interpolation](../02-Language/08-interpolation.mdx).
 - **Variables:** `$name` is a live reference; `$$name` is the scoped/final
   lookup. `$!name` is retired. `$name := value` updates the live/current

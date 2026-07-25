@@ -91,7 +91,7 @@ Less `each()`.
 $sections: header, sidebar, footer;
 
 $for ($section, $i of $sections) {
-  .box-$[section] {
+  .box-${section} {
     padding-left: $($i * 20px);
   }
 }
@@ -100,7 +100,7 @@ $for ($section, $i of $sections) {
 You can also iterate over a range of numbers:
 ```less
 $for ($i of 1 to 3) {
-  .box-$[i] {
+  .box-${i} {
     value: $i;
   }
 }
@@ -109,7 +109,7 @@ $for ($i of 1 to 3) {
 A range is inclusive of the start and end values. To exclude the end value, you can use this familiar syntax from other programming languages:
 ```less
 $for ($i of 1 to <3) {
-  .box-$[i] {
+  .box-${i} {
     value: $i;
   }
 }
@@ -122,7 +122,7 @@ You can also destructure a collection entry:
 $collection: { header: red; footer: blue; };
 
 $for ([$key, $value] of $collection) {
-  .box-$[key] {
+  .box-${key} {
     value: $value;
   }
 }

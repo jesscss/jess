@@ -95,7 +95,7 @@ Parsing `$brand: #3366ff;` yields:
 }
 ```
 
-Jess-specific grammar rules the delta adds include `VarDeclaration` (`$x: …`), `Reference` (`$x`, `$x.prop`, `$x[0]`), `Expression` / `Operation` / `Condition` (inside `$(…)`), `Mixin`, `MixinCall`, `InterpolatedSelector` (`.widget-$[side]`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
+Jess-specific grammar rules the delta adds include `VarDeclaration` (`$x: …`), `Reference` (`$x`, `$x.prop`, `$x[0]`), `Expression` / `Operation` / `Condition` (inside `$(…)`), `Mixin`, `MixinCall`, `InterpolatedSelector` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
 
 Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `NamedColor`, `InterpolatedSelector`) into their child.
 
