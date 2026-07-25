@@ -559,10 +559,8 @@ Candidates for removal are only:
   adaptation inside the retained Context methods;
 - `StyleImport`/legacy `Rules` placement and evaluation behavior after a
   canonical AST consumer preserves its tested semantics through Context;
-- a path proven to bypass the Context-to-plugin chain. The known instance of
-  that category — the independent `node:fs` fallback in the former
-  `packages/fns/src/util/file-resolution.ts` — was already removed (see the
-  reachability audit below); no such bypass is currently known to remain.
+- a path proven to bypass the Context-to-plugin chain, such as the independent
+  filesystem fallback in `packages/fns/src/util/file-resolution.ts`.
 
 `Context.readBinary` and JSON decoding in `getModule` are current explicit
 core byte/module capabilities after plugin resolution, not evidence that
@@ -624,16 +622,10 @@ exports only the native AST-v2 `LessCompatPlugin`, and its bundle contained no
 dead transform/node adapters and their unreferenced helper/type/runtime files
 were removed in the alpha.9 cleanup; the package-root native `Fn` API remains.
 Likewise,
-`packages/fns/src/util/file-resolution.ts` — an independent `node:fs`
-`existsSync`/`readFileSync` walk over `opts.searchPaths` that stood alongside
-`Context.readBinary` — was deleted in `05bfb8249` ("refactor(fns): use typed
-Less image values", 2026-07-22). Its `less/*` image callers moved onto the typed
-function IO capability, so path resolution now stays in Context: `ctx.io.readFile`
-(wired in `packages/jess/src/index.ts` to `Context.readBinary`) resolves through
-the same plugin file manager the import subsystem uses. `packages/fns/src/`
-contains no `node:fs` import outside tests. The legacy `packages/fns/src/less/*`
-barrel still awaits migration/quarantine on its own terms (above); that is no
-longer a prerequisite for this file. The parser-runtime boundary audit is green (zero tracked temporary
+`packages/fns/src/util/file-resolution.ts` is reached only by the legacy
+`packages/fns/src/less/*` helpers and must wait for that public barrel's
+migration/quarantine rather than being deleted as if it were Context's
+resolver. The parser-runtime boundary audit is green (zero tracked temporary
 scanner/reparse sites); remaining string scans in AST serialization are
 evaluation/output semantics, not source recognition.
 
