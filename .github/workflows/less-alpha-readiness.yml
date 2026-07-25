@@ -17,20 +17,29 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # One leg per SUPPORTED LTS line, spelled as aliases so the window follows
-      # Node instead of going stale: when a new line goes LTS these shift on their
-      # own. The supported set is three lines — see `engines` in every published
-      # package.json (`^20.19.0 || >=22.12.0`).
+      # The supported set is `^20.19.0 || >=22.12.0` — see `engines` in all 19
+      # publishable package.json files. That is two disjoint ranges, so this
+      # matrix pins the LOWEST version of each one explicitly: a floor that is
+      # never installed is an assertion, not a tested claim, and the `lts/-N`
+      # aliases only ever install the NEWEST release on a line (`lts/-2` gives
+      # 20.19+, never 20.19.0 itself).
       #
-      # `lts/-3` was removed with that floor: it resolves to Node 18, which reached
-      # EOL 2025-04-30 and cannot run oxc/vite/vitest — so the leg was testing a
-      # line nothing else in the toolchain supports.
+      # Exact pins for the two floors, moving aliases for the ceiling:
+      #   20.19.0  floor of the `^20.19.0` range
+      #   22.12.0  floor of the `>=22.12.0` range
+      #   lts/*    newest LTS line, follows Node without edits
+      #   current  latest release, early warning for the next line
+      #
+      # `lts/-N` legs were dropped deliberately. They drift DOWNWARD relative to
+      # a fixed floor — that is how `lts/-3` came to test Node 18, two EOL lines
+      # below anything the toolchain (oxc/vite/vitest) can install. Bump the pins
+      # here when the floor in `engines` moves; nothing else should shift on its own.
       matrix:
-        node: [current]
-        include:
-          - node: lts/*
-          - node: lts/-1
-          - node: lts/-2
+        node:
+          - '20.19.0'
+          - '22.12.0'
+          - lts/*
+          - current
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
