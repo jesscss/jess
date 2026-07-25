@@ -554,6 +554,35 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
       )
     ));
 
+  // ── `@media ${…}` — the dynamic at-rule prelude ─────────────────────────────
+  // An at-rule prelude is an IDENTIFIER position, so its dynamic form is the same
+  // `${…}` every other name position takes — a bare name, or the `${[…]}` lookup.
+  // The value-position `$[…]`/`$(…)` spellings stay rejected here, exactly as the
+  // AST route rejects them.
+  //
+  // This arm EXISTS because the shared CSS prelude primitive is static-CSS-only by
+  // contract (css-parser grammar.ts `AtRulePreludeSegments` docblock: dialect
+  // interpolation "must supply its own typed alternatives" and must not attach the
+  // primitive as a generic transport). Its stop set treats `{` as the block opener,
+  // so `@media ${m} {` cuts the prelude at the interpolation's brace, the `{` of
+  // `${` is read as the block, and the whole rule errors — valid Jess flagged as
+  // broken in the editor while it compiles fine. Less and SCSS already solve the
+  // same problem with their own typed arms (less-parser `preludeTokenTop`'s
+  // `lessInterp`; scss-parser `ScssQueryInterpBlock`); this is the Jess one.
+  //
+  // The accept set MIRRORS the AST route's `DirectJessMediaPrelude` exactly —
+  // `@media` only (not `@container`/`@supports`), the prelude is a WHOLE
+  // `DollarBrace` (no mixed `screen and ${m}`, no comma list, no glued `foo${m}`),
+  // and the block form only (`@media ${m};` stays rejected). One route accepting
+  // what the other rejects is the bug this closes, so the two must not drift.
+  //
+  // Built as a `QueryAtRuleBlock` node so every language-service `grammarType`
+  // allow-list (semantic tokens, lint, at-rule classification) treats it exactly
+  // like a static `@media` without learning a new name.
+  const mediaAtKeyword = regex(/@media(?![-\w])/i);
+  const QueryInterpAtRuleBlock = node('QueryAtRuleBlock',
+    sequence(mediaAtKeyword, g.DollarBrace, literal('{'), g.declarationList, expect(literal('}'), '}')));
+
   // ── Values: prepend Jess `$` forms before the CSS value set ─────────────────
   const value = choice(
     g.Expression, g.UnwrapArith, g.DollarInterp, g.AnonMixin, g.SelectorCapture, g.Reference,
@@ -565,7 +594,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     many(choice(
       g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
       g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.VariableMixinCall, g.MixinCall, g.Mixin,
-      g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset
+      g.QueryInterpAtRuleBlock, g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock, g.Ruleset
     )));
 
   const Ruleset = node(
@@ -574,7 +603,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const declarationList = withCtx({ inner: true }, many(choice(
     g.ComposeAtRule, g.ExportAtRule, g.ImportAtRule, g.UseAtRule, g.FromAtRule,
     g.Extend, g.Apply, g.VarDeclaration, g.If, g.For, g.While, g.VariableMixinCall, g.MixinCall, g.Mixin,
-    g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
+    g.QueryInterpAtRuleBlock, g.QueryAtRuleBlock, g.AtRuleBlock, g.AtRuleStatement, g.UnknownAtRuleBlock,
     g.Declaration, g.CustomDeclaration, g.Ruleset, literal(';')
   )));
 
@@ -592,6 +621,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     MixinParam, mixinParams, mixinGuard, Mixin, callArgs, MixinCall, VariableMixinCall,
     AnonMixin, Extend, SelectorCapture, Apply,
     ComposeAtRule, ExportAtRule, ImportAtRule, UseAtRule, FromAtRule,
+    QueryInterpAtRuleBlock,
     Stylesheet, Ruleset, declarationList
   };
 })]);

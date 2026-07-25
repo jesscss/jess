@@ -1123,6 +1123,49 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  // The CST route drives the editor and the AST route drives the compiler, so a
+  // form either route accepts alone is a bug in whichever route disagrees. The
+  // `${…}` prelude used to compile fine and light up red in the editor: the CST
+  // inherited the shared CSS prelude primitive, whose stop set reads the `{` of
+  // `${` as the block opener. Pin BOTH routes on the SAME accept/reject set.
+  it('accepts a ${…} @media prelude in the CST route and the AST route alike', () => {
+    for (const source of [
+      '@media ${type} { .card { color: red; } }',
+      '@media ${[type]} { .card { color: red; } }',
+      '@media ${["type"]} { .card { color: red; } }',
+      '.card { @media ${type} { color: red; } }'
+    ]) {
+      const cst = parseJessCst(source);
+      expect(cst.errors, source).toHaveLength(0);
+      expect(cst.unconsumedFrom, source).toBeNull();
+      // Reduced as a `QueryAtRuleBlock` so every language-service grammarType
+      // allow-list treats it exactly like a static `@media`.
+      expect(hasCstGrammar(cst.tree, 'QueryAtRuleBlock'), source).toBe(true);
+      expect(hasCstGrammar(cst.tree, 'DollarBrace'), source).toBe(true);
+
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
+    }
+
+    // The CST arm mirrors `DirectJessMediaPrelude` exactly: `@media` only, the
+    // prelude is a WHOLE `${…}` (no mixed/comma/glued form), block form only.
+    // Every one of these stays rejected by BOTH routes.
+    for (const source of [
+      '@media ${type} screen { .card { color: red; } }',
+      '@media ${type} and (min-width: 1px) { .card { color: red; } }',
+      '@media screen, ${type} { .card { color: red; } }',
+      '@media pre${type} { .card { color: red; } }',
+      '@media ${type};',
+      '@container ${type} { .card { color: red; } }',
+      '@supports ${type} { .card { color: red; } }'
+    ]) {
+      const cst = parseJessCst(source);
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
+    }
+  });
+
   it('uses `only` only before a static media type', () => {
     expect(parse('@media only screen and (min-width: 1px) { .card { color: red; } }')).toMatchObject({
       children: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
