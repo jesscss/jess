@@ -17,13 +17,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # One leg per SUPPORTED LTS line, spelled as aliases so the window follows
+      # Node instead of going stale: when a new line goes LTS these shift on their
+      # own. The supported set is three lines — see `engines` in every published
+      # package.json (`^20.19.0 || >=22.12.0`).
+      #
+      # `lts/-3` was removed with that floor: it resolves to Node 18, which reached
+      # EOL 2025-04-30 and cannot run oxc/vite/vitest — so the leg was testing a
+      # line nothing else in the toolchain supports.
       matrix:
         node: [current]
         include:
           - node: lts/*
           - node: lts/-1
           - node: lts/-2
-          - node: lts/-3
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
