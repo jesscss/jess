@@ -13,6 +13,78 @@ import {
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
   not, noTrivia, scanTo, balanced, trivia, rules, expect, field, label
 } from 'parseman' with { type: 'macro' };
+import type { Combinator } from 'parseman';
+
+/**
+ * Self-reference shape for the {@link cssGrammar} factory. Every rule the
+ * factory reaches through `g.<name>` is declared here as a `Combinator<unknown>`
+ * so the factory lambda can be typed without `any` — the parseman `rules()`
+ * signature annotates its own `self` parameter as `any`, so the concrete type
+ * has to come from THIS annotation. The exported rule names (the factory
+ * return) are a superset of these references; only the cross-referenced keys
+ * need to appear here for `g.<x>` accesses to type-check.
+ *
+ * A dialect-prefixed name (`css…`) would be a defect per
+ * `GRAMMAR-REVIEW-STANDARD.md` item 14 — these are undecorated because CSS is
+ * the base dialect and shares these names with the dialects that compose on it.
+ */
+type CssGrammarSelf = {
+  rw: Combinator<unknown>;
+  Quoted: Combinator<unknown>;
+  Num: Combinator<unknown>;
+  Color: Combinator<unknown>;
+  Paren: Combinator<unknown>;
+  CalcCall: Combinator<unknown>;
+  QueryFeature: Combinator<unknown>;
+  QueryFunction: Combinator<unknown>;
+  QueryInParens: Combinator<unknown>;
+  QueryCondition: Combinator<unknown>;
+  queryPrelude: Combinator<unknown>;
+  Stylesheet: Combinator<unknown>;
+  stylesheetBody: Combinator<unknown>;
+  Ruleset: Combinator<unknown>;
+  SelectorList: Combinator<unknown>;
+  ComplexSelector: Combinator<unknown>;
+  CompoundSelector: Combinator<unknown>;
+  BasicSelector: Combinator<unknown>;
+  simpleSelector: Combinator<unknown>;
+  AttributeSelector: Combinator<unknown>;
+  PseudoSelector: Combinator<unknown>;
+  pseudoArg: Combinator<unknown>;
+  Declaration: Combinator<unknown>;
+  CustomDeclaration: Combinator<unknown>;
+  declarationList: Combinator<unknown>;
+  descriptorBody: Combinator<unknown>;
+  keyframeSelector: Combinator<unknown>;
+  KeyframeSelectorList: Combinator<unknown>;
+  KeyframeBlock: Combinator<unknown>;
+  keyframesBody: Combinator<unknown>;
+  MarginAtRule: Combinator<unknown>;
+  pageBody: Combinator<unknown>;
+  FeatureValueBlock: Combinator<unknown>;
+  fontFeatureValuesBody: Combinator<unknown>;
+  valueList: Combinator<unknown>;
+  valueSequence: Combinator<unknown>;
+  value: Combinator<unknown>;
+  parenBody: Combinator<unknown>;
+  mathProduct: Combinator<unknown>;
+  mathSum: Combinator<unknown>;
+  calcBody: Combinator<unknown>;
+  Dimension: Combinator<unknown>;
+  numeric: Combinator<unknown>;
+  Url: Combinator<unknown>;
+  Call: Combinator<unknown>;
+  anyValue: Combinator<unknown>;
+  AtRuleBlock: Combinator<unknown>;
+  AtRuleBlockTop: Combinator<unknown>;
+  AtRuleStatement: Combinator<unknown>;
+  ImportStatement: Combinator<unknown>;
+  QueryAtRuleBlock: Combinator<unknown>;
+  QueryAtRuleBlockTop: Combinator<unknown>;
+  UnknownAtRuleBlock: Combinator<unknown>;
+  atTokenStream: Combinator<unknown>;
+  AtRulePreludeSegments: Combinator<unknown>;
+};
 
 /*
  * ---------------------------------------------------------------------------
@@ -120,7 +192,7 @@ const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
 
 export const cssGrammar = rules(
   { trivia: rw, scanSkip: [singleStr, doubleStr] },
-  (g: any) => {
+  (g: CssGrammarSelf) => {
   /*
    * ── Stylesheet ────────────────────────────────────────────────────────────
    * Two structural FRAMES model the CSS "two starting points" (CSS Syntax):

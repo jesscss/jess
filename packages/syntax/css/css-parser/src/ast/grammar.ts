@@ -6,7 +6,7 @@
  * return `Stylesheet`; explicit CST APIs remain for language-service use.
  */
 import { balanced, choice, composeLeaf, expect, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sepBy, sequence, trivia } from 'parseman' with { type: 'macro' };
-import type { Combinator, FieldMap } from 'parseman';
+import type { FieldMap } from 'parseman';
 import { cssAstSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssAstPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -64,110 +64,6 @@ import type {
   ValueNode,
   ValueSlot
 } from '@jesscss/core/ast';
-
-/** Rules constructed in this local direct-AST reduction map. Shared syntax is fused separately. */
-type CssAstLocalRules = {
-  CssAstDocument: Combinator<Stylesheet>;
-  CssAstComment: Combinator<Comment>;
-  CssAstSelector: Combinator<SelectorList>;
-  CssAstComplex: Combinator<ComplexSelector>;
-  CssAstCompound: Combinator<CompoundSelector>;
-  CssAstSimple: Combinator<SimpleSelector>;
-  CssAstAttribute: Combinator<SimpleSelector>;
-  CssAstPseudo: Combinator<SimpleToken>;
-  CssAstPseudoArgument: Combinator<string>;
-  CssAstOfTypePseudoArgument: Combinator<string>;
-  CssAstLeadingDashPseudoArgument: Combinator<string>;
-  CssAstTypedNthPseudoArgument: Combinator<string>;
-  CssAstLeadingDashOfTypePseudoArgument: Combinator<string>;
-  CssAstTypedOfTypePseudoArgument: Combinator<string>;
-  CssAstLeadingDashRawPseudoArgument: Combinator<string>;
-  CssAstNestingSelector: Combinator<SimpleSelector>;
-  CssAstProperty: Combinator<string>;
-  CssAstCustomProperty: Combinator<string>;
-  CssAstCustomValue: Combinator<ValueNode>;
-  CssAstKeyword: Combinator<Keyword>;
-  CssAstColor: Combinator<Color>;
-  CssAstUnicodeRange: Combinator<ValueNode>;
-  CssAstDimension: Combinator<Dimension>;
-  CssAstQuoted: Combinator<Quoted>;
-  CssAstUrl: Combinator<ValueNode>;
-  CssAstCall: Combinator<FunctionCall>;
-  CssAstCalcCall: Combinator<FunctionCall>;
-  CssAstCalcVarCall: Combinator<FunctionCall>;
-  CssAstCalcVarFallbackPunctuation: Combinator<ValueNode>;
-  CssAstCalcVarFallbackParen: Combinator<Block>;
-  CssAstCalcVarFallbackBracket: Combinator<ValueNode>;
-  CssAstCalcVarFallbackBrace: Combinator<ValueNode>;
-  CssAstCalcVarFallbackCall: Combinator<FunctionCall>;
-  CssAstCalcVarFallbackTerm: Combinator<ValueSlot>;
-  CssAstCalcVarFallbackEmpty: Combinator<ValueNode>;
-  CssAstCalcVarFallbackItem: Combinator<ValueSlot>;
-  CssAstCalcVarFallback: Combinator<ValueSlot>;
-  CssAstCalcParen: Combinator<Block>;
-  CssAstDeclarationVarCall: Combinator<FunctionCall>;
-  CssAstDeclarationCall: Combinator<FunctionCall>;
-  CssAstDeclarationIdent: Combinator<ValueNode>;
-  CssAstDeclarationParen: Combinator<Block>;
-  CssAstDeclarationAny: Combinator<ValueNode>;
-  CssAstDeclarationValueAtom: Combinator<ValueNode>;
-  CssAstDeclarationValueTerm: Combinator<ValueSlot>;
-  CssAstDeclarationExtendedValue: Combinator<ValueSlot>;
-  CssAstDeclarationValue: Combinator<ValueSlot>;
-  CssAstCalcValue: Combinator<ValueNode>;
-  CssAstMathProduct: Combinator<ValueNode>;
-  CssAstMathSum: Combinator<ValueNode>;
-  CssAstValueAtom: Combinator<ValueNode>;
-  CssAstValueTerm: Combinator<ValueSlot>;
-  CssAstValue: Combinator<ValueSlot>;
-  CssAstImportant: Combinator<boolean>;
-  CssAstDeclaration: Combinator<Declaration>;
-  CssAstImport: Combinator<AtRuleStatement>;
-  CssAstImportUrl: Combinator<ValueNode>;
-  CssAstImportUrlUnquoted: Combinator<ValueNode>;
-  CssAstImportTailRaw: Combinator<ValueNode>;
-  CssAstImportTailBody: Combinator<ValueNode>;
-  CssAstImportTail: Combinator<ValueNode>;
-  CssAstAtRuleStatement: Combinator<AtRuleStatement>;
-  CssAstAtPrelude: Combinator<ValueNode | null>;
-  CssAstStatementPrelude: Combinator<ValueNode | null>;
-  CssAstOpaqueAtPrelude: Combinator<string | null>;
-  CssAstOpaqueBody: Combinator<string>;
-  CssAstOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
-  CssAstQueryBareFeature: Combinator<ValueNode>;
-  CssAstQueryRangeFeature: Combinator<ValueNode>;
-  CssAstQueryFeature: Combinator<ValueNode>;
-  CssAstQueryClause: Combinator<ValueNode>;
-  CssAstQueryPrelude: Combinator<ValueNode>;
-
-  /** Existing query-function payloads remain FunctionCall facts in media/container. */
-  CssAstQueryFunction: Combinator<FunctionCall>;
-  CssAstGeneralEnclosed: Combinator<GeneralEnclosed>;
-  CssAstGeneralEnclosedContent: Combinator<Interpolation>;
-  CssAstGeneralEnclosedGroup: Combinator<string>;
-  CssAstGeneralEnclosedQuoted: Combinator<string>;
-  CssAstSupportsInParens: Combinator<ValueNode>;
-  CssAstSupportsCondition: Combinator<ValueNode>;
-  CssAstSupportsPrelude: Combinator<ValueNode>;
-  CssAstLayerBlock: Combinator<AtRuleBlock>;
-  CssAstNestedLayerBlock: Combinator<AtRuleBlock>;
-  CssAstConditionalBlock: Combinator<AtRuleBlock>;
-  CssAstNestedConditionalBlock: Combinator<AtRuleBlock>;
-  CssAstDescriptorBlock: Combinator<AtRuleBlock>;
-  CssAstFontFeatureValueBlock: Combinator<AtRuleBlock>;
-  CssAstFontFeatureValuesBlock: Combinator<AtRuleBlock>;
-  CssAstScopeBlock: Combinator<AtRuleBlock>;
-  CssAstStartingStyleBlock: Combinator<AtRuleBlock>;
-  CssAstNestedStartingStyleBlock: Combinator<AtRuleBlock>;
-  CssAstDocumentBlock: Combinator<AtRuleBlock>;
-  CssAstMarginBox: Combinator<AtRuleBlock>;
-  CssAstPageBlock: Combinator<AtRuleBlock>;
-  CssAstKeyframeSelector: Combinator<SimpleSelector>;
-  CssAstKeyframeBlock: Combinator<Rule>;
-  CssAstKeyframes: Combinator<AtRuleBlock>;
-  CssAstRuleset: Combinator<Rule>;
-  whitespace: Combinator<unknown>;
-};
 
 function tokenText(child: unknown): string {
   if (typeof child === 'string') {
@@ -841,7 +737,7 @@ const importTailSquareGroup = sequence(
     ']'
   )
 );
-export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<CssAstLocalRules>(
+export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules(
   { trivia: whitespace, scanSkip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] },
   (g) => {
     const pseudoRawDoubleQuoted = sequence(
@@ -884,7 +780,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       simpleSelectorToken,
       children => simpleSelector(tokenText(children[0]))
     );
-    const CssAstAttribute = node<SimpleSelector>(
+    const CssAstAttribute = node(
       'CssAstAttribute',
       sequence(
         literal('['),
@@ -909,7 +805,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * `-` arguments still reach the existing raw branch. Local whitespace-only
    * trivia keeps comments before `of` on that lossless raw branch.
    */
-    const CssAstLeadingDashPseudoArgument = node<string>(
+    const CssAstLeadingDashPseudoArgument = node(
       'CssAstLeadingDashPseudoArgument',
       parser(
         { trivia: whitespace },
@@ -933,7 +829,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         return selector === undefined ? nth : `${nth}${comment === undefined ? '' : tokenText(comment)} of ${selectorArgumentText(selector)}`;
       }
     );
-    const CssAstLeadingDashRawPseudoArgument = node<string>(
+    const CssAstLeadingDashRawPseudoArgument = node(
       'CssAstLeadingDashRawPseudoArgument',
 
       /*
@@ -974,7 +870,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * and unsigned cases; the trailing `(?=\))` keeps malformed forms (`2n +`,
    * `2n+1x`) on their existing rejecting path.
    */
-    const CssAstTypedNthPseudoArgument = node<string>(
+    const CssAstTypedNthPseudoArgument = node(
       'CssAstTypedNthPseudoArgument',
       parser(
         { trivia: whitespace },
@@ -1003,7 +899,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * a `... of ...` argument no longer matches here and falls to the raw/reject
    * path (the CSS-aligned owner decision, §7.1).
    */
-    const CssAstLeadingDashOfTypePseudoArgument = node<string>(
+    const CssAstLeadingDashOfTypePseudoArgument = node(
       'CssAstLeadingDashOfTypePseudoArgument',
       parser(
         { trivia: whitespace },
@@ -1017,7 +913,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       ),
       children => `-${tokenText(children[1])}`
     );
-    const CssAstTypedOfTypePseudoArgument = node<string>(
+    const CssAstTypedOfTypePseudoArgument = node(
       'CssAstTypedOfTypePseudoArgument',
       parser(
         { trivia: whitespace },
@@ -1028,7 +924,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       ),
       children => tokenText(children[0])
     );
-    const CssAstPseudoArgument = node<string>(
+    const CssAstPseudoArgument = node(
       'CssAstPseudoArgument',
       choice(
         g.CssAstLeadingDashPseudoArgument,
@@ -1057,7 +953,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * (§7.1). The guard fires ONLY on an An+B-prefixed `of` tail, so every argument
    * that does not use one (a plain selector or opaque raw arg) stays byte-identical.
    */
-    const CssAstOfTypePseudoArgument = node<string>(
+    const CssAstOfTypePseudoArgument = node(
       'CssAstOfTypePseudoArgument',
       choice(
         g.CssAstLeadingDashOfTypePseudoArgument,
@@ -1093,7 +989,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * authored `text` from whichever it gets via `selectorArgumentText`, so the
    * SimpleSelector text is byte-identical to the pre-P0.2 collapse.
    */
-    const CssAstGenericPseudoArgument = node<SelectorList | string>(
+    const CssAstGenericPseudoArgument = node(
       'CssAstGenericPseudoArgument',
       choice(
         parser(
@@ -1113,7 +1009,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * syntax, not a relative combinator, so it is excluded (mirrors Less's
    * `relativeSelectorCombinator`).
    */
-    const CssAstRelativeComplex = node<ComplexSelector>(
+    const CssAstRelativeComplex = node(
       'CssAstRelativeComplex',
       sequence(
         optional(relativeSelectorCombinator),
@@ -1143,7 +1039,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * `selist(...selectorComplexes(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `CssAstPseudo`, never joined at parse.
    */
-    const CssAstSelectorOnlyPseudoArgument = node<SelectorList>(
+    const CssAstSelectorOnlyPseudoArgument = node(
       'CssAstSelectorOnlyPseudoArgument',
       parser(
         { trivia: interstitialTrivia },
@@ -1165,7 +1061,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * collapse to the same "head, plus optional (arg) at child index 3" shape, so
    * the merged node keeps byte-identical SimpleSelector text.
    */
-    const CssAstPseudo = node<SimpleToken>(
+    const CssAstPseudo = node(
       'CssAstPseudo',
       sequence(
         pseudoColon,
@@ -1326,7 +1222,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * numeric/keyword atoms: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be
    * re-read as signed numbers, which serializes valid CSS back out as `U +0 -7F`.
    */
-    const CssAstUnicodeRange = node<ValueNode>(
+    const CssAstUnicodeRange = node(
       'CssAstUnicodeRange',
       g.CssAstSyntaxUnicodeRange,
       children => any(tokenText(children[0]))
@@ -1389,7 +1285,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         );
       }
     );
-    const CssAstUrlUnquoted = node<ValueNode>(
+    const CssAstUrlUnquoted = node(
       'CssAstUrlUnquoted',
       g.CssAstSyntaxUrlInner,
       children => any(tokenText(children[0]!))
@@ -1935,7 +1831,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * calc() keep their dedicated preceding arms; the retained not(urlOpen) guard
    * and the outer not(calc) guard preserve their exact error paths.
    */
-    const CssAstDeclarationIdent = node<ValueNode>(
+    const CssAstDeclarationIdent = node(
       'CssAstDeclarationIdent',
 
       /*
@@ -2294,12 +2190,12 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * ordinary declaration-value URL grammar, and comments after the closing `)`
    * remain owned by CssAstImportTail as authored tail bytes.
    */
-    const CssAstImportUrlUnquoted = node<ValueNode>(
+    const CssAstImportUrlUnquoted = node(
       'CssAstImportUrlUnquoted',
       g.CssAstSyntaxUrlInner,
       children => any(tokenText(children[0]!))
     );
-    const CssAstImportUrl = node<ValueNode>(
+    const CssAstImportUrl = node(
       'CssAstImportUrl',
       sequence(
         urlName,
@@ -2510,7 +2406,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * shape now fails to MATCH, so the caller gets a positioned CssParseError,
    * and `@supports` falls through to its general-enclosed arm as intended.
    */
-    const CssAstQueryValue = node<ValueNode>(
+    const CssAstQueryValue = node(
       'CssAstQueryValue',
       sequence(
         g.CssAstValueAtom,
@@ -2634,7 +2530,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       ),
       children => firstValue(children)
     );
-    const CssAstQueryNonOnlyKeyword = node<Keyword>(
+    const CssAstQueryNonOnlyKeyword = node(
       'CssAstQueryNonOnlyKeyword',
       sequence(
         not(g.CssAstSyntaxQueryOnly),
@@ -2648,7 +2544,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         return value;
       }
     );
-    const CssAstQueryTerm = node<ValueNode>(
+    const CssAstQueryTerm = node(
       'CssAstQueryTerm',
       choice(
         g.CssAstQueryFeature,
@@ -2657,7 +2553,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       ),
       children => firstValue(children)
     );
-    const CssAstQueryOnlyClause = node<ValueNode>(
+    const CssAstQueryOnlyClause = node(
       'CssAstQueryOnlyClause',
       sequence(
         g.CssAstSyntaxQueryOnly,
@@ -2677,7 +2573,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * `screen, print` into a SpacedValue instead of the List the other three
    * dialects produce.
    */
-    const CssAstQueryClause = node<ValueNode>(
+    const CssAstQueryClause = node(
       'CssAstQueryClause',
       choice(
         CssAstQueryOnlyClause,
@@ -2719,7 +2615,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
    * admitted in supports without pretending that arbitrary CSS bytes are
    * FunctionCall arguments or parenthesized value expressions.
    */
-    const CssAstGeneralEnclosedRaw = node<string>(
+    const CssAstGeneralEnclosedRaw = node(
       'CssAstGeneralEnclosedRaw',
       noTrivia(choice(
         blockComment,
@@ -2727,7 +2623,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       )),
       children => tokenText(children[0]!)
     );
-    const CssAstGeneralEnclosedQuoted = node<string>(
+    const CssAstGeneralEnclosedQuoted = node(
       'CssAstGeneralEnclosedQuoted',
       choice(
         noTrivia(sequence(
@@ -2743,7 +2639,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       ),
       children => children.map(tokenText).join('')
     );
-    const CssAstGeneralEnclosedGroup = node<string>(
+    const CssAstGeneralEnclosedGroup = node(
       'CssAstGeneralEnclosedGroup',
       choice(
         noTrivia(sequence(
@@ -2766,7 +2662,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
         ? child.parts.map(part => 'lit' in part ? part.lit : '').join('')
         : tokenText(child)).join('')
     );
-    const CssAstGeneralEnclosedContent = node<Interpolation>(
+    const CssAstGeneralEnclosedContent = node(
       'CssAstGeneralEnclosedContent',
       noTrivia(many(choice(
         CssAstGeneralEnclosedRaw,
@@ -2775,7 +2671,7 @@ export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition,
       ))),
       children => interpolation([{ lit: children.map(tokenText).join('') }])
     );
-    const CssAstGeneralEnclosed = node<GeneralEnclosed>(
+    const CssAstGeneralEnclosed = node(
       'CssAstGeneralEnclosed',
       choice(
         noTrivia(sequence(
