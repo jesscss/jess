@@ -1,0 +1,30 @@
+{
+  "workload": "scss-corpus",
+  "files": 2357,
+  "ok": 311,
+  "failed": 2046,
+  "outBytes": 8248,
+  "counts": {
+    "makeKeyword": {
+      "total": 55,
+      "combos": {
+        "-": 55
+      },
+      "mapsObserved": 1
+    },
+    "makeList": {
+      "total": 30,
+      "combos": {
+        "-": 30
+      },
+      "mapsObserved": 1
+    },
+    "makeCompoundDimension": {
+      "total": 12,
+      "combos": {
+        "-": 12
+      },
+      "mapsObserved": 1
+    }
+  }
+}

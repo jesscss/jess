@@ -1,0 +1,36 @@
+// Worst-case colour-syntax fixture: every spelling that drives a CONDITIONAL
+// field in makeColorRgb (modernSyntax / node / rgbPct / alphaPct) and
+// makeColorHsl (modernSyntax / hueUnit / alphaPct). Used to find the MAXIMUM
+// realizable map count, not as a performance workload.
+.hex        { color: #abc; background: #aabbcc; }
+.named      { color: red; background: rebeccapurple; }
+.rgb_plain  { color: rgb(10, 20, 30); }
+.rgb_pct    { color: rgb(50%, 0%, 25%); }
+.rgba_dec   { color: rgba(10, 20, 30, 0.5); }
+.rgba_pct   { color: rgba(50%, 0%, 25%, 0.5); }
+.rgba_apct  { color: rgba(10, 20, 30, 50%); }
+.rgba_bothpct { color: rgba(50%, 0%, 25%, 50%); }
+.rgb_modern { color: rgb(10 20 30); }
+.rgb_modern_a { color: rgb(10 20 30 / 0.5); }
+.rgb_modern_apct { color: rgb(10 20 30 / 50%); }
+.rgb_modern_pct { color: rgb(50% 0% 25%); }
+.rgb_modern_pct_apct { color: rgb(50% 0% 25% / 50%); }
+
+.hsl_plain  { color: hsl(120, 50%, 50%); }
+.hsl_deg    { color: hsl(120deg, 50%, 50%); }
+.hsl_turn   { color: hsl(0.5turn, 50%, 50%); }
+.hsl_rad    { color: hsl(2rad, 50%, 50%); }
+.hsl_grad   { color: hsl(100grad, 50%, 50%); }
+.hsla_dec   { color: hsla(120, 50%, 50%, 0.5); }
+.hsla_apct  { color: hsla(120, 50%, 50%, 50%); }
+.hsl_modern { color: hsl(120 50% 50%); }
+.hsl_modern_a { color: hsl(120 50% 50% / 0.5); }
+.hsl_modern_apct { color: hsl(120deg 50% 50% / 50%); }
+
+.ops {
+  a: lighten(#abc, 10%);
+  b: darken(hsl(120, 50%, 50%), 10%);
+  c: fade(rgba(10, 20, 30, 0.5), 20%);
+  d: mix(#abc, #def, 50%);
+  e: saturate(hsl(120deg, 50%, 50%), 10%);
+}
