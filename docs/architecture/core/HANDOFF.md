@@ -33,7 +33,7 @@
    (`docs/architecture/core/LESS-V5-CONTENT-PR-PLAN.md:18`), so it can never adjudicate a
    jess-vs-`lessc` question.
 
-## WORK IN FLIGHT (as of 2026-07-24, `93e1aa49d`) — do not duplicate
+## WORK IN FLIGHT (as of 2026-07-24, `e34bb24b3`) — do not duplicate
 
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
@@ -41,9 +41,9 @@ Delete a row the moment it lands or is abandoned.
 | Lane | Where | State |
 | --- | --- | --- |
 | **parseman `0.34.0` adoption + showcase survey** | jess | Bump from the current `0.32.0` and regenerate every compiled artifact — the version-lock invariant is that artifacts never cross parseman versions. Then a per-parser plan to make the 4 grammars exemplary parseman usage. Gates: AST byte-identity on all four parsers, perf measured. |
-| **Gates made reasonable** | jess | Gates are red on clean `dev`, so `--no-verify` is routine. Classify every gate: green→block, one-pass-fixable→fix then block, real-debt→ratchet, too-slow→speed up or move to CI. Also: convert every count-based pass/fail baseline into a NAMED SET (jess known-failures, `PARSE_PASS_FLOOR`/`EVAL_PASS_FLOOR`, corpus MATCH/DIFF captures). Also: redesign `verify:aggressive-cutting-review` to gate on a **semantic (built-artifact) diff** rather than a textual one — today a comment-only edit to a hot-path file fires it — and make firing run the real cost measurement. |
+| ~~**Gates made reasonable**~~ | jess | **LANDED `c3db7e53e` + `e34bb24b3`** — see "Gate hygiene" below. |
 | **fns per-dialect registry** | jess, branch `fix-per-dialect-registry` | Deletes `builtins/` and `builtinLessFns`; registration derives from the composed dialect indexes (`less/index.ts` = `less/` + `shared/`, same for sass); per-dialect evaluators at module scope; exports map publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`. Implements ledger C13. |
-| **Numeric precision landing** | jess + less.js fixtures | Tolerance-trim, delete `emitValueInterp`, no-sci-notation guard, `ast/color.ts:118` alpha, integer fast path, `literal-tag.ts:104` fix, fixture graduation. Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md) — **nothing in it had landed as of `93e1aa49d`**. |
+| **Numeric precision landing** | jess + less.js fixtures | Tolerance-trim, delete `emitValueInterp`, no-sci-notation guard, `ast/color.ts:118` alpha, integer fast path, `literal-tag.ts:104` fix, fixture graduation. Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md) — **nothing in it had landed as of `e34bb24b3`**. |
 | **parseman prefix-trie choice dispatch** | parseman repo | MEASURING FIRST; may conclude "don't build". |
 | **parseman docs voice sweep** | parseman repo | Removing changelog narrative from the docs. |
 | **`extend-exact` state contamination** | separate session | See the KNOWN RED section below. |
@@ -51,7 +51,7 @@ Delete a row the moment it lands or is abandoned.
 
 ## ACTIVE PRIORITY CHECKLIST — structural-rot + perf recovery
 
-**Reconciled 2026-07-24 against `93e1aa49d`.** Every row below was re-checked against the
+**Reconciled 2026-07-24 against `e34bb24b3`.** Every row below was re-checked against the
 tree or a named commit on this pass; a row with no evidence pointer was deleted rather than
 carried forward. Rows marked *unverified* state the date they were last known true.
 
@@ -130,7 +130,7 @@ Root cause: the scannerless port re-expanded the Chevrotain 7-arm grouped `rule`
       in flight — see WORK IN FLIGHT. **Version-lock invariant: compiled parser artifacts must
       never cross parseman versions**; regenerate every one in the same change as the bump.
 
-### OPEN DEFECTS — each row is directly actionable (verified 2026-07-24 on `93e1aa49d`)
+### OPEN DEFECTS — each row is directly actionable (verified 2026-07-24 on `e34bb24b3`)
 
 Durable code defects, as distinct from the transient test reds in
 `docs/state/PROJECT_STATE.md`. Every file:line below was re-checked on this pass. Delete a row
@@ -189,20 +189,45 @@ when it goes green; do not let one rot into folklore.
   conflicts with `dev` in the `$( … )`/calc region that `ad1bbd1bf` changed.
 - **`wip/maybe-promise-2b`** — explicitly NOT FOR LANDING.
 - **`fix-per-dialect-registry`** — live, see WORK IN FLIGHT. Local only; no remote tracking
-  branch as of `93e1aa49d`.
+  branch as of `e34bb24b3`.
 
-### Gate hygiene — why `--no-verify` is routine
+### Gate hygiene — LANDED `c3db7e53e` (2026-07-24)
 
-Several gates are red on clean `dev` (`verify:types`, and `verify:baseline` which stops at
-`verify:node-copy-frontier` on `packages/jess-plugin-js/src/runtime-worker.ts`'s `unit.clone()`),
-so bypassing became the norm rather than the exception. The "gates made reasonable" lane owns
-the classification. Two concrete pieces of debt found on this pass:
+Gates that are red on an untouched checkout are not gates; they teach people to reach for
+`--no-verify` on the ones that matter. `c3db7e53e` made green mean green. **A fresh agent
+should now treat a red gate as its own change breaking something**, which was not true before.
 
-- ~~`scripts/check-macro-buildable.mjs` is a gate nobody runs.~~ **FIXED `064e3d985`** — repaired
-  and wired as `pnpm run check:macro` (`package.json:56`).
-- `verify:aggressive-cutting-review` gates on a *textual* diff of hot-path files, so a
-  comment-only edit fires it. It should gate on a built-artifact (semantic) diff, and when it
-  does fire it should run the real cost measurement rather than demand a prose block.
+Fixed (each was red on clean `dev`):
+
+- `verify:types` — `less-parser`'s hand-written `SharedCssAstSyntax` was missing
+  `CssAstSyntaxUnicodeRange`. One missing declaration was failing the whole 22-config gate.
+- `verify:binding-lookup-hot-paths` — crashed with `spawnSync rg ENOENT` on any machine without
+  ripgrep; both shell-outs are now a repo-native scan.
+- `verify:node-copy-frontier` (and therefore `verify:baseline`) — the `unit.clone()` in
+  `jess-plugin-js/src/runtime-worker.ts` belongs to the sandboxed Deno `@plugin` worker's OWN
+  local `Unit` class, not a jess tree node. It is now an attributed allowlist entry.
+- `scripts/check-macro-buildable.mjs` — repaired and wired as `pnpm run check:macro`
+  (`064e3d985`).
+- `verify:aggressive-cutting-review` fired on "a hot-path file changed" rather than "its
+  behavior changed", so a comment-only edit was a guaranteed false positive. Cosmetic hunks are
+  now stripped before the changed-surface predicate — conservatively: `@ts-`, `@__PURE__`, and
+  eslint-directive comments still count as code.
+
+**Security fix found while baselining:** `@plugin` bypassed `disableScriptModules`. The `ast/`
+engine reaches `loadPlugin` directly through `prepareBodyPlugins`, so the Context import-path
+check never ran and a disabled plugin still executed. The Less plugin host now refuses at the
+load boundary.
+
+**Every count-based baseline is now a NAMED SET.** A count cannot distinguish "nothing changed"
+from "you fixed one and broke another" — both read as N. Converted:
+`packages/jess/test/known-failures.json` + `scripts/vitest-ratchet.mjs` (jess suite failures by
+test name; fails on a new failure *and* on a listed test that starts passing or disappears);
+bootstrap-corpus `PARSE_PASS_FLOOR`/`EVAL_PASS_FLOOR` → named fixture sets;
+conversion-construct-support floors → named construct sets; shape-stability `shapes.size >= 25`
+→ a named AST node-type inventory; `verify-render-buffer-frontier` `=== 2` → two named sites
+(`For` / `While`), so a swapped site cannot pass.
+
+Do not reintroduce a count. If you need a baseline, name the members.
 
 The `--no-verify` usage rate is **UNVERIFIED (2026-07-24)**: `--no-verify` is a git flag, not
 commit content, so it leaves no trace in `git log` and cannot be recovered from this repo. Do
@@ -646,40 +671,46 @@ production lint) and its newer HANDOFF/readiness/release evidence; reconcile
 the alpha release note from final gate evidence instead of restoring the older
 alpha docs wholesale.
 
-### Less-alpha gate status (re-measured 2026-07-24 on `93e1aa49d`)
+### Less-alpha gate status (re-measured 2026-07-24 on `e34bb24b3`)
 
 Measured in a clean worktree after `pnpm install --frozen-lockfile` + `pnpm run build:release`.
 These are the numbers, not a narrative:
 
-- `pnpm run test:less:test-data` — **106/108** (`all-less.test.ts`, the only fixture-backed
-  Less integration authority). **This was 108/108 on `13725f894` and the jess side did not
-  change; the external fixture corpus moved.** See "The Less corpus authority is an external
-  mutable checkout" below.
-- `pnpm run verify:types` — **RED, 1 diagnostic**, `@jesscss/less-parser`:
-  `packages/less-parser/src/ast/grammar.ts(1916,7): error TS2339: Property
-  'CssAstSyntaxUnicodeRange' does not exist`. Introduced with `c1782031e`. The other 21
-  configs pass. This blocks `release:alpha:preflight`, which runs `verify:types`.
-- `pnpm --filter jess test --run` — **not re-measured on `93e1aa49d`**; the last measurement is
-  15 failed / 739 passed / 4 skipped / 79 todo on `13725f894`. Per-file breakdown and
-  disposition: `docs/state/PROJECT_STATE.md`. (Note the invocation: `pnpm --filter jess test`
-  rejects a bare `--run`; pass it after `--`.)
+- `pnpm run verify:types` — **GREEN, 22/22 configs.** It was RED with one `less-parser`
+  diagnostic (missing `CssAstSyntaxUnicodeRange`, introduced by `c1782031e`) from `13725f894`
+  through `93e1aa49d`; `c3db7e53e` fixed it. `release:alpha:preflight` is no longer blocked here.
+- `pnpm run test:less:test-data` — **108/108** (`all-less.test.ts`, the only fixture-backed
+  Less integration authority). Note what that number now means: `e34bb24b3` registered
+  `css-3.less` and `variable-advanced.less` in `expectedFailureFixtures`, so the harness
+  *asserts they fail*. See below.
+- `pnpm --filter jess test` — not re-measured on `e34bb24b3`. Its failures are now a named set
+  in `packages/jess/test/known-failures.json`, enforced by `scripts/vitest-ratchet.mjs`; read
+  that file rather than any count in a doc. (Invocation note: `pnpm --filter jess test --run`
+  fails with `Unknown option: 'run'` — pass it through as `-- --run`.)
 
 #### The Less corpus authority is an external mutable checkout
 
-`test:less:test-data` reads its fixtures from `~/git/oss/less.js/packages/test-data`, a
-checkout this repo does not pin. On 2026-07-24 the numeric-precision lane graduated four
-fixtures there (`dded69cc`, "test-data: v5 numeric-precision expectations, 4.x snapshotted to
-legacy/"), so the corpus now encodes the *intended* v5 numbers while the jess-side change has
-not landed. The two reds are therefore **expected-until-precision-lands**, not regressions:
+`test:less:test-data` reads its fixtures from `~/git/oss/less.js/packages/test-data`, a checkout
+this repo does not pin. On 2026-07-24 the numeric-precision lane graduated four fixtures there
+(`dded69cc`, "test-data: v5 numeric-precision expectations, 4.x snapshotted to legacy/"), so the
+corpus encodes the *intended* v5 numbers while the jess-side change has not landed. That briefly
+made the suite 106/108 with no jess-side change at all.
+
+`e34bb24b3` resolved it the right way: both fixtures are now NAMED expected failures rather than
+a bare red. Because that map *asserts* the failure, landing the precision fix will trip the entry
+and demand its own deletion — the debt is visible and can only move toward zero.
 
 | Fixture | Expected (v5, graduated) | Current jess output | Root cause |
 | --- | --- | --- | --- |
 | `tests-unit/css-3/css-3.less` | `rotate(-0.0000000001deg)` | `rotate(0deg)` | `literal-tag.ts:104` applies the 8-dp floor to un-operated SOURCE literals |
 | `tests-unit/variables/variable-advanced.less` | `add-px-2: 393.3527559px` | `393.35275591px` | 8-dp floor instead of the tolerance trim |
 
+A third fixture, `import-remote.less`, is network-dependent and deliberately left gating; it is
+documented in `known-failures.json` so the next reader does not mistake it for a regression. It
+passed in this run (network available), which is exactly why it is documented.
+
 Consequence a fresh agent must internalize: **a Less-corpus number is only meaningful together
-with the less.js checkout state.** Record both SHAs, or the count is unfalsifiable. This is one
-of the count-based baselines the "gates made reasonable" lane is converting to a named set.
+with the less.js checkout state.** Record both SHAs, or the count is unfalsifiable.
 
 The graduation commit states the landed constant as a **relative tolerance of `1e-10`**, while
 `docs/design/numeric-precision-policy.md` §"Job 1, concretely" still says `1e-12`. One of them
@@ -1360,7 +1391,7 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: cold-start reconciliation against `93e1aa49d` (2026-07-24). Added COLD START and
+- Latest pass: cold-start reconciliation against `e34bb24b3` (2026-07-24). Added COLD START and
   WORK IN FLIGHT sections so a fresh agent with no context can pick up without duplicating a
   running lane, added an OPEN DEFECTS section with a verified file:line for every row, and
   pruned claims that no longer hold.
@@ -1377,11 +1408,11 @@ involved.
 - Helper/API surface: none added. Documentation files only.
 - Metadata mutations: none.
 - Review-flagged diff tokens: none.
-- Evidence: measured in this worktree on `93e1aa49d` after `pnpm install --frozen-lockfile` +
-  `pnpm run build:release`. `pnpm run verify:types` — RED, 1 diagnostic,
-  `@jesscss/less-parser` (21/22 configs pass). `pnpm run test:less:test-data` — 106/108, the two
-  reds being `css-3.less` and `variable-advanced.less` against less.js test-data `dded69cc`,
-  which graduated those fixtures to their v5 numeric-precision values ahead of the jess-side
-  landing. Every OPEN DEFECTS row was re-checked by direct file read at the cited line. No
-  performance claim is made or implied.
+- Evidence: measured in this worktree on `e34bb24b3` after `pnpm install --frozen-lockfile` +
+  `pnpm run build:release`. `pnpm run verify:types` — GREEN, 22/22 configs.
+  `pnpm run test:less:test-data` — 108/108, with `css-3.less` and `variable-advanced.less` now
+  registered as named expected failures. An earlier measurement on `93e1aa49d` (types RED with
+  1 diagnostic; corpus 106/108) is recorded in the body as the before-state, because the corpus
+  moved without any jess-side change and that is the durable lesson. Every OPEN DEFECTS row was
+  re-checked by direct file read at the cited line. No performance claim is made or implied.
 - Verdict: documentation-only reconciliation; accepted with no runtime cost contract.

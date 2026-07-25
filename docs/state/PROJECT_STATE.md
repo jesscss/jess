@@ -65,85 +65,81 @@ files as suspect unless their expectations have been revalidated against
 upstream Less test-data, Less.js behavior, or a documented Jess-specific
 contract.
 
-## Known-red baseline (measured 2026-07-24 on `93e1aa49d`)
+## Known-red baseline (measured 2026-07-24 on `e34bb24b3`)
 
 Measured in a clean worktree after `pnpm install --frozen-lockfile` and
-`pnpm run build:release`. **Baseline before blaming your own change** — every
-item below is pre-existing on clean `dev`. Re-measure and update this block
-rather than leaving it to rot; delete a row when it goes green.
+`pnpm run build:release`. **Baseline before blaming your own change.**
+Re-measure and update this block rather than leaving it to rot.
 
-**Record the SET, not the count.** Every entry below names its cases. A count you
-inherited from a doc is not a baseline: it cannot tell you whether a red moved,
-and it goes stale silently. Capture your own named set before you change anything.
+**Record the SET, not the count.** A count cannot tell "nothing changed" apart
+from "you fixed one and broke another" — both read as N. Since `c3db7e53e`
+every pass/fail baseline in this repo is a named set; do not reintroduce a
+count, and do not inherit one from a doc without re-deriving it.
 
-### `pnpm run verify:baseline` — RED
+### The gates are green on clean `dev` as of `c3db7e53e`
 
-Stops at `verify:node-copy-frontier`, on `packages/jess-plugin-js/src/runtime-worker.ts`'s
-`unit.clone()` in `unitOf`. Pre-existing.
+This block used to list `verify:types` and `verify:baseline` as pre-existing
+reds. Both are fixed:
 
-### `pnpm run verify:types` — RED, 1 diagnostic
+- `pnpm run verify:types` — **GREEN, 22/22 configs.** The `less-parser`
+  `CssAstSyntaxUnicodeRange` diagnostic (introduced `c1782031e`) is gone.
+- `pnpm run verify:baseline` — no longer stops at `verify:node-copy-frontier`.
+  The `unit.clone()` in `jess-plugin-js/src/runtime-worker.ts` belongs to the
+  sandboxed Deno `@plugin` worker's own local `Unit` class and is an attributed
+  allowlist entry.
+- `pnpm run verify:binding-lookup-hot-paths` — no longer needs ripgrep on PATH.
+- `pnpm run check:macro` — repaired and wired (`064e3d985`).
 
-```
-packages/less-parser/src/ast/grammar.ts(1916,7): error TS2339:
-  Property 'CssAstSyntaxUnicodeRange' does not exist on type
-  'LessAstLocalRules & { … } & SharedCssAstSyntax'.
-```
+**Treat a red gate as your own change breaking something.** That was not a safe
+assumption before 2026-07-24; it is now.
 
-21 of 22 configs pass; only `@jesscss/less-parser` fails. Introduced with
-`c1782031e` (unicode-range as one token). This blocks
-`release:alpha:preflight`, which runs `verify:types`.
+### Where the named sets live
 
-### `pnpm --filter jess test` — 15 failed / 739 passed / 4 skipped / 79 todo
+| Baseline | Named set |
+| --- | --- |
+| jess suite failures | `packages/jess/test/known-failures.json`, enforced by `scripts/vitest-ratchet.mjs` — fails on a NEW failure and equally on a listed test that starts passing or no longer exists |
+| Less corpus expected failures | `expectedFailureFixtures` in `packages/jess/test/less/all-less.test.ts` |
+| SCSS bootstrap corpus | named fixture sets (the former `PARSE_PASS_FLOOR` / `EVAL_PASS_FLOOR` counts) |
+| conversion construct support | named construct sets per origin and per scope |
+| AST shape stability | the named node-type inventory (the former `shapes.size >= 25`) |
+| render-buffer frontier | two named sites, `For` and `While` (the former `=== 2`) |
 
-Last measured on `13725f894`; **not re-measured on `93e1aa49d`**. (Invocation note:
-`pnpm --filter jess test --run` fails with `Unknown option: 'run'` — pnpm eats the
-flag. Pass it through: `pnpm --filter jess test -- --run`.)
+The historical per-file jess failure breakdown that used to live here is
+superseded by `known-failures.json`. Read the file.
 
-Four red files:
+### `pnpm run test:less:test-data` — 108/108 on `e34bb24b3`
 
-| File | Failing | Shape |
-| --- | --- | --- |
-| `test/less/all-less-error.test.ts` | 9 | `tests-error/eval/` cases Jess does not error on: `detached-ruleset-5`, `functions-5-color-2`, `mixin-not-matched`, `mixin-not-matched2`, `namespace-property-not-found`, `namespace-variable-not-found`, `namespacing-2`, `namespacing-4`, `property-undefined` |
-| `test/security-script-runtime.test.ts` | 4 | All four are Less `@plugin` cases. `161fe9709` removed the blocking `@plugin` FIFO channel as a deliberate BEHAVIOUR CHANGE; these expectations have not been reconciled to it. |
-| `test/less/bootstrap-clean-repro.test.ts` | 1 | `renders and collects rejections` |
-| `test/less/ruleset-merge-regression.test.ts` | 1 | `evaluates chained ruleset mixins with property merge values` |
-
-Two `all-less-error` cases are `skip`ped in-source because they hang the
-worker: `recursive-property.less` and `recursive-variable.less` (recursive
-definition not detected, should error).
-
-### `pnpm run test:less:test-data` — 106/108 (was 108/108 on `13725f894`)
-
-**The jess side did not change. The external fixture corpus moved.** These
-fixtures live in `~/git/oss/less.js/packages/test-data`, a checkout this repo
-does not pin, and less.js `dded69cc` graduated four of them to their v5
-numeric-precision values ahead of the jess-side landing. Both reds are
-expected-until-precision-lands, not regressions:
+Read that number carefully. `e34bb24b3` registered two fixtures as NAMED
+expected failures, so the harness *asserts* they fail:
 
 | Case | Expected (v5) | Current jess output |
 | --- | --- | --- |
 | `tests-unit/css-3/css-3.less` | `rotate(-0.0000000001deg)` | `rotate(0deg)` |
 | `tests-unit/variables/variable-advanced.less` | `add-px-2: 393.3527559px` | `393.35275591px` |
 
+Both are pending the numeric-precision landing. Because the map asserts the
+failure, fixing precision will trip the entry and demand its own deletion.
+
+A third case, `import-remote.less`, is network-dependent and left gating; it is
+documented in `known-failures.json`. It passed in this run.
+
 **A Less-corpus number is only meaningful together with the less.js checkout
-SHA.** Record both, or the count is unfalsifiable.
+SHA** — the fixtures live in `~/git/oss/less.js/packages/test-data`, which this
+repo does not pin. less.js `dded69cc` graduated four of them on 2026-07-24, and
+that alone moved the suite from 108/108 to 106/108 with no jess-side change.
 
 `all-less > extend-exact.less` was reported flaky in 1 of 4 full-suite runs on
-2026-07-24 and deterministic in focused runs; it passed in this run. That flake
-is now understood to be **real cross-compile state contamination**, not test
-flakiness — see the OPEN DEFECTS section of
-`docs/architecture/core/HANDOFF.md` for the two sharing channels and the
-constraint on any fix. A separate session owns it.
+2026-07-24 and deterministic in focused runs. That flake is **real
+cross-compile state contamination**, not test flakiness — see the OPEN DEFECTS
+section of `docs/architecture/core/HANDOFF.md` for the two sharing channels and
+the constraint on any fix. A separate session owns it.
 
 ### Green
 
-- `test/scss/bootstrap-corpus.test.ts` — green (98 tests) as of `13725f894`.
-  Ratchet floors in source are `PARSE_PASS_FLOOR = 29` and `EVAL_PASS_FLOOR = 0`
-  (`packages/jess/test/scss/bootstrap-corpus.test.ts:201`), with
-  `PASSING_EVAL_ENTRIES` still empty. Raise the floors as the SCSS model
-  improves; never lower them without an owner decision recorded in
-  `CORPUS-REPORT.md`. These two floors are count-based baselines and are on the
-  list to become named sets.
+- `test/scss/bootstrap-corpus.test.ts` — green. Its former `PARSE_PASS_FLOOR` /
+  `EVAL_PASS_FLOOR` counts are now named fixture sets (`c3db7e53e`). Add
+  fixtures to the set as the SCSS model improves; never remove one without an
+  owner decision recorded in `CORPUS-REPORT.md`.
 - `node scripts/verify-parser-runtime-boundary.mjs --require-clean` — 0 tracked
   temporary sites.
 
