@@ -12,7 +12,7 @@ test('canonical Less AST grammar macro-fuses recognition leaves with no runtime 
   });
   try {
     const transformed = await server.transformRequest('/src/ast/grammar.ts');
-    expect(transformed?.code).not.toContain('@jesscss/internal-css-recognition');
+    expect(transformed?.code).not.toContain('@jesscss/parser-shared');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
   } finally {
     await server.close();

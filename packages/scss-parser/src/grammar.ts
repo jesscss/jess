@@ -7,7 +7,7 @@ import {
   many, expect, sepBy, oneOrMore, scanTo, balanced, label, not, withCtx
 } from 'parseman' with { type: 'macro' };
 import { lessGrammar } from '@jesscss/less-parser/grammar';
-import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
+import { cssAstSyntax } from '@jesscss/parser-shared/recognition';
 
 /*
  * ---------------------------------------------------------------------------

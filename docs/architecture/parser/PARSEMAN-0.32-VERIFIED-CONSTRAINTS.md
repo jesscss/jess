@@ -6,7 +6,7 @@ because two of these facts are load-bearing for correctness and neither was
 written down anywhere.
 
 Scope: the four grammar packages (`css-parser`, `less-parser`, `scss-parser`,
-`jess-parser`) plus `internal-css-recognition`. When the parseman pin moves, every
+`jess-parser`) plus `parser-shared`. When the parseman pin moves, every
 claim below must be re-verified — most are version-specific by construction.
 
 ---

@@ -64,7 +64,7 @@ packages/
       jess-parser/           #   distinct from the packages/jess CLI package)
       jess-plugin-jess/
   ...flat: core, fns, config, style-resolver, awaitable-pipe, patch-css,
-     parser, parser-runtime, internal-css-recognition,        # shared parser infra
+     parser, parser-runtime, parser-shared,                   # shared parser infra
      jess (the umbrella CLI), jess-plugin, jess-plugin-js, jess-plugin-node-modules,
      rollup-plugin-jess, language-service, language-service-tests, vscode, extension
 ```
@@ -123,9 +123,8 @@ groupable but is a trap; the rest stay flat.
 
 - **Foundation stays flat.** `core`/`fns`/`style-resolver` (engine core) and
   `awaitable-pipe`/`_shared`/`config`/`patch-css` (utils) are heterogeneous — no
-  cohesive subsystem worth a directory. (`parser`/`parser-runtime`/
-  `internal-css-recognition`, if they become real packages, would form a shared
-  parser-runtime group.)
+  cohesive subsystem worth a directory. (`parser`/`parser-runtime`/`parser-shared`,
+  if they become real packages, would form a shared parser-runtime group.)
 
 ## Tooling to update when landing
 

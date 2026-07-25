@@ -21,7 +21,7 @@ const GRAMMAR_FILES = [
   'packages/less-parser/src/**/*.ts',
   'packages/scss-parser/src/**/*.ts',
   'packages/jess-parser/src/**/*.ts',
-  'packages/internal-css-recognition/src/**/*.ts'
+  'packages/parser-shared/src/**/*.ts'
 ];
 
 /**

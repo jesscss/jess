@@ -58,7 +58,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/internal-css-recognition": "workspace:*",
+    "@jesscss/parser-shared": "workspace:*",
     "@types/color-name": "^1.1.1",
     "parseman": "0.32.0"
   },

@@ -35,7 +35,7 @@ const DEGRADE_PATTERNS = [
 
 // parseman-macro parser packages, in topological (compose) order.
 const PARSER_PACKAGES = [
-  '@jesscss/internal-css-recognition',
+  '@jesscss/parser-shared',
   '@jesscss/css-parser',
   '@jesscss/less-parser',
   '@jesscss/scss-parser',

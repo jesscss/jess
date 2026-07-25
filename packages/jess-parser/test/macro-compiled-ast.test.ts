@@ -11,7 +11,7 @@ test('canonical Jess AST grammar macro-fuses recognition with no runtime import'
   });
   try {
     const transformed = await server.transformRequest('/src/ast/grammar.ts');
-    expect(transformed?.code).not.toContain('@jesscss/internal-css-recognition');
+    expect(transformed?.code).not.toContain('@jesscss/parser-shared');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
     expect(transformed?.code).toContain('DirectJessStaticPseudoArgument');
     expect(transformed?.code).toContain('DirectJessGuardCall');

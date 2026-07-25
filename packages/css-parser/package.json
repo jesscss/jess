@@ -36,7 +36,7 @@
     "verify:types": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
-    "build": "pnpm --filter @jesscss/internal-css-recognition build && pnpm compile",
+    "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --no-dts --watch",
     "test": "cross-env TEST=true vitest --watch=false",
@@ -56,7 +56,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/internal-css-recognition": "workspace:*",
+    "@jesscss/parser-shared": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "parseman": "0.32.0",
     "tsx": "~4.21.0"

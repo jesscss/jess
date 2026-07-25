@@ -35,7 +35,7 @@
   "scripts": {
     "ci": "pnpm build && pnpm test",
     "prepublishOnly": "pnpm build",
-    "build": "pnpm --filter @jesscss/internal-css-recognition build && pnpm compile",
+    "build": "pnpm --filter @jesscss/parser-shared build && pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck",
     "dev": "tsdown --tsconfig tsconfig.build.json --watch",
     "test": "cross-env TEST=true vitest --watch=false",
@@ -58,7 +58,7 @@
   },
   "devDependencies": {
     "@jesscss/core": "workspace:*",
-    "@jesscss/internal-css-recognition": "workspace:*",
+    "@jesscss/parser-shared": "workspace:*",
     "@jesscss/shared": "workspace:*",
     "@types/node": "^18.19.31",
     "less": "^4.6.3",

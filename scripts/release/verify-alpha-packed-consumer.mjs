@@ -125,7 +125,7 @@ function assertPackedManifest(pkg, tarball, expectedVersion) {
   for (const sectionName of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
     const section = manifest[sectionName];
     assert(
-      !section?.['@jesscss/internal-css-recognition'],
+      !section?.['@jesscss/parser-shared'],
       `${pkg.name}: private macro input leaked into packed ${sectionName}`
     );
   }

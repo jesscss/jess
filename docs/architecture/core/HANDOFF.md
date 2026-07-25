@@ -16,11 +16,11 @@
    (`git fetch && git checkout -B <branch> origin/dev`) and state the SHA in your first report.
 2. **Never** `git stash`, `git restore`, `git checkout -- .`, or `git reset --hard`. Two agents
    lost or nearly lost work to this on 2026-07-24. Commit before measuring.
-3. **Build in order** before trusting any test number: parsers → `internal-css-recognition` →
+3. **Build in order** before trusting any test number: `parser-shared` → parsers →
    `awaitable-pipe` → `core` → `fns` → `config` → `style-resolver` → plugins → `jess`
    (`pnpm run build:release` does the whole thing). Vitest runs against `lib/`; a stale `lib/`
-   silently reports a *past* version of the repo. A stale `internal-css-recognition` build in
-   particular masks ~17 real failures.
+   silently reports a *past* version of the repo. A stale `parser-shared` build in
+   particular masks ~17 real failures — all four parsers depend on it, so it goes first.
 4. **Baseline before blaming yourself.** `docs/state/PROJECT_STATE.md` holds the measured
    known-red set. Capture your own baseline as a NAMED SET of cases, never as a count you
    inherited from a doc.
@@ -1184,8 +1184,8 @@ or a legacy-tree port.
   their structural capture was wrong: imported recognition-only `scanTo` and
   `balanced` artifacts fuse correctly. The failed attempt imported CSS's terminal
   AST-builder grammar instead of a recognition-only artifact. Extract the opaque
-  header/body capture into `internal-css-recognition`, then fuse it into Jess's
-  local reduction. Do not replace that work with runtime grammar composition, a
+  header/body capture into `parser-shared`, then fuse it into Jess's local
+  reduction. Do not replace that work with runtime grammar composition, a
   scanner, regex recognition, or source reparse.
 
 ### Queued after public parser closure

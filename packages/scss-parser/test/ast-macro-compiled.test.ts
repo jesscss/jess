@@ -13,7 +13,7 @@ test('canonical SCSS AST grammar macro-fuses recognition leaves with no runtime 
   });
   try {
     const transformed = await server.transformRequest('/src/ast/grammar.ts');
-    expect(transformed?.code).not.toContain('@jesscss/internal-css-recognition');
+    expect(transformed?.code).not.toContain('@jesscss/parser-shared');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
 
     const loaded = await server.ssrLoadModule('/src/ast/grammar.ts');

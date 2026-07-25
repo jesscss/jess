@@ -7,9 +7,9 @@
  */
 import { balanced, choice, composeLeaf, expect, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FusedRule } from 'parseman';
-import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
-import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
+import { cssAstSyntax } from '@jesscss/parser-shared/recognition';
+import { cssAstPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
+import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 

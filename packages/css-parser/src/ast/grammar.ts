@@ -7,9 +7,9 @@
  */
 import { balanced, choice, composeLeaf, expect, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sepBy, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldMap } from 'parseman';
-import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
-import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
+import { cssAstSyntax } from '@jesscss/parser-shared/recognition';
+import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
+import { cssAstPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import {
   any,
   atRuleBlock,

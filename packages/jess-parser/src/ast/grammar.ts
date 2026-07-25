@@ -6,9 +6,9 @@
  */
 import { attempt, balanced, choice, composeLeaf, field, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
-import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { opaqueAtRuleRecognition } from '@jesscss/internal-css-recognition/opaque-at-rule';
-import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
+import { cssAstSyntax } from '@jesscss/parser-shared/recognition';
+import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
+import { cssAstPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
@@ -3414,9 +3414,9 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
         /*
        * Read the operators back from the shared terminal's captures. Restating the
        * operator set as a runtime filter would be a second, drift-prone copy of a
-       * spelling `internal-css-recognition` already owns — and PEG `choice` is
-       * ordered, so every hand-maintained copy is a fresh chance to put `<` before
-       * `<=` and mis-parse a range without erroring.
+       * spelling `parser-shared` already owns — and PEG `choice` is ordered, so
+       * every hand-maintained copy is a fresh chance to put `<` before `<=` and
+       * mis-parse a range without erroring.
        */
         const operators = fields?.comparison === undefined
           ? []

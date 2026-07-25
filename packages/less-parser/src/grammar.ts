@@ -709,8 +709,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const EscapedValue = node(
     sequence(literal('~'), choice(escapedParen, g.Quoted)));
   // TODO(parseman-compose-depth): this is a COPY of the shared
-  // `LessAstSyntaxNamedColor` (`internal-css-recognition/src/recognition.ts`), which
-  // the Less AST grammar — the shipping parse path — already binds. CSS named colours
+  // `LessAstSyntaxNamedColor` (`parser-shared/src/recognition.ts`), which the
+  // Less AST grammar — the shipping parse path — already binds. CSS named colours
   // are not a Less extension and this list does not belong here.
   //
   // It cannot be deleted at parseman 0.32.0. Binding the shared rule requires

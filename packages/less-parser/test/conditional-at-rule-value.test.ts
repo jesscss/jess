@@ -3,8 +3,8 @@ import { parse } from '@jesscss/less-parser';
 
 /**
  * A conditional at-rule prelude is the CSS "value hole": a composite shape whose
- * inner value production each dialect must supply itself. `internal-css-recognition`
- * can only hold `g`-free `regex()` terminals, so the shared artifact stops at the
+ * inner value production each dialect must supply itself. `parser-shared` can
+ * only hold `g`-free `regex()` terminals, so the shared artifact stops at the
  * comparison operator and the at-keywords — the ratio, the `<mf-range>`, and the
  * condition chain are hand-written per dialect and have drifted apart repeatedly
  * (`@media (aspect-ratio: 16/9)`, `@media (100px < width < 200px)`, the

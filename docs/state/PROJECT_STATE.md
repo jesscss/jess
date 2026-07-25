@@ -145,9 +145,9 @@ the constraint on any fix. A separate session owns it.
 
 ### Build note
 
-A stale `internal-css-recognition` build masks real failures. Rebuild the
-workspace before trusting any count; a partial build makes the `all-less`
-number bogus.
+A stale `parser-shared` build masks real failures. Rebuild the workspace
+before trusting any count; a partial build makes the `all-less` number
+bogus.
 
 ## Current Focus
 

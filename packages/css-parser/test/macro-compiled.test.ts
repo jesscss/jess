@@ -31,7 +31,7 @@ test('canonical AST grammar macro-fuses the recognition artifact with no runtime
   });
   try {
     const transformed = await server.transformRequest('/src/ast/grammar.ts');
-    expect(transformed?.code).not.toContain('@jesscss/internal-css-recognition');
+    expect(transformed?.code).not.toContain('@jesscss/parser-shared');
     expect(transformed?.code).not.toContain('from \'../grammar.js\'');
     expect(transformed?.code).not.toMatch(/\bcomposeLeaf\s*\(/);
   } finally {

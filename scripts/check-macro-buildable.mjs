@@ -38,7 +38,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * PARSER_PACKAGES list in verify-compose-integrity.mjs.
  */
 const PARSERS = [
-  'internal-css-recognition',
+  'parser-shared',
   'css-parser',
   'less-parser',
   'scss-parser',

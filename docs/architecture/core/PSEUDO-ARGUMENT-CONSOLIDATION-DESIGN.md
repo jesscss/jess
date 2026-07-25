@@ -19,7 +19,7 @@ that rule (see §3c, §7).
 
 Scope: the functional-pseudo / `<An+B>` pseudo-argument grammar duplicated across the four
 AST-v2 parsers (`packages/{css,less,scss,jess}-parser/src/ast/grammar.ts`). The shared
-`@jesscss/internal-css-recognition` module today shares only the LEXICAL leaves
+`@jesscss/parser-shared` module today shares only the LEXICAL leaves
 (`CssAstSyntaxNth`, `CssAstSyntaxMalformedPseudoNumericArgument`), not the grammar composition,
 so the four copies drift and produce one-off "valid CSS parses in dialect A but not B" bugs.
 
@@ -141,7 +141,7 @@ ARTIFACT (the `cssAstSyntax` pattern), consumed at a `composeLeaf` position and 
 `g.`. (Bare consts work SAME-MODULE only — that's what Wave-1 did within one parser file.)
 
 ```ts
-// packages/internal-css-recognition/src/pseudo-consts.ts, export subpath ./pseudo-consts
+// packages/parser-shared/src/pseudo-consts.ts, export subpath ./pseudo-consts
 import { regex, rules } from 'parseman' with { type: 'macro' };
 // `of S` valid ONLY for nth-child/nth-last-child (Selectors-4 §6.6.2); of-type takes bare An+B (§7.1).
 export const cssAstPseudoSyntax = rules(_g => ({
@@ -238,7 +238,7 @@ once the arg is a structured `SelectorList`, core serialization emits `:not(.b)`
    referencing ONE external name, wire it as a non-final `composeLeaf` arg in the CSS parser only,
    bind the name in the inline block. Confirm: (a) `css-parser/test/macro-compiled.test.ts` stays
    green (`typeof G.Stylesheet === 'function'`, no `_def`/`parse`, no `composeLeaf(`/
-   `internal-css-recognition` string in the compiled output); (b) the CSS suite is byte-identical.
+   `parser-shared` string in the compiled output); (b) the CSS suite is byte-identical.
    If this fails, the recognition-only-with-external-refs path has an unexercised codegen gap and
    the whole approach needs rework BEFORE any grammar is touched. **Gate the entire effort on this.**
 

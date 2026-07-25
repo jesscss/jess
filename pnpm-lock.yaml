@@ -239,9 +239,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/internal-css-recognition':
+      '@jesscss/parser-shared':
         specifier: workspace:*
-        version: link:../internal-css-recognition
+        version: link:../parser-shared
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../_shared
@@ -366,15 +366,6 @@ importers:
         specifier: ^4.17.8
         version: 4.17.12
 
-  packages/internal-css-recognition:
-    devDependencies:
-      parseman:
-        specifier: 0.32.0
-        version: 0.32.0
-      tsdown:
-        specifier: ~0.21.7
-        version: 0.21.7(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(typescript@7.0.1-rc)
-
   packages/jess:
     dependencies:
       '@jesscss/core':
@@ -446,9 +437,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/internal-css-recognition':
+      '@jesscss/parser-shared':
         specifier: workspace:*
-        version: link:../internal-css-recognition
+        version: link:../parser-shared
       '@types/color-name':
         specifier: ^1.1.1
         version: 1.1.5
@@ -622,9 +613,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/internal-css-recognition':
+      '@jesscss/parser-shared':
         specifier: workspace:*
-        version: link:../internal-css-recognition
+        version: link:../parser-shared
       '@jesscss/shared':
         specifier: workspace:*
         version: link:../_shared
@@ -640,6 +631,15 @@ importers:
       tsx:
         specifier: ~4.21.0
         version: 4.21.0
+
+  packages/parser-shared:
+    devDependencies:
+      parseman:
+        specifier: 0.32.0
+        version: 0.32.0
+      tsdown:
+        specifier: ~0.21.7
+        version: 0.21.7(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(typescript@7.0.1-rc)
 
   packages/patch-css: {}
 
@@ -668,9 +668,9 @@ importers:
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core
-      '@jesscss/internal-css-recognition':
+      '@jesscss/parser-shared':
         specifier: workspace:*
-        version: link:../internal-css-recognition
+        version: link:../parser-shared
       parseman:
         specifier: 0.32.0
         version: 0.32.0
@@ -750,7 +750,7 @@ packages:
       opn: 5.5.0
       pump: 3.0.3
       pumpify: 2.0.1
-      semver: 7.7.4
+      semver: 7.8.5
       single-line-log: 1.1.2
       split2: 4.2.0
       tachyons: 4.12.0
@@ -7072,7 +7072,7 @@ packages:
       functional-red-black-tree: 1.0.1
       ignore: 5.3.2
       regexpp: 3.2.0
-      semver: 7.7.4
+      semver: 7.8.5
       tsutils: 3.21.0(typescript@4.9.5)
       typescript: 4.9.5
     transitivePeerDependencies:
@@ -7249,7 +7249,7 @@ packages:
       debug: 4.4.3(supports-color@8.1.1)
       globby: 11.1.0
       is-glob: 4.0.3
-      semver: 7.7.4
+      semver: 7.8.5
       tsutils: 3.21.0(typescript@4.9.5)
       typescript: 4.9.5
     transitivePeerDependencies:
@@ -9696,7 +9696,7 @@ packages:
       json-schema-typed: 7.0.3
       onetime: 5.1.2
       pkg-up: 3.1.0
-      semver: 7.7.4
+      semver: 7.8.5
     dev: true
 
   /config-chain@1.1.13:
@@ -11837,7 +11837,7 @@ packages:
       optionator: 0.9.4
       progress: 2.0.3
       regexpp: 3.2.0
-      semver: 7.7.4
+      semver: 7.8.5
       strip-ansi: 6.0.1
       strip-json-comments: 3.1.1
       table: 6.9.0
@@ -14838,7 +14838,7 @@ packages:
       jest-util: 27.5.1
       natural-compare: 1.4.0
       pretty-format: 27.5.1
-      semver: 7.7.4
+      semver: 7.8.5
     transitivePeerDependencies:
       - supports-color
     dev: true
@@ -17000,7 +17000,7 @@ packages:
     dependencies:
       hosted-git-info: 4.1.0
       is-core-module: 2.16.1
-      semver: 7.7.4
+      semver: 7.8.5
       validate-npm-package-license: 3.0.4
     dev: true
 
@@ -17505,7 +17505,7 @@ packages:
       got: 12.6.1
       registry-auth-token: 5.1.1
       registry-url: 6.0.1
-      semver: 7.7.4
+      semver: 7.8.5
 
   /package-manager-detector@0.2.11:
     resolution: {integrity: sha512-BEnLolu+yuz22S56CU1SUKq3XC3PkwD5wv4ikR4MfGvnRVcmzXR9DwSlW2fEamyTPyXHomBJRzgapeuBvRNzJQ==}
@@ -19833,7 +19833,6 @@ packages:
     resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
-    dev: true
 
   /send@0.16.2:
     resolution: {integrity: sha512-E64YFPUssFHEFBvpbbjr44NCLtI1AohxQ8ZSiJjQLskAdKuriYEP6VyGEsRDH8ScozGpkaX1BGvhanqCwkcEZw==}

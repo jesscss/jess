@@ -1,8 +1,8 @@
 /** Direct canonical-AST grammar for the public Less `parse()` architecture. */
 import { attempt, choice, composeLeaf, field, leaf, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
-import { cssAstSyntax, lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';
-import { cssAstPseudoSyntax } from '@jesscss/internal-css-recognition/pseudo-consts';
+import { cssAstSyntax, lessAstSyntax } from '@jesscss/parser-shared/recognition';
+import { cssAstPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, atRuleBlock, atRuleStatement, block, color, comment, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Comment, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessDynamicCharsetError } from '../parse-error.js';
