@@ -6,28 +6,21 @@
  * @example
  * map.keys((a: 1, b: 2)) // a, b
  */
-import { defineFunction, Collection, List, Declaration, Any, Quoted, type Context } from '@jesscss/core';
+import { defineFunction, Collection, List, Node, Quoted, type Context } from '@jesscss/core';
 import type { FunctionThis } from '@jesscss/core';
 import { isNode, N } from '@jesscss/core';
 
 const keys = defineFunction(
   'keys',
   function(this: FunctionThis | Context | undefined, map: Collection): List {
-    // Get all declarations from the collection
-    const keyNodes: any[] = [];
+    // A Collection entry's name is either a plain string or an already-built
+    // name node (`Any<'property'>` / `Interpolated<'property'>`). A node is the
+    // key itself; a string becomes an unquoted `Quoted`.
+    const keyNodes: Node[] = [];
     for (const node of map.rules) {
       if (isNode(node, N.Declaration)) {
-        // The key is the declaration's name - convert to a Node
         const name = node.name;
-        // If it's already a Node (Any or Interpolated), use it directly
-        // Otherwise wrap it in a Quoted node
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        if (name instanceof Any || (name as any).type) {
-          keyNodes.push(name);
-        } else {
-          // Convert string to Quoted node
-          keyNodes.push(new Quoted(String(name), { quote: undefined }));
-        }
+        keyNodes.push(typeof name === 'string' ? new Quoted(name, { quote: undefined }) : name);
       }
     }
     return new List(keyNodes, { sep: ',' });

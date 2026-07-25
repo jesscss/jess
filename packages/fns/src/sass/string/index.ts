@@ -1,25 +1,26 @@
 /**
- * Sass string module (sass:string)
+ * The `sass:string` module — MODULE member names.
  *
- * Re-exports all string functions that are available in the sass:string module.
- * These are the modern, non-deprecated functions.
+ * Every entry is a value-domain `Fn`, so this index is directly registerable
+ * once the per-module registry exists. Four members are ALSO reachable under a
+ * different deprecated global name (`length`→`str-length`, `index`→`str-index`,
+ * `slice`→`str-slice`, `insert`→`str-insert`); those global-named callables live
+ * in `./globals.js` so a flat table can never be asked to hold two different
+ * functions under one key. `length` here and `sass/list`'s `length` are two
+ * distinct functions with the same member name — the module table is what keeps
+ * them apart.
  *
- * Usage:
  * ```typescript
- * import { length, unquote, quote } from '@jesscss/fns/sass/string';
- * length("hello"); // 5
+ * import * as string from '@jesscss/fns/sass/string';
  * ```
  */
-
-// String functions (available in string module)
 export { default as length } from './length.js';
-export { default as unquote } from '../unquote.js';
-export { default as quote } from '../quote.js';
-export { default as toUpperCase } from '../to-upper-case.js';
-export { default as toLowerCase } from '../to-lower-case.js';
-export { default as uniqueId } from '../unique-id.js';
-// TODO: Implement remaining string module functions
-// - string.index() (use str-index for now)
-// - string.insert() (use str-insert for now)
-// - string.slice() (use str-slice for now)
-// - string.split()
+export { default as quote } from './quote.js';
+export { default as unquote } from './unquote.js';
+export { default as toUpperCase } from './to-upper-case.js';
+export { default as toLowerCase } from './to-lower-case.js';
+export { default as index } from './string-index.js';
+export { default as slice } from './slice.js';
+export { default as insert } from './insert.js';
+export { default as uniqueId } from './unique-id.js';
+// TODO: string.split() — needs the Sass bracketed-list result shape.
