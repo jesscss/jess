@@ -52,13 +52,14 @@ The units below are that document's §6; the blockers are its §5.
 | **Unit 1 — parseman survey + combinator cheat sheet** | unassigned | **Not started.** Deliberately first: every mental model here is 0.32.0-era, and that staleness is what produced the hand-rolled `sepBy` and keyword regexes. Deliverable is `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`. |
 | ~~**Unit 2 — parseman `0.36.0` adoption**~~ | jess | **CLOSED — measured and NOT adopted; jess stays pinned at `0.32.0`.** Correctness was fully clean: **zero AST movement across 3,053 file-parses in all four dialects**, four parser suites green, `all-less` 108/108, `check:macro` 0 fallbacks at both versions. But `less/css-corpus` regressed **+7.8 / +11.9 / +10.8 / +10.7%** across four runs and three harness designs, win-rate 2–4 of 25; two other Less workloads were ambiguous (−7…−9% cross-process vs +2…+5% single-process interleaved) and **no direction was claimed on them**. So parseman's own −18.5% does not reproduce in jess. **This is no longer a blocker on anything** — the rebuild targets 0.32.0. |
 | **Unit 3 — coverage measurement (the greenfield gate)** | unassigned | **Not started, and has to be built.** Vitest coverage is disabled by default and V8 line coverage does not map back to a `const`-per-production source through the macro build. Check parseman's existing coverage exports first. This measurement decides whether greenfield is safe. |
-| **Unit 4 — the CSS pilot** | unassigned | Blocked on Units 1–3 only. **Targets 0.32.0.** CSS is rebuilt complete before any dialect starts. Also builds the rename mapping + residue check, which the oracle does not provide. |
+| **Unit 4 — the CSS pilot** | unassigned | **Splits.** Phase A — rewrite the CSS rules at 0.32.0, plus the rename mapping + residue check the oracle does not provide — is authorable now. Phase B — the actual collapse to one grammar compiled twice via `hostMode` — is gated on the 0.40.0 floor (§5.0). Phase A is not wasted either way: it is the rules that change there, not the emission mode. |
 | **Unit 5 — the dialects** | branches `less-grammar-cleanup`, `trace-dual-grammar` | Blocked on Unit 4. Order `less` → `scss` → `jess`. `186f58be5` and `abe41f5bc` landed two conversion classes on `less-parser` against 0.32.0; useful as accept-set evidence, not as the shape. |
 | **Two 0.32.0 hazards, both per-unit** | jess | **`{min,max}` on a repetition combinator does not exist and will not compile** — `oneOrMore(x)` is `many(x,{min:1})`; plain `sepBy` is nullable with no way to say otherwise. **One `{ gate, combinator }` arm silently zeroes `autoNot` for EVERY arm in that choice** and forces ordered `firstMatch` — a semantics change needing a corpus differential, not a dispatch tweak. It only bites on a **non-disjoint** choice; jess's two existing gated arms (`jess-parser/src/grammar.ts:210`, `scss-parser/src/grammar.ts:1230`) are disjoint and lose nothing. |
 | **Residual Less regression** | deferred, unassigned | Concentrated in **Less parsing plain CSS**, not Less parsing Less — pointing at the ported CSS value/selector productions inside the Less grammar, i.e. the duplication Unit 5 deletes. **Hypothesis, not result.** The informative measurement is after Unit 5's `less` step. Do not re-block the rebuild on it. |
 | **`parseman/oracle` equivalence gate** | parseman PR #75 | **OPEN, unmerged, post-0.36.0.** `loadCorpus` → `digestCorpus` → `compareReports` → `formatComparison`, three verdicts. **No rename-mapping/residue API** — jess must supply that itself. Until it merges, `packages/less-parser/test/ast-identity-oracle.mjs` is what exists (707 files, `less-parser` only, no CI wiring). |
 | **`analyzeDuplication()`, prefix-trie choice dispatch** | parseman repo | Upstream. `analyzeDuplication` is **unreleased, `main`-only** — not a gate. Prefix-trie is MEASURING FIRST; may conclude "don't build". |
-| **P1 host-aware capture elision** | parseman, agent in flight | UNVERIFIED from here — nothing committed (`fix/host-aware-capture` is empty), consistent with work in an uncommitted worktree. Before Unit 4: **take delivery, or drop Unit 4's dependency on it** if the delivery reports the elision isn't achievable. Unit 4 must not assume it in either direction. |
+| ~~**P1 host-aware capture elision**~~ | parseman | **DELIVERED, better than described** — `compile(g, { hostMode })` in **0.40.0** (`c4804a3`, PR #80): a compile-time flag modelled on `compile({ recovery: true })`, deciding what is *emitted*. `'ast'` drops the `_parsemanCstOutput` ternary; `'cst'` builds through the host unconditionally. **This is the mechanism the eight-to-four collapse rests on.** Two relayed details were wrong and are corrected in the spec: `_dcst` is emitted in `'ast'` and suppressed in `'cst'` (it is simply no longer a *host probe*), and the reading is **+2.0% median over 14 rounds, 5/14** — not −3.4% over 26 — with the gate separately gate reading `css/stylesheet` +15…+29%. The mechanism argument (10,734 fewer bytes, one fewer property chain, no dead branch) is verified; a mechanism argument is not a measurement. |
+| **parseman ≥ 0.40.0 floor for the collapse** | **owner decision, re-measurement running** | The collapse needs 0.40.0; the repo pins 0.32.0 and declined 0.36.0 on a Less regression. 0.40.0 also carries a Less *improvement* (derived `expected` sets, parseman-measured at 32% of Less parse time) and `analyzeDuplication()`, which speaks directly to the rebuild's conversion classes. Gated on the Less number alone. |
 | **SCSS rebase off Less** | `docs/architecture/core/SCSS-PARSER-REBASE-DESIGN.md` | Blocking Less-side cleanup, not just an SCSS leak: `packages/less-parser/src/grammar.ts:157-158` licenses Less edits on the false premise that SCSS does not inherit them. **CST-only** — the four AST grammars are already independent. |
 
 ### `packages/fns` — sass porting
@@ -688,12 +689,22 @@ verbatim. §9 is the anti-criteria list. It links to the standing brief
 ([`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md), the
 per-`const` checklist) rather than restating it.
 
-**The rebuild targets the pinned parseman `0.32.0`.** The 0.36.0 adoption was measured and
-declined (§5.1 of the spec) — correctness was fully clean, Less regressed — so the rebuild is
-**not** blocked on a parseman bump. The API delta is only three exports, but **two 0.32.0
-hazards are load-bearing**: `{min,max}` on a repetition combinator does not exist (use
-`oneOrMore`), and one `{ gate, combinator }` arm silently zeroes `autoNot` across an entire
-choice, which changes what the grammar accepts.
+**Authoring targets the pinned parseman `0.32.0`. The eight-to-four collapse has a hard floor
+of `0.40.0`.** Keep those apart. 0.36.0 was measured and declined (correctness fully clean,
+Less regressed), so *writing the rules* is not blocked on a bump. But `compile(g, { hostMode })`
+— shipped at 0.40.0, `c4804a3` — is the compile-time mechanism that lets **one grammar serve
+both the eval-AST and positioned-CST modes**, and that is the whole basis of the collapse.
+**So the version question now sits between us and the architecture, not off to the side.** What
+gates it is the Less measurement and nothing else; a re-measurement at 0.40.0 is running. If it
+does not recover, the choice — accept a measured Less regression for the architecture, or keep
+eight files — is the owner's. Spec §5.0.
+
+Three 0.32.0 hazards are load-bearing: `{min,max}` on a repetition combinator does not exist
+(use `oneOrMore`; it will not compile, it is not silent); one `{ gate, combinator }` arm
+**silently** zeroes `autoNot` across an entire choice, changing what the grammar accepts; and
+at 0.40.0 a compiled piece keeps its own host mode, so a `'cst'` compose could fuse an `'ast'`
+piece and put AST objects inside a positioned CST **with the assertion still passing** — now
+rejected at fuse time upstream, and found by review rather than by any gate.
 
 Seven things a fresh agent gets wrong here, so they are repeated at the entry point:
 
@@ -719,6 +730,15 @@ Seven things a fresh agent gets wrong here, so they are repeated at the entry po
   arms are actually two builds — they must disagree on no AST across the corpus while
   producing different builds. **A harness that cannot prove that produces a timing that is a
   lie**, and nothing about the output looks wrong.
+- **parseman's own perf gates are not authoritative, and win-rate is no longer sufficient
+  on its own.** `perf:guard:grammars` returned `+25.0%, 0/12 pairs won, FAIL` on
+  **byte-identical sides**; `workload-perf` failed a PR with **no file under `src/`** at 3/3
+  breached, win rates 2/12, 0/12, 0/12, on an idle runner. Both produced the exact signature
+  documented as "a real regression loses every pair". `pnpm perf:xproc` is the supported
+  method — but parseman's docs refuse to let it be a gate, so use it to confirm a red, never
+  to certify a green. And `grammar-perf-guard.ts` can benchmark a **stale cached worktree**
+  while reporting the sha it intended, which erases its own blast radius: treat every number
+  it produced as suspect. Fix exists, not on `main`.
 - **An ambiguous measurement is reported as ambiguous.** Two of three Less workloads in the
   0.36.0 evaluation read −7…−9% one way and +2…+5% the other; declining to claim a direction
   was the correct result, not a gap. Picking the friendlier harness is a failure.
@@ -1535,8 +1555,9 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: grammar rebuild spec relocated to `design/`, rebased onto `76680b114`, and
-  reconciled (2026-07-25, worktree `a67b5077c`). `docs/design/GRAMMAR-REBUILD-SPEC.md` is the
+- Latest pass: grammar rebuild spec rewritten around parseman 0.40.0's
+  `compile(g, { hostMode })`, which turns the collapse's missing mechanism into a version
+  floor; relocated to `design/`; rebased onto `76680b114` (2026-07-25). `docs/design/GRAMMAR-REBUILD-SPEC.md` is the
   design spec and method of record for rebuilding the four grammars — five dispatchable units
   each carrying scope, boundary, read-first references, method, pass criteria and a
   report-vs-decide rule; an eight-entry anti-criteria list; and the `parseman/oracle`
@@ -1563,9 +1584,15 @@ involved.
   `sass:string` and the value-domain `Collection` (all landed). The `0.35.0`/`0.36.0` question
   was left as competing attributed claims in the prior pass and is now **closed by
   measurement**: not adopted, jess stays at 0.32.0, and every unit retargeted accordingly.
-  One hazard was **downgraded on inspection rather than propagated as briefed** — `many(x,
-  {min:1})` at 0.32.0 is a `TS2554` compile error, not a silent no-op, and is written that
-  way; overstating a hazard as silent teaches agents to distrust the compiler.
+  **Four claims were corrected against source rather than propagated as briefed**, three of
+  them in this pass: `many(x,{min:1})` at 0.32.0 is a `TS2554` compile error, not a silent
+  no-op (overstating a hazard as silent teaches agents to distrust the compiler); `_dcst` is
+  emitted in `'ast'` and *suppressed* in `'cst'`, the opposite of the briefed direction, the
+  real change being that it is no longer a host probe; the `hostMode` reading is `+2.0%`
+  median over 14 rounds winning 5/14, not `−3.4%` over 26, and the `3.4%` figure belongs to
+  an unrelated `--self` calibration; and `perf:xproc` is parseman's supported *confirmation*
+  step, which its own docs explicitly refuse to let become a gate. The mechanism argument for
+  `hostMode` is separately verified and is stated as a mechanism argument, not a measurement.
 - Cumulative node weight: unchanged; no AST node, field, or shape was added or removed.
 - New traversal: none.
 - New node/materialization: none.
@@ -1593,7 +1620,13 @@ involved.
   `node_modules` bundle, never that worktree's `dist/`, which is gitignored and stale.
   **No performance claim in this diff is mine**: the 0.36.0 adoption numbers (3,053
   file-parses, `+7.8/+11.9/+10.8/+10.7%`, win-rate 2–4 of 25, the two ambiguous workloads,
-  the 2,647-file arena self-validation) are the measuring agent's, reported here as relayed
-  and not independently reproduced — that work is not yet on `dev`, so no commit can be cited
-  for it.
+  the 2,647-file arena self-validation) are the measuring agent's, reported as relayed and
+  not independently reproduced — that work is not on `dev`, so no commit can be cited for it.
+  The 0.40.0 claims were read from `/Users/matthew/git/worktrees/pm-hostmode`
+  (`feat/compile-time-host-mode`) and `c4804a3`; parseman's local `main` is stale at
+  `be09b83`. Three verified defects in parseman's own perf gates are now recorded in the spec
+  (§8.5.1) — including one that **erases its own blast radius**, since the output logged the
+  sha it intended rather than the one it used — so every figure this document quotes from
+  those gates is marked SUSPECT in a table rather than deleted, and the win-rate reasoning
+  the 0.36.0 decision rests on is qualified accordingly.
 - Verdict: documentation-only reconciliation; accepted with no runtime cost contract.

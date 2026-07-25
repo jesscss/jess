@@ -7,8 +7,9 @@ first, the method, and the criteria that decide whether they succeeded.
 > **Status: `design/`, not `architecture/`.** The problem statement (§2), the
 > verification machinery in §8.2–§8.6, the traps (§7) and the structural causes
 > (§13) are present-tense and measured. **Everything in §4, §5, §6 and §8.1 is
-> planned and not built** — and two of the tools the method depends on are
-> unreleased and unmerged upstream. `CLAUDE.md` says not to add architecture
+> planned and not built** — the equivalence gate is unmerged upstream, and **the
+> eight-to-four collapse requires a parseman version this repo does not run
+> (§5.0)**. `CLAUDE.md` says not to add architecture
 > documents that mostly describe machinery the repo does not currently have, and
 > [`../README.md`](../README.md) puts such a document here. This one obeys that
 > rather than acknowledging it in a banner.
@@ -226,16 +227,51 @@ changed the sequencing.** What remains blocking is narrower than it was:
 
 | § | status |
 | --- | --- |
-| 5.1 parseman version | **RESOLVED** — 0.36.0 measured and declined; the rebuild targets the pinned 0.32.0 and is not blocked on a bump |
-| 5.2 the two 0.32.0 hazards | **not a blocker, a standing constraint** — check per unit |
-| 5.3 P1 host-aware capture elision | **open** — take delivery or drop the dependency, before Unit 4 |
+| 5.0 the version question | **OPEN, and it is the important one.** Authoring targets 0.32.0; the **collapse has a hard floor of 0.40.0**. Gated on a Less re-measurement, currently running |
+| 5.1 the 0.36.0 adoption | **RESOLVED** — measured and declined. Authoring is not blocked on a bump |
+| 5.2 the 0.32.0 hazards | **standing constraints**, not blockers — check per unit. Three now, including the cross-mode fusion hazard |
+| 5.3 `hostMode` | **RESOLVED** — shipped at 0.40.0 as a compile-time flag. Delivery taken; it is now a version-floor question, not a missing mechanism |
 | 5.4 SCSS composing on Less | **open** — blocks Unit 5's `scss` step, and a one-line false comment blocks its `less` step |
 | 5.5 `internal-css-recognition` rename | **sequenced last**, after the rebuild |
 
-### 5.1 parseman stays at 0.32.0 — the rebuild targets the pinned version
+### 5.0 The version question, stated plainly
+
+**Authoring targets 0.32.0. The eight-to-four collapse has a hard floor of
+0.40.0. These are different questions and the spec keeps them apart.**
+
+| what | version | why |
+| --- | --- | --- |
+| Writing the rebuilt rules (Units 1, 3, 4, 5) | **0.32.0**, the pin | 0.36.0 was measured and declined on a Less regression (§5.1). Almost nothing is lost (§5.2) |
+| **Collapsing 8 files to 4** | **≥ 0.40.0** | `compile(g, { hostMode })` is the mechanism that lets one grammar serve both the eval-AST and positioned-CST modes (§5.3). Nothing below 0.40.0 has it |
+
+> **This is not a deferrable perf matter any more. It sits between us and the
+> architecture the owner asked for.** The collapse — the entire point of §3 — is
+> gated on a version we declined for a measured Less regression. Naming the
+> tension is the job here; resolving it optimistically is not.
+>
+> **What gates it: the Less measurement, nothing else.** Correctness at 0.36.0
+> was already fully clean. A re-measurement at 0.40.0 under the cross-process
+> method is running. If Less recovers, the floor is payable and the collapse
+> proceeds. If it does not, the choice is explicit — accept a measured Less
+> regression to get the architecture, or keep eight files — and it is the
+> owner's, not a unit's.
+>
+> **Do not resolve this by assuming the re-measurement will be favourable, and do
+> not restructure the rebuild to avoid needing 0.40.0.** Authoring against 0.32.0
+> is compatible with either outcome, which is exactly why it is the right place
+> to start work now.
+
+Two facts that make the floor more payable than it looks: 0.40.0 carries a Less
+**improvement** — a derived `expected` set naming each token once, which parseman
+measures at **32% of Less parse time**, with one constant in jess's compiled Less
+grammar going 20 → 70+ entries. And 0.38.0 fixes a defect in the analysis surface
+that matters directly to §8.6. Neither has been measured in jess.
+
+### 5.1 The 0.36.0 adoption was measured and declined
 
 > **This section previously said 0.36.0 adoption must land first. It was measured,
-> and the answer was no.** The rebuild is **not** blocked on a parseman bump.
+> and the answer was no.** Authoring is **not** blocked on a parseman bump — but
+> see §5.0 for what the collapse still needs.
 
 The repo pins **`0.32.0` exactly** (root + 5 package manifests;
 `pnpm-lock.yaml:17276`). The invariant is that **compiled parser artifacts never
@@ -394,6 +430,34 @@ jess has exactly **two** `{ gate, combinator }` arms today, both in
 `packages/scss-parser/src/grammar.ts:1230`. Neither currently loses anything.
 `css-parser`, `less-parser` and all four AST grammars have none.
 
+**(c) A compiled piece keeps the mode it was built with — the cross-mode fusion
+hazard.** Relevant only once the collapse reaches 0.40.0 (§5.0), but it is the
+defining hazard of the unified design, so it belongs here rather than being
+discovered later.
+
+An already-compiled piece carries its own `hostMode`. So a `'cst'` `compose`
+could fuse an `'ast'`-compiled piece, whose direct builders dropped their CST
+branch, and **feed AST objects into a positioned CST — with the assertion still
+passing.** Silent cross-mode corruption, exactly the class the unified design
+exists to be defended against.
+
+**It is now rejected at fuse time**, in `fuseRules()`,
+`src/compiler/linker.ts:359-380`, guard at `:370`: `compose/fuseRules: cannot
+build a positioned-CST artifact from pieces that were compiled for host mode
+"ast" — … Re-compile it/them with hostMode: 'cst', or pass the source grammar so
+it can be re-lowered.` The offending namespace is named in the message. Only
+pieces carried as IR are re-lowered by a compose; compiled ones are not.
+
+> **Two things about how this was caught, both worth carrying.** It was found
+> **by review, not by a gate** — the fix is a separate follow-up commit
+> (`99b42ed`, "Caught in review, not by me") on top of the feature commit
+> (`8806272`), and it now has a test asserting both the message and the named
+> namespace (`test/unit/rule-fusion.test.ts`, *"a MIXED fusion is rejected at
+> fuse time, not discovered mid-parse"*). And the failure mode it prevents is
+> **an assertion that passes while the data is wrong** — §9.1's shape exactly. A
+> unit that composes across modes should assume more of this class exists and has
+> not been found yet.
+
 **Two things no version gives you**, unchanged through 0.36.0 — so these are not
 reasons to want a bump:
 
@@ -408,35 +472,79 @@ reasons to want a bump:
   **P-3, P-4, P-8**; open at 0.36.0. So "no bespoke ident/boundary classes"
   (§10.1) is an *aspiration*: raise it upstream, do not fake it locally.
 
-**`analyzeDuplication()`** is unreleased and `main`-only at any version. Not a
-gate.
+**`analyzeDuplication()`** **shipped in 0.40.0** — eight finding families,
+including `keywordRegexes` ordering hazards as a bug class, wired on all three
+lowering paths, default `'off'`. It would speak directly to §2.3's conversion
+classes. It is above the pin, so it arrives with the §5.0 floor or not at all —
+another entry on the "what the floor buys" side of that decision, and not a gate
+today.
 
-### 5.3 parseman host-aware capture elision — UNVERIFIED, in flight
+### 5.3 `hostMode` — RESOLVED, and it is the basis of the collapse
 
-Cited as "P1 host-aware capture elision, without which the unified CST is
-silently lossy". **An agent is actively building it**, so treat this as work in
-flight rather than a settled capability — and note that nothing about it is
-readable from here yet.
+> **This section previously tracked an unconfirmable "P1 host-aware capture
+> elision". It shipped, as something better than what was described.** Delivery
+> taken. The blocker is now a version floor, not a missing mechanism.
 
-What is verifiable as of `76680b114`: no "host-aware" or "capture elision" string
-exists in parseman's `docs/` or `notes/`, nor in jess's `docs/`; the branch
-`fix/host-aware-capture` sits at `be09b83` = `main` with **zero commits of its
-own**. That is consistent with work living in an uncommitted worktree, which is
-why this reads UNVERIFIED rather than absent. jess's own P-1 is a different item
-(`composeLeaf` holes reported as `ungated` instead of `deferred`) — do not
-conflate the two numbers.
+**`compile(g, { hostMode })`** — parseman **0.40.0**, merged at **`c4804a3`**
+(PR #80, `feat(compile): host mode is a compile-time decision, not a per-node
+runtime read`). Read it from `/Users/matthew/git/worktrees/pm-hostmode`
+(`feat/compile-time-host-mode`); note the parseman repo's local `main` is stale at
+`be09b83`.
 
-The nearest committed work is 0.31.0's `_parsemanReadsChildren` children-array
-elision and the `_hostReads(build, n)` arity probe discussed in
-`pm-036-bump/notes/PERF_IDEAS.md` and `notes/CODEGEN-FAST-PATHS.md`
-("arity-gated capture elision").
+**It is a compile-time flag deciding what is *emitted*, modelled on
+`compile({ recovery: true })`** — the ctx flag is documented as "exactly the shape
+of the `recovery` gate" (`src/compiler/codegen.ts:224-245`, declared `:246`).
+`type HostMode = 'ast' | 'cst'` (`codegen.ts:3552`), default `'ast'`, on three
+entry points: `compile(g, { hostMode })`, `linkable(map, ns, trivia, hostMode)`
+(`linker.ts:47`), `compose(items, { hostMode })` (`linker.ts:693`).
 
-> **Action before Unit 4: take delivery from the P1 agent, or drop Unit 4's
-> dependency on it.** If the delivery lands, read what it actually guarantees and
-> write that into Unit 4. If the delivery reports that the elision is not
-> achievable, drop the dependency and say so. **Unit 4 must not assume it in
-> either direction** — neither "it will be there" nor "it does not exist" is a
-> premise to build on.
+The codegen branch, `codegen.ts:2815` and `:3032-3036`:
+
+```js
+const cstOut = ctx.hostMode === 'cst' && !structural
+const ndExpr = structural
+  ? `_ctx.build !== undefined ? (${hostBuildExpr}) : (${buildExpr})`
+  : cstOut ? hostBuildExpr : buildExpr
+```
+
+In `'cst'`, direct builders build through the host unconditionally — no gate —
+and capture follows (`codegen.ts:2823-2828`). Structural nodes deliberately keep
+the runtime `ctx.build` check.
+
+**This is why the collapse is now possible.** The unified design previously rested
+on a per-node runtime read, and that cost was the reason nobody trusted it. One
+grammar can now serve both modes with the mode decided at build time.
+
+> **Two corrections to how this was relayed, both of which matter.**
+>
+> **`_dcst` is not elided in `'ast'` — it is the opposite.**
+> `codegen.ts:2879-2880` emits `_dcst` when `!cstMode`, and suppresses it in
+> `'cst'`. What actually changed is that it is **no longer a host probe**: it is
+> bound to `profileCapture`, a hoisted boolean local off `_ctx._pmProfile`,
+> instead of a property chain on `_ctx.build`. The CHANGELOG and commit message
+> say "the host branch and the probe are not emitted at all", which overstates
+> it; the code comment at `codegen.ts:2872-2877` is the accurate version — "the
+> per-node `_parsemanCstOutput` read that used to sit on every direct node is
+> gone." The `_parsemanCstOutput` ternary **is** genuinely gone in `'ast'`.
+>
+> **The perf reading is not −3.4% over 26 rounds.** The cross-process reading
+> recorded for this change is **+2.0% median, +1.0% min, winning 5 of 14**
+> (`CHANGELOG.md` ~:66, `docs/design/perf-harness-interleaving.md:224`) —
+> marginally *slower*, judged neutral. The `3.4%` figure in that repo is a
+> worst-single-pass `min` from an unrelated `--self` noise calibration
+> (`docs/design/perf-gates.md:342`). The gate additionally read `css/stylesheet`
+> at **+15…+29%, breaching 3/3** on an idle machine, and parseman's own note is
+> candid: "No threshold was widened and the gate's number is recorded as it
+> stands." **So "no measurable cost" is not what the repo says.** The
+> *mechanism* argument still holds and is verified — 10,734 fewer bytes across
+> the CSS and Less workload grammars, one fewer property chain per direct node,
+> no dead branch — but a mechanism argument is not a measurement, and §9.8
+> applies to it.
+
+**A gap worth knowing before Unit 4 writes against it:** `HostMode` is **not
+re-exported from `src/index.ts`** at `c4804a3` (nor from `src/run.ts` or
+`src/plugin`). The headline option's type is not on the public surface. Raise it
+upstream rather than re-declaring the union locally.
 
 ### 5.4 SCSS composing on Less must be corrected
 
@@ -609,13 +717,33 @@ stop — do not build a second one.
 ### Unit 4 — The CSS pilot
 
 **Scope.** `packages/css-parser/src/grammar.ts` and
-`packages/css-parser/src/ast/grammar.ts` become one grammar. Complete, reviewed
-and landed **before any dialect starts**.
+`packages/css-parser/src/ast/grammar.ts` become **one grammar compiled twice** —
+`hostMode: 'ast'` for the eval path, `hostMode: 'cst'` for the positioned CST the
+language service reads (§5.3). Complete, reviewed and landed **before any dialect
+starts**.
+
+> **The collapse step needs parseman ≥ 0.40.0; the repo pins 0.32.0 (§5.0).**
+> This unit therefore splits, and the split is the point:
+>
+> - **Phase A — authorable now, at 0.32.0.** Rewrite the CSS rules per §4, one
+>   grammar's worth of content, and build the rename mapping and residue check
+>   (§8.1b). Two files still ship, because two files must until the floor is
+>   paid. Everything in §4's method, §8's measurement and §10's constraints
+>   applies unchanged.
+> - **Phase B — the collapse itself.** Gated on the 0.40.0 decision. It is the
+>   emission mode that changes, not the rules, which is exactly why Phase A is
+>   not wasted if the floor turns out unpayable.
+>
+> **Do not start Phase B on the assumption the floor will be paid, and do not
+> contort Phase A to avoid needing it.** If Phase A finds a rule that can only be
+> written well in one mode or the other, that is a finding about the floor and is
+> worth reporting — it is evidence for the §5.0 decision.
 
 **Off-limits.** `less`, `scss`, `jess` — all six of their grammar files. Because
 `less` composes on `css` and `scss` composes on `less` (§5.4), a CSS change moves
 downstream trees; that is expected, and is exactly what the control surface in
-§8.1 is for. Also off-limits: any `internal-css-recognition` rename (§5.5).
+§8.1 is for. Also off-limits: any `internal-css-recognition` rename (§5.5), and
+any parseman bump — that is §5.0's decision, not this unit's.
 
 **Read first, in this order.**
 1. The cheat sheet from Unit 1.
@@ -633,7 +761,7 @@ downstream trees; that is expected, and is exactly what the control surface in
 combinators for that description. Then check against the old rule for accept-set
 differences only, and enumerate every difference (§8.3).
 
-**Pass criteria.** §8 in full. Additionally:
+**Pass criteria (Phase A).** §8 in full. Additionally:
 - **The rename mapping and the residue check are built as part of this unit**
   (§8.1b) — the oracle has no such API, and every later unit depends on it. The
   check must prove the residue is **empty**, not smaller; a tool that only shrinks
@@ -641,9 +769,23 @@ differences only, and enumerate every difference (§8.3).
 - The CSS grammar's header states that three dialects compose on it (§12).
 - Rule names are CSS concept names — no `CssAst*`, no `Direct*` (§10.1).
 - The per-`const` review table has a row per `const` (§10.4).
+- **Anything that would only work in one host mode is recorded**, with the rule
+  named — input to the §5.0 decision.
+
+**Pass criteria (Phase B), additionally.**
+- **Both emissions are gated, not just the one you were thinking about.** The
+  `'ast'` build carries the eval path; the `'cst'` build carries the language
+  service. §8.1's surface list must include both, and §8.4's language-service
+  suite is a first-class gate here rather than a background check.
+- **No cross-mode fusion.** §5.2c is rejected at fuse time upstream, but the
+  rejection is one guard found by review; do not treat its absence of complaint
+  as proof. State which mode each composed piece was compiled in.
+- `HostMode` is not exported from parseman's public surface (§5.3) — if that is
+  still true, raise it upstream rather than re-declaring the union locally.
 
 **Blocked?** A rule whose spec behaviour and old-grammar accept set genuinely
-disagree is a semantic question. Report it; do not pick.
+disagree is a semantic question. Report it; do not pick. Phase B is blocked on
+§5.0 by construction — do not treat that as a reason to skip Phase A.
 
 ---
 
@@ -914,6 +1056,73 @@ cross-process design is **superseded** for version and grammar comparisons by th
 arena above. The arena is not yet checked in; building or importing it is part of
 the first unit that needs a perf claim.
 
+For a **parseman-side** number, the supported method is **`pnpm perf:xproc`**
+(`bench/xproc-ab.ts`, `package.json:71`): it materialises the reference side the
+way the gate does — a `git worktree` at the pinned sha under `.cache/`, the
+repo's `node_modules` symlinked in, the working tree's `grammar.ts` copied over —
+and runs one fresh process per side per round, alternating which side launches
+first.
+
+> **But `perf:xproc` is a confirmation step, not a gate, and parseman's own docs
+> refuse to let it become one:** "A cross-process comparison carries the
+> between-launch term the interleaved harness exists to eliminate — this hardware
+> has produced 9.4 ms and 26 ms for the same case in consecutive launches"
+> (`docs/design/perf-harness-interleaving.md:146-152`). Use it to confirm a red,
+> not to certify a green.
+
+### 8.5.1 parseman's own perf gates cannot be cited as authoritative
+
+Three verified defects. They matter here because §5.0's decision, and several
+figures this document quotes, rest on numbers these gates produced.
+
+**(a) `perf:guard:grammars` fails on byte-identical sides.** Four runs of
+`--ref=d4f107f --head-ref=d4f107f` — the same commit against itself — produced
+`expected/narrow` at **+25.0% median, +21.2% min, 0 of 12 pairs won, FAIL**, with
+the other three runs clean (`docs/design/perf-harness-interleaving.md:50-62`).
+parseman's own conclusion: *"a comparison where the two sides are byte-identical.
+There is no regression there to find."* It masks in the other direction too —
+`rollback/none` read **−19.6% at 12/12** for identical code.
+
+**(b) `workload-perf` failed a PR containing no file under `src/`**, with
+compiled parsers byte-identical to base, on an idle runner (load 0.80): `3/3`
+breached, win rates **2/12, 0/12, 0/12** (`:164-194`).
+
+> **The consequence is the one to internalise: the win-rate rule did not separate
+> noise from signal.** Both failures show *"the exact signature the gate documents
+> as 'a real regression loses every pair'."* This spec leans on win-rate as the
+> discriminator — §8.5, and the 2–4-of-25 reading that decided §5.1. **Win-rate
+> remains worth reporting and is still better than a bare median, but it is no
+> longer sufficient on its own.** A red needs an independent confirmation
+> (§8.5's arena self-validation, or `perf:xproc`) before it is believed.
+
+**(c) `grammar-perf-guard.ts` can silently benchmark the wrong commit.**
+`bench/grammar-perf-guard.ts:123-138` reuses a cached reference worktree if
+`.cache/grammar-gate-<sha>/src/index.ts` merely *exists*. The sha lives in the
+directory **name** only; nothing checks the directory's actual `HEAD`.
+`bench/ab-harness.ts` had the identical check. Stale `.cache/` worktrees do
+persist across runs.
+
+> **This retroactively weakens every number that gate has produced**, and the fix
+> commit says why it cannot be bounded: *"the output recorded the sha it INTENDED
+> rather than the one it USED, so there is no way to tell which past readings
+> were affected."* **A defect that erases its own blast radius cannot be
+> narrowed by inspection — treat the whole population as suspect.**
+>
+> The fix (`00a4c42` — compare `rev-parse sha` against `rev-parse HEAD` in the
+> cached dir, treating "cannot confirm" as stale) exists on branch
+> `docs/gate-stale-worktree` and is **not on `main`**. Until it merges, do not
+> take a `grammar-perf-guard` number at face value.
+
+**Figures in this document that are affected.** Marked rather than deleted, per
+the rule that a suspect measurement is evidence about the harness:
+
+| figure | source | status |
+| --- | --- | --- |
+| 0.34.0 `+32.5%`, 0.35.0 `−12.0%` / `−18.5%` / `12/12`, 0.40.0 `+2.0% median 5/14`, `css/stylesheet +15…+29%` | parseman's own gates | **SUSPECT** — quoted with attribution, not relied on |
+| 0.36.0 jess-side `+7.8/+11.9/+10.8/+10.7%`, win-rate 2–4 of 25 | jess's arena + two other designs, **not** parseman's gates | Stands as the §5.1 basis. But its win-rate reasoning inherits (b)'s caveat, and the finding was corroborated by agreement across **three** harness designs — which is what makes it usable |
+| 0.34.0 jess-side `+10…25%` (`a49ca59da`) | jess's `ab-compare.mjs`, same-worktree git-toggle | Not from parseman's gates. Cross-process design, now superseded |
+| `10,734 fewer bytes` (§5.3) | byte count, not a timing | Unaffected |
+
 ### 8.6 What the gating diagnostic can and cannot see
 
 `PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §2 claims parseman's analysis cannot walk
@@ -933,6 +1142,20 @@ The operative rule survives intact, and it is why an oracle exists at all:
 > **Never read a clean or empty diagnostic obtained from the fused artifact as
 > evidence that a grammar is clean. Feed it the pre-`compose()` map, and say which
 > you fed it.**
+
+**And at 0.32.0 — the version we pin — there is a second reason not to trust a
+clean result.** parseman **0.38.0** fixed a defect where `reportGating`'s
+`try/catch { return undefined }` made a **crashed analysis indistinguishable from
+a clean one**. `GatingReport` gained an `unanalysable[]` field, and
+`analyzeGrammarGating()` was added to accept a `compose()` result via carried IR.
+Neither is available at 0.32.0.
+
+> So on the pinned version, a silent `analyzeGating` is **three-ways ambiguous**:
+> the grammar is clean, the analysis saw nothing, or the analysis crashed and
+> swallowed it. That is anti-criterion §9.1 in its purest form, and it is
+> upstream's own finding rather than a hypothetical. **Report gating results as
+> "analysed N of M rules", never as "no warnings."** If you cannot say N, you do
+> not have a result.
 
 The oracle that exists on `dev` today —
 `packages/less-parser/test/ast-identity-oracle.mjs`, 707 files, both surfaces,
@@ -973,7 +1196,23 @@ per-rule method was skipped.
 This is a scar record. **Every entry happened**, most of them in the session that
 produced this document.
 
-1. **A passing test suite.** It is context. It is none of the four items in §8.2.
+1. **A check that reports success because it cannot see the failure mode.** The
+   root shape, and most of this list is a special case of it. **A passing test
+   suite** is the plain form: it is context, and none of the four items in §8.2.
+   Three verified instances, each of which looked exactly like a pass:
+   - **A clean `--self` on a perf harness.** `--self` sets the head side to the
+     reference sha (`bench/workload-perf-guard.ts:95,99`), so it compares a
+     commit against itself: both sides compile to the **same-sized** code image,
+     while a real A/B has two **differently-sized** images sharing one heap and
+     one JIT profile — the situation `--self` removes. parseman's own wording:
+     *"A clean `--self` says 'the harness is not noisy today'. It does not say
+     'this A/B number is real'."* Its own labelling is honest — *"noise floor,
+     not a gate"* — and it still gets read as a trust signal.
+   - **A perf harness whose two arms are secretly one build** (§8.5), and a gate
+     benchmarking a stale cached worktree while reporting the sha it intended
+     (§8.5.1c).
+   - **A cross-mode fusion whose assertion passes while AST objects sit inside a
+     positioned CST** (§5.2c) — found by review, not by any gate.
 2. **A green run from a diagnostic that could not see its input.** The gating
    analysis reported clean on the fused artifact while seeing nothing at all
    (§8.6).
@@ -1119,7 +1358,8 @@ restate it.**
 | `pnpm run check:macro` | 0 interpreter fallbacks — a **correctness** gate (§8.2) | **Landed and blocking** |
 | Grammar ESLint rules | block comments only, no literal non-ASCII in regexes, no regex outside `regex()`, no macro hazards, expanded call form, comment shape | **LANDED on `dev`** (`516d10222`, `f18fc4e17`) at **error** — see below |
 | `analyzeGating` (pre-`compose()` map) | ungated choices, `double-not` anti-pattern | **Usable at 0.32.0**, but the macro build's gating is **blind** — feed it the `rules()` map by hand (§8.6). `analyzeGatingRules` and whole-map gating need 0.34.0, which was declined (§5.1) |
-| `analyzeDuplication()` | structural duplication/overlap, hand-rolled-`sepBy` detection | **Unreleased, parseman `main` only.** Not a gate |
+| `analyzeDuplication()` | structural duplication/overlap, `keywordRegexes` ordering hazards | Shipped in **0.40.0**, above the pin. Arrives with the §5.0 floor. Not a gate today |
+| `compile(g, { hostMode })` | one grammar, two emissions — the basis of the collapse (§5.3) | Shipped in **0.40.0** (`c4804a3`), above the pin. **This is what §5.0 is about** |
 | `parseman/oracle` | equivalence (§8.1) | **Unmerged.** PR #75 |
 
 **This changed on `dev` within a day of being written, in the direction the spec
