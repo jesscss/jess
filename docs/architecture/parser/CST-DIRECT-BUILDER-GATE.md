@@ -85,7 +85,8 @@ cssCstBuildHost._parsemanCstOutput                 = true
 ```
 
 So on 0.40.0+ the failure is silent again on both jess CST paths. Both gaps are
-parseman's and are worth filing upstream; neither is worked around here.
+parseman's, and both are fixed upstream in parseman PR #85 (see below); neither is
+worked around here.
 
 ## What guards this now
 
@@ -124,12 +125,32 @@ direct-builder count stops being 0 by accident. At that point one grammar source
 TWO compilations — `hostMode: 'ast'` for eval, `hostMode: 'cst'` for the language
 service.
 
-**The macro plugin cannot express that today.** `src/plugin/index.ts` calls
-`compileRuleMap` / `compileLinkable` with `{ trivia, scanSkip, recovery, coverage }`
-and never passes `hostMode`, so a macro-built grammar is always `'ast'`. Adding
-`hostMode` to the macro plugin (and to `emitFusedSource`'s stamping, per gap 2 above)
-is the upstream prerequisite for the collapse. This gate is what makes its absence
-land as a build failure instead of as missing nodes.
+The macro plugin could not express that when this gate was written, and that is now
+fixed upstream in **parseman PR #85** (`feat/macro-host-mode`, 0.42.0), which was
+written off the back of this investigation. It adds `hostMode` to `RulesOptions` and
+threads it through all three lowering paths, so one grammar source compiles twice:
+
+```ts
+const factory = (g: any) => ({ /* … the whole grammar, once … */ })
+export const grammar    = rules({ trivia: rw }, factory)
+export const cstGrammar = rules({ trivia: rw, hostMode: 'cst' }, factory)
+```
+
+Each artifact is a separate top-level const, so the compiler bundle tree-shakes away
+the CST image and the language-service bundle tree-shakes away the AST one. It also
+closes both gaps above: `emitFusedSource` and `compileRuleMap` now stamp the map (and
+each rule function), and `run()` reaches the assertion.
+
+Verified end to end on this branch before that PR landed: with the local 0.42.0 build
+linked, `packages/css-parser/src/grammar.ts` declared `hostMode: 'cst'` reports
+`fusedHostMode: 'cst'` from the macro build, and the direct builder that vanished in
+the reproduction above is instead **built through the CST host and present in the
+tree**. All six jess suites stayed green on that build.
+
+None of that changes what jess ships today: the pin stays at 0.32.0 and this gate
+stays the guard. When the pin moves to 0.42.0+, the collapse can declare the two call
+sites — and this gate is still what forces that decision to be made deliberately,
+because it fails the moment a direct builder reaches a grammar that has not.
 
 ## On the parseman pin
 

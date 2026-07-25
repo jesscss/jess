@@ -217,7 +217,8 @@ function main() {
     + 'Fix: make the node STRUCTURAL — `node(combinator)`, no build callback — and let\n'
     + '`cssCstBuildHost` build it. If this grammar genuinely has to serve BOTH the eval-AST\n'
     + 'and the positioned-CST consumer, that needs two compilations of it\n'
-    + '(parseman `hostMode: \'cst\'`), which the macro plugin does not yet support.'
+    + '(parseman `hostMode: \'cst\'`), which needs the pin moved to parseman 0.42.0+ —\n'
+    + 'see docs/architecture/parser/CST-DIRECT-BUILDER-GATE.md.'
   );
   return 1;
 }
