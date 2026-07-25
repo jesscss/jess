@@ -1,130 +1,209 @@
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
-import { Dimension, Context, Quoted, Any } from '@jesscss/core';
-import { beforeAll, describe, it, expect } from 'vitest';
-import percentage from '../percentage.js';
-import unit from '../unit.js';
-import random from '../random.js';
+/**
+ * `sass:math` — the value-domain port (unit, percentage, random, min/max).
+ *
+ * Sourcing rule as in `math-functions.test.ts`: sass-spec
+ * `f282e3844db9889a0747b810898f67571272e8e5` first, cited by hrx file +
+ * section; dart-sass 1.101.0 only where the spec is silent, and marked as such.
+ *
+ * DELIBERATE DEPARTURE from the file this replaces: the old suite asserted
+ * `unit(10px, em)` → `10em` and `percentage(0.5px)` → `50%`-with-a-unit-message.
+ * Both were Less's semantics wearing a Sass name. dart-sass rejects the two-arg
+ * form outright (`unit.hrx` § `error/too_many_args`) and rejects any unit'd
+ * argument to `percentage` (`percentage.hrx` § `error/unit`).
+ */
+import type { MaybePromise } from '@jesscss/awaitable-pipe';
+import type { Dimension, ValueGroup } from '@jesscss/core/value';
+import { isValueGroupArray, makeDimension, makeKeyword, makeList } from '@jesscss/core/value';
+import { describe, it, expect } from 'vitest';
+import { unit } from '../math/unit.js';
+import { percentage } from '../math/percentage.js';
+import { random } from '../math/random.js';
+import { sassMinMax } from '../math/min-max.js';
+import { min, mathMin } from '../math/min.js';
+import { max, mathMax } from '../math/max.js';
 
-let context: Context;
+/** Narrow a synchronous fn result to a Dimension without a type assertion. */
+const dimensionOf = (value: MaybePromise<ValueGroup>): Dimension => {
+  if (value instanceof Promise || isValueGroupArray(value) || value.type !== 'Dimension') {
+    throw new TypeError('expected a Dimension result');
+  }
+  return value;
+};
 
-describe('Sass remaining math functions', () => {
-  beforeAll(() => {
-    context = new Context();
+const compound = (
+  number: number,
+  displayUnit: string,
+  numerator: readonly string[],
+  denominator: readonly string[]
+): Dimension => ({ ...makeDimension(number, displayUnit), numerator, denominator });
+
+describe('sass:math — unit', () => {
+  it('spec core_functions/math/unit.hrx § none', () => {
+    expect(unit(makeDimension(1))).toMatchObject({ type: 'Quoted', value: '', quote: '"' });
   });
 
-  describe('percentage()', () => {
-    it('converts unitless number to percentage', () => {
-      const number = new Dimension({ number: 0.5 });
-      const result = percentage(number);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(50);
-      expect((result as Dimension).unit).toBe('%');
-    });
-
-    it('converts 1 to 100%', () => {
-      const number = new Dimension({ number: 1 });
-      const result = percentage(number);
-      expect((result as Dimension).number).toBe(100);
-      expect((result as Dimension).unit).toBe('%');
-    });
-
-    it('converts 0 to 0%', () => {
-      const number = new Dimension({ number: 0 });
-      const result = percentage(number);
-      expect((result as Dimension).number).toBe(0);
-      expect((result as Dimension).unit).toBe('%');
-    });
-
-    it('throws error for number with unit', () => {
-      const number = new Dimension({ number: 0.5, unit: 'px' });
-      expect(() => percentage(number)).toThrow('Expected unitless number');
-    });
-
-    it('works with object parameters', () => {
-      const number = new Dimension({ number: 0.25 });
-      const result = percentage({ number });
-      expect((result as Dimension).number).toBe(25);
-      expect((result as Dimension).unit).toBe('%');
-    });
+  it('spec core_functions/math/unit.hrx § one_numerator', () => {
+    expect(unit(makeDimension(1, 'px'))).toMatchObject({ value: 'px' });
   });
 
-  describe('unit()', () => {
-    it('returns unit as quoted string', () => {
-      const number = new Dimension({ number: 10, unit: 'px' });
-      const result = unit(number);
-      expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).valueOf()).toBe('px');
-    });
-
-    it('returns empty string for unitless number', () => {
-      const number = new Dimension({ number: 10 });
-      const result = unit(number);
-      expect(result).toBeInstanceOf(Quoted);
-      expect((result as Quoted).valueOf()).toBe('');
-    });
-
-    it('changes unit when second argument provided', () => {
-      const number = new Dimension({ number: 10, unit: 'px' });
-      const newUnit = new Any('em', { role: 'keyword' });
-      const result = unit(number, newUnit);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(10);
-      expect((result as Dimension).unit).toBe('em');
-    });
-
-    it('preserves number when changing unit', () => {
-      const number = new Dimension({ number: 20, unit: 'px' });
-      const newUnit = new Any('rem', { role: 'keyword' });
-      const result = unit(number, newUnit);
-      expect((result as Dimension).number).toBe(20);
-      expect((result as Dimension).unit).toBe('rem');
-    });
-
-    it('works with object parameters', () => {
-      const number = new Dimension({ number: 10, unit: 'px' });
-      const result = unit({ number });
-      expect((result as Quoted).valueOf()).toBe('px');
-    });
+  it('spec core_functions/math/unit.hrx § multiple_numerators — 1px * 1em * 1rad', () => {
+    expect(unit(compound(1, 'px', ['px', 'em', 'rad'], []))).toMatchObject({ value: 'px*em*rad' });
   });
 
-  describe('random()', () => {
-    it('returns random number between 0 and 1 when no limit', () => {
-      const result = random();
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).unit).toBeUndefined();
-      const value = (result as Dimension).number;
-      expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThan(1);
-    });
+  it('spec core_functions/math/unit.hrx § one_denominator — 1/1px', () => {
+    expect(unit(compound(1, 'px', [], ['px']))).toMatchObject({ value: 'px^-1' });
+  });
 
-    it('returns random integer between 1 and limit (inclusive)', () => {
-      const limit = new Dimension({ number: 10 });
-      const result = random(limit);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).unit).toBeUndefined();
-      const value = (result as Dimension).number;
-      expect(value).toBeGreaterThanOrEqual(1);
-      expect(value).toBeLessThanOrEqual(10);
+  it('spec core_functions/math/unit.hrx § multiple_denominators — 1 / 1px / 3em / 4rad', () => {
+    expect(unit(compound(1, 'px', [], ['px', 'em', 'rad']))).toMatchObject({ value: '(px*em*rad)^-1' });
+  });
+
+  it('spec core_functions/math/unit.hrx § numerator_and_denominator/single — 1px / 1em', () => {
+    expect(unit(compound(1, 'px', ['px'], ['em']))).toMatchObject({ value: 'px/em' });
+  });
+
+  it('spec core_functions/math/unit.hrx § numerator_and_denominator/multiple — 1px * 1em / 1rad / 1s', () => {
+    expect(unit(compound(1, 'px', ['px', 'em'], ['rad', 's']))).toMatchObject({ value: 'px*em/(rad*s)' });
+  });
+
+  it('spec core_functions/global/math.hrx § unit — the global returns a QUOTED unit, not Less\'s bare number', () => {
+    expect(unit(makeDimension(5, 'px'))).toMatchObject({ type: 'Quoted', value: 'px' });
+  });
+
+  it('spec core_functions/math/unit.hrx § error/too_many_args — one argument only', () => {
+    expect(unit.params).toHaveLength(1);
+  });
+});
+
+describe('sass:math — percentage', () => {
+  it('spec core_functions/math/percentage.hrx § zero', () => {
+    expect(percentage(makeDimension(0))).toMatchObject({ type: 'Dimension', number: 0, unit: '%' });
+  });
+
+  it('spec core_functions/math/percentage.hrx § small', () => {
+    expect(percentage(makeDimension(0.246))).toMatchObject({ number: 24.6, unit: '%' });
+  });
+
+  it('spec core_functions/math/percentage.hrx § large', () => {
+    expect(percentage(makeDimension(123.456))).toMatchObject({ bytes: '12345.6%' });
+  });
+
+  it('spec core_functions/math/percentage.hrx § integer', () => {
+    expect(percentage(makeDimension(42))).toMatchObject({ number: 4200, unit: '%' });
+  });
+
+  it('spec core_functions/math/percentage.hrx § negative', () => {
+    expect(percentage(makeDimension(-0.4))).toMatchObject({ number: -40, unit: '%' });
+  });
+
+  it('spec core_functions/math/percentage.hrx § error/unit — rejects a unit, where Less returns 5000%', () => {
+    expect(() => percentage(makeDimension(1, '%'))).toThrow('$number: Expected 1% to have no units.');
+    expect(() => percentage(makeDimension(50, 'px'))).toThrow('$number: Expected 50px to have no units.');
+  });
+});
+
+describe('sass:math — random', () => {
+  it('spec core_functions/math/random.hrx § no_arg', () => {
+    const result = dimensionOf(random());
+    expect(result).toMatchObject({ type: 'Dimension', unit: '' });
+    expect(result.number).toBeGreaterThanOrEqual(0);
+    expect(result.number).toBeLessThan(1);
+  });
+
+  it('spec core_functions/math/random.hrx § null', () => {
+    expect(dimensionOf(random({ type: 'Nil', bytes: '' })).number).toBeLessThan(1);
+  });
+
+  it('spec core_functions/math/random.hrx § one', () => {
+    expect(random(makeDimension(1))).toMatchObject({ number: 1 });
+  });
+
+  it('spec core_functions/math/random.hrx § one_hundred', () => {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const value = dimensionOf(random(makeDimension(100))).number;
       expect(Number.isInteger(value)).toBe(true);
-    });
+      expect(value).toBeGreaterThan(0);
+      expect(value).toBeLessThanOrEqual(100);
+    }
+  });
 
-    it('returns 1 when limit is 1', () => {
-      const limit = new Dimension({ number: 1 });
-      const result = random(limit);
-      expect((result as Dimension).number).toBe(1);
-    });
+  it('spec core_functions/math/random.hrx § ignores_units', () => {
+    expect(random(makeDimension(1, 'px'))).toMatchObject({ number: 1, unit: '' });
+  });
 
-    it('throws error for limit less than 1', () => {
-      const limit = new Dimension({ number: 0 });
-      expect(() => random(limit)).toThrow('Must be greater than 0');
-    });
+  it('spec core_functions/math/random.hrx § within_precision — 1.0000000000001 is the integer 1', () => {
+    expect(random(makeDimension(1.0000000000001))).toMatchObject({ number: 1 });
+  });
 
-    it('works with object parameters', () => {
-      const limit = new Dimension({ number: 5 });
-      const result = random({ limit });
-      const value = (result as Dimension).number;
-      expect(value).toBeGreaterThanOrEqual(1);
-      expect(value).toBeLessThanOrEqual(5);
-    });
+  it('spec core_functions/math/random.hrx § error/decimal', () => {
+    expect(() => random(makeDimension(1.5))).toThrow('$limit: 1.5 is not an int.');
+  });
+
+  it('spec core_functions/math/random.hrx § error/zero and § error/negative', () => {
+    expect(() => random(makeDimension(0))).toThrow('$limit: Must be greater than 0, was 0.');
+    expect(() => random(makeDimension(-1))).toThrow('$limit: Must be greater than 0, was -1.');
+  });
+});
+
+describe('sass:math — min / max', () => {
+  const reduce = (isMin: boolean, strict: boolean, ...args: Dimension[]) =>
+    sassMinMax(isMin, makeList(args, ','), strict);
+
+  it('spec core_functions/math/{min,max}.hrx § three_args', () => {
+    expect(reduce(true, true, makeDimension(3), makeDimension(1), makeDimension(2))).toMatchObject({ number: 1 });
+    expect(reduce(false, true, makeDimension(3), makeDimension(1), makeDimension(2))).toMatchObject({ number: 3 });
+  });
+
+  it('spec core_functions/math/{min,max}.hrx § units/same', () => {
+    const args: Dimension[] = [makeDimension(6, 'px'), makeDimension(2, 'px'), makeDimension(10, 'px')];
+    expect(reduce(true, true, ...args)).toMatchObject({ number: 2, unit: 'px' });
+    expect(reduce(false, true, ...args)).toMatchObject({ number: 10, unit: 'px' });
+  });
+
+  it('spec core_functions/math/{min,max}.hrx § units/compatible — the winning ARGUMENT survives verbatim', () => {
+    const args: Dimension[] = [makeDimension(1, 'px'), makeDimension(1, 'in'), makeDimension(1, 'cm')];
+    expect(reduce(true, true, ...args)).toMatchObject({ number: 1, unit: 'px' });
+    expect(reduce(false, true, ...args)).toMatchObject({ number: 1, unit: 'in' });
+  });
+
+  it('spec core_functions/math/{min,max}.hrx § units/and_unitless — unitless compares against the DISPLAY number', () => {
+    expect(reduce(true, true, makeDimension(2, 'px'), makeDimension(1))).toMatchObject({ number: 1, unit: '' });
+    expect(reduce(false, true, makeDimension(2, 'px'), makeDimension(1))).toMatchObject({ number: 2, unit: 'px' });
+  });
+
+  it('dart-sass 1.101.0: min(3, 1cm) → 1cm and max(3, 1cm) → 3 (not canonicalised)', () => {
+    expect(reduce(true, false, makeDimension(3), makeDimension(1, 'cm'))).toMatchObject({ number: 1, unit: 'cm' });
+    expect(reduce(false, false, makeDimension(3), makeDimension(1, 'cm'))).toMatchObject({ number: 3, unit: '' });
+  });
+
+  it('spec core_functions/math/{min,max}.hrx § error/too_few_args vs the global form', () => {
+    expect(() => sassMinMax(true, [], true)).toThrow('At least one argument must be passed.');
+    expect(() => sassMinMax(true, [], false)).toThrow('Missing argument.');
+  });
+
+  it('spec core_functions/math/{min,max}.hrx § error/incompatible_units', () => {
+    expect(() => reduce(true, true, makeDimension(1, 'px'), makeDimension(2, 's')))
+      .toThrow('1px and 2s have incompatible units.');
+  });
+
+  it('spec core_functions/math/{min,max}.hrx § error/type', () => {
+    expect(() => sassMinMax(true, makeList([makeDimension(1), makeKeyword('c')], ','), true))
+      .toThrow('c is not a number.');
+  });
+
+  it('dart-sass 1.101.0: the GLOBAL form survives as plain CSS where the module form raises', () => {
+    expect(reduce(false, false, makeDimension(1, 'px'), makeDimension(2, 'em')))
+      .toMatchObject({ type: 'Keyword', text: 'max(1px, 2em)' });
+    expect(reduce(false, false, makeDimension(1, 'px'), makeDimension(1, '%')))
+      .toMatchObject({ type: 'Keyword', text: 'max(1px, 1%)' });
+    expect(sassMinMax(true, makeList([makeDimension(1, 'px'), makeKeyword('var(--x)')], ','), false))
+      .toMatchObject({ type: 'Keyword', text: 'min(1px, var(--x))' });
+  });
+
+  it('registers the module pair and the global pair under the same dispatch name', () => {
+    expect(min.name).toBe('min');
+    expect(mathMin.name).toBe('min');
+    expect(max.name).toBe('max');
+    expect(mathMax.name).toBe('max');
   });
 });

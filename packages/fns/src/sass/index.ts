@@ -25,15 +25,16 @@
 // Global Math Functions (Deprecated - use math.* module instead)
 export { abs, ceil, floor } from '../shared/index.js';
 export { round } from './math/round.js';
-// `min`/`max` await a Sass-owned implementation (Less errors on mixed units,
-// Sass emits plain CSS) — a dialect index never borrows the other dialect's body.
-export { default as unitless } from './unitless.js';
-export { default as compatible } from './compatible.js';
-export { default as percentage } from './percentage.js';
-export { default as unit } from './unit.js';
-export { default as random } from './random.js';
-// TODO: Implement remaining global math functions
-// - comparable() (alias for math.compatible) - use compatible
+// The GLOBAL `min`/`max` are Sass-owned: they reduce when they can and survive
+// as plain CSS otherwise, where Less raises. `math.min`/`math.max` (the strict
+// module pair) live in `./math/index.ts`.
+export { min } from './math/min.js';
+export { max } from './math/max.js';
+export { unitless } from './math/is-unitless.js';
+export { comparable } from './math/compatible.js';
+export { percentage } from './math/percentage.js';
+export { unit } from './math/unit.js';
+export { random } from './math/random.js';
 
 // Global Color Functions (Deprecated - use color.* module instead)
 export { red, green, blue, alpha } from '../shared/index.js';
@@ -62,6 +63,9 @@ export { default as opacity } from './opacity.js';
 // - adjust-color()
 // - scale-color()
 // - change-color()
+
+// Global Meta Functions (Deprecated - use meta.* module instead)
+export { typeOf } from './meta/type-of.js';
 
 // Global String Functions (Deprecated - use string.* module instead)
 export { default as unquote } from './unquote.js';

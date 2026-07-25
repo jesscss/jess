@@ -22,8 +22,8 @@ describe('per-dialect built-ins', () => {
 
     // Less `unit()` strips the unit.
     expect(String(less)).toContain('b: 10;');
-    // Sass has no converted `unit()` yet, so the call is not a Less answer.
-    expect(String(scss)).not.toContain('b: 10;');
+    // Sass `unit()` returns the unit as a quoted string.
+    expect(String(scss)).toContain('b: "px";');
   });
 
   it('keeps the two registries disjoint where the dialects disagree', () => {
@@ -31,26 +31,30 @@ describe('per-dialect built-ins', () => {
     const sassNames = new Set(sassFns.map(fn => fn.name));
 
     // Less-specific fns must not leak into Sass.
-    for (const lessOnly of ['lighten', 'darken', 'fadein', 'greyscale', 'argb', 'unit']) {
+    for (const lessOnly of ['lighten', 'darken', 'fadein', 'greyscale', 'argb']) {
       expect(sassNames.has(lessOnly)).toBe(false);
     }
     // Sass list fns must not leak into Less.
-    for (const sassOnly of ['nth', 'append', 'zip', 'is-bracketed']) {
+    for (const sassOnly of ['nth', 'append', 'zip', 'is-bracketed', 'comparable', 'type-of']) {
       expect(lessNames.has(sassOnly)).toBe(false);
     }
-    // `length` exists in both, from each dialect's own implementation.
-    expect(lessNames.has('length')).toBe(true);
-    expect(sassNames.has('length')).toBe(true);
-    expect(lessFns.find(fn => fn.name === 'length'))
-      .not.toBe(sassFns.find(fn => fn.name === 'length'));
+    // A name shared by both dialects resolves to each dialect's OWN body — never
+    // one shared entry. `unit` is the load-bearing case: Less strips the unit and
+    // returns a number, Sass returns the unit as a quoted string.
+    for (const shared of ['length', 'unit', 'percentage', 'min', 'max']) {
+      expect(lessNames.has(shared)).toBe(true);
+      expect(sassNames.has(shared)).toBe(true);
+      expect(lessFns.find(fn => fn.name === shared))
+        .not.toBe(sassFns.find(fn => fn.name === shared));
+    }
   });
 
   it('registers only what a dialect index exports', () => {
     // A legacy (unconverted) export is reachable as a module member but is not a
     // built-in. `each` is exported by `less/index.ts` and must stay unregistered.
     expect(lessFns.some(fn => fn.name === 'each')).toBe(false);
-    // Sass's unconverted globals likewise register nothing.
-    expect(sassFns.some(fn => fn.name === 'unit')).toBe(false);
+    // Sass's still-unconverted globals likewise register nothing.
     expect(sassFns.some(fn => fn.name === 'quote')).toBe(false);
+    expect(sassFns.some(fn => fn.name === 'unquote')).toBe(false);
   });
 });
