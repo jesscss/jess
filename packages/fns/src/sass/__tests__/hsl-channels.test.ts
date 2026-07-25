@@ -1,147 +1,65 @@
-import { Color, Context, Dimension } from '@jesscss/core';
-import { makeColorHsl, RGB } from '@jesscss/core/value';
-import { beforeAll, describe, it, expect } from 'vitest';
-import hue from '../hue.js';
-import saturation from '../saturation.js';
-import lightness from '../lightness.js';
+/**
+ * The CROSS-DIALECT claims about the hsl channel readers.
+ *
+ * Per-function behaviour is covered exhaustively by the sass-spec corpus
+ * (`color-sass-spec.test.ts`). What the corpus cannot state — because it only
+ * knows about Sass — is how each reader RELATES to its Less namesake, and that
+ * relation is the classification this port acts on. That is what this file pins.
+ */
+import { describe, expect, it } from 'vitest';
+import { makeColorHsl, makeList, HSL } from '@jesscss/core/value';
+import type { Dimension, Fn, FnCtx, ValueGroup, ValueObj } from '@jesscss/core/value';
+import { isValueGroupArray } from '@jesscss/core/value';
+import { hue } from '../color/hue.js';
+import { saturation } from '../color/saturation.js';
+import { lightness } from '../color/lightness.js';
+import { opacity } from '../color/opacity.js';
 import { hue as lessHue } from '../../less/hue.js';
 import { saturation as lessSaturation } from '../../less/saturation.js';
 import { lightness as lessLightness } from '../../less/lightness.js';
 
-let context: Context;
+const ctx: FnCtx = {
+  modes: { unitMode: 'preserve' },
+  stringify: v => (isValueGroupArray(v) ? '' : v.bytes)
+};
 
-function isDimensionValue(value: unknown): value is Dimension {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Dimension';
-}
-
-function expectDimension(value: unknown): Dimension {
-  if (!isDimensionValue(value)) {
+function call(fn: Fn, ...args: ValueObj[]): Dimension {
+  const result = fn(makeList(args as readonly ValueGroup[], ','), ctx);
+  if (result instanceof Promise || isValueGroupArray(result) || result.type !== 'Dimension') {
     throw new TypeError('Expected a Dimension result.');
   }
-  return value;
+  return result;
 }
 
-describe('Sass HSL channel functions', () => {
-  beforeAll(() => {
-    context = new Context();
+const green = makeColorHsl([120, 0.5, 0.5], 1, HSL);
+const translucent = makeColorHsl([120, 0.5, 0.5], 0.4, HSL);
+
+describe('sass:color hsl channel readers vs Less', () => {
+  it('hue() DIVERGES from Less: Sass returns degrees, Less a unitless number', () => {
+    expect(call(hue, green)).toMatchObject({ number: 120, unit: 'deg' });
+    expect(call(lessHue, green)).toMatchObject({ number: 120, unit: '' });
+    expect(hue).not.toBe(lessHue);
   });
 
-  describe('hue()', () => {
-    it('extracts hue from HSL color and returns Dimension with deg unit', () => {
-      const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] });
-      const result = hue(color);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(120);
-      expect((result as Dimension).unit).toBe('deg');
-    });
-
-    it('extracts hue from RGB color (converts to HSL)', () => {
-      const color = new Color('#ff0000');
-      const result = hue(color);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).unit).toBe('deg');
-      const hueValue = (result as Dimension).number;
-      expect(hueValue).toBeGreaterThanOrEqual(0);
-      expect(hueValue).toBeLessThan(360);
-    });
-
-    it('works with object parameters', () => {
-      const color = new Color({ format: 2, hsl: [180, 0.5, 0.5] });
-      const result = hue({ color });
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(180);
-      expect((result as Dimension).unit).toBe('deg');
-    });
-
-    it('differs from Less: Sass returns deg while Less returns unitless number', () => {
-      const color = new Color({ format: 2, hsl: [210, 0.5, 0.5] });
-      const sassResult = hue(color) as Dimension;
-      const lessResult = lessHue(makeColorHsl([210, 0.5, 0.5], 1, RGB));
-
-      expect(sassResult.number).toBe(210);
-      expect(sassResult.unit).toBe('deg');
-      expect(lessResult.type).toBe('Dimension');
-      expect(lessResult.number).toBe(210);
-      expect(lessResult.unit).toBe('');
-    });
+  it('saturation()/lightness() agree with Less numerically but stay dialect-owned', () => {
+    expect(call(saturation, green)).toMatchObject({ number: 50, unit: '%' });
+    expect(call(lessSaturation, green)).toMatchObject({ number: 50, unit: '%' });
+    expect(call(lightness, green)).toMatchObject({ number: 50, unit: '%' });
+    expect(call(lessLightness, green)).toMatchObject({ number: 50, unit: '%' });
+    // Sass's are `color.saturation`/`color.lightness`, which carry a `$space`
+    // parameter Less has no concept of, so they remain separate bodies even
+    // while today's numbers coincide.
+    expect(saturation).not.toBe(lessSaturation);
+    expect(lightness).not.toBe(lessLightness);
   });
 
-  describe('saturation()', () => {
-    it('extracts saturation from HSL color and returns Dimension with % unit', () => {
-      const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] });
-      const result = saturation(color);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(50);
-      expect((result as Dimension).unit).toBe('%');
-    });
-
-    it('extracts saturation from RGB color (converts to HSL)', () => {
-      const color = new Color('#ff0000');
-      const result = saturation(color);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).unit).toBe('%');
-      expect((result as Dimension).number).toBeGreaterThanOrEqual(0);
-      expect((result as Dimension).number).toBeLessThanOrEqual(100);
-    });
-
-    it('works with object parameters', () => {
-      const color = new Color({ format: 2, hsl: [120, 0.75, 0.5] });
-      const result = saturation({ color });
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(75);
-      expect((result as Dimension).unit).toBe('%');
-    });
-
-    it('matches Less behavior for value and percent unit', () => {
-      const color = new Color({ format: 2, hsl: [120, 0.25, 0.5] });
-      const sassResult = saturation(color) as Dimension;
-      const lessResult = expectDimension(lessSaturation(makeColorHsl([120, 0.25, 0.5], 1, RGB)));
-
-      expect(sassResult.number).toBe(25);
-      expect(sassResult.unit).toBe('%');
-      expect(lessResult.number).toBe(25);
-      expect(lessResult.unit).toBe('%');
-    });
+  it('opacity() reads the alpha channel', () => {
+    expect(call(opacity, translucent)).toMatchObject({ number: 0.4, unit: '' });
+    expect(call(opacity, green)).toMatchObject({ number: 1, unit: '' });
   });
 
-  describe('lightness()', () => {
-    it('extracts lightness from HSL color and returns Dimension with % unit', () => {
-      const color = new Color({ format: 2, hsl: [120, 0.5, 0.5] });
-      const result = lightness(color);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(50);
-      expect((result as Dimension).unit).toBe('%');
-    });
-
-    it('extracts lightness from RGB color (converts to HSL)', () => {
-      const color = new Color('#ff0000');
-      const result = lightness(color);
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).unit).toBe('%');
-      expect((result as Dimension).number).toBeGreaterThanOrEqual(0);
-      expect((result as Dimension).number).toBeLessThanOrEqual(100);
-    });
-
-    it('works with object parameters', () => {
-      const color = new Color({ format: 2, hsl: [120, 0.5, 0.25] });
-      const result = lightness({ color });
-      expect(result).toBeInstanceOf(Dimension);
-      expect((result as Dimension).number).toBe(25);
-      expect((result as Dimension).unit).toBe('%');
-    });
-
-    it('matches Less behavior for value and percent unit', () => {
-      const color = new Color({ format: 2, hsl: [120, 0.5, 0.3] });
-      const sassResult = lightness(color) as Dimension;
-      const lessResult = expectDimension(lessLightness(makeColorHsl([120, 0.5, 0.3], 1, RGB)));
-
-      expect(sassResult.number).toBe(30);
-      expect(sassResult.unit).toBe('%');
-      expect(lessResult.number).toBe(30);
-      expect(lessResult.unit).toBe('%');
-    });
+  it('every reader carries its SASS dispatch name', () => {
+    expect([hue.name, saturation.name, lightness.name, opacity.name])
+      .toEqual(['hue', 'saturation', 'lightness', 'opacity']);
   });
 });

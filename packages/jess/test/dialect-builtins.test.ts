@@ -30,19 +30,26 @@ describe('per-dialect built-ins', () => {
     const lessNames = new Set(lessFns.map(fn => fn.name));
     const sassNames = new Set(sassFns.map(fn => fn.name));
 
-    // Less-specific fns must not leak into Sass.
-    for (const lessOnly of ['lighten', 'darken', 'fadein', 'greyscale', 'argb', 'unit']) {
+    // Names that exist ONLY in Less must not appear in Sass at all. `fadein`/
+    // `greyscale`/`argb` are the Less spellings of functions Sass calls
+    // `fade-in`/`grayscale`/`ie-hex-str`; a Sass registry carrying the Less
+    // spelling would mean a body was re-exported instead of written.
+    for (const lessOnly of ['fadein', 'fadeout', 'greyscale', 'spin', 'argb', 'fade', 'tint', 'shade', 'unit']) {
       expect(sassNames.has(lessOnly)).toBe(false);
     }
     // Sass list fns must not leak into Less.
     for (const sassOnly of ['nth', 'append', 'zip', 'is-bracketed']) {
       expect(lessNames.has(sassOnly)).toBe(false);
     }
-    // `length` exists in both, from each dialect's own implementation.
-    expect(lessNames.has('length')).toBe(true);
-    expect(sassNames.has('length')).toBe(true);
-    expect(lessFns.find(fn => fn.name === 'length'))
-      .not.toBe(sassFns.find(fn => fn.name === 'length'));
+    // Names both dialects define resolve to each dialect's OWN callable — never
+    // one shared object. `length` diverges on arity; the colour pairs diverge on
+    // argument scale, clamping and result format.
+    for (const shared of ['length', 'lighten', 'darken', 'saturate', 'desaturate', 'mix', 'hue', 'rgb', 'hsl']) {
+      expect(lessNames.has(shared)).toBe(true);
+      expect(sassNames.has(shared)).toBe(true);
+      expect(lessFns.find(fn => fn.name === shared))
+        .not.toBe(sassFns.find(fn => fn.name === shared));
+    }
   });
 
   it('registers only what a dialect index exports', () => {
