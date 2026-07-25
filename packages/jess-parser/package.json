@@ -4,6 +4,9 @@
     "access": "public"
   },
   "version": "2.0.0-alpha.5",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "description": "Jess parser with direct canonical AST parsing and an explicit language-service CST entry",
   "main": "lib/index.cjs",
   "types": "lib/index.d.ts",
