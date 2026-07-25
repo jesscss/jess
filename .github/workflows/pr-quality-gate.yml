@@ -70,6 +70,13 @@ jobs:
       - name: Compose-integrity check
         run: node scripts/verify-compose-integrity.mjs --log build.log
 
+      # Macro-buildability: compose degrade is only half the concern. A single
+      # rule can stop lowering to inline JS while the grammar still composes
+      # cleanly — visible only as `_rp[N].parse(` in the built bundle. Scans the
+      # artifacts the step above already built (--no-build: no second rebuild).
+      - name: Macro-buildability check
+        run: node scripts/check-macro-buildable.mjs --no-build
+
       - name: Lint (pnpm lint)
         run: pnpm run lint
 

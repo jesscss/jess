@@ -15,6 +15,8 @@
  *      Build output is captured to a log for the compose-integrity gate.
  *   3. Compose-integrity: fail if any grammar silently fell back to the runtime
  *      interpreter (parseman compose() degrade).
+ *   3b. Macro-buildability: fail if any single rule stopped lowering to inline JS
+ *      (`_rp[N].parse(` in the built bundle). Reuses step 2's artifacts.
  *   4. pnpm lint + pnpm ci (per-package build+test, incl. all parser & core suites).
  *   5. The six structural/perf gates + node-creation audit.
  */
@@ -82,6 +84,14 @@ writeFileSync(buildLogPath, buildOutput);
 // 3. Compose-integrity against the captured build output.
 heading('Compose-integrity');
 run('node', ['scripts/verify-compose-integrity.mjs', '--log', buildLogPath]);
+
+// 3b. Macro-buildability against the artifacts step 2 just produced. Compose
+//     degrade is only half the concern: a single rule can stop lowering while
+//     the grammar as a whole still composes, and that shows up ONLY as
+//     `_rp[N].parse(` in the built bundle. `--no-build` so this reads step 2's
+//     output instead of paying for a second clean rebuild.
+heading('Macro-buildability');
+run('node', ['scripts/check-macro-buildable.mjs', '--no-build']);
 
 // 4. Lint + full CI (per-package build+test, includes all parser and core suites).
 heading('Lint');

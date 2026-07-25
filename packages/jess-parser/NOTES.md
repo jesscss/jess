@@ -312,10 +312,17 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - parseman is the LOCAL `~/git/oss/parser-thing` **0.15.0**, linked via root
   `pnpm.overrides` + a root devDep (npm's 0.14.0 is NOT used). `pnpm install` to
   apply; rebuild its dist (`cd ~/git/oss/parser-thing && pnpm build`) after editing.
-- **Build guard**: `pnpm check:macro` (`scripts/check-macro-buildable.mjs`, wired
-  into `ci`) builds all four parsers in dep order and FAILS if any emits an
+- **Build guard**: `pnpm check:macro` (`scripts/check-macro-buildable.mjs`) builds
+  the five parseman-macro packages in dep order and FAILS if any emits an
   interpreter fallback (`_rp[N].parse` in the built bundle) or a compose/rules
-  parseman warning. All four currently: 0 fallbacks.
+  parseman warning. All five currently: 0 fallbacks. It scans every emitted ESM
+  module under each `lib/` — never a fixed entry list, which is what broke it when
+  `lib/jess.js` went away with the core-free CST entries.
+- Wired into `verify:pr` and `.github/workflows/pr-quality-gate.yml`, both with
+  `--no-build`, so it reads the artifacts the clean serial build already produced
+  rather than paying for a second rebuild. `verify-compose-integrity.mjs --log`
+  owns the compose-degrade half in those paths; standalone `pnpm check:macro`
+  builds and checks both halves itself.
 - **"lower" vs `RegExp.exec`**: a regex *lowers* when it compiles to a tight
   `charCodeAt` scan; otherwise it falls back to `RegExp.exec` (still compiled — an
   accepted path, NOT a failure). parseman now warns (default on) on every
