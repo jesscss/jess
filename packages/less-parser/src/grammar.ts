@@ -7,7 +7,7 @@
 import {
   rules, compose,
   node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, parser, trivia, noTrivia, expect, sepBy, label
+  not, scanTo, balanced, parser, trivia, noTrivia, expect, sepBy, label, word, keywords
 } from 'parseman' with { type: 'macro' };
 import { cssGrammar } from '@jesscss/css-parser/grammar';
 
@@ -28,6 +28,12 @@ const ws = regex(/[ \t\n\r\f]+/);
 const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
 const lineComment = regex(/\/\/[^\n\r]*/);
 const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
+// The `word()` / `keywords()` trailing boundary is spelled `'-_0-9A-Za-z'` at
+// every call site rather than hoisted to a shared const: a module-level const
+// read from inside the `rules()` closure makes the map un-resolvable at build
+// time and `compose()` falls back to the runtime interpreter (measured — it also
+// changes the emitted CST, see the grammar-cleanup notes). Literal duplication
+// is the correct answer here.
 
 export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) => {
   // ---------------------------------------------------------------------------
@@ -342,7 +348,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // bare comparison (`left <op> right`) / value.
   const GuardTerm = node(
     sequence(
-      optional(regex(/not(?![-\w])/)),
+      optional(word('not', '-_0-9A-Za-z')),
       choice(
         g.GuardInParens,
         sequence(guardOperand, optional(sequence(compareOp, guardOperand)))
@@ -350,12 +356,12 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
     ));
   // 'and' chain of terms (left-associative).
   const GuardAnd = node(
-    sequence(g.GuardTerm, many(sequence(regex(/and(?![-\w])/), g.GuardTerm))));
+    sequence(g.GuardTerm, many(sequence(word('and', '-_0-9A-Za-z'), g.GuardTerm))));
   // 'or' / ',' chain of and-expressions (left-associative).
   const GuardOr = node(
-    sequence(g.GuardAnd, many(sequence(choice(regex(/or(?![-\w])/), literal(',')), g.GuardAnd))));
+    sequence(g.GuardAnd, many(sequence(choice(word('or', '-_0-9A-Za-z'), literal(',')), g.GuardAnd))));
   const Guard = node(
-    sequence(regex(/when(?![-\w])/), g.GuardOr));
+    sequence(word('when', '-_0-9A-Za-z'), g.GuardOr));
 
   // ── Less ampersand / interpolated / extend ──────────────────────────────────
   // `&` (the parent reference) optionally glued to a SUFFIX (`&1`, `&-bar`), which
@@ -390,7 +396,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // guard body (`(…)`, `not (…)`, `default()`, `and`/`or` chains) is then parsed
   // by the atomic Guard rule — so the boundary must be just `when`, NOT `when (`
   // (which missed `when not (…)`, `when default()`, …).
-  const whenAhead = regex(/when(?![-\w])/i);
+  const whenAhead = keywords(['when'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
   // `:extend(` lookahead — keeps the generic PseudoSelector from claiming extend
   // (extend goes through ExtendPseudo) and lets the compound run stop before it.
   const extendAhead = regex(/::?extend[ \t\n\r\f]*\(/);
@@ -516,6 +522,11 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // makes comments ineligible; the explicit whitespace is deliberately limited
   // to whitespace, and the terminal guard rejects every trailing value syntax.
   // This is an experimental Jess-native family, not a general raw-value grammar.
+  // "the value ends here": the next character must be whitespace, `;`, `}` or
+  // end-of-input. A TRAILING negative assertion is the documented shape for a
+  // boundary (a LEADING `not()` is the anti-pattern — it widens the arm's
+  // first-set to `any` and drops the enclosing choice off first-char dispatch).
+  const atValueEnd = not(regex(/[^\s;}]/));
   const deferredNumericScalar = regex(/\d+(?:[a-zA-Z]+|%)?/);
   const DeferredScalarDeclaration = node('Declaration',
     noTrivia(sequence(
@@ -525,7 +536,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
       optional(ws),
       deferredNumericScalar,
       optional(ws),
-      not(regex(/[^\s;}]/)),
+      atValueEnd,
       optional(literal(';'))
     ))
   );
@@ -536,7 +547,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Kept as a composition seam for SCSS's custom-property override. Less no
   // longer selects this permissive value rule; its own CustomDeclaration uses
   // only the interpolation-only `cpValue` fallback below.
-  const customValue = sequence(g.valueList, not(regex(/[^\s;}]/)));
+  const customValue = sequence(g.valueList, atValueEnd);
   // Opportunistic structuring for a `{ … }` custom-property value: try it as a
   // real declaration body (so a `--foo: { color: @a; }` map-style block still
   // structures), tolerant of anything that isn't CSS-shaped. No `expect()` on the
@@ -697,7 +708,31 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const escapedParen = node('Paren', sequence(literal('('), g.permissiveParenBody));
   const EscapedValue = node(
     sequence(literal('~'), choice(escapedParen, g.Quoted)));
-  const NamedColor = node(regex(/(?:lightgoldenrodyellow|mediumspringgreen|mediumaquamarine|mediumslateblue|mediumturquoise|mediumvioletred|blanchedalmond|cornflowerblue|darkolivegreen|lightslategray|lightslategrey|lightsteelblue|mediumseagreen|darkgoldenrod|darkslateblue|darkslategray|darkslategrey|darkturquoise|lavenderblush|lightseagreen|palegoldenrod|paleturquoise|palevioletred|rebeccapurple|antiquewhite|currentcolor|darkseagreen|lemonchiffon|lightskyblue|mediumorchid|mediumpurple|midnightblue|darkmagenta|deepskyblue|floralwhite|forestgreen|greenyellow|lightsalmon|lightyellow|navajowhite|saddlebrown|springgreen|transparent|yellowgreen|aquamarine|blueviolet|chartreuse|darkorange|darkorchid|darksalmon|darkviolet|dodgerblue|ghostwhite|lightcoral|lightgreen|mediumblue|papayawhip|powderblue|sandybrown|whitesmoke|aliceblue|burlywood|cadetblue|chocolate|darkgreen|darkkhaki|firebrick|gainsboro|goldenrod|indianred|lawngreen|lightblue|lightcyan|lightgray|lightgrey|lightpink|limegreen|mintcream|mistyrose|olivedrab|orangered|palegreen|peachpuff|rosybrown|royalblue|slateblue|slategray|slategrey|steelblue|turquoise|cornsilk|darkblue|darkcyan|darkgray|darkgrey|deeppink|honeydew|lavender|moccasin|seagreen|seashell|crimson|darkred|dimgray|dimgrey|fuchsia|hotpink|magenta|oldlace|skyblue|thistle|bisque|indigo|maroon|orange|orchid|purple|salmon|sienna|silver|tomato|violet|yellow|azure|beige|black|brown|coral|green|ivory|khaki|linen|olive|wheat|white|aqua|blue|cyan|gold|gray|grey|lime|navy|peru|pink|plum|snow|teal|red|tan)(?![-_a-zA-Z0-9(])/i));
+  const NamedColor = node(keywords([
+    'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
+    'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
+    'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson', 'currentcolor', 'cyan',
+    'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki',
+    'darkmagenta', 'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon',
+    'darkseagreen', 'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise',
+    'darkviolet', 'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue', 'firebrick',
+    'floralwhite', 'forestgreen', 'fuchsia', 'gainsboro', 'ghostwhite', 'gold', 'goldenrod',
+    'gray', 'green', 'greenyellow', 'grey', 'honeydew', 'hotpink', 'indianred', 'indigo',
+    'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue',
+    'lightcoral', 'lightcyan', 'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey',
+    'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray',
+    'lightslategrey', 'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen', 'magenta',
+    'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid', 'mediumpurple',
+    'mediumseagreen', 'mediumslateblue', 'mediumspringgreen', 'mediumturquoise',
+    'mediumvioletred', 'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowhite',
+    'navy', 'oldlace', 'olive', 'olivedrab', 'orange', 'orangered', 'orchid', 'palegoldenrod',
+    'palegreen', 'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'pink',
+    'plum', 'powderblue', 'purple', 'rebeccapurple', 'red', 'rosybrown', 'royalblue',
+    'saddlebrown', 'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna', 'silver',
+    'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow', 'springgreen', 'steelblue',
+    'tan', 'teal', 'thistle', 'tomato', 'transparent', 'turquoise', 'violet', 'wheat', 'white',
+    'whitesmoke', 'yellow', 'yellowgreen'
+  ], { caseInsensitive: true, boundary: '-_a-zA-Z0-9(' }));
   // `Dimension` / `Num` / the unified `numeric` leaf are inherited verbatim from
   // the shared CSS grammar (number + optional unit, contiguous via noTrivia).
   // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
@@ -760,7 +795,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // combinator consumes the whole expression (so `@a * 2` is never truncated at
   // `@a`). A bare `@a` is a Reference (the CALL shape); the mixin-DEFINITION builder
   // reinterprets a lone `@name` as a param.
-  const argRest = node('Rest', choice(sequence(lessVar, literal('...')), literal('...')));
+  // A variadic argument: `@rest...` or a bare `...`.
+  const argRest = node('Rest', sequence(optional(lessVar), literal('...')));
   const argNamedSeq = node('NamedArg', sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence)));
   // ── Name-independent condition arguments ─────────────────────────────────────
   // A top-level condition operator (`> < >= <= = and or not`) inside ANY call's
@@ -776,12 +812,15 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // matches NONE and falls through to the unchanged `valueSequence` below — the
   // pre-existing arg is byte-identical, and mixin-DEFINITION params (never a top-level
   // condition) are unaffected.
-  const notKw = regex(/not(?![-\w])/i);
-  const andKw = regex(/and(?![-\w])/i);
-  const orKw = regex(/or(?![-\w])/i);
+  const notKw = keywords(['not'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
+  const andKw = keywords(['and'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
+  const orKw = keywords(['or'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
   // A standalone top-level condition operator — used as a negative lookahead so the
   // bounded value operand stops before it instead of eating it as a keyword/anyValue.
-  const condStopAhead = regex(/(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-\w]))/i);
+  // Assembled from the existing operator terminals rather than re-spelling the
+  // comparison alternation a third time — it is only ever consumed inside
+  // `not(...)`, so the extra frames are rolled back and contribute no child.
+  const condStopAhead = choice(compareOp, andKw, orKw);
   // A bounded value/space-list operand: a `valueSequence` that stops at a top-level
   // condition operator (so `@a > 5 and @b` splits into operands, not one space-list).
   const condOperand = oneOrMore(sequence(not(condStopAhead), g.topSum));
@@ -846,7 +885,11 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // is a positive lookahead: it rolls back all scan side effects, consumes zero and —
   // unlike a bare `regex()` lookahead — pushes NO CST child, so placed as the first
   // element of the node's sequence it leaves `CondArgOr`'s built children unchanged.
-  const condOpAhead = regex(/>=|<=|=>|=<|=~|[<>=]|(?<![-\w])(?:and|or|not)(?![-\w])/i);
+  // The keyword arm keeps its own regex: unlike `andKw`/`orKw`/`notKw` this one
+  // is a `scanTo` sentinel, so it lands at arbitrary offsets and needs the
+  // LEADING `(?<![-\w])` boundary those token-position terminals do not carry.
+  // The comparison half reuses `compareOp` instead of a fourth copy.
+  const condOpAhead = choice(compareOp, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
   const condOrArgEnd = choice(condOpAhead, regex(/[,;)]/));
   const argHasCondAhead = not(not(sequence(
     scanTo(condOrArgEnd, { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }),
@@ -962,7 +1005,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // builder pulls the callback (a Mixin) out of the parsed args.
   const EachFor = node('For',
     sequence(
-      regex(/each(?![-\w])/i), literal('('), functionCallArgs, optional(literal(';'))
+      keywords(['each'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' }), literal('('), functionCallArgs, optional(literal(';'))
     ));
 
   // ── Logical / conditional functions (Less) ──────────────────────────────────
@@ -1072,9 +1115,9 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const containerName = mediaType;
   // `[ not | only ]? <media-type> [ and <media-in-parens> ]*`.
   const mediaTypeQuery = sequence(
-    optional(regex(/(?:not|only)(?![-\w])/i)),
+    optional(keywords(['not', 'only'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' })),
     mediaType,
-    many(sequence(regex(/and(?![-\w])/i), g.QueryInParens)));
+    many(sequence(keywords(['and'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' }), g.QueryInParens)));
   const mediaQueryItem = choice(g.QueryCondition, mediaTypeQuery);
   // Import postludes use the same media-query item grammar, but may be a bare
   // media type (`screen`), so they cannot reuse `queryPrelude` directly.
@@ -1086,7 +1129,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // swallowed). Its stricter opener rule is enforced by the dedicated
   // `SupportsAtRuleBlock` fallback below, which catches the leftovers this
   // structured shape can't parse.
-  const queryAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+  const queryAtKeyword = keywords(['@media', '@container', '@supports'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
   const QueryAtRuleBlock = node(
     sequence(queryAtKeyword, g.queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
 
@@ -1111,7 +1154,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Ordered AFTER `QueryAtRuleBlock` and BEFORE the generic `AtRuleBlock` in the
   // statement choice, so `@supports` never falls through to the permissive arm.
   // @see https://www.w3.org/TR/css-conditional-3/#at-supports
-  const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+  const supportsAtKeyword = keywords(['@supports'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
   const supportsCondAhead = regex(/(?=\(|not(?![-\w])|@\{|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
   // After the committed opener lookahead, the condition uses the SAME leaf-split
   // prelude as the generic `atPrelude` (`preludeTokenTop`): `(…)`/`not`/function-token
@@ -1143,8 +1186,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Quoted/Url), so the committed `expect(choice(Quoted, Url))` fails → 1 error.
   // Ordered before the generic AtRuleStatement. Every semantic part stays a
   // grammar child: no builder re-scans an opaque prelude.
-  const importKeyword = regex(/@(?:-import|-export|import)(?![-\w])/i);
-  const ImportOption = node('ImportOption', regex(/(?:reference|optional|once|multiple|inline|css|less)(?![-\w])/i));
+  const importKeyword = keywords(['@import', '@-import', '@-export'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
+  const ImportOption = node('ImportOption', keywords(['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' }));
   const ImportOptions = node('ImportOptions',
     sequence(literal('('), sepBy(g.ImportOption, literal(',')), literal(')')));
   const ImportTarget = node('ImportTarget', choice(g.Url, g.Quoted));

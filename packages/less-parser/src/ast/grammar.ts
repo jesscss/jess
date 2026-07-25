@@ -236,6 +236,7 @@ type SharedCssAstSyntax = {
   CssAstSyntaxNth: Combinator<unknown>;
   CssAstSyntaxNthChildName: Combinator<string>;
   CssAstSyntaxNthTypeName: Combinator<string>;
+  CssAstSyntaxNthName: Combinator<string>;
   CssAstSyntaxOfKeyword: Combinator<string>;
   CssAstSyntaxNumber: Combinator<string>;
   CssAstSyntaxDimensionUnit: Combinator<string>;
@@ -1491,14 +1492,6 @@ const directFunctionConditionOr = regex(/[ \t\n\r\f]*or(?![-\w])[ \t\n\r\f]*/i);
 const directFunctionConditionNot = regex(/not(?![-\w])/i);
 const directFunctionConditionAhead = regex(/>=|<=|=>|=<|=~|[<>=]|(?<![-\w])(?:and|or|not)(?![-\w])/i);
 const directStaticSelectorPseudoName = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
-// Identifier-boundary exclusion for the generic non-selector pseudo arm. Unlike
-// the shared `(?=\()`-anchored `CssAstSyntaxNthChildName`/`CssAstSyntaxNthTypeName`
-// (which recognize an nth NAME only when it introduces its argument list), this
-// rejects an nth name at the identifier boundary regardless of a following `(`,
-// so a bare `:nth-child` / `:nth-of-type` (or a space before the paren) cannot be
-// reclassified as a plain non-selector pseudo — it must reach the structured nth
-// productions with an immediate `(` or be rejected.
-const directStaticNthPseudoNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9-￿])/i);
 // A non-selector functional pseudo is still one canonical SimpleSelector leaf.
 // A pseudo body cannot quietly turn a Less variable read into static bytes.
 // Keep only `@` that cannot start `@{...}`, `@@name`, or `@name`; nested
@@ -4119,7 +4112,7 @@ export const lessAstGrammar = composeLeaf([cssAstSyntax, lessAstSyntax, cssAstPs
       'DirectLessStaticNonSelectorPseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
         regex(/::?/),
-        not(choice(DirectLessExtendPseudoOpen, directStaticSelectorPseudoName, directStaticNthPseudoNameBoundary)),
+        not(choice(DirectLessExtendPseudoOpen, directStaticSelectorPseudoName, g.CssAstSyntaxNthName)),
         g.LessAstSyntaxIdentifier,
         optional(sequence(literal('('), g.DirectLessStaticNonSelectorPseudoArgument, literal(')'))),
         // If a functional argument did not parse, do not fall back to a bare
