@@ -1,11 +1,11 @@
 import { defineFunction } from '@jesscss/core/value';
-import { cssMinMax } from './min-max.js';
+import { minMax } from './min-max.js';
 
-/** The CSS `min()` — identical in every dialect. See `min-max.ts`. */
+/** Less `min()` — reference-unit coercion, canonical comparison. */
 const min = defineFunction('min', {
   params: [{ kinds: ['Dimension'] }],
   variadic: true,
-  body: list => cssMinMax(true, list, false)
+  body: list => minMax(true, list)
 });
 
 export { min };

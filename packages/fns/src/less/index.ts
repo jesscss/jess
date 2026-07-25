@@ -18,7 +18,7 @@
  */
 
 /** Math — shared with Sass (identical behaviour). */
-export { abs, ceil, floor, min, max } from '../shared/index.js';
+export { abs, ceil, floor } from '../shared/index.js';
 
 /** Math — Less-specific. */
 export { round } from './round.js';
@@ -39,10 +39,12 @@ export { asin } from './asin.js';
 export { acos } from './acos.js';
 export { atan } from './atan.js';
 
-/** Lists. */
+/** Lists. `min`/`max` are Less-specific (Sass compares display numbers). */
 export { range } from './range.js';
 export { default as length } from './length.js';
 export { default as extract } from './extract.js';
+export { min } from './min.js';
+export { max } from './max.js';
 
 /** Colour — channel getters shared with Sass (identical behaviour). */
 export { red, green, blue, alpha } from '../shared/index.js';

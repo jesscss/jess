@@ -1,16 +1,19 @@
 import { defineFunction } from '@jesscss/core/value';
-import { cssMinMax } from '../../shared/math/min-max.js';
+import { sassMinMax } from './min-max.js';
 
-/**
- * `math.min()` — the MODULE form. Same reduction as the CSS `min()` (which
- * lives in `shared/math/`), but explicitly namespaced, so it is unambiguously
- * not a CSS function and must raise rather than be preserved.
- */
+/** The global Sass `min()` — a bare call, preserved by the engine when it fails. */
+const min = defineFunction('min', {
+  params: [{ kinds: ['Dimension'] }],
+  variadic: true,
+  body: list => sassMinMax(true, list, false)
+});
+
+/** `math.min()` — the MODULE form; explicitly namespaced, so failure reaches the user. */
 const mathMin = defineFunction('min', {
   params: [{ kinds: ['Dimension'] }],
   variadic: true,
-  body: list => cssMinMax(true, list, true)
+  body: list => sassMinMax(true, list, true)
 });
 
-export { mathMin };
-export default mathMin;
+export { min, mathMin };
+export default min;

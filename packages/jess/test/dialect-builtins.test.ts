@@ -48,15 +48,15 @@ describe('per-dialect built-ins', () => {
         .not.toBe(sassFns.find(fn => fn.name === divergent));
     }
 
-    // `min`/`max` are the opposite case and must stay that way: they are the CSS
-    // Values 4 math functions, so both dialects resolve to the SAME shared fn
-    // instance. A per-dialect re-implementation of a CSS function is the
-    // anti-pattern this whole layout exists to prevent.
-    for (const css of ['min', 'max']) {
-      expect(lessNames.has(css)).toBe(true);
-      expect(sassNames.has(css)).toBe(true);
-      expect(lessFns.find(fn => fn.name === css))
-        .toBe(sassFns.find(fn => fn.name === css));
+    // `min`/`max` are divergent too, and subtly so — the dialects agree on most
+    // inputs. Less coerces a unitless argument into the reference unit and
+    // compares canonically; Sass compares display numbers. `max(1px, 1in, 2)`
+    // is `1in` in Less and `2` in Sass (see `min-max-dialect.test.ts`).
+    for (const divergent of ['min', 'max']) {
+      expect(lessNames.has(divergent)).toBe(true);
+      expect(sassNames.has(divergent)).toBe(true);
+      expect(lessFns.find(fn => fn.name === divergent))
+        .not.toBe(sassFns.find(fn => fn.name === divergent));
     }
   });
 
