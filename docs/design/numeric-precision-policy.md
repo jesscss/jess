@@ -389,8 +389,9 @@ fall through; take the first candidate within tolerance. Magnitude-invariant, no
 arbitrary constant to defend, faster than today, and it removes exactly the
 artifact and nothing else. `1.23456789e-9` survives, where today it becomes `0`.
 
-Job 2 should be argued from bytes on a real stylesheet, and the case for it has
-not been made. If it is adopted, **8 significant figures is the right value** —
+Job 2 should be argued from bytes on a real stylesheet, and §8.2 measures that
+argument at **−0.06% of output size**. That does not buy an arbitrary constant.
+If a cap is adopted later anyway, **8 significant figures is the right value** —
 it clears every floor the specs state (Color 4's 16-bit `color(xyz)` ≈ 6 sig
 figs, modern alpha's 6 decimal places) with margin, and it is on the axis Color
 4 itself uses ("the number of significant figures in the serialized value"). It
@@ -414,8 +415,79 @@ orphaned `1e12`.
 
 ## 8. Blast radius
 
-*(Measurement in progress; this section is a placeholder and the document should
-not be treated as complete until it is filled in.)*
+### 8.1 What the corpus actually contains
+
+Static scan of the 189 expected `.css` files in the Less v5 alpha corpus
+(`packages/test-data`, 485,288 bytes). Significant-digit histogram of every
+fractional numeric literal:
+
+| sig digits | 1 | 2 | 3 | 4 | 5 | 8 | 9 | 10 | 16 |
+|---|---|---|---|---|---|---|---|---|---|
+| count | 120 | 90 | 17 | 24 | 5 | 6 | 18 | 115 | 4 |
+
+**Nothing between 5 and 8 digits, and nothing between 10 and 16.** The
+distribution is bimodal for a reason: everything at 9–10 digits is today's 8dp
+output of a repeating fraction, and everything at 16 digits is the
+`emitValueInterp` bypass. The policy touches exactly 143 literals across 8
+files:
+
+| literal | count | source |
+|---|---|---|
+| `66.66666667` / `33.33333333` / `8.33333333` / `16.66666667` / `41.66666667` / `58.33333333` / `83.33333333` / `91.66666667` | 125 | twelfths and thirds, mostly `bootstrap4.css` |
+| `3.141592653589793` | 4 | **the interpolation bypass** — `property-name-interp.css` ×2, `plugin.css`, `import.css` |
+| `23.89833349`, `36.40541176`, `3.14159265`, `0.90040404`, `0.17364818`, `0.84385396`, `42.85714286`, `6.28318531` | 14 | trig / `pi()` in `functions.css`, `rgba.css` |
+
+Files affected: `tests-config/3rd-party/bootstrap4.css` (121),
+`tests-unit/functions/{,legacy/}functions.css` (13),
+`tests-unit/color-functions/{,legacy/}rgba.css` (4),
+`tests-unit/plugin/plugin.css` (2),
+`tests-unit/property-name-interp/property-name-interp.css` (2),
+`tests-unit/import/import.css` (1).
+
+That the bypass is *encoded in four expected fixtures* is worth stating plainly:
+deleting it (§4) is a fixture change, not a silent internal fix.
+
+### 8.2 Byte cost, computed per value
+
+For the exact expressions behind those literals:
+
+| value | today (8dp) | job 1 | job 1 + 8sf | Δ bytes job 1 | Δ bytes job 1+cap |
+|---|---|---|---|---|---|
+| `100/3` | `33.33333333` | `33.33333333333` | `33.333333` | +3 | −2 |
+| `1000/12` | `83.33333333` | `83.3333333333` | `83.333333` | +2 | −2 |
+| `pi()` | `3.14159265` | `3.14159265359` | `3.1415927` | +3 | −1 |
+| `2*pi()` | `6.28318531` | `6.28318530718` | `6.2831853` | +3 | −1 |
+| `300/7` | `42.85714286` | `42.8571428571` | `42.857143` | +2 | −2 |
+| `sin(10deg)` | `0.17364818` | `0.173648177667` | `0.17364818` | +4 | 0 |
+
+Extrapolated over all 143 literals: **job 1 alone costs roughly +400 bytes on
+485 KB — about +0.08%.** Job 1 with an 8-sig-figure cap comes out roughly
+**−280 bytes, about −0.06%**, i.e. marginally *smaller* than today.
+
+**This is the answer to "do we want job 2 at all," and the answer is no.** The
+cap's entire measured benefit is six hundredths of one percent of output size,
+against the cost of an arbitrary constant that has to be defended forever and a
+value-destroying edge at large magnitudes (§5.7). Job 1 alone is the simplest
+correct answer and the corpus supports taking it.
+
+The one thing job 1 alone does *not* bound is the pathological case — a value
+whose digits are genuinely earned all the way out. The corpus's worst is 13
+significant digits (`33.33333333333`). If a cap is ever wanted, that is the
+number to watch, and 8 significant figures remains the right value for the
+reasons in §7 — but nothing in this corpus asks for one.
+
+### 8.3 Test-expectation churn
+
+Every one of the 143 literals is a committed expectation, so **all 8 files change
+under job 1** and the corpus goes red until the expectations are updated. Per
+the repo's standing rule these `.css` files are the Less v5 alpha reference and
+a diff is a jess bug by default — so this specific set of updates needs the
+owner's sign-off as an intentional policy change before it lands, not a
+mechanical snapshot refresh.
+
+A full compile-and-diff of the corpus under all three variants was commissioned
+alongside this document. The static scan above bounds the answer and is what §7
+rests on; the compile run is corroboration, not a dependency.
 
 ---
 
