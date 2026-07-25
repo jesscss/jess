@@ -1,7 +1,42 @@
 # Numeric precision policy
 
-Status: design review. **Nothing in this document has been landed.** The current
-behaviour (8 decimal places at `serializeDimension`) is unchanged on `dev`.
+Status: **LANDED**. Ledger row **F6**; policy module
+[`packages/core/src/ast/format-number.ts`](../../packages/core/src/ast/format-number.ts).
+
+The owner adopted job 1 (§7) with a relative tolerance of **`1e-10`**, not the
+`1e-12` this document recommended, and rejected job 2 outright. Three deltas from
+the analysis below follow from that choice and from measuring the landed code —
+read them before trusting a number in §6 or §7:
+
+1. **The gate constant changed with the tolerance.** A `1e-10` tolerance can
+   shorten anything carrying more than **10** significant digits, so the
+   short-circuit is `sig <= 10`, not `< 13`. Re-verified against the ungated
+   search over 2,000,000 mixed random doubles **plus 2,900,927 focused 9- and
+   10-significant-digit doubles spanning 1e-20..1e19: zero mismatches.** A gate of
+   11 is **not** sound — `-86731.985251` shortens to `-86731.98525`.
+2. **§6's "~2.2x faster" does not survive the tolerance change.** That figure was
+   measured at `1e-12`, where the gate short-circuits 94.4% of values. At `1e-10`
+   the gate lets ~20% of the same realistic pool into the search, and the landed
+   code measures **0.96–0.97x — about 4% SLOWER per call** (median-of-41, 5
+   repeats, order-alternated, win-rate 0/5). End to end it is invisible:
+   `benchmark.less` medians 35.58ms before vs 35.87ms after, inside a per-run
+   spread of 34.9–39.3ms, output +22 bytes on 122,847 (+0.018%, matching the
+   +0.017% predicted here). Adopting job 1 is a **correctness** change with a
+   negligible perf cost, not a perf win.
+3. **Exact integers are exempt.** The tolerance is relative and knows nothing about
+   integer-ness, so it trimmed `123456789012` to `123456789000` and
+   `Number.MAX_SAFE_INTEGER` to `9007199255000000`. An exactly-representable
+   integer carries no float noise, so there is nothing to remove; `formatNumber`
+   returns it untouched. This is a correctness exemption, not a perf one — it does
+   not move the micro number, because `round(n, 8)` had an integer fast path too.
+
+Also landed alongside, both flagged by this document: the `emitValueInterp` bypass
+(§4) is deleted, and `dimensionFromFields`'s 8-dp denoise of **source literals**
+(§3) is deleted — it contradicted ledger **V1** outright, rendering an authored
+`0.00000000123456789` as `0`.
+
+The analysis below is preserved as written, including the two recommendations the
+owner overruled.
 
 Scope: how jess turns a computed `number` into the digits it writes into a
 stylesheet. Not in scope: the user-facing `round()` / `ceil()` / `floor()`

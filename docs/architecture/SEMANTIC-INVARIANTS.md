@@ -344,7 +344,7 @@ reintroduces each applicable shape.
 
 | # | Incident | Invariant | Shape to catch |
 |---|----------|-----------|----------------|
-| S1 | **`emitValueInterp` precision split** (`3031131ce`) | 1, 2, 3, 8 | A behavior conditioned on which code path reached the serializer; justified from the reference implementation's context threading; no ledger row. |
+| S1 | **`emitValueInterp` precision split** (`3031131ce`) — **FIXED**, see below | 1, 2, 3, 8 | A behavior conditioned on which code path reached the serializer; justified from the reference implementation's context threading; no ledger row. |
 | S2 | **Merge anchor flipped to less.js 4.x** (`23b78263e`, reverted) | 8 | A settled v5 divergence overwritten because porting the 4.x behavior turned a corpus fixture green. Caught only because M1 existed in writing. |
 | S3 | **Parser-side selector-argument joins** | 2, 4, 6 | The grammar joining a `SelectorList` into text. `css-parser` `grammar.ts:365` joins with `','` (6 uses); `jess-parser` `grammar.ts:376` joins with `', '` (2 uses); core's `pseudoCanonical` (`nodes.ts:598`) joins with `', '` and its own JSDoc says "grammar NEVER computes this". Same valid CSS, two byte outputs. |
 | S4 | **SCSS text-valued pseudo arguments** | 4, 6 | SCSS keeps pseudo arguments as raw text, so `:not( .b )` and `:is( .b, .c )` retain authored inner whitespace where the other three normalize. A valid-CSS divergence that is a direct consequence of not holding structure. |
@@ -354,6 +354,50 @@ reintroduces each applicable shape.
 
 When a semantic incident is fixed, add a row and, where possible, a detector.
 The catalogue stays grounded in lived incidents, not style preference.
+
+### S1 — closed
+
+`emitValueInterp` is deleted. A computed number now emits identical bytes in every
+position, decided by one policy module,
+[`packages/core/src/ast/format-number.ts`](../../packages/core/src/ast/format-number.ts),
+under ledger row **F6**. Each of the five stages in the incident write-up above is
+answered:
+
+1. **The justification.** F6 is argued from CSS Values 4 §5, CSSOM §6.7.2, and a
+   measured corpus cost, not from less.js's context threading.
+2. **The rule is stated over the construct** (invariant 1): "a computed number emits
+   the shortest decimal within `1e-10` relative." No splice site appears in it.
+3. **It is pinned** (invariant 2, and S7's lesson): `format-number.test.ts` and
+   `packages/jess/test/less/number-precision.test.ts` assert the *equality* of the
+   two positions, plus the property-name position — the inverse of the six tests
+   that pinned the divergence and were deleted.
+4. **The two undocumented riders are recorded, not silently fixed.** `evalBytesInterp`
+   still calls `evalValue` rather than `evalValueSlot`, and still never calls
+   `validateValueGroupUnits`. Both are now named in its JSDoc; the second is a real
+   correctness hole (a unit error fatal in a declaration value is accepted in an
+   interpolation) and is **open work**, deliberately not absorbed into the precision
+   change.
+5. **The user-facing docs were rewritten**, not left describing the removed behavior:
+   `docs-content/docs/less/advanced/number-precision.md` and
+   `docs-content/docs/jess/06-Advanced/10-number-precision.md`. Neither says "mirrors
+   less.js" any more.
+
+**Invariant 3's baseline moves with it.** The `grep -rn "round(" packages/core/src/ast/*.ts`
+count drops from **7 literal-`8` sites to 5**: `serialize-value.ts:18` and
+`literal-tag.ts:105` now read the policy module. Separately, the *decimal* branch of
+`color.ts`'s `alphaText` — which emitted a raw unrounded double, a second
+unintentional bypass, safe only because `fns` happened to pre-round it — reads the
+policy module too; its `%` branch is one of the survivors, so that site is fixed
+without changing the count. The five survivors are all in `color.ts`
+(`:122,141,153,154,155`: `%` alpha, `%` channels, hue, s, l) and are the remaining
+debt for the GATE-READY lint. The 4 bare integer roundings (`color.ts:97` ×3, `:105`)
+are channel quantization, a different axis per §3's own reading.
+
+**Invariant 2's detector is still BUILDABLE and still does not exist.** The tests
+added here cover one construct (a computed dimension) in three positions, not the
+five-construct × six-position fixture the invariant specifies. The allowlist it
+calls for would today hold exactly one entry: un-operated literals spell themselves
+per **V1**, which is a property of the value and travels with it.
 
 ---
 
