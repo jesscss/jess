@@ -4,10 +4,12 @@
  * quoted / list emit stays in `serialize-value.ts`. Emit is FREE FUNCTIONS over
  * pure data — no node is constructed, no `render()` walk.
  *
- * HARD MODULE BOUNDARY: imports only the `Color` type + the shared `round`.
+ * HARD MODULE BOUNDARY: imports only the `Color` type + the shared `round` +
+ * the shared output number policy.
  */
 import type { Color } from './value-eval.js';
 import { round } from './round.js';
+import { formatNumber } from './format-number.js';
 
 /* color-format enum, mirrored from tree/color.ts ColorFormat (opaque `number`). */
 export const HEX = 0;
@@ -112,10 +114,12 @@ function toHex(c: Color): string {
 
 /**
  * The serialized alpha text — the authored `%` spelling (`round(pct,8)%`) when the
- * alpha was written as a percent, else the decimal alpha.
+ * alpha was written as a percent, else the decimal alpha under the shared output
+ * number policy ({@link formatNumber}). The decimal branch used to emit the raw
+ * double, safe only because `fns` happened to pre-round it.
  */
 function alphaText(c: Color, a: number): string {
-  return c.alphaPct !== undefined ? `${round(c.alphaPct, 8)}%` : `${a}`;
+  return c.alphaPct !== undefined ? `${round(c.alphaPct, 8)}%` : formatNumber(a);
 }
 
 /**

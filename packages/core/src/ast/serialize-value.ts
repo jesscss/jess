@@ -6,37 +6,25 @@
  *
  * HARD MODULE BOUNDARY: imports only the value-domain types + `round` + `color`.
  */
-import type { Dimension, Quoted, Value, ValueGroup } from './value-eval.js';
+import type { Dimension, Quoted, ValueGroup } from './value-eval.js';
 import { isValueGroupArray, sepGlue } from './value-eval.js';
-import { round } from './round.js';
+import { formatNumber } from './format-number.js';
 import { serializeColor } from './color.js';
 
-/** Serialize a dimension: number rounded to 8 dp + unit; non-finite spelled `NaN`/`infinity`/`-infinity`. */
+/**
+ * Serialize a dimension: the shortest decimal within the output tolerance
+ * ({@link formatNumber}) + unit; non-finite spelled `NaN`/`infinity`/`-infinity`.
+ *
+ * This is the SINGLE number policy for every computed dimension, in every position —
+ * there is deliberately no interpolation-splice variant that emits different digits
+ * for the same value.
+ */
 export function serializeDimension(n: Dimension): string {
   const { number, unit } = n;
   const s = Number.isFinite(number)
-    ? `${round(number, 8)}`
+    ? formatNumber(number)
     : Number.isNaN(number) ? 'NaN' : number > 0 ? 'infinity' : '-infinity';
   return unit ? `${s}${unit}` : s;
-}
-
-/**
- * Emit a value for an INTERPOLATION splice (`@{x}` into a selector / property name /
- * `~"…"` string). less.js serializes an interpolated value at EVAL time, where the
- * context carries no `numPrecision`, so an interpolated `Dimension` keeps FULL double
- * precision (`pi()` → `3.141592653589793`) instead of the 8-dp `numPrecision`
- * rounding a declaration VALUE gets (`pi()` → `3.14159265`). Only a COMPUTED
- * dimension is affected: the guard `bytes === serializeDimension(v)` fires solely for
- * the machine-serialized (rounded-canonical) form, so an un-operated source literal
- * (`1.0px`, `2PX`) — whose `bytes` is its verbatim spelling — is emitted UNCHANGED.
- * Non-finite dims and every non-dimension value fall through to canonical `bytes`.
- */
-export function emitValueInterp(v: Value): string {
-  if (typeof v !== 'string' && !isValueGroupArray(v) && v.type === 'Dimension'
-    && Number.isFinite(v.number) && v.bytes === serializeDimension(v)) {
-    return `${v.number}${v.unit}`;
-  }
-  return typeof v === 'string' ? v : isValueGroupArray(v) ? v.map(emitValueInterp).join(' ') : v.bytes;
 }
 
 /** Serialize a quoted string (escaping-aware: `~` prefix when escaped). */

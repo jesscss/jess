@@ -23,7 +23,7 @@ describe('cross-unit arithmetic — vs less@4.6.7 (parens-division)', () => {
   it('division keeps the LHS unit for incompatible units', () => {
     expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'))).toBe('2em');
     expect(bytesOf('/', dim(14, 'px'), dim(1.4, 'em'))).toBe('10px');
-    expect(bytesOf('/', dim(2, 'px'), dim(3, 's'))).toBe('0.66666667px');
+    expect(bytesOf('/', dim(2, 'px'), dim(3, 's'))).toBe('0.6666666667px');
   });
 
   it('multiplication keeps the LHS unit', () => {

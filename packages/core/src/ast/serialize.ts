@@ -112,7 +112,6 @@ import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scop
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
 import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
-import { emitValueInterp } from './serialize-value.js'; // [interp-precision]
 import { makeBlock, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -2661,7 +2660,7 @@ function resolveEmergentInterp(input: string, frame: Frame | null, e: EvalCtx): 
           if (hit) {
             const val = withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
             if (!isThenable(val)) {
-              out += stripOuterQuotes(emitValueInterp(val));
+              out += stripOuterQuotes(emitValue(val));
               i = j + 1;
               changed = true;
               continue;
@@ -3710,12 +3709,20 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
 }
 
 /**
- * Fold a value node to bytes for an INTERPOLATION splice — same as {@link evalBytes}
- * but emits a COMPUTED dimension at full precision ({@link emitValueInterp}), matching
- * less.js eval-time interpolation (`@{x}` where `@x: pi()` → `3.141592653589793`).
+ * Fold a value node to bytes for an INTERPOLATION splice. A spliced number gets the
+ * SAME digits as a declaration value: one policy for every computed number, whatever
+ * position it lands in. (This used to emit a computed dimension at full double
+ * precision, so `@x: pi()` printed `3.14159265` in a value and `3.141592653589793`
+ * spliced — a less.js eval-time implementation accident, not a CSS rule.)
+ *
+ * Still distinct from {@link evalBytes} in two ways that are NOT precision and were
+ * NOT decided here: it takes a `ValueNode` through `evalValue` rather than a
+ * `ValueSlot` through `evalValueSlot` (so authored slot layout is not preserved), and
+ * it never calls `validateValueGroupUnits` (so a unit error fatal in a declaration
+ * value is silently accepted inside an interpolation). Both are tracked separately.
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  return mapMaybe(evalValue(node, frame, e), emitValueInterp);
+  return mapMaybe(evalValue(node, frame, e), emitValue);
 }
 
 function generalEnclosedBytes(node: GeneralEnclosed, content: string): string {
