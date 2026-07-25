@@ -1,5 +1,21 @@
 /**
- * Direct Jess canonical-AST grammar for the public `parse()` architecture.
+ * Canonical Jess AST grammar for the public `parse()` architecture.
+ *
+ * ## THIS IS A DELTA OVER CSS — the base is elsewhere
+ *
+ * Shared CSS surface: `packages/internal-css-recognition/src/`
+ *   (`cssAstSyntax`, `cssAstPseudoSyntax`, `opaqueAtRuleRecognition`)
+ * Reference CSS grammar: `packages/css-parser/src/ast/grammar.ts`
+ *
+ * **If the construct is CSS, it belongs in the base, not here.** Adding it to the shared
+ * surface serves all four dialects; adding it here means Less and SCSS will each add their
+ * own and the three will drift. Only genuinely Jess-specific constructs — collections,
+ * the three `$` forms (`${name}` interpolation, `$[…]` lookup, `$(…)` expression), `:=`,
+ * `@compose`/`@use`, stylesheet functions — earn a place in this file, and only those earn
+ * Jess-specific rule names. A declaration is a `Declaration`.
+ *
+ * Grammar-writing rules and verification gates: `.cursor/rules/domains/parsers.mdc`.
+ * Combinator reference: `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEATSHEET.md`.
  *
  * It never composes the CST grammar: Parseman reductions construct canonical
  * core facts directly.

@@ -1,10 +1,11 @@
 ---
-description: "Parsing stack (css/less/scss/jess): tokens → productions → CST/AST; Chevrotain-based"
+description: "Parsing stack (css/less/scss/jess): parseman functional grammars, macro-compiled; CSS is the shared base"
 globs:
+  - "packages/internal-css-recognition/**"
   - "packages/css-parser/**"
   - "packages/less-parser/**"
   - "packages/scss-parser/**"
-  - "packages/parser/**"
+  - "packages/jess-parser/**"
 ---
 
 # Parsers
@@ -18,51 +19,102 @@ hard constraints, the oracle verification loop, and the definition of done
 not "tests pass"). Use the `grammar-reviewer` agent before landing; it returns
 evidence per const, not a verdict.
 
-## ⛔ SOURCE OF TRUTH FOR NODE SHAPES — READ THIS BEFORE TOUCHING A BUILDER
+## ⛔ FIRST QUESTION FOR ANY GRAMMAR RULE: does this belong in the shared CSS base?
 
-The functional parseman parser (`src/grammar.ts` + `src/builders.ts`) is a **1:1 port** of
-the legacy Chevrotain recursive-descent parser. The Chevrotain **productions** are the
-authoritative specification for the exact AST node shape every construct produces:
+**If the construct is valid CSS, it belongs in the base — not in your dialect.**
 
-- `packages/less-parser/src/productions/*.ts` — `root.ts`, `values.ts`, `selectors.ts`, `guards.ts`
-- `packages/css-parser/src/productions/**`
+The shared base is `packages/internal-css-recognition/src/`:
 
-These productions contain the real node-construction logic. Examples:
-- `lookupOrCall` (`less-parser/src/productions/guards.ts`) defines `[accessor]` / index-lookup /
-  call shapes: empty `[]` → `Reference({ target, key: -1 }, { type: 'index' })`; `[@x]` → `type:'variable'`;
-  `[ident]` / `$@x` → `key` wrapped in `Quoted` with `type:'index'`; mixin/ruleset targets merge keys into an array.
-- `root.ts` defines mixin-call / declaration / at-rule shapes; `selectors.ts` defines selector shapes.
+- `recognition.ts` — `cssAstSyntax` (the shared CSS recognition surface), `lessAstSyntax`
+- `pseudo-consts.ts` — `cssAstPseudoSyntax` (pseudo-class/element argument shapes)
+- `opaque-at-rule.ts` — `opaqueAtRuleRecognition`
 
-**When you need to know what shape a Less/CSS construct produces:**
-1. Find and READ the matching Chevrotain production and its build logic. That is the spec.
-2. Make `builders.ts` reproduce that shape exactly.
+Adding a CSS construct to the base serves all four dialects at once. Adding it to one
+dialect's grammar means the other three will each add their own, and they will drift.
+**This has already happened**: the four `src/ast/grammar.ts` files each restate the whole
+of CSS, with entirely disjoint rule families. Do not add to that.
 
-**Do NOT:**
-- Guess the shape from grammar text, from the parseman CST, or from observed output.
-- Invent "grammar bug" / "partial accessor" / "leaked CST" rationalizations to explain a mismatch —
-  if your output disagrees with the production, your builder is wrong, not the grammar.
-- Reverse-engineer a shape by trial-and-error against test expectations.
+Ask, in this order:
+1. Is this valid CSS? → it goes in `internal-css-recognition`, and every dialect gets it.
+2. Is it genuinely dialect-specific (a Less mixin call, a Jess collection, a Sass
+   placeholder)? → it goes in the dialect grammar, and it earns a dialect-specific name.
+3. Is it a CSS concept you are about to name `DirectLessDeclaration`? → see (1). A
+   declaration is a `Declaration` in every dialect. Per-dialect names for shared concepts
+   are the *mechanism* of the duplication, not a cosmetic layer over it.
 
-## Packages
+## Two routes per dialect
 
-- `packages/css-parser`: base CSS parsing
-- `packages/less-parser`: LESS parsing
-- `packages/scss-parser`: SCSS parsing (includes sass-spec cache scripts)
-- `packages/parser`: Jess CST parser/orchestrator
+Each parser package ships two independently-specified grammars. Know which one you are in.
 
-## Typical hotspots
+| | file | consumer | composition |
+|---|---|---|---|
+| **AST** (shipping) | `src/ast/grammar.ts` | the public `parse()`; every plugin and the compiler | `composeLeaf([cssAstSyntax, …])` — a **terminal leaf**; these do **not** inherit from each other |
+| **CST** (editor) | `src/grammar.ts` | `packages/language-service` **only** | `compose([…])` — a real chain: css ← less ← scss, and css ← jess |
 
-- `src/*Tokens*`, `src/*Parser*`, `src/productions/*.ts` (Chevrotain productions — the node-shape spec),
-  `src/grammar.ts` + `src/builders.ts` (functional parseman port)
-- Tests under `test/**/*.test.ts` (package-dependent)
+The AST route is the only public parse API; `src/ast/` is never re-exported and is in no
+`package.json` `exports` map. The CST route is public via the `./cst` and `./grammar`
+subpaths and has exactly one consumer in this repo.
+
+The two module graphs are independent — nothing under `src/ast/` imports `src/grammar.ts`.
+A change to one route is **not** a change to the other. If you fix a bug, ask whether the
+other route has the same bug; historically the fix has landed in one copy only.
+
+## parseman, and the macro compiler
+
+Grammars are [parseman](/Users/matthew/git/oss/parser-thing) functional grammars, imported
+`with { type: 'macro' }` and compiled to inline JS at build time.
+
+**A macro-fallback build emits a DIFFERENT tree than the compiled one.** This is verified,
+not theoretical — see `docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`.
+Consequences:
+
+- `pnpm run check:macro` must report **0 interpreter fallbacks**. A red result
+  **invalidates any differential or benchmark taken on that build.**
+- Tests and oracles run against the built `lib/`, never `src/`. Rebuild between edits.
+- Anything that defeats static evaluation degrades the artifact to the interpreter:
+  factories, spreads, `many(choice(…))` consts, hoisted regex sources. Only parameterless
+  combinator consts and plain reducers survive.
+
+### Grammar-writing rules
+
+- **No regex outside `regex()`.** No hand-rolled keyword regexes — `keywords()` owns
+  boundaries and case folding; a hand-rolled `/i` does not.
+- No hand-rolled `sepBy`; no `not(regex(…))` as an end-of-value assertion.
+- No leading `not()` — reorder so a consuming terminal leads.
+- No manual `optional(ws)`; trivia is declared once on the grammar via `rules({ trivia }, …)`
+  and is ambient through `compose()`.
+- No production consuming its own `;` — the list owns separators.
+- No literal non-ASCII in a regex (`\uXXXX` escapes only); no `/i` without `/u`.
+- One combinator per line, matching parens down the left edge.
+- **Every rule carries a JSDoc block**: one line on what it recognises, plus example inputs.
+
+### Reference docs
+
+- `docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` — what is and is not
+  true of the pinned parseman, measured
+- `docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`
+- parseman's own guides (authoritative): `docs/guide/combinators.md` (including the
+  choosing-between-similar tables), `first-char-gating.md`, `trivia.md`, `keywords.md`,
+  `macro-mode.md`, `grammar-observability.md`
+
+## Verification
+
+- **Byte-identity oracle** — `packages/less-parser/test/ast-identity-oracle.mjs`, 707 files,
+  hashes both routes. A cleanup is accepted only if both aggregates are unchanged. A moved
+  aggregate is a **failed** refactor, or a semantics change needing an owner decision.
+- **Grammar coverage** — parseman exports `runWithGrammarCoverage` /
+  `createGrammarCoverageCollector` / `compiledGrammarCoverageDefinitions`, which report
+  hit/unhit **named rules, choice arms and labels** (not line coverage). Requires a build
+  with `parseman.rolldown({ grammarCoverage: true })`. Supports `composeLeaf` roots. Use it
+  to prove a branch is exercised rather than asserting it is.
+- `pnpm run verify:compose-integrity`, and each package's `test/compose-integrity.test.ts`,
+  pin the composition chain — a missing rule in a `compose()` is a hard runtime error, and
+  the fallback path degrades silently to the interpreter.
 
 ## Debugging guardrails
 
-- Treat Chevrotain parser objects as potentially circular; avoid `JSON.stringify` on parser/AST objects.
-
-## LL(1) gating rules
-
-- Prefer OR/ALT designs that disambiguate on the first token so no `GATE` is needed.
-- When a `GATE` is required, keep the gate and the matching ALT shaped so they use the smallest practical lookahead.
-- Never use unbounded or effectively infinite lookahead for a token choice.
-- During Chevrotain `RECORDING_PHASE`, do not return parser nodes or partially built values. Exit recording-only branches without returning semantic values.
+- The parser owns structure; core must never re-derive structure from bytes.
+- No tree mangling during parse — merge/flatten is eval-time.
+- The parser never serializes.
+- Avoid `JSON.stringify` on parser/AST objects: it collapses `{a: undefined}` vs `{}`,
+  `NaN` vs `null`, `-0` vs `0`, and every `Map`/`Set` into `{}` — all real tree moves.

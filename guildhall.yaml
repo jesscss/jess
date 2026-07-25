@@ -76,6 +76,28 @@
     "escalationTriggers":
       - "The change crosses package boundaries, changes public exports, or
         weakens package-level tests without a clear spec."
+  - "id": "internal-css-recognition"
+    "domain": "internal-css-recognition"
+    "path": "packages/internal-css-recognition"
+    "mandate": "Protect @jesscss/internal-css-recognition as THE shared CSS grammar
+      surface that all four dialect AST grammars compose on, so CSS constructs are
+      added once rather than restated per dialect."
+    "concerns":
+      - "id": "shared-css-surface"
+        "description": "A construct that is valid CSS belongs here, where every
+          dialect gets it — not in one dialect's grammar, where it will drift."
+        "reviewQuestions":
+          - "Is this construct valid CSS? If so, why is it not in the shared surface?"
+          - "Does this add a dialect-specific construct to a dialect-neutral package?"
+          - "Does the change keep every pre-final composeLeaf piece recognition-only
+            (no semantic builders)?"
+          - "Is `pnpm run check:macro` still at 0 interpreter fallbacks? A fallback
+            build emits a DIFFERENT tree, so this is a correctness gate."
+    "autonomousDecisions":
+      - "Approve additions of valid-CSS recognition rules that all four dialects can use."
+    "escalationTriggers":
+      - "A dialect-specific construct is proposed for this package."
+      - "A change introduces a semantic builder, or moves the macro build to a fallback."
   - "id": "css-parser"
     "domain": "css-parser"
     "path": "packages/css-parser"

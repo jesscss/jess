@@ -11,7 +11,7 @@
 @.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/tree/**, packages/core/src/define-function.ts, packages/core/src/**/__tests__/** -->
 @.cursor/rules/domains/docs.mdc <!-- Applies to: docs/**, packages/docs/**, README.md -->
 @.cursor/rules/domains/language_tooling.mdc <!-- Applies to: packages/language-service/**, packages/vscode/**, packages/language-service-tests/** -->
-@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/css-parser/**, packages/less-parser/**, packages/scss-parser/**, packages/parser/** -->
+@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/internal-css-recognition/**, packages/css-parser/**, packages/less-parser/**, packages/scss-parser/**, packages/jess-parser/** -->
 @.cursor/rules/main.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/package-scripts.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/packages/awaitable-pipe.mdc <!-- Applies to: packages/awaitable-pipe/** -->
@@ -20,6 +20,7 @@
 @.cursor/rules/packages/css-parser.mdc <!-- Applies to: packages/css-parser/** -->
 @.cursor/rules/packages/docs-site.mdc <!-- Applies to: packages/docs/** -->
 @.cursor/rules/packages/fns.mdc <!-- Applies to: packages/fns/** -->
+@.cursor/rules/packages/internal-css-recognition.mdc <!-- Applies to: packages/internal-css-recognition/** -->
 @.cursor/rules/packages/jess-plugin.mdc <!-- Applies to: packages/jess-plugin/** -->
 @.cursor/rules/packages/jess.mdc <!-- Applies to: packages/jess/** -->
 @.cursor/rules/packages/language-service.mdc <!-- Applies to: packages/language-service/** -->

@@ -1,5 +1,20 @@
 /**
- * Canonical CSS AST grammar.
+ * Canonical CSS AST grammar — THE BASE.
+ *
+ * Less, SCSS and Jess all build on the shared CSS surface in
+ * `packages/internal-css-recognition/src/` (`cssAstSyntax`, `cssAstPseudoSyntax`,
+ * `opaqueAtRuleRecognition`). **Adding a CSS construct to the shared surface serves all
+ * four dialects at once**; adding it to one dialect means the other three will each add
+ * their own and they will drift. That drift is not hypothetical — the four dialect AST
+ * grammars currently restate the whole of CSS with disjoint rule families.
+ *
+ * So: if a construct is valid CSS, it belongs in the shared surface or here — never in a
+ * dialect grammar. A declaration is a `Declaration` in every dialect; per-dialect names
+ * for shared concepts are the mechanism of the duplication, not a cosmetic layer over it.
+ *
+ * Grammar-writing rules, verification gates and the two-route (AST vs CST) model:
+ * `.cursor/rules/domains/parsers.mdc`. Combinator reference:
+ * `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEATSHEET.md`.
  *
  * Parseman reductions call core AST constructors directly. Once this grammar
  * reaches public CSS coverage, the package-stylesheet `parse()` API must run it and

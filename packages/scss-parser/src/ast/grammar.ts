@@ -1,6 +1,26 @@
 /**
  * Canonical SCSS AST grammar.
  *
+ * ## THIS IS A DELTA OVER CSS — the base is elsewhere
+ *
+ * Shared CSS surface: `packages/internal-css-recognition/src/`
+ *   (`cssAstSyntax`, `cssAstPseudoSyntax`, `opaqueAtRuleRecognition`)
+ * Reference CSS grammar: `packages/css-parser/src/ast/grammar.ts`
+ *
+ * **If the construct is CSS, it belongs in the base, not here.** Adding it to the shared
+ * surface serves all four dialects; adding it here means Less and Jess will each add their
+ * own and the three will drift. Only genuinely SCSS-specific constructs — `@mixin`/
+ * `@include`, `#{}` interpolation, `%placeholder`, `@if`/`@each`/`@while`, `@use` — earn a
+ * place in this file, and only those earn SCSS-specific rule names. A declaration is a
+ * `Declaration`.
+ *
+ * NOTE: this AST grammar correctly composes on the CSS base. The SCSS **CST** grammar
+ * (`src/grammar.ts`) still composes on Less, which contradicts the settled architecture —
+ * see the header there.
+ *
+ * Grammar-writing rules and verification gates: `.cursor/rules/domains/parsers.mdc`.
+ * Combinator reference: `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEATSHEET.md`.
+ *
  * It constructs Stylesheet directly without a CST semantic host or parser bridge.
  * This is the implementation behind the package-stylesheet `parse()` API. Explicit
  * CST APIs remain for language-service use while direct grammar coverage closes.

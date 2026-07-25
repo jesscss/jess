@@ -1,5 +1,42 @@
 /**
- * SCSS grammar: `scssGrammar = compose([lessGrammar, <SCSS delta>])`.
+ * SCSS **CST** grammar (language-service only): `compose([lessGrammar, <SCSS delta>])`.
+ *
+ * ## KNOWN ARCHITECTURAL DEFECT: this composes on Less, and should compose on CSS
+ *
+ * SCSS is not a superset of Less. The settled architecture is that SCSS composes on the
+ * CSS base, and the **AST** grammar (`src/ast/grammar.ts`) already complies — it
+ * `composeLeaf`s over `cssAstSyntax`. The correction was made in one copy and not the
+ * other, which is the CST/AST duplication's cost in miniature.
+ *
+ * Two consequences, both measured:
+ *
+ * 1. Composing on Less makes every Less production reachable from SCSS, so this grammar
+ *    accepts Less-only syntax (guards, `~"escaped"`, `:extend()`, detached rulesets) that
+ *    the SCSS compiler rejects — editor-vs-compiler disagreement, the bug class the
+ *    grammar-unification work exists to remove.
+ * 2. It blocks binding the shared named-colour rule in Less's CST: doing so breaks SCSS's
+ *    CST *only* through this edge, and `compose()` then degrades **silently** to the
+ *    runtime interpreter — which emits a DIFFERENT tree. `scripts/check-macro-buildable.mjs`
+ *    is what catches that; it guards correctness, not just speed.
+ *
+ * ### Why it cannot simply be flipped today (measured 2026-07-25)
+ *
+ * Switching to `compose([cssGrammar, …])` fails: `compose: rule "Call" references missing
+ * rule "AnonymousMixinDefinition"; falling back to runtime`, and `check:macro` goes red.
+ * This grammar references **16 rules that exist only in `less-parser/src/grammar.ts`**:
+ *
+ * - **Genuinely Less-specific — SCSS should not have these at all (6):**
+ *   `AnonymousMixinDefinition`, `DetachedRuleset`, `EscapedValue`, `Guard`,
+ *   `LessAmpersand`, `extendAhead`
+ * - **Dialect-neutral, misfiled in Less, belongs in the CSS base (10):**
+ *   `stylesheetItem`, `blockItem`, `topSum`, `permissiveParenBody`, `GluedParen`,
+ *   `SquareParen`, `customValue`, `customCurlyBlock`, `cpValue`, `NamedColor`
+ *
+ * The flip is therefore blocked on relocating that second group into the CSS base and
+ * dropping the first. `test/compose-integrity.test.ts` pins the current `css -> less ->
+ * scss` chain, so it changes in the same commit.
+ *
+ * See `.cursor/rules/domains/parsers.mdc` for the two-route model and the gates.
  */
 import {
   rules, compose,

@@ -1,4 +1,21 @@
-/** Direct canonical-AST grammar for the public Less `parse()` architecture. */
+/**
+ * Canonical AST grammar for the public Less `parse()` architecture.
+ *
+ * ## THIS IS A DELTA OVER CSS — the base is elsewhere
+ *
+ * Shared CSS surface: `packages/internal-css-recognition/src/`
+ *   (`cssAstSyntax`, `cssAstPseudoSyntax`, `opaqueAtRuleRecognition`)
+ * Reference CSS grammar: `packages/css-parser/src/ast/grammar.ts`
+ *
+ * **If the construct is CSS, it belongs in the base, not here.** Adding it to the shared
+ * surface serves all four dialects; adding it here means SCSS and Jess will each add their
+ * own and the three will drift. Only genuinely Less-specific constructs — mixin calls and
+ * definitions, guards, detached rulesets, `~"escaped"`, `:extend()` — earn a place in this
+ * file, and only those earn Less-specific rule names. A declaration is a `Declaration`.
+ *
+ * Grammar-writing rules and verification gates: `.cursor/rules/domains/parsers.mdc`.
+ * Combinator reference: `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEATSHEET.md`.
+ */
 import { attempt, choice, composeLeaf, field, leaf, literal, many, noTrivia, node, not, oneOrMore, optional, parser, regex, rules, scanTo, sequence, trivia } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssAstSyntax, lessAstSyntax } from '@jesscss/internal-css-recognition/recognition';

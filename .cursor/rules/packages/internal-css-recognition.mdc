@@ -1,0 +1,45 @@
+---
+description: "Package: @jesscss/internal-css-recognition — THE shared CSS grammar surface all four dialects compose on"
+globs:
+  - "packages/internal-css-recognition/**"
+---
+
+# `@jesscss/internal-css-recognition`
+
+- **Role**: the **shared CSS recognition surface**. All four AST grammars
+  (`css`/`less`/`scss`/`jess` `src/ast/grammar.ts`) `composeLeaf` over it. It is the one
+  place a CSS construct can be added so that every dialect gets it.
+- **Exports**:
+  - `recognition.ts` → `cssAstSyntax`, `lessAstSyntax`
+  - `pseudo-consts.ts` → `cssAstPseudoSyntax`
+  - `opaque-at-rule.ts` → `opaqueAtRuleRecognition`
+- **Build**: `pnpm --filter @jesscss/internal-css-recognition build`
+
+## ⛔ Build it FIRST
+
+All four parsers link against this package's `lib/`. Building a parser against a **stale**
+`lib/` links it to an old recognition surface and masks failures — the standard trap in a
+fresh worktree. Order: **internal-css-recognition → parsers → …**
+
+## If you are here to add a rule
+
+Adding a CSS construct here serves all four dialects. That is the point of the package, and
+it is under-used: the four AST grammars currently each restate the whole of CSS with
+disjoint rule families. Prefer adding here over adding to a dialect.
+
+Conversely, do **not** put a dialect-specific construct here. A Less mixin call, a Jess
+collection and a Sass placeholder are genuinely their own things and belong in their own
+grammars.
+
+## Constraints
+
+- Recognition only — pre-final `composeLeaf` pieces must prove recognition-only, so rules
+  here carry no semantic builders.
+- Contains **zero** `node()` boundaries today. A CST host can only emit a node where the
+  grammar calls `node()`, so this surface currently projects no structure.
+- Macro-compiled: `pnpm run check:macro` must stay at **0 interpreter fallbacks**. A
+  fallback build emits a *different tree*.
+- No regex outside `regex()`; no literal non-ASCII in a regex.
+
+See `.cursor/rules/domains/parsers.mdc` for the full grammar-writing rules and the two-route
+(AST vs CST) model.
