@@ -8,7 +8,7 @@ per-construct evidence is in `scss-construct-support.test.ts`.
 
 ## Run provenance
 
-- Generated: `2026-07-24T19:40:58.477Z`
+- Generated: `2026-07-25T01:11:31.396Z`
 - Bootstrap: `5.3.8`
 - Runner: `v24.11.1` on `darwin/arm64`
 
