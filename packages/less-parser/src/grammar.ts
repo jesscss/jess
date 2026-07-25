@@ -708,6 +708,24 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const escapedParen = node('Paren', sequence(literal('('), g.permissiveParenBody));
   const EscapedValue = node(
     sequence(literal('~'), choice(escapedParen, g.Quoted)));
+  // TODO(parseman-compose-depth): this is a COPY of the shared
+  // `LessAstSyntaxNamedColor` (`internal-css-recognition/src/recognition.ts`), which
+  // the Less AST grammar — the shipping parse path — already binds. CSS named colours
+  // are not a Less extension and this list does not belong here.
+  //
+  // It cannot be deleted at parseman 0.32.0. Binding the shared rule requires
+  // composing the recognition map into this CST (`compose([cssGrammar, lessAstSyntax,
+  // rules(…)])`, the shape scss-parser's CST already uses). That compiles fine HERE,
+  // but it makes `lessGrammar` a non-final carried piece, and scss-parser's
+  // `compose([lessGrammar, …])` then reports `argument 0 isn't a build-resolvable
+  // grammar` and degrades to the runtime interpreter — which emits a different tree
+  // (`docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §1). Verified,
+  // not assumed. Revisit when the pin moves or SCSS stops composing on Less.
+  //
+  // The two lists are NOT identical: this one additionally admits `currentcolor`,
+  // which the shared rule deliberately excludes as a CSS-wide keyword rather than an
+  // RGB colour value. Deleting this copy is therefore also an acceptance change in
+  // the CST, and which spelling is correct is an owner question.
   const NamedColor = node(keywords([
     'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
     'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
