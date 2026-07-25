@@ -38,13 +38,21 @@ import type { Assertion } from 'vitest';
 /**
  * Structural thenable detection.
  *
- * `MaybePromise<T>` is `T | Promise<T>`, but a value that reaches an assertion
- * may be any thenable — a subclass, a cross-realm promise, or a hand-rolled
- * `{ then() {} }`. `instanceof Promise` misses all three, and missing them is
- * precisely the failure mode this helper exists to catch, so the check is
- * structural: an own-or-inherited `then` that is callable.
+ * This is deliberately kept byte-for-byte equivalent to `isThenable` in
+ * `@jesscss/awaitable-pipe/src/utils.ts` — the predicate `node-base.ts` itself
+ * uses to decide sync-vs-async — rather than imported from it. Importing it
+ * resolves under vitest (workspace alias to `src`) but NOT under `tsc`: root
+ * `tsconfig.json` has no path mapping for the package, so the helper would
+ * typecheck only when `packages/awaitable-pipe/lib` happens to be built. Root
+ * `test/` currently depends on nothing but `vitest`, and keeping it that way
+ * means this guard works in any worktree with no build step. If the upstream
+ * predicate changes, change this one.
+ *
+ * `instanceof Promise` is NOT used: a `MaybePromise` may carry a subclass, a
+ * cross-realm promise, or a hand-rolled `{ then() {} }`, and missing those is
+ * exactly the failure mode this helper exists to catch.
  */
-function isThenable(value: unknown): value is PromiseLike<unknown> {
+function isThenableValue(value: unknown): value is PromiseLike<unknown> {
   if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
     return false;
   }
@@ -73,7 +81,7 @@ function describeThenable(value: PromiseLike<unknown>): string {
  * @throws if `value` is a thenable — meaning the sync fast path regressed
  */
 export function expectSync<T>(value: T | PromiseLike<T>, message?: string): Assertion<T> {
-  if (isThenable(value)) {
+  if (isThenableValue(value)) {
     throw new Error(
       `expectSync: expected a synchronous value, got ${describeThenable(value)} — `
       + 'evaluation left the synchronous fast path. This assertion pins the sync '
