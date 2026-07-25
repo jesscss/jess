@@ -3,7 +3,7 @@
  *
  * Cases from sass-spec `spec/core_functions/meta/type_of.hrx`.
  */
-import { isValueGroupArray, makeBlock, makeBool, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core/value';
+import { isValueGroupArray, makeBlock, makeBool, makeCollection, makeColorRgb, makeDimension, makeKeyword, makeList, makeQuoted, HEX } from '@jesscss/core/value';
 import { describe, it, expect } from 'vitest';
 import { typeOf } from '../meta/type-of.js';
 
@@ -44,6 +44,11 @@ describe('sass:meta — type-of', () => {
     expect(text(typeOf([makeDimension(1), makeDimension(2), makeDimension(3)]))).toBe('list');
     expect(text(typeOf(makeList([makeDimension(1), makeDimension(2)], ',')))).toBe('list');
     expect(text(typeOf(makeBlock([makeDimension(1)], 'square')))).toBe('list');
+  });
+
+  it('§ map — a Collection is a map, but the empty list is still a list', () => {
+    expect(text(typeOf(makeCollection([{ key: makeKeyword('a'), value: makeDimension(1) }])))).toBe('map');
+    expect(text(typeOf([]))).toBe('list');
   });
 
   it('takes exactly one argument (§ error/too_many_args)', () => {
