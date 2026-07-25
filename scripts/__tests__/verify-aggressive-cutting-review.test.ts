@@ -38,11 +38,11 @@ describe('proven staged quality-only review', () => {
     expect(qualityOnlyStagedPaths(
       [
         { status: 'M', paths: [sourceFile] },
-        { status: 'M', paths: ['packages/less-parser/src/ast/grammar.ts'] }
+        { status: 'M', paths: ['packages/syntax/less/less-parser/src/ast/grammar.ts'] }
       ],
       [],
       []
-    )).toEqual([sourceFile, 'packages/less-parser/src/ast/grammar.ts']);
+    )).toEqual([sourceFile, 'packages/syntax/less/less-parser/src/ast/grammar.ts']);
 
     for (const entry of [
       { status: 'A', paths: [sourceFile] },
@@ -131,7 +131,7 @@ describe('proven staged quality-only review', () => {
 
 describe('aggressive-cutting review scope', () => {
   const snapshots = {
-    branch: ['packages/less-parser/src/grammar.ts'],
+    branch: ['packages/syntax/less/less-parser/src/grammar.ts'],
     unstaged: ['packages/core/src/tree/rules.ts'],
     staged: ['scripts/__tests__/verify-aggressive-cutting-review.test.ts'],
     untracked: ['packages/core/src/ast/__tests__/scratch.test.ts']
@@ -157,7 +157,7 @@ describe('aggressive-cutting review scope', () => {
 
   it('reviews the committed branch delta at pre-push rather than only dirty files', () => {
     expect(scopedChangedPaths('committed', snapshots)).toEqual([
-      'packages/less-parser/src/grammar.ts'
+      'packages/syntax/less/less-parser/src/grammar.ts'
     ]);
   });
 
@@ -165,14 +165,14 @@ describe('aggressive-cutting review scope', () => {
     expect(isProductionHotPathFile('packages/core/src/ast/__tests__/factory.test.ts')).toBe(false);
     expect(isProductionHotPathFile('packages/core/src/ast/fixtures/large.less')).toBe(false);
     expect(isProductionHotPathFile('packages/core/src/ast/serialize.ts')).toBe(true);
-    expect(isProductionHotPathFile('packages/less-parser/src/grammar.ts')).toBe(true);
+    expect(isProductionHotPathFile('packages/syntax/less/less-parser/src/grammar.ts')).toBe(true);
   });
 
   it('keeps test-only object-literal diffs out of the danger-token scan input', () => {
     expect(productionChangedPaths([
       'packages/core/src/ast/__tests__/factory-shapes.test.ts',
       'packages/core/src/ast/serialize.ts',
-      'packages/css-parser/src/fixtures/recovery.test.ts'
+      'packages/syntax/css/css-parser/src/fixtures/recovery.test.ts'
     ])).toEqual(['packages/core/src/ast/serialize.ts']);
   });
 
@@ -180,25 +180,25 @@ describe('aggressive-cutting review scope', () => {
     const paths = [
       'packages/core/src/ast/serialize.ts',
       'packages/core/src/ast/nodes.ts',
-      'packages/less-parser/src/ast/grammar.ts',
+      'packages/syntax/less/less-parser/src/ast/grammar.ts',
       'packages/jess/src/index.ts'
     ];
     expect(productionChangedPaths(paths)).toEqual(paths);
     expect(runtimeChangedPaths(paths)).toEqual(['packages/core/src/ast/serialize.ts']);
     expect(boundaryChangedPaths(paths)).toEqual([
       'packages/core/src/ast/nodes.ts',
-      'packages/less-parser/src/ast/grammar.ts',
+      'packages/syntax/less/less-parser/src/ast/grammar.ts',
       'packages/jess/src/index.ts'
     ]);
     expect(classifyProductionSurface('packages/core/src/ast/serialize.ts')).toBe('runtime-engine');
     expect(classifyProductionSurface('packages/core/src/ast/nodes.ts')).toBe('public-plumbing');
-    expect(classifyProductionSurface('packages/less-parser/src/ast/grammar.ts')).toBe('frontend');
+    expect(classifyProductionSurface('packages/syntax/less/less-parser/src/ast/grammar.ts')).toBe('frontend');
     expect(isStrictRuntimeSurface('packages/core/src/ast/serialize.ts')).toBe(true);
-    expect(isStrictRuntimeSurface('packages/less-parser/src/ast/grammar.ts')).toBe(false);
+    expect(isStrictRuntimeSurface('packages/syntax/less/less-parser/src/ast/grammar.ts')).toBe(false);
   });
 
   it('requires behavior, build, and boundary evidence for non-runtime source changes', () => {
-    const paths = ['packages/css-parser/src/ast/grammar.ts'];
+    const paths = ['packages/syntax/css/css-parser/src/ast/grammar.ts'];
     expect(validateBoundaryEvidence('- Behavior evidence: focused grammar fixture parse proves typed AST construction.\n- Build evidence: parser package build completed successfully.\n- Boundary evidence: public parse() route and parser-runtime-boundary verifier both passed.', paths)).toEqual([]);
     expect(validateBoundaryEvidence('- Behavior evidence: yes', paths)).toHaveLength(3);
   });
@@ -370,7 +370,7 @@ describe('alpha release snapshot CLI boundary', () => {
 });
 
 describe('private grammar artifact reachability', () => {
-  const entry = 'packages/css-parser/src/ast/grammar.ts';
+  const entry = 'packages/syntax/css/css-parser/src/ast/grammar.ts';
 
   it('finds a package source export targeting an otherwise unimported private grammar', () => {
     const exports: Record<string, unknown> = {};
@@ -387,7 +387,7 @@ describe('private grammar artifact reachability', () => {
   });
 
   it('uses the owning package path when checking a non-CSS private grammar', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
     const exports: Record<string, unknown> = {};
     exports['./ast'] = { source: './src/ast/grammar.ts' };
     expect(publicArtifactReferences(lessEntry, JSON.stringify({
@@ -396,16 +396,16 @@ describe('private grammar artifact reachability', () => {
   });
 
   it('detects named, default, and namespace imports by their resolved grammar module', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
-    const sourcePath = 'packages/less-parser/src/index.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
     expect(grammarSourceReferences(sourcePath, 'import { anything } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'import grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'import * as grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
   });
 
   it('detects side-effect imports and re-exports even without a grammar symbol', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
-    const sourcePath = 'packages/less-parser/src/index.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
     expect(grammarSourceReferences(sourcePath, 'import \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'export * from \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'export { default as direct } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
@@ -413,8 +413,8 @@ describe('private grammar artifact reachability', () => {
   });
 
   it('detects dynamic ESM imports by their resolved grammar module', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
-    const sourcePath = 'packages/less-parser/src/index.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
     expect(grammarSourceReferences(sourcePath, 'await import(\'./ast/grammar.js\');', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'import(\'./ast/other.js\');', lessEntry)).toBe(false);
   });
@@ -422,7 +422,7 @@ describe('private grammar artifact reachability', () => {
 
 describe('exact parser-runtime debt deletion', () => {
   const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
-  const sourcePath = 'packages/css-parser/src/cst.ts';
+  const sourcePath = 'packages/syntax/css/css-parser/src/cst.ts';
   const snippet = '/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g';
   const oldLine = `    .replace(${snippet}, (_, _sep, char) => char.toUpperCase())`;
   const previousSource = `${oldLine}\n`;
@@ -501,7 +501,7 @@ describe('exact parser-runtime debt deletion', () => {
         const target = resolve(sandbox, path);
         writeFileSync(target, staged);
       }
-      const parserPath = 'packages/css-parser/src/cst.ts';
+      const parserPath = 'packages/syntax/css/css-parser/src/cst.ts';
       const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
       const source = execFileSync('git', ['show', `:${parserPath}`], { cwd: repo, encoding: 'utf8' });
       const snippet = '/stagedOnlyDebt/';

@@ -30,10 +30,10 @@ const ts = require('@typescript/typescript6/lib/typescript.js');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const inventoryPath = resolve(root, 'scripts/parser-runtime-boundary-debt.json');
 const parserRoots = [
-  'packages/css-parser/src',
-  'packages/less-parser/src',
-  'packages/scss-parser/src',
-  'packages/jess-parser/src'
+  'packages/syntax/css/css-parser/src',
+  'packages/syntax/less/less-parser/src',
+  'packages/syntax/scss/scss-parser/src',
+  'packages/syntax/jess/jess-parser/src'
 ];
 const sourceExtensions = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs']);
 const recognizerMethods = new Set(['charCodeAt', 'charAt', 'codePointAt', 'exec', 'test', 'match', 'search']);

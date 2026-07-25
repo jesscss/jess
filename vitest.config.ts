@@ -46,12 +46,12 @@ function workspaceSrcAliases() {
    * package when the direct parser package itself has been aliased to `src`.
    * These aliases preserve the same source-to-source graph that the built
    * package exports provide to production consumers.
-   */
-  const cssJess = resolve(root, 'packages/css-parser/src/jess.ts');
+  */
+  const cssJess = resolve(root, 'packages/syntax/css/css-parser/src/jess.ts');
   if (existsSync(cssJess)) {
     alias.push({ find: /^@jesscss\/css-parser\/jess$/, replacement: cssJess });
   }
-  const cssGrammar = resolve(root, 'packages/css-parser/src/grammar.ts');
+  const cssGrammar = resolve(root, 'packages/syntax/css/css-parser/src/grammar.ts');
   if (existsSync(cssGrammar)) {
     alias.push({ find: /^@jesscss\/css-parser\/grammar$/, replacement: cssGrammar });
   }
@@ -129,7 +129,7 @@ export default defineConfig({
     // Include all test files from all packages - use absolute paths relative to config file
 
     projects: [
-      'packages/*',
+      'packages/**',
       {
         extends: true,
         test: {
@@ -144,7 +144,7 @@ export default defineConfig({
             'node_modules/**',
             'dist/**',
             'lib/**',
-            'packages/css-parser/test/perf.test.ts',
+            'packages/syntax/css/css-parser/test/perf.test.ts',
             '**/*bench*'
           ]
         }

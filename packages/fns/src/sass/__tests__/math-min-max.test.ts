@@ -5,9 +5,9 @@ import { sassMinMax } from '../math/min-max.js';
 /**
  * Sass `min()`/`max()` — faithful to dart-sass, fold artifacts included.
  *
- * Oracles: sass-spec `core_functions/math/{min,max}.hrx` (installed under
- * `packages/scss-parser/node_modules/sass-spec`) where it covers the case,
- * dart-sass 1.101.0 directly where it does not — marked `[binary]`.
+* Oracles: sass-spec `core_functions/math/{min,max}.hrx` (installed under
+ * `packages/syntax/scss/scss-parser/node_modules/sass-spec`) where it covers the case,
+* dart-sass 1.101.0 directly where it does not — marked `[binary]`.
  *
  * `ce4e942c1` claimed spec verification for a body with no unitless rule at
  * all, which § `units/and_unitless` would have caught. Its citations are not

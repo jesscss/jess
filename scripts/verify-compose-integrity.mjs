@@ -84,7 +84,23 @@ if (logFlagIndex !== -1) {
 console.log('==> Compose-integrity: clean rebuild of grammar parsers');
 let combined = '';
 for (const pkg of PARSER_PACKAGES) {
-  const libDir = path.join(ROOT, 'packages', pkg.replace('@jesscss/', ''), 'lib');
+  /*
+   * Map npm name to its directory path under packages/. The grammar regroup
+   * moved parsers + plugins into packages/syntax/<lang>/; capability plugins
+   * and foundation packages stayed flat. This map is the source of truth.
+   */
+  const pkgDirRel = {
+    '@jesscss/parser-shared': 'parser-shared',
+    '@jesscss/css-parser': 'syntax/css/css-parser',
+    '@jesscss/less-parser': 'syntax/less/less-parser',
+    '@jesscss/scss-parser': 'syntax/scss/scss-parser',
+    '@jesscss/jess-parser': 'syntax/jess/jess-parser'
+  }[pkg];
+  if (!pkgDirRel) {
+    console.error(`No directory mapping for ${pkg}; update PARSER_PACKAGES.`);
+    process.exit(1);
+  }
+  const libDir = path.join(ROOT, 'packages', pkgDirRel, 'lib');
   rmSync(libDir, { recursive: true, force: true });
   console.log(`\n$ pnpm --filter ${pkg} build`);
   const result = spawnSync('pnpm', ['--filter', pkg, 'build'], {

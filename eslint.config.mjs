@@ -54,10 +54,10 @@ const { default: grammarRules } = await import('./scripts/eslint-rules/grammar-r
  * and errored in the editor for exactly that reason).
  */
 const GRAMMAR_FILES = [
-  'packages/css-parser/src/**/*.ts',
-  'packages/less-parser/src/**/*.ts',
-  'packages/scss-parser/src/**/*.ts',
-  'packages/jess-parser/src/**/*.ts',
+  'packages/syntax/css/css-parser/src/**/*.ts',
+  'packages/syntax/less/less-parser/src/**/*.ts',
+  'packages/syntax/scss/scss-parser/src/**/*.ts',
+  'packages/syntax/jess/jess-parser/src/**/*.ts',
   'packages/parser-shared/src/**/*.ts'
 ];
 
@@ -489,10 +489,10 @@ export default tseslint.config([
    * Outstanding at the time of writing: 1403 function-call-argument-newline,
    * 276 no-line-comments, 103 function-paren-newline, 21 indent, all
    * autofixable. DELETE THIS BLOCK once that pass lands and `pnpm lint:fix`
-   * has been run over `packages/less-parser/src`.
-   */
+ * has been run over `packages/less-parser/src`.
+ */
   {
-    files: ['packages/less-parser/src/**/*.ts'],
+    files: ['packages/syntax/less/less-parser/src/**/*.ts'],
     rules: {
       'grammar/no-line-comments': 'off',
       '@stylistic/function-paren-newline': 'off',

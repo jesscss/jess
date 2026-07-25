@@ -6,10 +6,10 @@
  * cited by hrx file + section. Where sass-spec is silent the case is marked and
  * was run against dart-sass 1.101.0 (`packages/jess/node_modules/.bin/sass`).
  *
- * These call the `Fn` bodies directly: there is no SCSS render-and-compare
- * harness for `spec/core_functions/**`. The vendored sass-spec cache is
- * PARSE-only (`packages/scss-parser/scripts/materialize-sass-spec-cache.cjs`
- * keeps `input.scss` and drops `output.css`), and no Sass function registry is
+* These call the `Fn` bodies directly: there is no SCSS render-and-compare
+* harness for `spec/core_functions/**`. The vendored sass-spec cache is
+ * PARSE-only (`packages/syntax/scss/scss-parser/scripts/materialize-sass-spec-cache.cjs`
+* keeps `input.scss` and drops `output.css`), and no Sass function registry is
  * wired into the compiler yet.
  */
 import type { Dimension } from '@jesscss/core/value';

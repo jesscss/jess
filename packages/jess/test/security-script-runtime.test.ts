@@ -41,9 +41,11 @@ describe('Jess restricted script runtime integration', () => {
   });
 
   it('@plugin-registered function runs and accesses process when in Node (pluginRegistry path)', async () => {
-    // Uses pluginRegistry to bypass file-based @plugin loading (which requires plugin-js/Deno).
-    // In Node (Vitest), the function runs in-process and can access process.env → LEAKED.
-    // When @plugin file loading runs in Deno (via plugin-js), it would return DENIED.
+    /*
+     * Uses pluginRegistry to bypass file-based @plugin loading (which requires plugin-js/Deno).
+     * In Node (Vitest), the function runs in-process and can access process.env → LEAKED.
+     * When @plugin file loading runs in Deno (via plugin-js), it would return DENIED.
+     */
     const evilPlugin = {
       install(_less: unknown, _manager: unknown, functions: { add: (name: string, fn: () => string) => void }) {
         functions.add('evil', function() {
@@ -78,8 +80,11 @@ describe('Jess restricted script runtime integration', () => {
       }
     });
     const { css } = await compiler.renderToResult(lessPath);
-    // In Node (Vitest): process.env.HOME is available → LEAKED or actual path
-    // In Deno: process undefined → DENIED
+
+    /*
+     * In Node (Vitest): process.env.HOME is available → LEAKED or actual path
+     * In Deno: process undefined → DENIED
+     */
     expect(css).toMatch(/value: (LEAKED|DENIED|\/[^\s]+)/);
     expect(css).not.toContain('value: evil();');
   });
@@ -185,8 +190,8 @@ describe('Jess restricted script runtime integration', () => {
       'import os from "node:os";',
       'import path from "node:path";',
       'import { Compiler } from "./packages/jess/lib/index.js";',
-      'import lessPlugin from "./packages/jess-plugin-less/lib/index.js";',
-      'import { lessCompatPlugin } from "./packages/jess-plugin-less-compat/lib/index.js";',
+      'import lessPlugin from "./packages/syntax/less/jess-plugin-less/lib/index.js";',
+      'import { lessCompatPlugin } from "./packages/syntax/less/jess-plugin-less-compat/lib/index.js";',
       'const root = fs.mkdtempSync(path.join(os.tmpdir(), "jess-less-plugin-exit-"));',
       'const pluginPath = path.join(root, "plugin.js");',
       'const lessPath = path.join(root, "main.less");',

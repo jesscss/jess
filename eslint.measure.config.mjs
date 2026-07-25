@@ -17,10 +17,10 @@ import grammarRules from './scripts/eslint-rules/grammar-rules.mjs';
 const { default: tseslint } = await import('typescript-eslint');
 
 const GRAMMAR_FILES = [
-  'packages/css-parser/src/**/*.ts',
-  'packages/less-parser/src/**/*.ts',
-  'packages/scss-parser/src/**/*.ts',
-  'packages/jess-parser/src/**/*.ts',
+  'packages/syntax/css/css-parser/src/**/*.ts',
+  'packages/syntax/less/less-parser/src/**/*.ts',
+  'packages/syntax/scss/scss-parser/src/**/*.ts',
+  'packages/syntax/jess/jess-parser/src/**/*.ts',
   'packages/parser-shared/src/**/*.ts'
 ];
 

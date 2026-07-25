@@ -38,11 +38,16 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * PARSER_PACKAGES list in verify-compose-integrity.mjs.
  */
 const PARSERS = [
-  'parser-shared',
-  'css-parser',
-  'less-parser',
-  'scss-parser',
-  'jess-parser'
+  /*
+   * Each entry: { dir, npm } — the directory under packages/ (post-regroup
+   * uses the nested syntax/ shape) and the npm package name for `--filter`.
+   * Keep in dependency (compose) order, matching verify-compose-integrity.mjs.
+   */
+  { dir: 'parser-shared', npm: '@jesscss/parser-shared' },
+  { dir: 'syntax/css/css-parser', npm: '@jesscss/css-parser' },
+  { dir: 'syntax/less/less-parser', npm: '@jesscss/less-parser' },
+  { dir: 'syntax/scss/scss-parser', npm: '@jesscss/scss-parser' },
+  { dir: 'syntax/jess/jess-parser', npm: '@jesscss/jess-parser' }
 ];
 
 const noBuild = process.argv.includes('--no-build');
@@ -81,8 +86,8 @@ function builtEsmModules(libDir) {
 let failed = false;
 
 for (const pkg of PARSERS) {
-  const name = `@jesscss/${pkg}`;
-  const libDir = resolve(root, 'packages', pkg, 'lib');
+  const name = pkg.npm;
+  const libDir = resolve(root, 'packages', pkg.dir, 'lib');
   let output = '';
 
   if (!noBuild) {

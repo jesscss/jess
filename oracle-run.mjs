@@ -14,7 +14,7 @@
  * Run: `node ./oracle-run.mjs` from the repo root (requires a full non-docs build).
  */
 import { Compiler } from './packages/jess/lib/index.js';
-import lessPlugin from './packages/jess-plugin-less/lib/index.js';
+import lessPlugin from './packages/syntax/less/jess-plugin-less/lib/index.js';
 import * as fs from 'node:fs';
 
 const f = new URL('./packages/jess/benchmark/benchmark.less', import.meta.url).pathname;
@@ -45,8 +45,12 @@ fs.writeFileSync('./packages/core/.bmark-ast/oracle.css', css);
 console.log('oracle bytes:', css.length);
 
 const WARMUP = 3, N = 15, times = [];
-for (let i = 0; i < WARMUP; i++) await mk().render(f);
-for (let i = 0; i < N; i++) { const t0 = performance.now(); await mk().render(f); times.push(performance.now() - t0); }
+for (let i = 0; i < WARMUP; i++) {
+  await mk().render(f);
+}
+for (let i = 0; i < N; i++) {
+  const t0 = performance.now(); await mk().render(f); times.push(performance.now() - t0);
+}
 times.sort((a, b) => a - b);
 console.log('legacy full-eval (Compiler.render, incl. disk+setup): median',
   times[Math.floor(N / 2)].toFixed(3), 'ms, min', times[0].toFixed(3), 'ms');

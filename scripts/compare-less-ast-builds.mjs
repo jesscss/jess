@@ -23,7 +23,7 @@ const stageMarker = 'jess-less-ast-compare-stage-v1\n';
 const stageName = 'jess-less-ast-compare-stage';
 const allowedChangedFiles = new Set([
   'docs/architecture/core/PERF_IDEAS.md',
-  'packages/less-parser/src/ast/grammar.ts'
+  'packages/syntax/less/less-parser/src/ast/grammar.ts'
 ]);
 
 function usage(message) {
@@ -211,9 +211,9 @@ function buildArtifact(stageRoot, commit, input) {
    */
   installStage(stageRoot);
   buildStage(stageRoot);
-  const parserBundle = path.join(stageRoot, 'packages/less-parser/lib/index.js');
+  const parserBundle = path.join(stageRoot, 'packages/syntax/less/less-parser/lib/index.js');
   const coreBundle = path.join(stageRoot, 'packages/core/lib/index.js');
-  const grammarSource = path.join(stageRoot, 'packages/less-parser/src/ast/grammar.ts');
+  const grammarSource = path.join(stageRoot, 'packages/syntax/less/less-parser/src/ast/grammar.ts');
   const artifact = path.join(stageRoot, '.benchmark-artifacts', `${commit}.mjs`);
   fs.copyFileSync(parserBundle, artifact);
   const metadata = {
@@ -249,7 +249,7 @@ function assertSharedRuntime(before, after) {
 }
 
 function installLoadCopies(stageRoot, before, after) {
-  const directory = path.join(stageRoot, 'packages/less-parser/.benchmark-artifacts');
+  const directory = path.join(stageRoot, 'packages/syntax/less/less-parser/.benchmark-artifacts');
   fs.mkdirSync(directory, { recursive: true });
   const copy = (artifact) => {
     const target = path.join(directory, `${artifact.commit}-${artifact.parserBundle.sha256}.mjs`);

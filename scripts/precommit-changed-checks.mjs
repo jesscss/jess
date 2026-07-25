@@ -113,9 +113,23 @@ function uniqueLines(outputs) {
 function packageDirs(files) {
   const unique = new Set();
   for (const file of files) {
-    const match = file.match(/^packages\/[^/]+/);
-    if (match) {
-      unique.add(match[0]);
+    /* Walk up from the file's directory to the nearest owning package.json.
+       Replaces the flat `^packages\/[^/]+` heuristic so nested workspace
+       layouts (packages/syntax/<lang>/<pkg>, packages/editor/<pkg>, etc.)
+       classify correctly. A package root is any directory under packages/
+       that contains a package.json. */
+    let dir = path.dirname(file);
+    while (dir.startsWith('packages/')) {
+      if (existsSync(path.join(ROOT, dir, 'package.json'))) {
+        unique.add(dir);
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === 'packages') {
+        /* Reached the workspace anchor with no package.json found; bail. */
+        break;
+      }
+      dir = parent;
     }
   }
   return [...unique].sort();
@@ -272,7 +286,7 @@ run(
 
 const changedPackages = packageDirs(files);
 const hasParserSourceChanges = files.some(file =>
-  /^packages\/(?:css|less|scss|jess)-parser\/src\//.test(file));
+  /^packages\/syntax\/(?:css|less|scss|jess)\/(?:css|less|scss|jess)-parser\/src\//.test(file));
 
 if (MODE === 'upstream' && hasParserSourceChanges) {
   console.log('\n==> Running parser runtime-boundary validation');

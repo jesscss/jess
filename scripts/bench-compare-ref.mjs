@@ -35,17 +35,17 @@ if (!pkg || !gitRef) {
 
 const packageMap = {
   '@jesscss/css-parser': {
-    relDir: 'packages/css-parser',
-    benchFile: 'packages/css-parser/test/bench.ts',
-    latestFile: 'packages/css-parser/test/bench-results/latest.json',
-    baselineOut: `packages/css-parser/test/bench-results/baseline-${gitRef}.json`,
+    relDir: 'packages/syntax/css/css-parser',
+    benchFile: 'packages/syntax/css/css-parser/test/bench.ts',
+    latestFile: 'packages/syntax/css/css-parser/test/bench-results/latest.json',
+    baselineOut: `packages/syntax/css/css-parser/test/bench-results/baseline-${gitRef}.json`,
     extraArgs: []
   },
   '@jesscss/less-parser': {
-    relDir: 'packages/less-parser',
-    benchFile: 'packages/less-parser/test/bench.ts',
-    latestFile: 'packages/less-parser/test/bench-results/latest.json',
-    baselineOut: `packages/less-parser/test/bench-results/baseline-${gitRef}.json`,
+    relDir: 'packages/syntax/less/less-parser',
+    benchFile: 'packages/syntax/less/less-parser/test/bench.ts',
+    latestFile: 'packages/syntax/less/less-parser/test/bench-results/latest.json',
+    baselineOut: `packages/syntax/less/less-parser/test/bench-results/baseline-${gitRef}.json`,
     extraArgs: benchmarkOnly ? ['--benchmark'] : []
   }
 };

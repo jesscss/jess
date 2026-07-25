@@ -21,8 +21,8 @@ const unsupportedAggregateMode = process.argv.includes('--mode=upstream');
 const reviewedSourceRoots = [
   'packages/core/src',
   'packages/jess/src',
-  'packages/less-parser/src',
-  'packages/css-parser/src'
+  'packages/syntax/less/less-parser/src',
+  'packages/syntax/css/css-parser/src'
 ];
 const hotPathRoots = reviewedSourceRoots.map(rootPath => `${rootPath}/`);
 const parserRuntimeDebtPath = 'scripts/parser-runtime-boundary-debt.json';
@@ -1967,7 +1967,7 @@ function classifyProductionSurface(path) {
   if (isTestOnlyPath(path) || !hotPathRoots.some(rootPath => path.startsWith(rootPath))) {
     return 'outside-review';
   }
-  if (path.startsWith('packages/css-parser/src/') || path.startsWith('packages/less-parser/src/')) {
+  if (path.startsWith('packages/syntax/css/css-parser/src/') || path.startsWith('packages/syntax/less/less-parser/src/')) {
     return 'frontend';
   }
   if (path.startsWith('packages/jess/src/')) {

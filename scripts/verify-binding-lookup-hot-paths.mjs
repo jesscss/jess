@@ -455,10 +455,10 @@ if (productionWrapperCalls.length > 0) {
 const stringFilterShapes = scanSources(
   [
     'packages/core/src',
-    'packages/jess-parser/src',
-    'packages/less-parser/src',
-    'packages/scss-parser/src',
-    'packages/scss-parser/test'
+    'packages/syntax/jess/jess-parser/src',
+    'packages/syntax/less/less-parser/src',
+    'packages/syntax/scss/scss-parser/src',
+    'packages/syntax/scss/scss-parser/test'
   ],
   /findDeclaration\([^\n]+,\s*['"](?:VarDeclaration|Declaration)['"]|filterType: 'VarDeclaration'|filterType: 'Declaration'/u
 );

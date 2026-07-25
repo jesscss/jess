@@ -46,8 +46,8 @@ async function loadBuild(root) {
   const module = relative => import(pathToFileURL(path.resolve(root, relative)).href);
   const [{ Context, createRenderBuffer, finalizeFlatRenderBuffer }, { default: lessPlugin }, { lessCompatPlugin }] = await Promise.all([
     module('packages/core/lib/index.js'),
-    module('packages/jess-plugin-less/lib/index.js'),
-    module('packages/jess-plugin-less-compat/lib/index.js')
+    module('packages/syntax/less/jess-plugin-less/lib/index.js'),
+    module('packages/syntax/less/jess-plugin-less-compat/lib/index.js')
   ]);
   return { Context, createRenderBuffer, finalizeFlatRenderBuffer, lessPlugin, lessCompatPlugin };
 }

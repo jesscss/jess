@@ -17,6 +17,6 @@ describe('configuration syntax guard', () => {
     expect(configSyntaxKind('packages/core/package.json')).toBe('json');
     expect(validateConfigText('packages/core/package.json', jsonc)).toMatch(/JSON|Expected/i);
 
-    expect(configSyntaxKind('packages/vscode/syntaxes/jess.tmLanguage.json')).toBe('json');
+    expect(configSyntaxKind('packages/editor/vscode/syntaxes/jess.tmLanguage.json')).toBe('json');
   });
 });

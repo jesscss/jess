@@ -60,9 +60,13 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@jesscss/css-parser": "workspace:*",
     "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
+    "@jesscss/jess-parser": "workspace:*",
+    "@jesscss/less-parser": "workspace:*",
+    "@jesscss/scss-parser": "workspace:*",
     "@types/lodash-es": "^4.17.8",
     "bootstrap": "~5.3.8",
     "bootstrap-less-port": "~2.5.1",

@@ -44,20 +44,25 @@ import { parse } from '@jesscss/jess-parser';
 interface Construct {
   group: string;
   name: string;
+
   /** Smallest `.jess` snippet expressing the construct. */
   src: string;
+
   /** Whether the `.jess` parser currently accepts it. */
   supported: boolean;
   origin: 'css' | 'less' | 'sass';
   scope?: 'gap' | 'by-design' | 'undecided';
+
   /** For gaps: the narrower form that DOES work, when one exists. */
   note?: string;
 }
 
 const CONSTRUCTS: Construct[] = [
-  // ── baseline: the documented migration mapping ─────────────────────────────
-  // Every row here is a spelling asserted by
-  // `packages/docs-content/docs/shared/04-guides/03-migrating-to-jess.mdx`.
+  /*
+   * ── baseline: the documented migration mapping ─────────────────────────────
+   * Every row here is a spelling asserted by
+   * `packages/docs/docs-content/docs/shared/04-guides/03-migrating-to-jess.mdx`.
+   */
   { group: 'documented-mapping', name: '@-import file-relative', src: '@-import "./variables";', supported: true, origin: 'less' },
   { group: 'documented-mapping', name: '@-compose module', src: '@-compose "./theme";', supported: true, origin: 'sass' },
   { group: 'documented-mapping', name: '@-compose ... as', src: '@-compose "./theme" as t;', supported: true, origin: 'sass' },

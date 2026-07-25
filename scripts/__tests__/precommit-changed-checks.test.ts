@@ -102,13 +102,22 @@ describe('changed package checks', () => {
       chmodSync(fakePnpm, 0o755);
 
       const coreProbe = resolve(sandbox, 'packages/core/src/prepush-dev-probe.ts');
-      const parserProbe = resolve(sandbox, 'packages/jess-parser/src/prepush-dev-probe.ts');
+      const coreProbe = resolve(sandbox, 'packages/core/src/prepush-dev-probe.ts');
+
+      /*
+       * The clone is of origin/dev HEAD (pre-regroup), so the nested parser
+       * directory does not exist in the sandbox yet. Fabricate it so the
+       * probe write succeeds; the path string is what the precommit script
+       * classifies, not the surrounding tree.
+       */
+      mkdirSync(resolve(sandbox, 'packages/syntax/jess/jess-parser/src'), { recursive: true });
+      const parserProbe = resolve(sandbox, 'packages/syntax/jess/jess-parser/src/prepush-dev-probe.ts');
       writeFileSync(coreProbe, 'export const prepushDevCoreProbe = true;\n');
       writeFileSync(parserProbe, 'export const prepushDevParserProbe = true;\n');
       execFileSync('git', [
         'add',
         'packages/core/src/prepush-dev-probe.ts',
-        'packages/jess-parser/src/prepush-dev-probe.ts',
+        'packages/syntax/jess/jess-parser/src/prepush-dev-probe.ts',
         'scripts/precommit-changed-checks.mjs',
         'scripts/staged-lint.mjs'
       ], { cwd: sandbox });
@@ -131,10 +140,10 @@ describe('changed package checks', () => {
         '-w exec tsc -p packages/core/tsconfig.build.json --noEmit',
         '--filter ./packages/core build',
         'exec eslint packages/core/src/prepush-dev-probe.ts',
-        '--filter ./packages/jess-parser test',
-        '-w exec tsc -p packages/jess-parser/tsconfig.build.json --noEmit',
-        '--filter ./packages/jess-parser build',
-        'exec eslint packages/jess-parser/src/prepush-dev-probe.ts'
+        '--filter ./packages/syntax/jess/jess-parser test',
+        '-w exec tsc -p packages/syntax/jess/jess-parser/tsconfig.build.json --noEmit',
+        '--filter ./packages/syntax/jess/jess-parser build',
+        'exec eslint packages/syntax/jess/jess-parser/src/prepush-dev-probe.ts'
       ]);
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
