@@ -202,6 +202,19 @@ reference"* framing is superseded by this row. Source:
 | C12 | **Two-role Collection model — POSITION selects the role.** Sass paren maps (data) and Sass nested property blocks (structure) both lower to the same `Collection` node; where it lands decides what it means. Value/arg position → DATA role → serialize as C11. Property-root position → STRUCTURE role → expand to hyphenated declarations. **Custom properties take the DATA role**: `--foo: $m` serializes the collection and does NOT flatten, because a custom property has a real value slot and `--foo-a` has no CSS-defined relation to `--foo`. | SETTLED | Owner decision, 2026-07-24; `packages/core/src/ast/serialize.ts` `isCollectionValue` / property-flatten path |
 | C13 | **`packages/fns/src/shared/` means "behavior IDENTICAL in Less and Sass" and nothing else** — it is not a utility drawer. `less/index.ts` = `less/` + `shared/`; `sass/index.ts` = `sass/` + `shared/`. Those composed indexes are the **registration unit**, mapped to module-granular specifiers (`#less`, `#sass/color`). There is **no merged registry**, and **no backward-compatibility shims anywhere in this work**. | SETTLED | Owner decision, 2026-07-24; `FNS-PACKAGE-MIGRATION-SPEC.md`, `HANDOFF.md` "Active correction: dialect function conversion"; extends C6 |
 
+| C14 | **The DATA role of C12 has a VALUE-DOMAIN type.** `ValueObj` gains `Collection` — ordered key/value entries, the value-domain projection of the AST `Collection` node (module-qualified against it exactly as the value `Dimension` is). A key is a full `ValueGroup`, because a Sass map key is a VALUE and key identity is VALUE equality (`compare`), never byte equality; map equality itself is order-insensitive though entries stay ordered. **A map IS a list of its pairs**: `groupItems` yields each entry as a two-item `[key, value]` group, so `length((a: 1, b: 2))` is 2 and `nth(…, 1)` is `a 1` with no map-specific branch in the list functions (C7). Byte form is unchanged (C11) and members emit their OWN bytes, so a container never re-runs the number policy over a value it merely holds. | SETTLED | 2026-07-24; `packages/core/src/ast/value-eval.ts`, `value-collection.ts`, `serialize.ts` `evalCollection`; extends C7/C11/C12 |
+
+> **C14 key-materialization limitation (2026-07-24).** `scss-parser` lowers a map
+> key to a Collection entry NAME (`string | Interpolation`; `mapKeyName` rejects
+> every other key with `Unsupported SCSS map key`), so the key's own value type is
+> not carried on the node and `evalCollection` recovers it through the
+> `materialize` sniff. Every sniff branch preserves its input bytes verbatim, so
+> this cannot move output — but it is a re-classification, and a quoted key has
+> already lost its quotes at parse (harmless, since Sass string equality ignores
+> quoting). The `key: ValueGroup` shape is deliberately wider than what the parser
+> can currently produce so that lifting the parser restriction — the real fix —
+> needs no change here. Colour, list, and map keys are unreachable until then.
+
 > **C13 implementation state (verified 2026-07-24).** `packages/fns/src/` has the
 > `shared/` + `less/` + `sass/` owner split and composed `less/index.ts` /
 > `sass/index.ts`. It does **not** yet have the module-granular specifiers: the
