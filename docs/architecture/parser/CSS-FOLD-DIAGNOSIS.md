@@ -139,3 +139,144 @@ without losing information or changing the shipped AST shape.
 Per the §Unit4 pass criteria, this diagnosis is the only deliverable of this
 read-only step. **No grammar code is to change in the same commit**, and the
 diagnosis must land before any Phase A work is dispatched.
+
+---
+
+## Correction — recorded 2026-07-25 after Phase A landed (commit `801f88286`)
+
+**Three claims in the diagnosis above were wrong, ** as Phase A's mechanical
+conversion made falsifiable. Read this BEFORE planning Phase B.
+
+### Claim 1 — "the AST grammar is overwhelmingly reducer noise"
+
+**Partially true, partially false.** Phase A's actually-deletable noise was:
+
+- ✓ **The 97-row `CssAstLocalRules` typed-declaration interface** (102 lines).
+  `rules<…>(factory)` does not require a per-rule typed interface on the
+  factory's local `g` map when the rule bodies themselves carry typed inference.
+  Removed; no gate broke. (Phase A commit `801f88286`.)
+- ✓ The 27 redundant `<Type>` generics on `node<Type>('Name', …)` calls. TS
+  infers the return type from the `build` arrow's body — dropping the explicit
+  generic is byte-identical and shaves one site per rule.
+
+Both deletions netted `−104` lines: AST went from 3,455 → 3,351. The CST→AST
+ratio moved 2.26× → 2.10×, **not the ≈ 1× target the §3 plan implied.**
+
+### Claim 2 — "the 82 `node<Type>('Name', …)` wrappers can be dropped"
+
+**False, empirically.** Phase A tried dropping the `'Name'` string first arg
+of `node('Name', …)` (hoping the parseman grammar-rule key would carry it).
+The css-parser build went RED with a hard macro-plugin error: *"composeLeaf()
+must macro-fuse; runtime composition is forbidden."* Under parseman 0.37.0
+composeLeaf statically fuses the `rules()` factory map to keyed compiled
+output, and the name strings ARE the compile-time key. Dropping them makes the
+plugin fall back to runtime composition, which it HARD-ERRORS on. These name
+strings are NOT cosmetic — they are the macro-fusion contract.
+
+So the wrappers carry: name string (key) + combinator (recognition) + build
+arrow (AST construction). All three are needed; the only deletable part was
+the redundant `<Type>` generic, claimed above.
+
+### Claim 3 — "the ~610-line type-guard helper layer is deletable noise"
+
+**False for the bulk, true for a small subset.** The trivial `isNodeType`
+wrappers (isSimple/isCompound/isComplex/isSelectorList/isComment/isKeyword/
+isInterpolation/isDeclaration/isRule/isAtRuleBlock/isOpaqueAtRuleBlock) *could*
+be inlined, but inlining lengthens every call site and is not a net line-count
+win. The substantive helpers — `complexSegments`, `valueChildren`,
+`foldOperation`, `selectorComplexes`, `chainedQueryComparison`,
+`keyframeSelectorList`, etc. — do real AST construction work and are genuinely
+required to produce today's byte-identical AST shape. They are NOT deletable.
+
+### What this means for Phase B
+
+The fold is **NOT a "delete the AST grammar's reducer machinery"** operation.
+It is a **merge**: one `cssFactory = (g) => ({...})` source is exported twice:
+
+```ts
+export const cssGrammar = rules(
+  { trivia: rw, scanSkip: [...] },         // hostMode 'ast' is the default
+  cssFactory
+);
+export const cssCstGrammar = rules(
+  { trivia: rw, scanSkip: [...], hostMode: 'cst' },
+  cssFactory
+);
+```
+
+The factory's rule bodies MUST carry the AST construction logic via `build`
+arrows — these ARE the AST grammar's substantive reducer code, which Phase A
+confirmed is load-bearing. What hostMode gives is: in `'ast'` mode the build
+arrows run and produce the typed AST; in `'cst'` mode the host's CST builder
+replaces them at compile time (no per-node runtime host probe). **The reducer
+code does not get thinner by being in one file — it gets SHARED recognition
+and one shipping location instead of two clones.** The net benefit of Phase B
+for jess's CSS pilot is:
+
+- One recognition body (instead of two parallel ones; CST currently has its
+  own inline copy of the terminals/helpers, AST uses parser-shared via
+  composeLeaf)
+- One shipping location for the rule list (the 52 plain `node(parser)`
+  invocations in the CST grammar + the 82 typed `node('Name', …, build)`
+  invocations in the AST grammar become ONE set of `node('Name', …, build)`
+  invocations where `build` carries the constructor logic and hostMode
+  dispatches whether `build` runs ('ast') or is superseded by the host ('cst'))
+- The CST grammar's `(g: any)` typing is replaced by a properly typed
+  `CssGrammarSelf` interface (done in Phase A; Phase B carries that forward)
+
+So the expected line-count target for the single Phase B factory is MORE like
+the current AST grammar's identified non-noise line count — that is, the
+~3,351-line post-Phase-A file minus the duplicative recognition (~80 lines now
+inline in the CST grammar, plus a few shared helpers) — NOT the
+"CST-twin-line-count-plus-thin-reducer" the original diagnosis implied. **Plan
+for ~3,200 lines, not ~1,700**, unless further rounds of work find a way to
+thin the substantive reducer bodies (which today appear to be load-bearing).
+
+This is exactly the failure class AGENTS.md names "a check that reports
+success because it cannot see the failure mode" — the diagnosis read the line
+budget as foldable when Phase A's mechanical attempt exposed what was
+contractually required and what was load-bearing. The Phase B plan must take
+the budget realistically: the fold STILL adds the missing single-factory
+property and STILL kills the duplication, but it is NOT a thousand-line
+shrinkage.
+
+### Updated Phase B recipe (informed by Phase A)
+
+1. Take the AST grammar's EVERY rule body in src/ast/grammar.ts in its
+   current shape — `node('Name', sequence/choice/..., (children, fields,
+   span, rawChildren, triviaLog, state) => stylesheet(...)/complexCanonical/
+   color(...)/quoted(...)/etc.)` — and lift them into the new single
+   `cssFactory = (g) => ({...})` factory. Recognition terms (`regex`,
+   `literal`, `choice`, `sequence`, ...) stay side-by-side with the build
+   arrows.
+2. The CST grammar's standalone `node(parser)` rules (which today use plain
+   structural capture) are SUPERSEDED — their recognition paths are the same
+   as the AST rules' bodies (modulo type-key/name-key), and hostMode
+   `'cst'` takes over the build arrow at compile time.
+3. The shared-recognizer pieces (cssAstSyntax via parser-shared, etc.)
+   stay as-is — they're not local to either grammar.
+4. `src/cst.ts`/`cst-css.ts` re-route `parseCssCst` to `cssCstGrammar`; the
+   `parse()` AST entry re-routes to `cssGrammar`. Driver imports → `parseman/run`.
+5. DELETE src/ast/grammar.ts (its contents are now in cssFactory, exported
+   via `cssGrammar` with `hostMode: 'ast'` default).
+6. The composeLeaf shape `composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<...>(..., factory)])`
+   stays — BOTH exports wrap the single cssFactory in the same composeLeaf
+   invocation, with `hostMode` distinguishing them.
+
+### Gate (post-collapse, common to Phase B and Phase A — verified green at `801f88286`)
+
+Same gate stack: byte-identity gate (committed baseline; gate must PASS or
+declared rename-mapping residue must be EMPTY), check:macro 0 fallbacks,
+compose-integrity, verify:types, lint, ES grammar rules, the css-parser
+test suite 242/242, and per-const grammar-reviewer pass.
+
+### Note for Stage 4 (Less), Stage 5 (SCSS), Stage 6 (Jess)
+
+Less (4,750 / 1,281 = 3.7×), SCSS (5,116 / 1,379 = 3.7×), Jess (5,587 / 1,210
+= 4.6×) all have HIGHER ratios than CSS (2.26×). The same Phase A correction
+will likely apply to them: the deletable noise is the typed-rules interface +
+the redundant generics; the rule bodies carry real AST construction logic
+that is load-bearing and is NOT a foldable bulk. **The single-factory
+hostMode export gives them all the "one source, two compilations" shape
+without requiring each AST grammar to shrink to CST-twin line count.** Plan
+execution per Stage accordingly.
