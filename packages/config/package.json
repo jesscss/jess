@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
-    "cosmiconfig": "^9.0.0",
+    "cosmiconfig": "^9.0.2",
     "picomatch": "^4.0.2"
   },
   "devDependencies": {
