@@ -1147,6 +1147,13 @@ function guardOperatorText(value: unknown): string | null {
     return null;
   }
   const operator = value.value.trim();
+  // The guard comparison vocabulary, spelled here in TS because a reducer cannot
+  // read a combinator's alternation. It must stay in step with
+  // `directMixinGuardOperator` / `directFunctionConditionOperator` — and it must NOT
+  // be unified with the CSS media-range operator (`g.CssAstSyntaxQueryComparisonOperator`,
+  // mediaqueries-4 §4 = `< <= = >= >`): `=~`, `=>` and `=<` are Less guard spellings
+  // with no meaning in a media query, and merging the two would widen
+  // `@media (width => 600px)` into acceptance.
   return ['>', '<', '>=', '<=', '=>', '=<', '=', '=~'].includes(operator) ? operator : null;
 }
 
@@ -1490,7 +1497,12 @@ const directFunctionConditionOperator = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>
 const directFunctionConditionAnd = regex(/[ \t\n\r\f]*and(?![-\w])[ \t\n\r\f]*/i);
 const directFunctionConditionOr = regex(/[ \t\n\r\f]*or(?![-\w])[ \t\n\r\f]*/i);
 const directFunctionConditionNot = regex(/not(?![-\w])/i);
-const directFunctionConditionAhead = regex(/>=|<=|=>|=<|=~|[<>=]|(?<![-\w])(?:and|or|not)(?![-\w])/i);
+// Built on `directMixinGuardOperator` rather than re-spelling the guard comparison
+// alternation: this is only ever consumed inside `not(not(…))`, so the extra frames
+// roll back and contribute no child. The keyword arm keeps its own regex — it is a
+// `scanTo` sentinel, so it lands at arbitrary offsets and needs the LEADING
+// `(?<![-\w])` boundary a token-position terminal does not carry.
+const directFunctionConditionAhead = choice(directMixinGuardOperator, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
 const directStaticSelectorPseudoName = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
 // A non-selector functional pseudo is still one canonical SimpleSelector leaf.
 // A pseudo body cannot quietly turn a Less variable read into static bytes.
