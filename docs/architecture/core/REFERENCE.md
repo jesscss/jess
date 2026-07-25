@@ -29,9 +29,12 @@ Both take a **bare fixture name** and REFUSE any path containing `legacy/`,
 
 ## Pitfalls that repeatedly misled agents (do NOT do these)
 
-1. **`legacy/*.css` is NOT the reference.** Those are the Less-4.x EXPANDED outputs
-   (e.g. `.error, .badError` comma lists instead of `:is(.error, .badError)`).
-   The helper throws if it sees a `legacy/` path.
+1. **`legacy/*.css` is NOT the reference, and no test asserts it.** Those are the
+   Less-4.x EXPANDED outputs (e.g. `.error, .badError` comma lists instead of
+   `:is(.error, .badError)`), recorded when a fixture graduated to v5-expected.
+   They are inert historical records — nothing reads them (see DESIGN-DECISIONS
+   O5), and each one says so in a header on its first two lines. The helper
+   throws if it sees a `legacy/` path.
 2. **`graduate-v5`, `alpha-release-port`, or any OTHER less.js worktree/branch is
    NOT the reference.** Only `alpha` in `~/git/oss/less.js`.
 3. **`upstream/alpha` is NOT the reference.** less.js's own upstream ships EXPANDED
