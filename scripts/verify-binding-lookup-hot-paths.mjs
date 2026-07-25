@@ -1,9 +1,57 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { resolve, relative, join, sep } from 'node:path';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
+
+/**
+ * Repo-native replacement for the ripgrep shell-outs this gate used to do.
+ * `rg` is not installed on every developer machine, and a gate that crashes
+ * with ENOENT instead of reporting is a gate people learn to bypass. The scan
+ * semantics are unchanged: line-level regex match over the given source roots,
+ * minus the excluded paths.
+ */
+function scanSources(searchRoots, pattern, excluded = []) {
+  const excludedPaths = excluded.map(entry => resolve(root, entry));
+  const matches = [];
+
+  function isExcluded(fullPath) {
+    return excludedPaths.some(entry => fullPath === entry || fullPath.startsWith(entry + sep));
+  }
+
+  function walk(dir) {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (isExcluded(fullPath)) {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'lib') {
+          continue;
+        }
+        walk(fullPath);
+      } else if (/\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/u.test(entry.name)) {
+        const lines = readFileSync(fullPath, 'utf8').split('\n');
+        for (let index = 0; index < lines.length; index++) {
+          if (pattern.test(lines[index])) {
+            matches.push(`${relative(root, fullPath)}:${index + 1}:${lines[index]}`);
+          }
+        }
+      }
+    }
+  }
+
+  for (const searchRoot of searchRoots) {
+    walk(resolve(root, searchRoot));
+  }
+  return matches;
+}
 
 const checks = [
   {
@@ -390,50 +438,31 @@ for (const token of ['excludedNode0', 'excludedNode1', 'excludedNodesLength', 'r
   }
 }
 
-try {
-  const productionWrapperCalls = execFileSync('rg', [
-    '-n',
-    String.raw`\.find(?:Variable|Property|Declaration|AnyDeclaration)\(`,
-    'packages/core/src',
-    '--glob',
-    '!packages/core/src/tree/rules.ts',
-    '--glob',
-    '!**/__tests__/**'
-  ], {
-    cwd: root,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+const productionWrapperCalls = scanSources(
+  ['packages/core/src'],
+  /\.find(?:Variable|Property|Declaration|AnyDeclaration)\(/u,
+  ['packages/core/src/tree/rules.ts']
+).filter(line => !line.includes('__tests__'));
+if (productionWrapperCalls.length > 0) {
   console.error('production runtime still calls public Rules.find* declaration wrappers:');
-  console.error(productionWrapperCalls.trimEnd());
+  console.error(productionWrapperCalls.join('\n'));
   failed = true;
-} catch (error) {
-  if (error.status !== 1) {
-    throw error;
-  }
 }
 
-try {
-  execFileSync('rg', [
-    '-n',
-    String.raw`findDeclaration\([^\n]+,\s*['"](VarDeclaration|Declaration)['"]|filterType: 'VarDeclaration'|filterType: 'Declaration'`,
+const stringFilterShapes = scanSources(
+  [
     'packages/core/src',
-    'packages/core/src/tree/__tests__',
     'packages/jess-parser/src',
     'packages/less-parser/src',
     'packages/scss-parser/src',
     'packages/scss-parser/test'
-  ], {
-    cwd: root,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+  ],
+  /findDeclaration\([^\n]+,\s*['"](?:VarDeclaration|Declaration)['"]|filterType: 'VarDeclaration'|filterType: 'Declaration'/u
+);
+if (stringFilterShapes.length > 0) {
   console.error('old string-filter Rules.findDeclaration shape is still present');
+  console.error(stringFilterShapes.join('\n'));
   failed = true;
-} catch (error) {
-  if (error.status !== 1) {
-    throw error;
-  }
 }
 
 if (failed) {

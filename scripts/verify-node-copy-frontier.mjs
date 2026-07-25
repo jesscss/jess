@@ -53,6 +53,15 @@ const allowedOrdinaryClonePatterns = [
     // load-bearing dying eval extend path.
     file: 'packages/core/src/tree/util/extend.ts',
     pattern: /\bselector\.clone\(\(child\)/u
+  },
+  {
+    // Not a jess tree node. runtime-worker.ts is the sandboxed Deno worker for
+    // Less 4.x `@plugin` compatibility; it declares its OWN local `Unit` class
+    // mirroring less.js, and `unitOf` clones that value object. The copy
+    // frontier invariant is about the core evaluation spine (V8-ARCHITECTURE
+    // §5), which this worker is not part of.
+    file: 'packages/jess-plugin-js/src/runtime-worker.ts',
+    pattern: /\breturn unit\.clone\(\);/u
   }
 ];
 const expectedRemaining = new Set();

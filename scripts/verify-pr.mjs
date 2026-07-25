@@ -96,6 +96,8 @@ run('node', ['scripts/check-macro-buildable.mjs', '--no-build']);
 // 4. Lint + full CI (per-package build+test, includes all parser and core suites).
 heading('Lint');
 run('pnpm', ['run', 'lint']);
+heading('Strict production types');
+run('pnpm', ['run', 'verify:types']);
 heading('CI (per-package build + test)');
 run('pnpm', ['run', 'ci']);
 

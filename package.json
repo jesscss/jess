@@ -125,7 +125,8 @@
     "docs:content:migrate:jess": "pnpm --filter @jesscss/docs-content run migrate:jess",
     "docs:content:import:less": "pnpm --filter @jesscss/docs-content run import:less",
     "docs:content:normalize": "pnpm --filter @jesscss/docs-content run normalize",
-    "docs:content:validate": "pnpm --filter @jesscss/docs-content run validate"
+    "docs:content:validate": "pnpm --filter @jesscss/docs-content run validate",
+    "verify:jess-suite-ratchet": "node scripts/vitest-ratchet.mjs --package packages/jess --baseline packages/jess/test/known-failures.json"
   },
   "repository": {
     "type": "git",

@@ -306,26 +306,110 @@ describe('conversion construct support', () => {
 });
 
 /**
- * The floor. These counts may only move in the direction of MORE support; a drop
- * means a construct regressed. When a gap closes, flip its `supported` flag and
- * raise the floor in the same commit.
+ * The baseline — NAMED sets, never counts.
+ *
+ * A floor of "at least 29 supported `less` constructs" is met by any 29 of them,
+ * so a commit that gains one construct and loses another reads as no change at
+ * all. These lists name every construct, so the assertion failure and the git
+ * diff both say which construct moved and which way.
+ *
+ * `vitest --run -u` does NOT regenerate these: they are hand-edited on purpose.
+ * Closing a gap is a two-line edit (flip `supported`, move the name here); the
+ * gate refuses to pass until both halves are done.
  */
-const FLOORS = { css: 10, less: 29, sass: 10 } as const;
+const SUPPORTED_BASELINE: Record<'css' | 'less' | 'sass', readonly string[]> = {
+  css: [
+    '& + & repeated',
+    '& parent reference',
+    '&__el BEM concatenation',
+    ':not(&)',
+    '@container',
+    '@layer',
+    '@media range syntax',
+    '@property',
+    'calc() without an operator',
+    'clamp() / min() / max()'
+  ],
+  less: [
+    '$$var declaration',
+    '$$var reference (from Less @var)',
+    '$if',
+    '$if / $else',
+    '$var declaration',
+    '// line comment',
+    ':extend() in a selector',
+    ':extend(… all)',
+    '@-import file-relative',
+    '@-plugin',
+    '@-reference',
+    '@media prelude via $(…)',
+    'anonymous-mixin declaration',
+    'default parameter value',
+    'e() escape function',
+    'escaped value ~"…"',
+    'expression $($$w + 1)',
+    'guard: default()',
+    'guard: grouped and',
+    'guard: grouped not',
+    'guard: when (cond)',
+    'indirect reference $[$n]',
+    'mixin call $ > .box()',
+    'mixin def .box()',
+    'mixin def, multiline params',
+    'namespaced call',
+    'property-name interpolation',
+    'selector interpolation',
+    'string interpolation'
+  ],
+  sass: [
+    '$else if',
+    '$for over a list (from @each)',
+    '$for with value and key',
+    '$var reference (from Sass $var)',
+    '@-compose ... as',
+    '@-compose module',
+    'collection lookup $m[k]',
+    'expression $($w / 2)',
+    'mixin call $ > box()',
+    'mixin def box() (from @mixin)'
+  ]
+};
+
+/** Which gap sits in which scope, by name — not how many sit in each. */
+const GAP_SCOPE_BASELINE: Record<'gap' | 'by-design' | 'undecided', readonly string[]> = {
+  gap: [
+    '!important on a mixin call',
+    '$while',
+    '&:extend() in a rule body',
+    '@-compose ... with { } configuration',
+    '@import (css)',
+    '@import (optional)',
+    'anonymous-mixin call',
+    'calc() with an operator',
+    'guard calling a function',
+    'literal-value pattern matching',
+    'rest/variadic parameters',
+    'unicode-range'
+  ],
+  'by-design': [],
+  undecided: [
+    '!important on a variable declaration',
+    '@media prelude via $[…]'
+  ]
+};
 
 describe('conversion support ratchet', () => {
   for (const origin of ['css', 'less', 'sass'] as const) {
-    it(`${origin}: supported count does not regress`, () => {
-      const supported = CONSTRUCTS.filter(c => c.origin === origin && c.supported).length;
-      expect(supported).toBeGreaterThanOrEqual(FLOORS[origin]);
+    it(`${origin}: supported construct SET matches the baseline`, () => {
+      const supported = CONSTRUCTS.filter(c => c.origin === origin && c.supported).map(c => c.name).sort();
+      expect(supported).toEqual([...SUPPORTED_BASELINE[origin]].sort());
     });
   }
 
-  it('holds the recorded gap split', () => {
-    const gaps = CONSTRUCTS.filter(c => !c.supported);
-    const byScope = (s: string) => gaps.filter(c => c.scope === s).length;
-    // Pinned so that closing a gap, or reclassifying one, is a deliberate edit
-    // rather than a silent drift in what this inventory claims.
-    expect({ gap: byScope('gap'), undecided: byScope('undecided'), byDesign: byScope('by-design') })
-      .toEqual({ gap: 12, undecided: 2, byDesign: 0 });
-  });
+  for (const scope of ['gap', 'by-design', 'undecided'] as const) {
+    it(`${scope}: gap SET matches the baseline`, () => {
+      const named = CONSTRUCTS.filter(c => !c.supported && c.scope === scope).map(c => c.name).sort();
+      expect(named).toEqual([...GAP_SCOPE_BASELINE[scope]].sort());
+    });
+  }
 });

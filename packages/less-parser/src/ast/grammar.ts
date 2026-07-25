@@ -232,6 +232,7 @@ type SharedCssAstSyntax = {
   CssAstSyntaxAttributeModifier: Combinator<unknown>;
   CssAstSyntaxAttributeOperator: Combinator<unknown>;
   CssAstSyntaxHexColor: Combinator<string>;
+  CssAstSyntaxUnicodeRange: Combinator<string>;
   CssAstSyntaxNth: Combinator<unknown>;
   CssAstSyntaxNthChildName: Combinator<string>;
   CssAstSyntaxNthTypeName: Combinator<string>;

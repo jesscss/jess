@@ -4,6 +4,7 @@ import {
   type Context,
   type UrlTransformRequest,
   parserDiagnostic,
+  makeJessError,
   type ISafeParseResult,
   type SafeParseOptions
 } from '@jesscss/core';
@@ -488,6 +489,20 @@ export class LessPlugin extends AbstractPlugin {
       host = {
         ...(fns.length === 0 ? {} : { globalFns: fns }),
         loadPlugin: async ({ specifier, options }) => {
+          // `@plugin` loads and executes a script module. When script modules
+          // are disabled the load must REFUSE here: the ast/ evaluator reaches
+          // `loadPlugin` directly (prepareBodyPlugins), so the import-path
+          // check in Context is not on this route.
+          if (context.opts.disableScriptModules || context.opts.disablePluginRule) {
+            throw makeJessError({
+              code: 'plugin/load-failed',
+              phase: 'eval',
+              severity: 'error',
+              summary: 'Less @plugin is disabled by disableScriptModules.',
+              reason: `"@plugin \\"${specifier}\\"" loads and executes a script module, which this compile disabled.`,
+              fix: 'Remove the @plugin statement, or stop setting disableScriptModules for this compile.'
+            });
+          }
           const loaded = await context.getPluginModule(specifier, options);
           const functions = isLoadedPluginModule(loaded.module) ? loaded.module.functions : undefined;
           if (!functions) {

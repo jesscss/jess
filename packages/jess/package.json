@@ -39,8 +39,8 @@
     "@jesscss/plugin-js": "workspace:*"
   },
   "scripts": {
-    "ci": "pnpm build && pnpm test",
-    "prepublishOnly": "pnpm build && pnpm test",
+    "ci": "pnpm build && pnpm run test:ratchet",
+    "prepublishOnly": "pnpm build && pnpm run test:ratchet",
     "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
     "build": "pnpm compile && pnpm api-extractor",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
@@ -50,7 +50,8 @@
     "test": "cross-env TEST=true vitest --watch=false",
     "test:all": "pnpm benchmark && pnpm test",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
-    "lint": "eslint '**/*.{js,ts}'"
+    "lint": "eslint '**/*.{js,ts}'",
+    "test:ratchet": "node ../../scripts/vitest-ratchet.mjs --package . --baseline test/known-failures.json"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",

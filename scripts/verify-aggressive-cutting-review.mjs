@@ -1558,6 +1558,79 @@ function changedHunks(diff) {
   return hunks;
 }
 
+/**
+ * Comments and blank lines that a compiler is free to discard. Anything in
+ * {@link semanticCommentPattern} is EXCLUDED: those comments change emitted
+ * output or type-checking, so they are code as far as this gate is concerned.
+ */
+const commentOnlyLinePattern = /^\s*(?:\/\/|\/\*|\*\/|\*(?!\/))/u;
+const semanticCommentPattern = /@__PURE__|__NO_SIDE_EFFECTS__|__NOINLINE__|@ts-|eslint-|prettier-|@preserve|@license|sourceMappingURL|webpackChunkName|istanbul ignore|c8 ignore|v8 ignore/u;
+
+/**
+ * A hunk whose every added and removed line is blank or a non-semantic comment.
+ *
+ * The gate's GOAL is "no unreviewed cost lands on a hot path". Its old TRIGGER
+ * was "a hot-path FILE changed", which is a different predicate: a comment edit
+ * changes the file and changes no cost, so the gate was a guaranteed false
+ * positive on that whole class — and a gate that always cries wolf on routine
+ * edits is what trains people to reach for `--no-verify` on the gates that
+ * matter. Trigger on "the behavior changed" instead.
+ *
+ * Deliberately CONSERVATIVE: any line this cannot prove is a comment counts as
+ * code, so the gate keeps every tooth it had on real hot-path edits.
+ */
+function isCosmeticHunk(hunkText) {
+  const changed = hunkText
+    .split('\n')
+    .filter(line => (line.startsWith('+') || line.startsWith('-'))
+      && !line.startsWith('+++')
+      && !line.startsWith('---'))
+    .map(line => line.slice(1));
+  if (changed.length === 0) {
+    return false;
+  }
+  return changed.every(line => (
+    (line.trim().length === 0 || commentOnlyLinePattern.test(line))
+    && !semanticCommentPattern.test(line)
+  ));
+}
+
+/**
+ * Rebuild `diff` with every cosmetic hunk removed, keeping the `+++ b/<file>`
+ * headers so {@link changedHunks} still attributes the survivors. A file whose
+ * hunks were ALL cosmetic contributes no hunks, so it drops out of every
+ * changed-surface predicate downstream.
+ */
+function stripCosmeticHunks(diff) {
+  const out = [];
+  let pending = null;
+  const flush = () => {
+    if (pending && !isCosmeticHunk(pending.join('\n'))) {
+      out.push(...pending);
+    }
+    pending = null;
+  };
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('@@')) {
+      flush();
+      pending = [line];
+      continue;
+    }
+    if (pending) {
+      if (line.startsWith('diff --git') || line.startsWith('+++ b/') || line.startsWith('--- a/') || line.startsWith('index ')) {
+        flush();
+        out.push(line);
+        continue;
+      }
+      pending.push(line);
+      continue;
+    }
+    out.push(line);
+  }
+  flush();
+  return out.join('\n');
+}
+
 function contractsForChangedHunk(registry, file, hunk) {
   return registry.filter((contract) => {
     if (!contract.files.includes(file) || !contract.sourceCheck) {
@@ -2441,7 +2514,10 @@ async function runVerifier() {
   // inventory, not a pretext for forcing parser/frontend/type edits into an
   // eval/render cost contract. Strict contract accounting receives only the
   // runtime-engine subset below.
-  const reviewedDiff = qualityOnlyFix ? '' : diff;
+  // Trigger on SEMANTIC change, not on "the file was touched": a comment-only
+  // or whitespace-only hunk cannot change emitted cost, so it must not demand a
+  // cost review. See `isCosmeticHunk`.
+  const reviewedDiff = qualityOnlyFix ? '' : stripCosmeticHunks(diff);
   const reviewedChangedPaths = qualityOnlyFix ? [] : changedPaths;
   const findings = collectDangerFindings(reviewedDiff, dangerPatterns);
   const strictRuntimePaths = strictRuntimeChangedPaths(reviewedChangedPaths, reviewedDiff);

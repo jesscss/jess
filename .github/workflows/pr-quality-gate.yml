@@ -4,10 +4,16 @@ name: PR quality gate
 # stay fast (commits/pushes must not carry heavy build/test work). This is the
 # same gate a developer can run locally with `pnpm verify:pr`.
 #
-# NOTE: this workflow REPORTS only — it is intentionally NOT wired into branch
-# protection / required checks yet. Required-check enforcement is activated later
-# for external contributors. For now it runs on every PR and surfaces failures
-# without blocking merges.
+# This workflow BLOCKS: every step below hard-fails the job. It is green on a
+# clean `dev`, which is the whole point — a gate that is red on an untouched
+# checkout teaches people to reach for `--no-verify`, and then it is not a gate.
+#
+# Known debt is not hidden here, it is NAMED: `packages/jess/test/known-failures.json`
+# lists each failing test, and `scripts/vitest-ratchet.mjs` fails on a new failure
+# AND on a listed test that starts passing (so the set only moves deliberately).
+#
+# Add this job to the repository's required checks in branch protection — the
+# workflow can only make itself fail, it cannot make itself required.
 
 on:
   pull_request:
@@ -39,12 +45,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # The binding-lookup hot-path gate scans source with ripgrep. It is
-      # pre-installed on ubuntu-latest, but ensure it so the gate can never
-      # crash on a missing binary.
-      - name: Ensure ripgrep
-        run: rg --version || (sudo apt-get update && sudo apt-get install -y ripgrep)
 
       # Clean build: delete every packages/*/lib then build the FULL chain
       # SERIALLY in topological order (--workspace-concurrency=1). Incremental
@@ -80,6 +80,12 @@ jobs:
       - name: Lint (pnpm lint)
         run: pnpm run lint
 
+      # Strict production type check across all 22 tsconfigs. This was red on
+      # clean dev for long enough that the type gate stopped meaning anything;
+      # it belongs in the blocking set now that it passes.
+      - name: Gate — strict production types
+        run: pnpm run verify:types
+
       # pnpm ci = per-package build + test, covering all parser and core suites.
       - name: Full CI (pnpm ci)
         run: pnpm run ci
@@ -111,8 +117,7 @@ jobs:
 
       # Cross-tool surface parity: AGENTS.md (Codex), CLAUDE.md (Claude), and
       # .cursor/rules/* (Cursor) must each reference the same canonical perf-doc
-      # set (docs/perf/V8-ARCHITECTURE.md + the enforcement design). Reports-only:
-      # surfaces drift is flagged without failing the job.
-      - name: Report — cross-tool surface parity
-        continue-on-error: true
+      # set (docs/perf/V8-ARCHITECTURE.md + the enforcement design). This passes
+      # on clean dev, so it blocks like everything else rather than reporting.
+      - name: Gate — cross-tool surface parity
         run: pnpm run verify:surface-parity

@@ -195,40 +195,93 @@ describe(`Bootstrap ${bootstrapVersion} SCSS corpus`, () => {
 // ── ratchet ──────────────────────────────────────────────────────────────────
 
 /**
- * Measured floors for Bootstrap 5.3.8. RAISE these as the SCSS model improves;
- * never lower them without an owner decision recorded in CORPUS-REPORT.md.
+ * Named baselines for Bootstrap 5.3.8 — NOT counts.
+ *
+ * A count floor ("at least 29 of 92 parse") is satisfied by *any* 29 files, so
+ * a run that fixes one file and breaks another reads as unchanged. These sets
+ * name the exact files, so the diff a reviewer reads says which fixture moved
+ * and in which direction.
+ *
+ * GROWING is deliberate: a file that starts parsing fails the gate until it is
+ * added here, which is a one-line, obviously-correct edit. SHRINKING requires
+ * removing a name, which is visible in review.
  */
-const PARSE_PASS_FLOOR = 29;
-const EVAL_PASS_FLOOR = 0;
+const PARSE_PASS_BASELINE: readonly string[] = [
+  '_forms.scss',
+  '_helpers.scss',
+  '_images.scss',
+  '_mixins.scss',
+  '_placeholders.scss',
+  '_transitions.scss',
+  '_variables-dark.scss',
+  'bootstrap-reboot.scss',
+  'bootstrap-utilities.scss',
+  'bootstrap.scss',
+  'forms/_form-range.scss',
+  'forms/_form-text.scss',
+  'forms/_labels.scss',
+  'forms/_validation.scss',
+  'helpers/_clearfix.scss',
+  'helpers/_stacks.scss',
+  'helpers/_text-truncation.scss',
+  'helpers/_visually-hidden.scss',
+  'helpers/_vr.scss',
+  'mixins/_backdrop.scss',
+  'mixins/_banner.scss',
+  'mixins/_clearfix.scss',
+  'mixins/_image.scss',
+  'mixins/_list-group.scss',
+  'mixins/_lists.scss',
+  'mixins/_reset-text.scss',
+  'mixins/_resize.scss',
+  'mixins/_text-truncate.scss',
+  'mixins/_visually-hidden.scss'
+];
+
 /** Entry points known to evaluate end-to-end. Add each one as it graduates. */
-const PASSING_EVAL_ENTRIES: string[] = [];
+const EVAL_PASS_BASELINE: readonly string[] = [];
+
+/**
+ * Compare an observed pass set against its named baseline in BOTH directions.
+ * Returns the human-readable failure text, or `null` when the sets agree.
+ */
+function baselineDrift(lane: string, observed: readonly string[], baseline: readonly string[]): string | null {
+  const seen = new Set(observed);
+  const expected = new Set(baseline);
+  const regressed = [...expected].filter(name => !seen.has(name)).sort();
+  const improved = [...seen].filter(name => !expected.has(name)).sort();
+  if (regressed.length === 0 && improved.length === 0) {
+    return null;
+  }
+  const lines = [`${lane} baseline drifted (${seen.size} passing, baseline names ${expected.size}):`];
+  if (regressed.length > 0) {
+    lines.push(`  REGRESSED — these were passing and now fail:\n${regressed.map(n => `    - ${n}`).join('\n')}`);
+  }
+  if (improved.length > 0) {
+    lines.push(
+      '  IMPROVED — these now pass and must be ADDED to the baseline'
+      + ` (${lane === 'parse' ? 'PARSE_PASS_BASELINE' : 'EVAL_PASS_BASELINE'} in this file):\n`
+      + improved.map(n => `    - ${n}`).join('\n')
+    );
+  }
+  return lines.join('\n');
+}
 
 describe('Bootstrap SCSS corpus ratchet', () => {
-  it('does not regress below the recorded parse/eval floors', () => {
-    const parsePassed = parseResults.filter(r => r.outcome === 'pass');
-    const evalPassed = evalResults.filter(r => r.outcome === 'pass');
+  it('parse/eval pass sets match their named baselines exactly', () => {
+    const parsePassed = parseResults.filter(r => r.outcome === 'pass').map(r => r.file);
+    const evalPassed = evalResults.filter(r => r.outcome === 'pass').map(r => r.file);
 
     if (process.env.JESS_SCSS_CORPUS_REPORT) {
       writeReport(parseResults, evalResults);
     }
 
-    expect(
-      parsePassed.length,
-      `parse regressed: ${parsePassed.length} of ${parseResults.length} parsed, floor is ${PARSE_PASS_FLOOR}`
-    ).toBeGreaterThanOrEqual(PARSE_PASS_FLOOR);
+    const drift = [
+      baselineDrift('parse', parsePassed, PARSE_PASS_BASELINE),
+      baselineDrift('eval', evalPassed, EVAL_PASS_BASELINE)
+    ].filter((entry): entry is string => entry !== null);
 
-    expect(
-      evalPassed.length,
-      `eval regressed: ${evalPassed.length} of ${evalResults.length} evaluated, floor is ${EVAL_PASS_FLOOR}`
-    ).toBeGreaterThanOrEqual(EVAL_PASS_FLOOR);
-
-    const evalPassedNames = new Set(evalPassed.map(r => r.file));
-    for (const entry of PASSING_EVAL_ENTRIES) {
-      expect(
-        evalPassedNames.has(entry),
-        `${entry} previously evaluated end-to-end and now fails`
-      ).toBe(true);
-    }
+    expect(drift.join('\n\n'), drift.join('\n\n')).toBe('');
   });
 });
 

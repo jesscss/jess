@@ -16,7 +16,14 @@ const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);
 const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
-const expectedControlIterationRenderSites = 2;
+// NAMED sites, not a count. `=== 2` was satisfied by deleting one legitimate
+// site and adding an illegitimate one in the same file. Each entry names the
+// loop construct that owns the site and pins the enclosing class it must sit
+// in, so the failure says WHICH site appeared or vanished.
+const expectedControlIterationRenderNamedSites = [
+  { name: 'For: per-iteration surface render', owner: 'export class For extends Rules' },
+  { name: 'While: per-iteration surface render', owner: 'export class While extends Rules' }
+];
 
 function getScanRoots() {
   if (!fs.existsSync(packagesDir)) {
@@ -168,13 +175,36 @@ if (internalHelperExportMatches.length > 0) {
 
 const unexpectedControlIterationRenderSites = controlIterationRenderMatches
   .filter(match => match.file !== expectedControlIterationRenderFile);
-const expectedFileControlIterationRenderCount = controlIterationRenderMatches
-  .filter(match => match.file === expectedControlIterationRenderFile)
-  .length;
+
+// Resolve each match to the class that encloses it, so a site can be checked by
+// NAME rather than merely counted.
+const controlSourceLines = fs.existsSync(path.join(rootDir, expectedControlIterationRenderFile))
+  ? fs.readFileSync(path.join(rootDir, expectedControlIterationRenderFile), 'utf8').split(/\r?\n/u)
+  : [];
+const ownerOf = (lineNumber) => {
+  for (let index = lineNumber - 1; index >= 0; index--) {
+    const owner = expectedControlIterationRenderNamedSites
+      .find(site => controlSourceLines[index]?.startsWith(site.owner));
+    if (owner) {
+      return owner.name;
+    }
+  }
+  return null;
+};
+const observedNamedSites = new Set(
+  controlIterationRenderMatches
+    .filter(match => match.file === expectedControlIterationRenderFile)
+    .map(match => ownerOf(match.line))
+);
+const missingNamedSites = expectedControlIterationRenderNamedSites
+  .filter(site => !observedNamedSites.has(site.name))
+  .map(site => site.name);
+const unownedNamedSites = observedNamedSites.has(null) ? ['<render site in no recorded loop class>'] : [];
 
 if (
   unexpectedControlIterationRenderSites.length > 0
-  || expectedFileControlIterationRenderCount !== expectedControlIterationRenderSites
+  || missingNamedSites.length > 0
+  || unownedNamedSites.length > 0
 ) {
   console.log('');
   console.log(
@@ -187,10 +217,17 @@ if (
       console.log(`  ${match.line}: ${match.text}`);
     }
   }
-  if (expectedFileControlIterationRenderCount !== expectedControlIterationRenderSites) {
-    console.log(
-      `Expected ${expectedControlIterationRenderSites} control iteration render site(s) in ${expectedControlIterationRenderFile}, found ${expectedFileControlIterationRenderCount}.`
-    );
+  if (missingNamedSites.length > 0) {
+    console.log(`Missing control iteration render site(s) in ${expectedControlIterationRenderFile}:`);
+    for (const name of missingNamedSites) {
+      console.log(`- ${name}`);
+    }
+  }
+  if (unownedNamedSites.length > 0) {
+    console.log(`Unrecorded control iteration render site(s) in ${expectedControlIterationRenderFile}:`);
+    for (const name of unownedNamedSites) {
+      console.log(`- ${name}`);
+    }
   }
   process.exitCode = 1;
 }
