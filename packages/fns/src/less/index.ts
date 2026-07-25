@@ -12,17 +12,17 @@
  * `shared/` carries only fns whose behaviour is identical in Less and Sass, so a
  * Less-specific override (`min`/`max`) is taken from this folder instead.
  *
- * Entries still in the LEGACY tree-node domain (`each`, `iif`, `isdefined`,
- * `isruleset`, the `logical` group) remain part of this module's public
- * JavaScript-callable surface but are not value-domain `Fn`s, so registration
- * skips them. Converting one in place is what registers it — there is no second
- * place to update.
+ * `if`/`boolean`/`not`/`and`/`or`, `isdefined`, `isruleset` and `each` are NOT
+ * here: core special-forms all of them during serialization
+ * (`serialize.ts:3207`, `:3215`, `LOGICAL_FNS` at `:3326`), so a fn module for
+ * them was dead code in the compiled path and is deleted.
  */
 
 /** Math — shared with Sass (identical behaviour). */
-export { abs, ceil, floor, round } from '../shared/index.js';
+export { abs, ceil, floor } from '../shared/index.js';
 
 /** Math — Less-specific. */
+export { round } from './round.js';
 export { sqrt } from './sqrt.js';
 export { pow } from './pow.js';
 export { mod } from './mod.js';
@@ -40,7 +40,7 @@ export { asin } from './asin.js';
 export { acos } from './acos.js';
 export { atan } from './atan.js';
 
-/** Lists. `min`/`max` are Less-specific (Sass has its own semantics). */
+/** Lists. `min`/`max` are Less-specific (Sass emits plain CSS on mixed units). */
 export { range } from './range.js';
 export { default as length } from './length.js';
 export { default as extract } from './extract.js';
@@ -115,14 +115,3 @@ export { default as dataUri } from './data-uri.js';
 export { imageSize } from './image-size.js';
 export { imageWidth } from './image-width.js';
 export { imageHeight } from './image-height.js';
-
-/**
- * Not yet converted to the value domain (legacy tree-node shape). Exported for
- * the JavaScript-callable module surface; skipped by registration until each is
- * converted in place.
- */
-export { default as each } from './each.js';
-export { default as iif } from './iif.js';
-export { default as isdefined } from './isdefined.js';
-export { default as isruleset } from './isruleset.js';
-export { boolean, not, and, or } from './logical.js';

@@ -23,7 +23,10 @@
  */
 
 // Global Math Functions (Deprecated - use math.* module instead)
-export { abs, ceil, floor, round, max, min } from '../shared/index.js';
+export { abs, ceil, floor } from '../shared/index.js';
+export { round } from './math/round.js';
+// `min`/`max` await a Sass-owned implementation (Less errors on mixed units,
+// Sass emits plain CSS) — a dialect index never borrows the other dialect's body.
 export { default as unitless } from './unitless.js';
 export { default as compatible } from './compatible.js';
 export { default as percentage } from './percentage.js';

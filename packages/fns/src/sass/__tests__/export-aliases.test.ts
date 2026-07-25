@@ -25,9 +25,9 @@ import {
   red as sharedRed,
   abs as sharedAbs,
   ceil as sharedCeil,
-  floor as sharedFloor,
-  round as sharedRound
+  floor as sharedFloor
 } from '../../shared/index.js';
+import lessRound from '../../less/round.js';
 
 describe('Sass export aliases', () => {
   it('maps global Sass wrappers directly to Less implementations', () => {
@@ -50,13 +50,16 @@ describe('Sass export aliases', () => {
     expect(mathModuleAbs).toBe(sharedAbs);
     expect(mathModuleCeil).toBe(sharedCeil);
     expect(mathModuleFloor).toBe(sharedFloor);
-    expect(mathModuleRound).toBe(sharedRound);
+    // `round` is dialect-owned: Sass's second argument is a step, Less's is
+    // decimal precision, so the Sass module must NOT be the Less body.
+    expect(mathModuleRound).not.toBe(lessRound);
     expect(mathAbs).toBe(sharedAbs);
   });
 
   it('maps global math exports to the same shared implementations', () => {
     expect(globalCeil).toBe(sharedCeil);
     expect(globalFloor).toBe(sharedFloor);
-    expect(globalRound).toBe(sharedRound);
+    expect(globalRound).not.toBe(lessRound);
+    expect(globalRound).toBe(mathModuleRound);
   });
 });

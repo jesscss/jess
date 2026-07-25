@@ -12,7 +12,10 @@
  */
 
 // Math functions (available in math module)
-export { abs, ceil, floor, round, max, min } from '../../shared/index.js';
+export { abs, ceil, floor } from '../../shared/index.js';
+export { round } from './round.js';
+// `min`/`max`: Sass emits plain CSS for incompatible units where Less errors, so
+// there is no shared implementation. A Sass-owned pair is still to be written.
 export { default as unitless } from '../unitless.js';
 export { default as compatible } from '../compatible.js';
 export { default as percentage } from '../percentage.js';

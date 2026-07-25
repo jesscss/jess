@@ -38,12 +38,12 @@ node, no re-parse, no `render()` walk).
 
 That registers it. There is no third place to update.
 
-## Not yet converted
+## Handled by core, not by a fn module
 
-`each.ts`, `iif.ts`, `isdefined.ts`, `isruleset.ts` and `logical.ts` are still in
-the legacy tree-node domain. They stay exported from `index.ts` for the
-JavaScript-callable module surface, but they are not value-domain `Fn`s, so
-registration skips them. Converting one in place is what registers it.
+`if`/`boolean`/`not`/`and`/`or`, `isdefined`, `isruleset` and `each` are
+special-formed during serialization (`core/src/ast/serialize.ts:3207`, `:3215`,
+`LOGICAL_FNS` at `:3326`). Fn modules for them were dead in the compiled path and
+have been deleted — do not re-add one.
 
 Validate output against real Less 4.x / v5-alpha semantics; if an expected
 output looks stale, flag it — don't match it.
