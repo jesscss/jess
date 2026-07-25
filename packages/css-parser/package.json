@@ -47,7 +47,7 @@
   "dependencies": {},
   "peerDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "^0.32.0"
+    "parseman": "^0.34.0"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -58,7 +58,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/internal-css-recognition": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "parseman": "0.32.0",
+    "parseman": "0.34.0",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
