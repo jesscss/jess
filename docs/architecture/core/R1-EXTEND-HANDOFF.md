@@ -96,7 +96,7 @@ gaps (not clean deferrals). Items 1–4 in "Remaining work" stand.
    the CORRECT extend semantics (see below) and is byte-clean by construction.
 
 2. **Reference-lock (STEP 1) — the durable win.**
-   - `docs/future/core-architecture/REFERENCE.md` — the fixed reference path + the
+   - `docs/architecture/core/REFERENCE.md` — the fixed reference path + the
      pitfalls that repeatedly misled agents (legacy/ = 4.x expanded; graduate-v5 /
      alpha-release-port / other worktrees; upstream/alpha expanded; renderRealOracle
      buggy) + the "less.js worktrees are READ-ONLY" rule.

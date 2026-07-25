@@ -8,7 +8,7 @@
 
 **To confirm:** If you have Less installed, run:
 ```bash
-npx lessc docs/extend-ancestor-minimal-example.less
+npx lessc docs/architecture/extend/extend-ancestor-minimal-example.less
 ```
 and compare to `extend-ancestor-minimal-expected.css`.
 

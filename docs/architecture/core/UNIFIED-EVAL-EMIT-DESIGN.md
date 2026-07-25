@@ -641,7 +641,7 @@ less-compat works."** Anything beyond that is building too much into Jess; when 
    converts any replacement back (`fromLessNode`, `plugin.ts:1247`). It never registers per-type
    methods on the core side, never uses an exit method, never uses a skip-children signal, and drives
    its OWN child walk internally (`less-compat-structures.ts:60,121` — `node.accept` over the adapter).
-2. **The published-plugin audit** (`docs/investigation/scanner-first-parser-jess-assessment.md:2124–2166`).
+2. **The published-plugin audit** (`docs/state/investigation/scanner-first-parser-jess-assessment.md (removed from the working tree; see git history):2124–2166`).
    Public Less visitor plugins are rare. Of the sampled real, published packages:
    - `less-plugin-rtl` — a *replacing* visitor over declaration/value shapes; enter only, no removal, no
      skip-children (`:2132–2139`).

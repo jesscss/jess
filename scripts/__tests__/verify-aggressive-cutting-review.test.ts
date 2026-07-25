@@ -313,8 +313,8 @@ describe('alpha release snapshot CLI boundary', () => {
   it('skips only aggregate patch accounting and still validates release evidence', () => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const sandbox = mkdtempSync(resolve(tmpdir(), 'jess-release-review-'));
-    const handoffPath = 'docs/future/core-architecture/HANDOFF.md';
-    const reviewPath = 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md';
+    const handoffPath = 'docs/architecture/core/HANDOFF.md';
+    const reviewPath = 'docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md';
     const verifierPath = 'scripts/verify-aggressive-cutting-review.mjs';
     try {
       execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);

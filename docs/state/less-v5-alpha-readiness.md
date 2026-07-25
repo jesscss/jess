@@ -2,10 +2,10 @@
 
 This is the living readiness tracker for the first Jess alpha focused on Less
 v5 compatibility. The publish mechanics live in
-[`releasing-alpha.md`](./releasing-alpha.md); this file tracks what must be true
+[`releasing-alpha.md`](../process/releasing-alpha.md); this file tracks what must be true
 before that runbook should be used. Features **deliberately deferred past this
 alpha** (config-lane URL/import handling, source maps, …) are sequenced in
-[`less-v5-release-plan.md`](./less-v5-release-plan.md).
+[`less-v5-release-plan.md`](../process/less-v5-release-plan.md).
 
 ## Historical direct-Less benchmark (superseded; not an acceptance gate; 2026-07-21)
 
@@ -14,7 +14,7 @@ captured before the present migration worktree was clean and must not be used
 as an alpha gate or current output oracle. In particular, the 122,390-byte
 `ea918f2d...` CSS and 1,797,831-byte parser artifact are superseded. The
 current clean baseline and the open performance-comparison blocker are recorded in the performance section of
-[`HANDOFF.md`](./future/core-architecture/HANDOFF.md). The public route is a
+[`HANDOFF.md`](../architecture/core/HANDOFF.md). The public route is a
 built direct parser on Parseman `0.28.0`; older 20–30 ms source-driver and
 legacy-tree numbers measured different work and are not an A/B.
 
@@ -41,7 +41,7 @@ baseline only and never as a performance acceptance claim.
 - Strict types: the current local alpha candidate resolves the published
   `parseman@0.30.0` package and its recorded `pnpm run release:alpha:check`
   passes all **22** strict type configurations. The current candidate evidence lives in
-  [`HANDOFF.md`](./future/core-architecture/HANDOFF.md#current-alpha9-candidate-evidence-2026-07-22-not-authorized-to-publish).
+  [`HANDOFF.md`](../architecture/core/HANDOFF.md#current-alpha9-candidate-evidence-2026-07-22-not-authorized-to-publish).
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
   allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
   excluded because it depends on `jess` and is not part of the runtime closure.
@@ -57,7 +57,7 @@ must never be used for this timing protocol. The rejected namespace gate did
 not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
 74.022 ms versus 73.772 ms (noise), so no production change remains. The next
 choice investigation is the opt-in stable choice-arm trace design in
-[`parseman-diagnostic-trace-design.md`](./future/parseman-diagnostic-trace-design.md).
+[`parseman-diagnostic-trace-design.md`](../design/parseman-diagnostic-trace-design.md).
 
 ## External Less `5.0.0-alpha.1` package audit (2026-07-22)
 
@@ -204,7 +204,7 @@ are expressly advertised for a later alpha.
   runs `pnpm run verify:less-alpha` on pull requests, pushes to `main` and
   `alpha`, and manual dispatch.
 - `[?]` Browser-build spec is drafted in
-  [`less-v5-browser-build-spec.md`](./less-v5-browser-build-spec.md), but needs
+  [`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md), but needs
   owner acceptance before adding browser package exports or browser fixture
   parity. Jess should support tree-shaken browser builds, but the alpha should
   not imply that arbitrary `.less` files are parsed in the browser.
@@ -395,7 +395,7 @@ Goal: avoid accidentally promising browser-side Less file parsing while still
 supporting tree-shaken browser builds.
 
 - `[x]` Specify what browser consumers can import. Draft:
-  [`less-v5-browser-build-spec.md`](./less-v5-browser-build-spec.md).
+  [`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md).
 - `[x]` Specify which Node-only features are excluded: filesystem imports,
   config discovery, plugin loading from disk, Node module resolution, and direct
   `.less` file parsing.
@@ -509,7 +509,7 @@ earlier, before a manual publish attempt.
   CI workflow that runs `pnpm run verify:less-alpha` for pull requests, pushes
   to `main` and `alpha`, and manual dispatch. The manual publish workflow
   remains separate.
-- 2026-06-19: Drafted `docs/less-v5-browser-build-spec.md`. The draft keeps the
+- 2026-06-19: Drafted `docs/architecture/less-v5-browser-build-spec.md`. The draft keeps the
   alpha `jess` root as the Node entrypoint, proposes a future `jess/browser`
   entrypoint for browser-safe string-input APIs, and explicitly excludes
   filesystem imports, config discovery, disk plugin loading, Node module

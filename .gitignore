@@ -79,7 +79,6 @@ profiling/
 state/codex-auto/
 state/agent-loop/
 state/task-runtime/
-.cursor/PREPUSH_CHECK_TODOS.md
 
 # BEGIN Guildhall managed
 # Shared Guildhall project state is trackable by default.

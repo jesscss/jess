@@ -690,7 +690,7 @@ All errors should include:
 ### Task 10: Docs and rollout notes
 
 - **Files**
-  - `docs/js-execution-deno-spec.md`
+  - `docs/architecture/js-execution-deno-spec.md`
   - user-facing docs under `packages/docs/docs/**`
 - **Changes**
   - Add setup instructions for plugin install and common package-manager issues.

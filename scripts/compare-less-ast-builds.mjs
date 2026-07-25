@@ -22,7 +22,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const stageMarker = 'jess-less-ast-compare-stage-v1\n';
 const stageName = 'jess-less-ast-compare-stage';
 const allowedChangedFiles = new Set([
-  'docs/future/core-architecture/PERF_IDEAS.md',
+  'docs/architecture/core/PERF_IDEAS.md',
   'packages/less-parser/src/ast/grammar.ts'
 ]);
 

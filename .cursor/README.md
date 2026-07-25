@@ -36,14 +36,14 @@ This repo uses a **path-scoped Cursor context system** so day-to-day work does n
 
 ### Agent dispatch contract
 
-- Use `.cursor/AGENT_DISPATCH.md` as the source of truth for:
+- Use `docs/process/AGENT_DISPATCH.md` as the source of truth for:
   - when to use each agent,
   - model-tier defaults (faster tier vs inherited/default tier),
   - promotion rules (user-level reusable vs repo-only specialization).
 
 ### Persistent state (“project memory”)
 
-- `.cursor/PROJECT_STATE.md` is intentionally small: package/build shape,
+- `docs/state/PROJECT_STATE.md` is intentionally small: package/build shape,
   verification commands, and the current debugging focus only when one is
   actively open.
 - Area plans should stay small and current. Prefer package docs and scoped rules

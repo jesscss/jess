@@ -7,7 +7,7 @@ side-table; performance is the driver).
 
 > **Current-state correction (2026-07-13, `dev` `9bfec19be`).** This document is
 > historical audit evidence, not the live queue. Do not reopen its ranked items
-> without checking [CORE-CLEANUP.md](../../../docs/future/core-architecture/CORE-CLEANUP.md)
+> without checking [CORE-CLEANUP.md](../../../docs/architecture/core/CORE-CLEANUP.md)
 > and the current [Rules field budget](./RULES_FIELD_BUDGET.md). In particular,
 > `Rules` is currently at five class-unique fields (`rules`, `_lookup`,
 > `rulesFlags`, `_scopeFrame`, `_treeContext`); `lookupVersion`, `varsByName`,

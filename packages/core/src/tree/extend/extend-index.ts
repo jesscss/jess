@@ -3,7 +3,7 @@
  * ============================================================
  *
  * Built PARALLEL to `extendSelector` (extend.ts) and validated against it as an
- * ORACLE by a differential test. See `docs/future/core-architecture/EXTEND-INDEX-DESIGN.md`.
+ * ORACLE by a differential test. See `docs/architecture/core/archive/EXTEND-INDEX-DESIGN.md`.
  *
  * THESIS: extend is a term-rewriting system `find → extendWith` over a selector IR.
  * The walk (`extendSelector`) is subject-driven (N×M: for each subject test each target).

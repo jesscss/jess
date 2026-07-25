@@ -200,13 +200,14 @@ export function isAlphaClobber({ manifestVersion, minTag }) {
 /**
  * True for repo-relative paths that the release BUILD regenerates and that must
  * never block the clean-tree gate:
- *   - `.cursor/**`             : transient debugging state
+ *   - `.cursor/**`             : Cursor tool configuration
+ *   - `docs/state/**`          : transient project/debugging state
  *   - `**​/lib/**`              : compiled output (gitignored, but be explicit)
  *   - `**​/etc/*.api.md`        : API-Extractor reports, rewritten by the build
  * The gate checks SOURCE cleanliness, not build artifacts.
  */
 export function isReleaseArtifactPath(file) {
-  if (file.startsWith('.cursor/')) {
+  if (file.startsWith('.cursor/') || file.startsWith('docs/state/')) {
     return true;
   }
   if (file === 'lib' || file.startsWith('lib/') || file.includes('/lib/')) {

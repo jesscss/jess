@@ -31,14 +31,14 @@ Never dismiss nested-mode correctness as "moot" or "deferred". See
 - Follow `AGENTS.md` for repo-wide goals.
 - For hot-path perf, the canonical checklist is `docs/perf/V8-ARCHITECTURE.md`
   (9 invariants + regression-fixture catalogue); enforcement design is
-  `docs/future/llm-quality-enforcement-design.md`. Load the `perf-architecture`
+  `docs/architecture/llm-quality-enforcement-design.md`. Load the `perf-architecture`
   skill before editing eval/render/extend, and use the
   `perf-architecture-reviewer` (evidence per invariant) before landing.
 - If the work touches the evaluation-model refactor, use
-  `docs/future/core-architecture/HANDOFF.md` as the active queue and
-  `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` before closing a
+  `docs/architecture/core/HANDOFF.md` as the active queue and
+  `docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md` before closing a
   queue pass.
-- Use `docs/future/core-architecture/PERFORMANCE-HANDOFF.md` for parked
+- Use `docs/perf/V8-ARCHITECTURE.md` for parked
   performance protocol and reactivation thresholds.
 - Do not preserve clone-heavy or materialization-heavy internals just to keep a local slice green if that fights the target runtime model.
 

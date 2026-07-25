@@ -40,7 +40,7 @@ globs:
 - Trace with `syncLog()` using **primitive** values only.
 - After any isolated fix (single test / `.only`), immediately rerun the full extend matrix before claiming progress.
 - If extend debugging becomes an active multi-step session, record the focused
-  baseline, pass/fail delta, hypothesis, and next step in `.cursor/PROJECT_STATE.md`.
+  baseline, pass/fail delta, hypothesis, and next step in `docs/state/PROJECT_STATE.md`.
 - If total extend failures increase, treat as regression: revert unproven changes first, then continue with new hypotheses.
 - Do not invent new extend semantics/features that are not in `EXTEND_RULES.md` or fixture docs.
 - Before proposing any behavior-changing hypothesis, map it to documented extend semantics; if it is not documented, stop and ask for human clarification.
@@ -55,7 +55,7 @@ globs:
   2) Apply smallest fix.
   3) Rerun focused case.
   4) Rerun full extend baseline.
-  5) If the issue remains open, update `.cursor/PROJECT_STATE.md` with the
+  5) If the issue remains open, update `docs/state/PROJECT_STATE.md` with the
      pass/fail delta and next step.
 - If validating via jess Less fixtures after changing core:
   - `pnpm --filter @jesscss/core build` then `pnpm run test:less:test-data`

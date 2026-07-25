@@ -3,7 +3,7 @@
 **Branch:** `work/inherit-mutation-investigation` (off dev `52851e9c7`). READ-ONLY design; no core
 logic changed.
 
-**Question (from the folded flag-walk cleanup notes in `docs/future/core-architecture/CORE-CLEANUP.md`):** the reuse gates
+**Question (from the folded flag-walk cleanup notes in `docs/architecture/core/CORE-CLEANUP.md`):** the reuse gates
 (`canReuseAsLeaf`/`reuseAsLeaf`, `!F_NON_STATIC`) + the `F_STATIC`/`F_NON_STATIC`/`F_HAS_NODE_CHILD`
 bubble delete **only if** placement stops mutating shared nodes. The last remaining node-mutator is
 `inherit`. Can its mutations move OFF the node (into the frame / placement record / read-time

@@ -16,7 +16,7 @@ Ported because they contain valid Jess-specific behavior:
   7 V8-architecture invariants + regression catalogue from
   `docs/perf/V8-ARCHITECTURE.md`)
 
-Recommendation (see `docs/future/llm-quality-enforcement-design.md`): keep each
+Recommendation (see `docs/architecture/llm-quality-enforcement-design.md`): keep each
 skill's authored source in-repo under `.cursor/skills/` and treat
 `~/.codex/skills` as a generated copy synced from it, so every skill is
 versioned and parity-checkable instead of hand-edited out of tree.
@@ -33,4 +33,4 @@ Keep future durable guidance in one of:
 - `AGENTS.md` for cross-tool repo rules;
 - a Codex skill when Codex should auto-trigger it by task shape;
 - a Cursor rule/skill only when the behavior is Cursor-specific;
-- `docs/future/core-architecture/HANDOFF.md` for the active architecture queue.
+- `docs/architecture/core/HANDOFF.md` for the active architecture queue.

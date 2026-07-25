@@ -8,10 +8,10 @@ algorithms. The `perf-architecture` skill, `perf-architecture-reviewer`,
 Every entry is a reviewer question that needs evidence, not a verdict:
 **RULE** · *why (V8 mechanism)* · **INCIDENT** · **DETECTOR**. The enforcement
 design is in
-[`docs/future/llm-quality-enforcement-design.md`](../future/llm-quality-enforcement-design.md);
+[`docs/architecture/llm-quality-enforcement-design.md`](../architecture/llm-quality-enforcement-design.md);
 the active queue and cutting protocol are
-[`HANDOFF.md`](../future/core-architecture/HANDOFF.md) and
-[`AGGRESSIVE-CUTTING-REVIEW.md`](../future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md).
+[`HANDOFF.md`](../architecture/core/HANDOFF.md) and
+[`AGGRESSIVE-CUTTING-REVIEW.md`](../architecture/core/AGGRESSIVE-CUTTING-REVIEW.md).
 
 Named gates are available through `pnpm run <script>` and are exercised by
 `.github/workflows/pr-quality-gate.yml`. That workflow currently reports its
@@ -134,7 +134,7 @@ surfaces are deleted in the cutover rather than retained as no-op adapters.
 or call ladder is a net loss.
 
 **DETECTOR:** `verify:aggressive-cutting-review`, using
-`docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`.
+`docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md`.
 
 ## 8. Dispatch once; do not re-scan a shared prefix
 

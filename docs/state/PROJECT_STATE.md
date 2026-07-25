@@ -5,9 +5,9 @@ not become a running work log.
 
 For repo-wide rules, read `AGENTS.md`. For the active architecture roadmap, use:
 
-- `docs/future/core-architecture/HANDOFF.md`
-- `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`
-- `docs/future/parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`
+- `docs/architecture/core/HANDOFF.md`
+- `docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md`
+- `docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`
   (parser dialect re-base + error-coverage program)
 - `docs/perf/V8-ARCHITECTURE.md` (hot-path invariants + regression fixtures)
 

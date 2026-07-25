@@ -27,7 +27,7 @@ byte-identity + minimal-diff gates let all of P1 through.
 - [x] **LANDED `43eaf459f`, realigned `fdec1cd11`.** LLM quality-enforcement v1: deterministic
       teeth, the `perf-architecture-reviewer` (evidence per invariant, not a verdict), and
       advisory pins, all keyed to the canonical 9 invariants in `docs/perf/V8-ARCHITECTURE.md`.
-      Design record: `docs/future/llm-quality-enforcement-design.md`.
+      Design record: `docs/architecture/llm-quality-enforcement-design.md`.
 - [ ] **No serialize-then-reparse of structure** — still prose, not a lint/assertion. The one
       known live violation is P1.1 below.
 
@@ -129,7 +129,7 @@ Recorded so the next reader does not re-derive it from the log:
   `c06dd4d7a` stopped advertising a `jess convert` command that does not exist.
 - **Bootstrap Sass corpus ratchet + SCSS construct inventory** (`bde2e982e`);
   **conversion construct-support inventory + equivalence-harness design** (`c028a7c76`,
-  `docs/future/JESS-EQUIVALENCE-HARNESS.md`).
+  `docs/design/JESS-EQUIVALENCE-HARNESS.md`).
 
 ## Current target
 
@@ -170,7 +170,7 @@ when a named fixture still fails, so none is passing-parity proof. The owner
 decision for the first alpha is to classify—not drain or hide—them. The
 reproducible selection accounting, exact active cases, inactive registry
 entries, symptoms, scope, and follow-up rule are in
-[`../../less-v5-corpus-inventory.md`](../../less-v5-corpus-inventory.md); the
+[`../../state/less-v5-corpus-inventory.md`](../../state/less-v5-corpus-inventory.md); the
 readiness tracker and release notes must link that inventory. In particular, a
 missing mixin remains an error; only an ordinary function call with an optional
 function reference may fall back to a CSS `Call` when lookup misses.
@@ -517,7 +517,7 @@ numbers, not a narrative:
   'CssAstSyntaxUnicodeRange' does not exist`. Introduced with `c1782031e`. The other 21
   configs pass. This blocks `release:alpha:preflight`, which runs `verify:types`.
 - `pnpm --filter jess test --run` — **15 failed / 739 passed / 4 skipped / 79 todo** across
-  4 red files. Per-file breakdown and disposition: `.cursor/PROJECT_STATE.md`.
+  4 red files. Per-file breakdown and disposition: `docs/state/PROJECT_STATE.md`.
 
 The public Less route reaches canonical AST-v2 evaluation and serialization for direct and
 imported documents: the Less plugin calls the public direct parser, Context carries its
@@ -990,7 +990,7 @@ or a legacy-tree port.
 - Design dialect-to-Jess compiled conversion around opt-in observed
   compilation facts: resolved import/file provenance and actual function-call
   outcomes determine Jess-relative paths and `@-from`/`@-use` dependencies.
-  See [`DIALECT-TO-JESS-COMPILED-CONVERSION.md`](../../DIALECT-TO-JESS-COMPILED-CONVERSION.md).
+  See [`DIALECT-TO-JESS-COMPILED-CONVERSION.md`](../../design/DIALECT-TO-JESS-COMPILED-CONVERSION.md).
   It must not re-resolve/reparse source or replace Context/plugin dispatch.
 - **Final-pass output positions / sourcemaps:** replace mutable global absolute
   cursor accounting with a `trackPositions`-only composable output-fragment
@@ -1007,10 +1007,16 @@ or a legacy-tree port.
 
 ## Aggressive-cutting gate policy and standing design rules
 
-> The ~3,300 lines of per-pass "Aggressive Cutting Self-Prosecution" records that used to
-> follow were deleted on 2026-07-24. Each was a per-commit evidence block already preserved in
-> `git log`, and every one described work that has landed. Only the durable rules below
-> survive. Do not re-accumulate per-pass records here; put them in the commit message.
+> The ~3,300 lines of per-pass self-prosecution records that used to follow were deleted on
+> 2026-07-24. Each was a per-commit evidence block already preserved in `git log`, and every
+> one described work that has landed. Only the durable rules below, plus the single CURRENT
+> pass block at the end of this section, survive.
+>
+> **How to use this section:** `scripts/verify-aggressive-cutting-review.mjs` reads the LAST
+> `## Aggressive Cutting Self-Prosecution` heading in this file and requires the eleven
+> labelled fields in its most recent `- Latest pass:` entry. REPLACE that block with your
+> pass; do not append a new one and leave the old one behind. Historical passes belong in the
+> commit message, not here.
 
 ### Gate policy
 
@@ -1177,3 +1183,28 @@ such as `#theme.dark.navbar.colors()` followed by `@theme-colors[secondary]`;
 the selected member retains the call-level `!important` fact. No import
 resolver, parser replay, source reconstruction, or compatibility path is
 involved.
+
+## Aggressive Cutting Self-Prosecution
+
+- Latest pass: documentation reconciliation and relocation (2026-07-24). HANDOFF/PROJECT_STATE
+  were re-derived from the tree, and the former `docs/future` tree was split into `docs/architecture/`,
+  `docs/design/`, `docs/process/`, and `docs/state/`.
+- Architecture surface: unchanged. No compiler, parser, evaluator, or serializer surface was
+  touched.
+- Separation/duplication: reduced. ~3,300 lines of per-commit evidence records duplicated in
+  `git log` were deleted, and the four owner decisions of 2026-07-24 were recorded once each in
+  the canonical ledger (`DESIGN-DECISIONS.md` P11/P12/C11/C12/C13) rather than restated here.
+- Cumulative node weight: unchanged; no AST node, field, or shape was added or removed.
+- New traversal: none.
+- New node/materialization: none.
+- Render path: untouched.
+- Helper/API surface: none added. The only non-documentation edits are documentation-path
+  strings in comments, plus `isReleaseArtifactPath` gaining `docs/state/` so the relocated
+  `PROJECT_STATE.md` keeps the release clean-tree exemption it had under `.cursor/`.
+- Metadata mutations: none.
+- Review-flagged diff tokens: none; the diff contains no runtime code.
+- Evidence: `pnpm run test:less:test-data` 108/108, `pnpm run verify:types` 1 pre-existing
+  diagnostic, `pnpm --filter jess test --run` 15 pre-existing failures — all recorded with
+  their measurement date in `docs/state/PROJECT_STATE.md`. A repo-wide grep proves zero
+  references to the pre-move documentation paths. No performance claim is made or implied.
+- Verdict: documentation-only reconciliation; accepted with no runtime cost contract.

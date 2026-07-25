@@ -3,7 +3,7 @@
 This runbook defines the alpha release process for the Less v5 support track.
 
 Before using the publish commands, check
-[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). That tracker owns
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md). That tracker owns
 the current readiness gates for API stability, expanded Less API coverage, and
 CI guard work.
 
@@ -105,7 +105,7 @@ JESS_VERSION=2.0.0-alpha.9 npm publish --tag alpha --access public
 The Less package's built `lessc` smoke test and typecheck are the publish
 preflight. Its full upstream node suite still reports the classified v5
 known-limitations inventory; those failures are documented in
-[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md) and must not be
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md) and must not be
 silently relabeled as passing.
 
 ## Cut the alpha snapshot from `dev`
@@ -114,7 +114,7 @@ Do this only after the exact pushed `origin/dev` candidate has passed its intend
 and release checks. The `alpha` and `dev` histories have independently added
 the same source paths, so a plain `git merge --squash origin/dev` is unsafe and
 must not be used. Follow the verified two-tree snapshot procedure recorded in
-the [Core Architecture Handoff](future/core-architecture/HANDOFF.md):
+the [Core Architecture Handoff](../architecture/core/HANDOFF.md):
 
 1. Fetch the current refs, create a recovery ref such as
    `alpha-pre-alpha9-cut` from `alpha`, and work in an isolated `alpha`
@@ -149,14 +149,14 @@ bump is performed later.
 
 For the first Less-focused alpha, the release notes must also include a
 discoverable **Known limitations** section linking
-[`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The current
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md). The current
 corpus result (84 byte-identical passes, 32 output mismatches, and 15 known
 errors) is classified compatibility evidence, not a requirement to drain before
 the Jess alpha. Do not omit it or call it passing; block only on the advertised
 public-route, package/CLI, and core-safety gates.
 
 The current draft source is
-[`docs/releases/jess-2.0.0-alpha.9.md`](./releases/jess-2.0.0-alpha.9.md).
+[`docs/releases/jess-2.0.0-alpha.9.md`](../releases/jess-2.0.0-alpha.9.md).
 The controlled alpha snapshot at `564b65615` has passed
 `pnpm run release:alpha:check` with published `parseman@0.28.1`, an 18-package
 closure, packed-consumer proof, and alpha.9 dry-run publish. It is not yet

@@ -167,7 +167,7 @@ token. Both work with `resolveTokenAmp`, but the fused form is the better fit fo
 No core change. No new node type. No new `Rule` field.
 
 **Placement caveat.**
-`docs/future/parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` earmarks
+`docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` earmarks
 "ampersand-suffix selector concat" as sigil-neutral machinery for the planned shared
 `preprocessorBase`. A `.jess`-local terminal would be the **fourth** copy of a
 one-line regex. That is acceptable as an interim — the terminal is one regex and one
@@ -291,7 +291,7 @@ Two things to fix while there, both discovered by this survey:
   glob-driven `*.jess` → `*.css` fixture suite — including `nested.jess` — **does not
   run at all**. Restoring the `&` fixture is worthless until that is unskipped; do
   both in the same landing or the fixture is decorative.
-- `docs/future/core-architecture/AST-REMAINING-DEBT-KILL-LIST.md:126,133` records the
+- `docs/architecture/core/AST-REMAINING-DEBT-KILL-LIST.md:126,133` records the
   `&`-as-substring model as upstream debt and says the fix "belongs to the parser,
   not this module". This design deliberately does NOT take that on: making `&` a
   discrete token is a cross-dialect core+parser change, and doing it as a side effect
@@ -319,7 +319,7 @@ previously-failing → passing. The Less/SCSS/CSS corpora are untouched.
   not deleted: from "`&` is not in the `.jess` parser yet" to "the `&()` / `&(nil)`
   templates are not implemented in any dialect yet". The `&()`/`&(nil)` section
   itself stays marked as intended design.
-- `docs/future/core-architecture/DOC-COVERAGE.md:58` — the
+- `docs/architecture/core/DOC-COVERAGE.md:58` — the
   `Nesting / parent selectors (&, &-1, &())` row's L1 column is `~`; it becomes `✓`
   for the plain forms with the `&()` gap called out.
 - Ledger rows `P9` / `P10` in `DESIGN-DECISIONS.md` move from PROPOSED/OPEN as the

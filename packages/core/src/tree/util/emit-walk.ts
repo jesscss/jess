@@ -24,7 +24,7 @@
  * moment. Mixin / loop / $for / $if bodies are descended SHARED under a pushed
  * value-frame carrying per-placement bindings as live cells — never copied.
  *
- * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §2 (frame
+ * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §2 (frame
  *   threading), §4/§4.4 (extend flush — P3), §7 (survives vs replaced).
  */
 
