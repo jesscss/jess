@@ -5,7 +5,7 @@
 > target for parser/runtime shape. In particular, ordinary declaration/value
 > terms are now recursive raw `ValueSlot` arrays (not `SpacedValue`), Sass
 > separator facts live in `List.sep`, and delimiter/bracketedness lives in
-> `Block.delimiter`. Use `docs/future/core-architecture/HANDOFF.md` and
+> `Block.delimiter`. Use `docs/architecture/core/HANDOFF.md` and
 > `DESIGN-DECISIONS.md` for the current public architecture; retain this file
 > only for historical debt evidence.
 

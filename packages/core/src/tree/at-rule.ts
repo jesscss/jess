@@ -196,7 +196,7 @@ function renderAtRuleBetweenNameAndPreludeTrivia(
  * A bare string carries no `spanEnd`, so its source span comes from the AtRule's
  * `fieldSpans` (the `name` slot); the prelude start is the following slot's start.
  * This is the offset-anchored form of `renderAtRuleBetweenNameAndPreludeTrivia`
- * (see docs/future/trivia-offset-inference-model.md).
+ * (see docs/design/trivia-offset-inference-model.md).
  */
 function renderAtRuleBetweenOffsetsTrivia(
   nameEnd: number | undefined,

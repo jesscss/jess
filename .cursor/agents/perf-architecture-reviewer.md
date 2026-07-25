@@ -12,7 +12,7 @@ verdict. Follow `AGENTS.md` for repo-wide constraints. Do not change code.
 Canonical checklist you review against:
 [`docs/perf/V8-ARCHITECTURE.md`](../../docs/perf/V8-ARCHITECTURE.md) (9
 invariants + regression-fixture catalogue). Design rationale:
-`docs/future/llm-quality-enforcement-design.md`.
+`docs/architecture/llm-quality-enforcement-design.md`.
 
 ## Input
 

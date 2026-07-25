@@ -3732,7 +3732,7 @@ function generalEnclosedBytes(node: GeneralEnclosed, content: string): string {
  *
  * TODO(maybe-promise-import-lane): move the import request path onto the
  * awaitable lane so `@import "@{computed}"` and a computed media tail work.
- * Tracked in docs/future/core-architecture/HANDOFF.md.
+ * Tracked in docs/architecture/core/HANDOFF.md.
  */
 function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
   const b = evalBytes(node, frame, e);
@@ -4489,7 +4489,7 @@ function declName(node: Declaration, frame: Frame | null, e: EvalCtx): string {
  *
  * TODO(maybe-promise-extend-prepass): give the extend pre-pass an awaitable lane
  * so an interpolated selector built from an async value can participate in
- * extend. Tracked in docs/future/core-architecture/HANDOFF.md.
+ * extend. Tracked in docs/architecture/core/HANDOFF.md.
  */
 function rejectAsyncSelectorInterp(
   error: unknown,
@@ -5303,7 +5303,7 @@ function emitDocumentStatements(
  *      synchronous `resolveValueBlock`.
  * These ARE reachable by ordinary code: any function call may resolve
  * asynchronously, so this is a real limitation, not merely a legacy-plugin one.
- * Tracked in docs/future/core-architecture/HANDOFF.md.
+ * Tracked in docs/architecture/core/HANDOFF.md.
  */
 function settledGuard(value: MaybePromise<boolean>, where: string, node: object, e: EvalCtx): boolean {
   if (isThenable(value)) {

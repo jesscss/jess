@@ -12,7 +12,7 @@ import { isNode } from '../util/is-node.js';
  * it; the list is ZERO-cost when empty. Does NOT test the less-compat consumer
  * (that lives in the `less` package, registered only for real Less visitors).
  *
- * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
+ * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
  */
 describe('spine generic EMIT visitor hook (P2, core surface)', () => {
   let context: Context;

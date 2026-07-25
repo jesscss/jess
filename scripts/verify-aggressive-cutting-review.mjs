@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
-const handoffPath = resolve(root, 'docs/future/core-architecture/HANDOFF.md');
-const cuttingReviewPath = resolve(root, 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md');
+const handoffPath = resolve(root, 'docs/architecture/core/HANDOFF.md');
+const cuttingReviewPath = resolve(root, 'docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md');
 const skipExecutableEvidence = process.argv.includes('--skip-executable-evidence');
 const reviewMode = process.argv.includes('--mode=staged')
   ? 'staged'
@@ -2484,7 +2484,7 @@ async function runVerifier() {
 
   if (sectionIndex === -1 || missingLabels.length > 0) {
     failed = true;
-    console.error('Missing required Aggressive Cutting Self-Prosecution block in docs/future/core-architecture/HANDOFF.md.');
+    console.error('Missing required Aggressive Cutting Self-Prosecution block in docs/architecture/core/HANDOFF.md.');
     if (missingLabels.length > 0) {
       console.error(`Missing labels: ${missingLabels.join(', ')}`);
     }

@@ -19,7 +19,7 @@ Use this skill when debugging failing tests, runtime errors, or unexpected behav
 2. **Phase 2 (Pattern analysis)** — Find similar working code; compare differences, dependencies, and assumptions before touching code.
 3. **Phase 3 (Hypothesis + test)** — Form a single, testable hypothesis and verify it with the **smallest** possible change. If it fails, revise and repeat.
 4. **Phase 4 (Implementation)** — Fix only the confirmed root cause, create/keep a failing test, re-run the focused test, and then run the broader suite.
-5. **Update state** — Record progress (`.cursor/PROJECT_STATE.md` current-focus block or active area plan), remove `.only` filters, and document next steps.
+5. **Update state** — Record progress (`docs/state/PROJECT_STATE.md` current-focus block or active area plan), remove `.only` filters, and document next steps.
 
 ## Anti-patterns (do not do)
 
@@ -32,7 +32,7 @@ Use this skill when debugging failing tests, runtime errors, or unexpected behav
 ## Project-specific
 
 - **Package scripts:** Run tests/builds from the package directory or with `pnpm --filter @jesscss/<pkg>`. See `.cursor/rules/30-tests.mdc`.
-- **State and commands:** Read `.cursor/PROJECT_STATE.md` at the start. Use
+- **State and commands:** Read `docs/state/PROJECT_STATE.md` at the start. Use
   scoped rules and canonical package docs for area-specific context; avoid old
   root-level plan files unless they are explicitly marked active. Use
   `/start-debugging` to begin, `/run-baseline` to get a clean pass/fail report,
@@ -41,4 +41,4 @@ Use this skill when debugging failing tests, runtime errors, or unexpected behav
 
 ## References
 
-- State and session discipline: `.cursor/PROJECT_STATE.md` and `/update-debug-state`
+- State and session discipline: `docs/state/PROJECT_STATE.md` and `/update-debug-state`

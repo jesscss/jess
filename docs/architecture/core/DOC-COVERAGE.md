@@ -5,7 +5,7 @@ per the scope expansion, every language feature + built-in function) should exis
 all three places:
 
 1. **In-code JSDoc** — on the implementing node / function / parser rule.
-2. **Internal design doc** — a `docs/future/core-architecture/**` design doc or a
+2. **Internal design doc** — a `docs/architecture/core/**` design doc or a
    `DESIGN-DECISIONS.md` row (or a `.cursor/rules/**` package rule).
 3. **User-facing Docusaurus** — a page on the Less site (`packages/docs-content/docs/less`,
    `less` facing) and/or the Jess site (`.../docs/jess`, `jess` facing).
@@ -47,7 +47,7 @@ flagged for the feature agents to fill; this docs task only fills location 3.
 † The DESIGN-DECISIONS rows cite detail docs (`EXTEND-SEMANTICS.md`,
 `VALUE-LITERAL-TAG-SPEC.md`, `VARIABLE-RESOLUTION-SEMANTICS.md`,
 `RESOLVER-SHAPE-SPEC.md`) that are **not present** in this worktree's
-`docs/future/core-architecture/` tree — see gap G5.
+`docs/architecture/core/` tree — see gap G5.
 
 ## B. Core language features
 

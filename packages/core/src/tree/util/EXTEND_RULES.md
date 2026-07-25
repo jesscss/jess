@@ -25,7 +25,7 @@ This applies to **every** step of extend: **Finding** (where does `find` appear 
 ## 1. Where (scope)
 
 - Extends apply only to rulesets in the **extend root** or a **descendant** extend root. Never into ancestor roots.
-- Implemented in extend-roots.ts (accessible roots, merge rule). See docs/extend-roots-architecture.md.
+- Implemented in extend-roots.ts (accessible roots, merge rule). See docs/architecture/extend/extend-roots-architecture.md.
 
 ## 2. Modes (partial vs full)
 

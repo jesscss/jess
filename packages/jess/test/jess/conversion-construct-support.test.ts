@@ -2,7 +2,7 @@
  * Conversion construct-support matrix — what blocks `.less`/`.scss` → `.jess`.
  *
  * This is the inventory behind the cross-dialect equivalence harness designed in
- * `docs/future/JESS-EQUIVALENCE-HARNESS.md`. That harness asserts
+ * `docs/design/JESS-EQUIVALENCE-HARNESS.md`. That harness asserts
  *
  *   .less → .css   ==   .less → .jess → .css
  *

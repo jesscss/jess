@@ -18,5 +18,5 @@ Run a minimal verification matrix after making code changes. Keep it **package-s
 
 4. **If failures occur**
    - Switch to systematic debugging: observe → hypothesize → trace → verify → fix.
-   - Update `.cursor/PROJECT_STATE.md` if this becomes an ongoing debugging focus.
+   - Update `docs/state/PROJECT_STATE.md` if this becomes an ongoing debugging focus.
 

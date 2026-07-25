@@ -166,7 +166,7 @@ checklist:
   compose-integrity / stale-build degrade). Each invariant is backed by a
   mechanical gate where one exists; the gates run in
   `.github/workflows/pr-quality-gate.yml`.
-- `docs/future/llm-quality-enforcement-design.md` — design of the enforcement
+- `docs/architecture/llm-quality-enforcement-design.md` — design of the enforcement
   layer (the `perf-architecture` skill, the `perf-architecture-reviewer` agent,
   and this cross-tool contract).
 
@@ -180,9 +180,9 @@ tool-specific rules — point at `docs/perf/V8-ARCHITECTURE.md`.
 
 When working on the active evaluation-model refactor, use these docs as the canonical source:
 
-- `docs/future/core-architecture/HANDOFF.md` for current architecture lanes,
+- `docs/architecture/core/HANDOFF.md` for current architecture lanes,
   completion gates, the active queue, and verification
-- `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` and
+- `docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md` and
   `pnpm run verify:aggressive-cutting-review` before committing queue passes
   that touch eval/render/lookup/traversal/copying paths
 

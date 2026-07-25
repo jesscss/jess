@@ -13,7 +13,7 @@ Load this skill **before** writing code on a perf-sensitive path, especially:
 
 Canonical checklist (invariant text, gates, and the regression catalogue):
 [`docs/perf/V8-ARCHITECTURE.md`](../../../docs/perf/V8-ARCHITECTURE.md).
-Design rationale: `docs/future/llm-quality-enforcement-design.md`.
+Design rationale: `docs/architecture/llm-quality-enforcement-design.md`.
 Repo-wide contract: `AGENTS.md` → **Performance Direction** / **Performance
 Architecture**.
 

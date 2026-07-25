@@ -83,8 +83,8 @@ already there, follow it; only OPEN rows are up for discussion.
 
 ## Document Index
 
-Complete map of `docs/future/core-architecture/` and
-`docs/future/parser-architecture/`. One line per doc. Keep this current when adding,
+Complete map of `docs/architecture/core/` and
+`docs/architecture/parser/`. One line per doc. Keep this current when adding,
 removing, or retiring a doc. `⚠` flags a duplicate/stale/contradictory doc to merge
 or reconcile later (flagged, NOT deleted). See "Flagged for later merge" at the
 bottom for the consolidated list.
@@ -1165,7 +1165,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - Architecture surface: `scripts/verify-aggressive-cutting-review.mjs`
   (`changedHunks`, `contractsForChangedHunk`, and the production coverage
   checks) plus the registry rule in
-  `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`. No Jess
+  `docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md`. No Jess
   runtime, parser, AST, evaluator, lookup, writer, or output source changed.
 - Separation/duplication: the verifier reuses the existing Git diff and
   registry; it adds no runtime counters, source-tree walk, cache, or second
@@ -1235,7 +1235,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
   an unrelated evaluator/serializer edit.
 - Architecture surface: review-time `validateChangedContractSurface` in
   `scripts/verify-aggressive-cutting-review.mjs`, with the declarative rule in
-  `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md`. No Jess runtime
+  `docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md`. No Jess runtime
   source, node, evaluator, lookup, writer, or parser changed.
 - Separation/duplication: the check reuses the existing registry and Git diff;
   it adds no runtime counter, side table, or duplicate production traversal.
@@ -1340,7 +1340,7 @@ left unmerged; only the evidence record was retained in commit `3056554`.
 - Verdict: accepted as a measured no-feature pass/allocation cut. It is not a canonical benchmark speed win; keep the admission contract and source-level caller check in place for future coalescer changes.
 
 - Latest pass: RARE-PASS ADMISSION/COST GUARDRAIL — the aggressive-cutting verifier now rejects a hot-path change that lacks structured admission evidence, common no-feature counters, and a source-level guard for the known merge-coalescing caller. The registry is now enforced as a closed-world, exactly-one-owner map for reviewed production files, and every registered caller/call/guard must still exist in its source file.
-- Architecture surface: `scripts/verify-aggressive-cutting-review.mjs` owns review-time contract validation; `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` owns the declarative registry. No runtime node, evaluator, lookup, or writer surface changed.
+- Architecture surface: `scripts/verify-aggressive-cutting-review.mjs` owns review-time contract validation; `docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md` owns the declarative registry. No runtime node, evaluator, lookup, or writer surface changed.
 - Separation/duplication: the registry describes recurring rare-pass obligations once, while the handoff record carries current-pass measurements. The verifier reuses the existing danger-token scan and adds no runtime instrumentation or duplicate production pass.
 - Cumulative node weight: none. The change adds no Node field, frame state, cache, output buffer, or evaluator allocation. Review-time `Set`/`Map` values are verifier-local bookkeeping only.
 - New traversal: [loop/traversal] verifier loops validate registry entries and audit records; they run at review time, not in Jess parse/eval/render. No production traversal is added.

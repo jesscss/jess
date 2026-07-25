@@ -29,7 +29,7 @@ Timeline (core tree + parsers, oldest→newest):
 
 Follow-up noted in `390108b1b` (NOT a revert, an accurate regression marker): string-named
 at-rule/declaration names drop name-boundary trivia because a bare string has no span;
-tracked in `docs/future/trivia-offset-inference-model.md`, related trivia round-trip
+tracked in `docs/design/trivia-offset-inference-model.md`, related trivia round-trip
 tests intentionally left red.
 
 Reverts scanned (`git log --all --grep -E 'revert|Revert'`): the reverts on record are

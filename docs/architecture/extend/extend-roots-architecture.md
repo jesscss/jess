@@ -43,8 +43,8 @@ Jess does **not** implement this behavior (we do not support “inside → ances
 
 Reference minimal example files:
 
-- `docs/extend-ancestor-minimal-example.less`
-- `docs/extend-ancestor-minimal-expected.css`
+- `docs/architecture/extend/extend-ancestor-minimal-example.less`
+- `docs/architecture/extend/extend-ancestor-minimal-expected.css`
 
 ## 4. Boundaries: compose vs import
 

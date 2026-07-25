@@ -705,7 +705,7 @@ export class Context {
    * visitor exists — NOT built here) coexist as plain list entries; core owns no
    * chaining / REMOVE / ABORT / per-type dispatch.
    *
-   * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
+   * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
    */
   spineVisitors?: SpineVisitor[];
 

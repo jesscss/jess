@@ -5,7 +5,7 @@ import '@ungap/set-methods';
  * tree barrel; everything else is exported explicitly from the modules below.
  * Core-internal helpers (print state, trivia emission, compare/cast/lookup
  * machinery) are intentionally NOT exported — import them relatively inside
- * core. See docs/future/core-architecture/CORE-CLEANUP.md.
+ * core. See docs/architecture/core/CORE-CLEANUP.md.
  */
 export * from './tree/index.js';
 

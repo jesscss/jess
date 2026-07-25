@@ -121,7 +121,7 @@ function captureNodeTrivia(
  * no registered visitors (`spineVisitors` undefined/empty) the node is returned
  * as-is with no iteration — the §4.0-style "pay only for real work" gate.
  *
- * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
+ * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
  */
 function applySpineVisitorsEnter(
   node: Node,

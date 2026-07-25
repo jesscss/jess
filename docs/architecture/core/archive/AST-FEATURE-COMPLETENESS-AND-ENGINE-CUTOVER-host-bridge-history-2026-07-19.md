@@ -226,7 +226,7 @@ E5 scope/import ×2, hsl-args ×1). The DIFF bucket is dominated by declared div
 
 ## 5. Coordination with the dialect re-base (W1 / W5–W7)
 
-Canonical: `docs/future/parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`.
+Canonical: `docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`.
 That program restructures the **same builder-dispatch layer** this cutover retires, so:
 
 - **W1 (name-keyed builder-map dispatch, `INVARIANT: builder key ≡ grammar rule name 1:1`)**

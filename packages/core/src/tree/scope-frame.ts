@@ -14,7 +14,7 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/core-architecture/CORE-CLEANUP.md
+ * @see docs/architecture/core/CORE-CLEANUP.md
  */
 
 import { Node } from './node.js';

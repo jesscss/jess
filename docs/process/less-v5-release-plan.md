@@ -1,6 +1,6 @@
 # Less v5 Release Plan — deferred-feature roadmap
 
-Companion to [`less-v5-alpha-readiness.md`](./less-v5-alpha-readiness.md). The
+Companion to [`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md). The
 readiness doc gates **the current alpha**; this doc tracks features **deliberately
 deferred past the current alpha**, what each is, why it's deferred, and the
 sequence in which it's planned to land — so "out of scope for now" is a tracked

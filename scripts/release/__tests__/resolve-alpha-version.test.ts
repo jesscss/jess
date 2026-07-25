@@ -56,7 +56,7 @@ describe('isReleaseArtifactPath (clean-tree gate ignores build output)', () => {
     expect(isReleaseArtifactPath('packages/jess/etc/jess.api.md')).toBe(true);
     expect(isReleaseArtifactPath('packages/core/lib/index.js')).toBe(true);
     expect(isReleaseArtifactPath('lib/foo.js')).toBe(true);
-    expect(isReleaseArtifactPath('.cursor/PROJECT_STATE.md')).toBe(true);
+    expect(isReleaseArtifactPath('docs/state/PROJECT_STATE.md')).toBe(true);
   });
   it('does NOT ignore source changes', () => {
     expect(isReleaseArtifactPath('packages/core/src/tree/index.ts')).toBe(false);

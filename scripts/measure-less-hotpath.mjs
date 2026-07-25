@@ -21,7 +21,7 @@ const DEFAULT_FIXTURES = [
   'tests-unit/media/media.less'
 ];
 
-const DEFAULT_HISTORY_FILE = 'docs/future/node-copy-reduction/less-hotpath-history.jsonl';
+const DEFAULT_HISTORY_FILE = 'docs/perf/node-copy-reduction/less-hotpath-history.jsonl';
 const DEFAULT_THRESHOLD = 0.08;
 const DEFAULT_STABLE_ITERATIONS = 100;
 const DEFAULT_STABLE_REPEAT = 5;

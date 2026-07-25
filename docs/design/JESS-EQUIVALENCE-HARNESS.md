@@ -47,7 +47,7 @@ Two capabilities are required. **Neither exists.**
 - `packages/jess/src/index.ts` exports only `ConfigOptions` and `Compiler`
   (`compile`, `render`, `renderString`, `renderToResult`, `safeCompile`,
   `safeRender`, `createContext`, `dispose`) — all CSS-producing.
-- `docs/future/DIALECT-TO-JESS-COMPILED-CONVERSION.md` describes the conversion,
+- `docs/design/DIALECT-TO-JESS-COMPILED-CONVERSION.md` describes the conversion,
   but its own status line reads "This is **queued design work**." Its proposed
   `ConversionFacts` / `targetDialect` / conversion-planner vocabulary has zero
   implementation hits repo-wide.
@@ -101,7 +101,7 @@ construction, and test nothing.
 **This is architecturally impossible here, which is a genuinely good result.**
 `serialize()` takes the **parsed** `Stylesheet` and evaluates *during* emit — one
 fused pass. The settled owner ruling in
-`docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md` is explicit: "One
+`docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md` is explicit: "One
 pass, no double-eval. Eval ONCE; serialize/emit as you go," and the node
 intermediate "survives only TRANSIENTLY and LOCALLY at each emit position, never
 as a persistent output tree."

@@ -6,7 +6,7 @@
 @.cursor/rules/30-tests.mdc
 
 ## 🎯 Auto-Select Rules (File-Specific)
-@.cursor/rules/debugging-state.mdc <!-- Applies to: .cursor/** -->
+@.cursor/rules/debugging-state.mdc <!-- Applies to: .cursor/**, docs/state/** -->
 @.cursor/rules/domains/cli_app.mdc <!-- Applies to: packages/jess/** -->
 @.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/tree/**, packages/core/src/define-function.ts, packages/core/src/**/__tests__/** -->
 @.cursor/rules/domains/docs.mdc <!-- Applies to: docs/**, packages/docs/**, README.md -->
@@ -53,14 +53,14 @@ For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 
 - the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (9 invariants +
   regression-fixture catalogue); enforcement design is
-  `docs/future/llm-quality-enforcement-design.md`
+  `docs/architecture/llm-quality-enforcement-design.md`
 - load the `perf-architecture` skill before editing; use the
   `perf-architecture-reviewer` (evidence per invariant, not a verdict) before landing
 
 For the core architecture/eval-render work:
 
-- treat `docs/future/core-architecture/HANDOFF.md` as the active entry point
+- treat `docs/architecture/core/HANDOFF.md` as the active entry point
 - do not add broad status trackers or stale architecture documents that mostly describe machinery the repo does not currently have
-- use `.cursor/PROJECT_STATE.md` for transient debugging state and latest baseline notes
+- use `docs/state/PROJECT_STATE.md` for transient debugging state and latest baseline notes
 
 Keep this file stable by pointing to canonical sources instead of duplicating fast-changing project status.

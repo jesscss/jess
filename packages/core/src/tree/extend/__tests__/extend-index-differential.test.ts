@@ -6,7 +6,7 @@
  *   - `extendByIndex`   (the prototype under test)
  * on IDENTICAL inputs and assert their stringified results are equal.
  *
- * See docs/future/core-architecture/EXTEND-INDEX-DESIGN.md §Build plan (case ladder).
+ * See docs/architecture/core/archive/EXTEND-INDEX-DESIGN.md §Build plan (case ladder).
  * Add cases ONE rung at a time; each new case tells you which layer is missing.
  */
 import { describe, it, expect } from 'vitest';

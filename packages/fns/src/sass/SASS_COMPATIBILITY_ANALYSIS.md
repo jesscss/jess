@@ -3,7 +3,7 @@
 > **Architecture correction (2026-07-21):** The original version of this
 > document predates AST-v2 and described List/bracket metadata as a missing
 > capability. That is no longer the architecture. The canonical public model
-> is defined in `docs/future/core-architecture/HANDOFF.md` and
+> is defined in `docs/architecture/core/HANDOFF.md` and
 > `DESIGN-DECISIONS.md`; this file is retained as compatibility analysis, not
 > as a proposal to add a second value model.
 

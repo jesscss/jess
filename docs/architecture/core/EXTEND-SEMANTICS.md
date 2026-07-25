@@ -15,7 +15,7 @@ The behavior below is anchored on two references, NOT on the current engine:
    The `alpha` TOP-LEVEL `.css` (with `:is()` compaction) is the intended v5
    output.
 2. **Owner-confirmed corrections** in
-   `docs/future/core-architecture/proposed-alpha-corrections/` for the two
+   `docs/architecture/core/proposed-alpha-corrections/` for the two
    places where alpha's hand-converted NESTED expected output carries a known bug
    (`extend.css`, `extend-exact.css`; see the corrections `README.md`).
 
@@ -430,11 +430,11 @@ a fixture. These are the owner questions:
 
 - Engine: `packages/core/src/ast/extend/` (clean-room `ir`/`compose`/`match`/`plan`/`solve`/`emit`; barrel `packages/core/src/ast/extend.ts`).
 - Legacy (dying, NOT a reference): `packages/core/src/tree/extend/{plan,solve,emit,pipeline,extend-index}.ts`.
-- Reference plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/future/core-architecture/REFERENCE.md`.
+- Reference plumbing: `packages/core/src/ast/parse-host/__tests__/oracle-source.ts`, `docs/architecture/core/REFERENCE.md`.
 - Byte-identity gate: `packages/core/src/ast/parse-host/__tests__/extend-byte-identity.test.ts`.
-- Corrections: `docs/future/core-architecture/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
-- Handoff / status: `docs/future/core-architecture/R1-EXTEND-HANDOFF.md`.
-- Kill-list (extend cleanup): `docs/future/core-architecture/TREE2-KILL-LIST.md`.
+- Corrections: `docs/architecture/core/proposed-alpha-corrections/{README.md,extend.css,extend-exact.css}`.
+- Handoff / status: `docs/architecture/core/R1-EXTEND-HANDOFF.md`.
+- Kill-list (extend cleanup): `docs/architecture/core/TREE2-KILL-LIST.md`.
 - User-facing pages (canonical source `packages/docs-content/`):
   - Less: `docs/less/features/extend.md` (syntax), `docs/less/advanced/extend-is-wrapping.md` (`:is()` grafting), `docs/less/advanced/extend-semantics.md` (full behavior + nuances).
   - Jess: `docs/jess/02-Language/05a-advanced-extend.mdx`, `docs/jess/06-Advanced/05-extend.md`.

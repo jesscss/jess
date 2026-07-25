@@ -18,11 +18,11 @@ Task **#34** and any BuilderHost deletion sequencing below are historical eviden
 only; the public direct-parser contract in `HANDOFF.md` is authoritative.
 
 This doc is the engineering spec for work items **W1, W5, W6, W7** of the owner-directed
-program in `../parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` (the
+program in `../parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` (the
 canonical sequencing/tracking doc — update *that* as items land; this doc details *how*).
 
 Companion specs (referenced, not duplicated):
-- `../parser-architecture/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` — W1–W13 program + sequencing.
+- `../parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` — W1–W13 program + sequencing.
 - `BUILDERHOST-RETIREMENT-DESIGN.md` — the two-producer fact + BuilderHost R0–R4 endgame.
 - `GRAMMAR-RELOCATION-DESIGN.md` — the Less builders.ts regex site map.
 - Memory: `scss-should-compose-on-css-not-less`, `sass-plus-dialect-reject-invalid-css`, `less-math-mode-is-parse-time`.

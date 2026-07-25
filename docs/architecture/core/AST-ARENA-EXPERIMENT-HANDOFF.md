@@ -109,7 +109,7 @@ arena; value-leaf tagging as the primary lever; anything that reuses `cloneForPl
 
 - Prior POC: `packages/core/src/tree2/` (arena types, adapter, render) — read it to learn the
   arena mechanics, but treat its emit-only/old-materialization approach as the *anti-pattern*.
-- Design record: `docs/future/core-architecture/AST-FROM-SCRATCH-DESIGN.md` (on `origin/dev`).
+- Design record: `docs/architecture/core/AST-FROM-SCRATCH-DESIGN.md` (on `origin/dev`).
 - The hot path to replace: mixin expansion `withComponents`/`cloneForPlacement` +
   selector `inherit` (find exact sites; that's where the ~73k/~35k originate).
 - Benchmark + harness: `packages/jess/benchmark/benchmark.less`;

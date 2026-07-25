@@ -12,7 +12,7 @@
  * as a reports-only step, and can be run locally with
  * `pnpm run verify:surface-parity`.
  *
- * Design: docs/future/llm-quality-enforcement-design.md (Cross-tool parity).
+ * Design: docs/architecture/llm-quality-enforcement-design.md (Cross-tool parity).
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -22,7 +22,7 @@ const root = path.resolve(new URL('..', import.meta.url).pathname);
 // The canonical perf-doc set every agent surface must point at.
 const CANONICAL_DOCS = [
   'docs/perf/V8-ARCHITECTURE.md',
-  'docs/future/llm-quality-enforcement-design.md'
+  'docs/architecture/llm-quality-enforcement-design.md'
 ];
 
 /** Recursively collect files under a dir matching a predicate. */
