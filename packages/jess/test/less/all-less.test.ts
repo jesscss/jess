@@ -158,6 +158,15 @@ const expectedFailureFixtures = new Map<string, string>([
   ['tests-unit/mixins/mixins.less', 'group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset'],
   ['tests-unit/property-name-interp/property-name-interp.less', 'Less5 owner-set rejection of deprecated dash-only @- and @{-} variable names; Less4 deprecation is implemented in unpushed worktree commit db03543d'],
   ['tests-unit/variables/variables.less', 'renders but variable output differs from Less'],
+  // Numeric precision. jess emits `-webkit-transform: rotate(0deg)` where Less
+  // emits `rotate(-0.0000000001deg)`. Recorded here rather than left as a bare
+  // red so the lane can gate: the moment precision is fixed, this entry's
+  // "expected to fail" assertion trips and demands its own deletion. Verified
+  // failing on a pristine origin/dev checkout (93e1aa49d, clean install + full
+  // serial build) — pre-existing, not introduced by the gate work. See the
+  // in-flight `numeric-precision-policy` design work on dev.
+  ['tests-unit/css-3/css-3.less', 'computed dimension loses precision: rotate(-0.0000000001deg) renders as rotate(0deg)'],
+  ['tests-unit/variables/variable-advanced.less', 'same numeric-precision divergence as css-3.less'],
   ['tests-unit/plugin-module/plugin-module.less', 'Less5 alpha rejects clean-css: its legacy CommonJS @plugin graph uses require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime intentionally does not support (a cold worker can instead report its explicit startup diagnostic); this is not a parser, evaluator, or Context import-resolution failure'],
   // Explicit Less5 removals. Keep these legacy fixtures runnable so an
   // accidental reintroduction is visible rather than silently skipped.
