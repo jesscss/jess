@@ -3,6 +3,28 @@
 Status: **DESIGN — not built.** The parseman `0.32.0 → 0.34.0` bump itself is landed and
 evidenced in §1; everything from §3 onward is proposed work.
 
+> **⚠ This plan targets 0.34.0. `dev` is pinned to `parseman@0.32.0`, and the bump is NOT on `dev`.**
+> Re-verified 2026-07-24. Read against the pinned version, three things here are wrong, and an agent
+> executing §4 directly will trip over all of them:
+>
+> 1. **§4.0's "two module-level boundary `const`s are permitted" is FALSE at 0.32.0** — one such const
+>    degrades the artifact to the runtime interpreter *and moves the emitted tree*. Corrected in place
+>    below.
+> 2. **`peek` and `oneOrMoreSep` do not exist at 0.32.0.** Every plan item sequenced "`peek()`
+>    conversions first" — including LESS-1, SCSS-4, JESS-2 and all the `oneOrMoreSep` list
+>    conversions — is **not executable** until the bump lands. `word()`/`keywords()` **are** available
+>    and are macro-buildable and AST-neutral, so the keyword conversions can proceed today; note
+>    `word()` has no `caseInsensitive` overload at 0.32.0, so a case-insensitive single keyword is
+>    `keywords([str], { caseInsensitive: true, boundary })`.
+> 3. **The gating baselines (css 62, less 52, scss 48, jess 36) are NOT reproducible at 0.32.0.**
+>    `analyzeGating()` throws for 129 of 129 rules of the `compose()`d Less CST, the AST grammars are
+>    unreachable behind `composeLeaf`, and the macro build never runs the analysis. Those counts are
+>    0.34.0 numbers; do not treat an empty diagnostic as evidence a grammar is clean.
+>
+> The measured detail, with repros, is in
+> [`architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](../architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md).
+> The first tranche of 0.32.0-compatible Less conversions landed on `dev` as `186f58be5`.
+
 Filed under `docs/design/` per `docs/README.md`: this document describes machinery the repo
 does not have yet. When each per-parser section lands, delete it from here; when the whole
 plan lands, move what survives to `docs/architecture/parser/`.
@@ -338,8 +360,17 @@ fallback — mandatory on every item), and AST byte-identity over the corpus in 
 - **`word()` boundary mapping.** CST spelling `(?![-\w])` → `word('kw', '-_0-9A-Za-z')`.
   AST spelling `(?![-_a-zA-Z0-9-￿])` → `word('kw', '-_a-zA-Z0-9\\u0080-\\uffff')`.
   Preserve `/i` exactly: pass `{ caseInsensitive: true }` only where the current regex has it.
-- **Two module-level boundary `const`s are permitted** (parameterless). **`makeWord(boundary)` is
-  NOT** — it is a factory and is forbidden by the grammar-dedup macro-constraint.
+- ~~**Two module-level boundary `const`s are permitted** (parameterless).~~ **WRONG — corrected
+  2026-07-24, measured on `dev` at the pinned `parseman@0.32.0`.** A module-level `const` holding a
+  boundary string, read from inside the `rules()` factory, makes the map un-resolvable at build time:
+  `compose()` degrades to the runtime interpreter (and cascades into `scss-parser`, which composes on
+  Less). **And the fallback build emits a DIFFERENT tree** — toggling only that const in and out of
+  `less-parser` moves the CST corpus aggregate and moves it back. So the macro-dedup constraint
+  covers hoisted plain-STRING consts, not just regex sources. **Spell the boundary literally at every
+  call site**; literal duplication is the correct answer. Re-verify if 0.34.0 changes it.
+  See [`architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](../architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md) §1.
+- **`makeWord(boundary)` is NOT** permitted — it is a factory and is forbidden by the grammar-dedup
+  macro-constraint.
 - `keywords([...])` is longest-first by construction, so hand-ordered "longest alternative first"
   comments become obsolete and should be deleted with the conversion.
 
@@ -418,7 +449,19 @@ but the corpus may simply lack a comment-hidden sentinel; add the targeted fixtu
 
 ### 4.2 `less-parser`
 
-Gating baseline: 52 findings (48 own + 4 inherited). `not(not(X))`: **6, all verified**, and
+> **Partly landed on `dev` at 0.32.0 — `186f58be5`.** Done: **LESS-13** (the shared
+> `g.CssAstSyntaxNthName` binding — the byte-for-byte duplicate is deleted); the CST half of
+> **LESS-5** (15 keyword regexes → `word()`/`keywords()`, plus `NamedColor`'s 150-name hand-ordered
+> alternation, whose longest-first ordering hazard `keywords()` removes by construction); the CST half
+> of **LESS-4** (`condStopAhead`/`condOpAhead` now build on `compareOp` instead of re-spelling the
+> comparison alternation a 3rd and 4th time); and one **LESS-8** site (`argRest`). All AST- and
+> CST-byte-identical over 707 files, `check-macro-buildable` clean, perf neutral against a
+> same-run control. **Blocked at 0.32.0:** LESS-1 (needs `peek`), LESS-2 (needs `oneOrMoreSep`),
+> LESS-16 (needs a working diagnostic). Still open and unstarted: the AST-grammar half of LESS-4/5/6,
+> LESS-3, LESS-9, LESS-10, LESS-11, LESS-12, LESS-14, LESS-15.
+
+Gating baseline: 52 findings (48 own + 4 inherited) — **0.34.0 numbers, not reproducible at the
+pinned 0.32.0; see the banner at the top of this document.** `not(not(X))`: **6, all verified**, and
 **all six sit among shared-first-char sibling arms** — the configuration the docs say
 `not(not(...))` *miscompiles* in. These are correctness fixes, not cosmetics.
 
