@@ -254,9 +254,41 @@ const noLiteralNonAsciiInRegex = {
  * ---------------------------------------------------------------------------
  *
  * `regex(/not(?![-\w])/i)` is a hand-rolled copy of the `keyword()` combinator.
- * It is a CORRECTNESS rule, not a style one: `/i` without `/u` applies
- * non-ASCII case folding incorrectly, and parseman fixed exactly that defect
- * INSIDE the combinator — so every hand-rolled copy carries the unfixed bug.
+ *
+ * WHY, AT THE PINNED 0.32.0. The combinator owns the word boundary and the
+ * first-set exactly, so an arm led by it gates on a known first char instead of
+ * a lookahead the analyzer must treat as opaque. That is the whole of the
+ * argument here, and it is a design argument, not a correctness one.
+ *
+ * DO NOT restate this as "the hand-rolled copy carries a case-folding bug the
+ * combinator fixed". At 0.32.0 that is BACKWARDS — the combinator is the broken
+ * one. Probed at the pin:
+ *
+ *   regex(/(?:stroke)(?![-\w])/i)            on 'ſtroke'  -> false  (correct)
+ *   keywords(['stroke'], { caseInsensitive }) on 'ſtroke'  -> TRUE   (wrong-accept)
+ *
+ * U+017F folds to 's' under Unicode simple case folding, which `/iu` applies and
+ * `/i` alone does not. The defect is OVER-acceptance, and it is shape-dependent:
+ * the ASCII-folded first-set dispatches U+017F away from the arm, so in a
+ * disjoint choice it fails and in a non-disjoint choice it matches. Same
+ * grammar, different answer depending on the enclosing choice. ASCII-initial
+ * keywords are NOT exempt — `keywords(['stroke'])` has first-set {S,s}, contains
+ * no U+017F, and still matches it; exposure is bounded by the INPUT containing a
+ * non-ASCII identifier, not by the keyword being ASCII.
+ *
+ * CONVERSION GUIDANCE — the sites do not form one queue:
+ *   - CASE-SENSITIVE conversions are FREE. `keywords([...])` without
+ *     `caseInsensitive` takes the `uy` path and carries no defect (probed:
+ *     rejects both 'STROKE' and 'ſtroke'). Convert these.
+ *   - CASE-INSENSITIVE conversions are BLOCKED on the 0.34.0 bump, same class as
+ *     `oneOrMoreSep`. Converting one at this pin trades a correct hand-rolled
+ *     regex for an over-accepting combinator.
+ *
+ * 0.34.0 fixes it (`keywords({ caseInsensitive })` stops compiling under `u`, so
+ * matching and the first-set fold the same ASCII set) and adds
+ * `word(str, { caseInsensitive })`, which is the better target for the
+ * single-word sites. At that point the original rationale becomes valid and this
+ * comment should be rewritten to it.
  */
 
 /** Pattern body with an optional trailing word-boundary negative lookahead removed. */
@@ -290,7 +322,7 @@ const noHandRolledKeywordRegex = {
     },
     schema: [],
     messages: {
-      handRolled: 'Hand-rolled keyword regex `/{{pattern}}/{{flags}}`. Use parseman\'s keyword combinator instead — it owns the word-boundary and the case-fold class, and a hand-rolled `/i` without `/u` folds non-ASCII incorrectly (the defect parseman fixed inside the combinator). Not autofixable: converting a production by hand is a grammar change and must be reviewed.'
+      handRolled: 'Hand-rolled keyword regex `/{{pattern}}/{{flags}}`. Prefer parseman\'s keyword combinator: it owns the word boundary and reports an exact first-set, so the arm gates on a known first char instead of a lookahead the analyzer treats as opaque. CASE-SENSITIVE conversions are free. A CASE-INSENSITIVE one is BLOCKED at the pinned 0.32.0, where `keywords({ caseInsensitive })` compiles under `u` and so ALSO matches Unicode case-folds the ASCII first-set dispatches away — it over-accepts `ſtroke` for `stroke`, which this `/i` regex correctly rejects. Fixed in 0.34.0; until the bump, converting a case-insensitive site makes it worse. Never autofixable: a conversion is a grammar change and needs the oracle.'
     }
   },
   create(context) {

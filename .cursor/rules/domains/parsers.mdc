@@ -109,16 +109,46 @@ Consequences:
 
 ### Grammar-writing rules
 
-- **No regex outside `regex()`.** No hand-rolled keyword regexes — `keywords()` owns
-  boundaries and case folding; a hand-rolled `/i` does not.
-- No hand-rolled `sepBy`; no `not(regex(…))` as an end-of-value assertion.
+- **No regex outside `regex()`.** Prefer `keywords()` over a hand-rolled
+  `/word(?![-\w])/`: it owns the boundary and reports an exact first-set, so the arm
+  gates on a known first char rather than an opaque lookahead.
+- No hand-rolled `sepBy`; no `not(regex(…))` as an end-of-value assertion — **but see
+  the two bump-gated exceptions below before converting anything.**
 - No leading `not()` — reorder so a consuming terminal leads.
 - No manual `optional(ws)`; trivia is declared once on the grammar via `rules({ trivia }, …)`
   and is ambient through `compose()`.
 - No production consuming its own `;` — the list owns separators.
-- No literal non-ASCII in a regex (`\uXXXX` escapes only); no `/i` without `/u`.
+- No literal non-ASCII in a regex — `\uXXXX` escapes only. This is a **reviewability**
+  rule, not a gating one: the first-set is identical either way, but a literal U+0080 or
+  a homoglyph is invisible in a diff, and a grammar is where one silently changes what
+  the language accepts. (The Less `ident` production carried exactly that until
+  2026-07-25.) Do **not** restate it as a performance rule, and do **not** "fix" a `/i`
+  regex by adding `u` — see below.
 - One combinator per line, matching parens down the left edge.
 - **Every rule carries a JSDoc block**: one line on what it recognises, plus example inputs.
+
+### Two conversions that are REGRESSIONS at the pinned 0.32.0
+
+Both look like obvious cleanups and both make the grammar worse until parseman is bumped.
+A sweep that flattens these distinctions will introduce wrong-accepts silently.
+
+- **`keywords({ caseInsensitive })` over-accepts.** It compiles under `u`, so it folds by
+  Unicode simple case folding and matches inputs its ASCII first-set dispatches away —
+  `keywords(['stroke'], { caseInsensitive })` matches `ſtroke` (U+017F), which
+  `regex(/(?:stroke)(?![-\w])/i)` correctly rejects. **Probed at the pin.** The defect is
+  over-acceptance and it is *shape-dependent*: in a disjoint choice the arm is dispatched
+  away and fails; in a non-disjoint choice it wins and returns the wrong token. ASCII-initial
+  keywords are not exempt — exposure is bounded by the *input* carrying a non-ASCII
+  identifier, not by the keyword. **Case-SENSITIVE `keywords()` is fine and free to
+  convert** (it takes the `uy` path). Fixed in 0.34.0, which also adds
+  `word(str, { caseInsensitive })` — the better target for single-word sites.
+- **`sepBy` is nullable with no way to say otherwise** — `run(sepBy(x, ','), '')` is `ok`
+  (probed). Converting a **non-empty** separated list to it loses the list's gating arm.
+  Optional lists convert freely; non-empty ones wait for `oneOrMoreSep` (0.35.0).
+
+Corollary for `/i` generally: **`/i` alone gates fine** (the first-set is ASCII
+case-folded); adding `u` or `v` is what forfeits gating, by collapsing the first-set to
+`any()`. Never add `u` to a case-insensitive pattern.
 
 ### Reference docs
 

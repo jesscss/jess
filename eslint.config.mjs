@@ -386,23 +386,27 @@ export default tseslint.config([
       'grammar/no-regex-outside-combinator': 'error',
 
       /*
-       * A hand-rolled `/word(?![-\w])/i` is a copy of the `keyword()` combinator
-       * with the combinator's own case-fold fix left out — `/i` without `/u`
-       * folds non-ASCII incorrectly, which parseman fixed INSIDE the combinator.
-       * Every hand-rolled copy therefore carries the unfixed defect. The rule
-       * only fires on a pattern that is literal words plus a trailing
-       * word-boundary lookahead, so a real character class does not trip it.
-       * Deliberately NOT autofixable: swapping a production for `keywords()` is
-       * a grammar change and needs the oracle, not a `--fix`.
+       * A hand-rolled `/word(?![-\w])/` reimplements `keyword()`. The combinator
+       * owns the boundary and reports an exact first-set, so the arm gates on a
+       * known first char instead of a lookahead the analyzer treats as opaque.
+       * The rule only fires on literal words plus a trailing boundary lookahead,
+       * so a real character class does not trip it. Never autofixable: a
+       * conversion is a grammar change and needs the oracle, not a `--fix`.
        *
-       * `warn`, NOT `error`, and that is a deliberate hold rather than the
-       * intended end state. Measured 2026-07-25 over the five packages: 69
-       * genuine sites (1 false positive, since fixed in the rule). 37 of them
-       * carry `/i` with no `/u` — the actual case-fold defect. Every one is a
-       * grammar change requiring oracle verification, so promoting this to
-       * `error` before they are converted would leave `pnpm lint` red for every
-       * other agent. PROMOTE TO `error` once the conversions land; the count is
-       * the gate, not a judgement call.
+       * `warn`, NOT `error`, and that is a deliberate hold. Measured 2026-07-25
+       * over the five packages: 69 genuine sites, 0 false positives after the
+       * rule fix. Promoting before they are converted would leave `pnpm lint`
+       * red for every other agent.
+       *
+       * THE 69 ARE TWO QUEUES, NOT ONE:
+       *   - 32 case-SENSITIVE: free to convert now.
+       *   - 37 case-INSENSITIVE: BLOCKED on the parseman 0.34.0 bump. At the
+       *     pinned 0.32.0 `keywords({ caseInsensitive })` compiles under `u` and
+       *     over-accepts Unicode case-folds its ASCII first-set dispatches away
+       *     (`ſtroke` matches `stroke`), which the `/i` regex correctly rejects.
+       *     Converting one now trades a correct spelling for a wrong-accept.
+       * See the rationale block in `scripts/eslint-rules/grammar-rules.mjs` for
+       * the probe. PROMOTE TO `error` once both queues are drained.
        */
       'grammar/no-hand-rolled-keyword-regex': 'warn',
 

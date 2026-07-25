@@ -1,179 +1,226 @@
 # Parseman combinator cheat sheet
 
-**Reflects parseman 0.36.0.** Derived 2026-07-25 by enumerating
-`src/index.ts` in the parseman checkout at `/Users/matthew/git/oss/parser-thing`
-(`package.json` version `0.36.0`), not from memory and not from prose. Every
-non-obvious claim carries a `file:line` into that checkout. Behavioural claims
-marked **[probed]** were executed against `src/` via `tsx`, not inferred.
+**Reflects parseman 0.32.0 — the version this repo pins and the version your code
+must compile against.** Derived 2026-07-25.
 
-## Honesty note — read this before you trust anything below
+## Provenance — where these claims come from
 
-This is a **convenience copy**. Parseman's own docs and source are authoritative:
-`docs/guide/combinators.md`, `docs/guide/first-char-gating.md`, and `AGENTS.md` in
-the parseman repo. Every example in `combinators.md` is executed by
-`scripts/verify-doc-examples.mjs`; nothing in *this* file is executed by anything.
+The pinned package (`node_modules/parseman`) ships `dist/` only, but its published
+sourcemaps carry full `sourcesContent`: the **actual 0.32.0 TypeScript**, 61 files,
+recovered from `dist/**/*.js.map`. Every `src/…:N` citation below is a line in that
+recovered 0.32.0 source, not in a newer checkout. `src/version.ts` in it reads
+`PARSEMAN_VERSION = '0.32.0'`.
 
-**A stale cheat sheet is worse than no cheat sheet**, because it will be trusted.
-Parseman is pre-1.0 and its minors carry breaking changes — 0.34.0 alone changed
-what `keywords({ caseInsensitive })` matches and what `not()` leaves behind.
-When the pin moves, **re-derive this file from `src/index.ts`**; do not patch it
-from a changelog. If you cannot re-derive it, delete it.
+**Reproduce the extraction** — do this rather than trusting a citation you doubt.
+For each `dist/**/*.js.map`, parse the JSON and write `sourcesContent[i]` to
+`sources[i]` (strip the leading `../`); four maps cover 61 unique files:
 
-This repo currently pins **parseman 0.32.0**
-(`node_modules/parseman/package.json`). Sections 1–3 describe **0.36.0**, which is
-*not* what this repo runs today. `docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`
-is the doc that describes the pinned version, and it stays authoritative for
-anything you are about to write against the current pin.
+```js
+const m = JSON.parse(fs.readFileSync(mapPath, 'utf8'))
+m.sources.forEach((s, i) => write(s.replace(/^(\.\.\/)+/, ''), m.sourcesContent[i]))
+```
+
+Two independent checks that the recovered tree is genuine 0.32.0: `linker.ts:565`
+and `gating.ts:313` land on exactly the lines
+`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §2.1 already cites from reproduction in
+this repo.
+
+Behavioural claims are marked **[probed]** (executed against the pinned
+`dist/index.js`), **[type-checked]** (run through `tsc` against the pinned
+`dist/index.d.ts`), or **[unprobed]** (read from source only).
+
+Nothing here was taken from parseman's published docs, because upstream docs
+describe 0.41.0. **Where published prose and the 0.32.0 source disagree, the source
+wins**; §5 lists the disagreements found.
+
+## Honesty note
+
+This is a **convenience copy**, and a stale cheat sheet is worse than none because
+it will be trusted. A sheet documenting combinators the pin does not have produces
+code that does not compile — or, worse, compiles and behaves differently.
+
+Upstream is at 0.41.0. That gap is not closing soon: 0.36.0 was measured and
+declined on a Less regression, and 0.40.0 was found to corrupt CST output (231
+structural nodes collapsed to bare leaves, 55 source tokens dropped, across 13
+files). Two upstream defects are being fixed before a bump is reconsidered.
+
+So: **§1–§5 are the callable surface. §6 is explicitly NOT callable** — it exists
+as the argument for bumping and must never be mixed into the working set.
+
+When the pin moves, **re-derive from the new source** (§7); do not patch this from
+a changelog. If you cannot re-derive it, delete it.
+
+## Relationship to the other parser docs
+
+- **`GRAMMAR-REVIEW-STANDARD.md` is the standing brief and outranks this sheet.**
+  It sets the method (every `const`, no sampling), the checklist, and the outcome
+  vocabulary — **conforms / converted / blocked / deliberate exception**. This
+  sheet is the API reference that checklist items 6, 8, 9 and 11 are answered
+  *against*; where a finding here should be recorded, it is phrased in that
+  vocabulary so the two line up.
+- **`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`** — constraints reproduced on the four
+  grammars at this same pin. Consistent with this sheet, with one point where the
+  standard supersedes its blanket form: see §3.5.
+- **One live contradiction is flagged, not silently resolved: §3.1a**, between the
+  keyword-regex lint rule's stated rationale and the pinned combinator's actual
+  behaviour. Read it before doing any case-insensitive keyword conversion.
 
 ---
 
-## 1. The export surface
+## 1. The callable surface at 0.32.0
 
-Enumerated from `src/index.ts:1-105`. 81 runtime exports. Everything below is
-exported; nothing below is described that is not.
+Enumerated from `src/index.ts:1-103`. **78 runtime exports.** Nothing described
+below is absent from the pin; nothing absent from the pin is described below.
 
 ### 1.1 Terminals
 
-| Export | What it does | Minimal example |
+| Export | What it does | Example |
 | --- | --- | --- |
-| `literal(s, opts?)` | Exact string match. **No word boundary.** `opts.caseInsensitive` folds ASCII letters only (`literal.ts:6-22`) | `literal('=>')` matches `'=> x'` |
-| `regex(pattern, flags?)` | Sticky (`/…/y`) match at the current position (`regex.ts:114-118`) | `regex(/[0-9]+/)` matches `'42'` in `'42px'` |
-| `word(s, boundary?, opts?)` | One keyword + a trailing boundary guard. Default boundary `_0-9A-Za-z` (`keywords.ts:40`). Sugar for `keywords([s], …)` (`keywords.ts:42`) | `word('if')` rejects `'ifdef'` |
-| `keywords(words, opts?)` | One of many, longest-first, one sticky regex (`keywords.ts:78-98`) | `keywords(['bord','border'])` yields `'border'` |
-| `makeWord(boundary?)` | Definition-time factory fixing the boundary class (`keywords.ts:57`) | `const cssKw = makeWord('A-Za-z0-9_-')` |
+| `literal(s, opts?)` | Exact string match. **No word boundary.** `opts.caseInsensitive` folds **ASCII letters only** (`src/combinators/literal.ts:13`) | `literal('=>')` |
+| `regex(pattern, flags?)` | Sticky `/…/y` match at the current position | `regex(/[0-9]+/)` |
+| `word(s, boundary?)` | One keyword + trailing boundary guard. **Exactly two params**; default boundary `_0-9A-Za-z` (`src/combinators/keywords.ts:24`) | `word('if')` rejects `'ifdef'` |
+| `keywords(words, opts?)` | One of many, longest-first, one sticky regex. `opts` is `{ caseInsensitive?, boundary? }` — **has a live soundness defect at this pin, §3.1** | `keywords(['bord','border'])` → `'border'` |
+| `makeWord(boundary?)` | Definition-time factory fixing the boundary class | `const cssKw = makeWord('A-Za-z0-9_-')` |
+
+`word()` takes **no options object** at this pin. A case-insensitive single keyword
+must be spelled `keywords([str], { caseInsensitive: true, boundary })`.
 
 ### 1.2 Sequencing and choice
 
-| Export | What it does | Minimal example |
-| --- | --- | --- |
-| `sequence(...c)` | All in order, returns a tuple. Skips ambient trivia between terms | `sequence(regex(/[a-z]+/), literal('='), regex(/[0-9]+/))` |
-| `choice(...arms)` | Ordered PEG alternatives, first match wins. An arm may be `{ gate, combinator }` (`choice.ts:18-19`) | `choice(literal('in'), literal('instanceof'))` |
-| `attempt(c)` | All-or-nothing arm: restores capture/trivia/error sinks on failure (`attempt.ts:6-9`) | `choice(attempt(callShape), bareIdent)` |
+| Export | What it does |
+| --- | --- |
+| `sequence(...c)` | All in order, returns a tuple. Skips ambient trivia between terms |
+| `choice(...arms)` | Ordered PEG alternatives, first match wins. An arm may be `{ gate, combinator }` (`src/combinators/choice.ts:18-19`). **Read §3.2 before adding a gated arm** |
+| `attempt(c)` | All-or-nothing arm: restores capture/trivia/error sinks on failure |
 
-### 1.3 Repetition
+### 1.3 Repetition — four exports, no options objects
 
-One family, four names. `oneOrMore(x)` **is** `many(x, { min: 1 })` and
-`oneOrMoreSep(i, s)` **is** `sepBy(i, s, { min: 1 })` — the same combinator, routed
-at `repeat.ts:110-112` and `repeat.ts:291`.
+```
+many(c)        oneOrMore(c)        optional(c)        sepBy(c, sep)
+```
 
-| | nullable (min 0) | non-empty (min 1) |
-| --- | --- | --- |
-| plain | `many(item, opts?)` `repeat.ts:105` | `oneOrMore(item, opts?)` `repeat.ts:172` |
-| separated | `sepBy(item, sep, opts?)` `repeat.ts:321` | `oneOrMoreSep(item, sep, opts?)` `repeat.ts:290` |
-
-- `optional(c)` — zero or one, returns `null`, never fails (`repeat.ts:251`).
-- `{ min, max }` count **items**, not separators. A bad bound throws at
-  *construction*, not at parse time (`repeat.ts:82-91`).
-- `{ trailing: 'forbid' | 'allow' | 'require' }`, separated forms only, default
-  `'forbid'` — the trailing separator is left for the enclosing rule
-  (`repeat.ts:294-307`).
-- `min >= 1` is the thing that makes a repeat **non-nullable**, which is what lets
-  an arm led by it keep first-char dispatch (`repeat.ts:70-77`).
-
-### 1.4 Lookahead and negation
-
-Both are zero-width.
-
-- `not(c)` — negative (PEG `!X`). First-set is `any`: it cannot know what it
-  forbids. **Trailing boundary only.**
-- `peek(c)` — positive (PEG `&X`). **Carries the body's first-set**, so a *leading*
-  `peek()` narrows an arm instead of poisoning it (`peek.ts:8-28`). A nullable body
-  constrains nothing and reports `any` (`peek.ts:23-27`).
+Exact signatures at the pin (`src/combinators/repeat.ts:70, 122, 170, 196`):
 
 ```ts
-sequence(peek(regex(/[.#]/)), broadBody)   // still first-char-dispatches
+export function many<T>(combinator: Combinator<T>): Combinator<T[]>
+export function oneOrMore<T>(combinator: Combinator<T>): Combinator<T[]>
+export function optional<T>(combinator: Combinator<T>): Combinator<T | null>
+export function sepBy<T, S>(combinator: Combinator<T>, separator: Combinator<S>): Combinator<T[]>
 ```
+
+**No overloads, no options parameter on any of them.**
+
+- `many(x, { min: 1 })` is a **compile error** — `TS2554: Expected 1 arguments, but
+  got 2` **[type-checked]**. Write `oneOrMore(x)`.
+
+  > **Correction to something that circulated.** An earlier note — including an
+  > earlier draft of this sheet — described `many(x, { min: 1 })` at this pin as
+  > "silently ignored: it still matches the empty string". That was a **runtime**
+  > observation against the untyped compiled JS, where an extra argument is simply
+  > dropped. Against the pinned `dist/index.d.ts` it does not compile at all. Do
+  > not re-derive the "silent no-op" claim from a stale brief; the failure is loud
+  > and it is at build time.
+- `sepBy(x, sep, { min: 1 })` is a **compile error** — `TS2554: Expected 2
+  arguments, but got 3` **[type-checked]**.
+- **`sepBy` is nullable at this pin and there is no way to say otherwise.** It is
+  `(item (sep item)*)?` and matches the empty string: `parse(sepBy(ident, comma),
+  '').ok === true` **[probed]**. A non-empty separated list — selector list, value
+  list, media-query prelude — has **no non-nullable spelling here.** See §3.4.
+- `many` is likewise nullable; `oneOrMore` is the non-nullable plain repeat.
+
+### 1.4 Negation — `not` only
+
+`not(c)` — negative lookahead (PEG `!X`), zero-width. First-set is `any()`
+(`src/combinators/not.ts:17`): it cannot know what it forbids, so **keep it as a
+trailing boundary and never lead a choice arm with it.**
+
+There is **no positive lookahead at this pin.** §3.3 for what that costs.
 
 ### 1.5 Trivia
 
-- `trivia(c)` — mark a combinator as skippable filler (`map.ts:35`).
-- `noTrivia(c)` — run `c` with active trivia cleared; terms must be contiguous.
-- `parser({ trivia }, root)` — turn on auto-skipping between sequence terms.
-- `rules({ trivia, scanSkip }, factory)` — grammar-wide. **Options go FIRST** when
-  they configure a scope, LAST when they modify one combinator (`AGENTS.md:105-120`).
+`trivia(c)` marks a combinator as skippable filler; `noTrivia(c)` clears active
+trivia locally; `parser({ trivia }, root)` turns on auto-skipping;
+`rules({ trivia, scanSkip }, factory)` sets it grammar-wide.
+
+**`rules({ scanSkip })` IS available at this pin** (`src/combinators/parser.ts:56,
+128`) — easy to assume otherwise, since the surrounding `scanTo`/`balanced`
+ambient-skipping work is newer. Options go **first** for scope-configuring helpers
+(`rules`, `parser`), last for combinator-local ones.
 
 ### 1.6 Nodes, fields, builders
 
 | Export | What it does |
 | --- | --- |
-| `node(c, build?, opts?)` / `node(type, c, build?, opts?)` | The tree-building rule. Captures terminals + trivia and hands the build callback **CST leaves with spans**, not bare strings (`node.ts:71-72`). Inside `rules()` the type is inferred from the rule key; outside it, an inferred type throws (`node.ts:67-69`) |
-| `NodeOptions` | `{ unwrap?, collapse?, captureTrivia?, trailingTrivia? }` (`node.ts:50`) |
-| `field(name, c)` | Capture a named value+span for the nearest enclosing `node()`. Repeated names become arrays. Parse behaviour unchanged (`map.ts:71-83`) |
-| `label(name, c)` | Metadata only; changes the reported `expected` on failure (`map.ts:54-64`) |
-| `transform(c, fn)` | Map a value: `fn(value, span)` (`map.ts:4`) |
-| `skip(main, skipped)` | Match both, return `main`'s value, span spans both (`map.ts:20`) |
-| `token(c)` | Contiguous region with trivia disabled; returns matched **source text**, one CST leaf, inner leaves suppressed (`token.ts:6-11`) |
-| `leaf(c, reducer)` | One *semantic* leaf; unlike `token` it does **not** touch trivia |
+| `node(c, build?, opts?)` / `node(type, c, build?, opts?)` | The tree-building rule. The build callback receives **CST leaves with spans**, not bare strings. Inside `rules()` the type is inferred from the rule key |
+| `NodeOptions` | `{ unwrap?, collapse?, captureTrivia?, trailingTrivia? }` |
+| `field(name, c)` | Capture a named value+span for the nearest enclosing `node()`. Repeated names become arrays. Parse behaviour unchanged (`src/combinators/map.ts`) |
+| `label(name, c)` | Metadata; changes the reported `expected` on failure |
+| `transform(c, fn)` | Map a value: `fn(value, span)` |
+| `skip(main, skipped)` | Match both, return `main`'s value |
+| `token(c)` | Contiguous region, trivia disabled; returns matched **source text**, one CST leaf |
+| `leaf(c, reducer)` | One *semantic* leaf; unlike `token` it does not touch trivia |
 | `cstBuildHost(opts?)` | Ready-made `build` host producing the default CST shape |
 
 ### 1.7 Recursion and running
 
-`ref<T>()` (low-level forward slot; using it before `.define()` throws),
-`rules(factory)` (named mutually-recursive bundle — prefer this),
-`parse(c, input, opts?)`, `parser(opts, root)`, `compile(c, …, opts?)`,
-`run(runnable, input, opts?)`, `parseDoc(…)` (incremental re-parse over a rules
-registry, `functional/doc.ts:1-3`).
+`ref<T>()` (low-level forward slot; use before `.define()` throws), `rules(factory)`
+(named mutually-recursive bundle — prefer this), `parse(c, input, opts?)`,
+`parser(opts, root)`, `compile(c, …, opts?)`, `run(runnable, input, opts?)`,
+`parseDoc(…)` (incremental re-parse over a rules registry).
 
-**Shipping note (0.35.0):** import the driver from `parseman/run` — a 3-module,
-7.2 kB closure — not from the main entry (349.6 kB). This is what put `parseman`
-in a published parser's `peerDependencies`.
+There is **no `parseman/run` subpath entry** at this pin — the driver is reachable
+only through the main entry, which is why a package shipping a compiled grammar
+carries `parseman` as a real runtime dependency.
 
 ### 1.8 Gating and context
 
 - `gate(predicate)` — zero-width state **ASSERT** on `ctx.state`; first-set is
-  `any`, so never lead an arm with it (`gate.ts:3-22`).
-- `choice({ gate, combinator }, …)` — the arm **field**: **SELECT** a branch. Keeps
-  the arm's own first-set. Arm field = select; `gate()` = assert.
-- `guard(...)` — deprecated alias for `gate` (`index.ts:56-57`).
+  `any`, so never lead an arm with it (`src/combinators/gate.ts`).
+- `choice({ gate, combinator }, …)` — the arm **field**: **SELECT** a branch.
+  Arm field = select; `gate()` combinator = assert. **§3.2 first.**
+- `guard(...)` — deprecated alias for `gate` (`src/index.ts:53-55`).
 - `withCtx(extra, c)` — merge into `ctx.state` for the duration of `c`.
-- `analyzeGating(entry, opts?)`, `analyzeGatingRules(ruleMap, opts?)`,
-  `formatGatingWarnings(report)`, `firstSetToString(fs)`.
-- Anti-pattern kinds the diagnostic reports: `'double-not' | 'leading-not' |
-  'keyword-regex'` (`analysis/gating.ts:74-76`).
-- A choice ungated *solely* by unresolved cross-artifact holes is `deferred` —
-  silent at the shape, excluded from the `'error'` gate
-  (`analysis/gating.ts:115, 161, 445-449`).
+- `analyzeGating(entry, opts?)`, `formatGatingWarnings(report)`,
+  `firstSetToString(fs)` — **read §3.5 before reporting any result from these.**
+- Anti-pattern kinds reported: `'double-not' | 'leading-not' | 'keyword-regex'`.
 
 ### 1.9 Error recovery
 
-`expect(c, label?)` (required token: records a `ParseError` in place and keeps
-parsing), `isParseError(v)`, `completionsAt(target, input, offset)`.
+`expect(c, label?)` (records a `ParseError` in place and keeps parsing),
+`isParseError(v)`, `completionsAt(target, input, offset)`.
 
 ### 1.10 Scanning
 
-- `scanTo(sentinel, opts?)` — forward until `sentinel` matches, sentinel **not**
-  consumed. Skips ambient trivia **and** ambient `scanSkip` by default (0.33.0).
+- `scanTo(sentinel, opts?)` — forward until `sentinel`, sentinel **not** consumed.
 - `balanced(open, close, opts?)` — one balanced region **including** delimiters,
-  counting nested pairs. Consults ambient `scanSkip` only, **not** trivia.
-- Per-call opts: `skip: [...]` **extends** the ambient set; `raw: true` opts out of
-  all ambient skipping; `orEOF: true` (`scanTo` only).
-- The sentinel is checked **before** any skipper.
+  counting nested pairs.
+- Per-call `skip: [...]`, plus `orEOF: true` on `scanTo`.
 - Both have `any` first-sets by nature — an arm led by either will not gate.
 
 ### 1.11 Composition
 
-- `compose([...])` — fuse independently-compiled grammars into one scope so a
-  dialect can override a base's rules. **May carry semantic builders**: callbacks
-  travel as captured source (`fnSrc`/`buildSrc`, `ir-serialize.ts:15-18`).
-- `composeLeaf([...])` — terminal form; the result cannot be composed again
-  (`linker.ts:550`). Runtime composition is **forbidden** — macro lowering only
-  (`linker.ts:579-583`).
-- `pick()` is deliberately **not** exported (`index.ts:44-48`).
+- `compose([...])` — fuse independently-compiled grammars so a dialect can override
+  a base's rules. **May carry semantic builders**: callbacks travel as captured
+  source (`fnSrc`/`buildSrc`).
+- `composeLeaf([...])` — terminal; the result cannot be composed again
+  (`src/compiler/linker.ts:536`). **Runtime composition throws**
+  (`src/compiler/linker.ts:565`) — macro lowering only.
+- `pick()` is deliberately not exported (`src/index.ts:42-46`).
 
 ### 1.12 CST / offset / span utilities (not combinators)
 
 `walk`, `createVisitor`, `buildTriviaIndex`, `triviaEntries`, `triviaKindMask`,
-`buildLineIndex`, `offsetToLineCol`, `annotateSpan`, and the offset model —
+`buildLineIndex`, `offsetToLineCol`, `annotateSpan`; the offset model —
 `OffsetIndex`, `buildOffsetIndex`, `collectLeafSlots`, `gapText`, `lineBreaksIn`,
 `blankLinesIn`, `lineStartWithin`, `indentWidth`, `indentMixed`, `commentsIn`,
-`gapIsSignificant` — plus the relative-span set `relativize`, `absolutize`,
+`gapIsSignificant`; and the relative-span set `relativize`, `absolutize`,
 `absoluteSpanAt`, `shiftAbsolute`, `applyEdit`, `relativizeCST`, `absolutizeCST`,
 `absoluteSpanCST`.
 
-The offset model is the piece worth knowing about: trivia is **not stored**. A leaf
-token's span is a "slot"; trivia lives in the gaps between consecutive slots and is
-reconstructed by subtraction and by slicing the source (`cst/offset-model.ts:1-24`).
-See §5 — this is parseman's actual answer to byte-faithful layout replay.
+Worth knowing: trivia is **not stored**. A leaf's span is a "slot"; trivia lives in
+the gaps between consecutive slots and is recovered by subtraction and by slicing
+the source (`src/cst/offset-model.ts`). This is parseman's answer to byte-faithful
+layout replay, and it is fully present at the pin.
 
 ### 1.13 Coverage / observability
 
@@ -184,68 +231,55 @@ See §5 — this is parseman's actual answer to byte-faithful layout replay.
 
 ---
 
-## 2. Choosing between similar — the section that prevents hand-rolling
+## 2. Choosing between similar — at this pin
 
-Ported from `docs/guide/combinators.md:800-948`, checked against source. The wrong
-pick usually still *works*; it silently loses first-char dispatch, and sometimes
-(§4.3) it changes what the grammar matches.
+The wrong pick usually still *works*; it silently loses first-char dispatch, and
+sometimes (§3.2) changes what the grammar matches. These tables are written for
+0.32.0 and deliberately do **not** recommend combinators the pin lacks.
 
 ### 2.1 Recognizing a keyword — `word` vs `literal` vs `regex`
 
 | Use | When | First-set | Gating |
 | --- | --- | --- | --- |
-| `word('kw', boundary)` | a keyword that must not match inside a longer word (`if` not `ifdef`) | exact | dispatches |
-| `keywords([...], opts)` | one of many keywords (colors, units, at-rules) | exact union | dispatches |
-| `literal('kw')` | fixed token with **no** word-boundary requirement — punctuation, operators | exact | dispatches |
-| `regex(/kw/)` | **avoid for keywords.** Genuine patterns only (numbers, identifiers) | often `any` | may not dispatch → `keyword-regex` |
+| `word('kw', boundary)` | a keyword that must not match inside a longer word | exact | dispatches |
+| `keywords([...], opts)` | one of many keywords | exact union | dispatches — but §3.1 for `caseInsensitive` |
+| `literal('kw')` | fixed token, **no** word-boundary requirement — punctuation, operators | exact | dispatches |
+| `regex(/kw/)` | **avoid for keywords.** Genuine patterns only | often `any` | may not dispatch → `keyword-regex` |
 
-Discriminating case: all three match `if` in `'if x'`; only `word` refuses `'ifdef'`.
+All three match `if` in `'if x'`; only `word` refuses `'ifdef'`.
 
-### 2.2 Repeating — `many` vs `oneOrMore` vs `sepBy` vs `oneOrMoreSep`
+### 2.2 Repeating — the pin has four, not six
 
 | Use | Separator | Empty input |
 | --- | --- | --- |
 | `many(item)` | none | succeeds with `[]` — **nullable** |
 | `oneOrMore(item)` | none | fails |
-| `sepBy(item, sep)` | yes | succeeds with `[]` — **nullable** |
-| `oneOrMoreSep(item, sep)` | yes | fails |
+| `sepBy(item, sep)` | yes | succeeds with `[]` — **nullable, unavoidably** |
+| *non-empty separated* | — | **no spelling at this pin** — §3.4 |
 
-This is the single most consequential nullability in the library. A selector list,
-value list, media-query prelude or keyframe selector is *never* empty — use
-`oneOrMoreSep`. Parseman's own audit found `sepBy` used **zero** times across ~135
-hand-rolled separated lists in its reference grammars; the nullable default was
-wrong for essentially every real list (CHANGELOG 0.34.0).
-
-### 2.3 Looking ahead — `not` vs `peek`
+### 2.3 Lookahead — `not` is the only one
 
 | Use | Succeeds when | First-set | Position |
 | --- | --- | --- | --- |
-| `not(X)` | X does **not** match | `any` | trailing only |
-| `peek(X)` | X **does** match | X's | leading is fine |
+| `not(X)` | X does **not** match | `any` | **trailing only** |
+| `not(not(X))` | X **does** match | `any` | works, but poisons dispatch — §3.3 |
 
-`not(not(X))` is behaviourally a positive lookahead but reports `any`, so it
-poisons dispatch and miscompiles among sibling arms sharing a first char
-(`peek.ts:12-21`). Replace every `not(not(X))` with `peek(X)`.
-
-### 2.4 Committing vs looking — `attempt` vs `peek`
+### 2.4 Committing vs looking — `attempt` vs `not(not(…))`
 
 | Use | Consumes on success | Rolls back on failure |
 | --- | --- | --- |
 | `attempt(X)` | yes — X's full match | every framework side effect |
-| `peek(X)` | no — zero-width | n/a, nothing was committed |
+| `not(not(X))` | no — zero-width | n/a |
 
-`attempt` is for an arm you want to *take* atomically; `peek` is for deciding
-*whether* to take one. They are not alternatives.
+`attempt` is for an arm you want to *take* atomically; the double negation is for
+deciding *whether* to take one. They are not alternatives.
 
 ### 2.5 Selecting vs asserting on context — gated arm vs `gate()`
 
 | Use | Role | Dispatch |
 | --- | --- | --- |
-| `choice({ gate, combinator }, …)` | **SELECT** a branch by a cheap state predicate | arm keeps its own first-set |
+| `choice({ gate, combinator }, …)` | **SELECT** a branch by a state predicate | arm keeps its own first-set — **but §3.2** |
 | `gate(pred)` inside `sequence` | **ASSERT** a predicate mid-sequence | poisons dispatch as a leading arm term |
-
-Caveat that the parseman table does not carry — see §4.3. Using the arm field at
-all changes `choice`'s strategy for **every** arm.
 
 ### 2.6 Mapping vs building — `transform` vs `node`
 
@@ -258,289 +292,451 @@ all changes `choice`'s strategy for **every** arm.
 
 | Use | Matches | Nesting |
 | --- | --- | --- |
-| `scanTo(sentinel, opts?)` | forward until `sentinel`, sentinel **not** consumed | flat; pass `skip: [balanced(...)]` for nested regions |
+| `scanTo(sentinel, opts?)` | forward until `sentinel`, **not** consumed | flat; pass `skip: [balanced(...)]` for nested regions |
 | `balanced(open, close, opts?)` | one balanced region **including** delimiters | tracks nested pairs |
 
-Discriminating case: on `'(a (b) c)'`, `scanTo(literal(')'))` yields `'(a (b'`;
-`balanced('(', ')')` yields `'(a (b) c)'`.
+On `'(a (b) c)'`: `scanTo(literal(')'))` → `'(a (b'`; `balanced('(', ')')` →
+`'(a (b) c)'`.
 
 ### 2.8 `compose` vs `composeLeaf`
 
 | Use | Composable again | Semantic builders in pre-final pieces |
 | --- | --- | --- |
 | `compose([...])` | yes | **yes** — callbacks travel as captured source |
-| `composeLeaf([...])` | no, terminal (`linker.ts:550`) | **no** — every pre-final piece must prove recognition-only (`plugin/index.ts:1102-1105`) |
+| `composeLeaf([...])` | no, terminal (`linker.ts:536`) | **no** — every pre-final piece must prove recognition-only (`src/plugin/index.ts:1052-1053`) |
 
 ---
 
-## 3. NEW since 0.32.0 — capability nobody in this repo has used
+## 3. Gotchas at this pin
 
-Verified by importing both builds and diffing `Object.keys` **[probed]**:
-0.32.0 has 78 exports, 0.36.0 has 81, **nothing was removed**, and exactly three
-value exports were added.
+### 3.1 `keywords({ caseInsensitive: true })` has a LIVE unsound gate
 
-| New export | Version | What it unlocks |
-| --- | --- | --- |
-| **`peek(c)`** | 0.34.0 | Positive lookahead carrying its body's first-set. **Confirmed absent at 0.32.0.** Converts the `not(not(X))` sites that currently report `any`. |
-| **`oneOrMoreSep(item, sep, opts?)`** | 0.34.0 | Non-empty separated list. **Confirmed absent at 0.32.0.** Every non-empty list currently spelled `sepBy` is a nullable arm today. |
-| `analyzeGatingRules(ruleMap, opts?)` | 0.34.0 | Rule-map-level gating diagnostic; `analyzeGating` is its single-entry case. |
+The entry most likely to be believed backwards, because it is the opposite of what
+upstream docs say — they describe the **fixed** behaviour, which landed in 0.34.0.
 
-Non-export additions — capability that does *not* show up in an export diff and is
-therefore easy to miss:
+At the pin (`src/combinators/keywords.ts:64`):
 
-| Addition | Version | Note |
-| --- | --- | --- |
-| `word(str, opts)` / `word(str, boundary, opts)` with `caseInsensitive` | 0.34.0 | At 0.32.0 `word` is `(str, boundary = '_0-9A-Za-z')` — two params, no opts **[probed]**. This is the conforming spelling for CSS at-keywords/units instead of `regex(/media/i)`. |
-| `{ min, max }` on `many`/`oneOrMore`, `{ min, max, trailing }` on `sepBy`/`oneOrMoreSep` | 0.34.0 | At 0.32.0 `sepBy` takes exactly `(c, sep)` and `many` takes `(c)` **[probed]** — and `many(x, { min: 1 })` at 0.32.0 is **silently ignored**, not rejected: it still matches the empty string. Any 0.32.0 code written in the 0.34.0 idiom is quietly nullable. |
-| `keywords({ caseInsensitive })` no longer compiles under `u` | 0.34.0 | **Behaviour change.** `keywords(['stroke'], { caseInsensitive })` used to also match `ſtroke` while its ASCII-folded first-set gated that input away — an unsound gate (`keywords.ts:81-98`). |
-| `rules({ scanSkip: [...] })`; `scanTo`/`balanced` skip ambient trivia | 0.33.0 | **Default-behaviour change**: a sentinel hidden in a comment is no longer matched. Per-call `skip` now *extends* rather than replaces; `raw: true` opts out. |
-| Shared grammar **shapes** — a `rules()` map may leave holes | 0.34.0 | A composite shape (`<ratio> = <value> '/' <value>`, a media-feature range) is written once, each dialect binds its own rule by name, and it still macro-fuses. An unbound hole is a hard build error, never a silent drop. |
-| The gating diagnostic runs in the macro build | 0.34.0 | At 0.32.0 `compileRuleMap`/`compileLinkable` ran **no** analysis, so a whole macro-built grammar reported zero findings. Directly answers `PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §2's first row. |
-| `compose()`/`composeLeaf()` re-run gating over the **fused winner map** | 0.34.0 | `linker.ts:563`, `plugin/index.ts:1020, 1088`. Only deferred choices are reported at the fuse, so a hole-free grammar still warns exactly once. |
-| `gating.entryName` | 0.34.0 | Names an unnamed entry so a top-level const warns as `choice @ directMixinReferenceAhead` instead of `choice @ <entry>` — an actionable `accept` allowlist key. |
-| `not()` no longer leaks its speculative probe | 0.34.0 | It was committing skipped trivia (double-logged spans) and, when the probed parser *succeeded*, leaving captured leaves that an enclosing `optional`/`many` absorbed as real children. **Both engines leaked identically**, so interpreted/compiled parity never flagged it. |
-| Rollback truncations guarded on a changed length | 0.35.0 | Repairs the +32.5% Less parse regression 0.34.0 introduced, and then some: against **0.32.0**, guarded 0.34.0 is faster on every corpus — Less `benchmark.less` −3.9%, `bootstrap.css` −18.5%, jess corpus −18.5%, winning 12/12 interleaved pairs. |
-| `parseman/run` entry | 0.35.0 | 3 modules / 7.2 kB vs 349.6 kB for the main entry. |
-| Deduplicated `expected` sets | 0.36.0 | Observable output change. On a 106 KB Less stylesheet the oversized sets were **about a third of parse time**. |
-| Declared Node floor `^20.19.0 \|\| >=22.12.0` | 0.34.0 | 20.0–20.18 and 22.0–22.11 are **excluded**. Does not reach consumers of a macro-compiled grammar. |
-
----
-
-## 4. Gotchas that have actually bitten
-
-### 4.1 `keywords()` folds case correctly; a hand-rolled `/i` regex does not
-
-`keywords({ caseInsensitive: true })` compiles to flags `'iy'` — it deliberately
-**drops `u`** so that matching and the first-set fold the same set (`keywords.ts:97`,
-rationale at `keywords.ts:81-96`). The first-set is widened by `caseFoldVariants`,
-which is the exact relation `/i`-without-`u` implements — including non-ASCII pairs
-(`ä`↔`Ä`, `σ`↔`Σ`↔`ς`) but never a pair crossing the ASCII boundary
-(`case-fold.ts:39`). Widening by `toUpperCase`/`toLowerCase` alone would **not** be
-sound: 67 BMP code points sit in fold classes those two miss (`keywords.ts:87-89`).
-
-A hand-rolled `regex(/media/i)` gets none of that reasoning. It is flagged as the
-`keyword-regex` anti-pattern (`analysis/gating.ts:74-76`), and if you reach for
-`/iu` to "be safe" the first-set collapses to `any()` and the arm stops gating
-entirely (`regex.ts:137-141`) — **[probed]**: `regex(/cafe/i)` → `{C, c}`,
-`regex(/cafe/iu)` → `any`.
-
-### 4.2 `literal` has no word boundary — but a later regex arm can give it one
-
-`literal('if')` matches inside `'ifdef'`; that is the documented point of it.
-What is *not* obvious is that in a `firstMatch` choice, `computeAutoNot`
-(`choice.ts:290-311`) walks every arm *after* a literal arm and, for each later
-regex arm, computes the continuation first-set of `lit + c`
-(`choice.ts:363-377`). If that check fires, the literal arm's success is **rejected**
-and the loop continues to the next arm (`choice.ts:160-165`).
-
-So `choice(literal('if'), regex(/[a-z]+/), literal('@x'))` gives `literal('if')` a
-word boundary it never asked for:
-
-```
-UNGATED | strategy=firstMatch | autoNot[0]=[{firstSet a–z}] | parse('ifdef') = 'ifdef'
-```
-**[probed]**. This is a real behaviour you may be depending on without knowing it —
-and §4.3 is how it disappears.
-
-Note also that `literal(s, { caseInsensitive })` is **ASCII fold only**
-(`literal.ts:6-22`), deliberately not `Intl.Collator` (measured ~9× slower, and
-accent folding is the wrong semantic for a parser).
-
-> **Doc/source discrepancy.** `docs/guide/combinators.md:26` describes
-> `literal`'s `caseInsensitive` as "locale-aware comparison". The source is
-> explicit that it is neither locale-aware nor Unicode-aware. **Source wins.**
-
-### 4.3 Gating any ONE arm switches `autoNot` OFF for EVERY arm
-
-`autoNot` is computed only when `!disjoint && !hasGates && (strategy is firstMatch
-or sharedPrefix)`; otherwise every arm gets `null` (`choice.ts:55-57`). `hasGates`
-is true if **any** arm carries a `gate:` field (`choice.ts:21`). Strategy detection
-is also skipped outright for a gated choice (`choice.ts:51`).
-
-That means adding a gate to one arm — even an always-true one — changes what the
-whole choice **matches**, not merely how fast it dispatches:
-
-```
-UNGATED | strategy=firstMatch | autoNot[0]=[{firstSet a–z}] | parse('ifdef') = 'ifdef'
-GATED   | strategy=firstMatch | autoNot[0]=null             | parse('ifdef') = 'if'
+```ts
+const flags = opts.caseInsensitive ? 'iuy' : 'uy'
 ```
 
-**[probed]**, on `choice(literal('if'), regex(/[a-z]+/), literal('@x'))` vs the same
-choice with arm 0 wrapped as `{ gate: () => true, combinator: literal('if') }`.
-The gate is never false; the *presence* of the field is what moved the result.
+The `u` flag is **on** for the case-insensitive path, so matching folds by Unicode
+*simple case folding*. But the first-set is widened only by `toUpperCase` /
+`toLowerCase` (`src/combinators/keywords.ts:75-78`) — there is no `case-fold.ts`
+module in 0.32.0 at all. The two do not cover the same set, so **the matcher accepts
+inputs the gate dispatches away.**
 
-Treat "add a gated arm" as a **semantics** change requiring a corpus differential,
-not a dispatch tweak. The same line disables `greedyClassify` and
-`literalsLongestFirst`, so a gated all-literal choice also loses longest-first
-reordering.
+Reproduced **[probed]**:
 
-### 4.4 What degrades a compiled grammar to the runtime interpreter
+```
+keywords(['stroke'], { caseInsensitive: true })
+  first-set                      = { S, s }            (U+017F absent)
+  bare combinator on 'ſtroke'    → ok: true, 'ſtroke'  (matcher accepts)
+  same arm in a DISJOINT choice  → ok: false           (dispatch excludes it)
+```
 
-The macro plugin statically evaluates the grammar; anything it cannot evaluate
-falls back to the interpreter with a build warning
-(`plugin/index.ts:1015` for `compose`, `:1075` for `composeLeaf`). **A fallback
-build is not AST-equivalent to a compiled build** — see
+The arm matches on its own and fails inside a choice. That is an unsound gate, not
+a slow one. It bites any case-insensitive keyword set whose first letter has a
+non-ASCII fold partner.
+
+**The defect direction matters, and it is the opposite of what you would guess**
+**[probed]**. The combinator **over-accepts**; the hand-rolled regex does not:
+
+```
+regex(/(?:stroke)(?![-\w])/i)                on 'ſtroke' → ok: false   (correct)
+keywords(['stroke'], { caseInsensitive })    on 'ſtroke' → ok: true    (WRONG-ACCEPT)
+```
+
+and in a **non-disjoint** choice the over-accepting arm wins outright, returning
+`'ſtroke'`. In a **disjoint** choice the same arm is dispatched away and fails.
+So the observable behaviour depends on the shape of the enclosing choice — that
+is what a matcher/gate disagreement looks like from the outside.
+
+**ASCII-initial keywords are not exempt.** `keywords(['stroke'])` has first-set
+`{S, s}`, which does not contain U+017F, yet the matcher accepts it **[probed]**.
+Every keyword whose initial has a cross-ASCII-boundary fold partner is exposed —
+`s` (ſ U+017F), `k` (K U+212A), and others. What limits real-world exposure is
+that the *input* must contain a non-ASCII identifier, not that the *keyword* is
+ASCII.
+
+### 3.1a Conversion guidance — this gates the keyword-regex work
+
+This lands directly on the hand-rolled keyword regexes being converted under
+`GRAMMAR-REVIEW-STANDARD.md` §2 item 8, of which a large share carry `/i`.
+
+**Converting a hand-rolled `/i` keyword regex to
+`keywords({ caseInsensitive: true })` at this pin introduces a wrong-accept the
+regex did not have.** Wrong-accepts are precisely the failure class
+`DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` records as having hidden behind a
+green suite.
+
+> **Contradiction to resolve — flagged, not silently decided.**
+> `scripts/eslint-rules/grammar-rules.mjs:252-258, 285` reports every such regex
+> with the rationale: *"`/i` without `/u` applies non-ASCII case folding
+> incorrectly, and parseman fixed exactly that defect INSIDE the combinator — so
+> every hand-rolled copy carries the unfixed bug."*
+>
+> **At 0.32.0 that is inverted.** The fix it invokes landed in **0.34.0**, above
+> our pin. At the pinned version the combinator uses `iuy` and widens its
+> first-set with only `toUpperCase`/`toLowerCase`, so the **combinator** carries
+> the bug and the hand-rolled regex does not — probed above, both directions.
+> The rule's *recommendation* (use the API) stays right for every other reason in
+> item 8: boundary ownership, readability, exact first-set, gating. Only its
+> *stated correctness rationale* is a 0.34.0 claim.
+
+**Therefore, at this pin:**
+
+- Convert **case-SENSITIVE** hand-rolled keyword regexes freely — they take the
+  `uy` path (`src/combinators/keywords.ts:64`), which has no such defect.
+- Treat **case-INSENSITIVE** conversions as **`blocked` — missing 0.34 export**,
+  in `GRAMMAR-REVIEW-STANDARD.md` §1's vocabulary, and record the reason against
+  the const so the next agent does not re-propose it. This is the same bump-gated
+  class as the `oneOrMoreSep` work (§3.4), not a separate judgement call.
+- If a case-insensitive conversion is taken anyway, assert per-site that no input
+  reaching that arm can begin with a non-ASCII character, and say so explicitly —
+  do not leave it implied.
+
+### 3.2 One gated arm disables `autoNot` and strategy for the WHOLE choice
+
+`autoNot` is computed only when `!disjoint && !hasGates && strategy is firstMatch
+or sharedPrefix`; otherwise every arm gets `null`
+(`src/combinators/choice.ts:55-57`). `hasGates` is true if **any** arm carries a
+`gate:` field (`:21`). Strategy detection is skipped outright for a gated choice
+(`:51`).
+
+**Narrow it correctly.** `autoNot` is only ever computed for a **non-disjoint**
+choice. A gated arm in a **disjoint** choice therefore loses nothing — that case is
+safe. The hazard is a gated arm in a **non-disjoint** choice, and it changes
+semantics by **two independent routes** **[probed]**:
+
+**Route A — a short literal arm starts returning a prefix match.** `autoNot`
+normally gives a literal arm a boundary derived from a later regex arm
+(`src/combinators/choice.ts:290-311`); losing it lets the short arm win.
+
+```
+choice(literal('if'), regex(/[a-z]+/), literal('@x'))       on 'ifdef'
+  ungated    strategy=firstMatch  autoNot[0]=SET   → 'ifdef'
+  one gated  strategy=firstMatch  autoNot[0]=null  → 'if'
+```
+
+**Route B — declaration order lets a shorter literal shadow a longer one.** An
+all-literal choice is normally reordered longest-first by `literalsLongestFirst`;
+`hasGates` disables strategy detection entirely, dropping it to declaration order.
+
+```
+choice(literal('in'), literal('instanceof'))                on 'instanceof x'
+  ungated    strategy=literalsLongestFirst  → 'instanceof'
+  one gated  strategy=firstMatch            → 'in'
+```
+
+**Control — a disjoint choice is unaffected** **[probed]**:
+
+```
+choice(literal('@a'), literal('#b'))                        on '#b'
+  ungated    disjoint=true  → '#b'
+  one gated  disjoint=true  → '#b'
+```
+
+In every case the gate returns `true`; the *presence* of the field moved the result.
+There is **no warning**. Treat "add a gated arm to a non-disjoint choice" as a
+semantics change requiring a corpus differential.
+
+### 3.3 No positive lookahead — `not(not(X))` is the only spelling, and it costs
+
+`not()`'s first-set is `any()` (`src/combinators/not.ts:17`), so `not(not(X))`
+reports `any()` too. An arm leading with it poisons the whole choice's first-char
+dispatch, and among sibling arms sharing a first char the hand-rolled gate
+miscompiles. The gating diagnostic flags it as the `double-not` anti-pattern — and
+at this pin it has no fix to name.
+
+`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §3 counts 5 such sites in the Less AST
+grammar. They stay as-is until the pin moves.
+
+### 3.4 There is no non-empty separated list — plan around it
+
+`sepBy` is nullable and unparameterised at this pin (§1.3). A nullable arm matches
+at every position, which disables its choice's first-char dispatch by parseman's own
+first-set rule. Since essentially every real list is non-empty, this is a standing
+dispatch cost across all four grammars.
+
+Workable spellings at the pin, in preference order:
+
+1. **Hand-roll the shape**: `sequence(item, many(sequence(sep, item)))` — genuinely
+   non-nullable, carries the item's first-set, gates. Costs a flatten in the builder.
+2. **Wrap the nullable list behind a concrete leading terminal**, so the *arm* is
+   non-nullable even though the list is not.
+3. Accept the nullable arm and list the choice's printed `id` in the gating
+   snapshot allowlist — but see §3.5: the diagnostic that would print that `id` is
+   largely unavailable here.
+
+Do **not** write `sepBy(item, sep, { min: 1 })` expecting it to work; it does not
+compile (§1.3).
+
+**Read this against `GRAMMAR-REVIEW-STANDARD.md` §2 item 8**, which counts
+hand-rolled separated-list sites against uses of `sepBy` as an API-avoidance
+finding. At this pin that finding must not be discharged by converting them:
+`sepBy` is nullable, so converting a **non-empty** list to it trades a gating arm
+for a non-gating one and is a regression. The correct outcomes here are:
+
+| the list is… | outcome |
+| --- | --- |
+| genuinely optional (empty is legal) | **converted** — `sepBy` is right |
+| non-empty (selector list, value list, prelude) | **blocked — missing 0.34 export** (`oneOrMoreSep`) |
+
+The standard's own vocabulary anticipates this: "missing 0.34 export" is named as
+a `blocked` reason (§1). Record it per const rather than leaving the site looking
+like an unconverted finding.
+
+### 3.4a Separator capture — `field()` inside the separator works
+
+`GRAMMAR-REVIEW-STANDARD.md` §1 names "separator capture" as a legitimate
+`blocked` reason, so it is worth knowing exactly how much is blocked.
+
+`sepBy` returns `Combinator<T[]>` — the item type only; the separator's value is
+parsed and discarded (`src/combinators/repeat.ts:196`). There is no
+separator-capturing repetition combinator at any version. **But `field()` inside
+the separator does capture**, because `field()` pushes to `ctx._fields`
+unconditionally with no nesting restriction **[probed]**:
+
+```ts
+node('List',
+  sepBy(field('item', regex(/[a-z]+/)), field('sep', literal(','))),
+  (_c, f) => ({ items: f.item, seps: f.sep }))
+// 'a,b,c' → seps: [ {start:1,end:2}, {start:3,end:4} ]
+```
+
+So capture is available; what is missing is a combinator that does it for you.
+And for byte-faithful layout replay the offset model (§1.12) is strictly better —
+it recovers the whitespace too, not just the punctuation. Before recording a const
+as `blocked — separator capture`, check whether either of these two answers it.
+
+### 3.5 `analyzeGating()` results are three-ways ambiguous — never report "clean"
+
+**Scope, per `GRAMMAR-REVIEW-STANDARD.md` §3.** The diagnostic **can** analyse
+these grammars when fed their `rules()` map captured *before* `compose()`. The
+blanket claim "the diagnostic cannot see our grammars" is wrong, and where this
+sheet's earlier drafts implied it, the standard supersedes them. What follows is
+about **what a quiet result means once you have fed it a valid input** — which
+remains a live hazard, because cause (2) below is independent of which map you
+feed.
+
+The swallowing-catch fix landed in **0.38.0**, above the pin. At 0.32.0 a quiet
+`analyzeGating` result has three indistinguishable causes:
+
+1. **Genuinely clean** — every hot choice gates.
+2. **Saw nothing.** The traversal resolves `lazy` rule refs inside a bare
+   `try { … } catch { /* unresolved */ }` (`src/analysis/gating.ts:324`). A thunk
+   that throws silently drops that entire subtree; the walk continues and reports on
+   whatever it happened to reach. There is no counter and no unanalysed list.
+3. **You fed it the wrong artifact.** On a **fused/compiled** artifact the walk
+   throws at `src/analysis/gating.ts:313` (`if (d.tag === 'choice')`, on a node
+   with no descriptor) — reproduced in this repo for **129 of 129** rules of the
+   composed Less CST (`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §2.1). The
+   macro-build route emits nothing at all, because
+   `compileRuleMap`/`compileLinkable` run no analysis at this version. This cause
+   is **avoidable**: feed the pre-`compose()` `rules()` map.
+
+**Therefore "no warnings" is never a reportable result at this pin.** The only
+reportable form is coverage-bearing — **"analysed N of M rules, K findings, fed
+the pre-compose map"** — with N and M counted by the caller, not by parseman. A
+report that cannot state N and M is not evidence of anything. This is the same
+evidence bar `GRAMMAR-REVIEW-STANDARD.md` §5 sets when it requires you to say
+*which* map you fed the analysis.
+
+Use static reading with the corpus differential as the acceptance gate. Never read
+a clean result obtained from the fused artifact as evidence of anything.
+
+### 3.6 `not()` leaks its speculative probe at this pin
+
+`not()` rolls back only the CST capture mark (`src/combinators/not.ts:32-34`) — it
+does **not** roll back `_triviaLog` or the completions probe. So a probed body that
+skipped ambient trivia between its terms commits that trivia and keeps it; because
+`not()` consumes nothing, the enclosing rule re-parses the region and the span is
+logged **twice** (nothing dedups `_triviaLog`, and `triviaEntries()` is a positional
+view over the flat array). **[unprobed — read from source; fixed upstream in
+0.34.0.]**
+
+**This is higher-priority than its [unprobed] mark suggests, because of blast
+radius.** Trailing `not()` is our documented boundary idiom, and
+`GRAMMAR-REVIEW-STANDARD.md` §2 item 11 records the Less grammar carrying roughly
+an order of magnitude more `not()` than CSS for the same surface (owner
+measurement ~460 against 21, to be re-measured), with 18 leading-`not()` sites
+called out as the anti-pattern. If trivia output is untrustworthy around every
+`not()`, that is a property of a large fraction of the Less surface, not an edge
+case.
+
+Consequences:
+
+- **`triviaEntries()` / `buildTriviaIndex()` output is not trustworthy around a
+  `not()`.** That bears directly on the language service, which consumes exactly
+  this trivia model for comment attachment and formatting.
+- **The double-log is invisible to our differentials.** Both engines leaked
+  identically, so interpreted-vs-compiled parity agreed while both were wrong —
+  which is how it survived to 0.34.0. This is another instance of **a check that
+  cannot see its own failure mode**, the root anti-criterion: parity between two
+  implementations proves agreement, never correctness. The same shape appears in
+  §3.5 (a clean diagnostic that never ran) and §3.7 (a green suite on an
+  interpreter-fallback build). When a gate's failure mode is "both sides agree
+  and both are wrong", the gate is not evidence.
+- Before trusting a trivia-derived assertion near a `not()`, verify against the
+  offset model (§1.12), which reconstructs trivia from leaf slots and does not
+  read `_triviaLog` at all.
+
+### 3.7 A macro-FALLBACK build is not AST-equivalent to a macro-COMPILED build
+
+The most expensive trap at this pin, reproduced in-repo — see
 `PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §1, where the CST aggregate moved with the
-fallback as the only delta.
+fallback as the only delta. A red `check-macro-buildable` **invalidates any AST/CST
+differential taken on that build**, and "tests are green" does not clear it.
 
-Mechanisms, from source:
+What triggers the fallback, from 0.32.0 source:
 
 | Shape | Why it falls back |
 | --- | --- |
-| **A call to your own factory helper** (`const kw = s => word(s, B)`, then `kw('x')`) | The evaluator only recognizes callees in its `SUPPORTED` table; anything else returns null for the whole expression (`plugin/evaluator.ts:548-549`) |
-| **A `...spread` anywhere** — call args, array elements, object properties, the `rules()` return object | Every argument site rejects `SpreadElement` explicitly (`plugin/evaluator.ts:517, 552, 576`), and a non-`key: value` property in the rules return kills the whole map (`plugin/evaluator.ts:707-714, 721-729`) |
-| **A hoisted MODULE-level plain const** (a boundary class, a regex source string) | Module scope is populated **only** with values that evaluate to a Combinator (`plugin/index.ts:1176`). A plain string never enters it, so the `Identifier` lookup returns null (`plugin/evaluator.ts:598-601`) and any null argument voids the whole call (`plugin/evaluator.ts:555`). **Inline the literal at each call site.** |
-| A const **inside** the `rules()` factory body | *This is fine.* `evalBodyStatements` stores non-combinator values in the factory's local scope (`plugin/evaluator.ts:732-750`). The 0.32.0 corollary "hoisted plain-string consts are forbidden" is specifically about **module** level. |
-| A `rules()` factory that is not a function of exactly one identifier param | `plugin/evaluator.ts:773-781` |
-| Any statement in a factory body other than a `VariableDeclaration` before the `return` | `plugin/evaluator.ts:796-800` |
-| A computed key or non-`Property` in any object literal | `plugin/evaluator.ts:586-596` |
-| A **direct node builder** that is not macro-static | Must be an arrow function (`direct-builder-static.ts:49`), plain identifier params only (`:52`), an **expression body — no block body** (`:92, :99`), and may read only its params plus a fixed global set: `Array Boolean Date JSON Math NaN Number Object String Infinity parseFloat parseInt undefined` (`:8-11`). Any other lexical read is reported, and `ir-serialize.ts:140` throws `IR direct node builder for <Type> must be macro-static and self-contained`. |
+| **A call to your own factory helper** (`const kw = s => word(s, B)`, then `kw('x')`) | Only callees in the evaluator's `SUPPORTED` table are recognized; anything else returns null for the whole expression (`src/plugin/evaluator.ts:506-507`) |
+| **A `...spread` anywhere** — call args, arrays, object properties, the `rules()` return object | Rejected at every argument site; a non-`key: value` property in the rules return kills the whole map (`src/plugin/evaluator.ts:665`) |
+| **A hoisted MODULE-level plain const** (a boundary class, a regex source string) | Module scope is populated **only** with values that evaluate to a Combinator (`src/plugin/index.ts:1126`). A plain string never enters it, so the identifier lookup returns null (`src/plugin/evaluator.ts:558`) and any null argument voids the whole call (`:513`) |
+| A const **inside** the `rules()` factory body | **This is fine.** `evalBodyStatements` stores non-combinator values in the factory's local scope (`src/plugin/evaluator.ts:690`). The "hoisted consts are forbidden" rule is specifically about **module** level |
+| A `rules()` factory that is not a function of exactly one identifier param | `src/plugin/evaluator.ts:735` |
+| Any statement other than a `VariableDeclaration` before the `return` | `src/plugin/evaluator.ts:757` |
+| A return value that is not a plain object literal | `src/plugin/evaluator.ts:771` |
+| A **direct node builder** that is not macro-static | Must be an arrow function (`src/plugin/direct-builder-static.ts:49`), **expression body — no block body** (`:92, :99`), reading only its params plus a fixed global set (`:8`) |
 
-`many(choice(...))` held in a module-level const is **not** itself a documented
-degrader — `many` and `choice` are both in `SUPPORTED`, and a const that evaluates
-to a Combinator *does* enter module scope (`plugin/index.ts:1176`). If you have
-observed such a const degrading a build, the cause is almost certainly something
-the const's expression *contains* (a factory call, a spread, a hoisted plain
-string), not the `many(choice)` shape. Bisect the expression before blaming the
-shape.
+A `many(choice(...))` held in a module-level const is **not** itself a degrader —
+both are in `SUPPORTED`, and a const evaluating to a Combinator *does* enter module
+scope (`src/plugin/index.ts:1126`). If such a const degrades a build, the cause is
+something its expression *contains*. Bisect the expression before blaming the shape.
 
-### 4.5 `regex()` — what actually costs you
+### 3.8 `composeLeaf` pre-final pieces cannot carry semantics — and holes count as semantics here
 
-The brief for this document carried two rules that the source does not support as
-written. Recording both, with what is true instead.
+`src/plugin/index.ts:1052-1053` rejects any pre-final piece with
+`hasDirectBuilders !== false || isRecognitionOnly !== true`. `isRecognitionOnly` is
+`!hasSemanticReduction(...)` (`src/compiler/codegen.ts:4355`), which disqualifies a
+piece containing **any** `transform`, gated choice, `gate()`/`withCtx`, or `node()`
+with a `build` (`src/compiler/codegen.ts:4363-4378`).
 
-- **"No `/i` without `/u`"** — this is **backwards**. `/i` *alone* is the good case:
-  the first-set is ASCII case-folded and the arm still gates (`regex.ts:137-141`).
-  Adding `u` or `v` is what forfeits gating: `/iu` and `/iv` fold by Unicode
-  simple case folding, which an ASCII first-set cannot enumerate, so parseman
-  falls back to `any()` — sound, but the dispatch is gone. **[probed]**. The rule
-  is: **never add `u` to a case-insensitive pattern.** `keywords()` enforces this
-  for you by construction (`keywords.ts:97`).
-- **"No literal non-ASCII — use `\uXXXX` escapes"** — **not verified.** The
-  first-set analyzer handles a literal non-ASCII char and a `\uXXXX` escape
-  identically: `regex(/[é]+/)` and `regex(/[é]+/)` both report the range
-  `{233, 233}` **[probed]**, and `regex/first-set.ts:186-196` parses `\uXXXX` /
-  `\xHH` into the same `charNode` the literal path produces (`:214`). I could find
-  no rule in the source prohibiting it.
+Pin-specific detail: `hasSemanticReduction` takes **no `externalRefs` parameter** at
+0.32.0, and an unresolvable `lazy` ref returns `true` — i.e. counts as **semantic**
+(`src/compiler/codegen.ts:4374`). So a shared grammar *shape* with holes cannot be a
+pre-final `composeLeaf` piece here either. That relaxation is 0.34.0 (§6).
 
-  What *is* true about the ASCII boundary:
-  - `choice`'s O(1) dispatch table is 128 entries (`choice.ts:408-419`); a
-    non-ASCII first char falls to a linear first-set scan (`choice.ts:93-97`).
-    Correct, just not O(1).
-  - `keywords({ caseInsensitive })` containing any code point > 127 **declines**
-    the fast codegen path and stays on the regex engine (`codegen.ts:1128`), as do
-    astral keywords (`codegen.ts:1121`) and `caseInsensitive` combined with a
-    boundary (`codegen.ts:1122`).
-  - The regex short-scan fast path refuses any of `imsuvy` outright
-    (`regex.ts:53-55`), and macro lowering declines `u` entirely plus `/i` on
-    anything but a pure literal (`docs/guide/regex-lowering.md:175-178`).
+**But `composeLeaf` may be the wrong tool.** `compose()` (non-leaf) *does* carry
+semantic builders — callbacks travel as captured source. The real constraint on that
+path is `src/plugin/direct-builder-static.ts`: an arrow function, expression body
+only, plain identifier params, reading only its params plus a fixed 12-global
+allowlist. That is a **rewritable-builder** problem, not a capability gap, and it is
+worth an experiment before accepting "every grammar must be a terminal `composeLeaf`
+leaf."
 
-  So: non-ASCII costs the **fast path**, not correctness.
+### 3.9 Nullability rules you will otherwise rediscover
 
-  **This refutes the stated mechanism, not the rule.** The escape rule was
-  justified by first-set gating, and gating is not what it buys — but a different
-  justification survives the probe intact, and it is the stronger one:
-
-  > **Write non-ASCII in a regex as `\uXXXX`.** A literal `é`, `ﬁ`, a Cyrillic `а`
-  > or a zero-width joiner is *invisible to review*. Nobody can eyeball a character
-  > class for a homoglyph, and a grammar is exactly the place where one silently
-  > changes what the language accepts. The escape makes the code point auditable in
-  > a diff. Parseman does not require this and the first-set is identical either
-  > way — it is a reviewability rule, and it holds for that reason alone.
-
-  Do not restate it as a performance or gating rule; that claim is false and will
-  send the next reader hunting for a first-set difference that is not there. The
-  genuine ASCII *performance* boundary is the 128-entry dispatch table above, which
-  is about the first character a rule can match, not about how it is spelled.
-
-### 4.6 Nullability rules you will otherwise rediscover
-
-- `many` matches the empty string; `oneOrMore` does not.
-- `sepBy` matches the empty string; `oneOrMoreSep` does not.
+- `many` and `sepBy` match the empty string; `oneOrMore` does not.
 - `optional` never fails.
 - `not()`, `gate()`, `scanTo()`, `balanced()` all have first-set `any`.
-- A sequence's first-set comes from its leading non-nullable term. Lead every
-  choice arm with a concrete terminal.
-- A choice is disjoint only when arms are pairwise-disjoint **and** no arm can
-  match empty (`choice.ts:35-36`).
+- A sequence's first-set comes from its leading non-nullable term.
+- A choice is disjoint only when arms are pairwise-disjoint **and** no arm can match
+  empty (`src/combinators/choice.ts:35-36`).
 
 ---
 
-## 5. Still absent at 0.36.0
+## 4. `regex()` at this pin
 
-Absences are as load-bearing as presences.
+- `/i` **alone is the good case**: the first-set is ASCII case-folded and the arm
+  still gates (`src/combinators/regex.ts:137-141`).
+- **Adding `u` or `v` to a case-insensitive pattern forfeits gating.** `/iu` and
+  `/iv` fold by Unicode simple case folding, which an ASCII first-set cannot
+  enumerate, so parseman falls back to `any()` — sound, but dispatch is gone.
+  `regex(/cafe/i)` → `{C, c}`; `regex(/cafe/iu)` → `any` **[probed]**. The rule is
+  **never add `u` to a case-insensitive pattern.**
+- **Literal non-ASCII in a pattern is fine *as far as parseman is concerned*.**
+  `regex(/[é]+/)` and `regex(/[é]+/)` produce the identical first-set
+  `{233,233}` **[probed]**; the analyzer parses `\uXXXX` and a literal char into
+  the same node. Nothing in the 0.32.0 source prohibits it.
 
-### 5.1 No repetition combinator captures its separator
-
-**Confirmed absent.** `sepBy` returns `Combinator<T[]>` — the item type only; the
-separator's value is parsed and discarded (`repeat.ts:321`). `oneOrMoreSep`
-delegates to it (`repeat.ts:290-292`). There is no `sepByWith`, no
-`{ keepSeparators }` option, and no separator field in `SepByOptions`
-(`repeat.ts:294-307`). **[probed]**: `sepBy(regex(/[a-z]+/), literal(','))` on
-`'a,b,c'` yields `["a","b","c"]`.
-
-For byte-faithful layout replay this matters: you cannot reconstruct
-`a , b ,c` from `['a','b','c']`.
-
-**Two workarounds exist, and both are real.**
-
-1. **`field()` inside the separator works** — verified, not assumed. `field()`
-   pushes to `ctx._fields` unconditionally, with no nesting restriction
-   (`map.ts:79`), and repeated names accumulate. **[probed]**:
-
-   ```ts
-   node('List',
-     sepBy(field('item', regex(/[a-z]+/)), field('sep', literal(','))),
-     (_c, f) => ({ items: f.item, seps: f.sep }))
-   // 'a,b,c' → seps: [ {value:',',span:{1,2}}, {value:',',span:{3,4}} ]
-   ```
-
-   So the *capability* exists; what is missing is a combinator that does it for
-   you. The spelling is unergonomic and undocumented — `combinators.md:520-541`
-   shows `field()` only inside a flat `sequence`.
-
-2. **The offset model is parseman's intended answer.** Trivia is not stored at
-   all; leaf spans are "slots" and everything between consecutive slots is
-   recovered by `gapText` / `lineBreaksIn` / `indentWidth` / `blankLinesIn` over
-   the original source (`cst/offset-model.ts:1-24`). For layout replay this is
-   strictly more faithful than captured separators, because it recovers the
-   *whitespace* too, not just the punctuation.
-
-**Verdict:** a dedicated separator-capturing repetition is a genuine gap and worth
-filing upstream (`sepBy(item, sep, { captureSeparators: true })`, or a
-`sepByPairs` returning `[T, S|null][]`). But it is an **ergonomics** gap, not a
-capability blocker — do not architect around its absence before evaluating
-`collectLeafSlots` + `gapText`.
-
-### 5.2 Other absences
-
-- **No `pick()`** — deliberately not re-exported; build-inlining a `pick()` of an
-  imported grammar cannot carry that grammar's ambient trivia across the module
-  boundary, so the macro would diverge from the interpreter (`index.ts:44-48`).
-- **No runtime `composeLeaf()`** — it throws unconditionally outside macro
-  lowering (`linker.ts:579-583`). Loading a `composeLeaf` grammar interpreted, to
-  work around a macro problem, is not possible.
-- **No author-settable `recognitionOnly` on `transform`** — the flag exists on the
-  def (`types.ts:67`) but is set only internally, by `scanTo` (`scanTo.ts:249`).
-  You cannot mark your own transform as semantics-free to get it past
-  `composeLeaf`'s gate.
-- **No `trailing: 'require-between-every-item'`** — deliberately excluded; that is
-  not a separated list. Spell it `many(sequence(item, term))` (`AGENTS.md:93-97`).
-- **No suppression mechanism for a gating finding other than the `accept`
-  allowlist** — `compile(g, undefined, { gating: { level, accept: ['<id>'] } })`
-  is the single lever (`AGENTS.md:40-43`).
+  **But this repo hard-gates it anyway, and that gate is correct.**
+  `scripts/eslint-rules/grammar-rules.mjs:207-211` requires `\uXXXX`, and
+  `GRAMMAR-REVIEW-STANDARD.md` §2 items 4 and 9 make it a floor-level lint
+  failure. The rationale is review, not engine behaviour: *a reviewer cannot
+  verify a range they cannot see*, and a raw character does not survive
+  re-encoding. So: **do not cite parseman as the reason, and do comply.** The
+  lint rule is autofixable; the reviewing question it protects is not.
+- Real ASCII-boundary cost: the choice dispatch table is 128 entries
+  (`src/combinators/choice.ts`), so a non-ASCII first char falls to a linear
+  first-set scan — correct, just not O(1).
 
 ---
 
-## 6. When you next bump the pin
+## 5. Where published docs disagree with the 0.32.0 source
 
-1. Re-run the export diff against the new `dist/index.js`; do not read the
-   changelog for this.
-2. Re-read `docs/guide/combinators.md` §"Choosing between similar" and re-port §2.
-3. Re-probe §4.2 and §4.3 — they depend on `choice.ts` strategy selection, which
-   has changed within a minor before.
-4. Re-verify §5.1 against `repeat.ts`'s exported signatures.
-5. Re-verify §4.4 against `plugin/evaluator.ts` — the macro's static-evaluation
+The source wins in all three.
+
+| Claim in published prose | 0.32.0 source |
+| --- | --- |
+| `literal`'s `caseInsensitive` is "locale-aware comparison" | ASCII fold only, **deliberately not** `Intl.Collator` — measured ~9× slower, and accent folding is the wrong semantic for a parser (`src/combinators/literal.ts:9, 13`) |
+| `keywords({ caseInsensitive })` folds matching and first-set over the same set | **False at this pin.** Matching uses `iuy`; the first-set uses `toUpperCase`/`toLowerCase` (`src/combinators/keywords.ts:64, 75-78`). §3.1 |
+| The four repetition combinators take `{ min, max }`; `oneOrMoreSep` is the non-empty separated list | **Neither exists at this pin.** Four exports, no options, no `oneOrMoreSep` (`src/combinators/repeat.ts:70, 122, 170, 196`; `src/index.ts:22`) |
+
+Any planning document quoting a `peek()` conversion plan, a gating finding count, or
+an `oneOrMoreSep` migration is quoting a **different parseman**.
+
+**In-repo, one rule's rationale is written against a newer parseman than we pin:**
+
+| Claim | 0.32.0 source |
+| --- | --- |
+| `no-hand-rolled-keyword-regex`: "`/i` without `/u` applies non-ASCII case folding incorrectly, and parseman fixed exactly that defect INSIDE the combinator — so every hand-rolled copy carries the unfixed bug" (`scripts/eslint-rules/grammar-rules.mjs:252-258`) | Inverted at this pin. That fix is **0.34.0**. At 0.32.0 the combinator is `iuy` with a `toUpperCase`/`toLowerCase` first-set, so the **combinator** over-accepts and the hand-rolled regex does not — §3.1, both directions probed. The recommendation still holds for item 8's other reasons; the correctness rationale does not |
+
+The pattern in all four rows is the same: **prose describing the fixed version,
+applied to the pinned one.** When a rationale cites a fix, check which release it
+landed in before acting on it.
+
+---
+
+## 6. NOT AVAILABLE AT THE PIN — do not call any of this
+
+Everything in this section is **absent from 0.32.0**. It is recorded as the argument
+for bumping and must not leak into the working set. Verified by importing the pinned
+build and diffing `Object.keys` **[probed]**: 0.32.0 exports 78 names; nothing listed
+here is among them.
+
+| Missing | Version | What it would buy us |
+| --- | --- | --- |
+| **`peek(c)`** | 0.34.0 | Positive lookahead that **carries its body's first-set**, so a leading `peek()` narrows an arm instead of poisoning it. Retires the 5 `not(not(X))` sites in the Less AST grammar (§3.3) |
+| **`oneOrMoreSep(item, sep, opts?)`** | 0.34.0 | The non-empty separated list. Retires every hand-rolled `sequence(item, many(sequence(sep, item)))` from §3.4 and restores dispatch to every list-led arm |
+| **`{ min, max }` on all four repeats; `{ trailing }` on separated forms** | 0.34.0 | `min >= 1` as the general non-nullability lever |
+| **`word(str, opts)` with `caseInsensitive`** | 0.34.0 | The conforming spelling for ASCII case-insensitive CSS at-keywords/units, with a case-folded first-set that still gates |
+| **`keywords({ caseInsensitive })` soundness fix** | 0.34.0 | Drops `u` and folds matching + first-set over the same set. **Fixes §3.1, a live correctness defect here** |
+| **`not()` probe-leak fix** | 0.34.0 | Fixes §3.6 — the double-logged trivia that makes `triviaEntries()` untrustworthy around a `not()` |
+| **`analyzeGatingRules(ruleMap, opts?)`** | 0.34.0 | Rule-map-level diagnostic; `analyzeGating` becomes its single-entry case |
+| **Gating diagnostic runs in the macro build** | 0.34.0 | `compileRuleMap` analyses the whole rule map in one walk, attributing every choice to its owning rule. Fixes the "emits nothing" row of §3.5 |
+| **`compose()`/`composeLeaf()` re-run gating over the fused winner map** | 0.34.0 | Fixes the "throws for 129 of 129 rules" row of §3.5 — the analysis finally runs where the answer exists |
+| **`gating.entryName`** | 0.34.0 | Names an unnamed entry, so a warning is actionable and usable as an `accept` key |
+| **Shared grammar shapes — a `rules()` map may leave holes** | 0.34.0 | A composite shape written once, each dialect binding its own rule by name. Requires the `externalRefs` relaxation §3.8 shows is absent here |
+| **Ambient trivia/`scanSkip` skipping inside `scanTo`/`balanced`** | 0.33.0 | A sentinel hidden in a comment or string is no longer matched. (The `scanSkip` **option** itself does exist at the pin — §1.5) |
+| **Rollback truncations guarded on a changed length** | 0.35.0 | Against 0.32.0, measured faster on every corpus — Less `benchmark.less` −3.9%, `bootstrap.css` −18.5%, jess corpus −18.5%, 12/12 interleaved pairs |
+| **`parseman/run` entry** | 0.35.0 | 3 modules / 7.2 kB instead of the full entry for a package shipping a compiled grammar |
+| **Deduplicated `expected` sets** | 0.36.0 | On a 106 KB Less stylesheet the oversized sets were ~⅓ of parse time |
+| **`analyzeGating` swallowing-catch fix** | 0.38.0 | Removes causes (2) and (3) from §3.5 — the reason "clean" is unreportable today |
+| **`analyzeDuplication()`** | 0.40.0 | Static duplicate/overlap detection across a rule map. One of the better arguments for bumping: it is exactly the cross-grammar audit we currently do by hand |
+
+**Caveat on bumping.** 0.36.0 was measured and declined on a Less regression, and
+0.40.0 corrupts CST output (231 structural nodes collapsed to bare leaves, 55 source
+tokens dropped, 13 files). Two upstream defects are being fixed first. This table is
+not a green light — it is the ledger of what the bump is worth once those land.
+
+---
+
+## 7. When the pin moves
+
+1. Re-extract the new source. If the package still ships `dist/**/*.js.map` with
+   `sourcesContent`, that is the authoritative artifact — do not read a sibling
+   checkout of a different version.
+2. Re-enumerate `src/index.ts` and diff the export list against the 78 recorded here.
+3. Re-derive §1–§2 from signatures, not prose.
+4. Re-probe §3.1, §3.2 and §3.5 — all three are version-specific by construction and
+   all three have changed within a minor before.
+5. Re-verify §3.7 against `src/plugin/evaluator.ts`; the macro's static-evaluation
    surface is the least stable thing in the library and the most damaging when it
    silently narrows.
-6. Update the date stamp at the top, or delete the file.
+6. Move whatever §6 now provides out of §6 and into the callable surface.
+7. Re-check §5 — published prose has described the opposite of the code three times.
+8. Update the stamp at the top, or delete the file.
