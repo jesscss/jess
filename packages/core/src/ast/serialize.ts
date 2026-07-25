@@ -3719,7 +3719,8 @@ function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromi
  * NOT decided here: it takes a `ValueNode` through `evalValue` rather than a
  * `ValueSlot` through `evalValueSlot` (so authored slot layout is not preserved), and
  * it never calls `validateValueGroupUnits` (so a unit error fatal in a declaration
- * value is silently accepted inside an interpolation). Both are tracked separately.
+ * value is silently accepted inside an interpolation). Both are tracked as ledger row
+ * F7 (OPEN) in docs/architecture/core/DESIGN-DECISIONS.md.
  */
 function evalBytesInterp(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   return mapMaybe(evalValue(node, frame, e), emitValue);

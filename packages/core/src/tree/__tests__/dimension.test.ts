@@ -251,8 +251,8 @@ describe('Dimension', () => {
     it('should convert angle', async () => {
       let left = dimension([1, 'rad']);
       let right = dimension([1, 'deg']);
-      // I assume this is correct
-      await expect(renderOperate(left, right, '+')).resolves.toBe('1.01745329rad');
+      // 1rad + 1deg = 1 + pi/180, under the shared number policy (DD F6).
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.0174532925rad');
     });
   });
 

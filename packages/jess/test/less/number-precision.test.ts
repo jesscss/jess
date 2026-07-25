@@ -72,10 +72,14 @@ describe('numeric precision is one policy for every position', () => {
     expect(css).toContain('b: 2PX;');
   });
 
-  it('still normalizes a leading-decimal literal', async () => {
-    const css = await render('.a { a: .3s; b: -.3s; }');
+  it('normalizes a leading-decimal literal by INSERTING the zero, not reformatting', async () => {
+    const css = await render('.a { a: .3s; b: -.3s; c: .50000px; d: .30000000000000004px; }');
 
     expect(css).toContain('a: 0.3s;');
     expect(css).toContain('b: -0.3s;');
+    // The authored digits survive the spelling rule — the number policy governs
+    // computed values, not literals.
+    expect(css).toContain('c: 0.50000px;');
+    expect(css).toContain('d: 0.30000000000000004px;');
   });
 });

@@ -5,7 +5,7 @@ import { Node, defineType } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isRenderBuffer, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import round from 'lodash-es/round.js';
+import { formatNumber } from '../ast/format-number.js';
 
 export type RangeValue = {
   start: Node;
@@ -56,7 +56,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
       if (unit.includes('/') || unit.includes('*') || unit.includes('±')) {
         return undefined;
       }
-      return `${round(value.number, 8)}`.toLowerCase() + unit;
+      return formatNumber(value.number).toLowerCase() + unit;
     }
     return undefined;
   }

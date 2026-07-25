@@ -35,10 +35,11 @@ keeps digits that mean something.
 ```
 
 There is **no significant-figure cap** and no per-unit rule. A cap would discard real
-digits at larger magnitudes — `1cm` in px is `393.3527559px`, and an 8-figure cap
-would print `393.35276px` — to save a fraction of a percent of output size. CSS
-Values 4 §5 leaves numeric precision explicitly implementation-defined, so nothing
-requires one.
+digits at larger magnitudes — `15.4px + 10cm` is `393.3527559px`, because the
+`cm`-to-`px` factor `96/2.54` is a repeating decimal, and an 8-figure cap would print
+`393.35276px` — to save a fraction of a percent of output size. CSS Values 4 §5
+leaves numeric precision explicitly implementation-defined, so nothing requires
+one.
 
 Two consequences worth knowing:
 
@@ -50,7 +51,10 @@ Two consequences worth knowing:
 
 Output is never written in scientific notation, per
 [CSSOM §6.7.2](https://drafts.csswg.org/cssom-1/#serializing-css-values) ("scientific
-notation is not used").
+notation is not used"). That section also caps *its own* serialization at six
+decimals; this policy deliberately does not, because CSSOM governs what
+`getComputedStyle` hands back rather than what a compiler may write, and a
+decimal-place cap is the axis argued against above.
 
 ## Un-operated literals are emitted verbatim
 

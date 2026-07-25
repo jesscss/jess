@@ -1460,11 +1460,13 @@ describe('Call', () => {
     const rule = call({ name, args }, { silentFail: true });
     const buffer = createRenderBuffer('flat');
 
-    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rotate(0deg)');
-    expect(await rule.render(context, buffer)).toBe('rotate(0deg)');
-    expect(buffer.parts).toEqual(['rotate(0deg)']);
+    // The number policy is tolerance-based, not an 8-decimal floor, so this value
+    // survives instead of being denoised to `0` (DD F6).
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rotate(-0.0000000001deg)');
+    expect(await rule.render(context, buffer)).toBe('rotate(-0.0000000001deg)');
+    expect(buffer.parts).toEqual(['rotate(-0.0000000001deg)']);
     await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
-      value: 'rotate(0deg)'
+      value: 'rotate(-0.0000000001deg)'
     });
   });
 

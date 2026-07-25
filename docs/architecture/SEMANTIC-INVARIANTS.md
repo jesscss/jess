@@ -383,8 +383,9 @@ answered:
    less.js" any more.
 
 **Invariant 3's baseline moves with it.** The `grep -rn "round(" packages/core/src/ast/*.ts`
-count drops from **7 literal-`8` sites to 5**: `serialize-value.ts:18` and
-`literal-tag.ts:105` now read the policy module. Separately, the *decimal* branch of
+count drops from **7 literal-`8` sites to 5**: `serialize-value.ts:25` and
+`literal-tag.ts` (whose 8-dp denoise is deleted outright) no longer appear.
+Separately, the *decimal* branch of
 `color.ts`'s `alphaText` — which emitted a raw unrounded double, a second
 unintentional bypass, safe only because `fns` happened to pre-round it — reads the
 policy module too; its `%` branch is one of the survivors, so that site is fixed
@@ -392,6 +393,22 @@ without changing the count. The five survivors are all in `color.ts`
 (`:122,141,153,154,155`: `%` alpha, `%` channels, hue, s, l) and are the remaining
 debt for the GATE-READY lint. The 4 bare integer roundings (`color.ts:97` ×3, `:105`)
 are channel quantization, a different axis per §3's own reading.
+
+**The legacy `tree/` serializer was a second policy, and is now the same one.**
+`packages/core/src/index.ts` re-exports `tree/`, so both engines are public surface
+via the less-compat `less.tree` bridge. Before this change both emitted at 8 dp and
+agreed; the `ast/` change alone would have made `2px / 3s` print `0.6666666667px`
+through one and `0.66666667px` through the other. Every legacy DIMENSION emit now
+reads the policy module too — `tree/dimension.ts:319` (`serializeSyntax`),
+`tree/negative.ts:50,121`, `tree/range.ts:59` — which is what closes invariant 3 for
+numbers rather than merely relocating it. Two legacy tests pinned the old floor and
+were updated to the policy's values (`call.test.ts` `rotate(-0.0000000001deg)`,
+`dimension.test.ts` `1.0174532925rad`). Note this de-duplication is distinct from the
+`round.ts` one, which unified only the rounding KERNEL and left the policy split.
+
+**Still outstanding for invariant 3: COLOR.** `tree/color.ts:261,279,607,616,618,621,623`
+mirrors `ast/color.ts`'s five survivors. Colors are the harder half §3 already calls
+out, and are untouched here.
 
 **Invariant 2's detector is still BUILDABLE and still does not exist.** The tests
 added here cover one construct (a computed dimension) in three positions, not the

@@ -190,7 +190,7 @@ and a selector — there is no per-position variant.
 0.1 + 0.2        → 0.3                (noise removed)
 100% / 3         → 33.333333333%      (digits are earned; no cap shortens a third)
 pi()             → 3.1415926536       (same bytes spliced: ~"@{n}" → 3.1415926536)
-1cm in px        → 393.3527559px      (an 8-sig-fig cap would destroy this)
+15.4px + 10cm    → 393.3527559px      (cm→px is 96/2.54; a cap would destroy this)
 0.0000001 * 0.01 → 0.000000001        (8 dp used to flatten this to 0)
 123456789012     → 123456789012       (exact integer, untouched)
 1.50000px        → 1.50000px          (un-operated literal → A1, not this rule)

@@ -11,7 +11,7 @@ import {
 import { type Operator, calculate } from './util/calculate.js';
 import { logger } from '../logger.js';
 import { WARN } from '../jess-error.js';
-import round from './util/round.js';
+import { formatNumber } from '../ast/format-number.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { finalizeOperationMetadataResult, finalizePublicOperationResult } from './util/operation-result.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
@@ -316,7 +316,7 @@ export class Dimension extends Node<DimensionValue> {
   private serializeSyntax(): string {
     const { number, unit } = this;
     const numberStr = Number.isFinite(number)
-      ? `${round(number, 8)}`
+      ? formatNumber(number)
       : Number.isNaN(number)
         ? 'NaN'
         : number > 0

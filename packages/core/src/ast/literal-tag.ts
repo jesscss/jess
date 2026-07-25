@@ -19,7 +19,6 @@ import type { ValueObj } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
-import { formatNumber } from './format-number.js';
 
 // SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
 // PARSED literal reaches materialize already typed (its node), so it never touches
@@ -99,20 +98,23 @@ export function colorFromSrc(src: string): ValueObj {
  * SOURCE spelling verbatim (`1.0px`→`1.0px`, `2PX`→`2PX`).
  *
  * The ONE rewrite is a SPELLING rule, not a precision one: Less serializes a
- * leading-decimal dimension canonically (`.3s` → `0.3s`, `-.3s` → `-0.3s`) even
- * when it has not participated in arithmetic. That is a typed numeric decision
- * from the parsed fields, not a rendered-CSS rewrite.
+ * leading-decimal dimension canonically (`.3s` → `0.3s`, `-.3s` → `-0.3s`) even when
+ * it has not participated in arithmetic. It is applied by INSERTING the `0`, not by
+ * reformatting the number — so the authored digits survive it (`.50000px` →
+ * `0.50000px`, never `0.5px`). Running the source through the number policy here
+ * would make an un-operated literal answer to a rule that governs computed values.
  *
- * There used to be a second rewrite here — a source whose value could not survive
- * the 8-dp canonical floor was DENOISED to the rounded form, which silently turned
- * an authored `0.00000000123456789` into `0`. Its only justification was matching a
- * serializer floor that no longer exists, and it contradicted verbatim preservation
- * outright, so it is gone: an un-operated literal now keeps its exact value.
+ * There used to be a second rewrite — a source whose value could not survive the 8-dp
+ * canonical floor was DENOISED to the rounded form, which silently turned an authored
+ * `0.00000000123456789` into `0`. Its only justification was matching a serializer
+ * floor that no longer exists, and it contradicted verbatim preservation outright, so
+ * it is gone: an un-operated literal now keeps its exact value.
  */
 export function dimensionFromFields(number: number, unit: string, src: string): ValueObj {
   const numericStart = src.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
   if (Number.isFinite(number) && src.charCodeAt(numericStart) === 0x2e /* . */) {
-    return { type: 'Dimension', number, unit, bytes: `${formatNumber(number)}${unit}` };
+    const bytes = numericStart === 0 ? `0${src}` : `-0${src.slice(1)}`;
+    return { type: 'Dimension', number, unit, bytes };
   }
   return { type: 'Dimension', number, unit, bytes: src };
 }

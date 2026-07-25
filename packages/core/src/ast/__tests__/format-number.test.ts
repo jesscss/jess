@@ -22,8 +22,8 @@ describe('formatNumber — the output number policy', () => {
   });
 
   it('is magnitude-invariant — a large value keeps its real digits', () => {
-    // An 8-significant-figure cap would have printed `393.35276`, discarding
-    // digits that a cm->px conversion genuinely produced.
+    // `15.4px + 10cm`, where the cm->px factor 96/2.54 is a repeating decimal.
+    // An 8-significant-figure cap would print `393.35276`, discarding real digits.
     expect(formatNumber(96 / 2.54 * 10.4)).toBe('393.07086614');
     expect(formatNumber(393.35275590551178)).toBe('393.3527559');
   });
