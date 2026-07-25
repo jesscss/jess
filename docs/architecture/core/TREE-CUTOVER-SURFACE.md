@@ -11,14 +11,31 @@ no status and proposes no schedule.
 
 ## Method
 
-Export sets were resolved with the TypeScript checker
-(`getExportsOfModule`, typescript@5.9.3 from
-`node_modules/.pnpm/typescript@5.9.3`) against the source files, not against
-`lib/` — this worktree has no `node_modules` and no built `lib/`, so no number
-here depends on a build artifact being current. Consumer edges were collected by
-parsing every `packages/*/src/**` file with the TS parser and reading real import
-and export declarations, so `import type` is distinguished from a value import
-and a name is counted where it is *bound*, not where its text appears.
+Three passes, each stated because two of them correct an earlier, wrong version
+of this document.
+
+1. **Export sets** — resolved with the TypeScript checker (`getExportsOfModule`,
+   typescript@5.9.3) against **source**, not `lib/`; there is no built `lib/` in
+   this worktree, so no count here depends on a build artifact being current.
+2. **Consumer edges** — every `packages/*/src/**` file parsed with the TS parser,
+   reading real import/export declarations, so a name is counted where it is
+   *bound*. Then, for each consuming file, **every identifier reference resolved
+   to a usage position** — `CONSTRUCT` / `INSTANCEOF` / `CALL` / `MEMBER-READ` /
+   `VALUE-REF` / type — because whether the import statement said `import type`
+   does **not** tell you whether the use is a runtime use. Property-access names
+   and export specifiers were excluded as non-references.
+3. **`Context` dependency** — a **runtime-usage audit**, not an import audit
+   (§2b): a real program, checker-resolved object types, and each accessed
+   member's declared type walked for tree-declared symbols. This one needed
+   `node_modules`, so the worktree's was symlinked to the main checkout's for the
+   audit and removed afterwards; relative imports still resolved inside the
+   worktree, and the pass carries an explicit health check that types actually
+   resolved.
+
+Two rules the earlier version broke, now enforced throughout: **classify by
+resolved symbol kind, never by name** — a `class` and an `interface` share a name
+and differ in the only property that decides whether a consumer breaks — and
+**an import audit cannot establish a runtime boundary** (§5.6).
 
 Where a claim is an observation it is cited at `file:line`. Where it is an
 interpretation it is labelled as one.
@@ -38,13 +55,18 @@ Nothing in the source distinguishes a deliberate export from one that fell out o
 the wildcard. The 35 explicit re-exports are the only names anyone ever wrote
 down on purpose, and 33 of them have no external consumer either.
 
-### Classification
+**All 235 are going away.** `tree/` is deleted in full. The question this section
+answers is not which names survive — none do — but *what `ast/` or `./value` must
+provide before each one can go*.
 
-| class | count | rule |
+### The axis: what v2 must provide
+
+| bucket | count | rule |
 | --- | --- | --- |
-| **dies** | 223 | no external consumer, **or** the only consumer is itself unreachable from any package entry point |
-| **survives** | 7 | externally consumed, and `./value` or `./ast` already provides the capability the consumer uses |
-| **contested** | 5 | externally consumed from a reachable path, with no v2 counterpart covering the use |
+| **removable now** | 223 | no consumer, or the only consumers are themselves being deleted |
+| **needs a v2 type** | 1 | every consumer use is in type position; an `ast/` interface genuinely suffices |
+| **needs a v2 runtime** | 11 | consumers construct it, `instanceof` it, read an enum member off it, or pass it as a value; an interface cannot serve |
+| **needs a semantic ruling** | (gates 6 of the 11) | the Sass map key-comparison question |
 
 External = `packages/*/src` excluding `core`, excluding `__tests__`/`*.test.ts`.
 
@@ -54,39 +76,113 @@ that category is `RuntimeFunction` (`src/define-function.ts:178`), used at
 `packages/fns/src/sass/__tests__/map-functions.test.ts:1` and nowhere in
 production — and it is a `define-function.ts` symbol, not a tree one.
 
-### 1a. survives — 7
+### How the buckets were decided (and a correction)
 
-A `./value` (`packages/core/src/value.ts`) or `./ast`
-(`packages/core/src/ast.ts`) counterpart already exists that covers the
-consumer's use. The tree name goes away; the capability does not. In every case
-the shape changes from a class instance to plain data plus a factory — a port,
-not a design decision.
+An earlier cut of this document classified names by **matching them against
+`ast/` and `./value` by name**. That was wrong, and wrong in a way the rest of the
+document had already avoided: export *sets* were resolved with the TS checker,
+but bucket *membership* was decided on text. A class and an interface of the same
+name match on text and differ in the only property that decides whether a
+consumer breaks.
 
-| name | tree decl | external consumers | v2 counterpart |
+Redone by resolved symbol kind. Across the 235:
+
+| resolved kind | n |
+| --- | --- |
+| `type` | 68 |
+| `const` | 56 |
+| `function` | 52 |
+| `class` | 33 |
+| `class` + `interface` (declaration merging) | 19 |
+| `enum` | 4 |
+| `interface` | 3 |
+
+**45 tree names also exist in `./ast` or `./value`. In 27 of those the tree
+symbol is a `class` and every counterpart is an `interface` or a `type`** — that
+is *every shared node name*, without exception:
+
+`Any`, `AtRuleStatement`, `Block`, `Bool`, `Collection`, `Color`, `Combinator`,
+`Comment`, `ComplexSelector`, `CompoundSelector`, `Condition`, `Declaration`,
+`Dimension`, `For`, `If`, `Keyword`, `List`, `Nil`, `Node`, `Operation`,
+`PseudoSelector`, `Quoted`, `Range`, `Reference`, `SelectorList`, `Sequence`,
+`SimpleSelector`.
+
+The other 18 collisions are `function`/`const` on both sides (`isNode`,
+`sourceSpanOf`, `isBracketedList`, `any`, `block`, `color`, `comment`,
+`condition`, `decl`, `dimension`, `forNode`, `ifNode`, `keyword`, `list`,
+`quoted`, `range`, `sel`, `spaced`) — those exist at runtime in both domains,
+though several still denote different things (see §5.7).
+
+*Observation:* **not one tree node class has a runtime counterpart anywhere in
+v2.** The tree versions exist at runtime — `new Dimension(...)`,
+`x instanceof Dimension`, `type: Quoted` as a param token. The `ast/` and
+`./value` versions are erased at compile time.
+
+Bucket membership was then decided **per consumer, per reference**, by parsing
+each consuming file and classifying every identifier reference as type-position
+or one of `CONSTRUCT` / `INSTANCEOF` / `CALL` / `MEMBER-READ` / `VALUE-REF`,
+rather than inferring from whether the import statement said `import type`. That
+distinction mattered: `Collection`, `Node`, `Quoted` and `Dimension` are all
+imported without `type` **and** used in type position at most sites — but each
+has at least one `new` or token site that decides the bucket. Two false-positive
+classes were removed from the pass before the counts below: property-access names
+(`N.Declaration` is not a reference to an imported `Declaration`) and export
+specifiers (`export type { ExtendedFn }` is not a value use).
+
+### 1a. needs a v2 runtime — 11
+
+Every use below is a **runtime** use, cited at `file:line`. The useful column is
+the last one.
+
+| name | tree decl | how it is actually used | what v2 must provide |
 | --- | --- | --- | --- |
-| `Bool` | `src/tree/bool.ts:6` | `packages/fns/src/sass/map/has-key.ts:10` | `./value` `Bool` (`src/ast/value-eval.ts:162`) + `makeBool` (`src/ast/value-factory.ts:139`) |
-| `Collection` | `src/tree/collection.ts:19` | `fns/src/sass/map/{get,has-key,keys,merge,remove,set,values}.ts:9–10` | `./value` `Collection` (`src/ast/value-eval.ts:216`), `makeCollection` (`value-factory.ts:156`), `isCollection`/`collectionEntries`/`collectionKeyIndex` (`src/ast/value-collection.ts:18,27,39`) |
-| `Dimension` | `src/tree/dimension.ts:48` | `fns/src/sass/str-index.ts:10`, `str-insert.ts:9`, `str-slice.ts:10` (+ 5 unreachable `fns/src/util/*`) | `./value` `Dimension` (`value-eval.ts:39`) + `makeDimension` (`value-factory.ts:57`) |
-| `List` | `src/tree/list.ts:213` | `fns/src/sass/map/keys.ts:9`, `map/values.ts:9` (+ `fns/src/util/relative-color.ts:3`, unreachable) | `./value` `List` (`value-eval.ts:138`) + `makeList` (`value-factory.ts:141`), `groupItems`/`listValueAt` (`src/ast/value-list.ts:30,71`) |
-| `LocationInfo` | `src/tree/node-base.ts:112` | `packages/jess/src/output.ts:1` (+ `fns/src/util/relative-color.ts:11`, unreachable) | `./ast` `AstSourceSpan` (`src/ast/provenance.ts:8`) — `Readonly<{start:number;end:number}>`, structurally identical to `LocationInfo` at `node-base.ts:111` |
-| `Nil` | `src/tree/nil.ts:18` | `fns/src/sass/map/get.ts:10` | `./value` `Nil` (`value-eval.ts:169`) |
-| `Quoted` | `src/tree/quoted.ts:20` | `fns/src/sass/map/keys.ts:9`, `sass/quote.ts:9`, `str-index.ts:10`, `str-insert.ts:9`, `str-slice.ts:10`, `to-lower-case.ts:9`, `to-upper-case.ts:9`, `unique-id.ts:9`, `unquote.ts:9` | `./value` `Quoted` (`value-eval.ts:113`) + `makeQuoted` (`value-factory.ts:130`) |
+| `Any` | `any.ts:31` (class+interface) | `new Any(str)` — `map/get.ts:16,21`, `map/set.ts:48`, `map/values.ts:15,20` | a factory for "a stringified map value". `./value` already has `makeKeyword` (`value-factory.ts:136`) and `makeQuoted` (:130) — **which one is the ruling**, not a missing primitive |
+| `Bool` | `bool.ts:6` (class+interface) | `new Bool(b)` — `map/has-key.ts:50,56,67` | **already provided**: `makeBool` (`value-factory.ts:139`) |
+| `Collection` | `collection.ts:19` (class) | `new Collection(...)` — `map/merge.ts:47`, `map/remove.ts:33`, `map/set.ts:64`; as a `defineFunction` param token — `map/get.ts:88`, `has-key.ts:73`, `keys.ts:34`, `values.ts:39`, `merge.ts:53,57`, `remove.ts:39`, `set.ts:70` | **already provided**: `makeCollection` (`value-factory.ts:156`), and `'Collection'` is a member of `ValueObj` (`value-eval.ts:226`) so `kinds: ['Collection']` is expressible in a `ParamSpec` |
+| `Declaration` | `declaration.ts:619` (class) | `new Declaration(...)` — `map/set.ts:50` | nothing new. `makeCollection` takes `readonly CollectionEntry[]` (`value-factory.ts:156`) and `CollectionEntry` (`value-eval.ts:188`) is a plain `{key, value}` object literal needing no constructor. The blocker is the **model change**, not a missing factory — see the ruling below |
+| `Dimension` | `dimension.ts:48` (class+interface) | `new Dimension(...)` — `str-index.ts:27`; `instanceof` — `mathHelper.ts:9,11,22,31,35`, `number.ts:10`, `raw-color-args.ts:7`; param token — `str-insert.ts:63`, `str-slice.ts:102,107` | `makeDimension` (`value-factory.ts:57`) covers construction. `instanceof` has **no** translation — the value domain discriminates on `.type`, so the provision is a kind check, not a class. (All the `instanceof` sites are in `fns/src/util/*`, removed by step 1.) |
+| `List` | `list.ts:213` (class+interface) | `new List(...)` — `map/keys.ts:28`, `map/values.ts:33` | **already provided**: `makeList` (`value-factory.ts:141`) |
+| `N` | `node-type.ts:17` (enum) | `N.Declaration` / `N.Collection` enum member reads at runtime — `map/{get:43,66; has-key:32,55; keys:23; merge:21,28; remove:26; set:26,41; values:29}` | **missing.** `Kind = ValueObj['type']` (`functions/types.ts:20`) is a *type*, not a runtime table; `./ast`'s `AST_NODE_TYPES` (`ast/node.ts:108`) is the ast domain, not the value domain. Provision: an exported runtime kind table, **or** rewrite the consumers to compare `.type` string literals directly |
+| `Nil` | `nil.ts:18` (class+interface) | `new Nil()` — `map/get.ts:61,67,79` | **missing.** `./value` exports `Nil` as a type only (`value-eval.ts:169`); there is no `makeNil` in `value-factory.ts` — verified, the factory block exports `makeDimension`/`makeColorRgb`/`makeColorHsl`/`makeQuoted`/`makeKeyword`/`makeBool`/`makeList`/`makeBlock`/`makeCollection` and nothing else. Provision: a nil constant or factory |
+| `Node` | `node-base.ts:485` (class) | `x instanceof Node` — `map/get.ts:18`, `map/values.ts:17`; param token — `map/get.ts:92,96`, `has-key.ts:77,81`, `remove.ts:43`, `set.ts:74,78` | the universal is `ValueGroup`/`ValueObj` (`value-eval.ts:234,226`) with `isValueGroup` (`value-eval.ts:240`) as the guard. Provision: **confirm `isValueGroup` is the sanctioned `instanceof Node` replacement**, and that `kinds: 'any'` is the param-token equivalent |
+| `Quoted` | `quoted.ts:20` (class+interface) | `new Quoted(s, {quote})` — `map/keys.ts:25`, `quote.ts:21`, `str-insert.ts:49`, `str-slice.ts:28,82,92`, `to-lower-case.ts:16`, `to-upper-case.ts:16`, `unique-id.ts:25`, `unquote.ts:19`; param token — 6 more sites | **already provided**: `makeQuoted` (`value-factory.ts:130`) |
+| `isNode` | `util/is-node.ts:18` (function) | `isNode(x, N.Declaration)` — 11 call sites across `map/*` | `./ast`'s same-named `isNode` (`ast/node.ts:118`) narrows **ast** nodes by string `NodeType` — wrong domain. Provision: a value-domain narrow-by-kind helper, **or** drop to `.type ===`. `isCollection` (`value-collection.ts:18`) is the one such helper that exists |
 
-### 1b. contested — 5
+*Interpretation:* four of the eleven (`Bool`, `Collection`, `List`, `Quoted`)
+need **nothing new** — the factory already exists and the port is mechanical.
+Three (`N`, `Nil`, `isNode`) need a small, uncontroversial addition to `./value`.
+Two (`Any`, `Declaration`) are blocked on the ruling below. `Dimension` and
+`Node` are mixed: their construction sites are covered, their `instanceof` sites
+are not, and every `instanceof` site is in code step 1 deletes.
 
-Externally consumed from a path a published entry point reaches, with no v2
-counterpart that covers the use. All five have the same consumer set: the seven
-`packages/fns/src/sass/map/*.ts` modules.
+### 1b. needs a v2 type — 1
 
-| name | tree decl | why not covered |
-| --- | --- | --- |
-| `Any` | `src/tree/any.ts:31` | consumers call `new Any(string)` to wrap a stringified declaration value (`fns/src/sass/map/get.ts:16,21`). `./ast` `Any` (`src/ast/nodes.ts:76`) is a plain-data interface with no constructor and a different role. The value-domain substitute is `makeKeyword` or `makeQuoted` — which one is a semantic choice about what a map value *is*. |
-| `Declaration` | `src/tree/declaration.ts:619` | the map fns model a collection entry as a tree `Declaration` and iterate `collection.rules` looking for one (`fns/src/sass/map/get.ts:41–49`). The value domain models an entry as `CollectionEntry` (`src/ast/value-eval.ts:188`), reached through `collectionEntries` — a different data model, not a rename. `./ast` `Declaration` (`nodes.ts:672`) is the *syntactic* declaration, which is a third thing. |
-| `N` | `src/tree/node-type.ts:17` | a numeric enum. `./ast`'s discriminant is `NodeType` (`src/ast/node.ts:62`), a **string** union with `AST_NODE_TYPES` (`node.ts:108`). Not an alias. |
-| `Node` | `src/tree/node-base.ts:485` | an abstract class used with `instanceof` (`fns/src/sass/map/get.ts:18`) and as the universal value type. `./ast` `Node` (`src/ast/node.ts:86`) is a union type over plain-data interfaces — no runtime identity, so `instanceof` has no translation. `./value`'s equivalent is `ValueGroup`/`ValueObj` (`value-eval.ts:234,226`), a narrower domain. |
-| `isNode` | `src/tree/util/is-node.ts:18` | `./ast` exports a same-named `isNode` (`src/ast/node.ts:118`), but it narrows an `./ast` node by string `NodeType`. The tree one narrows a tree `Node` by numeric `N`. Same name, different domain — the collision is a hazard, not a migration path. |
+| name | tree decl | consumer | what v2 must provide |
+| --- | --- | --- | --- |
+| `LocationInfo` | `node-base.ts:112` (`type`) | `packages/jess/src/output.ts:1` — pure type position, verified per reference | **already provided**: `./ast` `AstSourceSpan` (`ast/provenance.ts:8`) is `Readonly<{start:number;end:number}>`, structurally identical to `LocationInfo` at `node-base.ts:111` |
 
-### 1c. dies — 223
+`ColorData` (`color.ts:71`) and `ExtendedFn` (`call.ts:532`) are also pure
+type-position — `ExtendedFn`'s only occurrence is the re-export specifier at
+`fns/src/util/index.ts:4` — but both sit in code step 1 deletes, so they are
+counted under *removable now*.
+
+### 1c. needs a semantic ruling — the map key model
+
+One question, gating `Any`, `Declaration`, `Collection`, `Node`, `N` and `isNode`
+in the seven `packages/fns/src/sass/map/*.ts` modules.
+
+Those modules model a map entry as a tree `Declaration` and find one by
+stringifying `Declaration.name` and comparing (`map/get.ts:41–49` —
+`String(node.name.valueOf()) === keyStr`). The value domain models an entry as
+`CollectionEntry` (`value-eval.ts:188`), whose `key` is a full `ValueGroup`, and
+`Collection`'s own contract says entries are *"ORDERED and key-equality-sensitive,
+matching Sass map semantics"* (`value-eval.ts:212–213`) — **without defining the
+comparison**. That definition is the ruling: whether `1` and `1px` collide,
+whether `"a"` and `a` collide, whether comparison is on `bytes` or on structure.
+
+This is a data-model change, not a rename, and it is the only genuinely semantic
+decision in the whole cutover.
+### 1d. removable now — 223
 
 **Nine** of these are externally consumed, but *only* from modules inside
 `packages/fns/src/util/` that no `@jesscss/fns` entry point reaches. `fns`
@@ -183,96 +279,157 @@ test — grouped by declaring file (`*` = reached through an explicit
 | `src/tree/util/should-operate.ts` | 2 | `MathFrameState*`, `shouldOperateWithMathFrames*` |
 | `src/tree/util/trivia.ts` | 2 | `createTriviaMap*`, `makeTrivia*` |
 
-Note `isBracketedList` (`src/tree/util/list-like.ts:40`) and `./value`'s
-`isBracketedList` (`src/ast/value-list.ts:21`) are two different exported
-functions with one name, reachable from two entry points of the same package.
-Same for `sourceSpanOf` (`tree/util/provenance.ts:71` vs `ast/provenance.ts:46`),
-`isNode`, `round`, `Block`, `Collection`, `Color`, `Dimension`, `List`, `Quoted`,
-`Keyword`, `Bool`, `Nil`, `Any`, `Declaration`, `Sequence`, `Operation`,
-`Comment`, `Range`, `Reference`, `SelectorList`, `PseudoSelector`,
-`ComplexSelector`, `CompoundSelector`, `SimpleSelector`, `Combinator`,
-`Condition`, `AtRuleStatement`, `Node`, `sel`, `spaced`, `block`, `keyword`,
-`decl`, `forNode`, `ifNode`, `range`, `color`, `dimension`, `quoted`, `comment`,
-`condition`, `pseudo`, `any`.
+## 2. `Context` — settled: rewrite it tree-free
 
----
+**Owner decision, settled:** there is one `Context`, and it is tree-free. Not a
+narrow interface sliced out of the current class with the tree-carrying remainder
+left behind to die with `tree/` — that leaves two Context-shaped things and a
+permanent seam between them. One `Context`.
 
-## 2. `Context`
+### 2a. Correction: `ast/` runs on a live `Context` instance
 
-### 2a. `ast/` does not depend on tree, and the Context tether is type-only
+An earlier cut of this document claimed the v2 path "has no runtime edge to
+`context.ts` at all". **That was wrong, and it was wrong by exactly the mechanism
+§5.6 of this document warns about.** The claim came from an import audit;
+`ast/serialize.ts:127` is `import type { Context }`, so the *module-graph* edge
+is erased — and an import audit therefore reports the boundary clean. The
+*dependency* is not erased. A real `Context` instance flows in at runtime:
 
-Verified independently of the boundary comments: `grep -rn "from '.*tree\|import(.*tree"` over
-`packages/core/src/ast/` (excluding `__tests__`) returns **no matches**. There is
-no runtime and no type edge from `ast/` into `tree/`.
+| site | what it is |
+| --- | --- |
+| `src/ast/serialize.ts:186` | `context?: Context` — a field of the public `SerializeOptions` |
+| `src/ast/serialize.ts:301` | `function importThroughContext(context: Context)` |
+| `src/ast/serialize.ts:1215` | `context: Context \| undefined` parameter |
+| `src/ast/serialize.ts:1890, 3748, 3780` | `e.context?.sourceContext?.file` |
+| `src/ast/serialize.ts:3881` | `e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less')` |
+| `src/ast/serialize.ts:5338` | `options?.context ? importThroughContext(options.context) : undefined` |
+| `packages/jess/src/index.ts:1074` | `const context = new Context(contextOptions, plugins)` — the instance's origin |
 
-The direction is in fact the reverse: `packages/core/src/tree/util/round.ts:9`
-is `export { round } from '../../ast/round.js'` — legacy tree depends on `ast/`.
+So `tree/` is loaded in any real v2 render, because `Context` is imported as a
+*value* by `jess` and `context.ts` imports tree at lines 12, 23, 38, 39, 40.
+**That puts the `Context` rewrite on the critical path, not in the cleanup tail.**
 
-`ast/` references `Context` in exactly one place:
-`packages/core/src/ast/serialize.ts:127`, and it is `import type`. It is erased
-at runtime. **The v2 execution path has no runtime edge to `context.ts` at all,**
-and therefore none to tree via Context.
+*This is the single most instructive finding in the analysis, and it is worth
+stating plainly: the check reported clean because it could not see the failure
+mode it was looking for.* The import graph and the object graph are different
+graphs.
 
-The Context members `ast/` reads are all tree-free:
+(The `ast/` → `tree/` finding itself still stands and was verified separately:
+`grep -rn "from '.*tree\|import(.*tree"` over `packages/core/src/ast/` excluding
+`__tests__` returns **no matches**, and the dependency runs the other way —
+`src/tree/util/round.ts:9` is `export { round } from '../../ast/round.js'`.
+`ast/` does not depend on tree. It depends on `Context`, which does.)
 
-| member | decl | shape |
+### 2b. Re-derived by runtime-usage audit, not by imports
+
+Method, since this claim is now load-bearing for the sequencing: a TypeScript
+program over all of `packages/core/src/ast/**` (excluding `__tests__`) plus
+`src/context.ts`, then a second program over `packages/{jess,jess-plugin-less,
+jess-plugin-less-compat,fns}/src/**` with `@jesscss/core` mapped to
+`packages/core/src/index.ts`. Every `PropertyAccessExpression` whose **object
+type resolves to the `Context` class declared at `src/context.ts`** was
+collected, the accessed property's symbol resolved, and its declared type walked
+(unions, type arguments, call-signature parameters and returns, depth 6) for any
+symbol declared under `src/tree/`.
+
+Health check, because a program that fails to resolve types would report "no
+tree" for the wrong reason: `Context`'s class symbol resolved, `Context.sourceContext`
+resolved to `SourceContext | undefined`, and **every** member below printed a
+concrete declared type — none degraded to `any` or an error type. 67
+unresolved-module errors remain (all external packages: `@jesscss/awaitable-pipe`,
+`lodash-es`, `color-name`, …); none of them appears in any member type below.
+This required `node_modules` to be resolvable, so the worktree's `node_modules`
+was symlinked to the main checkout's for the audit and removed afterwards —
+relative imports (`context.ts`, `tree/*`, `ast/*`) still resolved inside the
+worktree, so no result here comes from the main checkout's sources.
+
+**Context members accessed at runtime from `packages/core/src/ast/` — 14, none tree-typed:**
+
+| member | declared type | tree-typed? |
 | --- | --- | --- |
-| `sourceContext` | `context.ts:452` | `SourceContext \| undefined` |
-| `options` | `context.ts:391` | `ResolvedOptions` |
-| `opts` | `context.ts:340` | option bag |
-| `valueEvaluator` | `context.ts:398` | `ValueEvaluator` (`src/ast/value-eval.ts`) |
-| `entryFilePath` | `context.ts:438` | `string` |
-| `warn` | `context.ts:524` | `(JessError \| WarningDiagnostic, …) => void` |
-| `transformUrl` | `context.ts:1011` | `(string, boolean) => string` |
-| `withDocument` | `context.ts:984` | over `Stylesheet` (ast) |
-| `rememberDocumentBody` | `context.ts:1033` | over `Stylesheet` (ast) |
-| `currentSourceOwner` / `withSourceOwner` / `sourceOwnerForBody` | `context.ts:1068,1073,1095` | `object \| null` |
-| `loadImport` | `context.ts:1313` | `(string, ImportOptions)` |
-| `readBinary` | `context.ts:1347` | `(string) => Promise<Buffer>` |
+| `sourceContext` | `SourceContext \| undefined` | no |
+| `options` | `ResolvedOptions` | no |
+| `opts` | `ContextOptions` | no |
+| `entryFilePath` | `string` | no |
+| `valueEvaluator` | `ValueEvaluator \| undefined` | no |
+| `warn` | `(warning: WarningDiagnostic \| JessError, options?: { code?: string }) => void` | no |
+| `transformUrl` | `(value: string, quoted: boolean) => string` | no |
+| `loadImport` | `(importPath: string, importOptions?: ImportOptions) => Promise<{ node: Stylesheet \| null; triedPaths: string[]; resolvedPath: string } \| undefined>` | no |
+| `readBinary` | `(importPath: string) => Promise<Buffer>` | no |
+| `withDocument` | `<T>(document: Stylesheet, run: () => T \| Promise<T>) => T \| Promise<T>` | no |
+| `rememberDocumentBody` | `(document: Stylesheet, body: object) => void` | no |
+| `currentSourceOwner` | `() => object \| null` | no |
+| `withSourceOwner` | `<T>(owner: object \| null \| undefined, run: () => T \| Promise<T>) => T \| Promise<T>` | no |
+| `sourceOwnerForBody` | `(body: object) => object \| null` | no |
 
-The six `context.frames` occurrences in `serialize.ts` (lines 1541, 1594, 6614,
-6637) are all inside comments describing less@4 behaviour. There is no member
-access.
+**Context members accessed at runtime from `jess` / plugins / `fns` — 15, none tree-typed:**
+`errors`, `warnings`, `finalizeWarnings`, `getPluginModule`, `getTree`,
+`parseString`, `resolveImportPath`, `sourceTrees`, `pluginHost`, `plugins`,
+`setOption`, `opts`, `readBinary`, `valueEvaluator`, `withDocument`.
 
-*Interpretation:* the premise that "v2 is clean of tree nodes but not of the
-context object carrying tree machinery" holds at the **module-graph** level —
-importing `Context` as a value pulls tree in — but not at the **usage** level.
-No v2 code path reads a tree-typed Context member. So decomposing Context is a
-matter of cutting its own imports, not of renegotiating a contract with `ast/`.
+Union (four overlap): **25 distinct externally-reachable members, zero
+tree-typed.** The constructor is `(opts?: ContextOptions, plugins?: PluginInterface[])`
+— both parameters tree-free.
 
-### 2b. Per-import disposition
+Bodies checked too, not just signatures: **25 of 25** externally-reachable
+members have bodies containing no reference to any tree-typed `Context` member
+and no reference to any of the 14 tree symbols `context.ts` imports.
 
-`context.ts` has ten tree references. **Tree-located** = the symbol happens to
-live under `tree/` but its implementation and signature are tree-free; it can be
-relocated by moving the file. **Tree-shaped** = it is or operates on tree node
-classes; relocating it requires a design decision.
+### 2c. The size of the rewrite
 
-| # | import | site | runtime? | shape | used by v2? |
-| --- | --- | --- | --- | --- | --- |
-| 1 | `AtRule, Ruleset, Rules, Node, Any, AtRuleStatement, Selector, Nil` | `context.ts:1–10` | no (`import type`) | **tree-shaped** | no |
-| 2 | `ExtendRootRegistry` | `context.ts:12` → `tree/util/extend-roots.ts:553`; used `context.ts:709,950` | **yes** | **tree-shaped** — the module imports `ComplexSelector`, `BasicSelector`, `Ruleset`, `Selector`, `PseudoSelector`, `Nil`, `Node` as values (`extend-roots.ts:3–28`) | no |
-| 3 | `Operator` | `context.ts:13` → `tree/util/calculate.ts:1`; used `context.ts:1544` | no (`import type`) | **tree-located** — `calculate.ts` has **zero imports**; `Operator` is `'+' \| '-' \| '*' \| '/' \| '%'` | no |
-| 4 | `shouldOperateWithMathFrames` | `context.ts:23` → `tree/util/should-operate.ts:31`; used `context.ts:1546` | **yes** | **tree-shaped** — takes `Node` operands, imports `isNode`/`N`/`Node` (`should-operate.ts:3–5`) | no |
-| 5 | `Call` | `context.ts:37` → `tree/call.ts:553`; used `context.ts:653,840` | no (`import type`) | **tree-shaped** | no |
-| 6 | `CallMap` | `context.ts:38` → `tree/util/recursion-helper.ts:14`; used `context.ts:835,837` | **yes** | **borderline** — its two imports (`Call`, `List`, `recursion-helper.ts:1–2`) are both `import type`, so the runtime class is tree-free; its *type* `CallSignature = List \| string \| undefined` (line 5) is tree-shaped | no |
-| 7 | `BitSetLibrary` | `context.ts:39` → `tree/util/bitset.ts:54`; used `context.ts:301,784` | **yes** | **tree-located** — `bitset.ts`'s only import is the `bitset` npm package (line 1) | no |
-| 8 | `selectorAnalysisFor`, `SelectorAnalysis` | `context.ts:40` → `tree/util/selector-analysis.ts:254,47`; used `context.ts:791–792` | **yes** | **tree-shaped** — operates on `Selector`, imports `N`/`isNode`/`isCombinator`/`F_VISIBLE` as values (`selector-analysis.ts:19–22`) | no |
-| 9 | `PrintOptions` | `context.ts:41` → `tree/util/print.ts:10`; used `context.ts:803` (private field) | no (`import type`) | **tree-shaped** — 20+ of its fields are typed `Ruleset`, `AtRule`, `Selector`, `Nil`, `Rules`, `AtRulePrelude` (`print.ts:12–184`) | no |
-| 10 | `SpineMergePlan` | `context.ts:738`, inline `import('./tree/util/spine-merge.js')` | no (type position) | **tree-shaped** | no |
+`Context` declares **106 members**. **33 are tree-typed. Zero of those 33 is
+reachable from `ast/`, `jess`, the plugins, or `fns`.**
 
-**Tree-located: 2** (`Operator`, `BitSetLibrary`) — plus `CallMap`'s runtime.
-Both are pure and move by relocating one file each.
-**Tree-shaped: 8.**
+The 33, with the tree symbols in their declared types:
 
-Every one of the ten is legacy-eval-only. None is read by the v2 path (§2a).
+| member | tree symbols |
+| --- | --- |
+| `currentCharset` :611 | `Any`, `AnyRole`, `AtRuleStatement` |
+| `topImports` :617 | `Node` |
+| `rulesContext` :624 · `root` :627 · `treeRoot` :649 · `allRoots` :650 | `Rules` |
+| `caller` :653 · `_callStack` :840 · `callStack` :841 | `Call` |
+| `spineMixinSurfaceSink` :668 · `spineRootCallEmitFrame` :691 · `rulesEvalStack` :919 · `evaldTrees` :958 | `Rules` |
+| `extendRoots` :709 | `ExtendRootRegistry` |
+| `spineMergePlan` :738 | `SpineMergePlan`, `Node` |
+| `registerSpineVisitor` :747 | `Node` |
+| `documentOrderByRuleset` :755 · `rulesetFrames` :809 | `Ruleset` |
+| `extends` :761 | `Selector`, `Rules`, `Node` |
+| `_searchScope` :770 · `searchScope` :771 | `Node` |
+| `selectorBits` :784 | `BitSetLibrary` |
+| `selectorAnalysis` :791 | `SelectorAnalysis` |
+| `_printState` :803 · `printState` :804 | `PrintOptions` |
+| `spineResolvedFrameSelector` :821 | `Ruleset`, `Selector`, `Nil` |
+| `frames` :824 | `Ruleset`, `AtRule` |
+| `_callMap` :835 · `callMap` :836 | `CallMap` |
+| `_importantSourceStack` :902 · `pushImportantSource` :907 · `popImportantSource` :911 | `Any` |
+| `shouldOperate` :1544 | `Operator`, `Node` |
+
+*So the honest headline is not "rewrite Context". It is:* **delete 33 members and
+10 imports; keep 73, including all 25 the outside world touches; the constructor
+already qualifies.** Every deleted member is legacy-eval state that leaves with
+the engine. By the evidence this step is **mechanical** — no external caller
+loses anything and no v2 behaviour changes.
+
+Two residual notes, both narrow:
+
+- Of the ten tree imports, two are **tree-located**, not tree-shaped: `Operator`
+  (`tree/util/calculate.ts:1` — the file has **zero imports**; the type is
+  `'+' | '-' | '*' | '/' | '%'`) and `BitSetLibrary` (`tree/util/bitset.ts:54` —
+  its only import is the `bitset` npm package). `CallMap`'s runtime is likewise
+  tree-free (both its imports at `tree/util/recursion-helper.ts:1–2` are
+  `import type`); only its `CallSignature` type is not. The *members* that use
+  these are all inside the deleted 33, so Context does not need them relocated —
+  but `Operator` is separately public (`src/index.ts:51`), so its home is a
+  question for step 3, not for Context.
+- `context.ts:738` declares `spineMergePlan` with an inline
+  `import('./tree/util/spine-merge.js').SpineMergePlan`. A grep for
+  `from '…/tree'` does not see it (§5.5).
 
 `packages/core/src/tree/util/provenance.ts` deserves the same note even though
-`context.ts` does not import it: it has **zero imports** (verified — `grep -c
-"import"` returns 0) and its API is duck-typed over `unknown` and `object`
-(`readEvalErrorLocation`, line 177; `stampEvalErrorLocation`, line 159). It is
-entirely tree-located despite contributing 13 names to the public surface.
-
----
+`context.ts` does not import it: it has **zero imports** and its API is duck-typed
+over `unknown` and `object` (`readEvalErrorLocation`, line 177;
+`stampEvalErrorLocation`, line 159). It is entirely tree-located despite
+contributing 13 names to the public surface.
 
 ## 3. The value boundary — a decision, not a recommendation
 
@@ -333,7 +490,7 @@ the value domain, under the same global names — `quote`, `unquote`,
 
 **Gap B — seven Sass map functions with no value-domain implementation at all.**
 `packages/fns/src/sass/map/{get,set,merge,remove,keys,values,has-key}.ts`. These
-carry the five contested names from §1b. The value substrate they need already
+carry five of the eleven names from §1a. The value substrate they need already
 exists — `Collection` (`src/ast/value-eval.ts:216`), `CollectionEntry` (line
 188), `isCollection`/`collectionEntries`/`collectionKeyIndex`
 (`src/ast/value-collection.ts:18,27,39`), `makeCollection`
@@ -368,18 +525,18 @@ getting an implementation from it.
 
 **Option 1 — narrow the root barrel to `./value`.** Re-point
 `sass/index.ts:90–97` at `./string/globals.js`, port the seven map fns onto
-`Collection`/`CollectionEntry`, delete `packages/fns/src/util/*` (§1c), and stop
+`Collection`/`CollectionEntry`, delete `packages/fns/src/util/*` (§1d), and stop
 exporting `defineFunction`/`FunctionThis`/`RuntimeFunction`/`conversions` from
 the root.
 *Consequence for `fns`:* eight string globals and seven map fns start being
 registered — an output change (functions that currently fall through to verbatim
-would begin resolving). All 21 tree names in §1a–1c lose their consumer.
+would begin resolving). All 21 externally-consumed tree names lose their consumer.
 *Consequence elsewhere:* none. No other package imports the value boundary.
 *Cost:* the map port is real work and requires a key-comparison ruling.
 
 **Option 2 — narrow to `./value` but keep the map fns legacy for now.**
 Gap A only. Cheap and mechanical, but it leaves `sass/map/*` importing five
-contested tree names, which pins `Collection`, `Declaration`, `Node`, `Any`, `N`,
+runtime-required tree names, which pins `Collection`, `Declaration`, `Node`, `Any`, `N`,
 `isNode`, `Nil`, `Bool`, `List`, `Quoted`, `Context`, `FunctionThis` and
 `defineFunction` in the root barrel — i.e. it does not unblock the deletion.
 *Consequence:* the string globals start registering; the map ones still do not.
@@ -410,26 +567,28 @@ semantic decision in the whole cutover.
 
 ## 4. Extraction order
 
-Marked **M** (mechanical — a move or a re-point, no behaviour question) or
-**S** (semantic — needs a ruling).
+Marked **M** (mechanical — a move, a deletion, or a re-point, no behaviour
+question) or **S** (needs a ruling).
 
 | # | step | blocks / blocked by | mark |
 | --- | --- | --- | --- |
-| 1 | Delete `packages/fns/src/util/{color-output, colorHelper, get-color-func-values, get-luma, mathHelper, number, preserve-hex, raw-color-args, relative-color, to-hsl, to-hsv}.ts` and the one test edge at `fns/src/less/__tests__/luma-luminance-hsv-channels.test.ts:13`. Unreachable from every `fns` entry point (§1c). Kills 9 tree names outright. Blocks nothing, blocked by nothing. | — | **M** |
-| 2 | Delete `IParseResult` (`src/types/index.ts:51`) and its `import type { Node }` (line 2). The interface is declared and referenced **nowhere** in the repo — verified across `core`, `jess`, `fns` and all four parsers. Removes one of the six runtime files' tree edges entirely. | — | **M** |
-| 3 | Move `tree/util/provenance.ts` (zero imports), `tree/util/calculate.ts` (zero imports) and `tree/util/bitset.ts` (one npm import) out of `tree/`. Pure relocations; 15 public names change file, not meaning. Unblocks step 5's `Operator`/`BitSetLibrary`/`SourceSpan` edges and `error/code-frame.ts:1`. | blocks 5, 6 | **M** |
-| 4 | Re-point `packages/fns/src/sass/index.ts:90–97` at `./string/globals.js` (Gap A, §3). Eight lines. **Behaviour changes** — eight Sass string globals begin registering (`registry.ts:24–27`). | — | **M**, output-affecting |
-| 5 | Delete the 214 zero-consumer names from the public surface by replacing `src/index.ts:10`'s wildcard with an explicit list of what core actually means to publish. This is what turns every later deletion into a compile error instead of a silent surface change. | needs 3 | **M** |
-| 6 | Decompose `Context`: cut imports 3 and 7 (and `CallMap`'s runtime) after step 3; the remaining seven are legacy-eval-only fields (`extendRoots`, `selectorAnalysis`, `_printState`, `caller`/`_callStack`, `frames`, `rulesetFrames`, `extends`, `spineMergePlan`, `shouldOperate`) that leave with the eval path. No v2 path reads any of them (§2a). | needs 3; blocked by nothing else | **M** for 3 and 7; **S** for whether `shouldOperate`'s math-mode semantics need a value-domain home |
-| 7 | **The hard one.** Rule on §3 (options 1–4) and execute Gap B — the seven `sass/map/*` modules and the five contested names. Everything else on this list is separable; this is the single step that cannot proceed without an owner decision, and until it lands `Collection`, `Declaration`, `Node`, `Any`, `N`, `isNode` stay in the root barrel and `tree/` cannot go. | blocks 8 | **S** |
-| 8 | Delete `tree/`, `conversions.ts`, `define-function.ts`, and the tree branches of `src/index.ts` and `src/context.ts`. | needs 7 | **M** |
+| 1 | Delete `packages/fns/src/util/{color-output, colorHelper, get-color-func-values, get-luma, mathHelper, number, preserve-hex, raw-color-args, relative-color, to-hsl, to-hsv}.ts` and the one test edge at `fns/src/less/__tests__/luma-luminance-hsv-channels.test.ts:13`. Unreachable from every `fns` entry point (§1d). Removes 9 tree names, including every `instanceof Dimension` / `instanceof Color` site in the repo. | — | **M** |
+| 2 | Delete `IParseResult` (`src/types/index.ts:51`) and its `import type { Node }` (line 2). Declared and referenced **nowhere** — verified across `core`, `jess`, `fns` and all four parsers. Removes one of the six runtime files' tree edges entirely. | — | **M** |
+| 3 | Relocate `tree/util/provenance.ts` (zero imports), `tree/util/calculate.ts` (zero imports) and `tree/util/bitset.ts` (one npm import) out of `tree/`. Pure moves; 15 public names change file, not meaning. Clears `error/code-frame.ts:1` and gives `Operator` a home outside the deleted set. | blocks 5 | **M** |
+| 4 | **Rewrite `Context` tree-free** (§2, owner-settled). By the runtime-usage audit this is *delete 33 members and the 10 tree imports, keep 73* — every deleted member is legacy-eval state, none of the 33 is reachable from `ast/`, `jess`, the plugins or `fns`, all 25 externally-reachable members are already tree-free in both signature and body, and the constructor already qualifies. **On the critical path**, because a live `Context` instance flows into `ast/serialize.ts` and currently drags `tree/` into every v2 render (§2a). Blocked by nothing: it does not wait on the value boundary, and the legacy engine can keep its state on its own object until it is deleted. | blocks 8; blocks nothing else | **M** |
+| 5 | Replace `src/index.ts:10`'s wildcard with an explicit export list. This is what turns every later deletion into a compile error instead of a silent surface change (§5.1). | needs 3 | **M** |
+| 6 | Re-point `packages/fns/src/sass/index.ts:90–97` at `./string/globals.js` (Gap A, §3). Eight lines, and it retires 8 of the 14 unconverted fn modules. **Behaviour changes** — eight Sass string globals begin registering (`registry.ts:24–27`), which is the bug in the closing section. | — | **M**, output-affecting |
+| 7 | **The hard one.** Rule on §3 (options 1–4) and on the map key model (§1c), then execute Gap B — the seven `sass/map/*` modules. Until it lands, `Any`, `Collection`, `Declaration`, `N`, `Node` and `isNode` stay in the root barrel. Needs `makeNil`, a value-domain kind table or `.type` rewrite, and a narrow-by-kind helper (§1a). | blocks 8 | **S** |
+| 8 | Delete `tree/`, `conversions.ts`, `define-function.ts`, and the tree branches of `src/index.ts`. | needs 4 and 7 | **M** |
 
 Honest summary: **steps 1, 2 and 3 are trivially separable and can land in any
-order today.** Step 4 is eight lines but changes emitted CSS. Step 7 is the whole
-problem; steps 5, 6 and 8 are bookkeeping once it is settled.
+order today.** Step 4 sounds like the big one and is not — it is a subtraction
+with a measured blast radius of zero external members, and it is the step that
+stops `tree/` being loaded on the v2 path. Step 6 is eight lines but changes
+emitted CSS. **Step 7 is the only genuinely hard one**, and it is hard for one
+reason: the Sass map key model. Everything else is bookkeeping.
 
 ---
-
 ## 5. What would break silently
 
 Ordered by how quietly it fails.
@@ -472,21 +631,35 @@ Ordered by how quietly it fails.
    (`Rules`, `SpineMergePlan`, `SpineCondPlan`). Any inventory of tree edges built
    from import-statement grep will undercount.
 
-6. **Type-only tree imports that vanish at runtime** — `context.ts:1–10` (eight
-   node types), `context.ts:37` (`Call`), `context.ts:41` (`PrintOptions`),
-   `types/index.ts:2` (`Node`), `error/code-frame.ts:1` is a *value* import so it
-   does not qualify. These produce no runtime edge, so a bundler or a
-   runtime smoke test will report the boundary as clean while the type surface
-   still leaks tree. Conversely they cost nothing to sever.
+6. **`import type` erases the module-graph edge, not the dependency.** This is
+   the most dangerous entry on the list, and this document walked into it — see
+   §2a for the worked instance. `ast/serialize.ts:127` is
+   `import type { Context }`, so an import audit of `ast/` reports the tree
+   boundary clean; but a live `Context` instance is constructed at
+   `packages/jess/src/index.ts:1074` and flows into serialize
+   (`serialize.ts:186, 301, 1215, 5338`), and `Context` pulls `tree/` in at
+   runtime. **An import-graph audit cannot see an object-graph dependency**, and
+   it fails in the reassuring direction: it reports success. The only sound check
+   is a usage audit that resolves the type of the object being accessed — which
+   is what §2b does, and which found the same 14 members with a second,
+   independent method.
 
-7. **Duplicated names across `@jesscss/core` entry points.** `isNode`,
-   `sourceSpanOf`, `isBracketedList`, `round`, `Dimension`, `Color`, `List`,
-   `Quoted`, `Nil`, `Collection`, `Block`, `Node`, `Declaration`, `Any`,
-   `Sequence`, `Operation` and ~25 more resolve to *different* symbols depending
-   on whether the import came from `@jesscss/core`, `@jesscss/core/ast` or
-   `@jesscss/core/value`. Changing an import's subpath while keeping the name
-   compiles. `fns` already does both: `Color` is imported as a value from the
-   root at `fns/src/util/colorHelper.ts:1` and as a type from `/value` at
+   The same erasure hides `context.ts:1–10` (eight node types),
+   `context.ts:37` (`Call`), `context.ts:41` (`PrintOptions`) and
+   `types/index.ts:2` (`Node`). Those four genuinely produce no runtime edge and
+   cost nothing to sever — but that is a conclusion a usage audit has to reach,
+   not one an import audit is entitled to assume. (`error/code-frame.ts:1` is a
+   *value* import and so is not in this class at all.)
+
+7. **Duplicated names across `@jesscss/core` entry points — and 27 of them are a
+   class on one side and an interface on the other.** 45 tree names also exist in
+   `./ast` or `./value`; in 27 the tree symbol is a `class` and every counterpart
+   is an `interface`/`type` (the full list is in §1). Changing an import's
+   subpath while keeping the name **compiles**, and then fails at runtime on the
+   first `new X(...)` or `x instanceof X` — or, worse, silently, where the name
+   was only ever a `defineFunction` param token. `fns` already imports `Color`
+   from both entry points: as a value from the root at
+   `fns/src/util/colorHelper.ts:1`, and as a type from `/value` at
    `fns/src/less/color-helper.ts:9`.
 
 8. **`packages/core/src/ast/provenance.ts:20–25`** notes that build tools may
