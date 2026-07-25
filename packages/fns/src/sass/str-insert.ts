@@ -16,13 +16,17 @@ const strInsert = defineFunction(
     const indexValue = index.number;
     const indexInt = Math.floor(indexValue);
 
-    // Sass uses 1-based indexing
-    // str-insert guarantees that $insert is at $index in the result
-    // For negative: adjust index first, then convert to codepoint index
+    /*
+     * Sass uses 1-based indexing
+     * str-insert guarantees that $insert is at $index in the result
+     * For negative: adjust index first, then convert to codepoint index
+     */
     let adjustedIndex: number;
     if (indexInt < 0) {
-      // +1 because negative indexes start counting from -1 rather than 0
-      // +1 more because we want to insert *after* that index
+      /*
+       * +1 because negative indexes start counting from -1 rather than 0
+       * +1 more because we want to insert *after* that index
+       */
       adjustedIndex = Math.max(strValue.length + indexInt + 2, 0);
     } else {
       adjustedIndex = indexInt;

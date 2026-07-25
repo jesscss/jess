@@ -77,26 +77,33 @@ export interface PipelineSubject {
   path: BucketPath;
   order: number;
   scope?: unknown;
+
   /** when set, the emitted header is this child folded into the projected parent Or-set (collapse). */
   nestedChildLocal?: Selector;
 }
 
 export interface PipelineSubjectResult {
   id: string;
+
   /** the subject's final composed/hoisted/collapsed header (valueOf form), or '' when UNSUPPORTED. */
   header: string;
+
   /** the ordered projected Or-branch set (empty when UNSUPPORTED). */
   branches: string[];
+
   /** true when the subject's projection crosses a parent boundary (hoist-to-root). */
   hoistToRoot: boolean;
+
   /** true when every fired instruction built on the own engine (no UNSUPPORTED for this subject). */
   ownBuilt: boolean;
+
   /** instructions whose per-match shape the own engine cannot build yet (fallback candidates). */
   unsupported: PipelineInstruction[];
 }
 
 export interface PipelineResult {
   subjects: PipelineSubjectResult[];
+
   /** true when NO subject hit an UNSUPPORTED per-match shape (whole document own-built). */
   fullyOwnBuilt: boolean;
 }
@@ -192,13 +199,16 @@ function solveContributions(
   const done = new Set<string>();
   const fireKey = (branchValue: string, inst: PipelineInstruction): string =>
     `${branchValue}|${inst.partial ? 1 : 0}|${String(inst.target.valueOf())}|${String(inst.extendWith.valueOf())}`;
-  // FIRE-ONCE PER INSTRUCTION (Less semantics — an extend is NOT recursively applied to the
-  // extension it just produced). The `branchValue`-keyed `done` above re-opens the sweep after ANY
-  // fire (so a CHAINED extend — a DIFFERENT instruction now matching the produced branch — still
-  // fires), but the SAME instruction must never re-fire on its OWN output: a partial extend wraps
-  // its find in `:is(find, extendWith)`, and re-matching `find` INSIDE that graft is both wrong
-  // (double-extend) and a matcher UNSUPPORTED (`.replace` inside `:is(.replace, .rep_ace)` — the
-  // is-graft-target trap). So an instruction that has fired once is retired for the whole subject.
+
+  /*
+   * FIRE-ONCE PER INSTRUCTION (Less semantics — an extend is NOT recursively applied to the
+   * extension it just produced). The `branchValue`-keyed `done` above re-opens the sweep after ANY
+   * fire (so a CHAINED extend — a DIFFERENT instruction now matching the produced branch — still
+   * fires), but the SAME instruction must never re-fire on its OWN output: a partial extend wraps
+   * its find in `:is(find, extendWith)`, and re-matching `find` INSIDE that graft is both wrong
+   * (double-extend) and a matcher UNSUPPORTED (`.replace` inside `:is(.replace, .rep_ace)` — the
+   * is-graft-target trap). So an instruction that has fired once is retired for the whole subject.
+   */
   const firedInstructions = new Set<PipelineInstruction>();
 
   let changed = true;
@@ -208,13 +218,16 @@ function solveContributions(
     changed = false;
     rounds++;
     const branchValue = String(current.valueOf());
-    // CHEAP SOUND PRE-REJECT (root cause of the O(subjects²) fire explosion): the coarse
-    // scope-key reachability leaves every instruction "reachable" in a flat document, so each
-    // subject would run the full matcher against every instruction. A plain-token find can only
-    // match a subject that textually carries all its tokens; computing the subject's present-token
-    // set ONCE per branch value lets the loop skip the (dominant) majority of non-matching
-    // instructions WITHOUT the per-fan selector re-parse. `undefined` (non-plain subject/target)
-    // disables the filter for that pair — always run the matcher — so output stays byte-identical.
+
+    /*
+     * CHEAP SOUND PRE-REJECT (root cause of the O(subjects²) fire explosion): the coarse
+     * scope-key reachability leaves every instruction "reachable" in a flat document, so each
+     * subject would run the full matcher against every instruction. A plain-token find can only
+     * match a subject that textually carries all its tokens; computing the subject's present-token
+     * set ONCE per branch value lets the loop skip the (dominant) majority of non-matching
+     * instructions WITHOUT the per-fan selector re-parse. `undefined` (non-plain subject/target)
+     * disables the filter for that pair — always run the matcher — so output stays byte-identical.
+     */
     const subjectTokens = subjectPresentTokens(current);
     for (const inst of reachable) {
       if (firedInstructions.has(inst)) {
@@ -258,15 +271,18 @@ function solveContributions(
         changed = true;
         break;
       }
-      // MATCHED, but the RAW local-apply produced NO net change. For most instructions
-      // this is a true no-op (self-extend / value-dedupe). The ONE exception is a NESTED
-      // self-extend (`h1:extend(h1) {}` inside `.prose`): its bare `extendWith` equals its
-      // `target`, so the local-apply layer is inert — yet its COMPOSED extender (`.prose h1`)
-      // is a DISTINCT selector Less 4.x adds everywhere the target appears. SOLVE never
-      // composes (that is EMIT's job), so it cannot see the difference in the raw string;
-      // fire it here as an EMIT-ONLY contribution (no branch-value change, so no re-sweep)
-      // and let `projectSubject` compose the `.prose`-prefixed form from `inst.path`. A ROOT
-      // self-extend (`.foo:extend(.foo)`, composed form == bare form) stays genuinely inert.
+
+      /*
+       * MATCHED, but the RAW local-apply produced NO net change. For most instructions
+       * this is a true no-op (self-extend / value-dedupe). The ONE exception is a NESTED
+       * self-extend (`h1:extend(h1) {}` inside `.prose`): its bare `extendWith` equals its
+       * `target`, so the local-apply layer is inert — yet its COMPOSED extender (`.prose h1`)
+       * is a DISTINCT selector Less 4.x adds everywhere the target appears. SOLVE never
+       * composes (that is EMIT's job), so it cannot see the difference in the raw string;
+       * fire it here as an EMIT-ONLY contribution (no branch-value change, so no re-sweep)
+       * and let `projectSubject` compose the `.prose`-prefixed form from `inst.path`. A ROOT
+       * self-extend (`.foo:extend(.foo)`, composed form == bare form) stays genuinely inert.
+       */
       if (isNestedSelfExtendContribution(inst)) {
         fired.push(inst);
         firedInstructions.add(inst);
@@ -296,17 +312,20 @@ export function runSubjectProjection(
   const contributions: EmitContribution[] = fired.map(inst => ({ path: inst.path, order: inst.order }));
   const emitSubject: EmitSubject = { path: subject.path, order: subject.order, contributions };
   const projection = projectSubject(emitSubject);
-  // SHAPE 4 (partial-of-sub-compound in-place wrap). EMIT is BRANCH-APPEND: it composes each
-  // extender as a NEW Or-branch. That is correct when the extend adds a sibling selector, but WRONG
-  // when the extend WRAPS a sub-compound of the subject's OWN branches in place
-  // (`.foo .bar` find `.foo` → `:is(.foo, .ext1 .ext2) .bar`, NOT `.foo .bar, .ext1 .ext2`). SOLVE's
-  // local-apply result (`solved`) is the oracle-identical rewrite for BOTH semantics. It is
-  // authoritative — no compose-from-path needed — precisely when EVERY fired extender is ROOT-LEVEL
-  // (`path.length === 1`): its `extendWith` is already its full form, so SOLVE applied it verbatim
-  // (a nested extender needs EMIT's compose-relative-to-target, so those keep the projection). When
-  // SOLVE's result differs from the branch-append projection under that condition, an in-place wrap
-  // occurred → return SOLVE's branches. (Equal results — the `.button,.submit` append — are
-  // unaffected.)
+
+  /*
+   * SHAPE 4 (partial-of-sub-compound in-place wrap). EMIT is BRANCH-APPEND: it composes each
+   * extender as a NEW Or-branch. That is correct when the extend adds a sibling selector, but WRONG
+   * when the extend WRAPS a sub-compound of the subject's OWN branches in place
+   * (`.foo .bar` find `.foo` → `:is(.foo, .ext1 .ext2) .bar`, NOT `.foo .bar, .ext1 .ext2`). SOLVE's
+   * local-apply result (`solved`) is the oracle-identical rewrite for BOTH semantics. It is
+   * authoritative — no compose-from-path needed — precisely when EVERY fired extender is ROOT-LEVEL
+   * (`path.length === 1`): its `extendWith` is already its full form, so SOLVE applied it verbatim
+   * (a nested extender needs EMIT's compose-relative-to-target, so those keep the projection). When
+   * SOLVE's result differs from the branch-append projection under that condition, an in-place wrap
+   * occurred → return SOLVE's branches. (Equal results — the `.button,.submit` append — are
+   * unaffected.)
+   */
   const allFiredRootLevel = fired.every(inst => inst.path.length === 1);
   if (allFiredRootLevel && fired.length > 0 && !projection.hoistToRoot) {
     const solvedBranches: Selector[] = solved instanceof SelectorList
@@ -314,12 +333,15 @@ export function runSubjectProjection(
       : [solved];
     const ownForm = composeTargetOwn(subject.path);
     const ownBranchCount = ownForm instanceof SelectorList ? ownForm.value.length : 1;
-    // IN-PLACE WRAP vs APPEND. An in-place `:is`-wrap of a sub-compound REWRITES the subject's own
-    // branches without adding any (`.foo .bar, .foo .baz` → `:is(.foo, …) .bar, :is(…) .baz`: 2→2).
-    // A full-mode APPEND adds sibling branch(es) (`.amp-test-h` → `.amp-test-h, <composed>`: 1→2+),
-    // which EMIT's `projectSubject` already builds — and dedups — from the extender path; SOLVE's raw
-    // fixpoint would re-append the still-present full-match target each round (no path-dedup). So use
-    // SOLVE's result ONLY for the in-place case: its branch count equals the subject's own count.
+
+    /*
+     * IN-PLACE WRAP vs APPEND. An in-place `:is`-wrap of a sub-compound REWRITES the subject's own
+     * branches without adding any (`.foo .bar, .foo .baz` → `:is(.foo, …) .bar, :is(…) .baz`: 2→2).
+     * A full-mode APPEND adds sibling branch(es) (`.amp-test-h` → `.amp-test-h, <composed>`: 1→2+),
+     * which EMIT's `projectSubject` already builds — and dedups — from the extender path; SOLVE's raw
+     * fixpoint would re-append the still-present full-match target each round (no path-dedup). So use
+     * SOLVE's result ONLY for the in-place case: its branch count equals the subject's own count.
+     */
     const solvedKey = solvedBranches.map(b => String(b.valueOf())).join(',');
     const projectionKey = projection.branches.map(b => String(b.valueOf())).join(',');
     if (solvedBranches.length === ownBranchCount && solvedKey !== projectionKey) {

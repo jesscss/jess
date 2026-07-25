@@ -18,8 +18,11 @@ import {
 } from './util/render-buffer.js';
 import { getDefaultGuardValue } from './util/default-guard.js';
 import { coerceValueNode, type NodeArrayItem } from './util/evaluate-node-array.js';
-// import type { Context } from '../context.js'
-// import type { OutputCollector } from '../output'
+
+/*
+ * import type { Context } from '../context.js'
+ * import type { OutputCollector } from '../output'
+ */
 
 export type ParenOptions = {
   escaped?: boolean;
@@ -67,7 +70,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
   private simpleWrappedText(value: Node | undefined): string | undefined {
     const escapeChar = this._options?.escaped ? '~' : '';
     const [open, close] = this.getDelimiters();
-    if (!value || !value.visible) {
+    if (!value?.visible) {
       return `${escapeChar}${open}${close}`;
     }
     if (value instanceof Any) {
@@ -108,20 +111,26 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     options?: ParenOptions,
     location?: NodeLocation
   ) {
-    // A parser space-group arrives as a raw string/array; normalize to the
-    // canonical node form so paren eval/render stays node-only.
+    /*
+     * A parser space-group arrives as a raw string/array; normalize to the
+     * canonical node form so paren eval/render stays node-only.
+     */
     const node = value === undefined || value instanceof Node
       ? value
       : coerceValueNode(value);
     super(node, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = node;
     if (options?.escaped) {
       this.addFlag(F_NON_STATIC);
     }
-    // Inherit may_async (and other child-derived flags) from the wrapped value
-    // so a paren around an async child (e.g. `(min(...))`) is itself scheduled
-    // on the async path.
+
+    /*
+     * Inherit may_async (and other child-derived flags) from the wrapped value
+     * so a paren around an async child (e.g. `(min(...))`) is itself scheduled
+     * on the async path.
+     */
     if (node instanceof Node) {
       this.propagateFlagsFrom(node);
     }
@@ -352,6 +361,7 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
           }
           return value;
         }
+
         /**
          * Removing nested parens or parens around a single
          * dimension is a bit presumptuous, but I think Less's
@@ -389,18 +399,22 @@ export class Paren extends Node<Node | undefined, ParenOptions> {
     return this.evaluateValue(context);
   }
 
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add('(')
-  //   this.value.toCSS(context, out)
-  //   out.add(')')
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * out.add('(')
+   * this.value.toCSS(context, out)
+   * out.add(')')
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   const loc = sourceSpanOf(this)
-  //   out.add('$J.paren(', loc)
-  //   this.value.toModule(context, out)
-  //   out.add(')')
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * const loc = sourceSpanOf(this)
+   * out.add('$J.paren(', loc)
+   * this.value.toModule(context, out)
+   * out.add(')')
+   * }
+   */
 }
 
 export const paren = defineType(Paren, 'Paren');

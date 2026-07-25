@@ -130,8 +130,7 @@ const deltas = summarize(pairs.map(pair => pair.deltaMs));
 const wins = pairs.filter(pair => pair.afterMs < pair.beforeMs).length;
 const byteIdentical = pairs.every(pair =>
   pair.beforeOutput.bytes === pair.afterOutput.bytes
-  && pair.beforeOutput.sha256 === pair.afterOutput.sha256
-);
+  && pair.beforeOutput.sha256 === pair.afterOutput.sha256);
 const result = {
   fixture,
   phase: options.phase,

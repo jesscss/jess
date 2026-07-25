@@ -1,9 +1,11 @@
-// Value substrate + fn-authoring surface for `@jesscss/fns`. Append-only.
-//
-// This is the single, narrow, named contract fns imports from core (`fns → core`,
-// one direction). Nothing reachable from this barrel may import `@jesscss/fns`
-// (grep-gated) — keeping the edge acyclic. Types are re-exported with `export type`
-// so they are provably erased and never forge a runtime edge.
+/*
+ * Value substrate + fn-authoring surface for `@jesscss/fns`. Append-only.
+ *
+ * This is the single, narrow, named contract fns imports from core (`fns → core`,
+ * one direction). Nothing reachable from this barrel may import `@jesscss/fns`
+ * (grep-gated) — keeping the edge acyclic. Types are re-exported with `export type`
+ * so they are provably erased and never forge a runtime edge.
+ */
 
 // --- value-domain types (erased) ---
 export type {

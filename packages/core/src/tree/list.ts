@@ -40,11 +40,14 @@ function emitListItemSyntax(
 ): void {
   const saved = options.suppressBoundaryTrivia;
   options.suppressBoundaryTrivia = suppressPre ? 'both' : 'post';
-  // The unevaluated serialize path can meet a raw space-group array or bare
-  // string terminal (parser value shapes); normalize to a node so writeSyntax
-  // stays node-only. Eval-time coercion covers the render path; this covers the
-  // static-serialize path (`Paren` → `List.writeSyntax`) without perturbing the
-  // stored value (which round-trips preserved passthroughs).
+
+  /*
+   * The unevaluated serialize path can meet a raw space-group array or bare
+   * string terminal (parser value shapes); normalize to a node so writeSyntax
+   * stays node-only. Eval-time coercion covers the render path; this covers the
+   * static-serialize path (`Paren` → `List.writeSyntax`) without perturbing the
+   * stored value (which round-trips preserved passthroughs).
+   */
   const node = item instanceof Node ? item : coerceValueNode(item);
   try {
     node.writeSyntax(options);
@@ -226,6 +229,7 @@ export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions>
 
   constructor(value: T[], options?: ListOptions, location?: NodeLocation) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
     this.sep = options?.sep;
@@ -236,10 +240,13 @@ export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions>
       value,
       this._options ? { ...this._options } : undefined
     ).inherit(this);
-    // Eval-replacement: the new list SHARES the resolved children (no reparent),
-    // but its child-derived flags must reflect THOSE children, not the source's.
-    // `inherit` copied the source's stale flags (e.g. F_NON_STATIC
-    // from unevaluated children); recompute by crawling the resolved values.
+
+    /*
+     * Eval-replacement: the new list SHARES the resolved children (no reparent),
+     * but its child-derived flags must reflect THOSE children, not the source's.
+     * `inherit` copied the source's stale flags (e.g. F_NON_STATIC
+     * from unevaluated children); recompute by crawling the resolved values.
+     */
     derived.flags &= ~F_CHILD_DERIVED;
     for (let i = 0; i < value.length; i++) {
       derived.propagateFlagsFrom(value[i]!);
@@ -348,6 +355,7 @@ export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions>
     options?: PrintOptions
   ): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+
     // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
@@ -364,6 +372,7 @@ export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions>
     options?: PrintOptions
   ): MaybePromise<string> {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+
     // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     const prepared = buffer
       ? prepareBufferPrintState(context, options)
@@ -406,53 +415,61 @@ export class List<T extends NodeArrayItem = Node> extends Node<T[], ListOptions>
   }
 
   /** @todo move to ToCssVisitor */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add('', sourceSpanOf(this))
-  //   const length = this.value.length - 1
-  //   const cast = context.cast
-  //   this.value.forEach((node, i) => {
-  //     const val = cast(node)
-  //     val.toCSS(context, out)
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * out.add('', sourceSpanOf(this))
+   * const length = this.value.length - 1
+   * const cast = context.cast
+   * this.value.forEach((node, i) => {
+   * const val = cast(node)
+   * val.toCSS(context, out)
+   */
 
-  //     if (i < length) {
-  //       if (context.inSelector) {
-  //         out.add(`,\n`)
-  //       } else {
-  //         out.add(', ')
-  //       }
-  //     }
-  //   })
-  // }
+  /*
+   * if (i < length) {
+   * if (context.inSelector) {
+   * out.add(`,\n`)
+   * } else {
+   * out.add(', ')
+   * }
+   * }
+   * })
+   * }
+   */
 
   /** @todo move to ToModuleVisitor */
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.list([\n', sourceSpanOf(this))
-  //   context.indent++
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
-  //     out.add(pre)
-  //     if (node instanceof Node) {
-  //       node.toModule(context, out)
-  //     } else {
-  //       out.add(JSON.stringify(node))
-  //     }
-  //     if (i < length) {
-  //       out.add(',\n')
-  //     }
-  //   })
-  //   context.indent--
-  //   out.add(`\n])`)
-  //   return out
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * out.add('$J.list([\n', sourceSpanOf(this))
+   * context.indent++
+   * const length = this.value.length - 1
+   * this.value.forEach((node, i) => {
+   * out.add(pre)
+   * if (node instanceof Node) {
+   * node.toModule(context, out)
+   * } else {
+   * out.add(JSON.stringify(node))
+   * }
+   * if (i < length) {
+   * out.add(',\n')
+   * }
+   * })
+   * context.indent--
+   * out.add(`\n])`)
+   * return out
+   * }
+   */
 }
 
-// Register the runtime type through the common node-definition path, but keep
-// the public factory generic. `defineType` cannot preserve a generic class's
-// element parameter through `InstanceType`, so its inferred factory would
-// widen every list to `List<NodeArrayItem>` (including ordinary `List<Node>`
-// arguments). The value can still intentionally contain raw parser terminals;
-// the generic parameter records that fact without forcing node-only callers to
-// accept a widened list.
+/*
+ * Register the runtime type through the common node-definition path, but keep
+ * the public factory generic. `defineType` cannot preserve a generic class's
+ * element parameter through `InstanceType`, so its inferred factory would
+ * widen every list to `List<NodeArrayItem>` (including ordinary `List<Node>`
+ * arguments). The value can still intentionally contain raw parser terminals;
+ * the generic parameter records that fact without forcing node-only callers to
+ * accept a widened list.
+ */
 defineType(List, 'List');
 
 export const list = <T extends NodeArrayItem = Node>(

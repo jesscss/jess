@@ -52,6 +52,7 @@ export interface IndexExtendInstruction {
   target: Selector;
   extendWith: Selector;
   partial: boolean;
+
   /** opaque scope key; in production = root identity + isInstructionVisibleForRoot verdict */
   scope?: unknown;
 }
@@ -89,8 +90,10 @@ function scopeKey(scope: unknown): string {
 
 export interface ProcessResult {
   selector: Selector;
+
   /** true if every applied instruction built on the own engine (no UNSUPPORTED encountered). */
   fullyOwnBuilt: boolean;
+
   /** instructions whose bucket hit UNSUPPORTED (frontier). */
   unsupported: IndexExtendInstruction[];
 }
@@ -114,11 +117,14 @@ export function processExtendsByIndex(
   let fullyOwnBuilt = true;
 
   let current = selector;
-  // Each (target, extendWith, partial) fires AT MOST ONCE (mirrors the oracle's splice-on-apply):
-  // re-applying an already-applied instruction would re-append its extender every round. A fan is
-  // marked applied when it first CHANGES the selector; the worklist keeps draining while any new
-  // change lands, so a chained target that only becomes reachable after an earlier apply still
-  // fires (transitive closure) — that is the worklist, not a re-scan.
+
+  /*
+   * Each (target, extendWith, partial) fires AT MOST ONCE (mirrors the oracle's splice-on-apply):
+   * re-applying an already-applied instruction would re-append its extender every round. A fan is
+   * marked applied when it first CHANGES the selector; the worklist keeps draining while any new
+   * change lands, so a chained target that only becomes reachable after an earlier apply still
+   * fires (transitive closure) — that is the worklist, not a re-scan.
+   */
   const applied = new Set<string>();
   const fanKey = (t: Selector, e: Selector, p: boolean): string =>
     `${p ? 1 : 0}|${t.valueOf()}|${e.valueOf()}`;

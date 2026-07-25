@@ -19,8 +19,10 @@ import { tryExtendSelector } from '../extend.js';
 
 describe('Extend ampersand boundary behavior', () => {
   it('hoists a nested ruleset when extending crosses an implicit ampersand boundary', async () => {
-    // Parser-built structure: .header { .header-nav { } } and .footer-nav { &:extend(.header .header-nav all) }
-    // Inner selector is & .header-nav (implicit ampersand resolving to .header)
+    /*
+     * Parser-built structure: .header { .header-nav { } } and .footer-nav { &:extend(.header .header-nav all) }
+     * Inner selector is & .header-nav (implicit ampersand resolving to .header)
+     */
     const implicitAmp = amp({ selectorContainer: { selector: el('.header') } });
     implicitAmp.generated = true;
     implicitAmp.addFlag(F_IMPLICIT_AMPERSAND);

@@ -468,17 +468,11 @@ if (options.json) {
   for (const record of records) {
     const result = record.summary;
     console.log(`${record.fixture}`);
-    console.log(
-      `  signal=${result.signalQuality} median=${formatMs(result.median)} mean=${formatMs(result.mean)} sampleMedian=${formatMs(result.sampleMedian)} trimmedMedian=${formatMs(result.trimmedMedian)} p75=${formatMs(result.p75)} p90=${formatMs(result.p90)} min=${formatMs(result.min)} max=${formatMs(result.max)} rsd=${formatPercent(result.relativeStdDev)} roundRsd=${formatPercent(result.roundRelativeStdDev)} outliers=${result.outliers}/${result.samples}`
-    );
-    console.log(
-      `  trimmedMean=${formatMs(result.trimmedMean)} trimmedRsd=${formatPercent(result.trimmedRelativeStdDev)} mad=${formatMs(result.mad)} iqr=${formatMs(result.iqr)}`
-    );
+    console.log(`  signal=${result.signalQuality} median=${formatMs(result.median)} mean=${formatMs(result.mean)} sampleMedian=${formatMs(result.sampleMedian)} trimmedMedian=${formatMs(result.trimmedMedian)} p75=${formatMs(result.p75)} p90=${formatMs(result.p90)} min=${formatMs(result.min)} max=${formatMs(result.max)} rsd=${formatPercent(result.relativeStdDev)} roundRsd=${formatPercent(result.roundRelativeStdDev)} outliers=${result.outliers}/${result.samples}`);
+    console.log(`  trimmedMean=${formatMs(result.trimmedMean)} trimmedRsd=${formatPercent(result.trimmedRelativeStdDev)} mad=${formatMs(result.mad)} iqr=${formatMs(result.iqr)}`);
     const compared = comparison.find(item => item.fixture === record.fixture);
     if (compared && compared.status !== 'missing-baseline') {
-      console.log(
-        `  vs ${compared.baselineCommit?.slice(0, 8) ?? 'baseline'}: ${formatMs(compared.delta)} (${formatPercent(compared.ratio)}) ${compared.status}`
-      );
+      console.log(`  vs ${compared.baselineCommit?.slice(0, 8) ?? 'baseline'}: ${formatMs(compared.delta)} (${formatPercent(compared.ratio)}) ${compared.status}`);
     }
   }
   if (options.save) {

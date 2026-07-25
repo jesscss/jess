@@ -134,8 +134,10 @@ describe('string-backed scanner-first proof nodes', () => {
   });
 
   test('accepts string-backed ruleset selectors verbatim (the parser is the authority)', () => {
-    // The runtime no longer has an opinion on selector syntax: it stores whatever
-    // string the parser produced, materializing to nodes lazily when needed.
+    /*
+     * The runtime no longer has an opinion on selector syntax: it stores whatever
+     * string the parser produced, materializing to nodes lazily when needed.
+     */
     for (const selector of [':hover(1)', '&:focus, .b', '.a &:focus', '0%']) {
       const node = ruleset({ selector, rules: [] });
       expect(node.selector).toBe(selector);

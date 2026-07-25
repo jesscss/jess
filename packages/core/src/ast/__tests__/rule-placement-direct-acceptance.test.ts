@@ -18,8 +18,7 @@ describe('canonical flattened rule placement', () => {
     expect(serialize(document, {
       evaluator: buildEvaluator(makeLessRegistry()),
       collapseNesting: true
-    }).css).toBe(
-      '.parent {\n'
+    }).css).toBe('.parent {\n'
       + '  before: one;\n'
       + '}\n'
       + '.parent .child {\n'
@@ -27,8 +26,7 @@ describe('canonical flattened rule placement', () => {
       + '}\n'
       + '.parent {\n'
       + '  after: three;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('keeps direct declarations after a bubbled at-rule in a trailing parent block', () => {
@@ -46,8 +44,7 @@ describe('canonical flattened rule placement', () => {
     expect(serialize(document, {
       evaluator: buildEvaluator(makeLessRegistry()),
       collapseNesting: true
-    }).css).toBe(
-      '@font-face {\n'
+    }).css).toBe('@font-face {\n'
       + '  font-family: something;\n'
       + '}\n'
       + '@keyframes textscale {\n'
@@ -58,7 +55,6 @@ describe('canonical flattened rule placement', () => {
       + '.onTop {\n'
       + '  animation: textscale;\n'
       + '  font-family: something;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 });

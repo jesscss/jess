@@ -51,8 +51,10 @@ async function expectRejects<T>(
   let error: unknown;
   try {
     await Promise.resolve(promiseOrValue);
+
     // Create error that will point to the call site
     const err = new Error('Expected promise to reject, but it resolved');
+
     // Remove this function from the stack trace so it points to the call site
     if (Error.captureStackTrace) {
       Error.captureStackTrace(err, expectRejects);
@@ -315,14 +317,18 @@ describe('Mixin', () => {
     it('keeps static direct mixin output placements source-backed without moving source children', async () => {
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
+
       // The Mixin node IS the body container: it owns the source children directly.
       const mixinDef = mixin({
         name: '.static-direct',
         rules: [sourceDecl]
       });
       const mixinBody = mixinDef;
-      // The caller scope must be the Ruleset itself (it owns the body array); a
-      // separate rules([]) wrapper is discarded and never chains to root.
+
+      /*
+       * The caller scope must be the Ruleset itself (it owns the body array); a
+       * separate rules([]) wrapper is discarded and never chains to root.
+       */
       const callerRules = ruleset({
         selector: el('.use'),
         rules: []
@@ -460,8 +466,10 @@ describe('Mixin', () => {
       };
 
       try {
-        // The caller scope is the `.test` Ruleset directly (it owns its body array);
-        // a separate rules([]) wrapper is discarded and never chains to root.
+        /*
+         * The caller scope is the `.test` Ruleset directly (it owns its body array);
+         * a separate rules([]) wrapper is discarded and never chains to root.
+         */
         const callerRules = ruleset({
           selector: el('.test'),
           rules: []
@@ -490,10 +498,12 @@ describe('Mixin', () => {
     });
 
     it('keeps ruleset-as-mixin placement children owned while reusing reusable leaves', async () => {
-      // New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so the
-      // callable source rules and the source children's parent are the Ruleset
-      // itself, not a separate `sourceBody` wrapper. The caller scope is likewise
-      // the `.test` ruleset directly (the passed wrapper is unwrapped + discarded).
+      /*
+       * New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so the
+       * callable source rules and the source children's parent are the Ruleset
+       * itself, not a separate `sourceBody` wrapper. The caller scope is likewise
+       * the `.test` ruleset directly (the passed wrapper is unwrapped + discarded).
+       */
       const sourceValue = any('red');
       const sourceDecl = decl({ name: 'color', value: sourceValue });
       const sourceRuleset = ruleset({
@@ -538,8 +548,11 @@ describe('Mixin', () => {
           decl({ name: 'color', value: any('red') })
         ]
       });
-      // The Ruleset IS its own body container (no separate `sourceBody` wrapper);
-      // it owns the source children and the caller scope is the `.test` ruleset.
+
+      /*
+       * The Ruleset IS its own body container (no separate `sourceBody` wrapper);
+       * it owns the source children and the caller scope is the `.test` ruleset.
+       */
       const sourceRuleset = ruleset({
         selector: el('.my-mixin'),
         rules: [sourceComment, sourceNested]
@@ -570,11 +583,14 @@ describe('Mixin', () => {
       expect(result.options.mixinOutputSlot?.rulesetPlacement?.childSegments.map((segment: MixinOutputChildSegment) => segment.output)).toEqual(result.rules);
       expect(result.rules.map(child => getRulesetMixinPlacementSourceIndex(result, child))).toEqual([0, 1]);
       expect(result.rules.map(child => result.options.mixinOutputSlot?.rulesetPlacement?.sourceIndexByOutput.get(child))).toEqual([0, 1]);
-      // Copy-on-write output: the comment carries no per-eval state, so it is
-      // shared unchanged; the nested ruleset carries evaluated selector/scope
-      // state, so it is detached into a copy. Neither is reparented onto the
-      // output Rules — eval never reparents, so source children keep their
-      // source parent (matching the sibling Declaration case above).
+
+      /*
+       * Copy-on-write output: the comment carries no per-eval state, so it is
+       * shared unchanged; the nested ruleset carries evaluated selector/scope
+       * state, so it is detached into a copy. Neither is reparented onto the
+       * output Rules — eval never reparents, so source children keep their
+       * source parent (matching the sibling Declaration case above).
+       */
       expect(result.rules[0]).toBe(sourceComment);
       expect(result.rules[1]).not.toBe(sourceNested);
       expect(sourceComment.parent).toBe(sourceRuleset);
@@ -754,16 +770,18 @@ describe('Mixin', () => {
     });
 
     it('resolves local mixin body variable inside a detached ruleset passed to another mixin (closure)', async () => {
-      // Reproduces: Bootstrap's #table-row-variant / #hover pattern
-      //   #hover(@content) { &:hover { @content(); } }
-      //   #table-row-variant(@background) {
-      //     @hover-background: darken(@background, 5%);  <-- local var
-      //     #hover({ background-color: @hover-background; });  <-- closure!
-      //   }
-      //
-      // @hover-background is a body-level VarDeclaration in the mixin scope.
-      // When the detached ruleset { background-color: @hover-background; } is evaluated
-      // inside #hover (as @content()), it must still find @hover-background.
+      /*
+       * Reproduces: Bootstrap's #table-row-variant / #hover pattern
+       * #hover(@content) { &:hover { @content(); } }
+       * #table-row-variant(@background) {
+       * @hover-background: darken(@background, 5%);  <-- local var
+       * #hover({ background-color: @hover-background; });  <-- closure!
+       * }
+       *
+       * @hover-background is a body-level VarDeclaration in the mixin scope.
+       * When the detached ruleset { background-color: @hover-background; } is evaluated
+       * inside #hover (as @content()), it must still find @hover-background.
+       */
 
       // Build #hover(@content) { &:hover { @content(); } }
       const hoverMixin = mixin({
@@ -779,17 +797,20 @@ describe('Mixin', () => {
         ]
       });
 
-      // Build #table-row-variant(@background) {
-      //   @hover-background: darken(@background, 5%);
-      //   .hover({ background-color: @hover-background; });
-      // }
-      // Simplified: use a literal value for @hover-background default
+      /*
+       * Build #table-row-variant(@background) {
+       * @hover-background: darken(@background, 5%);
+       * .hover({ background-color: @hover-background; });
+       * }
+       * Simplified: use a literal value for @hover-background default
+       */
       const tableRowVariantMixin = mixin({
         name: '.table-row-variant',
         params: list([any('background', { role: 'property' })]),
         rules: [
           // @hover-background: @background (local body var, not a param)
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+
           // .hover({ background-color: @hover-background; })
           call({
             name: ref({ key: '.hover' }, { type: 'mixin' }),
@@ -818,17 +839,21 @@ describe('Mixin', () => {
 
       const css = await renderNodeToString(root, context);
 
-      // @hover-background = @background = blue
-      // Jess preserves CSS nesting: &:hover stays nested, not compiled to .table-primary:hover
+      /*
+       * @hover-background = @background = blue
+       * Jess preserves CSS nesting: &:hover stays nested, not compiled to .table-primary:hover
+       */
       expect(css).toContain('.table-primary');
       expect(css).toContain('&:hover');
       expect(css).toContain('background-color: blue');
     });
 
     it('resolves local mixin body variable inside a detached ruleset when call is nested in a child ruleset', async () => {
-      // Reproduces the jess test structure where #hover() is called INSIDE a nested ruleset,
-      // not at the top level of the mixin body. @hover-background is declared at the OUTER
-      // mixin body level, but the call is inside .table-hover { #hover({...}); }.
+      /*
+       * Reproduces the jess test structure where #hover() is called INSIDE a nested ruleset,
+       * not at the top level of the mixin body. @hover-background is declared at the OUTER
+       * mixin body level, but the call is inside .table-hover { #hover({...}); }.
+       */
 
       const hoverMixin = mixin({
         name: '.hover',
@@ -849,6 +874,7 @@ describe('Mixin', () => {
         rules: [
           // @hover-background: @background (local body var, at outer mixin level)
           vardecl({ name: 'hover-background', value: ref({ key: 'background' }, { type: 'variable' }) }),
+
           // .table-hover { .hover({ background-color: @hover-background; }); }
           ruleset({
             selector: el('.table-hover'),
@@ -937,11 +963,13 @@ describe('Mixin', () => {
       };
 
       try {
-        // New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so use
-        // the ruleset itself as the caller scope — it is parented to root and its
-        // children resolve `content` up the chain. (Formerly a separate `callerRules`
-        // wrapper was passed as `rules:` and used as the live caller handle; that
-        // wrapper is now unwrapped + discarded, so it would be orphaned.)
+        /*
+         * New model: the Ruleset IS its own body (no `_passedRulesWrapper`), so use
+         * the ruleset itself as the caller scope — it is parented to root and its
+         * children resolve `content` up the chain. (Formerly a separate `callerRules`
+         * wrapper was passed as `rules:` and used as the live caller handle; that
+         * wrapper is now unwrapped + discarded, so it would be orphaned.)
+         */
         const testRuleset = ruleset({
           selector: el('.test'),
           rules: []
@@ -993,8 +1021,10 @@ describe('Mixin', () => {
       };
 
       try {
-        // New model: use the ruleset directly as the caller scope (see the
-        // deep-clone test above) — the passed `rules:` wrapper is unwrapped + gone.
+        /*
+         * New model: use the ruleset directly as the caller scope (see the
+         * deep-clone test above) — the passed `rules:` wrapper is unwrapped + gone.
+         */
         const testRuleset = ruleset({
           selector: el('.test'),
           rules: []
@@ -1105,12 +1135,14 @@ describe('Mixin', () => {
     });
 
     it('resolves default params when mixin body lives in a separate (imported) rules context', async () => {
-      // Simulates: @import "mixins.less" where mixins.less defines:
-      //   .responsive-mixin(@size: 14px, @weight: normal) { font-size: @size; font-weight: @weight; }
-      // and the main file calls: .component { .responsive-mixin(); }
-      //
-      // The mixin body's parent chain points into the "imported" tree, not the main tree.
-      // outerRules.scopeFrame must still carry the default bindings.
+      /*
+       * Simulates: @import "mixins.less" where mixins.less defines:
+       * .responsive-mixin(@size: 14px, @weight: normal) { font-size: @size; font-weight: @weight; }
+       * and the main file calls: .component { .responsive-mixin(); }
+       *
+       * The mixin body's parent chain points into the "imported" tree, not the main tree.
+       * outerRules.scopeFrame must still carry the default bindings.
+       */
 
       const mixinBody = rules([
         decl({ name: 'font-size', value: ref({ key: 'size' }, { type: 'variable' }) }),
@@ -1151,9 +1183,11 @@ describe('Mixin', () => {
     });
 
     it('resolves default params when mixin is nested inside a namespace (Less import pattern)', async () => {
-      // Simulates a multi-default-param mixin nested inside a namespace ruleset
-      // equivalent to Bootstrap's .button-variant(@background, @border, @hover-background)
-      // where the mixin params should remain accessible throughout the body
+      /*
+       * Simulates a multi-default-param mixin nested inside a namespace ruleset
+       * equivalent to Bootstrap's .button-variant(@background, @border, @hover-background)
+       * where the mixin params should remain accessible throughout the body
+       */
 
       const mixinDef = mixin({
         name: '.button-variant',
@@ -1335,12 +1369,15 @@ describe('Mixin', () => {
           decl({ name: 'sub-scope-only', value: ref({ key: 'subScopeOnly' }, { type: 'variable' }) })
         ]
       });
+
       // mixinNoParam.rules is Node[] but at runtime the mixin itself is the rules container
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const mixinBody = mixinNoParam as unknown as RulesClass;
 
-      // The caller scope is the `#allAreUsedHere` Ruleset directly (it owns its body
-      // and chains to root); a detached rules([]) wrapper never resolves up to root.
+      /*
+       * The caller scope is the `#allAreUsedHere` Ruleset directly (it owns its body
+       * and chains to root); a detached rules([]) wrapper never resolves up to root.
+       */
       const callerRules = ruleset({
         selector: el('#allAreUsedHere'),
         rules: [
@@ -1406,8 +1443,11 @@ describe('Mixin', () => {
       expect(result.rules.map(child => getMixinOutputRuleIndex(result, child, 99))).toEqual([0, 1, 2]);
       expect(result.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
       expect(result.getScopeFrame().fallbackFrame?.rulesNode).toBe(callerRules);
-      // mixinNoParam was added to `root` via the rules([...]) factory, so its
-      // canonical parent is `root` (no constructor/eval reparenting).
+
+      /*
+       * mixinNoParam was added to `root` via the rules([...]) factory, so its
+       * canonical parent is `root` (no constructor/eval reparenting).
+       */
       expect(mixinBody.parent).toBe(root);
       const css = await result.render(context);
       expect(css).toContain('default: top level;');
@@ -1434,10 +1474,13 @@ describe('Mixin', () => {
       expect(secondResult.rules.map(child => getMixinOutputSourceIndex(secondResult, child))).toEqual([0, 1, 2]);
       expect(secondResult.rules.map(child => getMixinOutputRuleIndex(secondResult, child, 99))).toEqual([0, 1, 2]);
       expect(secondResult.options.mixinOutputSlot?.rulesetPlacement).toBeUndefined();
-      // The two outputs are independently-evaluated instances (asserted distinct
-      // above), so their nodes carry different per-eval BindingCell identities and
-      // ordinals. The stable invariant is that both map back to the same source
-      // children in the same order.
+
+      /*
+       * The two outputs are independently-evaluated instances (asserted distinct
+       * above), so their nodes carry different per-eval BindingCell identities and
+       * ordinals. The stable invariant is that both map back to the same source
+       * children in the same order.
+       */
       expect(secondResult.rules.map(child => getMixinOutputSourceChild(secondResult, child)))
         .toEqual(result.rules.map(child => getMixinOutputSourceChild(result, child)));
     });
@@ -2125,8 +2168,11 @@ describe('Mixin', () => {
             outline-color: steelblue;
           }
         `);
-        // Lexical contextual lookups should now resolve from ScopeFrame buckets
-        // without touching broad declaration lookup at all.
+
+        /*
+         * Lexical contextual lookups should now resolve from ScopeFrame buckets
+         * without touching broad declaration lookup at all.
+         */
         expect(declarationHits).toHaveLength(0);
       } finally {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -2433,9 +2479,12 @@ describe('Mixin', () => {
             rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        // The `#namespace` mixin IS the namespace scope identity: it adopts the body
-        // array but owns its own scope frame, so the fallback frame (and the nested
-        // lookup spy) must target the mixin, not the throwaway body-builder rules.
+
+        /*
+         * The `#namespace` mixin IS the namespace scope identity: it adopts the body
+         * array but owns its own scope frame, so the fallback frame (and the nested
+         * lookup spy) must target the mixin, not the throwaway body-builder rules.
+         */
         const namespaceMixin = mixin({
           name: '#namespace',
           rules: []
@@ -2484,8 +2533,11 @@ describe('Mixin', () => {
           rules: [decl({ name: 'color', value: any('green') })]
         });
         const fallbackRules = rules([fallbackMixin]);
-        // The `#namespace` mixin IS the namespace scope identity (see sibling test):
-        // attach the fallback frame + nested lookup spy to the mixin, not the body rules.
+
+        /*
+         * The `#namespace` mixin IS the namespace scope identity (see sibling test):
+         * attach the fallback frame + nested lookup spy to the mixin, not the body rules.
+         */
         const namespaceMixin = mixin({
           name: '#namespace',
           rules: []
@@ -2799,10 +2851,13 @@ describe('Mixin', () => {
             rules: [decl({ name: 'color', value: any('green') })]
           })
         ]);
-        // New model (Mixin.sourceNode wrapper eliminated): the `rules([...])`
-        // passed as `rules:` is discarded — the parent Mixin owns the body
-        // directly, so the body scope frame is the Mixin's own, not the
-        // discarded `childRules` wrapper's.
+
+        /*
+         * New model (Mixin.sourceNode wrapper eliminated): the `rules([...])`
+         * passed as `rules:` is discarded — the parent Mixin owns the body
+         * directly, so the body scope frame is the Mixin's own, not the
+         * discarded `childRules` wrapper's.
+         */
         const parentMixin = mixin({
           name: '#parent-namespace',
           rules: childRules.rules
@@ -3094,8 +3149,11 @@ describe('Mixin', () => {
           rules: [leaf]
         });
         const fallbackRules = rules([fallbackChildNamespace]);
-        // New model: the parent Mixin owns its (empty) body directly; the body scope
-        // frame is the Mixin's own, not the discarded `childRules` wrapper's.
+
+        /*
+         * New model: the parent Mixin owns its (empty) body directly; the body scope
+         * frame is the Mixin's own, not the discarded `childRules` wrapper's.
+         */
         const parentMixin = mixin({
           name: '#parent-with-fallback-namespace',
           rules: []
@@ -3137,8 +3195,11 @@ describe('Mixin', () => {
           })
         ]);
         const childRules = rules([]);
-        // New model: the parent Mixin owns its (empty) body directly; the body
-        // scope frame is the Mixin's own, not the discarded `childRules` wrapper's.
+
+        /*
+         * New model: the parent Mixin owns its (empty) body directly; the body
+         * scope frame is the Mixin's own, not the discarded `childRules` wrapper's.
+         */
         const parentMixin = mixin({
           name: '#parent-with-covered-fallback',
           rules: childRules.rules
@@ -3175,8 +3236,11 @@ describe('Mixin', () => {
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      // New model: the parent Mixin owns its (empty) body directly; attach the fallback
-      // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+
+      /*
+       * New model: the parent Mixin owns its (empty) body directly; attach the fallback
+       * to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+       */
       const parentMixin = mixin({
         name: '#parent-with-fallback-import',
         rules: []
@@ -3243,8 +3307,11 @@ describe('Mixin', () => {
         })
       ], { referenceMode: true });
       const fallbackRules = rules([referenceChild]);
-      // New model: the parent Mixin owns its (empty) body directly; attach the fallback
-      // to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+
+      /*
+       * New model: the parent Mixin owns its (empty) body directly; attach the fallback
+       * to the Mixin's own scope frame, not the discarded `childRules` wrapper's.
+       */
       const parentMixin = mixin({
         name: '#parent-with-fallback-import',
         rules: []
@@ -3338,6 +3405,7 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
+
         // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
@@ -3408,6 +3476,7 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
+
         // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
@@ -3485,6 +3554,7 @@ describe('Mixin', () => {
 
       try {
         root.getScopeFrame();
+
         // New model: fallback attaches to the parent Mixin's own frame (it owns the body).
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (root.rules[0] as RulesClass).getScopeFrame().fallbackFrame = fallbackRules.getScopeFrame();
@@ -4505,8 +4575,11 @@ describe('Mixin', () => {
         params: list([any('color', { role: 'property' })]),
         rules: [decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) })]
       });
-      // New model: the `.caller` Ruleset IS its own body (no `_passedRulesWrapper`),
-      // so query the ruleset directly — its frame climbs to root where the mixin is.
+
+      /*
+       * New model: the `.caller` Ruleset IS its own body (no `_passedRulesWrapper`),
+       * so query the ruleset directly — its frame climbs to root where the mixin is.
+       */
       const callerRuleset = ruleset({
         selector: el('.caller'),
         rules: [
@@ -5389,14 +5462,17 @@ describe('Mixin', () => {
         file: { name: 'test.less', path: '/virtual', fullPath: '/virtual/test.less' }
       });
 
-      // Prove params and @arguments are in liveSlotsByName by testing their output.
-      // If either were missing from the frame, the reference lookup would fail or
-      // fall through to the slower declaration/callable lookup path.
+      /*
+       * Prove params and @arguments are in liveSlotsByName by testing their output.
+       * If either were missing from the frame, the reference lookup would fail or
+       * fall through to the slower declaration/callable lookup path.
+       */
       const mixinDef = mixin({
         name: '.parameterized',
         params: list([any('color', { role: 'property' })]),
         rules: [
           decl({ name: 'color', value: ref({ key: 'color' }, { type: 'variable' }) }),
+
           // @arguments is automatically bound in liveSlotsByName.
           decl({ name: 'args', value: ref({ key: 'arguments' }, { type: 'variable' }) })
         ]
@@ -5770,9 +5846,7 @@ describe('Mixin', () => {
       ]);
       context.root = root;
 
-      await expect(renderNodeToString(root, context)).rejects.toThrow(
-        'String-backed mixin guards must be hydrated before evaluation'
-      );
+      await expect(renderNodeToString(root, context)).rejects.toThrow('String-backed mixin guards must be hydrated before evaluation');
     });
 
     it('does not copy static bool guards before evaluating candidates', async () => {
@@ -6397,16 +6471,18 @@ describe('Mixin', () => {
     });
 
     it('should call a mixin with multiple nested compound selectors', async () => {
-      // .do .re .mi .fa {
-      //   .sol .la {
-      //     .si {
-      //       color: cyan;
-      //     }
-      //   }
-      // }
-      // .mutli-selector-parents {
-      //   .do.re.mi.fa.sol.la.si();
-      // }
+      /*
+       * .do .re .mi .fa {
+       * .sol .la {
+       * .si {
+       * color: cyan;
+       * }
+       * }
+       * }
+       * .mutli-selector-parents {
+       * .do.re.mi.fa.sol.la.si();
+       * }
+       */
       const node = rules([
         ruleset({
           selector: sel([el('.do'), co(' '), el('.re'), co(' '), el('.mi'), co(' '), el('.fa')]),
@@ -6444,20 +6520,22 @@ describe('Mixin', () => {
     });
 
     it('should call a mixin or ruleset with different nesting patterns', async () => {
-      // #theme() {
-      //   .dark() {
-      //     .navbar() {
-      //       @color: cyan;
-      //     }
-      //   }
-      // }
-      // #theme.dark.navbar {
-      //   @color: blue;
-      // }
-      // .rule {
-      //   #theme.dark.navbar();
-      //   background-color: @color;
-      // }
+      /*
+       * #theme() {
+       * .dark() {
+       * .navbar() {
+       * @color: cyan;
+       * }
+       * }
+       * }
+       * #theme.dark.navbar {
+       * @color: blue;
+       * }
+       * .rule {
+       * #theme.dark.navbar();
+       * background-color: @color;
+       * }
+       */
       const node = rules([
         mixin({
           name: '#theme',
@@ -6609,6 +6687,7 @@ describe('Mixin', () => {
           rules: [
             decl({
               name: 'value',
+
               // @ts-expect-error – Reference is not in Quoted's allowed content types but works at runtime
               value: quoted(ref({ key: 'name' }, { type: 'variable' }))
             })
@@ -6806,10 +6885,13 @@ describe('Mixin', () => {
       expect(prepared.name!.valueOf()).toBe('.inner-foo');
       expect(dynamicMixinName.parent).toBe(node);
       expect(params.parent).toBe(node);
-      // New model (Mixin.sourceNode wrapper eliminated): the `rules([...])` wrapper
-      // passed as `rules:` is DISCARDED — the Mixin stores/owns its body CHILDREN
-      // directly (factory `parentChildren` over childKeys 'rules'), so the child is
-      // parented to the Mixin. The wrapper object itself is no longer in the tree.
+
+      /*
+       * New model (Mixin.sourceNode wrapper eliminated): the `rules([...])` wrapper
+       * passed as `rules:` is DISCARDED — the Mixin stores/owns its body CHILDREN
+       * directly (factory `parentChildren` over childKeys 'rules'), so the child is
+       * parented to the Mixin. The wrapper object itself is no longer in the tree.
+       */
       expect(node.rules[0]!.parent).toBe(node);
     });
 
@@ -7361,21 +7443,23 @@ describe('Mixin', () => {
     });
   });
 
-  // it('should serialize to a module', () => {
-  //   let rule = mixin({
-  //     name: ident('myMixin'),
-  //     value: ruleset([
-  //       decl({ name: 'color', value: any('black') }),
-  //       decl({ name: 'background-color', value: any('white') })
-  //     ])
-  //   })
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     'let myMixin = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.any("color"),\n      value: $J.any("black")\n    }))\n    $OUT.push($J.decl({\n      name: $J.any("background-color"),\n      value: $J.any("white")\n    }))\n    return $OUT\n  })()\n)}'
-  //   )
-  //   expect(rule.value.obj()).toEqual({
-  //     color: 'black',
-  //     'background-color': 'white'
-  //   })
-  // })
+  /*
+   * it('should serialize to a module', () => {
+   * let rule = mixin({
+   * name: ident('myMixin'),
+   * value: ruleset([
+   * decl({ name: 'color', value: any('black') }),
+   * decl({ name: 'background-color', value: any('white') })
+   * ])
+   * })
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe(
+   * 'let myMixin = function() { return $J.ruleset(\n  (() => {\n    const $OUT = []\n    $OUT.push($J.decl({\n      name: $J.any("color"),\n      value: $J.any("black")\n    }))\n    $OUT.push($J.decl({\n      name: $J.any("background-color"),\n      value: $J.any("white")\n    }))\n    return $OUT\n  })()\n)}'
+   * )
+   * expect(rule.value.obj()).toEqual({
+   * color: 'black',
+   * 'background-color': 'white'
+   * })
+   * })
+   */
 });

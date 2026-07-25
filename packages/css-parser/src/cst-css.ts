@@ -9,12 +9,21 @@ export function parseCssCst(
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
-  return parseCst(cssGrammar as Record<string, unknown>, input, startRule, options);
+  return parseCst(
+    cssGrammar as Record<string, unknown>,
+    input,
+    startRule,
+    options
+  );
 }
 
 /** Incremental (`.edit()`-able) CSS document — see {@link parseDocCst}. */
 export function parseCssDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
-  return parseDocCst(cssGrammar as Record<string, unknown>, input, startRule);
+  return parseDocCst(
+    cssGrammar as Record<string, unknown>,
+    input,
+    startRule
+  );
 }
 
 export {

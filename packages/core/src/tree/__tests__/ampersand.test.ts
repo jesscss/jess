@@ -90,8 +90,7 @@ describe('Ampersand', () => {
         & {
           inner: one two;
         }
-      }`
-    );
+      }`);
   });
 
   it('keeps composed selector stack render-local when serializing bare ampersands', () => {
@@ -174,9 +173,7 @@ describe('Ampersand', () => {
     }
     const originalClone = sourceSelector.clone;
     let clonedSourceSelectors = 0;
-    sourceSelector.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
+    sourceSelector.clone = function cloneForCounting(...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
       clonedSourceSelectors++;
       return originalClone.apply(this, args);
     };
@@ -451,13 +448,13 @@ describe('Ampersand', () => {
     let node = wrapAmp([amp()]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one.two) is unwrapped to .one.two; same selector as outer so one block
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when in collapsing mode #2', async () => {
@@ -466,14 +463,14 @@ describe('Ampersand', () => {
     context = new Context({ output: { collapseNesting: true } });
 
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one,.two) is unwrapped to .one,.two; same selector as outer so one block
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should order value when collapsing', async () => {
@@ -486,35 +483,34 @@ describe('Ampersand', () => {
       }
       h2.one.two {
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand is set to hoist #1', async () => {
     let node = wrapAmp([amp('')]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one.two) unwraps to .one.two; same selector so one block
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand is set to hoist #2', async () => {
     let node = wrapAmpList([sel([amp('')])]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand has an appended value #1', async () => {
@@ -527,8 +523,7 @@ describe('Ampersand', () => {
       }
       .one.two-1 {
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand has an appended value #2', async () => {
@@ -543,8 +538,7 @@ describe('Ampersand', () => {
       .one-1,
       .two-1 {
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('derives complex selector-list merge templates with hoist and selector metadata', async () => {
@@ -607,6 +601,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // First item is generated :is(.one,.two) and unwraps to .one,.two; second stays :is(.one,.two) .three
     expect(css).toBeString(`
       .one,
@@ -617,8 +612,7 @@ describe('Ampersand', () => {
       .two,
       :is(.one, .two) .three {
         inner: one two;
-      }`
-    );
+      }`);
     node = wrapAmpList([compound([amp(), el('.three')])]);
     const css2 = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css2).toBeString(`
@@ -628,7 +622,6 @@ describe('Ampersand', () => {
       }
       :is(.one, .two).three {
         inner: one two;
-      }`
-    );
+      }`);
   });
 });

@@ -99,11 +99,9 @@ describe('R3 live and scoped variable stores', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.before {\n  scoped: gray;\n}\n'
+    expect(render(document)).toBe('.before {\n  scoped: gray;\n}\n'
       + '.inside {\n  live: green;\n  scoped: green;\n  nested: blue;\n}\n'
-      + '.after {\n  live: green;\n  scoped: green;\n}\n'
-    );
+      + '.after {\n  live: green;\n  scoped: green;\n}\n');
   });
 
   it('does not publish an unselected if arm and keeps selected conditional/reassignment lookup modes', () => {
@@ -158,10 +156,8 @@ describe('R3 live and scoped variable stores', () => {
       rule('.out', [mixinCall('.m'), decl('after', variableReference('tone', 'scoped'))])
     ]);
 
-    expect(render(document)).toBe(
-      '.loop {\n  scoped: blue;\n}\n'
-      + '.out {\n  from-mixin: navy;\n  after: gray;\n}\n'
-    );
+    expect(render(document)).toBe('.loop {\n  scoped: blue;\n}\n'
+      + '.out {\n  from-mixin: navy;\n  after: gray;\n}\n');
   });
 
   it('keeps mutually recursive selected declarations excluded while evaluating either side', () => {

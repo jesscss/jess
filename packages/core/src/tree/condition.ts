@@ -51,6 +51,7 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     this.operator = value[1];
     this.right = value[2];
     this.negate = options?.negate === true;
+
     // Conditions are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
@@ -133,9 +134,11 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
     } else if (node instanceof Bool) {
       value = node.value;
     } else {
-      // A keyword `true`/`false` read back from a declaration/namespace lookup
-      // (`#ns.opts[flag]` where `flag: true`) is a bare Keyword, not a Bool, but
-      // Less treats it as a boolean in guards. Any other value is falsy.
+      /*
+       * A keyword `true`/`false` read back from a declaration/namespace lookup
+       * (`#ns.opts[flag]` where `flag: true`) is a bare Keyword, not a Bool, but
+       * Less treats it as a boolean in guards. Any other value is falsy.
+       */
       value = String(node.valueOf?.() ?? '') === 'true';
     }
     return negated ? !value : value;
@@ -159,8 +162,11 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         if (typeof a === 'boolean' || typeof b === 'boolean') {
           return op === '=' && Condition.getBoolValue(a, false) === Condition.getBoolValue(b, false);
         }
-        // The comparison itself is dialect-aware — each dialect ports the real
-        // algorithm of the engine it names (verified vs Less 4.6.3 + Dart Sass).
+
+        /*
+         * The comparison itself is dialect-aware — each dialect ports the real
+         * algorithm of the engine it names (verified vs Less 4.6.3 + Dart Sass).
+         */
         const cmp = Condition.compareUnder(a, b, equalityMode);
         switch (op) {
           case '=': return cmp === 0;
@@ -192,8 +198,10 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
   private static compareUnder(a: Node, b: Node, mode: EqualityMode): 0 | 1 | -1 | undefined {
     switch (mode) {
       case 'sass': {
-        // Sass: `Quoted` and unquoted `Keyword` are both strings; compare by
-        // content, quote-insensitively. Anything else must share a node kind.
+        /*
+         * Sass: `Quoted` and unquoted `Keyword` are both strings; compare by
+         * content, quote-insensitively. Anything else must share a node kind.
+         */
         const aStr = a.type === 'Quoted' || a.type === 'Keyword';
         const bStr = b.type === 'Quoted' || b.type === 'Keyword';
         if (aStr && bStr) {
@@ -207,9 +215,11 @@ export class Condition extends Node<ConditionValue, ConditionOptions> {
         return a.type === b.type ? a.compare(b) : undefined;
       case 'less':
       default: {
-        // Less `Node.compare`: force the toCSS-based comparison of a `Quoted`
-        // when it's the right operand (`-b.compare(a)`), matching Less's
-        // "symmetric results" rule; otherwise use the left node's typed compare.
+        /*
+         * Less `Node.compare`: force the toCSS-based comparison of a `Quoted`
+         * when it's the right operand (`-b.compare(a)`), matching Less's
+         * "symmetric results" rule; otherwise use the left node's typed compare.
+         */
         if (b.type === 'Quoted') {
           const r = b.compare(a);
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion

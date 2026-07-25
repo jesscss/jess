@@ -60,9 +60,7 @@ describe('If canonical AST emission', () => {
       ])
     ]);
 
-    expect(serialize(document, { evaluator }).css).toBe(
-      '.box {\n  color: blue;\n}\n.box .right {\n  color: green;\n}\n'
-    );
+    expect(serialize(document, { evaluator }).css).toBe('.box {\n  color: blue;\n}\n.box .right {\n  color: green;\n}\n');
   });
 
   it('uses the selected body in both at-rule and nested-output serializer paths', () => {
@@ -89,10 +87,8 @@ describe('If canonical AST emission', () => {
       rule('.after', [mixinCall('.paint')])
     ]);
 
-    expect(serialize(document, { evaluator }).css).toBe(
-      '.before {\n  color: a;\n  color: c;\n}\n'
-      + '.after {\n  color: a;\n  color: b;\n  color: c;\n}\n'
-    );
+    expect(serialize(document, { evaluator }).css).toBe('.before {\n  color: a;\n  color: c;\n}\n'
+      + '.after {\n  color: a;\n  color: b;\n  color: c;\n}\n');
   });
 
   it('orders nested selected-arm publication at its lexical if position', () => {
@@ -107,9 +103,7 @@ describe('If canonical AST emission', () => {
       rule('.after', [mixinCall('.paint')])
     ]);
 
-    expect(serialize(document, { evaluator }).css).toBe(
-      '.after {\n  color: a;\n  color: b;\n  color: nested;\n  color: c;\n}\n'
-    );
+    expect(serialize(document, { evaluator }).css).toBe('.after {\n  color: a;\n  color: b;\n  color: nested;\n  color: c;\n}\n');
   });
 
   it('does not publish a false branch mixin and keeps each selected definition in its activation closure', () => {
@@ -130,11 +124,9 @@ describe('If canonical AST emission', () => {
       rule('.after', [mixinCall('.inner')])
     ]);
 
-    expect(serialize(document, { evaluator }).css).toBe(
-      '.one {\n  color: red;\n  fallback: root;\n  color: base;\n}\n'
+    expect(serialize(document, { evaluator }).css).toBe('.one {\n  color: red;\n  fallback: root;\n  color: base;\n}\n'
       + '.two {\n  color: blue;\n  fallback: root;\n  color: base;\n}\n'
-      + '.after {\n  fallback: root;\n}\n'
-    );
+      + '.after {\n  fallback: root;\n}\n');
   });
 
   it('publishes reached branch mixins through nested and at-rule walkers in both output modes', () => {
@@ -153,13 +145,9 @@ describe('If canonical AST emission', () => {
       ])
     ]);
 
-    expect(serialize(document, { evaluator }).css).toBe(
-      '.outer .inner {\n  color: purple;\n}\n'
-      + '@media screen {\n  .card {\n    color: green;\n  }\n}\n'
-    );
-    expect(serialize(document, { evaluator, collapseNesting: false }).css).toBe(
-      '.outer {\n  .inner {\n    color: purple;\n  }\n}\n'
-      + '@media screen {\n  .card {\n    color: green;\n  }\n}\n'
-    );
+    expect(serialize(document, { evaluator }).css).toBe('.outer .inner {\n  color: purple;\n}\n'
+      + '@media screen {\n  .card {\n    color: green;\n  }\n}\n');
+    expect(serialize(document, { evaluator, collapseNesting: false }).css).toBe('.outer {\n  .inner {\n    color: purple;\n  }\n}\n'
+      + '@media screen {\n  .card {\n    color: green;\n  }\n}\n');
   });
 });

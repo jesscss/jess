@@ -18,8 +18,10 @@ import {
   type MixinCall, type MixinDef, type Param, type ValueSlot
 } from '../nodes.js';
 
-// Caller-frame resolver for byte-literal args: our test args/defaults are plain
-// `Any` leaves, so their bytes are their `src` (mirrors the pipeline's eval-to-bytes).
+/*
+ * Caller-frame resolver for byte-literal args: our test args/defaults are plain
+ * `Any` leaves, so their bytes are their `src` (mirrors the pipeline's eval-to-bytes).
+ */
 const resolve = (v: ValueSlot): string =>
   'type' in v ? (isLiteralNode(v) ? v.src : '') : v.map(resolve).join(' ');
 
@@ -119,10 +121,10 @@ describe('mixin @arguments (vs less@4.6.3)', () => {
 
   it('a variadic rest expands each arg; an empty rest contributes nothing', () => {
     const restDef = mixinDef('.mixin', [{ name: 'a' }, { name: 'rest', rest: true }], []);
+
     // .mixin(1px, 2px, 3px, 4px) => "1px 2px 3px 4px"
-    expect(
-      argumentsText(restDef, mixinCall('.mixin', [any('1px'), any('2px'), any('3px'), any('4px')]))
-    ).toBe('1px 2px 3px 4px');
+    expect(argumentsText(restDef, mixinCall('.mixin', [any('1px'), any('2px'), any('3px'), any('4px')]))).toBe('1px 2px 3px 4px');
+
     // .mixin(1px) => "1px" (no trailing space from the empty rest slot)
     expect(argumentsText(restDef, mixinCall('.mixin', [any('1px')]))).toBe('1px');
   });

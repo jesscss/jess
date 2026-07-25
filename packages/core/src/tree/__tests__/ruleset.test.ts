@@ -204,15 +204,11 @@ describe('Rule', () => {
     const originalFirstToTrimmedString = firstDecl.toTrimmedString;
     const originalSecondToTrimmedString = secondDecl.toTrimmedString;
     let publicStringCalls = 0;
-    firstDecl.toTrimmedString = function countPublicStringCalls(
-      ...args: Parameters<typeof originalFirstToTrimmedString>
-    ): ReturnType<typeof originalFirstToTrimmedString> {
+    firstDecl.toTrimmedString = function countPublicStringCalls(...args: Parameters<typeof originalFirstToTrimmedString>): ReturnType<typeof originalFirstToTrimmedString> {
       publicStringCalls++;
       return originalFirstToTrimmedString.apply(this, args);
     };
-    secondDecl.toTrimmedString = function countPublicStringCalls(
-      ...args: Parameters<typeof originalSecondToTrimmedString>
-    ): ReturnType<typeof originalSecondToTrimmedString> {
+    secondDecl.toTrimmedString = function countPublicStringCalls(...args: Parameters<typeof originalSecondToTrimmedString>): ReturnType<typeof originalSecondToTrimmedString> {
       publicStringCalls++;
       return originalSecondToTrimmedString.apply(this, args);
     };
@@ -318,9 +314,7 @@ describe('Rule', () => {
     });
     const originalWriteSyntax = node.writeSyntax;
     let writeSyntaxCalls = 0;
-    node.writeSyntax = function countWriteSyntax(
-      ...args: Parameters<typeof originalWriteSyntax>
-    ): ReturnType<typeof originalWriteSyntax> {
+    node.writeSyntax = function countWriteSyntax(...args: Parameters<typeof originalWriteSyntax>): ReturnType<typeof originalWriteSyntax> {
       writeSyntaxCalls++;
       return originalWriteSyntax.apply(this, args);
     };
@@ -710,9 +704,11 @@ describe('Rule', () => {
   });
 
   it('wraps a multi-item list parent in :is() when composing a string child', () => {
-    // Regression: `.a { #x, #y { .z { … } } }` — the grouped `#x, #y` frame is a
-    // SelectorList parent; composing the string-backed child `.z` textually would
-    // distribute it across the group (`#x, #y .z`). It must wrap in `:is()`.
+    /*
+     * Regression: `.a { #x, #y { .z { … } } }` — the grouped `#x, #y` frame is a
+     * SelectorList parent; composing the string-backed child `.z` textually would
+     * distribute it across the group (`#x, #y .z`). It must wrap in `:is()`.
+     */
     const parent = sellist([sel([el('#x')]), sel([el('#y')])]);
     const composed = Ruleset.composeSelector('.z', parent);
     expect(composed.toString().trim()).toBe(':is(#x, #y) .z');
@@ -727,9 +723,11 @@ describe('Rule', () => {
   });
 
   it('renders an already-evaluated ruleset idempotently (re-eval is allowed)', async () => {
-    // §2.7: render may re-enter eval (a canonical node is always a re-evaluable
-    // template — `evaluated` no longer short-circuits render). The contract is
-    // that re-evaluating is IDEMPOTENT: the rendered output is unchanged.
+    /*
+     * §2.7: render may re-enter eval (a canonical node is always a re-evaluable
+     * template — `evaluated` no longer short-circuits render). The contract is
+     * that re-evaluating is IDEMPOTENT: the rendered output is unchanged.
+     */
     const node = ruleset({
       selector: sellist([sel([el('foo')])]),
       rules: [
@@ -772,10 +770,12 @@ describe('Rule', () => {
   });
 
   it('streams unguarded static nil-selector ruleset bodies directly from source', async () => {
-    // New model (no `_passedRulesWrapper`): the nil-selector body streams the
-    // Ruleset's OWN children, SHARED (not copied). `node.rules === body.rules`
-    // proves the Ruleset adopted the passed body's exact children array (no wrapper
-    // indirection, no per-render copy). The old wrapper-render-count spy is gone.
+    /*
+     * New model (no `_passedRulesWrapper`): the nil-selector body streams the
+     * Ruleset's OWN children, SHARED (not copied). `node.rules === body.rules`
+     * proves the Ruleset adopted the passed body's exact children array (no wrapper
+     * indirection, no per-render copy). The old wrapper-render-count spy is gone.
+     */
     const body = rules([
       decl({ name: 'color', value: any('red') })
     ]);
@@ -948,8 +948,11 @@ describe('Rule', () => {
       await expect(Promise.resolve(node.render(context))).resolves.toBe('color: red;\n');
       expect(prepareCalls).toBe(0);
       expect(guard.parent).toBe(node);
-      // Eval path may place source children into an output surface; the stable
-      // ownership invariant is that the node adopted the passed body's array.
+
+      /*
+       * Eval path may place source children into an output surface; the stable
+       * ownership invariant is that the node adopted the passed body's array.
+       */
       expect(node.rules).toBe(body.rules);
       expect(node.registrationPrepared).toBe(false);
     } finally {
@@ -1142,9 +1145,7 @@ describe('Rule', () => {
     const selectorLeaf = el('.foo');
     const originalClone = selectorLeaf.clone;
     let selectorLeafClones = 0;
-    selectorLeaf.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
+    selectorLeaf.clone = function cloneForCounting(...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
       selectorLeafClones++;
       return originalClone.apply(this, args);
     };
@@ -1179,8 +1180,11 @@ describe('Rule', () => {
     });
     context.rulesetFrames = [savedRulesetFrame];
     context.frames = [savedFrame];
-    // In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
-    // Patch the Rules prototype to simulate a synchronous throw during body evaluation.
+
+    /*
+     * In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
+     * Patch the Rules prototype to simulate a synchronous throw during body evaluation.
+     */
     const originalRulesEvalNode = RulesClass.prototype.evalNode;
     RulesClass.prototype.evalNode = function rulesEvalNodeThrow() {
       throw new Error('body eval failed');
@@ -1209,8 +1213,11 @@ describe('Rule', () => {
     });
     context.rulesetFrames = [savedRulesetFrame];
     context.frames = [savedFrame];
-    // In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
-    // Patch the Rules prototype to simulate an async rejection during body evaluation.
+
+    /*
+     * In the new design, Ruleset.evalNode delegates to Rules.prototype.evalNode.call(this, context).
+     * Patch the Rules prototype to simulate an async rejection during body evaluation.
+     */
     const originalRulesEvalNode = RulesClass.prototype.evalNode;
     RulesClass.prototype.evalNode = function rulesEvalNodeReject() {
       return Promise.reject(new Error('body eval failed'));
@@ -1291,9 +1298,7 @@ describe('Rule', () => {
     const addedLeaf = el('.added');
     const originalClone = addedLeaf.clone;
     let addedLeafClones = 0;
-    addedLeaf.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
+    addedLeaf.clone = function cloneForCounting(...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
       addedLeafClones++;
       return originalClone.apply(this, args);
     };
@@ -1679,8 +1684,7 @@ describe('Rule', () => {
         }
         .same {
           case: 2;
-        }`
-      );
+        }`);
       expect(withoutCommentsHeaderCalls).toBe(0);
       expect(comparableHeaderCalls).toBeGreaterThan(0);
     } finally {
@@ -1797,17 +1801,20 @@ describe('Rule', () => {
 
     expect(header).toContain('.parent .child');
   });
-  // it('should serialize to a module', () => {
-  //   let node = rule({
-  //     selector: list([sel([el('foo')])]),
-  //     value: [
-  //       set(keyval({ name: 'brandColor', value: js('area(5)') })),
-  //       decl({ name: 'color', value: js('brandColor') })
-  //     ]
-  //   })
-  //   node.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     '$J.rule({\n  selector: $J.list([\n    $J.sel([$J.el($J.any("foo"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = area(5)\n      $OUT.push($J.decl({\n        name: $J.any("color"),\n        value: brandColor\n      }))\n      return $OUT\n    })()\n  )},[])'
-  //   )
-  // })
+
+  /*
+   * it('should serialize to a module', () => {
+   * let node = rule({
+   * selector: list([sel([el('foo')])]),
+   * value: [
+   * set(keyval({ name: 'brandColor', value: js('area(5)') })),
+   * decl({ name: 'color', value: js('brandColor') })
+   * ]
+   * })
+   * node.toModule(context, out)
+   * expect(out.toString()).toBe(
+   * '$J.rule({\n  selector: $J.list([\n    $J.sel([$J.el($J.any("foo"))])\n  ]),\n  value: $J.ruleset(\n    (() => {\n      const $OUT = []\n      let brandColor = area(5)\n      $OUT.push($J.decl({\n        name: $J.any("color"),\n        value: brandColor\n      }))\n      return $OUT\n    })()\n  )},[])'
+   * )
+   * })
+   */
 });

@@ -84,14 +84,19 @@ describe('extend operation-counter budgets', () => {
     ]);
 
     expect(serialize(document, { collapseNesting: true }).css).toContain('.plain');
-    // The allocation-free presence pre-scan ran and every call was a no-feature
-    // MISS (no `:extend()` anywhere in the document)...
+
+    /*
+     * The allocation-free presence pre-scan ran and every call was a no-feature
+     * MISS (no `:extend()` anywhere in the document)...
+     */
     const calls = counters['astExtend.documentHasExtend.calls'] ?? 0;
     expect(calls).toBeGreaterThanOrEqual(1);
     expect(counters['astExtend.documentHasExtend.noFeatureMisses'] ?? 0).toBe(calls);
     expect(counters['astExtend.documentHasExtend.featureBearingCalls'] ?? 0).toBe(0);
+
     // ...so the planner never built a subject/instruction plan...
     expect(counters['astExtend.plan.calls'] ?? 0).toBe(0);
+
     // ...and the matcher performed zero branch comparisons.
     expect(counters['astExtend.match.branchComparisons'] ?? 0).toBe(0);
   });
@@ -114,6 +119,7 @@ describe('extend operation-counter budgets', () => {
       for (const row of rows) {
         if (prev) {
           const ratio = row.c / prev.c;
+
           // exponent p where ratio = 2^p (each step doubles n)
           const exponent = Math.log2(ratio);
           lines.push(`  ${prev.n}->${row.n}: x${ratio.toFixed(2)} (exponent ${exponent.toFixed(2)})`);
@@ -127,15 +133,17 @@ describe('extend operation-counter budgets', () => {
   }
 
   it('does not regress the matcher comparison complexity (#4 gate)', () => {
-    // The fixpoint folds every instruction sharing a `(partial, hidden, target)`
-    // match condition into ONE apply, so a shared-target subject does its per-branch
-    // target comparison ONCE per group per pass instead of once per instruction per
-    // round. That turns the old Θ(n²) re-scan (doubling n → ~4× comparisons) into
-    // linear-or-better: on this shared-target fixture the `.base` subject folds all n
-    // extenders in a single scan of its one-branch seed, so the comparison count is
-    // effectively CONSTANT in n (measured x1.0 at every doubling). The ceiling is
-    // pinned just above that: a regression back to per-instruction re-scanning would
-    // reintroduce ~4× growth and trip this gate.
+    /*
+     * The fixpoint folds every instruction sharing a `(partial, hidden, target)`
+     * match condition into ONE apply, so a shared-target subject does its per-branch
+     * target comparison ONCE per group per pass instead of once per instruction per
+     * round. That turns the old Θ(n²) re-scan (doubling n → ~4× comparisons) into
+     * linear-or-better: on this shared-target fixture the `.base` subject folds all n
+     * extenders in a single scan of its one-branch seed, so the comparison count is
+     * effectively CONSTANT in n (measured x1.0 at every doubling). The ceiling is
+     * pinned just above that: a regression back to per-instruction re-scanning would
+     * reintroduce ~4× growth and trip this gate.
+     */
     const GROWTH_CEILING = 2.5; // measured ~1.0 (constant, post-fold); << the 4× quadratic signal.
 
     const base = comparisonsFor(80);

@@ -25,9 +25,11 @@ function legacyLuminanceOracle(color: Color): { number: number; bytes: string } 
 }
 
 function toCanonicalColor(color: Color) {
-  // The old reader consumes the public rounded/clamped `rgb` and `alpha`
-  // views. Preserve those exact source facts in the canonical value without
-  // invoking the removed legacy function wrapper.
+  /*
+   * The old reader consumes the public rounded/clamped `rgb` and `alpha`
+   * views. Preserve those exact source facts in the canonical value without
+   * invoking the removed legacy function wrapper.
+   */
   return makeColorRgb(color._rgb, color.alpha, RGB);
 }
 
@@ -136,9 +138,11 @@ describe('luma/luminance/hsv channels', () => {
     ];
 
     for (const legacyColor of vectors) {
-      // `toHSV` is the exact pre-cutover Less reader oracle. The canonical
-      // value must receive the raw source RGB so HSL-backed colors retain the
-      // same unrounded channel facts the old reader used.
+      /*
+       * `toHSV` is the exact pre-cutover Less reader oracle. The canonical
+       * value must receive the raw source RGB so HSL-backed colors retain the
+       * same unrounded channel facts the old reader used.
+       */
       const expected = toHSV(legacyColor);
       const typedColor = makeColorRgb(legacyColor._rgb, legacyColor.alpha, RGB);
       const expectedHue = new Dimension({ number: expected.h }).toString();

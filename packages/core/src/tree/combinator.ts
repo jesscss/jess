@@ -24,6 +24,7 @@ export class Combinator extends Selector<Combinators> {
     location?: ConstructorParameters<typeof Selector<Combinators>>[2]
   ) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
     this.addFlag(F_STATIC);
@@ -59,14 +60,18 @@ export class Combinator extends Selector<Combinators> {
   }
 
   /** @todo move to visitor */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   const val = this.value
-  //   out.add(val === ' ' ? val : ` ${val} `, sourceSpanOf(this))
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * const val = this.value
+   * out.add(val === ' ' ? val : ` ${val} `, sourceSpanOf(this))
+   * }
+   */
 
   /** @todo move to visitor */
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add(`$J.co("${this.value}")`)
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * out.add(`$J.co("${this.value}")`)
+   * }
+   */
 }
 export const co = defineType(Combinator, 'Combinator', 'co');

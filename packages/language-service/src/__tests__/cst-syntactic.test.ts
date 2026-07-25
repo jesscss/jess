@@ -56,12 +56,15 @@ describe('cst-syntactic pure functions', () => {
     });
 
     it('BUG 3: a leading Less @var is NOT mis-tokenized as a namespace keyword', () => {
-      // The `Stylesheet`/`VarDeclaration` slices START with `@primary`, but they
-      // are not at-rules — no `namespace` keyword token should be emitted for a
-      // file that contains no at-rule.
+      /*
+       * The `Stylesheet`/`VarDeclaration` slices START with `@primary`, but they
+       * are not at-rules — no `namespace` keyword token should be emitted for a
+       * file that contains no at-rule.
+       */
       const doc = lessDoc('@primary: red;\n.a { color: @primary; }');
       const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
       expect(tokens.filter(t => t.type === 'namespace')).toHaveLength(0);
+
       // The declaration name IS a variable, and the reference IS a variable.
       expect(tokens.filter(t => t.type === 'variable').length).toBeGreaterThanOrEqual(1);
     });
@@ -69,6 +72,7 @@ describe('cst-syntactic pure functions', () => {
     it('BUG 3: a genuine @import keyword is still a namespace token (allow-list)', () => {
       const doc = lessDoc('@primary: red;\n@import "a.less";');
       const tokens = decode(cstSemanticTokens(parseLessDoc(doc.getText()).tree, doc, 'less'), TYPES);
+
       // Exactly one namespace token — the `@import`, not the `@primary`.
       const ns = tokens.filter(t => t.type === 'namespace');
       expect(ns).toHaveLength(1);
@@ -79,8 +83,10 @@ describe('cst-syntactic pure functions', () => {
     it('BUG 1: SCSS @mixin/@include get a namespace keyword + a function name token', () => {
       const doc = scssDoc('@mixin foo($a) { color: $a; }\n.x { @include foo(red); }');
       const tokens = decode(cstSemanticTokens(parseScssDoc(doc.getText()).tree, doc, 'scss'), TYPES);
+
       // `@mixin` and `@include` keywords → namespace.
       expect(tokens.filter(t => t.type === 'namespace').length).toBeGreaterThanOrEqual(2);
+
       // Each `foo` name → function (the def name on line 0, the call name on line 1).
       const fnTokens = tokens.filter(t => t.type === 'function');
       expect(fnTokens.some(t => t.line === 0)).toBe(true);
@@ -124,6 +130,7 @@ describe('engine syntactic features are CST-grounded (tolerance)', () => {
   it('getSemanticTokens returns tokens for a half-typed document', () => {
     const engine = createEngine();
     const uri = 'file:///half.less';
+
     // Missing closing brace: an invalid document mid-edit.
     engine.open(uri, 'less', 1, '@primary: red;\n.a { color: @primary');
     const { data } = engine.getSemanticTokens(uri);
@@ -143,6 +150,7 @@ describe('engine syntactic features are CST-grounded (tolerance)', () => {
     const engine = createEngine();
     const uri = 'file:///edit.less';
     engine.open(uri, 'less', 1, '@primary: red;\n.a { color: @primary; }');
+
     // Delete the trailing ` }` so the block is now unclosed.
     engine.change(uri, 2, '@primary: red;\n.a { color: @primary;');
     const { data } = engine.getSemanticTokens(uri);

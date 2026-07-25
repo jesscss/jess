@@ -57,6 +57,7 @@ export interface GuardEvalDeps {
   resolveTyped: TypedResolver;
   ev: ValueEvaluator | null;
   modes: EvalModes;
+
   /** True iff no non-default definition matched (the `default()` value). */
   isDefault: () => boolean;
 }
@@ -71,8 +72,10 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
   switch (node.g) {
     case 'and':
     case 'or': {
-      // Both operands are evaluated (a guard is side-effect-free, and this
-      // preserves the existing evaluation order exactly); only the COMBINE waits.
+      /*
+       * Both operands are evaluated (a guard is side-effect-free, and this
+       * preserves the existing evaluation order exactly); only the COMBINE waits.
+       */
       const l = evalGuard(node.left, deps);
       const r = evalGuard(node.right, deps);
       const join = node.g === 'and'
@@ -109,9 +112,12 @@ export function evalGuard(node: GuardNode, deps: GuardEvalDeps): MaybePromise<bo
       if (!ev) {
         return false;
       }
-      // Resolve into `settled` while every operand stays synchronous; the first
-      // awaitable one moves the whole list into `pending`, so the common case
-      // allocates exactly the one array the old `.map` did.
+
+      /*
+       * Resolve into `settled` while every operand stays synchronous; the first
+       * awaitable one moves the whole list into `pending`, so the common case
+       * allocates exactly the one array the old `.map` did.
+       */
       const settled: ValueGroup[] = [];
       let pending: Array<MaybePromise<ValueGroup>> | null = null;
       for (const arg of node.args) {

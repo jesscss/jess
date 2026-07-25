@@ -3,10 +3,12 @@ import { amp, compound, el, sel, pseudo, co, sellist, is, type Selector } from '
 import { Context } from '../../../context.js';
 import { selectorAnalysisFor, keySetOf, visibleKeySetOf, requiredKeySetOf } from '../selector-analysis.js';
 
-// The keySetOf/visibleKeySetOf/requiredKeySetOf free helpers must resolve the same
-// service instance (via the selector's keySetLibrary) as an explicit
-// selectorAnalysisFor(context.selectorBits) lookup — for every selector shape,
-// including string-normalized leaves.
+/*
+ * The keySetOf/visibleKeySetOf/requiredKeySetOf free helpers must resolve the same
+ * service instance (via the selector's keySetLibrary) as an explicit
+ * selectorAnalysisFor(context.selectorBits) lookup — for every selector shape,
+ * including string-normalized leaves.
+ */
 describe('SelectorAnalysis free helpers resolve the context service', () => {
   const cases: Array<{ name: string; make: () => Selector }> = [
     { name: 'simple leaf', make: () => el('.foo') },
@@ -40,9 +42,11 @@ describe('SelectorAnalysis free helpers resolve the context service', () => {
   }
 });
 
-// A resolved ampersand parent can hand `compute` a bare string leaf or a raw
-// component array (an unwrapped selector list). Neither is a node, so the leaf
-// fallthrough (`selector.hasFlag`) and the WeakMap cache key both crashed.
+/*
+ * A resolved ampersand parent can hand `compute` a bare string leaf or a raw
+ * component array (an unwrapped selector list). Neither is a node, so the leaf
+ * fallthrough (`selector.hasFlag`) and the WeakMap cache key both crashed.
+ */
 describe('SelectorAnalysis.compute tolerates non-node inputs', () => {
   it('interns a bare string leaf as its own key (no hasFlag crash)', () => {
     const context = new Context();

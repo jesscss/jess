@@ -29,6 +29,7 @@ describe('extend: :is() spurious append-alternative match', () => {
     ]);
     const before = target.valueOf();
     const r = tryExtendSelector(target, sel([el('.ext8'), co(' '), el('.ext9')]), el('.buu'), true);
+
     // `.ext8 .ext9` never appears — the target must be returned unchanged (NOT_FOUND).
     expect(r.value.valueOf()).toBe(before);
     expect(r.error?.type).toBe('NOT_FOUND');

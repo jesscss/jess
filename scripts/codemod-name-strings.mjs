@@ -1,9 +1,11 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// Convert `name: any('X'[, {..}])` and `name: new Any('X'[, ...])` to a bare
-// string/template literal `name: 'X'`. Scoped to explicitly listed files so we
-// never touch `value:` positions or node types whose name is intentionally a Node.
+/*
+ * Convert `name: any('X'[, {..}])` and `name: new Any('X'[, ...])` to a bare
+ * string/template literal `name: 'X'`. Scoped to explicitly listed files so we
+ * never touch `value:` positions or node types whose name is intentionally a Node.
+ */
 const files = [
   'packages/core/src/tree/__tests__/at-rule.test.ts',
   'packages/core/src/tree/__tests__/extend-roots.test.ts',
@@ -28,6 +30,7 @@ const STR = String.raw`(['"\`][^'"\`]*['"\`])`;
 
 // name: any('X')  or  name: any('X', { ... })   (single-level options object)
 const anyCall = new RegExp(String.raw`name:\s*any\(\s*${STR}\s*(?:,\s*\{[^{}]*\})?\s*\)`, 'g');
+
 // name: new Any('X', ...anything without a nested close-paren...)
 const newAny = new RegExp(String.raw`name:\s*new Any\(\s*${STR}\s*(?:,[^)]*)?\)`, 'g');
 

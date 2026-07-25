@@ -11,7 +11,9 @@ export function getNumber(n: Node | number, ignoreUnit = false) {
     const { number, unit } = n;
     if (unit === '%') {
       return number / 100;
-    } else if (!unit || ignoreUnit) {
+    }
+
+    if (!unit || ignoreUnit) {
       return number;
     }
     throw new Error('color functions take numbers as parameters');

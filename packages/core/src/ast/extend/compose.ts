@@ -85,9 +85,11 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
   const outBnd: number[] = [];
   for (const seg of child.segs) {
     if (isBareAmp(seg)) {
-      // Splice the parent's segments in. The first spliced segment takes THIS `&`
-      // segment's combinator (its position in the child complex); the rest keep the
-      // parent's own internal combinators. Each carries the parent's origin + 1.
+      /*
+       * Splice the parent's segments in. The first spliced segment takes THIS `&`
+       * segment's combinator (its position in the child complex); the rest keep the
+       * parent's own internal combinators. Each carries the parent's origin + 1.
+       */
       for (let k = 0; k < parent.segs.length; k++) {
         const ps = parent.segs[k]!;
         outSegs.push({ comb: k === 0 ? seg.comb : ps.comb, compound: { simples: ps.compound.simples.map(cloneSimple) } });
@@ -118,8 +120,11 @@ function substituteAmp(child: Branch, parent: Branch): Branch {
         simples.push(cloneSimple(s));
       }
     }
-    // A fused/own segment is the ruleset's own element target (the parent is sealed
-    // inside an `:is()` when wrapped), so it is own-local (`bnd = 0`).
+
+    /*
+     * A fused/own segment is the ruleset's own element target (the parent is sealed
+     * inside an `:is()` when wrapped), so it is own-local (`bnd = 0`).
+     */
     outSegs.push({ comb: seg.comb, compound: { simples } });
     outBnd.push(0);
   }
@@ -131,9 +136,12 @@ function parentToken(parents: Branch[]): Branch {
   if (parents.length === 1) {
     return cloneBranch(parents[0]!);
   }
-  // A multi-branch parent collapses to one sealed `:is(...)` segment; its inner
-  // branches keep their own boundary provenance, but as a single top-level segment
-  // it is one origin unit (own-local `0` here — the composeOne `+1` lifts it).
+
+  /*
+   * A multi-branch parent collapses to one sealed `:is(...)` segment; its inner
+   * branches keep their own boundary provenance, but as a single top-level segment
+   * it is one origin unit (own-local `0` here — the composeOne `+1` lifts it).
+   */
   return descendantBranch([isSimple(parents)]);
 }
 
@@ -142,8 +150,11 @@ function composeOne(parent: Branch, child: Branch): Branch {
   if (branchHasAmp(child)) {
     return substituteAmp(child, parent);
   }
-  // Descendant: parent then space then child. The parent's segments shift one hop
-  // deeper (origin + 1); the child's own segments keep their origin (own-local `0`).
+
+  /*
+   * Descendant: parent then space then child. The parent's segments shift one hop
+   * deeper (origin + 1); the child's own segments keep their origin (own-local `0`).
+   */
   const outBnd: number[] = [];
   for (let k = 0; k < parent.segs.length; k++) {
     outBnd.push(bndAt(parent, k) + 1);
@@ -233,10 +244,12 @@ function rootLevel(level: Level): Branch[] {
  * per-segment `bnd` origin.
  */
 export function composePath(levels: Level[]): Branch[] {
-  // [nesting] Peel the leading levels that root-normalize to nothing (a parentless
-  // `&` guard block wrapping the real rules). The first level that survives IS the
-  // root context; the levels above it were never a `&`-boundary hop, so the peeled
-  // branches carry no `bnd` origin for them either.
+  /*
+   * [nesting] Peel the leading levels that root-normalize to nothing (a parentless
+   * `&` guard block wrapping the real rules). The first level that survives IS the
+   * root context; the levels above it were never a `&`-boundary hop, so the peeled
+   * branches carry no `bnd` origin for them either.
+   */
   let result: Branch[] = [];
   let i = 0;
   for (; i < levels.length; i++) {
@@ -247,12 +260,17 @@ export function composePath(levels: Level[]): Branch[] {
     }
   }
   if (result.length === 0) {
-    // Every level was a bare root `&` (the guard block itself is the subject).
-    // Keep the authored innermost level rather than resolving to nothing.
+    /*
+     * Every level was a bare root `&` (the guard block itself is the subject).
+     * Keep the authored innermost level rather than resolving to nothing.
+     */
     return levels[levels.length - 1]!.map(cloneBranch);
   }
-  // The root level's own segments are own-local at this stage (`bnd = 0`); each
-  // `composeLevel` step lifts the accumulated parent one hop deeper.
+
+  /*
+   * The root level's own segments are own-local at this stage (`bnd = 0`); each
+   * `composeLevel` step lifts the accumulated parent one hop deeper.
+   */
   for (; i < levels.length; i++) {
     result = composeLevel(levels[i]!, result);
   }

@@ -40,8 +40,11 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-// The workspace pins the compiler API package separately from the experimental
-// `typescript` package, whose package export intentionally has no CommonJS main.
+
+/*
+ * The workspace pins the compiler API package separately from the experimental
+ * `typescript` package, whose package export intentionally has no CommonJS main.
+ */
 const ts = require('@typescript/typescript6/lib/typescript.js');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -134,8 +137,11 @@ function truthinessOperands(node) {
         : [];
     case ts.SyntaxKind.BinaryExpression: {
       const op = node.operatorToken.kind;
-      // `&&` / `||` test the LEFT operand's truthiness; the right operand is the
-      // expression's value, not a test. `??` tests nullishness, not truthiness.
+
+      /*
+       * `&&` / `||` test the LEFT operand's truthiness; the right operand is the
+       * expression's value, not a test. `??` tests nullishness, not truthiness.
+       */
       return op === ts.SyntaxKind.AmpersandAmpersandToken || op === ts.SyntaxKind.BarBarToken
         ? [[node.left, op === ts.SyntaxKind.AmpersandAmpersandToken ? '&& left operand' : '|| left operand']]
         : [];
@@ -209,9 +215,7 @@ for (const finding of all) {
   console.error(`    ${finding.text}`);
   console.error('');
 }
-console.error(
-  'A promise is ALWAYS truthy, so each of these silently takes one branch when the\n'
+console.error('A promise is ALWAYS truthy, so each of these silently takes one branch when the\n'
   + 'value is awaitable — wrong output, not a crash. Fork on `isThenable` instead\n'
-  + '(usually `mapMaybe(value, settled => …)`), or resolve the value before testing it.\n'
-);
+  + '(usually `mapMaybe(value, settled => …)`), or resolve the value before testing it.\n');
 process.exit(1);

@@ -77,9 +77,12 @@ export default defineConfig({
       'dist/**',
       'lib/**',
       '**/*bench*',
-      // Perf/scaling stress tests assert TIMING; the sink doubles extend work (own + oracle) so they
-      // blow their budget. They add only synthetic `.a-N` volume, no new SHAPES — excluded from the
-      // sweep. (They are unaffected in the normal, sink-free suite runs.)
+
+      /*
+       * Perf/scaling stress tests assert TIMING; the sink doubles extend work (own + oracle) so they
+       * blow their budget. They add only synthetic `.a-N` volume, no new SHAPES — excluded from the
+       * sweep. (They are unaffected in the normal, sink-free suite runs.)
+       */
       'packages/core/src/tree/util/__tests__/extend-oom-stress.test.ts',
       'packages/core/src/tree/__tests__/render-scaling.test.ts',
       'packages/core/src/tree/extend/__tests__/**'

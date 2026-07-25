@@ -82,12 +82,14 @@ export async function executeCallableCandidateLoop({
       getRootSourceRules
     });
     if (specialCaseResult.handled) {
-      // Record the source surface for EVERY handled special-case candidate (not only
-      // one with output) — a spine-sink-captured ruleset-as-mixin (FOLD A) returns no
-      // output but its source must still seed `outputState` so `finalizeCallableOutput`
-      // returns an empty output (the fold assembles the real contribution) instead of
-      // throwing "output source surface was not established". Mirrors the ordinary
-      // (mixin) arm, which records the source unconditionally before execution.
+      /*
+       * Record the source surface for EVERY handled special-case candidate (not only
+       * one with output) — a spine-sink-captured ruleset-as-mixin (FOLD A) returns no
+       * output but its source must still seed `outputState` so `finalizeCallableOutput`
+       * returns an empty output (the fold assembles the real contribution) instead of
+       * throwing "output source surface was not established". Mirrors the ordinary
+       * (mixin) arm, which records the source unconditionally before execution.
+       */
       const sourceRules = getRootSourceRules(getMixinEntryRules(candidate));
       recordCallableOutputSourceRules(outputState, sourceRules);
       if (specialCaseResult.output) {

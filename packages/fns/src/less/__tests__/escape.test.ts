@@ -23,8 +23,6 @@ describe('escape()', () => {
   });
 
   it('does not accept a non-list direct call for this variadic function', () => {
-    expect(() => Reflect.apply(escape, undefined, [makeKeyword('value')])).toThrow(
-      'direct calls to variadic functions require a List and FnCtx'
-    );
+    expect(() => Reflect.apply(escape, undefined, [makeKeyword('value')])).toThrow('direct calls to variadic functions require a List and FnCtx');
   });
 });

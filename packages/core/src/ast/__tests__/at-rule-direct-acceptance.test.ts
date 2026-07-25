@@ -20,13 +20,11 @@ describe('At-rule canonical AST emission', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '@media 48rem {\n'
+    expect(render(document)).toBe('@media 48rem {\n'
       + '  .card {\n'
       + '    display: grid;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('projects the enclosing selector through a nested conditional at-rule', () => {
@@ -38,13 +36,11 @@ describe('At-rule canonical AST emission', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '@media screen {\n'
+    expect(render(document)).toBe('@media screen {\n'
       + '  .card.wide {\n'
       + '    columns: 2;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('resolves only structured interpolation in a statement prelude', () => {
@@ -68,13 +64,11 @@ describe('At-rule canonical AST emission', () => {
       ]), [rule('.card', [decl('display', keyword('grid'))])])
     ]);
 
-    expect(render(document)).toBe(
-      '@supports selector(  .card /* keep  */ ) and ( font-tech(  color-COLRv1  ) ) {\n'
+    expect(render(document)).toBe('@supports selector(  .card /* keep  */ ) and ( font-tech(  color-COLRv1  ) ) {\n'
       + '  .card {\n'
       + '    display: grid;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('preserves authored private-use bytes inside general-enclosed content', () => {

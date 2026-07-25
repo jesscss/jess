@@ -59,6 +59,7 @@ describe('filesystem path completion (url() + @import/@use)', () => {
 
   it('does not offer paths for absolute URLs / protocols', () => {
     const labels = completeInFile('main.css', 'css', '.a { background: url(https://|); }');
+
     // http URL → not a disk path; falls through, so no local files offered.
     expect(labels).not.toContain('colors.css');
   });

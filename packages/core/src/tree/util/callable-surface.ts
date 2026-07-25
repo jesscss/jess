@@ -12,10 +12,13 @@ export function isIndexedRuleChild(node: Node): boolean {
 export function getRootSourceRules(rules: Rules): Rules {
   let current = rules;
   const seen = new Set<Rules>();
-  // A canonical body can be any Rules SUBCLASS (Mixin/Ruleset), not only a plain
-  // Rules — since the Mixin.sourceNode wrapper was eliminated, a mixin surface's
-  // sourceNode IS the Mixin. `instanceof Rules` walks all three; the old bitmask
-  // `N.Rules` check stopped at a Mixin/Ruleset sourceNode.
+
+  /*
+   * A canonical body can be any Rules SUBCLASS (Mixin/Ruleset), not only a plain
+   * Rules — since the Mixin.sourceNode wrapper was eliminated, a mixin surface's
+   * sourceNode IS the Mixin. `instanceof Rules` walks all three; the old bitmask
+   * `N.Rules` check stopped at a Mixin/Ruleset sourceNode.
+   */
   while (current.sourceNode instanceof Rules) {
     const next = current.sourceNode;
     if (next === current || seen.has(next)) {
@@ -34,17 +37,22 @@ export function getRootSourceRules(rules: Rules): Rules {
  */
 export function createCallableRulesSurface(sourceRules: Rules): Rules {
   const output = createDerivedRulesSurface(sourceRules);
-  // `sourceNode` pointing at a DIFFERENT canonical body IS the thin-surface
-  // identity: a shared child evaluated under this surface re-points its
-  // scope-frame lexical parent here (resolving up the call's scope — lexical
-  // definition + live param slots) rather than its static canonical parent.
-  // One frame model for all node re-use; no marker. See §4 / §6.2.
+
+  /*
+   * `sourceNode` pointing at a DIFFERENT canonical body IS the thin-surface
+   * identity: a shared child evaluated under this surface re-points its
+   * scope-frame lexical parent here (resolving up the call's scope — lexical
+   * definition + live param slots) rather than its static canonical parent.
+   * One frame model for all node re-use; no marker. See §4 / §6.2.
+   */
   output.sourceNode = sourceRules.sourceNode ?? sourceRules;
   const source = sourceRules.rules;
   for (let i = 0; i < source.length; i++) {
-    // Share the canonical body children (the AST is an immutable template). The
-    // per-call eval surface carries call state in its attached scope frame, not
-    // in cloned nodes; the body resolves against this surface via context.
+    /*
+     * Share the canonical body children (the AST is an immutable template). The
+     * per-call eval surface carries call state in its attached scope frame, not
+     * in cloned nodes; the body resolves against this surface via context.
+     */
     output.rules.push(source[i]!);
     if (hasCarriedMergeOutputSurface(source[i]!)) {
       output.hasMergeOutputSurface = true;
@@ -113,9 +121,7 @@ export function createEmptyCallableOutputSurface(sourceRules: Rules): Rules {
 }
 
 export function resolveCallableSingleOutputSourceRules(output: Rules): Rules {
-  return getRootSourceRules(
-    output.sourceNode instanceof Rules
-      ? output.sourceNode
-      : output
-  );
+  return getRootSourceRules(output.sourceNode instanceof Rules
+    ? output.sourceNode
+    : output);
 }

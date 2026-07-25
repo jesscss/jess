@@ -27,20 +27,26 @@ export function makeHsl(value: ValueGroup): Color {
     const a = items[3] !== undefined ? percentOf(requireDimension(items[3]), 1) : 1;
     const alphaD = items[3] !== undefined ? requireDimension(items[3]) : undefined;
     const alphaPct = alphaD?.unit === '%' ? alphaD.number : undefined;
-    // ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result
-    // (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it
-    // round-trips through rgb — hue + saturation collapse to `0` and the authored
-    // unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`). The rgb is
-    // kept UNROUNDED so the derived lightness is lossless (`hsl(50, 0%, 33%)` →
-    // `hsl(0, 0%, 33%)`, not `33.…%`).
+
+    /*
+     * ACHROMATIC canonicalization (Less 4.x/v5 parity): a grey/black/white result
+     * (`s === 0 || l === 0 || l === 1`) carries no meaningful hue/saturation, so it
+     * round-trips through rgb — hue + saturation collapse to `0` and the authored
+     * unit is dropped (`hsl(380deg, 150%, 150%)` → `hsl(0, 0%, 100%)`). The rgb is
+     * kept UNROUNDED so the derived lightness is lossless (`hsl(50, 0%, 33%)` →
+     * `hsl(0, 0%, 33%)`, not `33.…%`).
+     */
     if (s === 0 || l === 0 || l === 1) {
       return makeColorRgb(hslToRgb(h, s, l), a, HSL, {
         modernSyntax,
         ...(alphaPct !== undefined ? { alphaPct } : {})
       });
     }
-    // SOURCE-FORMAT preservation (verbatim rule): keep the authored hue unit
-    // (`0deg` → `deg`) + a `%` alpha spelling; an operated result drops them.
+
+    /*
+     * SOURCE-FORMAT preservation (verbatim rule): keep the authored hue unit
+     * (`0deg` → `deg`) + a `%` alpha spelling; an operated result drops them.
+     */
     const hueUnit = requireDimension(items[0]).unit || undefined;
     const fmtOpts = { ...(hueUnit ? { hueUnit } : {}), ...(alphaPct !== undefined ? { alphaPct } : {}) };
     return makeColorHsl([h, s, l], a, HSL, modernSyntax, fmtOpts);

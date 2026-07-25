@@ -39,6 +39,7 @@ import type { Fn, FnCtx, FnIo } from './functions/types.js';
 export interface Dimension {
   readonly type: 'Dimension';
   readonly number: number;
+
   /**
    * The DISPLAY unit (what {@link serializeDimension} emits), e.g. `px`, `%`, ``.
    * For an arithmetic result it is derived from {@link numerator}/{@link denominator}
@@ -46,6 +47,7 @@ export interface Dimension {
    * else the first denominator; else empty).
    */
   readonly unit: string;
+
   /**
    * CompoundSelector-unit multiset carried across chained arithmetic (less.js `Unit`).
    * Present only on an operation RESULT whose units don't collapse to a single
@@ -54,8 +56,10 @@ export interface Dimension {
    */
   readonly numerator?: readonly string[];
   readonly denominator?: readonly string[];
+
   /** less.js `Unit.backupUnit`: the authored unit, shown when the numerator isn't singular. */
   readonly backupUnit?: string;
+
   /** Canonical emitted bytes (byte-faithful; produced by the free serializer). */
   readonly bytes: string;
 }
@@ -65,6 +69,7 @@ export interface Color {
   readonly type: 'Color';
   readonly rgb: readonly [number, number, number];
   readonly alpha: number;
+
   /**
    * OPTIONAL / LAZY HSL source of truth (perf-neutral, converged-shape addition).
    * Present ONLY when the color was authored or derived in HSL (`hsl(...)`, or an
@@ -75,11 +80,14 @@ export interface Color {
    * `colorHsl(c)` (which derives from rgb when absent).
    */
   readonly hsl?: readonly [number, number, number];
+
   /** Output-format tag (a small opaque enum value; see `color.ts` HEX/RGB/HSL). */
   readonly format: number;
   readonly modernSyntax?: boolean;
+
   /** Original literal source (e.g. `#aaa`, `blue`) preserved for verbatim emit. */
   readonly node?: string;
+
   /**
    * SOURCE-FORMAT preservation for an un-operated color CONSTRUCTOR (the verbatim
    * rule applied to `rgb`/`hsl` literals — `rgb(50%,0,0)` stays `rgb(50%, 0, 0)`,
@@ -92,8 +100,10 @@ export interface Color {
    * as `%`, else `undefined`; the field is present only when some channel used `%`.
    */
   readonly rgbPct?: readonly (number | undefined)[];
+
   /** Authored alpha percent (raw number) when alpha was written as `%`; else absent (alpha emits as a decimal). */
   readonly alphaPct?: number;
+
   /** Authored hue unit (`deg`/`turn`/`rad`/`grad`/…) for an HSL constructor; absent → unitless/derived (non-modern drops it, modern defaults to `deg`). */
   readonly hueUnit?: string;
   readonly bytes: string;
@@ -127,6 +137,7 @@ export type ListSeparator = ',' | '/';
 /** A list result with an explicit separator fact. Delimiters are `Block` values. */
 export interface List {
   readonly type: 'List';
+
   /** The one semantic payload of a List. */
   readonly value: readonly ValueGroup[];
   readonly sep: ListSeparator;
@@ -177,6 +188,7 @@ export interface Nil {
 export interface CollectionEntry {
   readonly key: ValueGroup;
   readonly value: ValueGroup;
+
   /** Authored as a VARIABLE declaration (`{ @a: 1 }`) — emits the `@` sigil. */
   readonly variable?: boolean;
   readonly important?: boolean;
@@ -204,6 +216,7 @@ export interface CollectionEntry {
 export interface Collection {
   readonly type: 'Collection';
   readonly entries: readonly CollectionEntry[];
+
   /** The carrier's own value in the SCSS nested property `font: 20px { … }`;
    * omitted when the block has no own value. */
   readonly base?: ValueGroup;
@@ -269,10 +282,13 @@ export const literal = (bytes: string): string => bytes;
  */
 export interface EvalModes {
   readonly unitMode: UnitMode;
+
   /** Less arithmetic policy; parentheses are tracked by the AST walker. */
   readonly mathMode?: MathMode;
+
   /** Registered-function failure policy supplied by the active compile Context. */
   readonly functionMode?: FunctionMode;
+
   /** Guard-comparison compatibility rule supplied by the active compile Context. */
   readonly equalityMode?: EqualityMode;
   readonly inCalc?: boolean;
@@ -357,12 +373,16 @@ export interface PluginVariableHit {
 export interface PluginCallCtx extends FnCtx {
   /** Resolve `@name` against the LIVE call-site frame chain. */
   readonly lookupVariable: (name: string) => PluginVariableHit | null;
+
   /** Evaluate a built-in function by name on already-typed arguments. */
   readonly callFunction: (name: string, args: readonly ValueGroup[]) => ValueGroup | undefined;
+
   /** The file the call was written in, and the entry file of the render. */
   readonly currentFileInfo: { readonly filename: string; readonly entryPath: string };
+
   /** Records one `less.logger` record emitted while the plugin ran. */
   readonly log: (record: { level: string; message: string }) => void;
+
   /** Hoists `!important` onto the declaration whose value this call folds into. */
   readonly markImportant: () => void;
 }
@@ -374,6 +394,7 @@ export interface PluginHost {
    * visible document-wide. Empty/absent on renders with no configured plugins.
    */
   globalFns?: readonly Fn[];
+
   /**
    * Resolve and execute one grammar-owned Plugin fact. The caller supplies
    * already-evaluated target/options; this capability never recovers syntax
@@ -381,6 +402,7 @@ export interface PluginHost {
    * the dialect adapter converts any legacy plugin ABI to native Fns here.
    */
   loadPlugin?(request: PluginRequest): MaybePromise<readonly Fn[]>;
+
   /**
    * Legacy-plugin invocation seam. A function selected from this host receives
    * its arguments in raw form (detached rulesets survive as declaration maps)
@@ -405,8 +427,10 @@ export interface ValueEvaluator {
    * majority emit their verbatim bytes and never touch this seam.
    */
   materialize(bytes: string): ValueObj;
+
   /** Binary operation on two materialized operands (direct / delegated math). */
   operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj;
+
   /** Named-function call on a materialized arg list. Sync unless a genuinely
    * async built-in forces a thenable (scoped to the forcing leaf). `scope`, when
    * supplied non-null, is consulted FIRST (scoped `@plugin`/`@use` fns shadow
@@ -420,11 +444,14 @@ export interface ValueEvaluator {
     modes: EvalModes,
     scope?: FnScope | null,
     io?: FnIo,
+
     /** Called only when a registered function is preserved after it rejects. */
     onUnresolved?: (error: unknown) => void,
   ): MaybePromise<ValueGroup>;
+
   /** Guard comparison leaf (`@a > 0`) on typed operands -> boolean. */
   compare(op: string, left: ValueGroup, right: ValueGroup, modes: EvalModes): boolean;
+
   /** Guard type-function leaf (`iscolor(@a)`) on typed args -> boolean. */
   typeCheck(name: string, args: ValueGroup, modes: EvalModes): boolean;
 }

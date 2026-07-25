@@ -20,6 +20,7 @@ export class DefaultGuard extends Node<string> {
 
   constructor(value: string, options?: NodeOptions, location?: LocationInfo) {
     super(value, options, location);
+
     // Each node owns its field values (invariant 7): the base stores nothing.
     this.value = value;
   }

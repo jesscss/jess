@@ -68,6 +68,7 @@ export type AtRulePrelude = string | Node;
 
 export type AtRuleValue = {
   name: string | Interpolated;
+
   /** The prelude */
   prelude?: AtRulePrelude;
   rules: Node[];
@@ -206,8 +207,11 @@ function renderAtRuleBetweenOffsetsTrivia(
   if (nameEnd === undefined || preludeStart === undefined) {
     return '';
   }
-  // Whitespace between a bare-string name and its prelude is normalized; only a
-  // comment authored in that gap round-trips (its run carries its own spacing).
+
+  /*
+   * Whitespace between a bare-string name and its prelude is normalized; only a
+   * comment authored in that gap round-trips (its run carries its own spacing).
+   */
   const runs = commentRunsWithinSpan(printOptions.trivia, nameEnd, preludeStart);
   if (runs.length === 0) {
     return '';
@@ -313,10 +317,13 @@ function liftedAtRulePreludeRulesContext(rulesContext: Context['rulesContext']):
   while (cursor?.parent && depth++ < 10) {
     const parent = cursor.parent;
     const grandparent = parent.parent;
-    // Lift through at-rule wrappers to the enclosing Rules scope, but stop before
-    // Mixin nodes: a Mixin's scope frame does not carry param live-slots — those
-    // live in the shallow eval surface created by createCallableRulesSurface,
-    // which IS the current cursor when we reach this point.
+
+    /*
+     * Lift through at-rule wrappers to the enclosing Rules scope, but stop before
+     * Mixin nodes: a Mixin's scope frame does not carry param live-slots — those
+     * live in the shallow eval surface created by createCallableRulesSurface,
+     * which IS the current cursor when we reach this point.
+     */
     if (isNode(parent, N.AtRule) && isNode(grandparent, N.Rules) && !isNode(grandparent, N.Mixin)) {
       cursor = grandparent;
       continue;
@@ -437,14 +444,10 @@ function createAtRuleEvalResultNode(
   source: AtRule,
   record: AtRuleBodyEvalRecord
 ): AtRule {
-  const ownsEvaluatedPrelude = Boolean(
-    record.evaluatedPrelude
-    && record.evaluatedPrelude !== source.prelude
-  );
-  const ownsEvaluatedBody = Boolean(
-    record.evaluatedBody
-    && record.evaluatedBody.rules !== source.rules
-  );
+  const ownsEvaluatedPrelude = Boolean(record.evaluatedPrelude
+    && record.evaluatedPrelude !== source.prelude);
+  const ownsEvaluatedBody = Boolean(record.evaluatedBody
+    && record.evaluatedBody.rules !== source.rules);
   if (!ownsEvaluatedPrelude && !ownsEvaluatedBody) {
     return source;
   }
@@ -548,13 +551,11 @@ function writeLeafAtRuleHeader(
 }
 
 function isAtRuleBodyEvalRecordResult(value: unknown): value is AtRuleBodyEvalRecord {
-  return Boolean(
-    value
+  return Boolean(value
     && typeof value === 'object'
     && 'source' in value
     && 'evalFrame' in value
-    && 'resultNode' in value
-  );
+    && 'resultNode' in value);
 }
 
 function storeAtRuleBodyEvalRecordResult(
@@ -647,6 +648,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   constructor(value: AtRuleValue | AtRuleParts, options?: AtRuleOptions, location?: LocationInfo, treeContext?: Context['treeContext']) {
     super(value.rules, options, location, treeContext);
+
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     this.name = value.name;
     this.prelude = value.prelude;
@@ -789,12 +791,15 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
       ancestor = ancestor.parent;
     }
-    // SPINE: a PARSED source tree carries no `.parent` back-pointer (only the eval
-    // pass, which the spine replaces, set them), so the walk above finds nothing.
-    // The spine descent pushes each enclosing ruleset onto `context.rulesetFrames`
-    // before reaching this at-rule, so a non-empty stack means this root-only at-rule
-    // (`@font-face`/`@keyframes`/…) is nested under a ruleset and must BUBBLE to root
-    // — the same structural fact the `.parent` walk recovers on the eval path.
+
+    /*
+     * SPINE: a PARSED source tree carries no `.parent` back-pointer (only the eval
+     * pass, which the spine replaces, set them), so the walk above finds nothing.
+     * The spine descent pushes each enclosing ruleset onto `context.rulesetFrames`
+     * before reaching this at-rule, so a non-empty stack means this root-only at-rule
+     * (`@font-face`/`@keyframes`/…) is nested under a ruleset and must BUBBLE to root
+     * — the same structural fact the `.parent` walk recovers on the eval path.
+     */
     return Boolean(context?.rulesetFrames && context.rulesetFrames.length > 0);
   }
 
@@ -856,8 +861,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     if (this.registrationPrepared) {
       return this.eval(context);
     }
-    // Direct render on an unevaluated AtRule is a compatibility/debug API.
-    // Public compiler render enters through an evaluated root Rules container.
+
+    /*
+     * Direct render on an unevaluated AtRule is a compatibility/debug API.
+     * Public compiler render enters through an evaluated root Rules container.
+     */
     return this.evalBodyResult(context, {
       writeEvaluatedPrelude: false,
       writeVisibility: false
@@ -1046,12 +1054,14 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): MaybePromise<string>;
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
-    // Spine mode (P1 §4/§7): render this at-rule by descending its SOURCE body
-    // under the live value-frame — NO eval() pass, NO output tree. The container
-    // serializer (`serializeRulesContainer`, kept per §7) resolves the prelude at
-    // ruleset-enter (in `serializeSpineFrameAtRule`) and reuses the composed/hoist
-    // machinery already on the walk. This REPLACES the eval→serialize two-walk for
-    // an at-rule on the wired path.
+    /*
+     * Spine mode (P1 §4/§7): render this at-rule by descending its SOURCE body
+     * under the live value-frame — NO eval() pass, NO output tree. The container
+     * serializer (`serializeRulesContainer`, kept per §7) resolves the prelude at
+     * ruleset-enter (in `serializeSpineFrameAtRule`) and reuses the composed/hoist
+     * machinery already on the walk. This REPLACES the eval→serialize two-walk for
+     * an at-rule on the wired path.
+     */
     const spinePrintOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     if (spinePrintOptions?.spineMode === true && this.rules.length > 0) {
       const spineOptions = getPrintOptions(spinePrintOptions);
@@ -1113,8 +1123,10 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   private _prepareAtRuleRegistration(node: AtRule, context: Context, original: AtRule): MaybePromise<AtRule> {
-    // Defer prelude evaluation to evalNode so variable lookups happen in the correct
-    // live scope (e.g. mixin parameters referenced from nested @media preludes).
+    /*
+     * Defer prelude evaluation to evalNode so variable lookups happen in the correct
+     * live scope (e.g. mixin parameters referenced from nested @media preludes).
+     */
     return this._prepareAtRuleBodyRegistration(
       node,
       context,
@@ -1162,8 +1174,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       node.registrationPrepared = true;
       return node;
     };
-    // Depth-first: prepare child rules immediately so all nested rulesets/extends
-    // are registered in source order before we process extends.
+
+    /*
+     * Depth-first: prepare child rules immediately so all nested rulesets/extends
+     * are registered in source order before we process extends.
+     */
     if (!rules.registrationPrepared) {
       const saved = this._setupAtRuleBodyRegistrationContext(node, rules, context);
       let preparedRules: MaybePromise<Node>;
@@ -1223,8 +1238,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
     } else {
       context.extendRoots.pushExtendRoot(rules);
     }
-    // Root-only at-rules (@keyframes, @font-face, etc.): do not let parent ruleset frames
-    // pierce into the body — clear rulesetFrames so 0%/100% etc. are not combined with .parent.
+
+    /*
+     * Root-only at-rules (@keyframes, @font-face, etc.): do not let parent ruleset frames
+     * pierce into the body — clear rulesetFrames so 0%/100% etc. are not combined with .parent.
+     */
     const savedRulesetFrames = node.isRootOnly() ? context.rulesetFrames : undefined;
     if (savedRulesetFrames !== undefined) {
       context.rulesetFrames = [];
@@ -1348,11 +1366,13 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
 
   getComparableHeaderString(options: FinalPrintOptions): string {
     if (typeof this.name === 'string' && options.atRuleHeaderNode !== this) {
-      // Match on the spine-resolved prelude when present, so a hoisted-ancestor
-      // re-materialization (`@media (max-width: @bpMedium)` → `1000px`) compares
-      // equal to the node's own resolved emission and MERGES into one block, as on
-      // eval. Without this the raw prelude (`$[bpMedium]`) would mismatch the
-      // resolved header and split the block. See `spineResolvedPreludes`.
+      /*
+       * Match on the spine-resolved prelude when present, so a hoisted-ancestor
+       * re-materialization (`@media (max-width: @bpMedium)` → `1000px`) compares
+       * equal to the node's own resolved emission and MERGES into one block, as on
+       * eval. Without this the raw prelude (`$[bpMedium]`) would mismatch the
+       * resolved header and split the block. See `spineResolvedPreludes`.
+       */
       const headerPrelude = options.spineResolvedPreludes?.get(this) ?? this.prelude;
       const prelude = typeof headerPrelude === 'string'
         ? headerPrelude
@@ -1404,10 +1424,13 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         w.add(idt);
       }
       w.add(this.name, this);
-      // Prefer the spine-resolved prelude when this ancestor at-rule is on the
-      // descent stack (a hoisted-descendant re-materialization reaches here with the
-      // single `atRuleHeaderNode` override no longer targeting this node — see
-      // `spineResolvedPreludes`). Otherwise the raw prelude.
+
+      /*
+       * Prefer the spine-resolved prelude when this ancestor at-rule is on the
+       * descent stack (a hoisted-descendant re-materialization reaches here with the
+       * single `atRuleHeaderNode` override no longer targeting this node — see
+       * `spineResolvedPreludes`). Otherwise the raw prelude.
+       */
       const headerPrelude = options.spineResolvedPreludes?.get(this) ?? this.prelude;
       const preludeOut = typeof headerPrelude === 'string'
         ? headerPrelude
@@ -1487,8 +1510,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
         : this.getRenderRules();
       const idt = indent(options.depth);
       let out = idt + this.name;
-      // Prefer the spine-resolved prelude (hoisted-ancestor re-materialization; see
-      // `spineResolvedPreludes` / `writeHeader`), else the raw prelude.
+
+      /*
+       * Prefer the spine-resolved prelude (hoisted-ancestor re-materialization; see
+       * `spineResolvedPreludes` / `writeHeader`), else the raw prelude.
+       */
       const headerPrelude = options.spineResolvedPreludes?.get(this) ?? this.prelude;
       const preludeOut = typeof headerPrelude === 'string'
         ? headerPrelude
@@ -1497,11 +1523,14 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
           : undefined;
       if (preludeOut !== undefined && hasNonAtRuleWhitespace(preludeOut)) {
         const normalizedPrelude = trimAtRuleLeadingWhitespace(preludeOut);
-        // Name-boundary trivia: a string name has no span, so its end offset comes
-        // from the AtRule's fieldSpans (name slot 0); the prelude start is the
-        // prelude node's span (or fieldSpans slot 1). If a comment lives in that
-        // gap, it carries its own spacing — emit it verbatim between name and
-        // prelude. Otherwise collapse the boundary to a single space.
+
+        /*
+         * Name-boundary trivia: a string name has no span, so its end offset comes
+         * from the AtRule's fieldSpans (name slot 0); the prelude start is the
+         * prelude node's span (or fieldSpans slot 1). If a comment lives in that
+         * gap, it carries its own spacing — emit it verbatim between name and
+         * prelude. Otherwise collapse the boundary to a single space.
+         */
         const interstitial = renderAtRuleBetweenOffsetsTrivia(
           this._nameSlotEnd(),
           this._preludeStart(),
@@ -1515,6 +1544,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
           }
           out += normalizedPrelude;
         }
+
         // Post-prelude trivia: a comment between the prelude and the block/`;`.
         if (typeof this.prelude !== 'string' && this.prelude !== undefined) {
           out += renderAtRulePostPreludeTrivia(this.prelude, options);
@@ -1581,8 +1611,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       if (interstitialTrivia) {
         out += interstitialTrivia;
       }
-      // If name ends with space AND prelude starts with space, trim the prelude's leading space
-      // Otherwise, add a space only if neither has spacing
+
+      /*
+       * If name ends with space AND prelude starts with space, trim the prelude's leading space
+       * Otherwise, add a space only if neither has spacing
+       */
       let finalPreludeOut = preludeOut;
       if (interstitialTrivia) {
         finalPreludeOut = trimAtRuleLeadingWhitespace(preludeOut);
@@ -1635,10 +1668,12 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       clearRulesetFrames: hasHoistedRulesetParent,
       restoreRulesetFrames: () => undefined,
       ...createAtRuleBodyEvalRecordState(context, {
-        // The evalFrame is the shared source node; writing the evaluated prelude
-        // back onto it would poison later evaluations of the same node (e.g. a
-        // mixin called twice with different args). The evaluated prelude is
-        // carried on the record and applied to the fresh output copy instead.
+        /*
+         * The evalFrame is the shared source node; writing the evaluated prelude
+         * back onto it would poison later evaluations of the same node (e.g. a
+         * mixin called twice with different args). The evaluated prelude is
+         * carried on the record and applied to the fresh output copy instead.
+         */
         writeEvaluatedPrelude: false
       })
     };
@@ -1663,8 +1698,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   ): MaybePromise<AtRule | Nil> {
     const source = bodyEvalRecord.source;
     let node = bodyEvalRecord.evalFrame;
-    // @plugin is handled by the Less compatibility plugin during preparation.
-    // If we reach eval and it's still visible, no plugin processed it.
+
+    /*
+     * @plugin is handled by the Less compatibility plugin during preparation.
+     * If we reach eval and it's still visible, no plugin processed it.
+     */
     const atName = getAtRuleSourceIdentityText(node.name);
     if (atName === '@plugin' && node.visible) {
       throw new Error('@plugin is only supported when using the Less compatibility plugin (@jesscss/plugin-less-compat).');
@@ -1720,6 +1758,7 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       }
       return finishVisibility();
     };
+
     // Evaluate prelude in the correct scope (mixin params, vars, etc.).
     if (bodyEvalRecord.evaluatedPrelude) {
       return finishBodyEval();
@@ -1729,8 +1768,11 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
       if (typeof prelude === 'string') {
         return finishBodyEval();
       }
-      // Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
-      // This matches Less behavior for mixin parameters referenced from nested @media preludes.
+
+      /*
+       * Evaluate the prelude in the outer (enclosing) Rules scope, not the nested @media Rules scope.
+       * This matches Less behavior for mixin parameters referenced from nested @media preludes.
+       */
       const out = source.evalPreludeValue(prelude, context);
       if (isThenable(out)) {
         return out.then((n) => {
@@ -1811,37 +1853,41 @@ export class AtRule extends Rules<AtRuleValue | AtRuleParts, AtRuleOptions> {
   }
 
   /** @todo - move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add(`${this.name}`, sourceSpanOf(this))
-  //   /** Prelude expression includes white space */
-  //   const value = this.value
-  //   if (value) {
-  //     value.toCSS(context, out)
-  //   }
-  //   if (this.rules) {
-  //     this.rules.toCSS(context, out)
-  //   } else {
-  //     out.add(';')
-  //   }
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * out.add(`${this.name}`, sourceSpanOf(this))
+   * /** Prelude expression includes white space *\/
+   * const value = this.value
+   * if (value) {
+   * value.toCSS(context, out)
+   * }
+   * if (this.rules) {
+   * this.rules.toCSS(context, out)
+   * } else {
+   * out.add(';')
+   * }
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.atrule({\n', sourceSpanOf(this))
-  //   context.indent++
-  //   out.add(`  name: ${JSON.stringify(this.name)}`)
-  //   const value = this.value
-  //   if (value) {
-  //     out.add(`,\n  value: `)
-  //     value.toModule(context, out)
-  //   }
-  //   const rules = this.rules
-  //   if (rules) {
-  //     out.add(`,\n  rules: `)
-  //     rules.toModule(context, out)
-  //   }
-  //   context.indent--
-  //   out.add(`\n},${JSON.stringify(sourceSpanOf(this))})`)
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * out.add('$J.atrule({\n', sourceSpanOf(this))
+   * context.indent++
+   * out.add(`  name: ${JSON.stringify(this.name)}`)
+   * const value = this.value
+   * if (value) {
+   * out.add(`,\n  value: `)
+   * value.toModule(context, out)
+   * }
+   * const rules = this.rules
+   * if (rules) {
+   * out.add(`,\n  rules: `)
+   * rules.toModule(context, out)
+   * }
+   * context.indent--
+   * out.add(`\n},${JSON.stringify(sourceSpanOf(this))})`)
+   * }
+   */
 }
 
 export const atrule = defineType(AtRule, 'AtRule');

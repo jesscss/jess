@@ -39,10 +39,12 @@ export function groupItems(value: ValueGroup | undefined): readonly ValueGroup[]
     return unwrapped.value;
   }
   if (unwrapped.type === 'Collection') {
-    // A map IS a list of its pairs (Sass): `length((a: 1, b: 2))` is 2 and
-    // `nth(…, 1)` is `a 1`. Each pair is the raw two-item group, which is the
-    // default-spaced sequence shape — no pair wrapper node is introduced, and the
-    // list functions need no map-specific branch.
+    /*
+     * A map IS a list of its pairs (Sass): `length((a: 1, b: 2))` is 2 and
+     * `nth(…, 1)` is `a 1`. Each pair is the raw two-item group, which is the
+     * default-spaced sequence shape — no pair wrapper node is introduced, and the
+     * list functions need no map-specific branch.
+     */
     return unwrapped.entries.map(entry => [entry.key, entry.value]);
   }
   return [unwrapped];
@@ -57,8 +59,11 @@ export function groupSeparator(value: ValueGroup | undefined): ListSeparator | '
   if (isValueGroupArray(unwrapped)) {
     return ' ';
   }
-  // A map's pair sequence is comma-separated (Sass `list.separator((a: 1))` is
-  // `comma`), including the single-entry map.
+
+  /*
+   * A map's pair sequence is comma-separated (Sass `list.separator((a: 1))` is
+   * `comma`), including the single-entry map.
+   */
   return unwrapped.type === 'Collection' ? ',' : unwrapped.type === 'List' ? unwrapped.sep : ' ';
 }
 

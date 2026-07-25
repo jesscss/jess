@@ -14,6 +14,7 @@ import type { Context } from '../context.js';
 
 export type VarDeclarationOptions = DeclarationOptions & {
   paramVar?: boolean;
+
   /**
    * Live-binding ASSIGNMENT, written `$!foo: bar` — the `!` sigil right after `$`,
    * mirroring the `$!foo` read form's `readMode: 'snapshot'`. Records the `$!`
@@ -52,6 +53,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     super(value as DeclarationValue, options, location as LocationInfo | undefined);
     this.removeFlag(F_VISIBLE);
+
     /** Parameter declarations are not like var declarations */
     if (options?.paramVar) {
       this.addFlag(F_VISIBLE);
@@ -65,10 +67,12 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     bufferOrOptions?: RenderBuffer | PrintOptions,
     options?: PrintOptions
   ): string | MaybePromise<string> {
-    // A visible parameter var (e.g. `$tone`) is a signature element: it renders
-    // its authored form directly and is never evaluated, prepared, or resolved.
-    // Going through the Declaration eval/render path would both evaluate it and
-    // recurse (its own value-state output is itself).
+    /*
+     * A visible parameter var (e.g. `$tone`) is a signature element: it renders
+     * its authored form directly and is never evaluated, prepared, or resolved.
+     * Going through the Declaration eval/render path would both evaluate it and
+     * recurse (its own value-state output is itself).
+     */
     if (this._options?.paramVar && this.hasFlag(F_VISIBLE)) {
       return this.renderSource(context, bufferOrOptions, options);
     }
@@ -109,6 +113,7 @@ export class VarDeclaration extends Declaration<VarDeclarationOptions> {
     }
     const w = options.writer;
     w.add('$', this);
+
     // Live-binding assignment `$!foo: …` — emit the `!` sigil after `$`.
     if (this._options?.liveBinding) {
       w.add('!', this);

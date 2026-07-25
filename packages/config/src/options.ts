@@ -44,11 +44,13 @@ export interface GetOptionsParams {
    * If omitted but `input` is provided, language is inferred from the file extension.
    */
   language?: string;
+
   /**
    * Input file path to match against input options.
    * Also used to infer language if `language` is not specified.
    */
   input?: string;
+
   /**
    * Output file path to match against output options
    */
@@ -137,6 +139,7 @@ function getMatchingOptions<T extends FileMatchOptions>(
 
   return result;
 }
+
 /**
  * Get merged options by combining compile, language, input, and output settings.
  *
@@ -182,11 +185,13 @@ export function getOptions(
   const matchedInput = getMatchingOptions(input, inputFile);
   const matchedOutput = getMatchingOptions(output, outputFile);
 
-  // Build result with proper merge priority:
-  // 1. compile (base)
-  // 2. language-specific
-  // 3. matched input
-  // 4. matched output
+  /*
+   * Build result with proper merge priority:
+   * 1. compile (base)
+   * 2. language-specific
+   * 3. matched input
+   * 4. matched output
+   */
   return {
     // Start with compile-level settings
     mathMode: compile.mathMode,

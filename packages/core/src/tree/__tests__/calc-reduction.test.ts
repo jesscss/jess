@@ -27,8 +27,10 @@ describe('calc reduction', () => {
     return call({ name: 'calc', args: list([inner]) });
   };
 
-  // Reduction happens in the eval/math path (as the declaration pipeline does:
-  // eval the value, then render the reduced node), so evaluate before rendering.
+  /*
+   * Reduction happens in the eval/math path (as the declaration pipeline does:
+   * eval the value, then render the reduced node), so evaluate before rendering.
+   */
   const render = async (node: ReturnType<typeof call>): Promise<string> => {
     const evaluated = await node.eval(context);
     return evaluated.render(context);
@@ -74,9 +76,11 @@ describe('calc reduction', () => {
       .toBe('calc(50% + (25vh - 20px))');
   });
 
-  // A preserved calc (from an incompatible-unit `*`) that becomes an operand of
-  // a further operation must COMPOSE into a single flat calc — not stringify to
-  // an Any (`"calc(4px * 3px)1"`, which then throws "Cannot operate on Any").
+  /*
+   * A preserved calc (from an incompatible-unit `*`) that becomes an operand of
+   * a further operation must COMPOSE into a single flat calc — not stringify to
+   * an Any (`"calc(4px * 3px)1"`, which then throws "Cannot operate on Any").
+   */
   it('composes a preserved calc operand into a flat calc (no nested calc)', async () => {
     const preserved = call({ name: 'calc', args: list([op([dimension([4, 'px']), '*', dimension([3, 'px'])])]) });
     expect(await render(op([preserved, '+', num(1)])))
@@ -89,8 +93,10 @@ describe('calc reduction', () => {
       .toBe('calc(1 + 4px * 3px)');
   });
 
-  // Regression: the `@a: 100%; @x: @a*@a; @y: @x + 1; @z: @x*2 + @y` chain must
-  // evaluate end-to-end without throwing "Cannot operate on Any".
+  /*
+   * Regression: the `@a: 100%; @x: @a*@a; @y: @x + 1; @z: @x*2 + @y` chain must
+   * evaluate end-to-end without throwing "Cannot operate on Any".
+   */
   it('evaluates a chained preserved-calc arithmetic sequence without crashing', async () => {
     const a = dimension([100, '%']);
     const x = await op([a, '*', a]).eval(context);
@@ -101,11 +107,13 @@ describe('calc reduction', () => {
     expect(z.render(context)).toBe('calc(100% * 100% * 2 + 100% * 100% + 1)');
   });
 
-  // Regression: an explicit `calc(@x)` wrapping an already-preserved calc
-  // survives eval as `calc((l op r))` (a Paren-wrapped inner). Composing it with
-  // a further operation must keep the operator and stay a single well-formed
-  // calc — not drop the operator / double-nest (`calc(((100% * 100%)))1`).
-  // A Paren-wrapped inner is kept parenthesized (precedence-safe).
+  /*
+   * Regression: an explicit `calc(@x)` wrapping an already-preserved calc
+   * survives eval as `calc((l op r))` (a Paren-wrapped inner). Composing it with
+   * a further operation must keep the operator and stay a single well-formed
+   * calc — not drop the operator / double-nest (`calc(((100% * 100%)))1`).
+   * A Paren-wrapped inner is kept parenthesized (precedence-safe).
+   */
   it('composes a Paren-wrapped preserved-calc operand keeping the operator', async () => {
     const parenCalc = () =>
       call({ name: 'calc', args: list([paren(op([dimension([100, '%']), '*', dimension([100, '%'])]))]) });

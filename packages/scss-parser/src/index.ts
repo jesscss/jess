@@ -34,15 +34,25 @@ export function parse(input: string): Stylesheet {
   if (entry === undefined || trivia === undefined) {
     throw new TypeError('SCSS AST grammar is missing its public document entry.');
   }
-  const result = run(entry, input, { trivia });
+  const result = run(
+    entry,
+    input,
+    { trivia }
+  );
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     const offset = result.ok
       ? result.unconsumedFrom ?? result.span.end
       : result.span.start;
-    throw new ScssParseError(offset, result.expected);
+    throw new ScssParseError(
+      offset,
+      result.expected
+    );
   }
-  // Rewrite user-`@function` call sites to `$f(args)` lambda invokes. The pass
-  // no-ops when the parsed document defines no user function; recognition stays
-  // in the grammar rather than checking source text here.
+
+  /*
+   * Rewrite user-`@function` call sites to `$f(args)` lambda invokes. The pass
+   * no-ops when the parsed document defines no user function; recognition stays
+   * in the grammar rather than checking source text here.
+   */
   return lowerUserFunctionCalls(result.value);
 }

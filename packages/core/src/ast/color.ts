@@ -154,8 +154,11 @@ export function serializeColor(c: Color): string {
     const S = round(clamp(s, 1) * 100, 8);
     const L = round(clamp(l, 1) * 100, 8);
     const modern = c.modernSyntax === true;
-    // Legacy hue-unit rule: modern defaults to `deg` when unauthored; the
-    // comma form preserves the authored unit (empty when unitless/derived).
+
+    /*
+     * Legacy hue-unit rule: modern defaults to `deg` when unauthored; the
+     * comma form preserves the authored unit (empty when unitless/derived).
+     */
     const hueUnit = modern ? (c.hueUnit || 'deg') : (c.hueUnit ?? '');
     if (modern) {
       return a < 1 ? `hsl(${roundedHue}${hueUnit} ${S}% ${L}% / ${alphaText(c, a)})` : `hsl(${roundedHue}${hueUnit} ${S}% ${L}%)`;

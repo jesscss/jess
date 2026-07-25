@@ -23,4 +23,5 @@ export { default as index } from './string-index.js';
 export { default as slice } from './slice.js';
 export { default as insert } from './insert.js';
 export { default as uniqueId } from './unique-id.js';
+
 // TODO: string.split() — needs the Sass bracketed-list result shape.

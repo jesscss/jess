@@ -21,8 +21,10 @@ import { isNode } from './is-node.js';
 import { isCombinator } from './combinator.js';
 import { F_VISIBLE } from '../node.js';
 
-// Inlined from selector-complex to keep this module leaf-level (no runtime import
-// of selector node classes), so the base Selector can delegate to it cycle-free.
+/*
+ * Inlined from selector-complex to keep this module leaf-level (no runtime import
+ * of selector node classes), so the base Selector can delegate to it cycle-free.
+ */
 function isStringCombinator(value: string): boolean {
   return value === ' ' || value === '>' || value === '+' || value === '~' || value === '|';
 }
@@ -36,10 +38,12 @@ export interface SelectorKeySets {
 // A selector component is either a string-normalized leaf or a node.
 type Component = string | Selector;
 
-// Minimal structural views of the selector node shapes we dispatch on. Reading
-// `.value` / `.arg` / `.name` as data keeps this off the node classes' methods.
-// Structural views read as data off the node (accessed via `as unknown as`), so
-// this module needs no runtime import of the concrete selector classes.
+/*
+ * Minimal structural views of the selector node shapes we dispatch on. Reading
+ * `.value` / `.arg` / `.name` as data keeps this off the node classes' methods.
+ * Structural views read as data off the node (accessed via `as unknown as`), so
+ * this module needs no runtime import of the concrete selector classes.
+ */
 export class SelectorAnalysis {
   private readonly cache = new WeakMap<Selector, SelectorKeySets>();
 
@@ -58,15 +62,20 @@ export class SelectorAnalysis {
   }
 
   compute(selector: Component | Component[]): SelectorKeySets {
-    // A string leaf (string-normalized selector terminal) interns as its own key;
-    // it is not a node, so it can neither be a WeakMap cache key nor answer
-    // `hasFlag`. Handle it up front — same as `componentKeySets`.
+    /*
+     * A string leaf (string-normalized selector terminal) interns as its own key;
+     * it is not a node, so it can neither be a WeakMap cache key nor answer
+     * `hasFlag`. Handle it up front — same as `componentKeySets`.
+     */
     if (typeof selector === 'string') {
       const bits = this.library.getBitset([selector]);
       return { keySet: bits, visibleKeySet: bits, requiredKeySet: bits };
     }
-    // A resolved ampersand parent can arrive as a raw component array (an
-    // unwrapped selector list); treat it as an OR of its alternatives.
+
+    /*
+     * A resolved ampersand parent can arrive as a raw component array (an
+     * unwrapped selector list); treat it as an OR of its alternatives.
+     */
     if (Array.isArray(selector)) {
       const library = this.library;
       let keySet = library.getBitset();
@@ -78,9 +87,12 @@ export class SelectorAnalysis {
       }
       return { keySet, visibleKeySet, requiredKeySet: library.getBitset() };
     }
-    // Structural selectors are immutable per identity, so their key-sets memoize
-    // safely. An Ampersand is the exception: its key-set tracks the runtime parent
-    // in its container, which can change, so it must recompute every time.
+
+    /*
+     * Structural selectors are immutable per identity, so their key-sets memoize
+     * safely. An Ampersand is the exception: its key-set tracks the runtime parent
+     * in its container, which can change, so it must recompute every time.
+     */
     if (isNode(selector, N.Ampersand)) {
       return this.computeUncached(selector);
     }
@@ -93,8 +105,10 @@ export class SelectorAnalysis {
     return sets;
   }
 
-  // Key-set of a single component: a string leaf interns as its own key; a node
-  // recurses through the cache.
+  /*
+   * Key-set of a single component: a string leaf interns as its own key; a node
+   * recurses through the cache.
+   */
   private componentKeySets(component: Component): SelectorKeySets {
     if (typeof component === 'string') {
       const bits = this.library.getBitset([component]);
@@ -133,8 +147,10 @@ export class SelectorAnalysis {
     }
 
     if (isNode(selector, N.ComplexSelector)) {
-      // Positional: combinators contribute to keySet + requiredKeySet but never
-      // visibleKeySet.
+      /*
+       * Positional: combinators contribute to keySet + requiredKeySet but never
+       * visibleKeySet.
+       */
       let keySet = library.getBitset();
       let visibleKeySet = library.getBitset();
       let requiredKeySet = library.getBitset();
@@ -186,6 +202,7 @@ export class SelectorAnalysis {
             requiredKeySet
           };
         }
+
         // Other pseudos add the pseudo name as a key bit to every set.
         const pos = library.add(pseudo.name);
         const keySet = argSets.keySet.clone();
@@ -201,10 +218,12 @@ export class SelectorAnalysis {
     }
 
     if (isNode(selector, N.Ampersand)) {
-      // Ampersand's key-set is not a pure function of its structure: it reflects
-      // the RUNTIME-resolved parent selector held in its container, and its visible
-      // / required sets are always empty. Read that parent as data and union its
-      // keys through the service (a bare `&` / string / Nil contributes none).
+      /*
+       * Ampersand's key-set is not a pure function of its structure: it reflects
+       * the RUNTIME-resolved parent selector held in its container, and its visible
+       * / required sets are always empty. Read that parent as data and union its
+       * keys through the service (a bare `&` / string / Nil contributes none).
+       */
       const current = selector.getKeySetContainerSelector();
       return {
         keySet: current ? this.compute(current).keySet : library.getBitset(),
@@ -213,8 +232,10 @@ export class SelectorAnalysis {
       };
     }
 
-    // Leaf selector (BasicSelector, Interpolated, ...): its own value is the sole
-    // key. visibleKeySet drops it when the leaf is invisible.
+    /*
+     * Leaf selector (BasicSelector, Interpolated, ...): its own value is the sole
+     * key. visibleKeySet drops it when the leaf is invisible.
+     */
     const bits = library.getBitset([String(selector.valueOf())]);
     return {
       keySet: bits,
@@ -224,8 +245,10 @@ export class SelectorAnalysis {
   }
 }
 
-// One analysis per bit library — the library identity defines the key-space, and
-// analyses over the same key-space share a cache safely (immutable per selector).
+/*
+ * One analysis per bit library — the library identity defines the key-space, and
+ * analyses over the same key-space share a cache safely (immutable per selector).
+ */
 const analysisByLibrary = new WeakMap<BitSetLibrary<string>, SelectorAnalysis>();
 
 export function selectorAnalysisFor(library: BitSetLibrary<string>): SelectorAnalysis {
@@ -237,9 +260,11 @@ export function selectorAnalysisFor(library: BitSetLibrary<string>): SelectorAna
   return analysis;
 }
 
-// Free-function access to a selector's key-sets. These replace the old node getters:
-// the service is the sole owner of key-set computation; a selector only carries the
-// `keySetLibrary` pointer used to resolve the right service instance.
+/*
+ * Free-function access to a selector's key-sets. These replace the old node getters:
+ * the service is the sole owner of key-set computation; a selector only carries the
+ * `keySetLibrary` pointer used to resolve the right service instance.
+ */
 export function keySetOf(selector: Selector): BitSet<string> {
   return selectorAnalysisFor(selector.requireKeySetLibrary()).keySet(selector);
 }

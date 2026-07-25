@@ -22,14 +22,19 @@ export type Kind = ValueObj['type'];
 export interface ParamSpec {
   /** Name used by Sass/Jess direct record-style invocation. */
   readonly name?: string;
+
   /** Accepted kinds for this positional slot, or `'any'`. */
   readonly kinds: readonly Kind[] | 'any';
+
   /** A missing arg is allowed (no more required params follow). */
   readonly optional?: boolean;
+
   /** Value-domain default; makes the slot optional. */
   readonly default?: ValueGroup;
+
   /** Collect all remaining positional arguments in this final slot. */
   readonly rest?: boolean;
+
   /** Hand the body a typed thunk; evaluation and validation happen on invocation. */
   readonly lazy?: boolean;
 }
@@ -145,6 +150,7 @@ type OptionalRecord<P extends readonly ParamSpec[]> = {
 export type FnRecord<P extends readonly ParamSpec[] = readonly ParamSpec[]> = Readonly<
   RequiredRecord<P> & OptionalRecord<P>
 >;
+
 /** Named fields that may supplement positional arguments in a mixed direct call. */
 export type PartialFnRecord<P extends readonly ParamSpec[] = readonly ParamSpec[]> = Readonly<
   Partial<FnRecord<P>>

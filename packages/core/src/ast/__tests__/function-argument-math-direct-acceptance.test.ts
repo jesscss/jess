@@ -15,12 +15,10 @@ describe('direct canonical function-argument math', () => {
       ])
     ]);
 
-    expect(serialize(document, { evaluator, modes: { unitMode: 'preserve', mathMode: 'always' } }).css).toBe(
-      '.math {\n'
+    expect(serialize(document, { evaluator, modes: { unitMode: 'preserve', mathMode: 'always' } }).css).toBe('.math {\n'
       + '  rounded: 11;\n'
       + '  percentage: 20%;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('keeps parentheses as math context while materializing typed function arguments', () => {
@@ -35,12 +33,10 @@ describe('direct canonical function-argument math', () => {
       ])
     ]);
 
-    expect(serialize(document, { evaluator }).css).toBe(
-      '.math {\n'
+    expect(serialize(document, { evaluator }).css).toBe('.math {\n'
       + '  rounded: 11;\n'
       + '  unitless: 8;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('unquotes an escaped Less string before typed calc arithmetic', () => {

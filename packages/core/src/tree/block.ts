@@ -43,6 +43,7 @@ export class Block extends Node<Node, BlockOptions> {
     location?: NodeLocation
   ) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
   }

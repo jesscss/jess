@@ -17,8 +17,10 @@ const nest = (parents: string[], child: ComplexSelector): string | undefined =>
     rule(selist(...parents.map(sel)), [rule(child, [decl('color', keyword('red'))])])
   ]));
 
-// A multi-branch top-level rule renders one branch per line (`.a,\n.b`); normalize
-// the comma-newline back to `, ` so an inline `.a, .b` target reads cleanly.
+/*
+ * A multi-branch top-level rule renders one branch per line (`.a,\n.b`); normalize
+ * the comma-newline back to `, ` so an inline `.a, .b` target reads cleanly.
+ */
 const header = (css: string | undefined): string =>
   (css ?? '').split('{')[0]!.trim().replace(/,\s+/g, ', ');
 

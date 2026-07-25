@@ -68,8 +68,10 @@ if (run.error) {
   process.exit(1);
 }
 if (!existsSync(outFile)) {
-  // No machine-readable result at all means the runner itself died (import
-  // error, config error, OOM). That is never a "known failure".
+  /*
+   * No machine-readable result at all means the runner itself died (import
+   * error, config error, OOM). That is never a "known failure".
+   */
   console.error('vitest-ratchet: vitest produced no JSON report — the runner itself failed.');
   rmSync(outDir, { recursive: true, force: true });
   process.exit(1);

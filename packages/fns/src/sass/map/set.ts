@@ -32,8 +32,10 @@ const set = defineFunction(
       }
     }
 
-    // Create new declaration
-    // The key needs to be an Any<'property'> or Interpolated<'property'>
+    /*
+     * Create new declaration
+     * The key needs to be an Any<'property'> or Interpolated<'property'>
+     */
     let keyNode: any;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     if (isNode(key, N.Any) && (key as any).role === 'property') {
@@ -47,7 +49,7 @@ const set = defineFunction(
     }
     const newDecl = new Declaration({
       name: keyNode,
-      value: value
+      value
     });
 
     if (foundIndex >= 0) {

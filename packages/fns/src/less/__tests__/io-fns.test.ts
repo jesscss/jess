@@ -16,8 +16,10 @@ import { imageHeight } from '../../less/image-height.js';
 
 /** Invoke the universal typed callable with its variadic argument list. */
 function call(fn: Fn, list: List, c: FnCtx): ValueGroup {
-  // These unit stubs are deliberately synchronous; async capability coverage lives
-  // at the Compiler/Context boundary below the function package.
+  /*
+   * These unit stubs are deliberately synchronous; async capability coverage lives
+   * at the Compiler/Context boundary below the function package.
+   */
   const result = fn(list, c);
   if (result instanceof Promise) {
     throw new Error('Expected synchronous IO function result in this unit test.');

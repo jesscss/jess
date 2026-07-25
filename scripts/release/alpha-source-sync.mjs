@@ -7,19 +7,25 @@ export const ALPHA_BRANCH = 'alpha';
 export const ALPHA_SOURCE_REF = 'origin/dev';
 export const ALPHA_SOURCE_PROVENANCE_PATH = 'scripts/release/alpha-source-provenance.json';
 export const ALPHA_SOURCE_PROVENANCE_SCHEMA = 1;
-// An existing alpha may need the current release-safety policy in order to
-// validate its already-recorded source snapshot. These are release controls,
-// not product source: permit them only when alpha copies the exact files from
-// the current pushed dev ref.
+
+/*
+ * An existing alpha may need the current release-safety policy in order to
+ * validate its already-recorded source snapshot. These are release controls,
+ * not product source: permit them only when alpha copies the exact files from
+ * the current pushed dev ref.
+ */
 export const ALPHA_RELEASE_CONTROL_FILES = new Set([
   'scripts/release/alpha-source-sync.mjs',
   'scripts/release/verify-alpha-source-sync.mjs',
   'scripts/release/__tests__/alpha-source-sync.test.ts'
 ]);
-// `dev` remains active while an alpha gate runs. Requiring its tip to stay frozen
-// makes a valid release snapshot needlessly impossible to publish; accepting an
-// unboundedly old snapshot is no better. Keep the release snapshot recent without
-// turning ordinary, unrelated dev work into a release race.
+
+/*
+ * `dev` remains active while an alpha gate runs. Requiring its tip to stay frozen
+ * makes a valid release snapshot needlessly impossible to publish; accepting an
+ * unboundedly old snapshot is no better. Keep the release snapshot recent without
+ * turning ordinary, unrelated dev work into a release race.
+ */
 export const MAX_ALPHA_SOURCE_DRIFT_COMMITS = 12;
 
 function git(rootDir, args, { allowFailure = false } = {}) {
@@ -53,9 +59,7 @@ function readJson(rootDir, relativePath) {
   try {
     return JSON.parse(readFileSync(path.join(rootDir, relativePath), 'utf8'));
   } catch (error) {
-    throw new Error(
-      `Could not read ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throw new Error(`Could not read ${relativePath}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -65,14 +69,10 @@ export function readAlphaSourceProvenance(rootDir) {
     throw new Error(`${ALPHA_SOURCE_PROVENANCE_PATH} must be a JSON object.`);
   }
   if (provenance.schemaVersion !== ALPHA_SOURCE_PROVENANCE_SCHEMA) {
-    throw new Error(
-      `${ALPHA_SOURCE_PROVENANCE_PATH} must declare schemaVersion ${ALPHA_SOURCE_PROVENANCE_SCHEMA}.`
-    );
+    throw new Error(`${ALPHA_SOURCE_PROVENANCE_PATH} must declare schemaVersion ${ALPHA_SOURCE_PROVENANCE_SCHEMA}.`);
   }
   if (provenance.sourceRef !== ALPHA_SOURCE_REF) {
-    throw new Error(
-      `${ALPHA_SOURCE_PROVENANCE_PATH} must declare sourceRef '${ALPHA_SOURCE_REF}'.`
-    );
+    throw new Error(`${ALPHA_SOURCE_PROVENANCE_PATH} must declare sourceRef '${ALPHA_SOURCE_REF}'.`);
   }
   if (typeof provenance.sourceCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(provenance.sourceCommit)) {
     throw new Error(`${ALPHA_SOURCE_PROVENANCE_PATH} must declare a full 40-character sourceCommit.`);
@@ -180,24 +180,22 @@ export function verifyAlphaSourceSync({ rootDir = process.cwd(), fetch = true } 
   let sourceDrift;
   if (sourceCommit && provenance) {
     if (!isAncestor(rootDir, provenance.sourceCommit, sourceCommit)) {
-      errors.push(
-        `Alpha provenance source ${provenance.sourceCommit} is not an ancestor of current ${ALPHA_SOURCE_REF} ${sourceCommit}. `
-        + 'Create a new controlled alpha snapshot from a pushed dev source.'
-      );
+      errors.push(`Alpha provenance source ${provenance.sourceCommit} is not an ancestor of current ${ALPHA_SOURCE_REF} ${sourceCommit}. `
+        + 'Create a new controlled alpha snapshot from a pushed dev source.');
     } else {
       sourceDrift = commitDistance(rootDir, provenance.sourceCommit, sourceCommit);
       if (sourceDrift > MAX_ALPHA_SOURCE_DRIFT_COMMITS) {
-        errors.push(
-          `Alpha provenance is ${sourceDrift} commits behind current ${ALPHA_SOURCE_REF}; `
+        errors.push(`Alpha provenance is ${sourceDrift} commits behind current ${ALPHA_SOURCE_REF}; `
           + `the maximum allowed drift is ${MAX_ALPHA_SOURCE_DRIFT_COMMITS}. `
-          + 'Create a new controlled alpha snapshot from the current pushed dev source.'
-        );
+          + 'Create a new controlled alpha snapshot from the current pushed dev source.');
       }
     }
 
-    // Compare to the recorded source, not the moving dev tip. A valid alpha is a
-    // projection of that immutable source snapshot, with package-version and
-    // provenance exceptions only.
+    /*
+     * Compare to the recorded source, not the moving dev tip. A valid alpha is a
+     * projection of that immutable source snapshot, with package-version and
+     * provenance exceptions only.
+     */
     for (const change of changedPaths(rootDir, provenance.sourceCommit)) {
       if (change.file === ALPHA_SOURCE_PROVENANCE_PATH && change.status === 'A') {
         continue;
@@ -210,9 +208,7 @@ export function verifyAlphaSourceSync({ rootDir = process.cwd(), fetch = true } 
         && manifestOnlyChangesVersion(rootDir, provenance.sourceCommit, change.file)) {
         continue;
       }
-      errors.push(
-        `Alpha diverges from ${ALPHA_SOURCE_REF} outside the controlled release surface: ${change.status}\t${change.file}`
-      );
+      errors.push(`Alpha diverges from ${ALPHA_SOURCE_REF} outside the controlled release surface: ${change.status}\t${change.file}`);
     }
   }
 

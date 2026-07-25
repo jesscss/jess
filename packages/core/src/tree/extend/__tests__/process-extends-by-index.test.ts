@@ -96,12 +96,15 @@ describe('processExtendsByIndex (IR worklist) vs applyExtendsToSelector oracle',
   });
 
   it('reports UNSUPPORTED for a graft-target bucket (no silent delegation)', () => {
-    // Partial extend into `.a > .b` (a build the own engine covers) chained with a target
-    // whose construction the own engine gates → fullyOwnBuilt reflects the frontier honestly.
+    /*
+     * Partial extend into `.a > .b` (a build the own engine covers) chained with a target
+     * whose construction the own engine gates → fullyOwnBuilt reflects the frontier honestly.
+     */
     const insts = [
       { target: el('.b'), extendWith: sel([el('.d'), co('>'), el('.e')]), partial: true }
     ];
     const mine = processExtendsByIndex(sel([el('.a'), co('>'), el('.b')]), insts as IndexExtendInstruction[]);
+
     // .a>.b find .b partial extend .d>.e → .a>:is(.b,.d>.e) is own-buildable.
     expect(mine.fullyOwnBuilt).toBe(true);
     expect(str(mine.selector)).toBe('.a>:is(.b,.d>.e)');

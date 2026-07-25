@@ -3,18 +3,22 @@ import { Position, type Range } from 'vscode-languageserver-types';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { createEngine } from '../engine.js';
 
-// Symbol resolution (definition / references / rename) is grounded in the
-// tolerant, incremental CST (Option B), so it keeps working on half-typed or
-// otherwise invalid documents where the eval AST would yield nothing. These
-// tests pin that tolerance: each fixture is deliberately broken past the symbol
-// of interest, yet navigation and rename still resolve it.
+/*
+ * Symbol resolution (definition / references / rename) is grounded in the
+ * tolerant, incremental CST (Option B), so it keeps working on half-typed or
+ * otherwise invalid documents where the eval AST would yield nothing. These
+ * tests pin that tolerance: each fixture is deliberately broken past the symbol
+ * of interest, yet navigation and rename still resolve it.
+ */
 
 function doc(languageId: string, content: string): TextDocument {
   return TextDocument.create(`file:///tol.${languageId}`, languageId, 1, content);
 }
 
-// Apply a WorkspaceEdit's edits for one uri to `text` (right-to-left so earlier
-// offsets stay valid).
+/*
+ * Apply a WorkspaceEdit's edits for one uri to `text` (right-to-left so earlier
+ * offsets stay valid).
+ */
 function applyEdits(text: string, uri: string, edit: { changes?: Record<string, Array<{ range: Range; newText: string }>> } | null): string {
   const d = TextDocument.create(uri, 'less', 1, text);
   const edits = edit?.changes?.[uri] ?? [];
@@ -29,6 +33,7 @@ function applyEdits(text: string, uri: string, edit: { changes?: Record<string, 
 describe('CST symbol tolerance', () => {
   it('finds a Less variable definition when a later block is broken', () => {
     const engine = createEngine();
+
     // The trailing `.broken {{` never closes — a hard parse error for the AST.
     const d = doc('less', '@primary: red;\na { color: @primary; }\n.broken {{');
     engine.open(d.uri, d.languageId, d.version, d.getText());
@@ -41,6 +46,7 @@ describe('CST symbol tolerance', () => {
 
   it('finds a Less variable definition on a half-typed (unclosed) reference', () => {
     const engine = createEngine();
+
     // No closing `;` / `}` after the reference.
     const d = doc('less', '@primary: red;\na { color: @primary');
     engine.open(d.uri, d.languageId, d.version, d.getText());
@@ -57,6 +63,7 @@ describe('CST symbol tolerance', () => {
 
     // Cursor on the declaration name (`@primary` -> column 2 is inside `primary`).
     const refs = engine.findReferences(d.uri, Position.create(0, 2));
+
     // declaration + 2 references, all resolved off the tolerant CST.
     expect(refs.length).toBeGreaterThanOrEqual(3);
   });
@@ -96,13 +103,16 @@ describe('CST symbol tolerance', () => {
   });
 });
 
-// SCSS `@mixin foo` / `@include foo` / `@function bar` are distinct grammarTypes
-// (`ScssMixin` / `ScssInclude` / `ScssFunction`) from the Less mixin nodes. These
-// pin that every CST navigation feature now resolves them (regression: the CST
-// migration only knew the Less `MixinCall`/`MixinOrQualifiedRule` shapes, so every
-// SCSS mixin was invisible to definition / references / rename / prepareRename).
+/*
+ * SCSS `@mixin foo` / `@include foo` / `@function bar` are distinct grammarTypes
+ * (`ScssMixin` / `ScssInclude` / `ScssFunction`) from the Less mixin nodes. These
+ * pin that every CST navigation feature now resolves them (regression: the CST
+ * migration only knew the Less `MixinCall`/`MixinOrQualifiedRule` shapes, so every
+ * SCSS mixin was invisible to definition / references / rename / prepareRename).
+ */
 describe('CST symbols resolve SCSS mixins (@mixin / @include)', () => {
   const src = '@mixin foo($a) { color: $a; }\n.x { @include foo(red); }\n.y { @include foo(blue); }';
+
   // Offset of the FIRST `@include foo` name and the `@mixin foo` def name.
   const includeFooCol = '.x { @include '.length; // start of `foo` on line 1
 

@@ -143,9 +143,7 @@ describe('RenderBuffer', () => {
     writeRenderText(buffer, '\n');
     pushRenderSegment(buffer, pending);
 
-    expect(finalizeRenderBuffer(buffer, finalizers)).toBe(
-      '@media screen {.a {color: red;}}\n0 0 red,0 0 blue\ncolor: red;'
-    );
+    expect(finalizeRenderBuffer(buffer, finalizers)).toBe('@media screen {.a {color: red;}}\n0 0 red,0 0 blue\ncolor: red;');
   });
 
   it('tracks extend records as a side table', () => {

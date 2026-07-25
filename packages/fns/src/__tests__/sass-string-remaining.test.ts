@@ -68,12 +68,16 @@ describe('Sass remaining string functions', () => {
     it('handles negative index', () => {
       const str = new Quoted('Hello');
       const insert = new Quoted('X');
+
       // Test with -3: length (5) + (-3) + 2 = 4, insert at position 4 (after 'l', before 'o')
       const index = new Dimension({ number: -3 });
       const result = strInsert(str, insert, index);
-      // Insert at position 4 means: 'Hell' + 'X' + 'o' = 'HellXo'
-      // But wait, the insert should be at index -3, which means after the character at -3
-      // -3 from end is 'l' (index 2), so insert after it: 'Hel' + 'X' + 'lo' = 'HelXlo'
+
+      /*
+       * Insert at position 4 means: 'Hell' + 'X' + 'o' = 'HellXo'
+       * But wait, the insert should be at index -3, which means after the character at -3
+       * -3 from end is 'l' (index 2), so insert after it: 'Hel' + 'X' + 'lo' = 'HelXlo'
+       */
       expect((result as Quoted).valueOf()).toBe('HelXlo');
     });
 
@@ -124,9 +128,12 @@ describe('Sass remaining string functions', () => {
       const end = new Dimension({ number: 4 });
       const result = strSlice(str, start, end);
       expect(result).toBeInstanceOf(Quoted);
-      // start: 2 (1-based) -> index 1 (0-based) = 'e'
-      // end: 4 (1-based) -> index 3 (0-based, inclusive) = 'l'
-      // So slice(1, 4) = 'ell'
+
+      /*
+       * start: 2 (1-based) -> index 1 (0-based) = 'e'
+       * end: 4 (1-based) -> index 3 (0-based, inclusive) = 'l'
+       * So slice(1, 4) = 'ell'
+       */
       expect((result as Quoted).valueOf()).toBe('ell');
     });
 
@@ -141,14 +148,17 @@ describe('Sass remaining string functions', () => {
       const str = new Quoted('Hello');
       const start = new Dimension({ number: -3 });
       const result = strSlice(str, start);
-      // -3: length (5) + (-3) = 2, so start at index 2 ('l')
-      // Default end is -1: length (5) + (-1) = 4, but if equals length, subtract 1 = 3
-      // Wait, let me check the actual behavior
-      // start: -3 -> 5 + (-3) = 2 (index of 'l')
-      // end: default -1 -> 5 + (-1) = 4, but if equals length, 4 - 1 = 3
-      // So slice(2, 4) = 'll'... but we want 'llo'
-      // Actually end is inclusive in Sass, so we need end + 1
-      // If end is 4 (after adjustment), we slice(2, 5) = 'llo'
+
+      /*
+       * -3: length (5) + (-3) = 2, so start at index 2 ('l')
+       * Default end is -1: length (5) + (-1) = 4, but if equals length, subtract 1 = 3
+       * Wait, let me check the actual behavior
+       * start: -3 -> 5 + (-3) = 2 (index of 'l')
+       * end: default -1 -> 5 + (-1) = 4, but if equals length, 4 - 1 = 3
+       * So slice(2, 4) = 'll'... but we want 'llo'
+       * Actually end is inclusive in Sass, so we need end + 1
+       * If end is 4 (after adjustment), we slice(2, 5) = 'llo'
+       */
       expect((result as Quoted).valueOf()).toBe('llo');
     });
 
@@ -157,9 +167,12 @@ describe('Sass remaining string functions', () => {
       const start = new Dimension({ number: 2 });
       const end = new Dimension({ number: -1 });
       const result = strSlice(str, start, end);
-      // start: 2 (1-based) -> index 1 (0-based) = 'e'
-      // end: -1 -> length (5) + (-1) = 4, but if equals length, 4 - 1 = 3
-      // endCodepoint is inclusive, so slice(1, 4) = 'ell'
+
+      /*
+       * start: 2 (1-based) -> index 1 (0-based) = 'e'
+       * end: -1 -> length (5) + (-1) = 4, but if equals length, 4 - 1 = 3
+       * endCodepoint is inclusive, so slice(1, 4) = 'ell'
+       */
       expect((result as Quoted).valueOf()).toBe('ell');
     });
 

@@ -202,10 +202,13 @@ function buildStage(stageRoot) {
 
 function buildArtifact(stageRoot, commit, input) {
   restoreCommit(stageRoot, commit);
-  // `restoreCommit()` replaces the archived package directories, including
-  // their isolated pnpm workspace links. Recreate that package-local module
-  // topology before macro compilation; preserving only root node_modules
-  // would make a staged build resolve differently from a clean workspace.
+
+  /*
+   * `restoreCommit()` replaces the archived package directories, including
+   * their isolated pnpm workspace links. Recreate that package-local module
+   * topology before macro compilation; preserving only root node_modules
+   * would make a staged build resolve differently from a clean workspace.
+   */
   installStage(stageRoot);
   buildStage(stageRoot);
   const parserBundle = path.join(stageRoot, 'packages/less-parser/lib/index.js');

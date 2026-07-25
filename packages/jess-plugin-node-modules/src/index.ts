@@ -12,6 +12,7 @@ interface NodeModulesPluginOptions {
    * Default: true
    */
   enabled?: boolean;
+
   /**
    * Directory to anchor Node's module resolution at. When set, `require.resolve`
    * walks `node_modules` starting from this directory (instead of the plugin's own
@@ -41,20 +42,26 @@ export class NodeModulesPlugin extends AbstractPlugin {
   constructor(public opts: NodeModulesPluginOptions = {}) {
     super();
 
-    // Create a require function that can resolve modules
-    // Use createRequire to get a require function in ES module contexts
+    /*
+     * Create a require function that can resolve modules
+     * Use createRequire to get a require function in ES module contexts
+     */
     try {
       // Try to use the current file's directory as the base for resolution
       let currentDir: string;
       if (opts.basePath !== undefined) {
-        // An explicit anchor: resolve packages relative to a consuming project or
-        // fixture tree rather than the plugin's own install location.
+        /*
+         * An explicit anchor: resolve packages relative to a consuming project or
+         * fixture tree rather than the plugin's own install location.
+         */
         currentDir = opts.basePath;
       } else if (typeof __filename !== 'undefined') {
         currentDir = path.dirname(__filename);
       } else {
-        // In ES module contexts, try to use import.meta.url
-        // This will only work if the module system supports it
+        /*
+         * In ES module contexts, try to use import.meta.url
+         * This will only work if the module system supports it
+         */
         try {
           const url = import.meta.url;
           currentDir = path.dirname(fileURLToPath(url));
@@ -89,8 +96,10 @@ export class NodeModulesPlugin extends AbstractPlugin {
     }
 
     try {
-      // Use require.resolve to find the package
-      // This will search node_modules using Node's resolution algorithm
+      /*
+       * Use require.resolve to find the package
+       * This will search node_modules using Node's resolution algorithm
+       */
       const resolved = fromDir !== undefined
         ? this._require.resolve(packageName, { paths: [fromDir] })
         : this._require.resolve(packageName);
@@ -100,6 +109,7 @@ export class NodeModulesPlugin extends AbstractPlugin {
       if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') {
         return null;
       }
+
       // Re-throw other errors
       throw e;
     }
@@ -187,8 +197,10 @@ export class NodeModulesPlugin extends AbstractPlugin {
       throw new Error(`Plugin "${this.name}" cannot import "${absoluteFilePath}" (disabled)`);
     }
 
-    // Check if this looks like a node_modules path
-    // We can't directly resolve from absolute paths, but we can try to require it
+    /*
+     * Check if this looks like a node_modules path
+     * We can't directly resolve from absolute paths, but we can try to require it
+     */
     if (absoluteFilePath.includes('node_modules')) {
       try {
         const module: unknown = this._require(absoluteFilePath);

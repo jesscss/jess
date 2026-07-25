@@ -28,12 +28,16 @@ describe('Sass min()/max()', () => {
 
   it('spec § units/and_unitless — a unitless operand compares on DISPLAY numbers', () => {
     expect(run(true, true, makeDimension(2, 'px'), makeDimension(1))).toMatchObject({ number: 1, unit: '' });
-    // [binary] No conversion once a unitless operand appears: 1in does NOT
-    // become 96. This is the divergence from Less, which answers 1in.
+
+    /*
+     * [binary] No conversion once a unitless operand appears: 1in does NOT
+     * become 96. This is the divergence from Less, which answers 1in.
+     */
     expect(run(false, false, makeDimension(1, 'px'), makeDimension(1, 'in'), makeDimension(2)))
       .toMatchObject({ number: 2, unit: '' });
     expect(run(true, false, makeDimension(1, 'px'), makeDimension(1, 'in'), makeDimension(2)))
       .toMatchObject({ number: 1, unit: 'px' });
+
     // [binary]
     expect(run(false, false, makeDimension(1, 'px'), makeDimension(2, 'px'), makeDimension(3)))
       .toMatchObject({ number: 3, unit: '' });
@@ -44,9 +48,11 @@ describe('Sass min()/max()', () => {
   });
 
   it('[binary] reproduces the FOLD-ORDER artifact: min succeeds where max fails', () => {
-    // Identical arguments, opposite outcomes, because the running winner goes
-    // unitless immediately for min and stays 6em for max. dart-sass does this;
-    // a set-wide compatibility check would fail both, which is tidier and wrong.
+    /*
+     * Identical arguments, opposite outcomes, because the running winner goes
+     * unitless immediately for min and stays 6em for max. dart-sass does this;
+     * a set-wide compatibility check would fail both, which is tidier and wrong.
+     */
     const list: Dimension[] = [
       makeDimension(6, 'em'), makeDimension(5), makeDimension(4, 'ex'),
       makeDimension(3), makeDimension(2, 'pt'), makeDimension(1)

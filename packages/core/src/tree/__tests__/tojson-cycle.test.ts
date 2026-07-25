@@ -12,6 +12,7 @@ import { rules, decl } from '../index.js';
 describe('toJSON cycle-safety', () => {
   it('does not blow the stack on the internal back-reference cycles', () => {
     const r = rules([decl('color', 'red')]);
+
     // Simulate the back-refs that parse/eval populate (all point back at `r`):
     Object.assign(r, {
       _sourceRoot: r,
@@ -27,6 +28,7 @@ describe('toJSON cycle-safety', () => {
     for (const dropped of ['_sourceRoot', '_treeContext', '_scopeFrame', 'parent', 'sourceNode']) {
       expect(json[dropped], `${dropped} must be dropped by toJSON`).toBeUndefined();
     }
+
     // Real tree data survives.
     expect(Array.isArray(json.rules)).toBe(true);
   });

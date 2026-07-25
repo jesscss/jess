@@ -76,9 +76,7 @@ export function prepareCallableCandidateMatches({
   };
 }
 
-export function resolveCallableCandidateMatches(
-  options: PrepareCallableCandidateMatchesOptions
-): CallableCandidateMatchPreparation {
+export function resolveCallableCandidateMatches(options: PrepareCallableCandidateMatchesOptions): CallableCandidateMatchPreparation {
   const prepared = prepareCallableCandidateMatches(options);
   if (prepared.evalCandidates.length === 0) {
     throw new ReferenceError('No matching mixins found.');

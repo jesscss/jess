@@ -17,9 +17,11 @@ import {
 } from '../extend-walk.js';
 import { extendSelector } from '../extend.js';
 
-// ─────────────────────────────────────────────────
-// canUseWalkAndConsume
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * canUseWalkAndConsume
+ * ─────────────────────────────────────────────────
+ */
 describe('canUseWalkAndConsume', () => {
   it('returns true for SimpleSelector find', () => {
     expect(canUseWalkAndConsume(el('.a'), el('.b'))).toBe(true);
@@ -34,9 +36,11 @@ describe('canUseWalkAndConsume', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// walkAndExtend: full mode (partial: false)
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * walkAndExtend: full mode (partial: false)
+ * ─────────────────────────────────────────────────
+ */
 describe('walkAndExtend full mode', () => {
   it('root SimpleSelector match → SelectorList', () => {
     const result = walkAndExtend(el('.a'), el('.a'), el('.b'), false);
@@ -81,6 +85,7 @@ describe('walkAndExtend full mode', () => {
   it('inside CompoundSelector → does NOT extend (full mode rejects component matches)', () => {
     const target = compound([el('.a'), el('.b')]);
     const result = walkAndExtend(target, el('.a'), el('.c'), false);
+
     // Full mode: component match inside compound = partial match → rejected
     expect(result.valueOf()).toBe(target.valueOf());
   });
@@ -93,6 +98,7 @@ describe('walkAndExtend full mode', () => {
   it('inside ComplexSelector → does NOT extend (full mode rejects component matches)', () => {
     const target = sel([el('.a'), co(' '), el('.b')]);
     const result = walkAndExtend(target, el('.a'), el('.c'), false);
+
     // Full mode: component match inside complex = partial match → rejected
     expect(result.valueOf()).toBe(target.valueOf());
   });
@@ -145,9 +151,11 @@ describe('walkAndExtend full mode', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// walkAndExtend: partial mode (partial: true)
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * walkAndExtend: partial mode (partial: true)
+ * ─────────────────────────────────────────────────
+ */
 describe('walkAndExtend partial mode', () => {
   it('root SimpleSelector match → SelectorList', () => {
     const result = walkAndExtend(el('.a'), el('.a'), el('.b'), true);
@@ -205,9 +213,11 @@ describe('walkAndExtend partial mode', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// Phase 2: CompoundSelector find
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Phase 2: CompoundSelector find
+ * ─────────────────────────────────────────────────
+ */
 describe('walkAndExtend compound find (Phase 2)', () => {
   it('full: whole compound match at root → SelectorList', () => {
     const target = compound([el('.a'), el('.b')]);
@@ -310,9 +320,11 @@ describe('wouldExtendChange compound find (Phase 2)', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// Equivalence with legacy extendSelector
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Equivalence with legacy extendSelector
+ * ─────────────────────────────────────────────────
+ */
 describe('walkAndExtend vs extendSelector equivalence', () => {
   const cases: Array<{
     name: string;
@@ -381,9 +393,11 @@ describe('walkAndExtend vs extendSelector equivalence', () => {
   }
 });
 
-// ─────────────────────────────────────────────────
-// wouldExtendChange
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * wouldExtendChange
+ * ─────────────────────────────────────────────────
+ */
 describe('wouldExtendChange', () => {
   it('returns false when find === extendWith (self-extend)', () => {
     expect(wouldExtendChange(el('.a'), el('.a'), el('.a'), false)).toBe(false);
@@ -447,9 +461,11 @@ describe('classifyExtendMatch', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// Phase 3: ComplexSelector find
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Phase 3: ComplexSelector find
+ * ─────────────────────────────────────────────────
+ */
 describe('walkAndExtend: ComplexSelector find', () => {
   describe('full mode (partial: false)', () => {
     it('matches exact complex selector', () => {
@@ -578,9 +594,11 @@ describe('wouldExtendChange: ComplexSelector find', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// :is() AND branch — tail-aware position matching
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * :is() AND branch — tail-aware position matching
+ * ─────────────────────────────────────────────────
+ */
 describe('tail-aware :is() matching', () => {
   describe('walkAndExtend', () => {
     it('matches simple find against tail of :is(complex) in compound', () => {
@@ -588,6 +606,7 @@ describe('tail-aware :is() matching', () => {
       const target = compound([el('.a'), is(sel([el('.x'), co('>'), el('.y')])), el('.b')]);
       const find = el('.y');
       const result = walkAndExtend(target, find, el('.z'), true);
+
       // .y matched inside :is(.x > .y), extendWith added as alternative
       expect(result.valueOf()).not.toBe(target.valueOf());
       expect(result.valueOf()).toContain('.z');

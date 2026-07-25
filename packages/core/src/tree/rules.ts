@@ -85,9 +85,8 @@ import {
   canEnterRulesEntryForLookup,
   isOptionalRulesEntry,
   isPublicRulesEntry,
-  type RulesEntryLike
-} from './util/mixin-output-slot.js';
-import type { MixinOutputSlot } from './util/mixin-output-slot.js';
+  type RulesEntryLike,
+  MixinOutputSlot } from './util/mixin-output-slot.js';
 import type { CallableLookupEntry, MixinEntry } from './util/callable-entry.js';
 import { queueTopImport } from './util/import-queue.js';
 import {
@@ -107,14 +106,17 @@ type ScopeFrameProfileGlobals = typeof globalThis & {
   ['__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__']?: Record<string, number>;
 };
 const scopeFrameProfileCounters = (globalThis as ScopeFrameProfileGlobals)[SCOPE_FRAME_PROFILE_COUNTERS_KEY];
-// Cost-neutral profiling hook for the uncovered-callable descent. When the
-// counters global is absent (the production default) this is `undefined`, so the
-// `recordUncoveredCallable?.(key)` call site compiles to a zero-cost optional
-// call. It is the measured witness for the callable-fallback off-benchmark
-// contract: it counts every findMixinsFastForUncoveredCallable entry per key so
-// a retirement (callsAfter === 0 for an imported guarded mixin) is provable.
+
+/*
+ * Cost-neutral profiling hook for the uncovered-callable descent. When the
+ * counters global is absent (the production default) this is `undefined`, so the
+ * `recordUncoveredCallable?.(key)` call site compiles to a zero-cost optional
+ * call. It is the measured witness for the callable-fallback off-benchmark
+ * contract: it counts every findMixinsFastForUncoveredCallable entry per key so
+ * a retirement (callsAfter === 0 for an imported guarded mixin) is provable.
+ */
 const uncoveredCallableProfileCounters =
-  (globalThis as ScopeFrameProfileGlobals)['__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__'];
+  (globalThis as ScopeFrameProfileGlobals).__JESS_UNCOVERED_CALLABLE_PROFILE_COUNTERS__;
 const recordUncoveredCallable = uncoveredCallableProfileCounters
   ? (key: string): void => {
       const counters = uncoveredCallableProfileCounters;
@@ -179,6 +181,7 @@ type ExactCallableFindOptions = {
   hasTarget?: boolean;
   local?: boolean;
   includeRulesets?: boolean;
+
   /**
    * Ruleset-only lookup: collect ONLY plain `Ruleset` candidates (`.foo {}`),
    * dropping `Mixin` (parametric/parens `.foo() {}`) and any other callable. Used
@@ -238,20 +241,24 @@ function isImportAtRule(node: Node): node is AtRule {
     && String(node.name.valueOf?.() ?? node.name ?? '').trim() === '@import';
 }
 
-// An evaluated import placement that dumps its members into the ENCLOSING scope:
-// a plain `@import` (marked `importBoundary === false`) or a wildcard
-// `@compose (namespace: *)` (marked `inlinesMembersToParent`, while it keeps
-// `importBoundary === true` to still block the imported body from seeing parent vars).
+/*
+ * An evaluated import placement that dumps its members into the ENCLOSING scope:
+ * a plain `@import` (marked `importBoundary === false`) or a wildcard
+ * `@compose (namespace: *)` (marked `inlinesMembersToParent`, while it keeps
+ * `importBoundary === true` to still block the imported body from seeing parent vars).
+ */
 function importInlinesMembersToParent(rules: Rules): boolean {
   return rules.options.importBoundary === false
     || rules.options.inlinesMembersToParent === true;
 }
 
-// Walk a frame's lexical parent chain to detect any per-call live-binding scope
-// (mixin params / loop vars). Used to distinguish a genuinely re-usable mixin body
-// child (whose per-call output must not be baked into the shared template) from a
-// nested ruleset/@media body re-used only for selector nesting (whose output is
-// invariant across evals). Bounded + cycle-guarded like the other frame walks.
+/*
+ * Walk a frame's lexical parent chain to detect any per-call live-binding scope
+ * (mixin params / loop vars). Used to distinguish a genuinely re-usable mixin body
+ * child (whose per-call output must not be baked into the shared template) from a
+ * nested ruleset/@media body re-used only for selector nesting (whose output is
+ * invariant across evals). Bounded + cycle-guarded like the other frame walks.
+ */
 function frameChainHasLiveBindings(frame: ScopeFrame | undefined): boolean {
   let f = frame;
   const seen = new Set<ScopeFrame>();
@@ -265,12 +272,14 @@ function frameChainHasLiveBindings(frame: ScopeFrame | undefined): boolean {
   return false;
 }
 
-// A callable's per-call surface adopted under a mixin-output namespace member
-// (e.g. `.sayGender` bound under the output `.person` for `.person.sayGender()`)
-// resolves free vars up that DEFINITION member, not the call site. The member is
-// a RETAINED per-call output frame: its scope-frame parent carries the call's
-// live param slots (hasLiveBindings). Distinct from the placement scope, so the
-// §4 placement re-point must leave the definition parent intact.
+/*
+ * A callable's per-call surface adopted under a mixin-output namespace member
+ * (e.g. `.sayGender` bound under the output `.person` for `.person.sayGender()`)
+ * resolves free vars up that DEFINITION member, not the call site. The member is
+ * a RETAINED per-call output frame: its scope-frame parent carries the call's
+ * live param slots (hasLiveBindings). Distinct from the placement scope, so the
+ * §4 placement re-point must leave the definition parent intact.
+ */
 function isRetainedOutputDefinitionParent(
   parent: Node | undefined,
   enclosingScope: Rules | undefined
@@ -279,18 +288,21 @@ function isRetainedOutputDefinitionParent(
     return false;
   }
   const frame = (parent as Rules).getScopeFrame();
-  // The hasLiveBindings-parent signal alone is too broad: an ordinary nested
-  // ruleset inside a mixin body (e.g. a doubly-nested `.innest` inside `.inner`)
-  // also chains to the call's param slots, yet it is NOT a retained output — its
-  // per-call placement re-point must still fire so a second call rebinds its free
-  // vars to the new call's slots instead of resolving through the first call's
-  // cached frame chain.
-  //
-  // A retained mixin-output member OWNS its frame (`frame.rulesNode === parent`). A
-  // per-call re-evaluated body child is COW-derived during eval, which re-points its
-  // frame's `rulesNode` to the derived output surface (`frame.rulesNode !== parent`)
-  // — the marker that it is a placed body, not a retained definition. Require frame
-  // ownership so only the genuine retained-output parent suppresses the re-point.
+
+  /*
+   * The hasLiveBindings-parent signal alone is too broad: an ordinary nested
+   * ruleset inside a mixin body (e.g. a doubly-nested `.innest` inside `.inner`)
+   * also chains to the call's param slots, yet it is NOT a retained output — its
+   * per-call placement re-point must still fire so a second call rebinds its free
+   * vars to the new call's slots instead of resolving through the first call's
+   * cached frame chain.
+   *
+   * A retained mixin-output member OWNS its frame (`frame.rulesNode === parent`). A
+   * per-call re-evaluated body child is COW-derived during eval, which re-points its
+   * frame's `rulesNode` to the derived output surface (`frame.rulesNode !== parent`)
+   * — the marker that it is a placed body, not a retained definition. Require frame
+   * ownership so only the genuine retained-output parent suppresses the re-point.
+   */
   return frame.parent?.hasLiveBindings === true
     && frame.rulesNode === parent;
 }
@@ -316,17 +328,21 @@ function collectKeyRemainder(keys: readonly string[], start: number): string[] {
   return remainder;
 }
 
-// Combinators are string leaves between selector segments; a compound namespace
-// key like `#theme>.button` (or `#theme .button`) concatenates them without
-// spaces, so each segment slice must drop any trailing combinator characters.
+/*
+ * Combinators are string leaves between selector segments; a compound namespace
+ * key like `#theme>.button` (or `#theme .button`) concatenates them without
+ * spaces, so each segment slice must drop any trailing combinator characters.
+ */
 function isCombinatorCharCode(char: number): boolean {
   // ' ' | '>' | '+' | '~' | '|'
   return char === 32 || char === 62 || char === 43 || char === 126 || char === 124;
 }
 
-// Split a `#`/`.`-delimited selector string into its ordered segment keys,
-// dropping trailing combinator characters from each segment (`#theme>.button`
-// → ['#theme', '.button']). Returns [] for strings with no class/id segment.
+/*
+ * Split a `#`/`.`-delimited selector string into its ordered segment keys,
+ * dropping trailing combinator characters from each segment (`#theme>.button`
+ * → ['#theme', '.button']). Returns [] for strings with no class/id segment.
+ */
 function splitSelectorStringKeys(key: string): string[] {
   const out: string[] = [];
   for (let i = 0; i < key.length; i++) {
@@ -381,9 +397,11 @@ function renderRulesToString(
     directSourceRender
   );
   const finish = (out: string): string => {
-  // Root Rules serialize as a CSS document and own the final newline. Nested
-  // direct string render returns a body fragment, so trim only that single
-  // trailing rule separator; buffer render preserves the full fragment text.
+  /*
+   * Root Rules serialize as a CSS document and own the final newline. Nested
+   * direct string render returns a body fragment, so trim only that single
+   * trailing rule separator; buffer render preserves the full fragment text.
+   */
     if (sourceWasRoot || !out.endsWith('\n')) {
       return out;
     }
@@ -539,9 +557,11 @@ function finishRulesRenderState<T extends string>(
 }
 
 function childRulesOf(node: Node): Rules | undefined {
-  // Real Jess rule containers are all `Rules` instances. Keep the bitmask
-  // fallback below for foreign/duck-typed node values, but do not make every
-  // ordinary container pay three protocol checks before the instance check.
+  /*
+   * Real Jess rule containers are all `Rules` instances. Keep the bitmask
+   * fallback below for foreign/duck-typed node values, but do not make every
+   * ordinary container pay three protocol checks before the instance check.
+   */
   if (node instanceof Rules) {
     return node;
   }
@@ -634,11 +654,14 @@ export function hasCarriedMergeOutputSurface(node: Node): boolean {
   if (!(node instanceof Rules)) {
     return false;
   }
-  // Mixin and Ruleset bodies are definition boundaries. Their own bit is used
-  // when that body is evaluated, but it must not make a source-scope admission
-  // look through the definition and coalesce declarations that have not been
-  // emitted into this surface. Callable output is represented by a plain Rules
-  // placement surface (or an If/For/While output surface), whose bit is carried.
+
+  /*
+   * Mixin and Ruleset bodies are definition boundaries. Their own bit is used
+   * when that body is evaluated, but it must not make a source-scope admission
+   * look through the definition and coalesce declarations that have not been
+   * emitted into this surface. Callable output is represented by a plain Rules
+   * placement surface (or an If/For/While output surface), whose bit is carried.
+   */
   if (node.type === 'Mixin' || node.type === 'Ruleset' || node.type === 'AtRule') {
     return false;
   }
@@ -714,8 +737,10 @@ function rulesHasCarriedReferenceImportSurface(rules: Rules): boolean {
 }
 
 function sourceRulesOf(rules: Rules): Rules {
-  // A canonical body may be any Rules subclass (Mixin/Ruleset) now that the
-  // Mixin.sourceNode wrapper is gone — `instanceof Rules` covers all three.
+  /*
+   * A canonical body may be any Rules subclass (Mixin/Ruleset) now that the
+   * Mixin.sourceNode wrapper is gone — `instanceof Rules` covers all three.
+   */
   return rules.sourceNode instanceof Rules ? rules.sourceNode : rules;
 }
 
@@ -804,8 +829,10 @@ export type RulesOptions = {
    *    }
    */
   rulesVisibility?: Record<string, RulesVisibility>;
+
   /** Current compatibility carrier for explicit generated mixin-output state. */
   mixinOutputSlot?: MixinOutputSlot;
+
   /**
    * Marks declaration-only Rules emitted from non-mixin call sites so post-eval
    * ordering can move them ahead of nested rulesets/at-rules without relying on
@@ -813,19 +840,23 @@ export type RulesOptions = {
    */
   callDeclarationOutput?: boolean;
   readonly?: boolean;
+
   /**
    * all imports other than classic `@import` set returned rules to local.
    * The reason is that variables are not transitive, and you need to re-use
    * modules to get the same variables.
    */
   local?: boolean;
+
   /**
    * Sass `@forward` semantics: this Rules node exists as an export surface for downstream
    * consumers, but should not be visible to lookups within the current stylesheet scope.
    */
   forward?: boolean;
+
   /** Non-classic import boundary marker (`compose`, `use`, `forward`, etc.). */
   importBoundary?: boolean;
+
   /**
    * This import placement dumps its members into the ENCLOSING scope as if written
    * in place: a plain `@import`, or a `@compose (namespace: *)` wildcard. Distinct
@@ -834,6 +865,7 @@ export type RulesOptions = {
    * The enclosing ScopeFrame links such a placement's frame as a fallback.
    */
   inlinesMembersToParent?: boolean;
+
   /** Render gating marker for referenced imports/usages (serializer-time only). */
   referenceMode?: boolean;
 };
@@ -896,6 +928,7 @@ function collectCallableBucketResults(
     if (!includeRulesets && isNode(candidate, N.Ruleset)) {
       continue;
     }
+
     // Ruleset-only (bracket capture `*[.foo]()`): drop non-Ruleset callables.
     if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
       continue;
@@ -1037,8 +1070,10 @@ function setAssignmentTargetBinding(
  *   (Declaration background-color: white;)
  * ]
  */
-// Rules-only packed flags (see `rulesFlags`). A Rules-private int, distinct from
-// the base `flags` bitmask that every leaf node shares — keeps leaf reads narrow.
+/*
+ * Rules-only packed flags (see `rulesFlags`). A Rules-private int, distinct from
+ * the base `flags` bitmask that every leaf node shares — keeps leaf reads narrow.
+ */
 const R_HAS_DIRECT_CHILD_RULE_SURFACE = 1 << 0;
 const R_HAS_DECLARATION_CHILD_SURFACE = 1 << 1;
 const R_HAS_VAR_DECLARATION_CHILD_SURFACE = 1 << 2;
@@ -1052,6 +1087,7 @@ const R_HAS_EXTENDS = 1 << 8;
 const R_HAS_REFERENCE_IMPORTS = 1 << 9;
 const R_REGISTRATION_PREPARED = 1 << 10;
 const R_PLACEMENT_REPOINTED = 1 << 11;
+
 /** Bits reset by `resetDerivedState` (child-derived surfaces + extend/reference-import). */
 const R_DERIVED_STATE_MASK =
   R_HAS_DIRECT_CHILD_RULE_SURFACE
@@ -1080,6 +1116,7 @@ class RulesLookupState {
   varsByName: Map<string, BindingEntry[]> | undefined = undefined;
   functionsByName: Map<string, JsFunction | Func> | undefined = undefined;
   callableLookupCache: Map<string, CallableLookupEntry[] | null> | undefined = undefined;
+
   /**
    * Full callable index for this scope: every callable key -> its ordered entries,
    * built in ONE pass over `rules` and memoized. `getCallableEntriesForKey` reads a
@@ -1349,6 +1386,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   /** ScopeFrame storage; check this when lookup must not lazily build a frame. */
   _scopeFrame: ScopeFrame | undefined;
+
   /**
    * Transient, set for exactly one eval when `_evalPreparedRules` re-points this
    * shared canonical body child's lexical frame parent to a per-call placement
@@ -1453,21 +1491,29 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * registrations survive the explicit clone sites that remain outside the hot path.
    */
   override toJSON(): Record<string, unknown> {
-    // `_scopeFrame` back-references this `Rules` (frame → rulesNode) at eval
-    // time, so it must be dropped to keep `JSON.stringify` cycle-safe — the same
-    // discipline as the base back-refs (sourceNode/parent/_sourceRoot). The
-    // lookup caches hold resolved callables/frames that can also retain
-    // back-refs; they are derived, non-tree data, so drop them too.
+    /*
+     * `_scopeFrame` back-references this `Rules` (frame → rulesNode) at eval
+     * time, so it must be dropped to keep `JSON.stringify` cycle-safe — the same
+     * discipline as the base back-refs (sourceNode/parent/_sourceRoot). The
+     * lookup caches hold resolved callables/frames that can also retain
+     * back-refs; they are derived, non-tree data, so drop them too.
+     */
     const json = super.toJSON();
-    // `_treeContext` (context → sourceTrees → nodes) is a Rules-only back-ref;
-    // drop it here to keep `JSON.stringify` cycle-safe.
+
+    /*
+     * `_treeContext` (context → sourceTrees → nodes) is a Rules-only back-ref;
+     * drop it here to keep `JSON.stringify` cycle-safe.
+     */
     delete json._treeContext;
     delete json._scopeFrame;
-    // The cold lookup fields now live on `_lookup` (a nested struct). Drop the raw
-    // struct and re-emit only the non-cyclic, non-cache subset at top level so the
-    // serialized shape matches the pre-slim behavior (functions + child-entry
-    // surfaces + version counters kept; `callableLookupCache` /
-    // `directDeclarationLookupCache` / `_closureScope` back-ref dropped).
+
+    /*
+     * The cold lookup fields now live on `_lookup` (a nested struct). Drop the raw
+     * struct and re-emit only the non-cyclic, non-cache subset at top level so the
+     * serialized shape matches the pre-slim behavior (functions + child-entry
+     * surfaces + version counters kept; `callableLookupCache` /
+     * `directDeclarationLookupCache` / `_closureScope` back-ref dropped).
+     */
     delete json._lookup;
     const lookup = this._lookup;
     if (lookup) {
@@ -1525,10 +1571,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
 
   derive(value: Node[] = [...this.rules]): Rules {
     const sourceLocation = sourceSpanOf(this);
-    // Thin surface: construct EMPTY (so the constructor parents nothing) and
-    // SHARE the children — push without adopting, so a shared canonical child's
-    // parent is never overwritten. `sourceNode` is the surface's only link back
-    // to canonical (used for declaration lookup). See LIVE_BINDING_ARCHITECTURE.md.
+
+    /*
+     * Thin surface: construct EMPTY (so the constructor parents nothing) and
+     * SHARE the children — push without adopting, so a shared canonical child's
+     * parent is never overwritten. `sourceNode` is the surface's only link back
+     * to canonical (used for declaration lookup). See LIVE_BINDING_ARCHITECTURE.md.
+     */
     const derived = this._deriveShell(sourceLocation);
     derived.sourceNode = this.sourceNode ?? this;
     derived.inherit(this);
@@ -1545,16 +1594,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private resetDerivedState(source: Rules): void {
-    // IMPORTANT: cloned Rules must rebuild their derived lookup state. Otherwise a
-    // clone can inherit empty/incorrect lookup maps, causing lookup misses (e.g. @c
-    // in detached-rulesets). The derive shell starts with `_lookup === undefined`
-    // (all cold lookup fields at their neutral value), so the only thing to carry
-    // across is the explicit function-binding subset below — everything else is
-    // already cleared by virtue of the struct being unallocated.
-    //
-    // Only preserve explicit function bindings across clones. This supports Less
-    // plugin compat without reusing derived declaration/callable lookup state,
-    // which must be rebuilt from AST nodes via lazy indexing.
+    /*
+     * IMPORTANT: cloned Rules must rebuild their derived lookup state. Otherwise a
+     * clone can inherit empty/incorrect lookup maps, causing lookup misses (e.g. @c
+     * in detached-rulesets). The derive shell starts with `_lookup === undefined`
+     * (all cold lookup fields at their neutral value), so the only thing to carry
+     * across is the explicit function-binding subset below — everything else is
+     * already cleared by virtue of the struct being unallocated.
+     *
+     * Only preserve explicit function bindings across clones. This supports Less
+     * plugin compat without reusing derived declaration/callable lookup state,
+     * which must be rebuilt from AST nodes via lazy indexing.
+     */
     if (source.functionsByName) {
       const lookup = this.ensureLookup();
       lookup.functionsByName = new Map(source.functionsByName);
@@ -1563,18 +1614,24 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? new Map(source.functionLookupVersionsByName)
         : undefined;
     }
-    // Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
-    // one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
-    // untouched, matching the prior per-field resets (which did not reset those).
+
+    /*
+     * Clear all child-derived surface bits + _hasExtends/_hasReferenceImports in
+     * one masked write. Deliberately leaves _bodyEvaluated and _registrationPrepared
+     * untouched, matching the prior per-field resets (which did not reset those).
+     */
     this.rulesFlags &= ~R_DERIVED_STATE_MASK;
     if (this._lookup) {
       this._lookup.varsByName = undefined;
       this._lookup.lookupVersion = 0;
     }
-    // Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
-    // Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
-    // re-wire against the clone's actual parent chain. Reusing an empty frame from the
-    // source tree can shadow a live wrapper frame that actually carries live slots.
+
+    /*
+     * Preserve only runtime live-slot bindings (mixin params / loop vars) across clones.
+     * Ordinary declaration-only ScopeFrames should be rebuilt lazily on the clone so they
+     * re-wire against the clone's actual parent chain. Reusing an empty frame from the
+     * source tree can shadow a live wrapper frame that actually carries live slots.
+     */
     if (source._scopeFrame?.hasLiveBindings || source._scopeFrame?.fallbackFrame) {
       this.scopeFrame = buildScopeFrame(
         undefined,
@@ -1662,12 +1719,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this._scopeFrame;
   }
 
-  // A non-boundary `@import` inlines its body into this scope. Chain each such
-  // imported Rules' own scope frame (which already indexes the imported decls +
-  // callables) as this frame's fallback, so lookups resolve imported symbols on the
-  // fast frame path — consulted only AFTER the primary scope chain, so an enclosing
-  // declaration always wins. Boundaries (`@compose` = true, rulesets = undefined)
-  // are skipped. Reuses the already-read rules array (no extra scan).
+  /*
+   * A non-boundary `@import` inlines its body into this scope. Chain each such
+   * imported Rules' own scope frame (which already indexes the imported decls +
+   * callables) as this frame's fallback, so lookups resolve imported symbols on the
+   * fast frame path — consulted only AFTER the primary scope chain, so an enclosing
+   * declaration always wins. Boundaries (`@compose` = true, rulesets = undefined)
+   * are skipped. Reuses the already-read rules array (no extra scan).
+   */
   private linkInlineImportFallbackFrames(frame: ScopeFrame, rulesBody: Node[]): void {
     for (let i = 0; i < rulesBody.length; i++) {
       const child = rulesBody[i]!;
@@ -1820,9 +1879,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     return this.hasUncoveredChildVariableAssignmentSurface();
   }
 
-  private hasUncoveredChildVariableAssignmentSurface(
-    childEntries: Array<RulesEntryLike> | null | undefined = this.collectDirectDeclarationChildEntries()
-  ): boolean {
+  private hasUncoveredChildVariableAssignmentSurface(childEntries: Array<RulesEntryLike> | null | undefined = this.collectDirectDeclarationChildEntries()): boolean {
     if (!childEntries?.length) {
       return false;
     }
@@ -1919,6 +1976,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         if (!includeRulesets && isNode(candidate, N.Ruleset)) {
           continue;
         }
+
         // Ruleset-only ($apply / *[…]): keep plain Rulesets, drop Mixins etc.
         if (rulesetsOnly && !isNode(candidate, N.Ruleset)) {
           continue;
@@ -2188,21 +2246,26 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       let selector = node.selector;
       if (typeof selector === 'string') {
-        // Parsed simple selectors (`#theme`, `.button`) are stored as plain
-        // strings, not Selector nodes, but they are valid callable namespaces —
-        // register them under their split ordered keys just like node selectors.
+        /*
+         * Parsed simple selectors (`#theme`, `.button`) are stored as plain
+         * strings, not Selector nodes, but they are valid callable namespaces —
+         * register them under their split ordered keys just like node selectors.
+         */
         this.addCallableSelectors(node, splitSelectorStringKeys(selector), index);
         continue;
       }
       if (!selector || isNode(selector, N.Nil)) {
         continue;
       }
-      // A bare array selector IS a comma-separated selector list (the lean
-      // strings-not-nodes surface for `.bo, .bar { ... }`). Each member is an
-      // independent selector, so register every member as its own callable —
-      // otherwise a flat `getOrderedSelectorKeys` would fold the whole group
-      // into one ordered namespace path (`.bo` → `.bar`), leaving later members
-      // (`.bar()`) unresolvable while the first (`.bo()`) still matched.
+
+      /*
+       * A bare array selector IS a comma-separated selector list (the lean
+       * strings-not-nodes surface for `.bo, .bar { ... }`). Each member is an
+       * independent selector, so register every member as its own callable —
+       * otherwise a flat `getOrderedSelectorKeys` would fold the whole group
+       * into one ordered namespace path (`.bo` → `.bar`), leaving later members
+       * (`.bar()`) unresolvable while the first (`.bo()`) still matched.
+       */
       if (Array.isArray(selector)) {
         for (const item of selector) {
           this.addCallableSelectors(node, getOrderedSelectorKeys(item), index);
@@ -3302,9 +3365,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       ) {
         return true;
       }
-      // The prefix match IS this entry's own namespace ruleset. That holds for
-      // compound-selector namespaces (`#panel.dark.navbar`) too, where
-      // `consumed` carries every selector key — not just a single segment.
+
+      /*
+       * The prefix match IS this entry's own namespace ruleset. That holds for
+       * compound-selector namespaces (`#panel.dark.navbar`) too, where
+       * `consumed` carries every selector key — not just a single segment.
+       */
       if (
         consumed.length >= 1
         && consumed[0] === segment
@@ -3324,8 +3390,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
    * contributes a `segment` callable to the scope that contains it.
    */
   private staticNamespaceExcludesKey(node: Rules, segment: string): boolean {
-    // An ambient mixin-output surface can inject arbitrary callables into the
-    // scope, so its key is not statically known — never skip it.
+    /*
+     * An ambient mixin-output surface can inject arbitrary callables into the
+     * scope, so its key is not statically known — never skip it.
+     */
     if (node.options.mixinOutputSlot) {
       return false;
     }
@@ -3338,10 +3406,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       if (!selector || isNode(selector, N.Nil)) {
         return false;
       }
-      // Simple selectors (`#theme`, `.button`) are stored as plain strings;
-      // node selectors carry ordered keys. Either way, a resolvable first key
-      // that differs from `segment` means the namespace is reachable only under
-      // its own name — irrelevant to a `segment` lookup.
+
+      /*
+       * Simple selectors (`#theme`, `.button`) are stored as plain strings;
+       * node selectors carry ordered keys. Either way, a resolvable first key
+       * that differs from `segment` means the namespace is reachable only under
+       * its own name — irrelevant to a `segment` lookup.
+       */
       const keys = typeof selector === 'string'
         ? splitSelectorStringKeys(selector)
         : getOrderedSelectorKeys(selector);
@@ -3377,11 +3448,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         continue;
       }
       if (this.staticNamespaceExcludesKey(entry.node, segment)) {
-        // A definitely-named callable namespace (`#ns() {…}`, `#panel.x {…}`)
-        // gates its inner mixins behind its own key. It can never inject a
-        // differently-named callable into this scope's ambient namespace, so a
-        // `segment` lookup is unaffected by it — even though it carries a mixin
-        // surface. Skip it so a sibling namespace doesn't defeat the fast path.
+        /*
+         * A definitely-named callable namespace (`#ns() {…}`, `#panel.x {…}`)
+         * gates its inner mixins behind its own key. It can never inject a
+         * differently-named callable into this scope's ambient namespace, so a
+         * `segment` lookup is unaffected by it — even though it carries a mixin
+         * surface. Skip it so a sibling namespace doesn't defeat the fast path.
+         */
         continue;
       }
       if (!this.prefixOwnsChildren(scope, entry.node, segment, prefixMatches)) {
@@ -3428,11 +3501,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     keys: string[],
     options: CallableFindOptions = {},
     pathStart = 0,
-    // When the head namespace also exists in mixin form the walk defers to the
-    // mixin path (returns undefined). Passing a collector captures the ruleset-form
-    // prefix defs in the SAME pass so findMixinPath can UNION ruleset + mixin
-    // namespace results (`#g when(…) {…} #g() {…}` — both contribute) without a
-    // second full frame walk.
+
+    /*
+     * When the head namespace also exists in mixin form the walk defers to the
+     * mixin path (returns undefined). Passing a collector captures the ruleset-form
+     * prefix defs in the SAME pass so findMixinPath can UNION ruleset + mixin
+     * namespace results (`#g when(…) {…} #g() {…}` — both contribute) without a
+     * second full frame walk.
+     */
     despiteMixinNamespaceOut?: { entries?: MixinEntry[] }
   ): MixinEntry[] | undefined {
     if (keys.length - pathStart < 2) {
@@ -3668,14 +3744,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         return DEFINITE_MISS;
       }
 
-      // A mixin CALL (`#foo > .m()`) invokes every same-named namespace on the
-      // path, so accumulate each prefix match's resolution. A bare value/index
-      // lookup keeps override (last-wins) semantics — return the first match.
+      /*
+       * A mixin CALL (`#foo > .m()`) invokes every same-named namespace on the
+       * path, so accumulate each prefix match's resolution. A bare value/index
+       * lookup keeps override (last-wins) semantics — return the first match.
+       */
       const accumulate = options.mixinCall === true;
-      // Longest-consumed prefixes win first. Stable-sort keeps the incoming
-      // newest-first order within a length; the call accumulation wants source
-      // order (oldest first) so later same-named namespaces override as authored,
-      // so reverse within each equal-length group when accumulating.
+
+      /*
+       * Longest-consumed prefixes win first. Stable-sort keeps the incoming
+       * newest-first order within a length; the call accumulation wants source
+       * order (oldest first) so later same-named namespaces override as authored,
+       * so reverse within each equal-length group when accumulating.
+       */
       if (prefixMatches.length > 1) {
         if (accumulate) {
           prefixMatches.sort((a, b) => a.consumed.length - b.consumed.length).reverse();
@@ -3893,9 +3974,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let resolved: MixinEntry[] | undefined;
     let resolvedOwned = false;
     let descendantMissCovered = false;
-    // namespaceMixins arrives newest-first (reverse bucket order); walk it back
-    // to front so same-named namespaces' descendant output accumulates in the
-    // source order they were authored.
+
+    /*
+     * namespaceMixins arrives newest-first (reverse bucket order); walk it back
+     * to front so same-named namespaces' descendant output accumulates in the
+     * source order they were authored.
+     */
     for (let i = namespaceMixins.length - 1; i >= 0; i--) {
       const entry = namespaceMixins[i]!;
       if (!isNode(entry, N.Mixin)) {
@@ -3956,9 +4040,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           && keys.length === 2
           && (firstRemainderHit.reason === 'child-surface' || firstRemainderHit.reason === 'reference-import')
         ) {
-          // Crawl the frame's evaluated surface, not the canonical entry: a
-          // reference-mode child surface can exist only on the derived OUTPUT
-          // (`frame.rulesNode`), while the canonical entry remains immutable.
+          /*
+           * Crawl the frame's evaluated surface, not the canonical entry: a
+           * reference-mode child surface can exist only on the derived OUTPUT
+           * (`frame.rulesNode`), while the canonical entry remains immutable.
+           */
           const uncoveredSurface = isNode(childFrame.rulesNode, N.Rules)
             ? childFrame.rulesNode
             : entryRules;
@@ -4017,6 +4103,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   ): MixinEntry[] | undefined {
     if (typeof keys === 'string') {
       const includeRulesets = filterType !== 'Mixin' && options.terminalMixinOnly !== true;
+
       // Bracket-capture call `*[.foo]()`: terminal hits must be plain Rulesets only.
       const rulesetsOnly = options.rulesetsOnly === true;
       const callableFrame = this._scopeFrame;
@@ -4071,13 +4158,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         if (frameHit.kind === 'miss' || frameHit.kind === 'uncovered') {
           let retryFrame = callableFrame.parent;
-          // Reference/inline imports link their evaluated member surface as the
-          // enclosing scope's own fallback frame (linkInlineImportFallbackFrames).
-          // The retry walk visits each ancestor's primary frame but must also
-          // consult the fallback chain hanging off any frame it passes — an
-          // imported callable is otherwise invisible once the primary chain
-          // exhausts. Queue fallback heads in encounter order (parent-chain first),
-          // then drain them, so primaries always win.
+
+          /*
+           * Reference/inline imports link their evaluated member surface as the
+           * enclosing scope's own fallback frame (linkInlineImportFallbackFrames).
+           * The retry walk visits each ancestor's primary frame but must also
+           * consult the fallback chain hanging off any frame it passes — an
+           * imported callable is otherwise invisible once the primary chain
+           * exhausts. Queue fallback heads in encounter order (parent-chain first),
+           * then drain them, so primaries always win.
+           */
           const fallbackQueue: ScopeFrame[] = [];
           let queuedFallback: ScopeFrame | undefined = callableFrame.fallbackFrame;
           while (queuedFallback) {
@@ -4176,11 +4266,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         searchParents: options.searchParents
       });
       return direct.length > 0 ? direct : undefined;
-    } else if (isArray(keys) && keys.length === 0) {
+    }
+
+    if (isArray(keys) && keys.length === 0) {
       return undefined;
-    } else if (isArray(keys) && keys.length === 1) {
+    }
+
+    if (isArray(keys) && keys.length === 1) {
       return this.findMixin(keys[0]!, filterType, options);
-    } else if (isArray(keys) && keys.length > 1) {
+    }
+
+    if (isArray(keys) && keys.length > 1) {
       return this.findMixinPath(keys, filterType, options);
     }
     return undefined;
@@ -4231,11 +4327,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     let mixinNamespaceFast: MixinEntry[] | undefined;
     let rulesetNamespaceUnion: MixinEntry[] | undefined;
     if (mixinFilterType !== 'Mixin') {
-      // For an emitting call the head namespace may also exist in mixin form; the
-      // ruleset walk then defers (returns undefined) but the collector captures its
-      // ruleset-form prefix defs in the SAME pass so they union with the mixin path
-      // below — same-named ruleset and mixin namespaces both contribute their
-      // descendant output. Value lookups keep override semantics (no collector).
+      /*
+       * For an emitting call the head namespace may also exist in mixin form; the
+       * ruleset walk then defers (returns undefined) but the collector captures its
+       * ruleset-form prefix defs in the SAME pass so they union with the mixin path
+       * below — same-named ruleset and mixin namespaces both contribute their
+       * descendant output. Value lookups keep override semantics (no collector).
+       */
       const despiteMixinNamespaceOut: { entries?: MixinEntry[] } | undefined =
         options.mixinCall === true ? {} : undefined;
       const rulesetNamespaceFast = this.findRulesetNamespacePathFast(
@@ -4248,11 +4346,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         if (rulesetNamespaceFast.length > 0) {
           return rulesetNamespaceFast;
         }
-        // The ruleset-form walk hit a DEFINITE MISS at this scope (a same-named
-        // local namespace exists but does not define the member). Drain the import
-        // fallback before conceding: an imported same-named namespace may define
-        // the member (`#library.add-one`, defined only in the import). A local hit
-        // never reaches here, so this only ADDS resolution the primary walk missed.
+
+        /*
+         * The ruleset-form walk hit a DEFINITE MISS at this scope (a same-named
+         * local namespace exists but does not define the member). Drain the import
+         * fallback before conceding: an imported same-named namespace may define
+         * the member (`#library.add-one`, defined only in the import). A local hit
+         * never reaches here, so this only ADDS resolution the primary walk missed.
+         */
         return this.drainNamespacePathFallback(keys, filterType, options);
       }
       if (despiteMixinNamespaceOut?.entries !== undefined && despiteMixinNamespaceOut.entries.length > 0) {
@@ -4320,11 +4421,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             local: options.local
           });
           if (namespaceRulesets.length !== 0) {
-            // A LOCAL ruleset-form namespace owns the head (`#library { .sizes() }`)
-            // so this mixin walk defers to the ruleset path (which already ran and
-            // missed the member locally). Before conceding, drain the import
-            // fallback: an imported same-named namespace may define the member the
-            // local one does not (`#library.add-one`, defined only in the import).
+            /*
+             * A LOCAL ruleset-form namespace owns the head (`#library { .sizes() }`)
+             * so this mixin walk defers to the ruleset path (which already ran and
+             * missed the member locally). Before conceding, drain the import
+             * fallback: an imported same-named namespace may define the member the
+             * local one does not (`#library.add-one`, defined only in the import).
+             */
             return this.drainNamespacePathFallback(keys, filterType, options);
           }
           const exactRulesetPath = this.findCallableRulesetPath(keys, {
@@ -4373,17 +4476,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       return merged;
     }
-    // FALLBACK-FRAME DRAIN (namespace path). The head-namespace resolvers above
-    // consult only `this`'s primary scope chain, so a namespace whose head is
-    // defined ONLY on an imported fallback frame (`linkImportFallbackFrame`) — or
-    // a member (`#library.add-one`) that a same-named LOCAL namespace does not
-    // define — is invisible once the primary walk exhausts. Mirror the string-key
-    // `findMixin` drain: AFTER the primary walk misses, re-run the SAME path
-    // against each fallback frame's rulesNode so an imported namespace resolves
-    // (byte-identical to the eval path, whose `findMixin` already drains fallback).
-    // Fallbacks are consulted only when the primary walk found nothing, so a local
-    // hit always wins. Zero-cost when no fallback frame is linked (the common
-    // case — the guard bails before touching the chain).
+
+    /*
+     * FALLBACK-FRAME DRAIN (namespace path). The head-namespace resolvers above
+     * consult only `this`'s primary scope chain, so a namespace whose head is
+     * defined ONLY on an imported fallback frame (`linkImportFallbackFrame`) — or
+     * a member (`#library.add-one`) that a same-named LOCAL namespace does not
+     * define — is invisible once the primary walk exhausts. Mirror the string-key
+     * `findMixin` drain: AFTER the primary walk misses, re-run the SAME path
+     * against each fallback frame's rulesNode so an imported namespace resolves
+     * (byte-identical to the eval path, whose `findMixin` already drains fallback).
+     * Fallbacks are consulted only when the primary walk found nothing, so a local
+     * hit always wins. Zero-cost when no fallback frame is linked (the common
+     * case — the guard bails before touching the chain).
+     */
     if (combined === undefined || combined.length === 0) {
       const drained = this.drainNamespacePathFallback(keys, filterType, options);
       if (drained !== undefined) {
@@ -4417,13 +4523,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (!primaryFrame) {
       return undefined;
     }
-    // Gather the fallback heads reachable from the primary scope chain, in
-    // encounter order (parent-chain first) — mirrors the string-key `findMixin`
-    // drain. The fallback link installed by `linkImportFallbackFrame` hangs off
-    // the frame that OWNED the import (often an ENCLOSING frame, not the leaf
-    // lookup scope), so the leaf's own `.fallbackFrame` may be undefined while an
-    // ancestor carries the imported surface. Walking parents only when
-    // `searchParents` is on keeps a `local`/no-parent lookup zero-extra-cost.
+
+    /*
+     * Gather the fallback heads reachable from the primary scope chain, in
+     * encounter order (parent-chain first) — mirrors the string-key `findMixin`
+     * drain. The fallback link installed by `linkImportFallbackFrame` hangs off
+     * the frame that OWNED the import (often an ENCLOSING frame, not the leaf
+     * lookup scope), so the leaf's own `.fallbackFrame` may be undefined while an
+     * ancestor carries the imported surface. Walking parents only when
+     * `searchParents` is on keeps a `local`/no-parent lookup zero-extra-cost.
+     */
     const fallbackHeads: ScopeFrame[] = [];
     let cursor: ScopeFrame | undefined = primaryFrame;
     const searchParents = options.searchParents !== false;
@@ -4493,13 +4602,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       } while (!findRoot && rules && rules.type !== 'Rules');
     }
-    // The `.parent` walk dead-ends when the lookup starts inside a surface that
-    // eval created but did not node-parent into the tree — a THIN control body
-    // (For/If/While), an @media/@supports body eval frame, or a called detached
-    // ruleset. Plugin/global functions (`range`, `length`, …) are registered on
-    // the tree root, so fall back to it: JS functions live in one global
-    // namespace, and any locally-bound function would have been found on the
-    // parent walk above before we reach here.
+
+    /*
+     * The `.parent` walk dead-ends when the lookup starts inside a surface that
+     * eval created but did not node-parent into the tree — a THIN control body
+     * (For/If/While), an @media/@supports body eval frame, or a called detached
+     * ruleset. Plugin/global functions (`range`, `length`, …) are registered on
+     * the tree root, so fall back to it: JS functions live in one global
+     * namespace, and any locally-bound function would have been found on the
+     * parent walk above before we reach here.
+     */
     if (searchParents && options?.context) {
       const root = options.context.root;
       if (root && root !== this) {
@@ -4536,11 +4648,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (depth === 0) {
     // Snapshot global emit-tracking so repeated `.toString()` calls remain stable.
       const prevCharsetEmitted = ctx?.charsetEmitted;
+
       // @charset must be first
       if (ctx?.currentCharset && !ctx.charsetEmitted) {
         const charset = ctx.currentCharset;
         charset.writeSyntax(options);
         w.add('\n');
+
         // Do not permanently flip `charsetEmitted` here; restore at end.
         ctx.charsetEmitted = true;
       }
@@ -4556,6 +4670,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           }
         }
       }
+
       // Less keeps leading comments before hoisted @import output.
       const isCommentLike = (node: Node): boolean => {
         return isNode(node, N.Comment) && node.visible;
@@ -4568,11 +4683,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           const commentStr = writeDetached(options, nextOptions => node.writeSyntax(nextOptions));
           w.add(normalizeIndent(commentStr, ''), node);
           w.add('\n');
-          // Already emitted above; exclude from the body render-list instead of
-          // mutating F_VISIBLE (which must stay a by-type property).
+
+          /*
+           * Already emitted above; exclude from the body render-list instead of
+           * mutating F_VISIBLE (which must stay a by-type property).
+           */
           hoistedLeadingComments.add(node);
         }
       }
+
       // @import must come after @charset but before other rules
       if (ctx?.topImports?.length) {
         for (const importRule of ctx.topImports) {
@@ -4590,8 +4709,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           w.add(normalizeIndent(importStr, ''), importRule);
           w.add('\n');
         }
+
       // Do not permanently clear; restore at end.
       }
+
       // Restore global tracking (we only needed it during this print).
       if (ctx) {
         ctx.charsetEmitted = prevCharsetEmitted;
@@ -4609,10 +4730,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
     }
     let result: string;
-    // At root level, ensure output ends with a single newline (standard for CSS files)
-    // Don't propagate all the last child's post content (which may have extra whitespace)
+
+    /*
+     * At root level, ensure output ends with a single newline (standard for CSS files)
+     * Don't propagate all the last child's post content (which may have extra whitespace)
+     */
     if (depth === 0) {
       result = w.getSince(mark).trimEnd();
+
       // Ensure exactly one trailing newline (only if there's content)
       result = result ? result + '\n' : '';
     } else {
@@ -4629,24 +4754,31 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     treeContext?: TreeContext
   ) {
     let rulesVisibility = options?.rulesVisibility ?? {};
-    // Set defaults for API-created Rules. Parsers will override these as needed:
-    // - Less mixins/rulesets: VarDeclaration = 'optional', Mixin = 'public'
-    // - Sass mixins/rulesets: VarDeclaration = 'private', Mixin = 'private'
-    // - Imports: VarDeclaration = 'public', Mixin = 'public'
-    // Default to 'public' for API-created Rules (better DX - variables are accessible).
-    // If you want nested Rules to be private, set it explicitly.
+
+    /*
+     * Set defaults for API-created Rules. Parsers will override these as needed:
+     * - Less mixins/rulesets: VarDeclaration = 'optional', Mixin = 'public'
+     * - Sass mixins/rulesets: VarDeclaration = 'private', Mixin = 'private'
+     * - Imports: VarDeclaration = 'public', Mixin = 'public'
+     * Default to 'public' for API-created Rules (better DX - variables are accessible).
+     * If you want nested Rules to be private, set it explicitly.
+     */
     rulesVisibility.Declaration ??= 'public';
     rulesVisibility.Ruleset ??= 'public';
     rulesVisibility.VarDeclaration ??= 'public';
     rulesVisibility.Mixin ??= 'public';
+
     // Merge with existing options to preserve rulesVisibility
     const mergedOptions = { ...options, rulesVisibility };
     super();
     setSourceSpan(this, location);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     this._options = mergedOptions as unknown as typeof this._options;
-    // Invariant 7: store, don't adopt. `parentChildren()` (called by the factory)
-    // parents the rules one level.
+
+    /*
+     * Invariant 7: store, don't adopt. `parentChildren()` (called by the factory)
+     * parents the rules one level.
+     */
     this.rules = value ?? [];
     this._sourceRoot = this;
     this._treeContext = treeContext;
@@ -4656,8 +4788,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         break;
       }
     }
-    // Rules and every container subclass (Ruleset, AtRule, Mixin, If/For/While,
-    // Stylesheet, Collection) are valid statements in a rules body.
+
+    /*
+     * Rules and every container subclass (Ruleset, AtRule, Mixin, If/For/While,
+     * Stylesheet, Collection) are valid statements in a rules body.
+     */
     this.addFlag(F_ALLOW_ROOT);
   }
 
@@ -4699,15 +4834,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     options.depth = depth + 1;
     this._emitSourceRulesBody(options);
     restorePrintState(options, saved);
+
     // ensure closing brace is on its own properly indented line
     w.add('\n');
     if (depth !== 0) {
       w.add(space);
     }
     w.add('}');
-    // At root level (depth === 0), don't add a newline after the closing brace
-    // The parent _emitRulesBody will add the newline before the next item
-    // For nested rules (depth > 0), the newline is handled by the parent's _emitRulesBody
+
+    /*
+     * At root level (depth === 0), don't add a newline after the closing brace
+     * The parent _emitRulesBody will add the newline before the next item
+     * For nested rules (depth > 0), the newline is handled by the parent's _emitRulesBody
+     */
   }
 
   private _emitSourceRulesBody(options: FinalPrintOptions): void {
@@ -4800,12 +4939,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const lastRenderedFrames = options.lastRenderedFrames!;
     const frameHeaders = options.frameHeaders!;
     const renderedFrameBaseline = lastRenderedFrames.length;
-    // Propagate this Rules wrapper's own `referenceMode` into the active render state
-    // before emitting children. Without this, import wrappers (shallow-cloned
-    // from a shared evaluated tree) can't hide their content via reference
-    // mode — the flag lives on the wrapper's options but never reaches
-    // downstream serialize-helper checks for descendants pulled up by
-    // `flatRules` (which strips the nested Rules boundary).
+
+    /*
+     * Propagate this Rules wrapper's own `referenceMode` into the active render state
+     * before emitting children. Without this, import wrappers (shallow-cloned
+     * from a shared evaluated tree) can't hide their content via reference
+     * mode — the flag lives on the wrapper's options but never reaches
+     * downstream serialize-helper checks for descendants pulled up by
+     * `flatRules` (which strips the nested Rules boundary).
+     */
     const referenceMode = Boolean(options.referenceMode);
     const referenceRenderEnabled = referenceMode ? Boolean(options.referenceRenderEnabled) : true;
 
@@ -4837,17 +4979,23 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const needsInlineBoundarySpacing = (
         (lastEmittedType === 'Any' && n.type !== 'Any')
         || (lastEmittedWasInlineSourceRules && n.type !== 'Any')
-        // The inline-source predecessor may have been emitted by a DEEPER closure
-        // (an `(inline)` `@import` spliced through a nested import-fold): its
-        // per-closure inline-source state never reaches THIS body's `emitNode`, so
-        // the writer carries a document-global flag set whenever inline-source text
-        // was the last thing emitted. A following non-inline block gets the same
-        // post-inline blank-line separator eval emits. Cleared once consumed below.
+
+        /*
+         * The inline-source predecessor may have been emitted by a DEEPER closure
+         * (an `(inline)` `@import` spliced through a nested import-fold): its
+         * per-closure inline-source state never reaches THIS body's `emitNode`, so
+         * the writer carries a document-global flag set whenever inline-source text
+         * was the last thing emitted. A following non-inline block gets the same
+         * post-inline blank-line separator eval emits. Cleared once consumed below.
+         */
         || (w.lastEmitWasInlineSource && n.type !== 'Any')
       );
-      // Consume the document-global inline-source flag: the boundary decision for
-      // THIS node is the only place it matters; leaving it set would inject a
-      // spurious blank before the node AFTER this one.
+
+      /*
+       * Consume the document-global inline-source flag: the boundary decision for
+       * THIS node is the only place it matters; leaving it set would inject a
+       * spurious blank before the node AFTER this one.
+       */
       w.lastEmitWasInlineSource = false;
       if (!w.endsWith('\n') || needsInlineBoundarySpacing) {
         w.addSpacer('\n');
@@ -4865,13 +5013,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       emittedCount++;
       lastEmittedType = n.type;
       lastEmittedWasInlineSourceRules = isInlineSourceRules(n);
-      // Document-global inline-source flag (survives import-fold closure nesting):
-      // set true only when the just-emitted node is inline-import RAW source (an
-      // `Any` role-`any` leaf), false otherwise. A wrapper/container must not set
-      // this bit: a postlude `@media` can itself have a single raw child, but its
-      // closing boundary is already the inline source's own boundary.
-      // following top-level block reads it in `emitBoundaryIfNeeded` and inserts
-      // the post-inline blank line even when the inline text came from a deeper closure.
+
+      /*
+       * Document-global inline-source flag (survives import-fold closure nesting):
+       * set true only when the just-emitted node is inline-import RAW source (an
+       * `Any` role-`any` leaf), false otherwise. A wrapper/container must not set
+       * this bit: a postlude `@media` can itself have a single raw child, but its
+       * closing boundary is already the inline source's own boundary.
+       * following top-level block reads it in `emitBoundaryIfNeeded` and inserts
+       * the post-inline blank line even when the inline text came from a deeper closure.
+       */
       w.lastEmitWasInlineSource = isNode(n, N.Any) && n.role === 'any';
     };
     const emitCaptured = (text: string, n: Node, prefix?: string) => {
@@ -4928,37 +5079,46 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         emitLeadingBlockCommentForNode(n);
         return;
       }
-      // Bodyless CSS `@import` STATEMENT (`AtRuleStatement`, e.g. `@import "x.css"
-      // screen;` or `@import url(...) layer(foo);`). Eval hoists it to the top-of-doc
-      // emitter via `prepareRegistration` → `queueTopImport` (see below); the spine
-      // does the SAME here so it prepends in document order rather than emitting at
-      // its authored source position (which may follow a `@media`/`@layer` block).
-      // `renderRootViaSpine` flushes `context.topImports` ahead of the body. Only a
-      // static prelude reaches here (`isSpineFoldableCssImportStatement`).
+
+      /*
+       * Bodyless CSS `@import` STATEMENT (`AtRuleStatement`, e.g. `@import "x.css"
+       * screen;` or `@import url(...) layer(foo);`). Eval hoists it to the top-of-doc
+       * emitter via `prepareRegistration` → `queueTopImport` (see below); the spine
+       * does the SAME here so it prepends in document order rather than emitting at
+       * its authored source position (which may follow a `@media`/`@layer` block).
+       * `renderRootViaSpine` flushes `context.topImports` ahead of the body. Only a
+       * static prelude reaches here (`isSpineFoldableCssImportStatement`).
+       */
       if (mode === 'render' && context && options.spineMode && isSpineFoldableCssImportStatement(n) && isAtRuleStatementNode(n)) {
         queueTopImport(context, n);
         return;
       }
-      // A root `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top on
-      // the spine, mirroring eval (`prepareRegistration` sets `currentCharset` + the
-      // depth-0 `_toDocumentString` emits it first). Register the FIRST as
-      // `currentCharset` and drop it here — `renderRootViaSpine` prepends the charset
-      // prelude ahead of imports. A later duplicate charset registers nothing and
-      // emits nothing (byte-identical to eval's single hoisted charset).
+
+      /*
+       * A root `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top on
+       * the spine, mirroring eval (`prepareRegistration` sets `currentCharset` + the
+       * depth-0 `_toDocumentString` emits it first). Register the FIRST as
+       * `currentCharset` and drop it here — `renderRootViaSpine` prepends the charset
+       * prelude ahead of imports. A later duplicate charset registers nothing and
+       * emits nothing (byte-identical to eval's single hoisted charset).
+       */
       if (mode === 'render' && context && options.spineMode && isNode(n, N.Any) && n.role === 'charset') {
         context.currentCharset ??= n;
         return;
       }
-      // LOOP fold at the root emitter. A root-direct `$for`/`each` (`For`) node
-      // reaching this emitter must expand into its per-iteration bound surfaces
-      // exactly as the CONTAINER descent does (`serializeRulesContainerInternal` →
-      // `runSpineForExpansion`). Without this it falls to the `isChildRules` branch
-      // below, which emits the loop body ONCE, UNBOUND — a nested ruleset's
-      // interpolated selector (`.alert-@{color}`) then resolves the loop variable
-      // against a frame that never bound it (`'color' is not defined`). Route it
-      // through the shared iteration-surface fold: each surface's children re-enter
-      // `emitNode` with `context.rulesContext` pinned to that surface's live frame,
-      // so a body reference / interpolated selector resolves the iteration binding.
+
+      /*
+       * LOOP fold at the root emitter. A root-direct `$for`/`each` (`For`) node
+       * reaching this emitter must expand into its per-iteration bound surfaces
+       * exactly as the CONTAINER descent does (`serializeRulesContainerInternal` →
+       * `runSpineForExpansion`). Without this it falls to the `isChildRules` branch
+       * below, which emits the loop body ONCE, UNBOUND — a nested ruleset's
+       * interpolated selector (`.alert-@{color}`) then resolves the loop variable
+       * against a frame that never bound it (`'color' is not defined`). Route it
+       * through the shared iteration-surface fold: each surface's children re-enter
+       * `emitNode` with `context.rulesContext` pinned to that surface's live frame,
+       * so a body reference / interpolated selector resolves the iteration binding.
+       */
       if (mode === 'render' && context && options.spineMode && n.type === 'For') {
         return this._emitSpineForFold(n, context, emitNode);
       }
@@ -4971,11 +5131,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       const isRulesetOrAtRule = isBlockContainer(n);
       const isChildRules = !isRulesetOrAtRule && isNode(n, N.Rules);
-      // Add indentation only for simple nodes (declarations, etc.)
-      // Ruleset and AtRule nodes indent themselves in renderOpening
-      // Emit directly to preserve source map segments
-      // For child Rules nodes, pass the same depth (don't increment depth)
-      // Rules nodes inside Rules nodes are at the same level
+
+      /*
+       * Add indentation only for simple nodes (declarations, etc.)
+       * Ruleset and AtRule nodes indent themselves in renderOpening
+       * Emit directly to preserve source map segments
+       * For child Rules nodes, pass the same depth (don't increment depth)
+       * Rules nodes inside Rules nodes are at the same level
+       */
       if (isChildRules) {
         let hasRenderableChild = false;
         for (let i = 0; i < n.rules.length; i++) {
@@ -5033,18 +5196,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         options.depth = depth;
         options.referenceMode = referenceMode;
         options.referenceRenderEnabled = referenceRenderEnabled;
-        // A container child that routes to EVAL render (`n.render` → `evalForRender`
-        // → `prepareRenderPrintState`) RESETS `context.printState` IN PLACE (fresh
-        // writer + frame arrays). In the single-pass spine render `context.printState`
-        // IS the live emit state, so an un-isolated eval render swaps the live
-        // writer/frame-arrays and every LATER sibling then writes into the discarded
-        // writer and is LOST (bootstrap: `a { #hover({…}) }` — a mixin call with a
-        // DETACHED-RULESET arg is deferred to eval; its render dropped the entire
-        // following `_grid` block). `n.render` returns its OWN rendered string
-        // (spliced into `w` below), so isolate its print-state side effect exactly as
-        // the value-leaf / guard resolves do (`evalIsolatingSpinePrintState`), leaving
-        // the live writer/frames byte-identical for the next sibling. The
-        // `serializeRulesContainerInline` (spine) branch never resets print-state.
+
+        /*
+         * A container child that routes to EVAL render (`n.render` → `evalForRender`
+         * → `prepareRenderPrintState`) RESETS `context.printState` IN PLACE (fresh
+         * writer + frame arrays). In the single-pass spine render `context.printState`
+         * IS the live emit state, so an un-isolated eval render swaps the live
+         * writer/frame-arrays and every LATER sibling then writes into the discarded
+         * writer and is LOST (bootstrap: `a { #hover({…}) }` — a mixin call with a
+         * DETACHED-RULESET arg is deferred to eval; its render dropped the entire
+         * following `_grid` block). `n.render` returns its OWN rendered string
+         * (spliced into `w` below), so isolate its print-state side effect exactly as
+         * the value-leaf / guard resolves do (`evalIsolatingSpinePrintState`), leaving
+         * the live writer/frames byte-identical for the next sibling. The
+         * `serializeRulesContainerInline` (spine) branch never resets print-state.
+         */
         const rule = mode === 'render' && context
           ? (options.spineMode
               ? evalIsolatingSpinePrintState(context, () => n.render(context, getPrintOptions(options)))
@@ -5089,15 +5255,18 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         markEmitted(n);
         return;
       }
-      // ROOT-DIRECT statement-position FUNCTION call (`e('…');`) fold. Mirrors the
-      // CONTAINER path's `finishLeaf` (serialize-helper): evaluate + serialize the
-      // resolved value inline, DROP the source `requiredSemi` `;` (eval emits the
-      // value/void with no trailing `;`), suppress a void result. The resolved node is
-      // first run through `checkValidNodes` at ROOT (`F_ALLOW_ROOT`) so a value-returning
-      // call that resolves to a non-statement node (`rgba(0,0,0,0);` → a `Color`) throws
-      // `eval/invalid-statement` exactly as the eval terminal did — a legal statement
-      // node (`e('…')` → an `Anonymous`) passes. Byte-identical to the eval terminal that
-      // previously handled this at root, so the root gate no longer forces it to eval.
+
+      /*
+       * ROOT-DIRECT statement-position FUNCTION call (`e('…');`) fold. Mirrors the
+       * CONTAINER path's `finishLeaf` (serialize-helper): evaluate + serialize the
+       * resolved value inline, DROP the source `requiredSemi` `;` (eval emits the
+       * value/void with no trailing `;`), suppress a void result. The resolved node is
+       * first run through `checkValidNodes` at ROOT (`F_ALLOW_ROOT`) so a value-returning
+       * call that resolves to a non-statement node (`rgba(0,0,0,0);` → a `Color`) throws
+       * `eval/invalid-statement` exactly as the eval terminal did — a legal statement
+       * node (`e('…')` → an `Anonymous`) passes. Byte-identical to the eval terminal that
+       * previously handled this at root, so the root gate no longer forces it to eval.
+       */
       if (mode === 'render' && context && options.spineMode && isSpineFoldableStatementCall(n)) {
         const resolvedNode = resolveSpineStatementCallNode(n, options);
         const finishStatementCall = (resolved: Node | Nil | undefined): void => {
@@ -5118,11 +5287,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           ? resolvedNode.then(finishStatementCall)
           : finishStatementCall(resolvedNode);
       }
-      // A document-ROOT-level mixin CALL: mark the drive so the callable terminal
-      // rejects a body that drops a bare property at the root (eval-path parity with
-      // `checkValidNodes`' `isRoot && fromCallOutput` rule; the spine emits the call
-      // as text with no output tree to walk post-hoc). Scoped to this render only —
-      // a call nested in a selector container never sets it (folded property legal).
+
+      /*
+       * A document-ROOT-level mixin CALL: mark the drive so the callable terminal
+       * rejects a body that drops a bare property at the root (eval-path parity with
+       * `checkValidNodes`' `isRoot && fromCallOutput` rule; the spine emits the call
+       * as text with no output tree to walk post-hoc). Scoped to this render only —
+       * a call nested in a selector container never sets it (folded property legal).
+       */
       const marksRootCallEmit = mode === 'render'
         && options.spineMode === true
         && !!context
@@ -5138,24 +5310,30 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       };
       if (marksRootCallEmit) {
         context!.spineRootCallEmit = true;
-        // Capture the TRUE source-root caller frame for leaky injection: `this` is
-        // the root here (`this === context.root`), but the nested call eval below
-        // reassigns `context.root`, so a later injection can't recover it.
+
+        /*
+         * Capture the TRUE source-root caller frame for leaky injection: `this` is
+         * the root here (`this === context.root`), but the nested call eval below
+         * reassigns `context.root`, so a later injection can't recover it.
+         */
         context!.spineRootCallEmitFrame = this;
       }
-      // ROOT-LEVEL mixin CALL fold (cutover P4, UNIFIED-EVAL-EMIT-DESIGN §2/§3). A
-      // document-root-direct mixin call (`.m();`) folds through the SAME
-      // `resolveSpineMixinCall` sink the CONTAINER descent uses — driving the call's
-      // resolution ONCE and, when every guard-passed candidate was spine-simple,
-      // emitting each bound surface's children INLINE (no output tree, `Rules.derive`
-      // = 0). A nested-container surface child (`.m() { .test { … } }`) descends via
-      // `Ruleset.render`'s spineMode branch (`serializeRulesContainer`), a leaf via
-      // `n.render` — both against `context.rulesContext` pushed to the surface, so a
-      // body reference resolves against the mixin's DEFINITION/param frame (increment
-      // 2). A NON-simple body (or a call the sink never saw) resolves `kind:'eval'` and
-      // falls through to the byte-identical eval terminal (`n.render`) below. This
-      // closes the residual where a root call always eval-materialized while a
-      // container-nested call already folded (the ONLY structural gap between the two).
+
+      /*
+       * ROOT-LEVEL mixin CALL fold (cutover P4, UNIFIED-EVAL-EMIT-DESIGN §2/§3). A
+       * document-root-direct mixin call (`.m();`) folds through the SAME
+       * `resolveSpineMixinCall` sink the CONTAINER descent uses — driving the call's
+       * resolution ONCE and, when every guard-passed candidate was spine-simple,
+       * emitting each bound surface's children INLINE (no output tree, `Rules.derive`
+       * = 0). A nested-container surface child (`.m() { .test { … } }`) descends via
+       * `Ruleset.render`'s spineMode branch (`serializeRulesContainer`), a leaf via
+       * `n.render` — both against `context.rulesContext` pushed to the surface, so a
+       * body reference resolves against the mixin's DEFINITION/param frame (increment
+       * 2). A NON-simple body (or a call the sink never saw) resolves `kind:'eval'` and
+       * falls through to the byte-identical eval terminal (`n.render`) below. This
+       * closes the residual where a root call always eval-materialized while a
+       * container-nested call already folded (the ONLY structural gap between the two).
+       */
       const emitEvalTerminal = (): MaybePromise<void> => {
         let output: string | MaybePromise<string>;
         try {
@@ -5174,11 +5352,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             }
             return;
           }
-          // A spine-eligible mixin CALL that folded to BLOCK output (a nested-container
-          // body — ends in `}`) must NOT append its own statement `;`: the expansion
-          // supplies its own terminators, and a `;` after a `}` is spurious (`.m() { .x
-          // {…} } … .m();` → `.x {…}` with no trailing `;`). A flat/decl-producing call's
-          // decls carry their own `;`. Detect the block close on the just-emitted text.
+
+          /*
+           * A spine-eligible mixin CALL that folded to BLOCK output (a nested-container
+           * body — ends in `}`) must NOT append its own statement `;`: the expansion
+           * supplies its own terminators, and a `;` after a `}` is spurious (`.m() { .x
+           * {…} } … .m();` → `.x {…}` with no trailing `;`). A flat/decl-producing call's
+           * decls carry their own `;`. Detect the block close on the just-emitted text.
+           */
           const emittedBlock = /\}\s*$/.test(w.getSince(leafMark));
           if (n.requiredSemi && n.options.semi !== false && !emittedBlock) {
             w.add(';', n);
@@ -5194,44 +5375,58 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       };
       if (marksRootCallEmit) {
         const applyResolution = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
-          // A NON-simple body (or a call the sink never saw) → byte-identical eval
-          // terminal. No byte was written before the resolve (the drive is
-          // side-effect free on the writer), so the terminal owns the emit intact.
+          /*
+           * A NON-simple body (or a call the sink never saw) → byte-identical eval
+           * terminal. No byte was written before the resolve (the drive is
+           * side-effect free on the writer), so the terminal owns the emit intact.
+           */
           if (resolved.kind !== 'fold') {
             return emitEvalTerminal();
           }
-          // FOLD: the call emits nothing itself; each bound surface's children emit
-          // inline against `context.rulesContext` pushed to the surface (its wired
-          // definition/param frame). Roll back the boundary/prefix so a block child
-          // starts clean, exactly as the container path's fold splice.
+
+          /*
+           * FOLD: the call emits nothing itself; each bound surface's children emit
+           * inline against `context.rulesContext` pushed to the surface (its wired
+           * definition/param frame). Roll back the boundary/prefix so a block child
+           * starts clean, exactly as the container path's fold splice.
+           */
           restoreRootCallEmit();
           restorePrintState(options, leafSaved);
           w.restore(leafMark);
-          // LEAKY forward-propagation (spine fold, root parity): in leaky Less mode a
-          // folded surface's plain `@x: …` VarDeclaration LEAKS into the CALLER scope
-          // — here the ROOT — so a later root sibling (`.heightIsSet { height: @x }`,
-          // a following call arg `@x`) reads it. Mirror the container path's
-          // `injectSpineLeakyMixinSurfaceBindings` at the call's source index. Zero-cost
-          // off leaky mode; no-ops when a surface has no plain var.
+
+          /*
+           * LEAKY forward-propagation (spine fold, root parity): in leaky Less mode a
+           * folded surface's plain `@x: …` VarDeclaration LEAKS into the CALLER scope
+           * — here the ROOT — so a later root sibling (`.heightIsSet { height: @x }`,
+           * a following call arg `@x`) reads it. Mirror the container path's
+           * `injectSpineLeakyMixinSurfaceBindings` at the call's source index. Zero-cost
+           * off leaky mode; no-ops when a surface has no plain var.
+           */
           if (context!.options.leakyScope === true && n.index !== undefined) {
             for (const surface of resolved.surfaces) {
               this.injectSpineLeakyMixinSurfaceBindings(surface, n.index, context!);
             }
           }
-          // A bare property `Declaration` dropped at the ROOT by a mixin/DR call is
-          // invalid Less ("Properties must be inside selector blocks"). The eval path
-          // catches this in `checkValidNodes` (`isRoot && fromCallOutput`); the fold
-          // emits no call-output tree to walk post-hoc, so run the SAME check over each
-          // folded surface's children here — reproducing the exact error byte-for-byte
-          // (tests-error/eval/property-in-root{,2}, detached-ruleset-3). A legitimate
-          // root node (a nested `.rule {}`) passes; only a bare `Declaration` throws.
+
+          /*
+           * A bare property `Declaration` dropped at the ROOT by a mixin/DR call is
+           * invalid Less ("Properties must be inside selector blocks"). The eval path
+           * catches this in `checkValidNodes` (`isRoot && fromCallOutput`); the fold
+           * emits no call-output tree to walk post-hoc, so run the SAME check over each
+           * folded surface's children here — reproducing the exact error byte-for-byte
+           * (tests-error/eval/property-in-root{,2}, detached-ruleset-3). A legitimate
+           * root node (a nested `.rule {}`) passes; only a bare `Declaration` throws.
+           */
           for (const surface of resolved.surfaces) {
             checkValidNodes(surface.rules, context, true, true);
           }
-          // Each folded surface child emits itself through `emitNode` (which calls
-          // `markEmitted` on the child it emits); the CALL node itself emits nothing,
-          // so no `markEmitted(n)` here — mirrors the container path where a folded
-          // call contributes no node of its own to the boundary tracking.
+
+          /*
+           * Each folded surface child emits itself through `emitNode` (which calls
+           * `markEmitted` on the child it emits); the CALL node itself emits nothing,
+           * so no `markEmitted(n)` here — mirrors the container path where a folded
+           * call contributes no node of its own to the boundary tracking.
+           */
           const savedCtx = context!.rulesContext;
           const emitChildren = (children: Node[], ci: number): MaybePromise<void> => {
             for (let c = ci; c < children.length; c++) {
@@ -5261,18 +5456,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const resolution = resolveSpineMixinCall(n, context!);
         return isThenable(resolution) ? resolution.then(applyResolution) : applyResolution(resolution);
       }
-      // ROOT-BODY merge/`?:` fold (cutover root-fold, gates 3/4). A `+:`/`+_:`
-      // merge or `@x ?: v` conditional-assign DIRECTLY in the root body is planned
-      // by the `withSpineMergePlan` wrap installed at the root spine descent (below).
-      // The plan is consumed by `resolveSpineLeafText` (the SAME leaf resolver the
-      // container descent uses): a `suppress` member returns '' (no output); the
-      // anchor / resolved-conditional returns its coalesced bytes. Unlike a plain
-      // `n.render` leaf (which WRITES into the buffer and returns a fallback), the
-      // resolver returns bytes WITHOUT writing — so a planned leaf is emitted here by
-      // writing the returned text explicitly (empty ⇒ nothing, no stray `;`). This
-      // matches the container path's `finishLeaf`. `setDefined` (gate 5) needs no
-      // leaf hook: its binding-WRITE happens at body-enter in the wrap, and the
-      // VarDeclaration itself emits nothing.
+
+      /*
+       * ROOT-BODY merge/`?:` fold (cutover root-fold, gates 3/4). A `+:`/`+_:`
+       * merge or `@x ?: v` conditional-assign DIRECTLY in the root body is planned
+       * by the `withSpineMergePlan` wrap installed at the root spine descent (below).
+       * The plan is consumed by `resolveSpineLeafText` (the SAME leaf resolver the
+       * container descent uses): a `suppress` member returns '' (no output); the
+       * anchor / resolved-conditional returns its coalesced bytes. Unlike a plain
+       * `n.render` leaf (which WRITES into the buffer and returns a fallback), the
+       * resolver returns bytes WITHOUT writing — so a planned leaf is emitted here by
+       * writing the returned text explicitly (empty ⇒ nothing, no stray `;`). This
+       * matches the container path's `finishLeaf`. `setDefined` (gate 5) needs no
+       * leaf hook: its binding-WRITE happens at body-enter in the wrap, and the
+       * VarDeclaration itself emits nothing.
+       */
       const hasPlanEntry = options.spineMode && !!context
         && isNode(n, N.Declaration)
         && (options.spineMergePlan?.get(n) !== undefined || options.spineCondPlan?.get(n) !== undefined);
@@ -5280,9 +5478,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         const planned = resolveSpineLeafText(n, options);
         const finishPlanned = (text: string): void => {
           restorePrintState(options, leafSaved);
-          // No content written yet (the resolver does not touch the buffer). Roll the
-          // boundary/prefix back so a suppressed member leaves NO trace, then emit the
-          // anchor/resolved text (with its own `;`) via the shared capture path.
+
+          /*
+           * No content written yet (the resolver does not touch the buffer). Roll the
+           * boundary/prefix back so a suppressed member leaves NO trace, then emit the
+           * anchor/resolved text (with its own `;`) via the shared capture path.
+           */
           w.restore(leafMark);
           if (text) {
             emitCaptured(text, n, prefix);
@@ -5311,18 +5512,21 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         return finish();
       };
-      // ROOT-BODY `?:`/`setDefined` fold (cutover root-fold, gates 4/5). The
-      // CONTAINER descent wraps each body in `withSpineMergePlan` (which runs the
-      // `setDefined` binding-write at body-enter and installs the `?:` plan the leaf
-      // resolver consumes). The root spine descent reaches the body HERE — not
-      // through that wrap — so install the SAME plan machinery over the root body.
-      // Scoped to the root spine body; a container/nested Rules descent (already
-      // wrapped by the caller) is untouched. `withSpineMergePlan` fast-bails when
-      // the body has no `?:`/`setDefined` child (a root-direct property MERGE is
-      // gated OFF the spine — gate 3 residual — so the merge plan is never populated
-      // at root). The common case pays a single pre-scan, no plan allocation, and
-      // its return string is unused here — the emit is the `emitRest` side-effect.
-      if (options.spineMode && context && this === context.root) {
+
+      /*
+       * ROOT-BODY `?:`/`setDefined` fold (cutover root-fold, gates 4/5). The
+       * CONTAINER descent wraps each body in `withSpineMergePlan` (which runs the
+       * `setDefined` binding-write at body-enter and installs the `?:` plan the leaf
+       * resolver consumes). The root spine descent reaches the body HERE — not
+       * through that wrap — so install the SAME plan machinery over the root body.
+       * Scoped to the root spine body; a container/nested Rules descent (already
+       * wrapped by the caller) is untouched. `withSpineMergePlan` fast-bails when
+       * the body has no `?:`/`setDefined` child (a root-direct property MERGE is
+       * gated OFF the spine — gate 3 residual — so the merge plan is never populated
+       * at root). The common case pays a single pre-scan, no plan allocation, and
+       * its return string is unused here — the emit is the `emitRest` side-effect.
+       */
+      if (options.spineMode && this === context?.root) {
         const wrapped = withSpineMergePlan(value, options, context, () => {
           const done = emitRest(0);
           return isThenable(done) ? done.then(() => '') : '';
@@ -5390,8 +5594,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         ? output.then(toState)
         : toState(output);
     }
-    // Direct render on an unevaluated Rules node is a compatibility/debug API.
-    // Public compiler render APIs evaluate the root before serialization.
+
+    /*
+     * Direct render on an unevaluated Rules node is a compatibility/debug API.
+     * Public compiler render APIs evaluate the root before serialization.
+     */
     const saved = this._snapshotContext(context);
     this._setupContextForRules(context, this);
     return createRulesRenderState(this, this, sourceWasRoot, saved);
@@ -5401,19 +5608,25 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string | MaybePromise<string> {
     const sourceWasRoot = this === context.root || (context.root === undefined && context.rulesContext === undefined);
-    // The effective PrintOptions is the 3rd arg in the buffer overload, else the
-    // 2nd. Its `preSerializeRoot` hook (D3) runs the compiler's post-eval /
-    // pre-render plugin visitors on the tree render just evaluated — the reason
-    // the old separate eval pre-pass existed — so no second eval is needed.
+
+    /*
+     * The effective PrintOptions is the 3rd arg in the buffer overload, else the
+     * 2nd. Its `preSerializeRoot` hook (D3) runs the compiler's post-eval /
+     * pre-render plugin visitors on the tree render just evaluated — the reason
+     * the old separate eval pre-pass existed — so no second eval is needed.
+     */
     const printOptions = isRenderBuffer(bufferOrOptions) ? options : bufferOrOptions;
     const preSerializeRoot = sourceWasRoot ? printOptions?.preSerializeRoot : undefined;
-    // Single-pass spine (P1): a spine-eligible root is rendered by ONE downward
-    // descent of the source tree with the live value-frame threaded — no eval
-    // pass, no `state.output` tree, no separate serialize walk. This REPLACES
-    // the two-walk below for that shape; the eval→output-tree→serialize path is
-    // not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
-    // spine-eligible leaf-only root has no such consumer here; P2 folds the
-    // visitor hook into the pass generically.)
+
+    /*
+     * Single-pass spine (P1): a spine-eligible root is rendered by ONE downward
+     * descent of the source tree with the live value-frame threaded — no eval
+     * pass, no `state.output` tree, no separate serialize walk. This REPLACES
+     * the two-walk below for that shape; the eval→output-tree→serialize path is
+     * not entered for it. (`preSerializeRoot` is a post-eval visitor hook — a
+     * spine-eligible leaf-only root has no such consumer here; P2 folds the
+     * visitor hook into the pass generically.)
+     */
     const serialize = (state: RulesRenderState): MaybePromise<string> => {
       checkValidNodes(state.output?.rules, context, sourceWasRoot);
       return isRenderBuffer(bufferOrOptions)
@@ -5429,6 +5642,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         serialize(replaced ? { ...state, output: replaced } : state);
       return isThenable(hooked) ? hooked.then(applyHook) : applyHook(hooked);
     };
+
     // The eval render path is reached directly when the root is not spine-eligible.
     const evalPath = (): MaybePromise<string> => {
       const value = this.evalForRender(context, sourceWasRoot);
@@ -5443,10 +5657,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         && prepared.writer.writesTo(bufferOrOptions.parts);
       const rendered = renderRootViaSpine(this, context, prepared, shareFlatWriter);
       const finishSpine = (result: string): MaybePromise<string> => {
-        // A shared spine writes its prelude and body directly into the compiler-owned
-        // flat buffer. Re-wrapping the returned body would duplicate it; the returned
-        // string remains the public render result, while the aliased writer owns the
-        // buffer bytes already.
+        /*
+         * A shared spine writes its prelude and body directly into the compiler-owned
+         * flat buffer. Re-wrapping the returned body would duplicate it; the returned
+         * string remains the public render result, while the aliased writer owns the
+         * buffer bytes already.
+         */
         if (shareFlatWriter) {
           return result;
         }
@@ -5613,8 +5829,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._hasExtends = true;
     }
     if (isNode(node, N.Rules)) {
-      // Use options if provided, otherwise use node's settings, otherwise empty
-      // Then merge with node's settings to preserve any values not in options
+      /*
+       * Use options if provided, otherwise use node's settings, otherwise empty
+       * Then merge with node's settings to preserve any values not in options
+       */
       let optionsVisibility = options?.rulesVisibility;
       let nodeVisibility = node.options.rulesVisibility ?? {};
       let rulesVisibility = optionsVisibility
@@ -5638,14 +5856,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         this._scopeFrame.callableMissCoverageKnown = false;
         this._scopeFrame.mixinCallableMissesCovered = false;
         this._scopeFrame.mixinCallableMissCoverageKnown = false;
-        // A member-inlining import (`@import`, or `@compose (namespace: *)`) dumps its
-        // declarations and callables into this scope as if written in place — like a
-        // Less mixin call's ambient output. Rather than flatten the AST or slow every
-        // lookup to the crawl, link the imported Rules' OWN scope frame (which already
-        // indexes the imported decls) as this frame's fallback. `lookupScopeFrame*`
-        // consults fallbacks only AFTER the primary scope chain, so an enclosing
-        // declaration always wins (imported members never override), and the fast frame
-        // path is preserved. Named `@compose` and nested rulesets keep their own scope.
+
+        /*
+         * A member-inlining import (`@import`, or `@compose (namespace: *)`) dumps its
+         * declarations and callables into this scope as if written in place — like a
+         * Less mixin call's ambient output. Rather than flatten the AST or slow every
+         * lookup to the crawl, link the imported Rules' OWN scope frame (which already
+         * indexes the imported decls) as this frame's fallback. `lookupScopeFrame*`
+         * consults fallbacks only AFTER the primary scope chain, so an enclosing
+         * declaration always wins (imported members never override), and the fast frame
+         * path is preserved. Named `@compose` and nested rulesets keep their own scope.
+         */
         if (importInlinesMembersToParent(node)) {
           linkImportFallbackFrame(this._scopeFrame, node.getScopeFrame());
         }
@@ -5661,8 +5882,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
       }
 
-      // Note: Imported child Rules still contribute their own rules/rulesets after
-      // evaluation completes, when the surrounding tree/root context is available.
+      /*
+       * Note: Imported child Rules still contribute their own rules/rulesets after
+       * evaluation completes, when the surrounding tree/root context is available.
+       */
     } else if (isNode(node, N.Declaration)) {
       /**
        * `nearestOuter` (Jess `:=`) reassigns the nearest lexically-enclosing
@@ -5677,8 +5900,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
        */
       if (node.options?.nearestOuter && isNode(node, N.VarDeclaration)) {
         const key = node.name.toString();
-        // `:=` on a name no enclosing scope binds is a hard compile error, with
-        // this node's source location. One error, stop.
+
+        /*
+         * `:=` on a name no enclosing scope binds is a hard compile error, with
+         * this node's source location. One error, stop.
+         */
         const unbound = (): never => {
           throw ERR.nameNotFound({
             ctx: context?.treeContext?.file ? { file: context.treeContext.file } : undefined,
@@ -5690,8 +5916,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         if (frame) {
           const variableHit = lookupScopeFrameVariable(frame, key, {
             bailOnPendingDeclarations: true,
-            // Exclude the `:=` node's own binding: the nearest enclosing target
-            // must be a PRIOR binding, never the assignment itself.
+
+            /*
+             * Exclude the `:=` node's own binding: the nearest enclosing target
+             * must be a PRIOR binding, never the assignment itself.
+             */
             blockedSource: source => source === node,
             filter: source => source !== node,
             includeAssignmentTargets: true,
@@ -5707,17 +5936,23 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           if (variableHit.kind === 'miss') {
             unbound();
           }
-          // kind === 'uncovered': the frame can't statically model this surface
-          // (optional / dynamic targets). Fall to the occurrence crawl below,
-          // which walks parents (searchParents: true) and writes the found cell.
+
+          /*
+           * kind === 'uncovered': the frame can't statically model this surface
+           * (optional / dynamic targets). Fall to the occurrence crawl below,
+           * which walks parents (searchParents: true) and writes the found cell.
+           */
         }
         const resultOccurrence = findWritableSetDefinedDeclarationOccurrence(
           this,
           key,
           true,
-          // Exclude the `:=` node's own VarDeclaration: it must resolve to a PRIOR
-          // enclosing binding, never itself (the crawl would otherwise match the
-          // assignment node and fabricate a same-scope binding).
+
+          /*
+           * Exclude the `:=` node's own VarDeclaration: it must resolve to a PRIOR
+           * enclosing binding, never itself (the crawl would otherwise match the
+           * assignment node and fabricate a same-scope binding).
+           */
           { searchParents: true, excludedDeclarations: [node] }
         );
         const result = resultOccurrence?.node;
@@ -5728,6 +5963,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         unbound();
       }
+
       /**
        * setDefined assigns through the resolved variable binding. Static
        * VarDeclaration writes stay in place; the fallback below still handles
@@ -5735,15 +5971,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
        */
       if (node.options?.setDefined) {
         const key = node.name.toString();
-        // setDefined is an assignment, not a declaration: it overwrites the
-        // existing binding's runtime value. That value lives in a per-scope
-        // ScopeFrame cell, so the write stays isolated to this mixin invocation
-        // / loop iteration. The AST node is a shared template reused across
-        // every invocation — we must never mutate it here.
+
+        /*
+         * setDefined is an assignment, not a declaration: it overwrites the
+         * existing binding's runtime value. That value lives in a per-scope
+         * ScopeFrame cell, so the write stays isolated to this mixin invocation
+         * / loop iteration. The AST node is a shared template reused across
+         * every invocation — we must never mutate it here.
+         */
         if (isNode(node, N.VarDeclaration)) {
-          // When this scope already has a frame, it models the live binding
-          // chain (params, declaration cells, imported assignment targets), so
-          // resolve through it without rebuilding or crawling source `rules`.
+          /*
+           * When this scope already has a frame, it models the live binding
+           * chain (params, declaration cells, imported assignment targets), so
+           * resolve through it without rebuilding or crawling source `rules`.
+           */
           const frame = this._scopeFrame;
           if (frame) {
             const variableHit = lookupScopeFrameVariable(frame, key, {
@@ -5762,9 +6003,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             if (variableHit.kind === 'miss') {
               throw new ReferenceError(`"${key}" is not defined`);
             }
-            // kind === 'uncovered': the frame can't model this assignment
-            // surface (optional / dynamic targets). Fall to the occurrence
-            // crawl, which resolves the owner Rules and writes its cell.
+
+            /*
+             * kind === 'uncovered': the frame can't model this assignment
+             * surface (optional / dynamic targets). Fall to the occurrence
+             * crawl, which resolves the owner Rules and writes its cell.
+             */
           }
         }
         const lookupOptions: DeclarationFindOptions = { searchParents: true };
@@ -5781,10 +6025,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         if (isNode(node, N.VarDeclaration) && isNode(result, N.VarDeclaration)) {
           const owner = result.parent;
           if (isNode(owner, N.Rules)) {
-            // Write the existing binding cell on the owner scope. The cell is
-            // the per-frame runtime value that reads dereference; we never
-            // mutate the shared AST node, so mixin invocations / loop
-            // iterations that reuse the same node stay isolated.
+            /*
+             * Write the existing binding cell on the owner scope. The cell is
+             * the per-frame runtime value that reads dereference; we never
+             * mutate the shared AST node, so mixin invocations / loop
+             * iterations that reuse the same node stay isolated.
+             */
             owner.writeSetDefinedBindingCell(key, result, evalSetDefinedAssignedValue(node, context));
           }
           return;
@@ -5805,8 +6051,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         // Adopt the new declaration to the found Rules
         foundRules.adopt(newDeclaration);
 
-        // Add to the value array AFTER the found declaration
-        // This ensures it shadows the original and is evaluated after it
+        /*
+         * Add to the value array AFTER the found declaration
+         * This ensures it shadows the original and is evaluated after it
+         */
         const foundIndex = foundRules.rules.indexOf(result);
         if (foundIndex !== -1) {
           foundRules.rules.splice(foundIndex + 1, 0, newDeclaration);
@@ -5818,8 +6066,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           foundRules.hasMergeOutputSurface = true;
         }
 
-        // Re-run child bookkeeping for the inserted declaration. We skip
-        // setDefined processing since we already removed the flag.
+        /*
+         * Re-run child bookkeeping for the inserted declaration. We skip
+         * setDefined processing since we already removed the flag.
+         */
         foundRules.registerNode(newDeclaration);
       }
 
@@ -5955,12 +6205,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         continue;
       }
       const name = decl.name;
-      // The leak's source-order gate keys on `sourceNode.index` = the CALL's index
-      // in the caller. The surface `decl` is SHARED across calls (the fold copies
-      // no nodes), and its OWN `index` is load-bearing for the body's intra-scope
-      // reads (a `snapshot` ref compares against it) — so DO NOT mutate `decl.index`.
-      // Use a prototype-delegating marker that overrides only `index`; identity /
-      // filter / recursion checks still see the real decl through the chain.
+
+      /*
+       * The leak's source-order gate keys on `sourceNode.index` = the CALL's index
+       * in the caller. The surface `decl` is SHARED across calls (the fold copies
+       * no nodes), and its OWN `index` is load-bearing for the body's intra-scope
+       * reads (a `snapshot` ref compares against it) — so DO NOT mutate `decl.index`.
+       * Use a prototype-delegating marker that overrides only `index`; identity /
+       * filter / recursion checks still see the real decl through the chain.
+       */
       const gateNode: Node = Object.create(decl);
       gateNode.index = callIndex;
       const cell: BindingCell = {
@@ -5970,9 +6223,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
           try {
             const evaluated = decl.valueNode().eval(context);
             if (isThenable(evaluated)) {
-              // A leaked value that resolves ASYNC (a thenable) is not supported by
-              // the sync binding-cell read path. Fall back to the raw value node so
-              // the caller resolves it against the surface frame at read time.
+              /*
+               * A leaked value that resolves ASYNC (a thenable) is not supported by
+               * the sync binding-cell read path. Fall back to the raw value node so
+               * the caller resolves it against the surface frame at read time.
+               */
               return decl.valueNode();
             }
             return evaluated;
@@ -6158,15 +6413,19 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       context.root = rules;
     }
 
-    // Register main root as extend root if this is the root (needed for extends during registration prep).
-    // Check rules === context.root at registration time (not using stale isMainRoot).
+    /*
+     * Register main root as extend root if this is the root (needed for extends during registration prep).
+     * Check rules === context.root at registration time (not using stale isMainRoot).
+     */
     if (rules === context.root && !context.extendRoots.root) {
       context.extendRoots.registerRoot(rules);
       context.extendRoots.pushExtendRoot(rules);
     }
 
-    // Always push nestable at-rule body so inner rulesets register to it (not document root).
-    // Needed for both: wrapper (collapseNesting) and direct body (collapseNesting: false).
+    /*
+     * Always push nestable at-rule body so inner rulesets register to it (not document root).
+     * Needed for both: wrapper (collapseNesting) and direct body (collapseNesting: false).
+     */
     if (isNestableAtRuleBody) {
       context.extendRoots.pushExtendRoot(rules);
     }
@@ -6195,8 +6454,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const pendingResult = this._scanRegistrationNodes(rules, context, prepState);
     if (isThenable<RegistrationPrepState>(pendingResult)) {
       return pendingResult.then((scanState: RegistrationPrepState) =>
-        this._finishRegistrationPrep(rules, context, saved, scanState)
-      );
+        this._finishRegistrationPrep(rules, context, saved, scanState));
     }
     return this._finishRegistrationPrep(rules, context, saved, pendingResult);
   }
@@ -6206,8 +6464,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     context: Context,
     prepState: RegistrationPrepState
   ): MaybePromise<RegistrationPrepState> {
-    // Process each node with a registerable identity, handling both sync and async prep.
-    // Comment nodes do not participate in numeric rule indexing.
+    /*
+     * Process each node with a registerable identity, handling both sync and async prep.
+     * Comment nodes do not participate in numeric rule indexing.
+     */
     let indexedRuleCount = 0;
     const processNode = (node: Node, index: number): MaybePromise<void> => {
       const nodeIndex = !isNode(node, N.Comment) ? indexedRuleCount++ : undefined;
@@ -6243,9 +6503,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         rules.rules[index] = placeholder;
         return;
       }
-      // Nodes that don't register by name (Call, Expression, etc.) skip
-      // registration prep and dynamic resolution. They evaluate when the
-      // source-order walk reaches them.
+
+      /*
+       * Nodes that don't register by name (Call, Expression, etc.) skip
+       * registration prep and dynamic resolution. They evaluate when the
+       * source-order walk reaches them.
+       */
       if (!this._isRegisterableType(node)) {
         node.index = nodeIndex;
         return;
@@ -6289,8 +6552,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private _stampRegistrationMaps(rules: Rules): void {
-    // Let fast lookup distinguish "registration prep completed with nothing
-    // registerable" from "scope never processed at all".
+    /*
+     * Let fast lookup distinguish "registration prep completed with nothing
+     * registerable" from "scope never processed at all".
+     */
     rules.varsByName ??= new Map();
   }
 
@@ -6310,6 +6575,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       this._storePreparedRegistrationNode(rules, node, index, nodeIndex, prepState, context);
       return;
     }
+
     // Prepare static identities before registration. Rulesets still need selector/keySet prep.
     const canReuseCanonicalDeclaration = (
       (isNode(node, N.Declaration) || isNode(node, N.VarDeclaration))
@@ -6336,6 +6602,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (hasStaticNameMethod(value)) {
       return value.hasStaticName();
     }
+
     // Primitive values (strings, numbers, etc.) are considered static
     return true;
   }
@@ -6400,6 +6667,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (!reusesSourceChild) {
       rules.adopt(node);
     }
+
     // After prep, check if it still has a static name.
     if (this._hasStaticName(node)) {
       const registrationContext = rules._scopeFrame?.hasLiveBindings
@@ -6433,8 +6701,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     if (isNode(node, N.Ruleset)) {
       const selector = node.selector;
-      // BasicSelector, CompoundSelector, ComplexSelector etc. are always static
-      // Only Interpolated selectors need resolution
+
+      /*
+       * BasicSelector, CompoundSelector, ComplexSelector etc. are always static
+       * Only Interpolated selectors need resolution
+       */
       if (
         isNode(selector, N.BasicSelector)
         || isNode(selector, N.CompoundSelector)
@@ -6443,17 +6714,22 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       ) {
         return true;
       }
+
       // After identity prep, the selector should be resolved to static identifiers.
       if (node.registrationPrepared) {
         return true;
       }
-      // Other selector types (Interpolated/Ampersand/Attribute/Pseudo): ask the
-      // selector whether its identity is fixed at construction, from structure.
+
+      /*
+       * Other selector types (Interpolated/Ampersand/Attribute/Pseudo): ask the
+       * selector whether its identity is fixed at construction, from structure.
+       */
       if (hasStaticNameMethod(selector)) {
         return selector.hasStaticName();
       }
       return false;
     }
+
     // For other registerable node types, check the F_STATIC flag
     return node.hasFlag(F_STATIC);
   }
@@ -6634,8 +6910,10 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     pendingDeclarations: Node[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
-    // Declaration names are lookup identities. One pending declaration can
-    // unblock another by registering a variable name used in interpolation.
+    /*
+     * Declaration names are lookup identities. One pending declaration can
+     * unblock another by registering a variable name used in interpolation.
+     */
     let attempts = 0;
     const unresolvedDeclarations = new Array<Node>(pendingDeclarations.length);
     for (let i = 0; i < pendingDeclarations.length; i++) {
@@ -6702,9 +6980,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     orderedIdentities: Node[],
     handleResolvedNode: PendingPrepHandler
   ): MaybePromise<void> {
-    // Keep these in source order. Callable names, selector identity, and import
-    // paths still share this one-shot path until each surface has ordering tests
-    // proving it can move independently.
+    /*
+     * Keep these in source order. Callable names, selector identity, and import
+     * paths still share this one-shot path until each surface has ordering tests
+     * proving it can move independently.
+     */
     const resolveOrderedOnce = (): MaybePromise<void> => {
       for (let i = 0; i < orderedIdentities.length; i++) {
         const node = orderedIdentities[i]!;
@@ -6718,6 +6998,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             }
             return result.then((resolvedNode: Node) => {
               handleResolvedNode(resolvedNode, node, []);
+
               // Continue with remaining nodes
               orderedIdentities.length = 0;
               for (let nextIndex = 0; nextIndex < remaining.length; nextIndex++) {
@@ -6770,16 +7051,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   /** Setup context for evaluating these rules */
   private _setupContextForRules(context: Context, rules: Rules) {
     const treeContext = context.treeContext;
-    // Only switch treeContext if the rules have one AND it's different
-    // Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
-    // and we don't want to lose leakyScope and other settings
-    // IMPORTANT: Check the explicit tree context, not treeContext (getter that lazily creates).
+
+    /*
+     * Only switch treeContext if the rules have one AND it's different
+     * Dynamically created Rules (e.g., mixin parameter wrappers) may not have treeContext
+     * and we don't want to lose leakyScope and other settings
+     * IMPORTANT: Check the explicit tree context, not treeContext (getter that lazily creates).
+     */
     const rulesTreeContext = rules._treeContext;
     if (rulesTreeContext && (!treeContext || treeContext !== rulesTreeContext)) {
       context.allRoots.push(rules);
       context.treeContext = rulesTreeContext;
       context.treeRoot = rules;
     }
+
     // Always set root if not set - needed for extends to work with API-created Rules
     context.root ??= rules;
     context.rulesContext = rules;
@@ -6808,51 +7093,66 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     context: Context
   ): MaybePromise<{ output: Rules; rulesToHoist: boolean }> {
     let rulesToHoist = false;
-    // §2.7: never mutate the canonical node. Source children are read from
-    // `rules`; evaluated results are written to `output`, which stays `rules`
-    // until the FIRST child whose result differs — then a fresh derive surface
-    // (shared children array copied, sourceNode -> canonical) takes the writes.
+
+    /*
+     * §2.7: never mutate the canonical node. Source children are read from
+     * `rules`; evaluated results are written to `output`, which stays `rules`
+     * until the FIRST child whose result differs — then a fresh derive surface
+     * (shared children array copied, sourceNode -> canonical) takes the writes.
+     */
     let output = rules;
-    // A node carrying a `sourceNode` that points elsewhere is already a per-eval
-    // surface (e.g. the registration-prepared root) — its array slots are not
-    // shared canonical state, so writing them in place is safe and needs no
-    // second derive. Only a CANONICAL node (no foreign sourceNode) must be
-    // copied-on-write before any child result is written into it.
+
+    /*
+     * A node carrying a `sourceNode` that points elsewhere is already a per-eval
+     * surface (e.g. the registration-prepared root) — its array slots are not
+     * shared canonical state, so writing them in place is safe and needs no
+     * second derive. Only a CANONICAL node (no foreign sourceNode) must be
+     * copied-on-write before any child result is written into it.
+     */
     const rulesIsCanonical = rules.sourceNode === undefined || rules.sourceNode === rules;
     const writableOutput = (): Rules => {
       if (output === rules && rulesIsCanonical) {
         output = rules.derive() as Rules;
-        // The output resolves scope identically to the canonical (share its
-        // prepared scope frame), and becomes the current rules context so later
-        // siblings + registration during this same eval stay consistent. Build the
-        // source frame first if it isn't cached yet: registerNode links an inlining
-        // import's fallback frame onto `_scopeFrame` at splice time, and later
-        // siblings (e.g. a consumer referencing an imported property) resolve through
-        // the SAME source frame via the node parent chain. Without a shared frame the
-        // output would lazily build its own, and the inline-import fallback link would
-        // never reach the consumer's lookup.
+
+        /*
+         * The output resolves scope identically to the canonical (share its
+         * prepared scope frame), and becomes the current rules context so later
+         * siblings + registration during this same eval stay consistent. Build the
+         * source frame first if it isn't cached yet: registerNode links an inlining
+         * import's fallback frame onto `_scopeFrame` at splice time, and later
+         * siblings (e.g. a consumer referencing an imported property) resolve through
+         * the SAME source frame via the node parent chain. Without a shared frame the
+         * output would lazily build its own, and the inline-import fallback link would
+         * never reach the consumer's lookup.
+         */
         const sharedFrame = rules.getScopeFrame();
         output.scopeFrame = sharedFrame;
-        // Re-point the shared frame's node back-pointer to the output. The
-        // child-surface crawl (collectDirectChildRulesEntries / findMixin's
-        // namespace descent) reads `frame.rulesNode.rules` to reach evaluated
-        // callable children — mixin-call OUTPUT rulesets spliced into `output`
-        // during this eval. The canonical `rules.rules` never gains those output
-        // children (invariant: canonical is immutable), so a frame still pointing
-        // at the canonical makes an evaluated namespace member (`.person` produced
-        // by a mixin call, incl. post-interpolation names) invisible to a later
-        // sibling `.person.sayGender` lookup. The frame IS this scope's identity;
-        // after COW-derive the output supersedes the canonical for the rest of the
-        // eval (context.rulesContext/root follow it below), so its lookup surface
-        // must be the output's rules. No new frame, no clone.
+
+        /*
+         * Re-point the shared frame's node back-pointer to the output. The
+         * child-surface crawl (collectDirectChildRulesEntries / findMixin's
+         * namespace descent) reads `frame.rulesNode.rules` to reach evaluated
+         * callable children — mixin-call OUTPUT rulesets spliced into `output`
+         * during this eval. The canonical `rules.rules` never gains those output
+         * children (invariant: canonical is immutable), so a frame still pointing
+         * at the canonical makes an evaluated namespace member (`.person` produced
+         * by a mixin call, incl. post-interpolation names) invisible to a later
+         * sibling `.person.sayGender` lookup. The frame IS this scope's identity;
+         * after COW-derive the output supersedes the canonical for the rest of the
+         * eval (context.rulesContext/root follow it below), so its lookup surface
+         * must be the output's rules. No new frame, no clone.
+         */
         sharedFrame.rulesNode = output;
         if (context.rulesContext === rules) {
           context.rulesContext = output;
         }
-        // The derive creates a NEW root identity. Anything keyed on root identity
-        // (`isOutermost` -> processExtends, extend-root stack) must follow the
-        // output, exactly like rulesContext — otherwise the root's post-eval
-        // passes silently skip because `rules === context.root` no longer holds.
+
+        /*
+         * The derive creates a NEW root identity. Anything keyed on root identity
+         * (`isOutermost` -> processExtends, extend-root stack) must follow the
+         * output, exactly like rulesContext — otherwise the root's post-eval
+         * passes silently skip because `rules === context.root` no longer holds.
+         */
         if (context.root === rules) {
           context.root = output;
         }
@@ -6906,11 +7206,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       applyResult(idx, rule, result);
     };
 
-    // Calls can produce declarations that property accessors read, so they
-    // remain the one eval-owned side-effect lane before the normal body walk.
-    const evaluateLane = (
-      shouldEvaluate: (rule: Node) => boolean
-    ): MaybePromise<void> => {
+    /*
+     * Calls can produce declarations that property accessors read, so they
+     * remain the one eval-owned side-effect lane before the normal body walk.
+     */
+    const evaluateLane = (shouldEvaluate: (rule: Node) => boolean): MaybePromise<void> => {
       const evaluateRest = (start: number): MaybePromise<void> => {
         for (let idx = start; idx < rules.rules.length; idx++) {
           const rule = rules.rules[idx]!;
@@ -7047,11 +7347,14 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const mergeDeclarationValues = (priorValue: Node, nextValue: Node, assign: string): Node => {
       const priorItems = collectMergedItems(priorValue, assign);
       const nextItems = collectMergedItems(nextValue, assign);
-      // Drop the leading run of `next` that already appears as the tail of `prior`:
-      // the eval-time merge Reference re-emits the immediately-prior sibling's own
-      // contribution, so a naive concat would duplicate it. Find the longest prefix
-      // of `next` that equals a suffix of `prior`. Applies to comma (`&,:`) and
-      // space (`&_:`) merges alike.
+
+      /*
+       * Drop the leading run of `next` that already appears as the tail of `prior`:
+       * the eval-time merge Reference re-emits the immediately-prior sibling's own
+       * contribution, so a naive concat would duplicate it. Find the longest prefix
+       * of `next` that equals a suffix of `prior`. Applies to comma (`&,:`) and
+       * space (`&_:`) merges alike.
+       */
       let nextStart = 0;
       const maxOverlap = Math.min(priorItems.length, nextItems.length);
       for (let overlap = maxOverlap; overlap > 0; overlap--) {
@@ -7159,14 +7462,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         return node;
       }
       const first = current.value[0];
-      const isEmptyPlaceholder = Boolean(
-        first
+      const isEmptyPlaceholder = Boolean(first
         && (
           isNode(first, N.Nil)
           || (isNode(first, N.List) && first.value.length === 0)
           || (isNode(first, N.Any) && first.value === '')
-        )
-      );
+        ));
       if (!isEmptyPlaceholder) {
         return node;
       }
@@ -7203,13 +7504,16 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         }
         return;
       }
-      // A mixin-ruleset output reuses the callee's evaluated declaration node by
-      // identity (thin model): the SAME node is both the callee's own rendered
-      // declaration and the placement copy in this host's output subtree. A merge
-      // occurrence here can be superseded by a later `+:` in the host, and the
-      // coalesce marks it merge-suppressed by node identity — which would also hide
-      // the callee's own declaration. Detach (COW) the shared placement copy into a
-      // distinct instance owned by the output surface before it can be superseded.
+
+      /*
+       * A mixin-ruleset output reuses the callee's evaluated declaration node by
+       * identity (thin model): the SAME node is both the callee's own rendered
+       * declaration and the placement copy in this host's output subtree. A merge
+       * occurrence here can be superseded by a later `+:` in the host, and the
+       * coalesce marks it merge-suppressed by node identity — which would also hide
+       * the callee's own declaration. Detach (COW) the shared placement copy into a
+       * distinct instance owned by the output surface before it can be superseded.
+       */
       if (inMixinOutput) {
         const idx = ownerRules.rules.indexOf(node);
         if (idx !== -1) {
@@ -7226,18 +7530,20 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       const priorAccumulatedValue = accumulatedValueByName.get(name);
       const needsCrossScopeCompose = prior
         && prior.ownerRules !== ownerRules;
-      // The eval-time merge Reference reads the PRIOR sibling's own value; across
-      // a mixin-output boundary it truncates to the callee's contribution, so the
-      // current occurrence's value can drop earlier chain items (e.g. a mixin's
-      // `transform+:` contribution vanishing behind the host's own `transform+:`).
-      // The coalesce pass owns the cross-scope combine: compose whenever an earlier
-      // merged anchor accumulated a value that the current value does not already
-      // carry as a prefix — regardless of the mixin-output boundary. `composeMergedValue`
-      // is a no-op (returns the value unchanged) when the prefix already matches, so
-      // this stays byte-identical on the common in-scope path.
+
+      /*
+       * The eval-time merge Reference reads the PRIOR sibling's own value; across
+       * a mixin-output boundary it truncates to the callee's contribution, so the
+       * current occurrence's value can drop earlier chain items (e.g. a mixin's
+       * `transform+:` contribution vanishing behind the host's own `transform+:`).
+       * The coalesce pass owns the cross-scope combine: compose whenever an earlier
+       * merged anchor accumulated a value that the current value does not already
+       * carry as a prefix — regardless of the mixin-output boundary. `composeMergedValue`
+       * is a no-op (returns the value unchanged) when the prefix already matches, so
+       * this stays byte-identical on the common in-scope path.
+       */
       const currentValueForPrefix = getDeclValue(currentNode);
-      const shouldComposeAcrossScopes = Boolean(
-        prior
+      const shouldComposeAcrossScopes = Boolean(prior
         && priorAccumulatedValue
         && (
           needsCrossScopeCompose
@@ -7245,8 +7551,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
             currentValueForPrefix
             && startsWithMergedValue(currentValueForPrefix, priorAccumulatedValue, assign)
           )
-        )
-      );
+        ));
       if (priorAccumulatedValue && shouldComposeAcrossScopes) {
         currentNode = inlineCrossScopeMergedLeadingReference(currentNode, priorAccumulatedValue, assign);
       }
@@ -7299,12 +7604,15 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
         processDeclarationOccurrence(node, ownerRules, inMixinOutput);
         return;
       }
-      // A nested Ruleset / at-rule is its OWN cascade scope (a distinct selector
-      // block, coalesced by its own eval pass). `Ruleset`'s nodeType carries the
-      // `Rules` bit, so guard against it explicitly — otherwise sibling rulesets
-      // are walked as one merge chain and later `+:` values suppress earlier
-      // selectors. Only descend into inline Rules (mixin outputs, plain groups)
-      // that render into the CURRENT selector scope.
+
+      /*
+       * A nested Ruleset / at-rule is its OWN cascade scope (a distinct selector
+       * block, coalesced by its own eval pass). `Ruleset`'s nodeType carries the
+       * `Rules` bit, so guard against it explicitly — otherwise sibling rulesets
+       * are walked as one merge chain and later `+:` values suppress earlier
+       * selectors. Only descend into inline Rules (mixin outputs, plain groups)
+       * that render into the CURRENT selector scope.
+       */
       if (!(node instanceof Rules)) {
         return;
       }
@@ -7387,10 +7695,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private _finishSourceOrderEvaluation(rules: Rules, rulesToHoist: boolean): { rules: Rules; rulesToHoist: boolean } {
-    // Only a direct Rules child can carry callDeclarationOutput. Registration
-    // records that producer fact for both authored callable containers and
-    // generated call results, so declaration-only surfaces cannot need this
-    // source-order scan.
+    /*
+     * Only a direct Rules child can carry callDeclarationOutput. Registration
+     * records that producer fact for both authored callable containers and
+     * generated call results, so declaration-only surfaces cannot need this
+     * source-order scan.
+     */
     if (rules.hasDirectChildRuleSurface) {
       this._normalizeCallDeclarationRulesOrder(rules);
     }
@@ -7418,16 +7728,17 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const evaluated = this._evaluateSourceOrder(rules, context);
     if (isThenable<{ output: Rules; rulesToHoist: boolean }>(evaluated)) {
       return evaluated.then(({ output, rulesToHoist }: { output: Rules; rulesToHoist: boolean }) =>
-        this._finishSourceOrderEvaluation(output, rulesToHoist)
-      );
+        this._finishSourceOrderEvaluation(output, rulesToHoist));
     }
     const { output, rulesToHoist } = evaluated;
     return this._finishSourceOrderEvaluation(output, rulesToHoist);
   }
 
   private _checkReadonlyImportShadows(rules: Rules): void {
-    // After all evaluation stages, direct variables in the current Rules cannot
-    // shadow readonly variables imported into the same scope.
+    /*
+     * After all evaluation stages, direct variables in the current Rules cannot
+     * shadow readonly variables imported into the same scope.
+     */
     const childEntries = rules.collectDirectDeclarationChildEntries();
     if (!childEntries?.length) {
       return;
@@ -7472,10 +7783,13 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     if (rules !== context.root) {
       return;
     }
-    // The document-order map is read only during extend application
-    // (documentOrderOf in extend.ts). With no extends anywhere in the tree
-    // (root._hasExtends aggregates nested + mixin-body extends via
-    // rulesMayContainExtends), the map is never consulted — skip the whole walk.
+
+    /*
+     * The document-order map is read only during extend application
+     * (documentOrderOf in extend.ts). With no extends anywhere in the tree
+     * (root._hasExtends aggregates nested + mixin-body extends via
+     * rulesMayContainExtends), the map is never consulted — skip the whole walk.
+     */
     if (!rules._hasExtends) {
       return;
     }
@@ -7485,9 +7799,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   private _prepareForEval(context: Context): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
-    // The DYNAMIC enclosing scope, captured before we overwrite rulesContext.
-    // A derived eval surface's lexical parent is where it is being PLACED, not
-    // its static canonical parent — see _evalPreparedRules.
+    /*
+     * The DYNAMIC enclosing scope, captured before we overwrite rulesContext.
+     * A derived eval surface's lexical parent is where it is being PLACED, not
+     * its static canonical parent — see _evalPreparedRules.
+     */
     const enclosingScope = isNode(context.rulesContext, N.Rules)
       ? context.rulesContext
       : undefined;
@@ -7495,8 +7811,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     const rulesAfterPrep = this._prepareRegistrationForEval(context);
     if (isThenable<Rules>(rulesAfterPrep)) {
       return rulesAfterPrep.then((rules: Rules) =>
-        this._evalPreparedRules(rules, context, enclosingScope)
-      );
+        this._evalPreparedRules(rules, context, enclosingScope));
     }
     return this._evalPreparedRules(rulesAfterPrep, context, enclosingScope);
   }
@@ -7506,83 +7821,101 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     context: Context,
     enclosingScope?: Rules
   ): MaybePromise<{ rules: Rules; rulesToHoist: boolean }> {
-    // Fix the parent WALK, don't clone around it. `getScopeFrame` bakes the
-    // static canonical `this.parent` as a frame's lexical parent. But a shared
-    // canonical child placed in a surface (style import / mixin body / loop)
-    // must resolve free vars up the DYNAMIC placement chain — where it is being
-    // evaluated — not its canonical parent. Re-point the frame's lexical parent
-    // to the enclosing eval scope. This is the frame-based replacement for the
-    // old `adopt` reparenting; no node is reparented and no sub-tree is cloned.
-    //
-    // Only for `rules === this` (a canonically-evaluated node): for a canonical
-    // non-placement node the enclosing scope already equals the static parent,
-    // so this is a no-op; for a placed shared child it is the fix. A DERIVED
-    // surface (`rules !== this`, e.g. a mixin output) keeps its own wired parent
-    // (its lexical definition scope), which must not be overwritten by the call
-    // site. See LIVE_BINDING_ARCHITECTURE.md §4.
+    /*
+     * Fix the parent WALK, don't clone around it. `getScopeFrame` bakes the
+     * static canonical `this.parent` as a frame's lexical parent. But a shared
+     * canonical child placed in a surface (style import / mixin body / loop)
+     * must resolve free vars up the DYNAMIC placement chain — where it is being
+     * evaluated — not its canonical parent. Re-point the frame's lexical parent
+     * to the enclosing eval scope. This is the frame-based replacement for the
+     * old `adopt` reparenting; no node is reparented and no sub-tree is cloned.
+     *
+     * Only for `rules === this` (a canonically-evaluated node): for a canonical
+     * non-placement node the enclosing scope already equals the static parent,
+     * so this is a no-op; for a placed shared child it is the fix. A DERIVED
+     * surface (`rules !== this`, e.g. a mixin output) keeps its own wired parent
+     * (its lexical definition scope), which must not be overwritten by the call
+     * site. See LIVE_BINDING_ARCHITECTURE.md §4.
+     */
     if (
       rules === this
       && rules !== enclosingScope
-      // A THIN SURFACE is intrinsically a Rules whose `sourceNode` points at a
-      // DIFFERENT canonical body — it re-uses that shared canonical body over a
-      // per-placement scope frame (a mixin/ruleset body call, a style import). A
-      // canonical node instead points at itself / nothing. The canonical body can
-      // be any Rules SUBCLASS: a plain Rules (detached/import), a Mixin (mixin
-      // body — since the Mixin.sourceNode wrapper was eliminated the per-call
-      // surface's sourceNode IS the Mixin), or a Ruleset. `instanceof Rules`
-      // covers all three; a bitmask `N.Rules` check misses Mixin/Ruleset (distinct
-      // nodeType bits) and would silently stop re-pointing mixin-body surfaces.
+
+      /*
+       * A THIN SURFACE is intrinsically a Rules whose `sourceNode` points at a
+       * DIFFERENT canonical body — it re-uses that shared canonical body over a
+       * per-placement scope frame (a mixin/ruleset body call, a style import). A
+       * canonical node instead points at itself / nothing. The canonical body can
+       * be any Rules SUBCLASS: a plain Rules (detached/import), a Mixin (mixin
+       * body — since the Mixin.sourceNode wrapper was eliminated the per-call
+       * surface's sourceNode IS the Mixin), or a Ruleset. `instanceof Rules`
+       * covers all three; a bitmask `N.Rules` check misses Mixin/Ruleset (distinct
+       * nodeType bits) and would silently stop re-pointing mixin-body surfaces.
+       */
       && enclosingScope?.sourceNode instanceof Rules
       && enclosingScope.sourceNode !== enclosingScope
-      // EXCEPT a callable adopted under a RETAINED mixin-output namespace member:
-      // `.person.sayGender()` binds `.sayGender`'s per-call surface under the output
-      // `.person`, whose frame chains to the call's retained param slot
-      // (`gender_="Male"`, hasLiveBindings). That definition parent — not the call
-      // SITE (enclosingScope) — is where `.sayGender`'s body resolves `@gender`. The
-      // placement re-point would clobber it with the caller, where `@gender` is
-      // undefined. Same retained-frame signal c1ded0b6c uses for value resolution
-      // (ownerFrame.parent.hasLiveBindings); here it gates the lexical-parent choice.
+
+      /*
+       * EXCEPT a callable adopted under a RETAINED mixin-output namespace member:
+       * `.person.sayGender()` binds `.sayGender`'s per-call surface under the output
+       * `.person`, whose frame chains to the call's retained param slot
+       * (`gender_="Male"`, hasLiveBindings). That definition parent — not the call
+       * SITE (enclosingScope) — is where `.sayGender`'s body resolves `@gender`. The
+       * placement re-point would clobber it with the caller, where `@gender` is
+       * undefined. Same retained-frame signal c1ded0b6c uses for value resolution
+       * (ownerFrame.parent.hasLiveBindings); here it gates the lexical-parent choice.
+       */
       && !isRetainedOutputDefinitionParent(rules.parent, enclosingScope)
     ) {
-      // A child evaluated under a thin surface resolves its free vars up the
-      // PLACEMENT scope, not its static canonical parent. Re-point its
-      // scope-frame lexical parent to the surface — whose frame holds the
-      // placement's lexical parent + per-placement live slots (params, import
-      // with/set). One behavior for every node-re-use site, keyed on what the
-      // node IS (its sourceNode), not a stamped marker. No reparent, no clone.
-      // See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
+      /*
+       * A child evaluated under a thin surface resolves its free vars up the
+       * PLACEMENT scope, not its static canonical parent. Re-point its
+       * scope-frame lexical parent to the surface — whose frame holds the
+       * placement's lexical parent + per-placement live slots (params, import
+       * with/set). One behavior for every node-re-use site, keyed on what the
+       * node IS (its sourceNode), not a stamped marker. No reparent, no clone.
+       * See LIVE_BINDING_ARCHITECTURE.md §4 / §6.2.
+       */
       const placementFrame = enclosingScope.getScopeFrame();
       rules.getScopeFrame().parent = placementFrame;
-      // Signal Ruleset.finishEvaluatedRules NOT to bake this eval's output back into
-      // the shared canonical node — but ONLY when the placement scope resolves live
-      // per-call bindings (mixin params). Such a body produces DIFFERENT output per
-      // call (the mixins-nested second-call bug: `width: @a` baked to `30`), so it
-      // must return a fresh surface. A placement with no live-binding ancestor
-      // (a nested ruleset / @media body re-used for selector nesting) produces the
-      // same output every eval, so the in-place bake stays correct there — and, more
-      // importantly, keeps the node identity that extend post-processing relies on.
+
+      /*
+       * Signal Ruleset.finishEvaluatedRules NOT to bake this eval's output back into
+       * the shared canonical node — but ONLY when the placement scope resolves live
+       * per-call bindings (mixin params). Such a body produces DIFFERENT output per
+       * call (the mixins-nested second-call bug: `width: @a` baked to `30`), so it
+       * must return a fresh surface. A placement with no live-binding ancestor
+       * (a nested ruleset / @media body re-used for selector nesting) produces the
+       * same output every eval, so the in-place bake stays correct there — and, more
+       * importantly, keeps the node identity that extend post-processing relies on.
+       */
       if (frameChainHasLiveBindings(placementFrame)) {
         rules._placementRepointed = true;
       }
     } else if (rules === this && rules._closureScope) {
-      // Detached-ruleset closure: a Rules passed as an arg / stored in a variable
-      // closes over the SURFACE where it was written (`_closureScope`, captured at
-      // arg-binding), which carries the enclosing per-call param slots — NOT its
-      // canonical `.parent`. When such a body is evaluated (eagerly at arg-bind or
-      // lazily on call), re-point its scope-frame lexical parent to that closure
-      // surface so free vars resolve up the placement scope. The enclosingScope
-      // (§4) branch above handles shared canonical bodies under a thin surface; a
-      // detached ruleset's placement is instead pinned by its captured closure.
+      /*
+       * Detached-ruleset closure: a Rules passed as an arg / stored in a variable
+       * closes over the SURFACE where it was written (`_closureScope`, captured at
+       * arg-binding), which carries the enclosing per-call param slots — NOT its
+       * canonical `.parent`. When such a body is evaluated (eagerly at arg-bind or
+       * lazily on call), re-point its scope-frame lexical parent to that closure
+       * surface so free vars resolve up the placement scope. The enclosingScope
+       * (§4) branch above handles shared canonical bodies under a thin surface; a
+       * detached ruleset's placement is instead pinned by its captured closure.
+       */
       rules.getScopeFrame().parent = rules._closureScope.getScopeFrame();
     }
     this._setupContextForRules(context, rules);
-    // When we're the outermost Rules, use the tree we're evaling as root
-    // (may differ from context.root set in getTree, or be a prepared wrapper).
-    // EXCEPT under the spine fold: there is no `Rules.eval` frame for the real
-    // root on `rulesEvalStack`, so a detached-ruleset/mixin body evaluated inside
-    // the fold hits `length === 1` and would reclaim outermost status — clobbering
-    // the spine-owned root and its built-in function registry (see
-    // `Context.spineOwnsRoot`). The spine already established the root, so skip.
+
+    /*
+     * When we're the outermost Rules, use the tree we're evaling as root
+     * (may differ from context.root set in getTree, or be a prepared wrapper).
+     * EXCEPT under the spine fold: there is no `Rules.eval` frame for the real
+     * root on `rulesEvalStack`, so a detached-ruleset/mixin body evaluated inside
+     * the fold hits `length === 1` and would reclaim outermost status — clobbering
+     * the spine-owned root and its built-in function registry (see
+     * `Context.spineOwnsRoot`). The spine already established the root, so skip.
+     */
     if (context.rulesEvalStack.length === 1 && !context.spineOwnsRoot) {
       context.root = rules;
     }
@@ -7596,8 +7929,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
       }
       return this;
     }
-    // Eval owns registration prep. This step establishes lookup identities
-    // before the source-order eval walk without evaluating rule bodies.
+
+    /*
+     * Eval owns registration prep. This step establishes lookup identities
+     * before the source-order eval walk without evaluating rule bodies.
+     */
     return this._prepareRegistrationOnce(context);
   }
 
@@ -7613,9 +7949,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     context: Context,
     saved: ReturnType<Rules['_snapshotContext']>
   ): Rules {
-    // Rulesets from imported Rules are already registered to their own treeRoot
-    // during registration prep. The extend search loops through allRoots
-    // directly via extend-roots' per-root ruleset sets.
+    /*
+     * Rulesets from imported Rules are already registered to their own treeRoot
+     * during registration prep. The extend search loops through allRoots
+     * directly via extend-roots' per-root ruleset sets.
+     */
     this._checkReadonlyImportShadows(rules);
 
     // Extends run once the true outermost root has finished evaluating.
@@ -7625,8 +7963,11 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
 
     context.rulesContext = saved.rulesContext;
-    // Keep outermost roots in context so extends evaluated during selector
-    // evaluation can still access the correct treeRoot/root.
+
+    /*
+     * Keep outermost roots in context so extends evaluated during selector
+     * evaluation can still access the correct treeRoot/root.
+     */
     if (saved.treeRoot !== undefined && !isOutermost) {
       context.treeRoot = saved.treeRoot;
     }
@@ -7641,9 +7982,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
     }
     context.rulesEvalStack.pop();
     context.depth--;
-    // The evaluated OUTPUT (which render/serialize hold) may be a derived node,
-    // not `this`; carry the eval-state signal onto it so `evaluated` is true for
-    // the tree callers actually render.
+
+    /*
+     * The evaluated OUTPUT (which render/serialize hold) may be a derived node,
+     * not `this`; carry the eval-state signal onto it so `evaluated` is true for
+     * the tree callers actually render.
+     */
     rules._bodyEvaluated = true;
     return rules;
   }
@@ -7664,10 +8008,12 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
   }
 
   override evalNode(context: Context): MaybePromise<Rules> {
-    // Narrow §2.7 eval-state signal: this Rules body has now been evaluated.
-    // Marked on the canonical node (`this`) — what callable-descendant lookup
-    // reads via `entry` — so a never-evaluated body stays cold. Mixin.evalNode
-    // returns self without reaching here, so it stamps this flag itself.
+    /*
+     * Narrow §2.7 eval-state signal: this Rules body has now been evaluated.
+     * Marked on the canonical node (`this`) — what callable-descendant lookup
+     * reads via `entry` — so a never-evaluated body stays cold. Mixin.evalNode
+     * returns self without reaching here, so it stamps this flag itself.
+     */
     this._bodyEvaluated = true;
     const saved = this._snapshotContext(context);
     context.rulesEvalStack.push(sourceRulesOf(this));
@@ -7742,9 +8088,11 @@ export function resolveRulesetBySelector(
   return found;
 }
 
-// Registration prep has two pending lanes. Declaration-name nodes own a local
-// fixed-point state because one declaration name can unblock another; every
-// other unresolved identity stays in one source-ordered lane for now.
+/*
+ * Registration prep has two pending lanes. Declaration-name nodes own a local
+ * fixed-point state because one declaration name can unblock another; every
+ * other unresolved identity stays in one source-ordered lane for now.
+ */
 type RegistrationPrepState = {
   declarationNames?: PendingDeclarationNamePrepState;
   orderedIdentity?: PendingOrderedIdentityPrepState;
@@ -7760,30 +8108,34 @@ type PendingOrderedIdentityPrepState = {
   resolvedNodes: Node[];
 };
 
-// const TypeToNodeType = new Map([
-//   ['Mixin', NodeType.MIXIN],
-//   ['Ruleset', NodeType.RULESET],
-//   ['Declaration', NodeType.PROPERTY],
-//   ['VarDeclaration', NodeType.VARIABLE],
-//   ['Rules', NodeType.RULES]
-// ])
+/*
+ * const TypeToNodeType = new Map([
+ * ['Mixin', NodeType.MIXIN],
+ * ['Ruleset', NodeType.RULESET],
+ * ['Declaration', NodeType.PROPERTY],
+ * ['VarDeclaration', NodeType.VARIABLE],
+ * ['Rules', NodeType.RULES]
+ * ])
+ */
 
-// export const enum NodeTypeIndex {
-//   NONE             = 0b000000,
-//   MIXIN            = 0b000001,
-//   RULESET          = 0b000010,
-//   MIXIN_OR_RULESET = 0b000011,
-//   PROPERTY         = 0b000100,
-//   VARIABLE         = 0b001000,
-//   VAR_OR_PROP      = 0b001100,
-//   /**
-//    * Variables and mixins can leak
-//   */
-//   LEAKY_RULES      = 0b010000,
-//   /** @note - Properties and rulesets are always visible. */
-//   PRIVATE_RULES    = 0b100000,
-//   RULES            = 0b110000
-// }
+/*
+ * export const enum NodeTypeIndex {
+ * NONE             = 0b000000,
+ * MIXIN            = 0b000001,
+ * RULESET          = 0b000010,
+ * MIXIN_OR_RULESET = 0b000011,
+ * PROPERTY         = 0b000100,
+ * VARIABLE         = 0b001000,
+ * VAR_OR_PROP      = 0b001100,
+ * /**
+ * * Variables and mixins can leak
+ * *\/
+ * LEAKY_RULES      = 0b010000,
+ * /** @note - Properties and rulesets are always visible. *\/
+ * PRIVATE_RULES    = 0b100000,
+ * RULES            = 0b110000
+ * }
+ */
 
 // type IndexKey = `${NodeType}${string}`
 

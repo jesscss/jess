@@ -6,12 +6,14 @@ import type { Node } from '../node.js';
 
 export type MathFrameState = {
   mathMode: MathMode;
+
   /**
    * Boolean stack. The current frame is the top-most value.
    * - `true` enables Less/Sass "math in parens" semantics
    * - `false` explicitly disables it (e.g. for call args)
    */
   parenFrames: ReadonlyArray<boolean>;
+
   /** Number stack, modeled as a depth counter */
   calcFrames: number;
 };
@@ -44,10 +46,12 @@ export function shouldOperateWithMathFrames(
       if ((op === '+' || op === '-') && lUnit === rUnit) {
         return true;
       }
+
       /** Can't make square units */
       if (op === '*' && (!lUnit || !rUnit)) {
         return true;
       }
+
       /** Can't divide by a unit */
       if (op === '/' && !rUnit) {
         return true;

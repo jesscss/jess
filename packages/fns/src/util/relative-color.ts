@@ -15,8 +15,10 @@ import {
 type RGBChannelValues = { r: number; g: number; b: number; alpha: number };
 type HSLChannelValues = { h: number; s: number; l: number; alpha: number };
 
-// Source spans live in the provenance side-table, not on the node — read them
-// via `sourceSpanOf`. (Nodes have no `.location` field.)
+/*
+ * Source spans live in the provenance side-table, not on the node — read them
+ * via `sourceSpanOf`. (Nodes have no `.location` field.)
+ */
 function nodeLocation(node: Node): LocationInfo | undefined {
   return sourceSpanOf(node);
 }
@@ -128,9 +130,11 @@ function substituteChannelVariables(
         case 'b':
           return new Dimension({ number: channelValues.b, unit: '' }, node.options, location).inherit(node);
         case 'alpha':
-          // For RGB context, alpha is 0-1, but when used in calc for r/g/b, it should be 0-255
-          // However, according to spec, channel values are resolved first, so alpha stays 0-1
-          // The conversion happens when the result is used for r/g/b output
+          /*
+           * For RGB context, alpha is 0-1, but when used in calc for r/g/b, it should be 0-255
+           * However, according to spec, channel values are resolved first, so alpha stays 0-1
+           * The conversion happens when the result is used for r/g/b output
+           */
           return new Dimension({ number: channelValues.alpha, unit: '' }, node.options, location).inherit(node);
       }
     } else if (format === 'hsl' && 'h' in channelValues) {
@@ -153,8 +157,7 @@ function substituteChannelVariables(
     const substitutedArgs = args
       ? new List(
           args.value.map((arg: Node) =>
-            substituteChannelVariables(arg, channelValues, format)
-          ),
+            substituteChannelVariables(arg, channelValues, format)),
           args.options,
           nodeLocation(args)
         ).inherit(args)
@@ -185,8 +188,7 @@ function substituteChannelVariables(
   if (node instanceof Sequence) {
     return new Sequence(
       node.value.map((item: Node) =>
-        substituteChannelVariables(item, channelValues, format)
-      ),
+        substituteChannelVariables(item, channelValues, format)),
       node.options,
       nodeLocation(node)
     ).inherit(node);
@@ -195,8 +197,7 @@ function substituteChannelVariables(
   if (node instanceof List) {
     return new List(
       node.value.map((item: Node) =>
-        substituteChannelVariables(item, channelValues, format)
-      ),
+        substituteChannelVariables(item, channelValues, format)),
       node.options,
       nodeLocation(node)
     ).inherit(node);
@@ -245,6 +246,7 @@ export async function evaluateRGBChannelReference(
     // The result should be a Dimension
     if (evaluated instanceof Dimension) {
       const value = evaluated.number;
+
       // Clamp to 0-255 range for RGB
       return Math.max(0, Math.min(255, value));
     }
@@ -323,19 +325,27 @@ export async function evaluateHSLChannelReference(
       if (unit === 'deg' || unit === '' || unit === undefined) {
         // Normalize hue to 0-360
         return ((value % 360) + 360) % 360;
-      } else if (unit === 'turn') {
+      }
+
+      if (unit === 'turn') {
         return ((value * 360 % 360) + 360) % 360;
-      } else if (unit === 'rad') {
+      }
+
+      if (unit === 'rad') {
         return ((value * 180 / Math.PI % 360) + 360) % 360;
-      } else if (unit === 'grad') {
+      }
+
+      if (unit === 'grad') {
         return ((value * 0.9 % 360) + 360) % 360;
-      } else if (unit === '%') {
+      }
+
+      if (unit === '%') {
         // For s/l, percentage values are 0-100%, convert to 0-1
         return Math.max(0, Math.min(1, value / 100));
-      } else {
-        // For s/l without unit, assume 0-1 range
-        return Math.max(0, Math.min(1, value));
       }
+
+      // For s/l without unit, assume 0-1 range
+      return Math.max(0, Math.min(1, value));
     }
 
     throw new Error(`Channel expression must evaluate to a Dimension, got ${evaluated.type}`);
@@ -351,10 +361,12 @@ export async function evaluateHSLChannelReference(
     if (unit === '%') {
       return Math.max(0, Math.min(1, value / 100));
     }
+
     // For hue, normalize to 0-360
     if (unit === 'deg' || unit === '' || unit === undefined) {
       return ((value % 360) + 360) % 360;
     }
+
     // For other cases, return as-is (will be clamped by caller if needed)
     return value;
   }
@@ -377,7 +389,9 @@ export async function evaluateOriginColor(
     return evaluated;
   }
 
-  // Try to convert to Color if possible
-  // This might need to be expanded based on what types can be converted to Color
+  /*
+   * Try to convert to Color if possible
+   * This might need to be expanded based on what types can be converted to Color
+   */
   throw new Error(`Origin color must evaluate to a Color, got ${evaluated.type}`);
 }

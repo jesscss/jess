@@ -156,8 +156,6 @@ describe('For canonical AST emission', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.n {\n  r-1: 10px 1;\n  r-2: 15px 2;\n  r-1: 20px 1;\n  r-2: 25px 2;\n}\n'
-    );
+    expect(render(document)).toBe('.n {\n  r-1: 10px 1;\n  r-2: 15px 2;\n  r-1: 20px 1;\n  r-2: 25px 2;\n}\n');
   });
 });

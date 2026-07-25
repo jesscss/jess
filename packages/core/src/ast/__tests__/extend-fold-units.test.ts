@@ -43,9 +43,12 @@ const inst = (
 describe('branch-key cache (mkBranch / branchText)', () => {
   it('mkBranch pre-declares `key` and `bnd` as own properties initialized undefined', () => {
     const b = mkBranch([{ comb: ' ', compound: { simples: [{ t: 'text', text: '.a' }] } }]);
-    // One stable hidden class: every branch is born `{ segs, key, bnd }`, so the memo
-    // write below (and any later `bnd` origin store) is an in-place store, never a
-    // `{segs}`->`{segs,key}`->`{segs,key,bnd}` transition.
+
+    /*
+     * One stable hidden class: every branch is born `{ segs, key, bnd }`, so the memo
+     * write below (and any later `bnd` origin store) is an in-place store, never a
+     * `{segs}`->`{segs,key}`->`{segs,key,bnd}` transition.
+     */
     expect(Object.keys(b)).toEqual(['segs', 'key', 'bnd']);
     expect(Object.hasOwn(b, 'key')).toBe(true);
     expect(b.key).toBeUndefined();
@@ -58,8 +61,10 @@ describe('branch-key cache (mkBranch / branchText)', () => {
     expect(b.key).toBeUndefined();
     const first = branchText(b);
     expect(first).toBe('.foo');
+
     // The result is memoized onto the pre-declared field...
     expect(b.key).toBe('.foo');
+
     // ...and a second call returns the SAME cached string identity.
     expect(branchText(b)).toBe(first);
   });
@@ -80,8 +85,11 @@ describe('groupInstructions — fold by (partial, hidden, target)', () => {
     expect(groups[0]!.partial).toBe(false);
     expect(groups[0]!.extenderHidden).toBe(false);
     expect(groups[0]!.targetKey).toBe('.base');
-    // Concatenated in incoming (document) order so the folded append order is
-    // byte-identical to firing the instructions one-per-round.
+
+    /*
+     * Concatenated in incoming (document) order so the folded append order is
+     * byte-identical to firing the instructions one-per-round.
+     */
     expect(groups[0]!.extenders.map(branchText)).toEqual(['.x0', '.x1']);
     expect([...groups[0]!.keys].sort()).toEqual(['.x0', '.x1']);
   });
@@ -114,8 +122,11 @@ describe('groupInstructions — fold by (partial, hidden, target)', () => {
 
   it('drops a no-op instruction (no extenders, not partial) from every group', () => {
     const noop = inst('.base', false, '.ignored', false, 0);
-    // Force an empty-extender contrib for the no-op, exactly the shape the old
-    // per-instruction guard skipped.
+
+    /*
+     * Force an empty-extender contrib for the no-op, exactly the shape the old
+     * per-instruction guard skipped.
+     */
     const contribs: ContribMap = new Map<PlanInstruction, Contrib>([
       [noop, { extenders: [], keys: new Set<string>(), targetAtoms: new Set(['.base']) }]
     ]);
@@ -222,10 +233,12 @@ describe('exact-mode whole-branch equivalence (branchExactEquivalent)', () => {
   });
 
   it('fast-accepts equal serializations even when a simple renders empty (interp-empty parity)', () => {
-    // `.a@{x}` renders simples ['.a', ''] but serializes to '.a' (the interpolated
-    // simple contributes no text). The old `bKey === targetKey` matched it against
-    // `.a`; the branchText fast-accept preserves that (true strict superset), where a
-    // bare structural multiset check would wrongly drop it on the length guard.
+    /*
+     * `.a@{x}` renders simples ['.a', ''] but serializes to '.a' (the interpolated
+     * simple contributes no text). The old `bKey === targetKey` matched it against
+     * `.a`; the branchText fast-accept preserves that (true strict superset), where a
+     * bare structural multiset check would wrongly drop it on the length guard.
+     */
     const withEmpty = compoundBranch('.a', '');
     const plain = compoundBranch('.a');
     expect(branchText(withEmpty)).toBe(branchText(plain)); // both serialize to '.a'

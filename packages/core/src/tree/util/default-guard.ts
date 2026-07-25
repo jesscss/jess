@@ -6,11 +6,9 @@ function getCallReferenceKey(name: unknown): string {
     return '';
   }
   const key = 'key' in name ? name.key : undefined;
-  return String(
-    key && typeof key === 'object' && 'valueOf' in key
-      ? key.valueOf()
-      : key ?? ''
-  );
+  return String(key && typeof key === 'object' && 'valueOf' in key
+    ? key.valueOf()
+    : key ?? '');
 }
 
 export function getDefaultGuardValue(node: Node | undefined, context: Context): boolean | undefined {

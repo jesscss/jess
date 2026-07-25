@@ -16,9 +16,12 @@ import {
   F_NON_STATIC,
   F_HAS_NODE_CHILD
 } from './node.js';
-// Load Context before the tree utility graph. The legacy tree's module cycle
-// relies on this initialization order, but TreeContext is intentionally not
-// re-exported from this public barrel.
+
+/*
+ * Load Context before the tree utility graph. The legacy tree's module cycle
+ * relies on this initialization order, but TreeContext is intentionally not
+ * re-exported from this public barrel.
+ */
 import '../context.js';
 import { compare } from './util/compare.js';
 import { isNode } from './util/is-node.js';
@@ -81,16 +84,20 @@ export * from './default-guard.js';
 import { selectorCompare } from './util/compare.js';
 
 function isSelectorLike(value: unknown): value is Selector {
-  // Realm-safe: the nodeType bitmask is a prototype value keyed by string type,
-  // so it survives the same-file-via-different-specifier divergence that makes a
-  // bare `instanceof Selector` unreliable here (see compare patch below).
+  /*
+   * Realm-safe: the nodeType bitmask is a prototype value keyed by string type,
+   * so it survives the same-file-via-different-specifier divergence that makes a
+   * bare `instanceof Selector` unreliable here (see compare patch below).
+   */
   return isNode(value, N.Selector);
 }
 
 /** Patch Selector to avoid circularity */
 Selector.prototype.compare = function(other: Node) {
-  // Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
-  // if the same file is loaded via different specifiers.
+  /*
+   * Avoid `instanceof Selector` here: module identity can diverge under Vite/Vitest
+   * if the same file is loaded via different specifiers.
+   */
   if (isSelectorLike(other)) {
     const forward = selectorCompare(this, other);
     if (forward.isEquivalent) {

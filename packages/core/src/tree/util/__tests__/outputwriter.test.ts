@@ -781,6 +781,7 @@ describe('OutputWriter', () => {
 
       // @ts-ignore - testing edge case
       w.add(null);
+
       // @ts-ignore - testing edge case
       w.add(undefined);
       w.add('');

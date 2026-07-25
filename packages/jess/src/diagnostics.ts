@@ -56,8 +56,10 @@ export function outputDiagnostics(
     suppressWarnings?: boolean;
     breakOnError?: boolean;
     verbose?: boolean;
+
     /** Display config for warnings (scalar tier or object). Default tier `line`. */
     warnings?: WarningsConfigInput;
+
     /** Display config for errors (scalar tier or object). Default tier `frame`. */
     errors?: ErrorsConfigInput;
   } = {}
@@ -111,8 +113,10 @@ function renderTiered(diagnostics: AnyDiagnostic[], ctx: TierContext): void {
     const tier = resolveTier(diagnostic, ctx.severityDefault, ctx.verbose, framedCodes);
     switch (tier) {
       case 'summary':
-        // A per-diagnostic `summary` collapses to the same shape as a group of
-        // one; render it as a bare one-liner.
+        /*
+         * A per-diagnostic `summary` collapses to the same shape as a group of
+         * one; render it as a bare one-liner.
+         */
         renderBlock(diagnostic, ctx.icon, ctx.stream);
         break;
       case 'block':
@@ -156,8 +160,10 @@ function resolveTier(
   let tier: DiagnosticDisplay = displayOverrideFor(diagnostic.code) ?? severityDefault;
 
   if (verbose) {
-    // Verbose promotes everything one notch and renders all sites (no
-    // first-vs-repeat demotion).
+    /*
+     * Verbose promotes everything one notch and renders all sites (no
+     * first-vs-repeat demotion).
+     */
     return promote(tier);
   }
 
@@ -276,15 +282,15 @@ function outputDiagnostic(
   region.set(CodeDebug({
     startLine: errorLineNum,
     startColumn: column,
-    endLine: endLine,
-    endColumn: endColumn,
+    endLine,
+    endColumn,
     errorLine: errorLineContent,
-    lineBefore: lineBefore,
-    lineAfter: lineAfter,
+    lineBefore,
+    lineAfter,
     message: fullMessage,
     filePath: shortPath,
-    fullPath: fullPath,
-    type: type
+    fullPath,
+    type
   }));
 
   // Flush to ensure rendering, then destroy without clearing to persist output.

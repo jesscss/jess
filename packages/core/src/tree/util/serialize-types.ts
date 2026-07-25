@@ -3,12 +3,16 @@ import { Node } from '../node.js';
 export type SerializeTypesOptions = {
   // Include primitive main values next to the type when useful
   showValues?: boolean;
+
   // Include options next to the type when useful
   showOptions?: boolean;
+
   // Max length for printed strings; longer strings are truncated with …
   maxStringLength?: number;
+
   // Use shortType instead of type
   useShortType?: boolean;
+
   // Indentation size in spaces
   indentSize?: number;
 };
@@ -87,6 +91,7 @@ function serializeArray(arr: unknown[], depth: number, opts: Required<SerializeT
   if (arr.length === 0) {
     return `${pad}[]`;
   }
+
   // Component arrays that contain Node instances render multi-line, one per line.
   const hasNode = arr.some(item => isJessNode(item));
   if (hasNode || forceMultiLine) {
@@ -98,6 +103,7 @@ function serializeArray(arr: unknown[], depth: number, opts: Required<SerializeT
     )).join('\n');
     return `${pad}[\n${inner}\n${pad}]`;
   }
+
   // String-only or pure-primitive arrays: compact on one line
   return `${pad}[${summarizeArray(arr, opts)}]`;
 }
@@ -145,6 +151,7 @@ function serializeNodeOptions(n: Node, depth: number, opts: Required<SerializeTy
   if (!serializedOptions || typeof serializedOptions !== 'object') {
     return null;
   }
+
   // Check if there are any non-undefined properties
   const keys = Object.keys(serializedOptions).filter(k => serializedOptions[k] !== undefined);
   if (keys.length === 0) {
@@ -174,6 +181,7 @@ function serializeNodeChildFields(n: Node, depth: number, opts: Required<Seriali
 function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOptions>, visiting: Set<Node>): string {
   const typeName = opts.useShortType ? n.shortType : n.type;
   const pad = indent(depth, opts.indentSize);
+
   // `role` lives on an own field for some node types (e.g. `Any`) but is derived
   // from `options.role` for others (`Reference` dropped the eager own field in
   // the slim pass) — read the own field first, then fall back to the option.
@@ -200,9 +208,11 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
     return childFieldsStr ? `${open}\n${childFieldsStr}\n${pad})` : `${open})`;
   }
 
-  // Dimension owns its data in scalar `number`/`unit` fields (childKeys=null, no
-  // `value`; valueOf() yields the compact display string like '10px'). Expand the
-  // scalar fields the way a plain-object value would serialize.
+  /*
+   * Dimension owns its data in scalar `number`/`unit` fields (childKeys=null, no
+   * `value`; valueOf() yields the compact display string like '10px'). Expand the
+   * scalar fields the way a plain-object value would serialize.
+   */
   if (typeName === 'Dimension') {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const dim = n as unknown as { number: number; unit?: string };
@@ -217,9 +227,13 @@ function serializeNode(n: Node, depth: number, opts: Required<SerializeTypesOpti
   const value = 'value' in n
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     ? (n as unknown as { value: unknown }).value
-    // Nodes that own their data in named fields instead of `value` (e.g.
-    // Dimension/Num store number/unit) expose the display value via valueOf().
+
+    /*
+     * Nodes that own their data in named fields instead of `value` (e.g.
+     * Dimension/Num store number/unit) expose the display value via valueOf().
+     */
     : n.valueOf();
+
   // If the main value is a primitive, include it inline
   if (
     value === null

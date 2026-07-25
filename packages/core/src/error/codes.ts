@@ -188,9 +188,11 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     fix: 'Bind the value to a variable evaluated outside this position, or call the mixin directly instead of through a namespace path.'
   }],
   ['plugin/load-failed', {
-    // The summary carries the underlying failure verbatim: a load error is only
-    // actionable if it says WHY, and the summary is what a thrown error's
-    // message shows.
+    /*
+     * The summary carries the underlying failure verbatim: a load error is only
+     * actionable if it says WHY, and the summary is what a thrown error's
+     * message shows.
+     */
     summary: 'Plugin "${specifier}" could not be loaded: ${reason}',
     reason: 'Loading the @plugin failed: ${reason}',
     fix: 'Check the plugin path and that the script runs without throwing at load time.'
@@ -234,8 +236,10 @@ function interpolate(s: string, meta: Record<string, unknown>): string {
  * full code frame). Codes with no entry fall back to the severity default.
  */
 const DISPLAY_OVERRIDES = new Map<string, DiagnosticDisplay>([
-  // A comma-list spliced into a selector is subtle enough to always warrant the
-  // full frame, even though it is only a warning.
+  /*
+   * A comma-list spliced into a selector is subtle enough to always warrant the
+   * full frame, even though it is only a warning.
+   */
   ['selector/comma-list-interpolation', 'frame']
 ]);
 

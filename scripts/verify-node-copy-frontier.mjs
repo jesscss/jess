@@ -40,26 +40,32 @@ const allowedOrdinaryClonePatterns = [
     pattern: /\bsuper\.clone\(/u
   },
   {
-    // For.clone / For.derive override bodies do shallow single-node clones of
-    // the structured pattern/iterable parts (committed object-reduction /
-    // live-binding architecture). Same category as the blessed super.clone(
-    // sites above; the override-body shape is `(n) => n.clone()` / `(n: Node)
-    // => n.clone()`, which the super.clone regex does not match.
+    /*
+     * For.clone / For.derive override bodies do shallow single-node clones of
+     * the structured pattern/iterable parts (committed object-reduction /
+     * live-binding architecture). Same category as the blessed super.clone(
+     * sites above; the override-body shape is `(n) => n.clone()` / `(n: Node)
+     * => n.clone()`, which the super.clone regex does not match.
+     */
     file: 'packages/core/src/tree/control.ts',
     pattern: /\bn(?:: Node\))?\s*=>\s*n\.clone\(\)/u
   },
   {
-    // copySelectorTreeForExtend's structural selector.clone in the still
-    // load-bearing dying eval extend path.
+    /*
+     * copySelectorTreeForExtend's structural selector.clone in the still
+     * load-bearing dying eval extend path.
+     */
     file: 'packages/core/src/tree/util/extend.ts',
     pattern: /\bselector\.clone\(\(child\)/u
   },
   {
-    // Not a jess tree node. runtime-worker.ts is the sandboxed Deno worker for
-    // Less 4.x `@plugin` compatibility; it declares its OWN local `Unit` class
-    // mirroring less.js, and `unitOf` clones that value object. The copy
-    // frontier invariant is about the core evaluation spine (V8-ARCHITECTURE
-    // §5), which this worker is not part of.
+    /*
+     * Not a jess tree node. runtime-worker.ts is the sandboxed Deno worker for
+     * Less 4.x `@plugin` compatibility; it declares its OWN local `Unit` class
+     * mirroring less.js, and `unitOf` clones that value object. The copy
+     * frontier invariant is about the core evaluation spine (V8-ARCHITECTURE
+     * §5), which this worker is not part of.
+     */
     file: 'packages/jess-plugin-js/src/runtime-worker.ts',
     pattern: /\breturn unit\.clone\(\);/u
   }

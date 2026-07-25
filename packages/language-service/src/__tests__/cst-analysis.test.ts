@@ -8,8 +8,11 @@ import { cstDocumentSymbols, buildCstIndex } from '../cst-analysis.js';
 
 function symbolsOf(text: string) {
   const doc = TextDocument.create('file:///t.css', 'css', 1, text);
-  // The engine drives the incremental ParseDoc (parent-relative spans), so test
-  // that path — not the one-shot parseCssCst (absolute).
+
+  /*
+   * The engine drives the incremental ParseDoc (parent-relative spans), so test
+   * that path — not the one-shot parseCssCst (absolute).
+   */
   const tree = parseCssDoc(text).tree;
   return cstDocumentSymbols(tree, doc);
 }
@@ -68,10 +71,12 @@ describe('CST-grounded document symbols (Option B slice)', () => {
     expect(flat(syms)).toContain('Class .foo');
   });
 
-  // BUG 2: Less mixin definitions parse as `MixinOrQualifiedRule`, which the
-  // outline dropped (not `Ruleset`, not in MIXIN_TYPES). They must appear as
-  // Function symbols; a plain ruleset stays a Class; a bodyless mixin CALL is NOT
-  // a definition and is omitted.
+  /*
+   * BUG 2: Less mixin definitions parse as `MixinOrQualifiedRule`, which the
+   * outline dropped (not `Ruleset`, not in MIXIN_TYPES). They must appear as
+   * Function symbols; a plain ruleset stays a Class; a bodyless mixin CALL is NOT
+   * a definition and is omitted.
+   */
   it('lists Less mixin definitions as Function symbols (plain rulesets stay Class)', () => {
     const syms = lessSymbolsOf('.e() { width: 1px; }\n.f(@x) { color: @x; }\n.g { color: red; }\n.h();');
     expect(flat(syms)).toEqual([
@@ -81,8 +86,10 @@ describe('CST-grounded document symbols (Option B slice)', () => {
     ]);
   });
 
-  // BUG 1: SCSS `@mixin` / `@function` parse as `ScssMixin` / `ScssFunction`,
-  // which were absent from MIXIN_TYPES/FUNC_TYPES, so the outline dropped them.
+  /*
+   * BUG 1: SCSS `@mixin` / `@function` parse as `ScssMixin` / `ScssFunction`,
+   * which were absent from MIXIN_TYPES/FUNC_TYPES, so the outline dropped them.
+   */
   it('lists SCSS @mixin and @function definitions as Function symbols', () => {
     const syms = scssSymbolsOf('@mixin foo($a) { color: $a; }\n@function bar($n) { @return $n; }\n.g { color: red; }');
     const lines = flat(syms);
@@ -106,6 +113,7 @@ describe('CST-grounded document symbols (Option B slice)', () => {
     const at = idx.findNodeAtOffset(text.indexOf('.a'));
     expect(at).not.toBeNull();
     const span = idx.spanOf(at!)!;
+
     // Absolute resolution: the node over `.a` must sit where `.a` actually is.
     expect(text.slice(span.start, span.end)).toContain('.a');
   });

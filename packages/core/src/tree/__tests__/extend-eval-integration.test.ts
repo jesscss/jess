@@ -33,20 +33,22 @@ import { renderNodeToString } from '../util/render-buffer.js';
 
 describe('extend integration (eval -> toString)', () => {
   it('exact extend matches a single OR-branch (does not require all branches)', async () => {
-    // Encodes the Less expectation:
-    // - Exact matching should succeed if ANY selector-list item can match the extend target by choosing
-    //   a single branch inside :is(...), rather than requiring all OR branches to match.
-    //
-    // Conceptually:
-    //   parent:  .replace.replace, .c.replace + .replace { ... }
-    //   nested:  & .replace, & .c { ... }
-    // materializes to:
-    //   :is(.replace.replace, .c.replace + .replace) :is(.replace, .c)
-    //
-    // Exact extend:
-    //   .rep_ace:extend(.replace.replace .replace) {}
-    //
-    // should match the first item by selecting the `.replace.replace` branch from `:is(...)`.
+    /*
+     * Encodes the Less expectation:
+     * - Exact matching should succeed if ANY selector-list item can match the extend target by choosing
+     * a single branch inside :is(...), rather than requiring all OR branches to match.
+     *
+     * Conceptually:
+     * parent:  .replace.replace, .c.replace + .replace { ... }
+     * nested:  & .replace, & .c { ... }
+     * materializes to:
+     * :is(.replace.replace, .c.replace + .replace) :is(.replace, .c)
+     *
+     * Exact extend:
+     * .rep_ace:extend(.replace.replace .replace) {}
+     *
+     * should match the first item by selecting the `.replace.replace` branch from `:is(...)`.
+     */
 
     const parentIs = pseudo({
       name: ':is',
@@ -85,12 +87,14 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extends value inside nested rulesets (Less extend-selector replace case)', async () => {
-    // Expected Less behavior (extend-selector.css): inner block outputs .replace, .rep_ace, .c.
-    // Correct fix: do NOT flatten ampersand in extend target; DO flatten in extendWith when different context.
-    // No sourceNode for header — serialization uses selector; implicit & is omitted in toTrimmedString.
-    // Progressive reproduction:
-    // - Step 0: no extends → nested output
-    // - Step 1: add `.rep_ace:extend(.replace all)` → Less hoists/mixes using `:is(...)`; inner block must show .replace, .rep_ace, .c
+    /*
+     * Expected Less behavior (extend-selector.css): inner block outputs .replace, .rep_ace, .c.
+     * Correct fix: do NOT flatten ampersand in extend target; DO flatten in extendWith when different context.
+     * No sourceNode for header — serialization uses selector; implicit & is omitted in toTrimmedString.
+     * Progressive reproduction:
+     * - Step 0: no extends → nested output
+     * - Step 1: add `.rep_ace:extend(.replace all)` → Less hoists/mixes using `:is(...)`; inner block must show .replace, .rep_ace, .c
+     */
 
     const makeRoot = (includeRepAceExtend: boolean) => rules([
       ruleset({
@@ -153,33 +157,31 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extends nested ruleset selector across parent boundary (header/footer)', async () => {
-    // Represents:
-    // .header {
-    //   .header-nav {
-    //     background: red;
-    //     &:before { background: blue; }
-    //   }
-    // }
-    //
-    // .footer {
-    //   .footer-nav {
-    //     &:extend(.header .header-nav all);
-    //   }
-    // }
+    /*
+     * Represents:
+     * .header {
+     * .header-nav {
+     * background: red;
+     * &:before { background: blue; }
+     * }
+     * }
+     *
+     * .footer {
+     * .footer-nav {
+     * &:extend(.header .header-nav all);
+     * }
+     * }
+     */
     const footer = el('.footer');
     const footerNav = el('.footer-nav');
     const originalFooterClone = footer.clone;
     const originalFooterNavClone = footerNav.clone;
     let extendingLeafClones = 0;
-    footer.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalFooterClone>
-    ): ReturnType<typeof originalFooterClone> {
+    footer.clone = function cloneForCounting(...args: Parameters<typeof originalFooterClone>): ReturnType<typeof originalFooterClone> {
       extendingLeafClones++;
       return originalFooterClone.apply(this, args);
     };
-    footerNav.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalFooterNavClone>
-    ): ReturnType<typeof originalFooterNavClone> {
+    footerNav.clone = function cloneForCounting(...args: Parameters<typeof originalFooterNavClone>): ReturnType<typeof originalFooterNavClone> {
       extendingLeafClones++;
       return originalFooterNavClone.apply(this, args);
     };
@@ -244,15 +246,11 @@ describe('extend integration (eval -> toString)', () => {
     const originalAClone = parentA.clone;
     const originalBClone = parentB.clone;
     let sourceLeafClones = 0;
-    parentA.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalAClone>
-    ): ReturnType<typeof originalAClone> {
+    parentA.clone = function cloneForCounting(...args: Parameters<typeof originalAClone>): ReturnType<typeof originalAClone> {
       sourceLeafClones++;
       return originalAClone.apply(this, args);
     };
-    parentB.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalBClone>
-    ): ReturnType<typeof originalBClone> {
+    parentB.clone = function cloneForCounting(...args: Parameters<typeof originalBClone>): ReturnType<typeof originalBClone> {
       sourceLeafClones++;
       return originalBClone.apply(this, args);
     };
@@ -314,15 +312,11 @@ describe('extend integration (eval -> toString)', () => {
     const originalAClone = parentA.clone;
     const originalBClone = parentB.clone;
     let sourceLeafClones = 0;
-    parentA.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalAClone>
-    ): ReturnType<typeof originalAClone> {
+    parentA.clone = function cloneForCounting(...args: Parameters<typeof originalAClone>): ReturnType<typeof originalAClone> {
       sourceLeafClones++;
       return originalAClone.apply(this, args);
     };
-    parentB.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalBClone>
-    ): ReturnType<typeof originalBClone> {
+    parentB.clone = function cloneForCounting(...args: Parameters<typeof originalBClone>): ReturnType<typeof originalBClone> {
       sourceLeafClones++;
       return originalBClone.apply(this, args);
     };
@@ -370,9 +364,11 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extend.less .ee:extend(.dd all,.bb) does NOT add .ee to inner .bb (only outer .bb)', async () => {
-    // Replicate extend.less: .bb { background: red; .bb { color: black; } } .ee:extend(.dd all,.bb) {}
-    // .bb in the extend has NO "all", so exact match only. Inner ruleset has selector .bb .bb (implicit &).
-    // So .ee must be added to outer .bb only; inner .bb must stay .bb (and only .ff gets added there via .bb all).
+    /*
+     * Replicate extend.less: .bb { background: red; .bb { color: black; } } .ee:extend(.dd all,.bb) {}
+     * .bb in the extend has NO "all", so exact match only. Inner ruleset has selector .bb .bb (implicit &).
+     * So .ee must be added to outer .bb only; inner .bb must stay .bb (and only .ff gets added there via .bb all).
+     */
     const innerBbRuleset = ruleset({
       selector: el('.bb'),
       rules: [decl({ name: 'color', value: any('black') })]
@@ -407,30 +403,29 @@ describe('extend integration (eval -> toString)', () => {
     );
 
     // Find the inner ruleset in the evald tree (ruleset that has decl color and is nested inside .bb)
-    const outerBb = evaldRules.rules.find(
-      (node): node is Ruleset =>
-        isRulesetWithRules(node)
-        && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
-        && node.rules.some((rule: Node) => rule instanceof Ruleset)
-    );
+    const outerBb = evaldRules.rules.find((node): node is Ruleset =>
+      isRulesetWithRules(node)
+      && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'background'))
+      && node.rules.some((rule: Node) => rule instanceof Ruleset));
     expect(outerBb).toBeTruthy();
-    const inner = outerBb?.rules.find(
-      (node: Node): node is Ruleset =>
-        isRulesetWithRules(node)
-        && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'color'))
-    );
+    const inner = outerBb?.rules.find((node: Node): node is Ruleset =>
+      isRulesetWithRules(node)
+      && node.rules.some((rule: Node) => isDeclarationNamed(rule, 'color')));
     expect(inner).toBeTruthy();
     const innerSelectorStr = inner?.selector?.valueOf() ?? '';
+
     // Inner selector must be .bb .bb (or equivalent), must NOT contain .ee
     expect(innerSelectorStr).toContain('.bb');
     expect(innerSelectorStr).not.toContain('.ee');
   });
 
   it('extend-media: .all:extend(.ext1 all) at root merges with .ext1 inside and outside @media (Less extend-media.less)', async () => {
-    // .ext1 .ext2 { background: black }
-    // @media (tv) { .ext1 .ext3 { color: inherit }, .tv-lowres :extend(.ext1 all) { background: blue },
-    //   @media (hires) { .ext1 .ext4 { color: green }, .tv-hires :extend(.ext1 all) { background: red } } }
-    // .all:extend(.ext1 all) {}
+    /*
+     * .ext1 .ext2 { background: black }
+     * @media (tv) { .ext1 .ext3 { color: inherit }, .tv-lowres :extend(.ext1 all) { background: blue },
+     * @media (hires) { .ext1 .ext4 { color: green }, .tv-hires :extend(.ext1 all) { background: red } } }
+     * .all:extend(.ext1 all) {}
+     */
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.ext1'), ' ', el('.ext2')])]),
@@ -559,9 +554,11 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extend-chaining media: inside @media extends outside and .md; outside extends .ma/.mb inside (Less extend-chaining.less media block)', async () => {
-    // .a { color: black }
-    // @media (tv) { .ma:extend(.a, .md) { color: black }, .md { color: inherit } }
-    // .mb:extend(.ma) {} .mc:extend(.mb) {}
+    /*
+     * .a { color: black }
+     * @media (tv) { .ma:extend(.a, .md) { color: black }, .md { color: inherit } }
+     * .mb:extend(.ma) {} .mc:extend(.mb) {}
+     */
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
@@ -619,9 +616,11 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extend-chaining media with SelectorList target (same AST shape as Less parser for .ma:extend(.a,.md))', async () => {
-    // Replicate parsed extend-chaining.less: one Extend with target SelectorList([.a, .md])
-    // instead of two separate Extend nodes. Ensures processExtend handles SelectorList target
-    // when extend is inside @media and targets are at document root.
+    /*
+     * Replicate parsed extend-chaining.less: one Extend with target SelectorList([.a, .md])
+     * instead of two separate Extend nodes. Ensures processExtend handles SelectorList target
+     * when extend is inside @media and targets are at document root.
+     */
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
@@ -678,10 +677,12 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extend-chaining.less AST shape: same nodes and selector shapes as parsed (start through @media (tv))', async () => {
-    // Same nodes and AST shape as Jess/Less parser for extend-chaining.less from document start
-    // through end of @media (tv), plus .mb/.mc so the extend chain resolves. Selector shape:
-    // BasicSelector for ruleset value; Paren(QueryCondition(Keyword)) for @media prelude;
-    // one Extend with SelectorList target for .ma; Extend before Declaration in .ma rules.
+    /*
+     * Same nodes and AST shape as Jess/Less parser for extend-chaining.less from document start
+     * through end of @media (tv), plus .mb/.mc so the extend chain resolves. Selector shape:
+     * BasicSelector for ruleset value; Paren(QueryCondition(Keyword)) for @media prelude;
+     * one Extend with SelectorList target for .ma; Extend before Declaration in .ma rules.
+     */
     const blackColor = color({ node: 'black', format: 0, rgb: [0, 0, 0], alpha: 1 });
     const maExtendTarget = sellist([
       el('.a'),
@@ -879,6 +880,7 @@ describe('extend integration (eval -> toString)', () => {
     expect(postEvalSerialized).toMatchSnapshot();
 
     const css = await renderNodeToString(root, context, { context });
+
     // Large parsed-shape parity test: keep deterministic string checks without regex/snapshot churn.
     expect(css).toContain(`  .ma,
   .mb,
@@ -894,10 +896,12 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('extend-chaining media with collapseNesting: true - merge must still apply (replicates Jess all-less bug)', async () => {
-    // Same structure as "extend-chaining media" but collapseNesting: true.
-    // In Jess all-less, extend-chaining.less was run with collapseNesting: true and got unmerged
-    // .ma / .md in the media block; extend-chaining-ast-compare used false and passed.
-    // Extend merging must be correct regardless of collapseNesting.
+    /*
+     * Same structure as "extend-chaining media" but collapseNesting: true.
+     * In Jess all-less, extend-chaining.less was run with collapseNesting: true and got unmerged
+     * .ma / .md in the media block; extend-chaining-ast-compare used false and passed.
+     * Extend merging must be correct regardless of collapseNesting.
+     */
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
@@ -953,9 +957,11 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('PARITY: extend-chaining media with SelectorList target + collapseNesting true keeps merged value', async () => {
-    // Failure-point parity from jess all-less extend-chaining.less:
-    // .ma:extend(.a, .md) parsed as a single Extend with SelectorList target,
-    // and compiler defaults to collapseNesting true.
+    /*
+     * Failure-point parity from jess all-less extend-chaining.less:
+     * .ma:extend(.a, .md) parsed as a single Extend with SelectorList target,
+     * and compiler defaults to collapseNesting true.
+     */
     const root = rules([
       ruleset({
         selector: sellist([sel([el('.a')])]),
@@ -1042,6 +1048,7 @@ describe('extend integration (eval -> toString)', () => {
       ]);
       const context = new Context({ output: { collapseNesting: false } });
       const css = await renderNodeToString(root, context, { context });
+
       // Less: .b:extend(.a) inside @media does NOT copy .a's declarations into .b. Root .a unchanged; .b has only its own decls.
       expect(css).toBeString(`
         .a {
@@ -1133,8 +1140,10 @@ describe('extend integration (eval -> toString)', () => {
   });
 
   it('PARITY: extend-selector nested all keeps parent prefix for footer/header and issue-2586 content', async () => {
-    // Failure-point parity from jess all-less extend-selector.less:
-    // with collapseNesting true, nested extends must keep resolved parent context.
+    /*
+     * Failure-point parity from jess all-less extend-selector.less:
+     * with collapseNesting true, nested extends must keep resolved parent context.
+     */
     const root = rules([
       ruleset({
         selector: el('.header'),

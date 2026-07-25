@@ -17,24 +17,26 @@ export async function activate(context: vscode.ExtensionContext) {
   const outputChannel = vscode.window.createOutputChannel('Jess Language Service');
   context.subscriptions.push(outputChannel);
 
-  // Use the CJS build of the server so the language client can fork it as an
-  // unambiguous CommonJS module (the language-service package is `type: module`,
-  // so the `.js` output is ESM).
-  const serverModule = context.asAbsolutePath(
-    path.join('..', 'language-service', 'lib', 'server.cjs')
-  );
+  /*
+   * Use the CJS build of the server so the language client can fork it as an
+   * unambiguous CommonJS module (the language-service package is `type: module`,
+   * so the `.js` output is ESM).
+   */
+  const serverModule = context.asAbsolutePath(path.join('..', 'language-service', 'lib', 'server.cjs'));
 
   const serverOptions: ServerOptions = {
     run: { module: serverModule, transport: TransportKind.stdio },
     debug: { module: serverModule, transport: TransportKind.stdio }
   };
 
-  // The client is intentionally thin: `vscode-languageclient` advertises the full
-  // set of standard client capabilities (including `textDocument/rename`,
-  // `prepareSupport`, and `textDocument/codeAction`) by default, so the rename and
-  // quick-fix providers only need to be advertised server-side (see server.ts
-  // `renameProvider`/`codeActionProvider`). No per-feature registration is required
-  // here — the capabilities are negotiated automatically on initialize.
+  /*
+   * The client is intentionally thin: `vscode-languageclient` advertises the full
+   * set of standard client capabilities (including `textDocument/rename`,
+   * `prepareSupport`, and `textDocument/codeAction`) by default, so the rename and
+   * quick-fix providers only need to be advertised server-side (see server.ts
+   * `renameProvider`/`codeActionProvider`). No per-feature registration is required
+   * here — the capabilities are negotiated automatically on initialize.
+   */
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: 'file', language: 'css' },
@@ -43,6 +45,7 @@ export async function activate(context: vscode.ExtensionContext) {
       { scheme: 'file', language: 'jess' }
     ],
     outputChannel,
+
     // Keep it simple for now; we can add config sync later.
     synchronize: {
       configurationSection: 'jess'

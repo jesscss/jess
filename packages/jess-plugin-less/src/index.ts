@@ -57,6 +57,7 @@ type NativeLessFunctionRegistry = {
 };
 type NativeLessApi = {
   functions: { functionRegistry: NativeLessFunctionRegistry };
+
   /** Return-value constructors exposed by Less's public plugin API. These are
    * plain structural values; core owns their conversion back to typed Values. */
   tree: {
@@ -155,10 +156,12 @@ function fromNativeLessValue(value: unknown): ValueGroup {
       return makeList(candidate.value.map(item => fromNativeLessValue(item)), separator);
     }
     if (typeof candidate.value === 'string') {
-      // A Less plugin's `Anonymous`/`Keyword` result is BYTES. Sniffing them back
-      // into a typed literal is what lets `darken(theme-color(primary), 15%)`
-      // see a colour rather than an opaque keyword — the same materialization
-      // the engine performs on any other computed byte string.
+      /*
+       * A Less plugin's `Anonymous`/`Keyword` result is BYTES. Sniffing them back
+       * into a typed literal is what lets `darken(theme-color(primary), 15%)`
+       * see a colour rather than an opaque keyword — the same materialization
+       * the engine performs on any other computed byte string.
+       */
       return sniffLiteral(candidate.value);
     }
     if (typeof candidate.valueOf === 'function') {
@@ -198,8 +201,11 @@ function invokeContextualPluginFunction(
     log: record => ctx.log(record),
     markImportant: () => ctx.markImportant()
   });
-  // A synchronous bridge keeps the result synchronous, which is what lets a
-  // plugin value be read from a guard condition.
+
+  /*
+   * A synchronous bridge keeps the result synchronous, which is what lets a
+   * plugin value be read from a guard condition.
+   */
   return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
     ? Promise.resolve(result).then(fromNativeLessValue)
     : fromNativeLessValue(result);
@@ -224,9 +230,7 @@ function contextualLessFn(name: string): Fn {
     variadic: true,
     params: [],
     body: () => {
-      throw new Error(
-        `Less @plugin function "${name}" needs the plugin invocation seam; it cannot run through plain function dispatch.`
-      );
+      throw new Error(`Less @plugin function "${name}" needs the plugin invocation seam; it cannot run through plain function dispatch.`);
     }
   });
 }
@@ -384,8 +388,11 @@ export class LessPlugin extends AbstractPlugin {
     if (isUrlRelative(value)) {
       const rewriteUrls = this.opts.rewriteUrls;
       const local = value.startsWith('.');
-      // `rootpath` applies to every relative URL by default, but the explicit
-      // Less `local` mode narrows that to authored ./ and ../ paths.
+
+      /*
+       * `rootpath` applies to every relative URL by default, but the explicit
+       * Less `local` mode narrows that to authored ./ and ../ paths.
+       */
       if (rewriteUrls !== 'local' || local) {
         const rebasesImportedUrl = rewriteUrls === true || rewriteUrls === 'all' || (rewriteUrls === 'local' && local);
         let rootpath = this.opts.rootpath ?? '';
@@ -417,15 +424,18 @@ export class LessPlugin extends AbstractPlugin {
 
   expandImport(importPath: string, currentDir: string) {
     void currentDir;
+
     // Keep import expansion in sync with the language service.
     return expandLessImportCandidates(importPath);
   }
 
   setContext(context: Context): void {
-    // The Less adapter owns the language defaults, while Context owns the
-    // session-level option store consumed by the AST evaluator.  A caller's
-    // explicit compile option (and a matching file/language option already
-    // folded into context.opts) always wins; fill only unset fields here.
+    /*
+     * The Less adapter owns the language defaults, while Context owns the
+     * session-level option store consumed by the AST evaluator.  A caller's
+     * explicit compile option (and a matching file/language option already
+     * folded into context.opts) always wins; fill only unset fields here.
+     */
     if (context.opts.mathMode === undefined) {
       context.setOption('mathMode', this.mathMode);
     }
@@ -489,10 +499,12 @@ export class LessPlugin extends AbstractPlugin {
       host = {
         ...(fns.length === 0 ? {} : { globalFns: fns }),
         loadPlugin: async ({ specifier, options }) => {
-          // `@plugin` loads and executes a script module. When script modules
-          // are disabled the load must REFUSE here: the ast/ evaluator reaches
-          // `loadPlugin` directly (prepareBodyPlugins), so the import-path
-          // check in Context is not on this route.
+          /*
+           * `@plugin` loads and executes a script module. When script modules
+           * are disabled the load must REFUSE here: the ast/ evaluator reaches
+           * `loadPlugin` directly (prepareBodyPlugins), so the import-path
+           * check in Context is not on this route.
+           */
           if (context.opts.disableScriptModules || context.opts.disablePluginRule) {
             throw makeJessError({
               code: 'plugin/load-failed',

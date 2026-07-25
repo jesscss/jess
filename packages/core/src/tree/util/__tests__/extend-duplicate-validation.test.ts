@@ -5,8 +5,10 @@ describe('Extend Duplicate Element/ID Validation', () => {
   describe('Should prevent invalid extensions', () => {
     /** @unverified - LLM-generated, needs review */
     it('should return original selector when extending a.info with div.foo (element conflict)', () => {
-      // This is the original bug case: a.info with div.foo -> would create "adiv.foo"
-      // Use partial: true to allow the match, then conflict detection should catch it
+      /*
+       * This is the original bug case: a.info with div.foo -> would create "adiv.foo"
+       * Use partial: true to allow the match, then conflict detection should catch it
+       */
       const selector = compound([el('a'), el('.info')]);
       const target = el('.info');
       const extendWith = compound([el('div'), el('.foo')]);
@@ -70,6 +72,7 @@ describe('Extend Duplicate Element/ID Validation', () => {
       const extendWith = el('.b');
 
       const result = extendSelector(selector, target, extendWith, true);
+
       // Note: This creates div:is(.a,.b) which is equivalent to div.a,.b but more compact
       expect(result.valueOf()).toBe('div:is(.a,.b)');
     });
@@ -88,8 +91,10 @@ describe('Extend Duplicate Element/ID Validation', () => {
     });
 
     it('should allow extending elements in different complex selector parts', () => {
-      // a > div.class - extending .class with span.other should be allowed
-      // because 'a' and 'span' are in different parts of the complex selector
+      /*
+       * a > div.class - extending .class with span.other should be allowed
+       * because 'a' and 'span' are in different parts of the complex selector
+       */
       const selector = sel([el('a'), el('>'), compound([el('div'), el('.class')])]);
       const target = el('.class');
       const extendWith = compound([el('span'), el('.other')]);
@@ -147,8 +152,10 @@ describe('Extend Duplicate Element/ID Validation', () => {
     });
 
     it('should allow extending #foo with #foo (same ID)', () => {
-      // Extending #foo with #foo should be allowed - they're the same ID
-      // With deduplication, this should result in just #foo since they're identical
+      /*
+       * Extending #foo with #foo should be allowed - they're the same ID
+       * With deduplication, this should result in just #foo since they're identical
+       */
       const selector = el('#foo');
       const target = el('#foo');
       const extendWith = el('#foo');
@@ -158,8 +165,10 @@ describe('Extend Duplicate Element/ID Validation', () => {
     });
 
     it('should allow compound with same element types (div.a with div.b)', () => {
-      // div.a extending with div.b should be allowed - same element type
-      // Use partial: true because .a is only part of the compound selector
+      /*
+       * div.a extending with div.b should be allowed - same element type
+       * Use partial: true because .a is only part of the compound selector
+       */
       const selector = compound([el('div'), el('.a')]);
       const target = el('.a');
       const extendWith = compound([el('div'), el('.b')]);
@@ -169,13 +178,16 @@ describe('Extend Duplicate Element/ID Validation', () => {
       }).not.toThrow();
 
       const result = extendSelector(selector, target, extendWith, true);
+
       // Should create div:is(.a,div.b) which normalizes to div:is(.a,.b) since div is redundant
       expect(result.valueOf()).toContain(':is');
     });
 
     it('should allow compound selector with duplicate IDs for specificity (#foo#foo.class)', () => {
-      // #foo#foo.class is valid CSS used to increase specificity
-      // Use partial: true because .class is only part of the compound selector
+      /*
+       * #foo#foo.class is valid CSS used to increase specificity
+       * Use partial: true because .class is only part of the compound selector
+       */
       const selector = compound([el('#foo'), el('#foo'), el('.class')]);
       const target = el('.class');
       const extendWith = el('.bar');

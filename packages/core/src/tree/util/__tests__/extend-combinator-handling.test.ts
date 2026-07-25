@@ -56,8 +56,10 @@ describe('Combinator Preservation in Extensions', () => {
 
   describe('Multiple Combinator Preservation', () => {
     it('should preserve multiple different combinators in sequence', () => {
-      // .a.foo > .b + .c extends (.foo) with .bar
-      // Should preserve both '>' and '+' combinators
+      /*
+       * .a.foo > .b + .c extends (.foo) with .bar
+       * Should preserve both '>' and '+' combinators
+       */
       const complexSelector = sel([
         compound([el('.a'), el('.foo')]),
         co('>'),
@@ -131,8 +133,10 @@ describe('Combinator Preservation in Extensions', () => {
     });
 
     it('should NOT match .ext8 .ext9 with .ext8 + .ext9 (reproducing the actual bug)', () => {
-      // This is the exact case from extend.less that's failing
-      // .ext8 .ext9 (descendant) should NOT match .ext8 + .ext9 (adjacent sibling)
+      /*
+       * This is the exact case from extend.less that's failing
+       * .ext8 .ext9 (descendant) should NOT match .ext8 + .ext9 (adjacent sibling)
+       */
       const target = sel([el('.ext8'), co(' '), el('.ext9')]);
       const find = sel([el('.ext8'), co('+'), el('.ext9')]);
       const extendWith = el('.zap');
@@ -147,20 +151,22 @@ describe('Combinator Preservation in Extensions', () => {
 
   describe('Bug reproduction: extend.less combinator mismatch - EXACT REPLICATION', () => {
     it('should NOT match SelectorList containing .ext8 .ext9 when extending with .ext8 + .ext9', () => {
-      // EXACT replication of what the logs show:
-      // originalSelector: ".ext8 .ext9,.buu" (SelectorList)
-      // find: ".ext8+.ext9" (ComplexSelector with + combinator)
-      // extendWith: ".zap" (BasicSelector)
-      // partial: true
-      //
-      // The SelectorList contains:
-      //   - ComplexSelector(.ext8 ' ' .ext9) - descendant combinator
-      //   - BasicSelector(.buu)
-      //
-      // We're trying to match against:
-      //   - ComplexSelector(.ext8 '+' .ext9) - adjacent sibling combinator
-      //
-      // This should NOT match because the combinators differ (' ' vs '+')
+      /*
+       * EXACT replication of what the logs show:
+       * originalSelector: ".ext8 .ext9,.buu" (SelectorList)
+       * find: ".ext8+.ext9" (ComplexSelector with + combinator)
+       * extendWith: ".zap" (BasicSelector)
+       * partial: true
+       *
+       * The SelectorList contains:
+       * - ComplexSelector(.ext8 ' ' .ext9) - descendant combinator
+       * - BasicSelector(.buu)
+       *
+       * We're trying to match against:
+       * - ComplexSelector(.ext8 '+' .ext9) - adjacent sibling combinator
+       *
+       * This should NOT match because the combinators differ (' ' vs '+')
+       */
 
       const selectorList = sellist([
         sel([el('.ext8'), co(' '), el('.ext9')]),  // .ext8 .ext9 (descendant)
@@ -175,6 +181,7 @@ describe('Combinator Preservation in Extensions', () => {
       // Should NOT match - combinators differ
       expect(result.error).toBeDefined();
       expect(result.error?.type).toBe('NOT_FOUND');
+
       // Selector should be unchanged
       expect(result.value.valueOf()).toBe('.ext8 .ext9,.buu');
     });
@@ -195,13 +202,16 @@ describe('Combinator Preservation in Extensions', () => {
       // Should NOT match - combinators differ
       expect(result.error).toBeDefined();
       expect(result.error?.type).toBe('NOT_FOUND');
+
       // Selector should be unchanged
       expect(result.value.valueOf()).toBe('.ext8 .ext9,.buu');
     });
 
     it('should NOT add .zap to nested .ext8 .ext9 when .zap extends .ext8 + .ext9', async () => {
-      // Parser-built: .ext8 { .ext9 { } } and .zap:extend(.ext8 + .ext9 all) {}
-      // Nested has selector .ext8 .ext9 (descendant). .zap extends .ext8 + .ext9 (adjacent) should NOT match nested.
+      /*
+       * Parser-built: .ext8 { .ext9 { } } and .zap:extend(.ext8 + .ext9 all) {}
+       * Nested has selector .ext8 .ext9 (descendant). .zap extends .ext8 + .ext9 (adjacent) should NOT match nested.
+       */
       const nestedExt9 = ruleset({
         selector: sel([el('.ext8'), co(' '), el('.ext9')]),
         rules: []
@@ -228,6 +238,7 @@ describe('Combinator Preservation in Extensions', () => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const nestedRuleset = ext8Ruleset?.rules?.[0] as Ruleset | undefined;
       const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
+
       // Nested has descendant .ext8 .ext9 only; must NOT get .zap (which extends .ext8 + .ext9)
       expect(nestedSel).not.toContain('.zap');
       expect(nestedSel).toContain('.ext9');

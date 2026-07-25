@@ -49,15 +49,19 @@ export function coerceValueNode(item: NodeArrayItem): Node {
   if (typeof item === 'string') {
     return coerceStringTerminal(item);
   }
+
   // Drop empty-string spacing placeholders emitted by the parser.
   const items = item.filter(v => v !== '');
   if (items.length === 1) {
     return coerceValueNode(items[0]!);
   }
   const seq = spaced(items.map(coerceValueNode));
-  // A raw space-group array may carry the segment span stamped by the parser's
-  // value assembly; move it to the coerced Sequence so trivia lookup (which is
-  // keyed by node span) can recover the authored comma-item whitespace.
+
+  /*
+   * A raw space-group array may carry the segment span stamped by the parser's
+   * value assembly; move it to the coerced Sequence so trivia lookup (which is
+   * keyed by node span) can recover the authored comma-item whitespace.
+   */
   const span = sourceSpanOf(item);
   if (span && sourceSpanOf(seq) === undefined) {
     setSourceSpan(seq, span);
@@ -74,10 +78,13 @@ export function coerceNodeArray(value: NodeArrayItem[]): Node[] {
   let out: Node[] | undefined;
   for (let i = 0; i < value.length; i++) {
     const item = value[i]!;
-    // Only the parser's raw value shapes — string terminals and space-group
-    // arrays — need coercion. A Node passes through; anything else is already a
-    // resolved value (List is also used as a generic argument container) and
-    // must not be run through value coercion.
+
+    /*
+     * Only the parser's raw value shapes — string terminals and space-group
+     * arrays — need coercion. A Node passes through; anything else is already a
+     * resolved value (List is also used as a generic argument container) and
+     * must not be run through value coercion.
+     */
     if (typeof item !== 'string' && !Array.isArray(item)) {
       if (out) {
         out[i] = item;
@@ -96,9 +103,12 @@ export function coerceNodeArray(value: NodeArrayItem[]): Node[] {
   if (out) {
     return out;
   }
-  // `out` is only allocated when a raw string/array segment is encountered.
-  // If no coercion was needed, every union member is necessarily a Node; make
-  // that invariant explicit instead of asserting it through the raw union.
+
+  /*
+   * `out` is only allocated when a raw string/array segment is encountered.
+   * If no coercion was needed, every union member is necessarily a Node; make
+   * that invariant explicit instead of asserting it through the raw union.
+   */
   if (isNodeArray(value)) {
     return value;
   }

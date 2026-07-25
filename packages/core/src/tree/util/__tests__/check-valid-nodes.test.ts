@@ -33,8 +33,10 @@ describe('checkValidNodes', () => {
   });
 
   it('accepts a bare Any (Less Anonymous is allowRoot) in statement position', () => {
-    // A root-position call that evaluates to a bare value produces an Any;
-    // Less emits it as the final statement (e.g. `e('/* … */')`).
+    /*
+     * A root-position call that evaluates to a bare value produces an Any;
+     * Less emits it as the final statement (e.g. `e('/* … *\/')`).
+     */
     const value = new Any('/* anything to unquote */', { role: 'any' });
     expect(value.hasFlag(F_ALLOW_ROOT)).toBe(true);
     expect(() => checkValidNodes([value])).not.toThrow();

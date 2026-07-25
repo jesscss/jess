@@ -61,8 +61,10 @@ export class Nil extends Node<''> {
   /** @internal */
   override writeSyntax(_options: FinalPrintOptions): void {}
 
-  // Static-by-type invisibility: Nil is never CSS output. The no-op render
-  // keeps the base render() gate off the common hot path (Focus D.1 stage 2).
+  /*
+   * Static-by-type invisibility: Nil is never CSS output. The no-op render
+   * keeps the base render() gate off the common hot path (Focus D.1 stage 2).
+   */
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {

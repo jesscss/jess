@@ -8,6 +8,7 @@ describe('BitSet', () => {
     let library = new BitSetLibrary(['.foo', '.bar']);
     expect(library.size).toBe(2);
     let bitset = library.getBitset();
+
     /** No bits are set */
     expect(bitset.isEmpty()).toBe(true);
   });
@@ -93,6 +94,7 @@ describe('BitSets and selectors', () => {
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+
     // visibleKeySet excludes combinators
     expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
   });
@@ -101,6 +103,7 @@ describe('BitSets and selectors', () => {
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+
     // visibleKeySet excludes combinators
     expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
   });
@@ -109,6 +112,7 @@ describe('BitSets and selectors', () => {
     let selector = sel([compound([el('a'), el('.foo')]), co('>'), el('.bar'), co('+'), el('.baz')]);
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '>', '.bar', '+', '.baz']))).toBe(true);
+
     // visibleKeySet excludes combinators
     expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '.bar', '.baz']))).toBe(true);
   });
@@ -122,6 +126,7 @@ describe('BitSets and selectors', () => {
       throw new TypeError('Expected complex selector evaluation results.');
     }
     expect(isSubsetOf(keySetOf(evald2), keySetOf(evald1))).toBe(true);
+
     /** Larger one doesn't fit into smaller */
     expect(isSubsetOf(keySetOf(evald1), keySetOf(evald2))).toBe(false);
   });

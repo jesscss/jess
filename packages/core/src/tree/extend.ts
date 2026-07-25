@@ -39,6 +39,7 @@ import {
 export enum ExtendFlag {
   /** Sass and Jess default */
   All = 0,
+
   /** Less default - must not be a partial selector match */
   Exact = 1
 }
@@ -46,9 +47,11 @@ export enum ExtendFlag {
 export type ExtendValue = {
   /** The current selector. By default is `&`. An array stands in for a selector list. */
   selector?: Selector | SelectorListItem[];
+
   /** The target to extend. Any selector-like: a node, a bare string (e.g. `&`), or
    * an array standing in for a selector list. */
   target: SelectorLike;
+
   /**
    * Optional namespace scoping for extend targets.
    *
@@ -65,6 +68,7 @@ export type ExtendValue = {
   namespace?: string;
   flag?: ExtendFlag;
 };
+
 /**
  * Extends value - parsed by Less as an independent statement
  * at the beginning of rules.
@@ -151,32 +155,42 @@ export class Extend extends Node<ExtendValue> {
     return w.getSince(mark);
   }
 
-  // Don't prepare Extend early; evaluate it when the ruleset is in the frame.
-  // This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
+  /*
+   * Don't prepare Extend early; evaluate it when the ruleset is in the frame.
+   * This ensures the ampersand resolves to the correct ruleset selector, not the parent frame
+   */
 
   /** @internal Run the invisible extend registration effect without public render/eval materialization. */
   runEffect(context: Context): MaybePromise<void> {
     let { selector, flag } = this;
     const { selectorBits } = context;
-    // The parser delivers simple targets as bare strings (e.g. `.button`) per the
-    // strings-not-nodes model; materialize to a Selector node so the record stays
-    // node-shaped for the matching engine and the bit-library attach below.
+
+    /*
+     * The parser delivers simple targets as bare strings (e.g. `.button`) per the
+     * strings-not-nodes model; materialize to a Selector node so the record stays
+     * node-shaped for the matching engine and the bit-library attach below.
+     */
     const targetNode = asExtendSelectorNode(this.target);
 
     const currentFrame = context.rulesetFrames.at(-1);
 
-    // OQ-A (design §9): a target with INTERPOLATION (`:extend([data=@{attr}])`, `:extend(.@{name})`)
-    // must resolve against the LIVE frame BEFORE matching — otherwise the raw `@{…}` target matches
-    // nothing and the extend silently no-ops. Resolve it here (frame live during the effect); a
-    // fully-literal target skips the eval entirely (the common case). Interpolation is carried by an
-    // `InterpolatedSelector`/`Interpolated` node (its `valueOf` is a `%%` placeholder, NOT `@{…}`),
-    // so detect it by node type via a walk — a text-pattern check would miss it.
+    /*
+     * OQ-A (design §9): a target with INTERPOLATION (`:extend([data=@{attr}])`, `:extend(.@{name})`)
+     * must resolve against the LIVE frame BEFORE matching — otherwise the raw `@{…}` target matches
+     * nothing and the extend silently no-ops. Resolve it here (frame live during the effect); a
+     * fully-literal target skips the eval entirely (the common case). Interpolation is carried by an
+     * `InterpolatedSelector`/`Interpolated` node (its `valueOf` is a `%%` placeholder, NOT `@{…}`),
+     * so detect it by node type via a walk — a text-pattern check would miss it.
+     */
     const isInterpNode = (n: { type?: string }): boolean =>
       n.type === 'InterpolatedSelector' || n.type === 'Interpolated';
     const targetHasInterpolation =
       isInterpNode(targetNode)
-      // Attribute-value interpolation (`[data=@{name}]`) is carried as a RAW `@{…}` token in an
-      // `AttributeSelector` value string (not an interpolation NODE), so also match the text.
+
+      /*
+       * Attribute-value interpolation (`[data=@{name}]`) is carried as a RAW `@{…}` token in an
+       * `AttributeSelector` value string (not an interpolation NODE), so also match the text.
+       */
       || /[@$]\{/.test(String(targetNode.valueOf()))
       || (() => {
         for (const descendant of targetNode.walk(true)) {
@@ -209,29 +223,41 @@ export class Extend extends Node<ExtendValue> {
   ): MaybePromise<void> {
     let selector = selectorArg;
 
-    // If selector is undefined, convert it to ampersand so it resolves to the ruleset's selector
-    // If selector is already set to a non-ampersand (e.g., from a bubbled extend), keep it as-is
-    // The parser sets the selector correctly when bubbling extends, so we should preserve it
+    /*
+     * If selector is undefined, convert it to ampersand so it resolves to the ruleset's selector
+     * If selector is already set to a non-ampersand (e.g., from a bubbled extend), keep it as-is
+     * The parser sets the selector correctly when bubbling extends, so we should preserve it
+     */
     if (!selector) {
-      // Set selector to ampersand - it will resolve to the current ruleset's selector when evaluated
-      // This matches the conceptual model: .c:extend(.ext all) is like { &:extend(.ext all); } inside .c
-      // The frame selector should already be :is(.a, .b) .c (the evaluated selector from ruleset prep).
+      /*
+       * Set selector to ampersand - it will resolve to the current ruleset's selector when evaluated
+       * This matches the conceptual model: .c:extend(.ext all) is like { &:extend(.ext all); } inside .c
+       * The frame selector should already be :is(.a, .b) .c (the evaluated selector from ruleset prep).
+       */
       selector = Ampersand.create(undefined);
-      // Make the ampersand visible so it's included in the selector when evaluated
-      // This ensures the parent selector is properly included in the extend selector
+
+      /*
+       * Make the ampersand visible so it's included in the selector when evaluated
+       * This ensures the parent selector is properly included in the extend selector
+       */
       selector.addFlag(F_VISIBLE);
     }
-    // If selector is already set (e.g., .ext7 from a bubbled extend), use it directly
-    // Don't convert non-ampersand value to ampersand - they should be used as-is
-    // Get current extend root from registry stack
+
+    /*
+     * If selector is already set (e.g., .ext7 from a bubbled extend), use it directly
+     * Don't convert non-ampersand value to ampersand - they should be used as-is
+     * Get current extend root from registry stack
+     */
     const extendRoot = context.extendRoots.getCurrentExtendRoot();
     if (!extendRoot) {
       return undefined;
     }
 
-    // The parser may deliver the extend selector as a bare string or raw
-    // component array (strings-not-nodes model); materialize to a Selector node
-    // before evaluating.
+    /*
+     * The parser may deliver the extend selector as a bare string or raw
+     * component array (strings-not-nodes model); materialize to a Selector node
+     * before evaluating.
+     */
     const selectorNode = typeof selector === 'string' || Array.isArray(selector)
       ? asExtendSelectorNode(selector)
       : selector;
@@ -297,6 +323,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
     currentFrame
   } = args;
   const { selectorBits } = context;
+
   // Resolve ampersand to its current parent selector if needed (live resolution for extend)
   let resolvedSel: Selector = selector;
   if (isNode(selector, N.Ampersand)) {
@@ -305,8 +332,11 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
       resolvedSel = ampResolved;
     }
   }
-  // Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
-  // selector (e.g. .issue-2586-somepage .content not just .content).
+
+  /*
+   * Prefer the current ruleset's full selector (includes implicit &) so extend merges the full
+   * selector (e.g. .issue-2586-somepage .content not just .content).
+   */
   if (currentFrame) {
     const rs = currentFrame;
     const fullSel = rs.selector;
@@ -339,15 +369,20 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
     }
     if (!authoredSelector && !usedParentListComposition) {
       if (fullSel && !(fullSel instanceof Nil) && typeof fullSel !== 'string') {
-        // `rs.selector` may be a raw `SelectorListItem[]` surface (array). The
-        // extend record's extendWith must be a Selector node so both the walk and
-        // location apply paths can clone/place it uniformly — materialize arrays.
+        /*
+         * `rs.selector` may be a raw `SelectorListItem[]` surface (array). The
+         * extend record's extendWith must be a Selector node so both the walk and
+         * location apply paths can clone/place it uniformly — materialize arrays.
+         */
         resolvedSel = Array.isArray(fullSel) ? asExtendSelectorNode(fullSel) : fullSel;
-        // A nested extend-only ruleset (e.g. `.submit { &:hover:extend(...) {} }`)
-        // carries its authored `&:hover` frame selector with the leading `&` still
-        // unresolved. Compose it against the parent frame so the extendWith is the
-        // real replacement (`.submit:hover`), not a live `&:hover` that would later
-        // resolve against the extend target.
+
+        /*
+         * A nested extend-only ruleset (e.g. `.submit { &:hover:extend(...) {} }`)
+         * carries its authored `&:hover` frame selector with the leading `&` still
+         * unresolved. Compose it against the parent frame so the extendWith is the
+         * real replacement (`.submit:hover`), not a live `&:hover` that would later
+         * resolve against the extend target.
+         */
         const parentFrame = context.rulesetFrames.at(-2);
         const parentSel = parentFrame && isNode(parentFrame, N.Ruleset) ? parentFrame.selector : undefined;
         if (
@@ -362,13 +397,18 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
               ? parentSel
               : copySelectorForExtendRecord(asExtendSelectorNode(parentSel), selectorBits)
           );
-          // composeSelector goes textual when the parent is a string surface, so the
-          // result may be a bare string — materialize it back to a Selector node.
+
+          /*
+           * composeSelector goes textual when the parent is a string surface, so the
+           * result may be a bare string — materialize it back to a Selector node.
+           */
           resolvedSel = attachSelectorBitLibrary(asExtendSelectorNode(composed), selectorBits);
         }
       } else {
-        // Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
-        // Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
+        /*
+         * Extend ran during selector eval (e.g. .content:extend(...)); current frame is the parent.
+         * Build full selector as parent + ' ' + resolvedSel (e.g. .issue-2586-somepage .content).
+         */
         const parentSel = currentFrame.selector;
         if (parentSel && !(parentSel instanceof Nil) && typeof parentSel !== 'string' && resolvedSel.valueOf() !== parentSel.valueOf()) {
           resolvedSel = attachSelectorBitLibrary(ComplexSelector.create([
@@ -384,6 +424,7 @@ function registerExtendRecord(args: RegisterExtendRecordArgs): void {
   attachSelectorBitLibrary(resolvedSel, selectorBits);
   const docOrder = getDocumentOrderForExtend(currentFrame, context);
   const extendRootOptions = extendRoot.options;
+
   // Same reference-scope tagging for sync path.
   const fromReferenceScope = (
     context.inReferenceImportScope

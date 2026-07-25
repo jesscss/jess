@@ -331,6 +331,7 @@ export interface InputOptions extends FileMatchOptions {
   allowOverloadedImport?: boolean;
   allowExtendSelectors?: ExtendSelectorKind[];
   disableScriptModules?: boolean;
+
   /**
    * @deprecated Use `disableScriptModules` instead.
    */
@@ -391,18 +392,23 @@ export interface StylesConfig {
     unitMode?: UnitMode;
     functionMode?: FunctionMode;
     equalityMode?: EqualityMode;
+
     /** See {@link LessOptions.strict}. Expanded onto the other compile modes. */
     strict?: boolean;
+
     /** See {@link LessOptions.allowOverloadedImport}. */
     allowOverloadedImport?: boolean;
+
     /** See {@link LessOptions.leakyScope}. */
     leakyScope?: boolean;
     allowExtendSelectors?: ExtendSelectorKind[];
     disableScriptModules?: boolean;
+
     /**
      * @deprecated Use `disableScriptModules` instead.
      */
     disablePluginRule?: boolean;
+
     /**
      * Filesystem root that Less `@plugin` / script-module scripts are allowed to
      * be read from. When set, it overrides the default (the entry file's
@@ -410,12 +416,14 @@ export interface StylesConfig {
      */
     jsReadRoot?: string;
   };
+
   /**
    * Input file options. Can be a single object for defaults, or an array
    * where entries can have a `file` property (path or glob) to match specific inputs.
    * Entries without a `file` property serve as defaults.
    */
   input?: InputOptions | InputOptions[];
+
   /**
    * Output file options. Can be a single object for defaults, or an array
    * where entries can have a `file` property (path or glob) to match specific outputs.

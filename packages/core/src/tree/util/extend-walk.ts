@@ -104,9 +104,11 @@ function hasSelectorIdentityFlag(value: unknown): value is { isTag?: boolean; is
   return value !== null && typeof value === 'object';
 }
 
-// ─────────────────────────────────────────────────
-// Find decomposition
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Find decomposition
+ * ─────────────────────────────────────────────────
+ */
 
 /**
  * A find selector decomposed into positions.
@@ -116,41 +118,47 @@ function hasSelectorIdentityFlag(value: unknown): value is { isTag?: boolean; is
 interface FindSpec {
   /** Simples at each position (AND within a position) */
   positions: Selector[][];
+
   /** Combinators between positions (length = positions.length - 1) */
   combinators: string[];
+
   /** Original find selector (for valueOf comparisons) */
   original: Selector;
 }
 
-// ─────────────────────────────────────────────────
-// Pass-scoped matcher memoization
-//
-// During a single `processExtends` pass the extend set is immutable: the same
-// (target, find, extendWith, partial, parentSelector) tuple is re-matched
-// O(I²) times by the chained-extend discovery + classify passes, each time
-// re-running `decomposeFind` + a full `wouldMatchNode` descent. Caching the
-// invariant answers for the duration of one pass collapses that quadratic.
-//
-// Both caches are pass-scoped (installed by `beginExtendMatchPass` /
-// `endExtendMatchPass` around `processExtends`) — they are `undefined` outside
-// a pass so a plain non-pass call (tests, diagnostics) memoizes nothing and can
-// never observe cross-render staleness.
-//
-// KEY CORRECTNESS: `wouldExtendChange`'s result depends on the full value of
-// target, find, extendWith (self-extend short-circuit + recursive composed
-// probe), partial, AND parentSelector (root/ampersand/parentContains branches).
-// The key captures all five by `valueOf()`. `wouldExtendChange` always forces
-// `presenceMatchMode = false`, so that bit is constant here and needs no key.
+/*
+ * ─────────────────────────────────────────────────
+ * Pass-scoped matcher memoization
+ *
+ * During a single `processExtends` pass the extend set is immutable: the same
+ * (target, find, extendWith, partial, parentSelector) tuple is re-matched
+ * O(I²) times by the chained-extend discovery + classify passes, each time
+ * re-running `decomposeFind` + a full `wouldMatchNode` descent. Caching the
+ * invariant answers for the duration of one pass collapses that quadratic.
+ *
+ * Both caches are pass-scoped (installed by `beginExtendMatchPass` /
+ * `endExtendMatchPass` around `processExtends`) — they are `undefined` outside
+ * a pass so a plain non-pass call (tests, diagnostics) memoizes nothing and can
+ * never observe cross-render staleness.
+ *
+ * KEY CORRECTNESS: `wouldExtendChange`'s result depends on the full value of
+ * target, find, extendWith (self-extend short-circuit + recursive composed
+ * probe), partial, AND parentSelector (root/ampersand/parentContains branches).
+ * The key captures all five by `valueOf()`. `wouldExtendChange` always forces
+ * `presenceMatchMode = false`, so that bit is constant here and needs no key.
+ */
 let findSpecCache: Map<string, FindSpec> | undefined;
 let wouldExtendChangeCache: Map<string, boolean> | undefined;
 
-// Deterministic matcher-work counter for the render-scaling guardrail. Counts
-// every FULL (cache-missing) `wouldExtendChange` matcher descent — the O(I²)
-// driver on multi-root extend. The pass-scoped memo turns repeat probes into
-// cache hits, so this total scales with the number of DISTINCT match relations
-// (~O(I·k)), not the number of probe calls (~O(I²)). Reverting the memo makes
-// the same workload recompute every probe → the counter jumps super-linearly,
-// which the guardrail asserts against. Instrumentation only; no behavior.
+/*
+ * Deterministic matcher-work counter for the render-scaling guardrail. Counts
+ * every FULL (cache-missing) `wouldExtendChange` matcher descent — the O(I²)
+ * driver on multi-root extend. The pass-scoped memo turns repeat probes into
+ * cache hits, so this total scales with the number of DISTINCT match relations
+ * (~O(I·k)), not the number of probe calls (~O(I²)). Reverting the memo makes
+ * the same workload recompute every probe → the counter jumps super-linearly,
+ * which the guardrail asserts against. Instrumentation only; no behavior.
+ */
 let extendMatchWork = 0;
 export function resetExtendMatchWork(): void {
   extendMatchWork = 0;
@@ -159,10 +167,12 @@ export function getExtendMatchWork(): number {
   return extendMatchWork;
 }
 
-// Test-only escape hatch: when disabled, `beginExtendMatchPass` installs no
-// caches so `wouldExtendChange`/`decomposeFind` recompute every probe. Used by
-// the memo differential test to render the same sheet with the memo ON vs OFF
-// and assert byte-identical CSS. Never toggled in production paths.
+/*
+ * Test-only escape hatch: when disabled, `beginExtendMatchPass` installs no
+ * caches so `wouldExtendChange`/`decomposeFind` recompute every probe. Used by
+ * the memo differential test to render the same sheet with the memo ON vs OFF
+ * and assert byte-identical CSS. Never toggled in production paths.
+ */
 let extendMatchMemoEnabled = true;
 export function setExtendMatchMemoEnabled(enabled: boolean): void {
   extendMatchMemoEnabled = enabled;
@@ -206,11 +216,13 @@ function decomposeFindUncached(find: Selector): FindSpec {
       if (isCombinator(comp)) {
         combinators.push(combinatorValue(comp));
       } else if (typeof comp === 'string') {
-        // Parser-delivered complex selectors can carry raw-string components
-        // (a combinator like `' '` handled above, or a simple/compound part
-        // like `'.ext8'`). A string simple-part must still open a position, or
-        // a descendant find like `.ext8 .ext9` decomposes to zero positions and
-        // the multi-position (crossing) path is silently skipped.
+        /*
+         * Parser-delivered complex selectors can carry raw-string components
+         * (a combinator like `' '` handled above, or a simple/compound part
+         * like `'.ext8'`). A string simple-part must still open a position, or
+         * a descendant find like `.ext8 .ext9` decomposes to zero positions and
+         * the multi-position (crossing) path is silently skipped.
+         */
         positions.push([new BasicSelector(comp)]);
       } else if (comp instanceof CompoundSelector) {
         positions.push(comp.value.filter((c): c is SimpleSelector => typeof c !== 'string'));
@@ -227,6 +239,7 @@ function decomposeFindUncached(find: Selector): FindSpec {
       original: find
     };
   }
+
   // SimpleSelector or anything else: single position, single simple
   return { positions: [[find]], combinators: [], original: find };
 }
@@ -241,9 +254,11 @@ function isMultiSimple(spec: FindSpec): boolean {
   return spec.positions.length === 1 && spec.positions[0]!.length > 1;
 }
 
-// ─────────────────────────────────────────────────
-// Equivalence checks
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Equivalence checks
+ * ─────────────────────────────────────────────────
+ */
 
 function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
   const find = spec.original;
@@ -256,11 +271,14 @@ function isWholeNodeMatch(node: Selector, spec: FindSpec): boolean {
   if (isNode(node, N.CompoundSelector) && isNode(find, N.CompoundSelector)) {
     return areCompoundsEquivalent(node as CompoundSelector, find as CompoundSelector);
   }
-  // Mismatched container vs. simpler find: a WHOLE match only when they serialize
-  // identically — i.e. the node reduces to a single unit equal to find (a
-  // single-component compound `.a` or single-compound complex `.a`). A genuine
-  // multi-part node (`.a.b`, `.a .b`) has a different valueOf, so find is only a
-  // COMPONENT of it and full mode correctly rejects it here (→ partial path).
+
+  /*
+   * Mismatched container vs. simpler find: a WHOLE match only when they serialize
+   * identically — i.e. the node reduces to a single unit equal to find (a
+   * single-component compound `.a` or single-compound complex `.a`). A genuine
+   * multi-part node (`.a.b`, `.a .b`) has a different valueOf, so find is only a
+   * COMPONENT of it and full mode correctly rejects it here (→ partial path).
+   */
   return node.valueOf() === find.valueOf();
 }
 
@@ -319,9 +337,11 @@ function areComplexEquivalent(a: ComplexSelector, b: ComplexSelector): boolean {
   return true;
 }
 
-// ─────────────────────────────────────────────────
-// Position matching
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Position matching
+ * ─────────────────────────────────────────────────
+ */
 
 /**
  * Extract what's at the current position from a selector.
@@ -362,9 +382,12 @@ function positionSimpleMatches(find: Selector, target: string | Selector): boole
   if (find.valueOf() === (typeof target === 'string' ? target : target.valueOf())) {
     return true;
   }
-  // A string-backed leaf (`'.a'`) carries no structure to recurse into, so a
-  // valueOf mismatch is a definitive miss — the :is()/tail expansions below only
-  // apply to node targets.
+
+  /*
+   * A string-backed leaf (`'.a'`) carries no structure to recurse into, so a
+   * valueOf mismatch is a definitive miss — the :is()/tail expansions below only
+   * apply to node targets.
+   */
   if (typeof target === 'string') {
     return false;
   }
@@ -376,9 +399,7 @@ function positionSimpleMatches(find: Selector, target: string | Selector): boole
       return false;
     }
     if (isNode(arg, N.SelectorList)) {
-      return arg.value.some(
-        (alt: SelectorListItem) => typeof alt !== 'string' && positionSimpleMatches(tailOf(alt), target)
-      );
+      return arg.value.some((alt: SelectorListItem) => typeof alt !== 'string' && positionSimpleMatches(tailOf(alt), target));
     }
     return positionSimpleMatches(tailOf(arg), target);
   }
@@ -390,9 +411,7 @@ function positionSimpleMatches(find: Selector, target: string | Selector): boole
       return false;
     }
     if (isNode(arg, N.SelectorList)) {
-      return arg.value.some(
-        (alt: SelectorListItem) => typeof alt !== 'string' && positionSimpleMatches(find, tailOf(alt))
-      );
+      return arg.value.some((alt: SelectorListItem) => typeof alt !== 'string' && positionSimpleMatches(find, tailOf(alt)));
     }
     return positionSimpleMatches(find, tailOf(arg));
   }
@@ -495,9 +514,11 @@ function consumeSimples(
   return matchIndices.length === findSimples.length ? matchIndices : null;
 }
 
-// ─────────────────────────────────────────────────
-// Walk context
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Walk context
+ * ─────────────────────────────────────────────────
+ */
 
 interface WalkContext {
   isRoot: boolean;
@@ -513,9 +534,11 @@ const ROOT_CTX: WalkContext = {
   hasContentAfter: false
 };
 
-// ─────────────────────────────────────────────────
-// Quick eligibility check
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Quick eligibility check
+ * ─────────────────────────────────────────────────
+ */
 
 export function canUseWalkAndConsume(target: Selector, find: Selector, hasParent?: boolean): boolean {
   if (
@@ -525,8 +548,11 @@ export function canUseWalkAndConsume(target: Selector, find: Selector, hasParent
   ) {
     return false;
   }
-  // When a parent is provided, ampersands in the target are treated as
-  // the implicit parent — the cursor continues into the parent selector.
+
+  /*
+   * When a parent is provided, ampersands in the target are treated as
+   * the implicit parent — the cursor continues into the parent selector.
+   */
   if (!hasParent && containsAmpersand(target)) {
     return false;
   }
@@ -535,9 +561,7 @@ export function canUseWalkAndConsume(target: Selector, find: Selector, hasParent
 
 export function extendWithNeedsConflictValidation(extendWith: Selector): boolean {
   if (isNode(extendWith, N.CompoundSelector)) {
-    return extendWith.value.some(
-      child => hasSelectorIdentityFlag(child) && (child.isTag || child.isId)
-    );
+    return extendWith.value.some(child => hasSelectorIdentityFlag(child) && (child.isTag || child.isId));
   }
   if (hasSelectorIdentityFlag(extendWith) && (extendWith.isTag || extendWith.isId)) {
     return true;
@@ -568,9 +592,11 @@ function containsAmpersand(sel: Selector | string): boolean {
   return false;
 }
 
-// ─────────────────────────────────────────────────
-// Main entry point
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Main entry point
+ * ─────────────────────────────────────────────────
+ */
 
 export function walkAndExtend(
   target: Selector,
@@ -582,9 +608,11 @@ export function walkAndExtend(
   return walkNode(target, spec, extendWith, partial, ROOT_CTX);
 }
 
-// ─────────────────────────────────────────────────
-// Recursive walk
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Recursive walk
+ * ─────────────────────────────────────────────────
+ */
 
 function walkNode(
   node: Selector,
@@ -616,9 +644,11 @@ function walkNode(
   return node;
 }
 
-// ─────────────────────────────────────────────────
-// Whole-match transformation
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Whole-match transformation
+ * ─────────────────────────────────────────────────
+ */
 
 function applyWholeMatch(
   node: Selector,
@@ -648,9 +678,11 @@ function applyWholeMatch(
   return makeList(node, extendWith, true);
 }
 
-// ─────────────────────────────────────────────────
-// Container walkers
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Container walkers
+ * ─────────────────────────────────────────────────
+ */
 
 function walkSelectorList(
   list: SelectorList,
@@ -682,11 +714,14 @@ function walkSelectorList(
       const first = extItems[0]!;
       if (typeof first !== 'string') {
         first.addFlag(F_EXTENDED);
-        // Parity with the non-batched extend path (extend.ts `wrapMatchInIs`),
-        // which always tags the matched item as `F_EXTEND_TARGET` regardless of
-        // partial. The flag marks "this was the target of an extend", which
-        // downstream filters (e.g. reference-mode compose filter) use to tell
-        // original-matched items apart from newly-added items.
+
+        /*
+         * Parity with the non-batched extend path (extend.ts `wrapMatchInIs`),
+         * which always tags the matched item as `F_EXTEND_TARGET` regardless of
+         * partial. The flag marks "this was the target of an extend", which
+         * downstream filters (e.g. reference-mode compose filter) use to tell
+         * original-matched items apart from newly-added items.
+         */
         first.addFlag(F_EXTEND_TARGET);
       }
       originals.push(first);
@@ -742,9 +777,11 @@ function walkComplexSelector(
       continue;
     }
     if (typeof comp === 'string') {
-      // String-backed position leaf (`'.foo'` in `.foo .bar`): a fragment match at
-      // a complex position is PARTIAL. Full mode leaves it (whole-complex match is
-      // handled by isWholeNodeMatch); partial wraps the matched leaf in :is().
+      /*
+       * String-backed position leaf (`'.foo'` in `.foo .bar`): a fragment match at
+       * a complex position is PARTIAL. Full mode leaves it (whole-complex match is
+       * handled by isWholeNodeMatch); partial wraps the matched leaf in :is().
+       */
       if (partial && singleSimple && positionSimpleMatches(spec.positions[0]![0]!, comp)) {
         const wrapped = wrapInIs(spec.original, extendWith);
         if (wrapped.valueOf() !== comp) {
@@ -804,8 +841,10 @@ function walkCompoundSelector(
   for (let i = 0; i < value.length; i++) {
     const comp = value[i]!;
     if (typeof comp === 'string') {
-      // String leaf: a component match inside a compound is PARTIAL. Full mode
-      // rejects it (leave unchanged); partial wraps the matched leaf in :is().
+      /*
+       * String leaf: a component match inside a compound is PARTIAL. Full mode
+       * rejects it (leave unchanged); partial wraps the matched leaf in :is().
+       */
       if (partial && singleSimple && positionSimpleMatches(spec.positions[0]![0]!, comp)) {
         const wrapped = wrapInIs(spec.original, extendWith);
         if (wrapped.valueOf() !== comp) {
@@ -929,9 +968,11 @@ function walkPseudoSelector(
     return pseudo;
   }
 
-  // When :is() is inside a compound, only the tail of each complex
-  // alternative is at the current position. The ancestral prefix is
-  // a separate branch and should not be walked for matching.
+  /*
+   * When :is() is inside a compound, only the tail of each complex
+   * alternative is at the current position. The ancestral prefix is
+   * a separate branch and should not be walked for matching.
+   */
   if (ctx.parentType === 'CompoundSelector') {
     return walkPseudoTailAware(pseudo, arg, spec, extendWith, partial, ctx);
   }
@@ -1068,6 +1109,7 @@ function walkAlternativeTailAware(
   }
 
   const tail = expectSelector(comps[tailIdx]!);
+
   // The tail is at the compound position — walk it as if it were a compound child
   const tailCtx: WalkContext = {
     isRoot: false,
@@ -1089,18 +1131,23 @@ function walkAlternativeTailAware(
   return ComplexSelector.create(newComps).inherit(alt);
 }
 
-// ─────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Helpers
+ * ─────────────────────────────────────────────────
+ */
 
 function makeList(original: Selector, extendWith: Selector, _partial: boolean = false): Selector {
   const a = copySelectorForExtend(original);
   a.addFlag(F_EXTENDED);
-  // The original item *is* the extend target (it was matched). Tag it so
-  // downstream filters (reference-mode compose filter) can distinguish it
-  // from the newly-added items. Tagging is unconditional (same policy as
-  // `wrapInIs`) — the `partial` arg no longer affects the tag and is kept
-  // only for call-site compatibility.
+
+  /*
+   * The original item *is* the extend target (it was matched). Tag it so
+   * downstream filters (reference-mode compose filter) can distinguish it
+   * from the newly-added items. Tagging is unconditional (same policy as
+   * `wrapInIs`) — the `partial` arg no longer affects the tag and is kept
+   * only for call-site compatibility.
+   */
   a.addFlag(F_EXTEND_TARGET);
 
   const extendItems = extractIsArgs(extendWith);
@@ -1169,9 +1216,11 @@ function wrapInIs(matched: Selector, extendWith: Selector): Selector {
   return result;
 }
 
-// ─────────────────────────────────────────────────
-// Dry-run: would this extend change the selector?
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * Dry-run: would this extend change the selector?
+ * ─────────────────────────────────────────────────
+ */
 
 export type MatchResult = false | 'local' | 'within-ampersand' | 'crossing';
 
@@ -1193,8 +1242,7 @@ function parentContainsTarget(parent: Selector | string, target: Selector): bool
   }
   if (isNode(parent, N.ComplexSelector)) {
     return parent.value.some(comp =>
-      !isCombinator(comp) && isSelectorNode(comp) && parentContainsTarget(comp, target)
-    );
+      !isCombinator(comp) && isSelectorNode(comp) && parentContainsTarget(comp, target));
   }
   if (isNode(parent, N.CompoundSelector)) {
     return parent.value.some(comp => parentContainsTarget(comp, target));
@@ -1202,12 +1250,14 @@ function parentContainsTarget(parent: Selector | string, target: Selector): bool
   return false;
 }
 
-// `classifyExtendMatch` reports whether a target CONTAINS the find (presence, for
-// self-extend / F_EXTEND_TARGET marking), whereas `wouldExtendChange` reports
-// whether applying the extend would change OUTPUT. They differ only for a
-// self-extend (`find === extendWith`): presence is still true, output-change is
-// false. The recursive walk is fully synchronous, so a save/restore module flag
-// carries that one bit of intent without threading a param through every call site.
+/*
+ * `classifyExtendMatch` reports whether a target CONTAINS the find (presence, for
+ * self-extend / F_EXTEND_TARGET marking), whereas `wouldExtendChange` reports
+ * whether applying the extend would change OUTPUT. They differ only for a
+ * self-extend (`find === extendWith`): presence is still true, output-change is
+ * false. The recursive walk is fully synchronous, so a save/restore module flag
+ * carries that one bit of intent without threading a param through every call site.
+ */
 let presenceMatchMode = false;
 
 export function wouldExtendChange(
@@ -1275,9 +1325,11 @@ function wouldMatchNode(
 
   if (isWholeNodeMatch(node, spec)) {
     if (!partial) {
-      // Exact extends match against the fully composed selector. If this local
-      // selector still sits under parent selector context, the whole selector
-      // is longer than the local node, so an exact local hit is invalid.
+      /*
+       * Exact extends match against the fully composed selector. If this local
+       * selector still sits under parent selector context, the whole selector
+       * is longer than the local node, so an exact local hit is invalid.
+       */
       if (ctx.isRoot && parentSelector) {
         if (node.hasFlag(F_AMPERSAND)) {
           const composed = selectorNodeForExtendMatch(Ruleset.composeSelector(node, parentSelector));
@@ -1290,15 +1342,21 @@ function wouldMatchNode(
       if (ctx.parentType === 'CompoundSelector' || ctx.parentType === 'ComplexSelector') {
         return false;
       }
-      // For non-partial exact extends, the target must equal the entire local
-      // selector. Inside a SelectorList item, the whole local is the list, not
-      // the item — so exact matches at a list item with a parent selector are
-      // overshadowed by the parent's extension (within-ampersand).
+
+      /*
+       * For non-partial exact extends, the target must equal the entire local
+       * selector. Inside a SelectorList item, the whole local is the list, not
+       * the item — so exact matches at a list item with a parent selector are
+       * overshadowed by the parent's extension (within-ampersand).
+       */
       if (ctx.parentType === 'SelectorList' && parentSelector) {
         return 'within-ampersand';
       }
-      // If parent already contains this target, applying this extend would
-      // produce nesting duplicates (e.g., .bb under .bb with extend(.bb)).
+
+      /*
+       * If parent already contains this target, applying this extend would
+       * produce nesting duplicates (e.g., .bb under .bb with extend(.bb)).
+       */
       if (parentSelector && parentContainsTarget(parentSelector, node)) {
         return 'within-ampersand';
       }
@@ -1326,6 +1384,7 @@ function wouldMatchNode(
       if (wouldSubsequenceMatch(node, spec, partial)) {
         return 'local';
       }
+
       // Continue into parent — the local complex selector + parent form a longer chain
       if (parentSelector && partial) {
         return wouldMatchWithParent(node, spec, partial, parentSelector) ? 'crossing' : false;
@@ -1350,16 +1409,20 @@ function wouldMatchNode(
     return false;
   }
 
-  // For simple/compound nodes with a multi-position find, the parent provides
-  // the implicit & context — treat [parent, ' ', node] as a virtual complex
+  /*
+   * For simple/compound nodes with a multi-position find, the parent provides
+   * the implicit & context — treat [parent, ' ', node] as a virtual complex
+   */
   if (parentSelector && isMultiPosition(spec)) {
     return wouldMatchWithParent(node, spec, partial, parentSelector) ? 'crossing' : false;
   }
 
   if (isNode(node, N.CompoundSelector)) {
-    // Exact targets like `.e.e` against authored nested value like `&&`
-    // only become visible after substituting the parent selector into the
-    // whole compound. Looking at each `&` component independently misses that.
+    /*
+     * Exact targets like `.e.e` against authored nested value like `&&`
+     * only become visible after substituting the parent selector into the
+     * whole compound. Looking at each `&` component independently misses that.
+     */
     if (parentSelector && !partial && node.hasFlag(F_AMPERSAND)) {
       const composed = selectorNodeForExtendMatch(Ruleset.composeSelector(node, parentSelector));
       if (wouldExtendChange(composed, spec.original, extendWith, partial)) {
@@ -1414,8 +1477,11 @@ function wouldMatchNode(
     if (!partial && (ctx.hasContentBefore || ctx.hasContentAfter)) {
       return false;
     }
-    // Tail-aware: when :is() is inside a compound, only the tail of
-    // complex alternatives is at the current position.
+
+    /*
+     * Tail-aware: when :is() is inside a compound, only the tail of
+     * complex alternatives is at the current position.
+     */
     if (ctx.parentType === 'CompoundSelector') {
       return wouldMatchPseudoTailAware(pseudo, spec, extendWith, partial);
     }

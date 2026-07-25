@@ -41,9 +41,11 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.same'), call('.same')])
     ]);
 
-    // The canonical engine keeps one exact declaration even when it was
-    // contributed by several matching definitions and several calls. Authored
-    // and expanded output share the same declaration-dedup rule.
+    /*
+     * The canonical engine keeps one exact declaration even when it was
+     * contributed by several matching definitions and several calls. Authored
+     * and expanded output share the same declaration-dedup rule.
+     */
     expect(render(document)).toBe('.out {\n  color: red;\n}\n');
   });
 
@@ -83,10 +85,8 @@ describe('Mixin canonical AST emission', () => {
       rule('.large', [call('.space', [{ value: dimension(12) }])])
     ]);
 
-    expect(render(document)).toBe(
-      '.small {\n  kind: small;\n  gap: 5;\n}\n'
-      + '.large {\n  kind: large;\n  gap: 99;\n}\n'
-    );
+    expect(render(document)).toBe('.small {\n  kind: small;\n  gap: 5;\n}\n'
+      + '.large {\n  kind: large;\n  gap: 99;\n}\n');
   });
 
   it('compares a false parameter against default() as the typed Less keyword', () => {
@@ -151,10 +151,8 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.base'), decl('box-shadow', keyword('second'), ',')])
     ]);
 
-    expect(render(document, false)).toBe(
-      '.base {\n  box-shadow: first;\n}\n'
-      + '.out {\n  box-shadow: first, second;\n}\n'
-    );
+    expect(render(document, false)).toBe('.base {\n  box-shadow: first;\n}\n'
+      + '.out {\n  box-shadow: first, second;\n}\n');
   });
 
   it('keeps an escaped quoted guard operand typed instead of re-materializing its bytes', () => {
@@ -255,13 +253,9 @@ describe('Mixin canonical AST emission', () => {
     ]);
     const document = stylesheet([box, rule('.outer', [call('.box')])]);
 
-    expect(render(document)).toBe(
-      '.outer {\n  color: red;\n}\n'
-      + '.outer .inner {\n  width: 1px;\n}\n'
-    );
-    expect(render(document, false)).toBe(
-      '.outer {\n  color: red;\n  .inner {\n    width: 1px;\n  }\n}\n'
-    );
+    expect(render(document)).toBe('.outer {\n  color: red;\n}\n'
+      + '.outer .inner {\n  width: 1px;\n}\n');
+    expect(render(document, false)).toBe('.outer {\n  color: red;\n  .inner {\n    width: 1px;\n  }\n}\n');
   });
 
   it('projects only a selected ruleset-mixin ampersand header in nested output', () => {
@@ -276,8 +270,7 @@ describe('Mixin canonical AST emission', () => {
       rule('.authored', [rule('&-local', [decl('state', keyword('literal'))])])
     ]);
 
-    expect(render(document, false)).toBe(
-      '.shell {\n'
+    expect(render(document, false)).toBe('.shell {\n'
       + '  .ordinary {\n'
       + '    state: literal;\n'
       + '  }\n'
@@ -303,8 +296,7 @@ describe('Mixin canonical AST emission', () => {
       + '  &-local {\n'
       + '    state: literal;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('groups only adjacent equal evaluated root headers in nested output', () => {
@@ -322,11 +314,9 @@ describe('Mixin canonical AST emission', () => {
       rule('.other', [decl('fourth', dimension(4))])
     ]);
 
-    expect(render(document, false)).toBe(
-      '.same {\n  first: 1;\n  second: 2;\n}\n'
+    expect(render(document, false)).toBe('.same {\n  first: 1;\n  second: 2;\n}\n'
       + '.same {\n  third: 3;\n}\n'
-      + '.other {\n  fourth: 4;\n}\n'
-    );
+      + '.other {\n  fourth: 4;\n}\n');
   });
 
   it('publishes an explicit mixin ruleset placement for a later namespaced call', () => {

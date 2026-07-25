@@ -107,6 +107,7 @@ describe('defineFunction', () => {
     it('should handle record with extra properties', () => {
       // Extra properties in record should be ignored
       uncheckedMyFunc('hello', { value: 42, extra: 'ignored' });
+
       // The function should still work correctly despite extra properties
       expect(myFunc('hello', { value: 42 })).toBe('hello: 42');
     });
@@ -259,10 +260,12 @@ describe('defineFunction', () => {
       // These should have proper type checking
       expect(typedFunc({ name: 'hello', value: 42 })).toBe('hello: 42');
 
-      // TypeScript should catch these at compile time:
-      // typedFunc('hello', 'not-a-number'); // Should be type error
-      // typedFunc(123, 42); // Should be type error
-      // typedFunc('hello'); // Should be type error (missing required param)
+      /*
+       * TypeScript should catch these at compile time:
+       * typedFunc('hello', 'not-a-number'); // Should be type error
+       * typedFunc(123, 42); // Should be type error
+       * typedFunc('hello'); // Should be type error (missing required param)
+       */
     });
 
     it('should preserve parameter names from function signature', () => {
@@ -308,17 +311,19 @@ describe('defineFunction', () => {
 
       expectTypeOf(validFunc as (...args: any[]) => string).returns.toBeString();
 
-      // This should cause a type error at compile time if uncommented:
-      // const invalidArgs = [
-      //   { name: 'name', type: 'string' },
-      //   { name: 'value', type: 'boolean' } // Wrong type!
-      // ] as const;
-      //
-      // const invalidFunc = defineFunction(
-      //   'invalid',
-      //   (name: string, value: number) => `${name}: ${value}`, // Expects number, but args says boolean
-      //   { params: invalidArgs }
-      // );
+      /*
+       * This should cause a type error at compile time if uncommented:
+       * const invalidArgs = [
+       * { name: 'name', type: 'string' },
+       * { name: 'value', type: 'boolean' } // Wrong type!
+       * ] as const;
+       *
+       * const invalidFunc = defineFunction(
+       * 'invalid',
+       * (name: string, value: number) => `${name}: ${value}`, // Expects number, but args says boolean
+       * { params: invalidArgs }
+       * );
+       */
     });
 
     it('should have correct return type', () => {
@@ -338,24 +343,30 @@ describe('defineFunction', () => {
     });
 
     it('should catch type mismatches between args and function signature', () => {
-      // This test demonstrates that TypeScript will catch mismatches
-      // Uncomment the following lines to see the type error:
+      /*
+       * This test demonstrates that TypeScript will catch mismatches
+       * Uncomment the following lines to see the type error:
+       */
 
-      // const mismatchedArgs = [
-      //   { name: 'name', type: 'string' },
-      //   { name: 'value', type: 'boolean' } // Wrong type!
-      // ] as const;
-      //
-      // const mismatchedFunc = defineFunction(
-      //   'mismatched',
-      //   (name: string, value: number) => `${name}: ${value}`, // Expects number, but args says boolean
-      //   { params: mismatchedArgs }
-      // );
+      /*
+       * const mismatchedArgs = [
+       * { name: 'name', type: 'string' },
+       * { name: 'value', type: 'boolean' } // Wrong type!
+       * ] as const;
+       *
+       * const mismatchedFunc = defineFunction(
+       * 'mismatched',
+       * (name: string, value: number) => `${name}: ${value}`, // Expects number, but args says boolean
+       * { params: mismatchedArgs }
+       * );
+       */
 
-      // The above should cause a TypeScript error because:
-      // - Function expects (name: string, value: number)
-      // - Args says value should be boolean
-      // - TypeScript should catch this mismatch
+      /*
+       * The above should cause a TypeScript error because:
+       * - Function expects (name: string, value: number)
+       * - Args says value should be boolean
+       * - TypeScript should catch this mismatch
+       */
     });
 
     it('should handle default values correctly', () => {
@@ -503,6 +514,7 @@ describe('defineFunction', () => {
       const ctx = new Context();
       const result = await callWithContext(ctx, restFunc, a, b, c);
       expect(result).toBe(a);
+
       // Only first element evaluated lazily upon access
       expect(calls).toEqual(['#000']);
     });
@@ -572,8 +584,10 @@ describe('defineFunction', () => {
     });
 
     it('should validate lazy parameters when thunk is called, not when function is defined', async () => {
-      // This test ensures lazy parameters are validated when the thunk is called,
-      // not when the function is initially called. This prevents "Got: function" errors.
+      /*
+       * This test ensures lazy parameters are validated when the thunk is called,
+       * not when the function is initially called. This prevents "Got: function" errors.
+       */
       const directFunc = defineFunction(
         'direct',
         async (valueThunk: any) => {
@@ -586,11 +600,11 @@ describe('defineFunction', () => {
         ] }
       );
 
-      // Should throw when function returns wrong type - validation happens when thunk is called
-      // This would previously fail with "Got: function" but now correctly validates the resolved value
-      await expect(
-        directFunc(() => new Color('#000'))
-      ).rejects.toThrow('Argument \'value\' must be of type \'Dimension\'');
+      /*
+       * Should throw when function returns wrong type - validation happens when thunk is called
+       * This would previously fail with "Got: function" but now correctly validates the resolved value
+       */
+      await expect(directFunc(() => new Color('#000'))).rejects.toThrow('Argument \'value\' must be of type \'Dimension\'');
     });
   });
 

@@ -45,32 +45,30 @@ describe('root parentless ampersand', () => {
       ampBlock([rule('.container-sm', [], [{ target: selist(sel('\\%ph')), partial: false }])])
     ]);
 
-    expect(flat(document)).toBe(
-      '\\%ph,\n'
+    expect(flat(document)).toBe('\\%ph,\n'
       + '.container-sm {\n'
       + '  max-width: 5px;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('does not leak `&` into an `all`-extender substituted inside a target branch', () => {
-    // The bootstrap `_grid.less` shape: the extender lands inside the target's own
-    // branch rather than beside it, which is where `& :is(…, & .cs)` came from.
+    /*
+     * The bootstrap `_grid.less` shape: the extender lands inside the target's own
+     * branch rather than beside it, which is where `& :is(…, & .cs)` came from.
+     */
     const document = stylesheet([
       rule('.f', [decl('width', keyword('100%'))]),
       ampBlock([rule('.cs', [], [{ target: selist(sel('.f')), partial: true }])]),
       rule(descendant('.nav', '.f'), [decl('color', keyword('red'))])
     ]);
 
-    expect(flat(document)).toBe(
-      '.f,\n'
+    expect(flat(document)).toBe('.f,\n'
       + '.cs {\n'
       + '  width: 100%;\n'
       + '}\n'
       + '.nav :is(.f, .cs) {\n'
       + '  color: red;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('composes a nested rule as a root rule, with no leading descendant space', () => {
@@ -80,8 +78,10 @@ describe('root parentless ampersand', () => {
   });
 
   it('keeps the empty branch out of a multi-branch root selector list', () => {
-    // `&, .p { .a { … } }` → Less drops the `&` branch entirely: `.p .a`, never
-    // `:is(, .p) .a`.
+    /*
+     * `&, .p { .a { … } }` → Less drops the `&` branch entirely: `.p .a`, never
+     * `:is(, .p) .a`.
+     */
     const document = stylesheet([
       rule(selist(sel('&'), sel('.p')), [rule('.a', [decl('color', keyword('red'))])])
     ]);
@@ -90,8 +90,10 @@ describe('root parentless ampersand', () => {
   });
 
   it('strips the ampersand from a rule nested directly in a root ampersand block', () => {
-    // `& { & .x { … } }` and `& { &.x { … } }` — the inner `&` is itself parentless
-    // once the transparent block is peeled, so it resolves to empty in turn.
+    /*
+     * `& { & .x { … } }` and `& { &.x { … } }` — the inner `&` is itself parentless
+     * once the transparent block is peeled, so it resolves to empty in turn.
+     */
     expect(flat(stylesheet([ampBlock([rule('& .x', [decl('color', keyword('red'))])])])))
       .toBe('.x {\n  color: red;\n}\n');
     expect(flat(stylesheet([ampBlock([rule('&.x', [decl('color', keyword('red'))])])])))
@@ -113,11 +115,9 @@ describe('root parentless ampersand', () => {
       ampBlock([rule('.a', [rule('.b', [], [{ target: selist(sel('.t')), partial: false }])])])
     ]);
 
-    expect(flat(document)).toBe(
-      '.t,\n'
+    expect(flat(document)).toBe('.t,\n'
       + '.a .b {\n'
       + '  color: red;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 });

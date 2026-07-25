@@ -57,10 +57,12 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       completionProvider: {
-        // Sigils/openers that begin a completion context: variables (@ $ -),
-        // selectors/mixins (. #), pseudo (:), scss placeholder (%), jess
-        // placeholder (\\), value/function/var()/url() ((), path segments (/),
-        // scss interpolation (#{) and jess interpolation (${ / $[).
+        /*
+         * Sigils/openers that begin a completion context: variables (@ $ -),
+         * selectors/mixins (. #), pseudo (:), scss placeholder (%), jess
+         * placeholder (\\), value/function/var()/url() ((), path segments (/),
+         * scss interpolation (#{) and jess interpolation (${ / $[).
+         */
         triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ', '.', '#', '%', '\\', '(', '/', '[']
       },
       hoverProvider: true,
@@ -72,8 +74,10 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       selectionRangeProvider: true,
       codeActionProvider: true,
       renameProvider: {
-        // Advertise prepare support so the client asks the server for the exact
-        // rename range/placeholder before showing the rename box.
+        /*
+         * Advertise prepare support so the client asks the server for the exact
+         * rename range/placeholder before showing the rename box.
+         */
         prepareProvider: true
       },
       documentFormattingProvider: true,
@@ -83,8 +87,11 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
       },
       semanticTokensProvider: {
         legend: semanticTokensLegend,
-        // Be explicit: VS Code has historically been stricter about the object form
-        // than the boolean shorthand.
+
+        /*
+         * Be explicit: VS Code has historically been stricter about the object form
+         * than the boolean shorthand.
+         */
         full: { delta: false }
       },
       colorProvider: true
@@ -96,6 +103,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
 connection.onDidChangeConfiguration((change) => {
   clientSettings = change.settings;
   engine.configure(clientSettings);
+
   // Re-publish diagnostics under new severity settings.
   for (const doc of documents.all()) {
     connection.sendDiagnostics({ uri: doc.uri, diagnostics: engine.getDiagnostics(doc.uri) });
@@ -109,10 +117,12 @@ documents.onDidOpen((e: TextDocumentChangeEvent<TextDocument>) => {
 });
 
 documents.onDidChangeContent((e: TextDocumentChangeEvent<TextDocument>) => {
-  // The `TextDocuments` manager delivers already-merged full text (not the raw
-  // LSP change ranges), so `engine.change` recovers the minimal contiguous edit
-  // and drives Parseman `ParseDoc.edit()` under the hood — incremental sync of
-  // the CST, with the Jess analysis re-derived lazily on the next query.
+  /*
+   * The `TextDocuments` manager delivers already-merged full text (not the raw
+   * LSP change ranges), so `engine.change` recovers the minimal contiguous edit
+   * and drives Parseman `ParseDoc.edit()` under the hood — incremental sync of
+   * the CST, with the Jess analysis re-derived lazily on the next query.
+   */
   engine.change(e.document.uri, e.document.version, e.document.getText());
   connection.sendDiagnostics({ uri: e.document.uri, diagnostics: engine.getDiagnostics(e.document.uri) });
 });

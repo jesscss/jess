@@ -212,8 +212,10 @@ export class QueryCondition extends Sequence {
    * this method a straight `node.writeSyntax(options)` call.
    */
   private writeStaticChild(node: Node | string, options: FinalPrintOptions): void {
-    // A query condition's value may hold plain strings for the feature name and
-    // comparison operator (e.g. ['width', '>', <Dimension>]) — write them verbatim.
+    /*
+     * A query condition's value may hold plain strings for the feature name and
+     * comparison operator (e.g. ['width', '>', <Dimension>]) — write them verbatim.
+     */
     if (typeof node === 'string') {
       options.writer.add(node);
       return;

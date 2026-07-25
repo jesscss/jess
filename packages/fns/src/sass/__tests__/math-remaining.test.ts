@@ -144,6 +144,8 @@ describe('sass:math — random', () => {
   });
 });
 
-// `min`/`max` moved to `shared/math/` — they are the CSS math functions and
-// behave identically in every dialect. Their tests (including the strict
-// `math.min`/`math.max` wording) live in `shared/math/__tests__/min-max.test.ts`.
+/*
+ * `min`/`max` moved to `shared/math/` — they are the CSS math functions and
+ * behave identically in every dialect. Their tests (including the strict
+ * `math.min`/`math.max` wording) live in `shared/math/__tests__/min-max.test.ts`.
+ */

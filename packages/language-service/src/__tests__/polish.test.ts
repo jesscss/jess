@@ -30,6 +30,7 @@ describe('range formatting', () => {
     const edits = engine.formatRange(doc.uri, range);
     expect(edits).toHaveLength(1);
     expect(edits[0]!.newText).toBe('.a {\n  color: red;\n}');
+
     // Untouched rules stay outside the replaced span.
     expect(edits[0]!.range.end.line).toBe(0);
   });

@@ -35,6 +35,7 @@ describe('emit-walk spine (P1)', () => {
    */
   const seedFrame = (body: Rules): void => {
     context.rulesContext = body;
+
     // Force the scope frame to be built so name lookups resolve against it.
     body.getScopeFrame();
   };
@@ -60,8 +61,10 @@ describe('emit-walk spine (P1)', () => {
     seedFrame(body);
     const options = freshOptions();
 
-    // The dynamic leaf is the second child; it resolves @w THROUGH the frame
-    // pushed via context.rulesContext — exactly the frame eval would use.
+    /*
+     * The dynamic leaf is the second child; it resolves @w THROUGH the frame
+     * pushed via context.rulesContext — exactly the frame eval would use.
+     */
     const dynamicLeaf = body.rules[1]!;
     withValueFrame(context, body, () => emitLeaf(dynamicLeaf, context, options));
 
@@ -69,11 +72,13 @@ describe('emit-walk spine (P1)', () => {
   });
 
   it('emits a SHARED body reused twice under DIFFERENT frames → different bytes, no copy', () => {
-    // The shared body references @w; each placement binds a different @w as a
-    // LIVE CELL in its own pushed value-frame. The SAME source children emit
-    // different bytes purely from the pushed frame (the mixin/loop shared-body
-    // mechanism, design §2.2 / §3). This is `createIterationEvalSurface`-shaped:
-    // one shared body, a fresh frame per placement.
+    /*
+     * The shared body references @w; each placement binds a different @w as a
+     * LIVE CELL in its own pushed value-frame. The SAME source children emit
+     * different bytes purely from the pushed frame (the mixin/loop shared-body
+     * mechanism, design §2.2 / §3). This is `createIterationEvalSurface`-shaped:
+     * one shared body, a fresh frame per placement.
+     */
     const sharedBody = rules([
       decl({ name: 'width', value: ref({ key: 'w' }, { type: 'variable' }) })
     ]);
@@ -99,8 +104,11 @@ describe('emit-walk spine (P1)', () => {
 
     expect(a.out).toContain('width: 10px');
     expect(b.out).toContain('width: 20px');
-    // The surface SHARES the source leaf node identity across both placements —
-    // proving per-placement difference lives in the pushed frame, not a copy.
+
+    /*
+     * The surface SHARES the source leaf node identity across both placements —
+     * proving per-placement difference lives in the pushed frame, not a copy.
+     */
     expect(a.leaf).toBe(sharedLeaf);
     expect(b.leaf).toBe(sharedLeaf);
   });

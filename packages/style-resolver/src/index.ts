@@ -9,8 +9,10 @@ export type FsLike = {
 export type StylesConfig = {
   /** Project root; used as an optional search base. */
   rootDir?: string;
+
   /** Less-style include paths. */
   includePaths?: string[];
+
   /** SCSS-style load paths. */
   loadPaths?: string[];
 };
@@ -52,18 +54,22 @@ function stripQueryHash(input: string): { filePart: string; suffix: string } {
   return { filePart: m?.[1] ?? input, suffix: m?.[2] ?? '' };
 }
 
-// Intentionally tolerant extraction for editor features (not a full parser).
-// Supports:
-// - @import "x";
-// - @import (multiple, reference) "x";
-// - @use "x";
-// - @import url("x");
+/*
+ * Intentionally tolerant extraction for editor features (not a full parser).
+ * Supports:
+ * - @import "x";
+ * - @import (multiple, reference) "x";
+ * - @use "x";
+ * - @import url("x");
+ */
 export function extractImports(sourceText: string, lang: StyleLang): ImportStatement[] {
   const out: ImportStatement[] = [];
 
-  // options: (a, b) blocks (Less)
-  // optional url(
-  // then a quoted string
+  /*
+   * options: (a, b) blocks (Less)
+   * optional url(
+   * then a quoted string
+   */
   const re = /@(import|use)\s*(?:\(([^)]*)\)\s*)*(?:url\(\s*)?(?:'([^']+)'|"([^"]+)")/g;
   for (let m: RegExpExecArray | null; (m = re.exec(sourceText));) {
     const optionsRaw = m[2] ?? '';
@@ -91,9 +97,11 @@ export function extractImports(sourceText: string, lang: StyleLang): ImportState
   return out;
 }
 
-// Mirrors current plugin behavior:
-// - If ext is not .less: try `${importPath}.less`, then `${importPath}`.
-// - If ext is .less: try as-is.
+/*
+ * Mirrors current plugin behavior:
+ * - If ext is not .less: try `${importPath}.less`, then `${importPath}`.
+ * - If ext is .less: try as-is.
+ */
 export function expandLessImportCandidates(importPath: string): string[] {
   const ext = path.extname(importPath);
   if (ext !== '.less') {
@@ -102,15 +110,17 @@ export function expandLessImportCandidates(importPath: string): string[] {
   return [importPath];
 }
 
-// Mirrors current scss plugin behavior (no .sass support):
-// - If ext is provided:
-//   - try explicit path
-//   - also underscore partial variant if basename isn't already underscored
-// - Else try:
-//   - foo.scss
-//   - _foo.scss
-//   - foo/index.scss
-//   - foo/_index.scss
+/*
+ * Mirrors current scss plugin behavior (no .sass support):
+ * - If ext is provided:
+ * - try explicit path
+ * - also underscore partial variant if basename isn't already underscored
+ * - Else try:
+ * - foo.scss
+ * - _foo.scss
+ * - foo/index.scss
+ * - foo/_index.scss
+ */
 export function expandScssImportCandidates(importPath: string): string[] {
   const ext = path.extname(importPath);
   const base = ext ? importPath.slice(0, -ext.length) : importPath;

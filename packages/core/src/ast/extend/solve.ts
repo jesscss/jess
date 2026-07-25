@@ -19,6 +19,7 @@ import type { Plan, PlanInstruction, PlanSubject } from './plan.js';
 export interface Contrib {
   extenders: Branch[];
   keys: Set<string>;
+
   /** The graft-recursive union of the TARGET's individual simple atoms. A branch
    * disjoint from this set provably cannot whole-subset-match, sub-substitute, or
    * chain against the target (every such event needs a shared atom), so the
@@ -33,11 +34,14 @@ export function buildContribs(instructions: PlanInstruction[]): ContribMap {
   const contribs: ContribMap = new Map();
   for (const inst of instructions) {
     const extenders = composePath(inst.extenderPath);
-    // [import:reference] tag each composed extender as an extend PRODUCT (`ext`) and
-    // stamp its extender rule's visibility, in the SAME pass that keys them (no extra
-    // iteration). `ext` lets the matcher tell a chained extend off a hidden extender
-    // (→ hidden) from an extend off an original hidden seed; `hidden` keeps a branch
-    // pulled from a hidden `(reference)` rule invisible.
+
+    /*
+     * [import:reference] tag each composed extender as an extend PRODUCT (`ext`) and
+     * stamp its extender rule's visibility, in the SAME pass that keys them (no extra
+     * iteration). `ext` lets the matcher tell a chained extend off a hidden extender
+     * (→ hidden) from an extend off an original hidden seed; `hidden` keeps a branch
+     * pulled from a hidden `(reference)` rule invisible.
+     */
     const keys = new Set<string>();
     for (const e of extenders) {
       e.ext = true;
@@ -66,6 +70,7 @@ export interface SolveResult {
   /** The (possibly extended) branch list. When `changed` is false this is the
    * RAW seed, untouched — the caller keeps its authored/raw form. */
   list: Branch[];
+
   /** Whether the fixpoint actually changed the seed (drives `flatByRule`). */
   changed: boolean;
 }
@@ -77,23 +82,27 @@ export interface SolveResult {
  * miss or a no-op fixpoint, else the extended list with `changed: true`.
  */
 export function solveComposed(seed: Branch[], subject: PlanSubject, plan: Plan): SolveResult {
-  // Target-atom PREFILTER: the fixpoint can only ever change a subject whose
-  // composed seed shares at least one individual simple atom with some instruction
-  // target — a whole-branch/all/sub-part match and every transitive chain step all
-  // require a common atom. A seed disjoint from `plan.targetAtoms` (both sides
-  // extracted graft-recursively at the same per-simple granularity/normalization)
-  // provably never matches nor chains, so skip solve and keep the RAW seed. This
-  // prunes the ~92% of subjects that no target touches without running the fixpoint.
+  /*
+   * Target-atom PREFILTER: the fixpoint can only ever change a subject whose
+   * composed seed shares at least one individual simple atom with some instruction
+   * target — a whole-branch/all/sub-part match and every transitive chain step all
+   * require a common atom. A seed disjoint from `plan.targetAtoms` (both sides
+   * extracted graft-recursively at the same per-simple granularity/normalization)
+   * provably never matches nor chains, so skip solve and keep the RAW seed. This
+   * prunes the ~92% of subjects that no target touches without running the fixpoint.
+   */
   if (!seed.some(b => branchSharesAtom(b, plan.targetAtoms))) {
     return { list: seed, changed: false };
   }
   const reachable = plan.instructions.filter(i =>
-    // A visible instruction may pull a reference subject into output. A hidden
-    // instruction is confined to the reference document that defined it, so it
-    // never aliases authored siblings outside that import boundary.
+
+    /*
+     * A visible instruction may pull a reference subject into output. A hidden
+     * instruction is confined to the reference document that defined it, so it
+     * never aliases authored siblings outside that import boundary.
+     */
     (i.referenceBoundary === null || i.referenceBoundary === subject.referenceBoundary)
-    && reaches(i.scope, subject.scope)
-  );
+    && reaches(i.scope, subject.scope));
   if (reachable.length === 0) {
     return { list: seed, changed: false };
   }
@@ -129,8 +138,11 @@ export function groupInstructions(reachable: PlanInstruction[], contribs: Contri
   const byKey = new Map<string, InstGroup>();
   for (const inst of reachable) {
     const c = contribs.get(inst)!;
-    // A no-op instruction (no extenders and not a partial rewrite) never changes a
-    // subject — drop it from every group exactly as the old per-instruction guard did.
+
+    /*
+     * A no-op instruction (no extenders and not a partial rewrite) never changes a
+     * subject — drop it from every group exactly as the old per-instruction guard did.
+     */
     if (c.extenders.length === 0 && !inst.partial) {
       continue;
     }
@@ -145,8 +157,11 @@ export function groupInstructions(reachable: PlanInstruction[], contribs: Contri
         targetKey,
         extenders: [],
         keys: new Set<string>(),
-        // Identical target text ⇒ identical graft-recursive target atoms, so the
-        // first instruction's precomputed set is the group's set.
+
+        /*
+         * Identical target text ⇒ identical graft-recursive target atoms, so the
+         * first instruction's precomputed set is the group's set.
+         */
         targetAtoms: c.targetAtoms
       };
       byKey.set(gkey, g);
@@ -164,26 +179,28 @@ export function groupInstructions(reachable: PlanInstruction[], contribs: Contri
 export function runFixpoint(seed: Branch[], reachable: PlanInstruction[], contribs: ContribMap): SolveResult {
   let list = seed;
 
-  // FOLD: collapse instructions sharing a match condition into groups, then apply
-  // ALL currently-matching groups in ONE pass (no `break`), re-passing only for
-  // transitive chains. Firing one group per round and re-scanning the growing
-  // branch list is the source of the measured Θ(n²) (`Σk`); folding does the
-  // per-branch target comparison once per GROUP per pass instead of once per
-  // instruction per round, so the shared-target fixpoint is linear.
-  //
-  // Byte-identity to the old fire-one-per-round loop rests on TWO facts:
-  //   (1) every instruction in a group has the identical target/partial/hidden, so
-  //       they always become applicable together — folding never fires one early;
-  //   (2) extend application is CONFLUENT (branch-SET order independence, pinned by
-  //       tree/extend/__tests__/oqd-confluence-differential.test.ts), so applying
-  //       groups all-in-one-pass yields the same final branch set as one-at-a-time,
-  //       and document-ordered extender concatenation keeps the append order.
-  //
-  // Fire-once per GROUP: a group that has already CHANGED the subject never fires
-  // again. A group whose target is not yet present stays UNFIRED so a later chained
-  // change can still trigger it. `applyInstruction` returns null EXACTLY when it
-  // changed nothing, so a non-null result IS the change signal — the IR is threaded
-  // through every step and only the final list is serialized by the emit layer.
+  /*
+   * FOLD: collapse instructions sharing a match condition into groups, then apply
+   * ALL currently-matching groups in ONE pass (no `break`), re-passing only for
+   * transitive chains. Firing one group per round and re-scanning the growing
+   * branch list is the source of the measured Θ(n²) (`Σk`); folding does the
+   * per-branch target comparison once per GROUP per pass instead of once per
+   * instruction per round, so the shared-target fixpoint is linear.
+   *
+   * Byte-identity to the old fire-one-per-round loop rests on TWO facts:
+   * (1) every instruction in a group has the identical target/partial/hidden, so
+   * they always become applicable together — folding never fires one early;
+   * (2) extend application is CONFLUENT (branch-SET order independence, pinned by
+   * tree/extend/__tests__/oqd-confluence-differential.test.ts), so applying
+   * groups all-in-one-pass yields the same final branch set as one-at-a-time,
+   * and document-ordered extender concatenation keeps the append order.
+   *
+   * Fire-once per GROUP: a group that has already CHANGED the subject never fires
+   * again. A group whose target is not yet present stays UNFIRED so a later chained
+   * change can still trigger it. `applyInstruction` returns null EXACTLY when it
+   * changed nothing, so a non-null result IS the change signal — the IR is threaded
+   * through every step and only the final list is serialized by the emit layer.
+   */
   const groups = groupInstructions(reachable, contribs);
   const fired = new Set<InstGroup>();
   const guardMax = (groups.length + 2) * (groups.length + 2);

@@ -74,6 +74,7 @@ export class SelectorList extends Selector<SelectorListItem[]> {
         ? this.ownSelector(item)
         : item;
     }
+
     // Own unchanged source children; evaluated clones may carry runtime state.
     return new SelectorList(
       ownedValue,
@@ -235,8 +236,11 @@ export class SelectorList extends Selector<SelectorListItem[]> {
       flattened.push(item);
       return;
     }
-    // Flatten top-level `:is(a, b)` items into the selector list.
-    // This is safe in SelectorList context (it is equivalent to `a, b`).
+
+    /*
+     * Flatten top-level `:is(a, b)` items into the selector list.
+     * This is safe in SelectorList context (it is equivalent to `a, b`).
+     */
     if (isNode(item, N.PseudoSelector) && item.name === ':is') {
       const arg = item.arg;
       if (arg && isNode(arg, N.SelectorList)) {
@@ -334,9 +338,12 @@ export function emitSelectorListItems(
 ): void {
   const w = printOptions.writer;
   const space = ''.padStart(printOptions.depth * 2);
-  // Per-slot member spans only line up with `rawItems` when no inner `:is(...)`
-  // hoisting rewrites the list. If any hoist happens (length changes), drop the
-  // spans — the offsets would no longer correspond to the emitted members.
+
+  /*
+   * Per-slot member spans only line up with `rawItems` when no inner `:is(...)`
+   * hoisting rewrites the list. If any hoist happens (length changes), drop the
+   * spans — the offsets would no longer correspond to the emitted members.
+   */
   const value: SelectorListItem[] = [];
   for (const item of rawItems) {
     if (isNode(item, N.PseudoSelector) && item.name === ':is') {
@@ -388,17 +395,23 @@ export function emitSelectorListItems(
   if (length === 0) {
     return;
   }
-  // Only trust member spans when the emitted list matches the raw list 1:1
-  // (no `:is(...)` hoisting rewrote it).
-  const spans = memberSpans && memberSpans.length === length ? memberSpans : undefined;
+
+  /*
+   * Only trust member spans when the emitted list matches the raw list 1:1
+   * (no `:is(...)` hoisting rewrote it).
+   */
+  const spans = memberSpans?.length === length ? memberSpans : undefined;
   let item = value[0]!;
   emitSelectorListItem(item, printOptions, suppressPre);
   for (let i = 1; i < length; i++) {
     const prevItem = item;
     item = value[i]!;
-    // Comment authored AFTER the previous member, before the `,` (e.g.
-    // `#comments /* boo */,`). A node member exposes its own end; a bare-string
-    // member recovers it from the per-slot span.
+
+    /*
+     * Comment authored AFTER the previous member, before the `,` (e.g.
+     * `#comments /* boo *\/,`). A node member exposes its own end; a bare-string
+     * member recovers it from the per-slot span.
+     */
     const prevEnd = typeof prevItem !== 'string'
       ? spanEndOf(prevItem)
       : spans?.[i - 1]?.end;
@@ -408,6 +421,7 @@ export function emitSelectorListItems(
       emitCommentTriviaAfterOffset(printOptions.trivia, prevEnd, printOptions);
     }
     w.add(`,\n${space}`);
+
     // Comment authored BEFORE the next member (e.g. `, /* of */ .comments`).
     const nextStart = typeof item !== 'string' ? spanStartOf(item) : spans?.[i]?.start;
     if (printOptions.trivia && nextStart !== undefined) {
@@ -427,8 +441,10 @@ export function emitSelectorListLike(
   suppressPre = false,
   memberSpans?: readonly (SourceSpan | undefined)[]
 ): void {
-  // A `SelectorList` node carries its own per-member spans; a bare-array surface
-  // does not, so the caller (e.g. the owning Ruleset) supplies them.
+  /*
+   * A `SelectorList` node carries its own per-member spans; a bare-array surface
+   * does not, so the caller (e.g. the owning Ruleset) supplies them.
+   */
   const spans = memberSpans ?? (Array.isArray(value) ? undefined : valueSpansOf(value));
   emitSelectorListItems(selectorListItems(value), options, suppressPre, spans);
 }

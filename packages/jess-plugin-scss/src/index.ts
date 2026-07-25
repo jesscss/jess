@@ -11,18 +11,21 @@ import { expandScssImportCandidates } from '@jesscss/style-resolver';
 
 export type ScssPluginOptions = {
   allowExtendSelectors?: ExtendSelectorKind[];
+
   /**
    * Compatibility input retained on this frontend's option object. The shared
    * evaluator reads the resolved Context compile/input option; configuring a
    * Compiler should use `compile.unitMode` or matched input options.
    */
   unitMode?: UnitMode;
+
   /**
    * Compatibility input retained on this frontend's option object. It does not
    * select a separate SCSS evaluator; configure the shared evaluator through
    * Context compile/input options.
    */
   equalityMode?: EqualityMode;
+
   /**
    * Whether to collapse nested selectors (flatten nesting during print).
    * This is a Jess output option, not a Sass option.

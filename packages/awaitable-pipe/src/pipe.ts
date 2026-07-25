@@ -4,6 +4,7 @@ type Unwrap<T> = T extends Promise<infer U> ? U : T;
 type RetOf<F> = F extends (a: any) => infer R ? R : never;
 type ParamOf<F> = F extends (...args: infer P) => any ? (P extends [infer A, ...any[]] ? A : never) : never;
 type Apply<In, F> =
+
   // Zero-arg step: result depends only on return type of F
   [ParamOf<F>] extends [never]
     ? RetOf<F>
@@ -11,9 +12,11 @@ type Apply<In, F> =
       ? Promise<Awaited<RetOf<F>>>
       : RetOf<F>;
 
-// Note: we intentionally do not hard-enforce chain validity at the type level to avoid
-// over-constraining overload resolution across diverse call-forms. We still propagate
-// types step-to-step via Apply.
+/*
+ * Note: we intentionally do not hard-enforce chain validity at the type level to avoid
+ * over-constraining overload resolution across diverse call-forms. We still propagate
+ * types step-to-step via Apply.
+ */
 type PipeResult<In, Fns extends any[], Acc = In> =
   Fns extends [infer F, ...infer Rest]
     ? PipeResult<Apply<Acc, F>, Rest>
@@ -34,8 +37,10 @@ function runAsync(v: unknown, fns: AnyFn[], startIndex: number): Promise<unknown
   return p;
 }
 
-// Overloads preserve sync/async result shape
-// Steps-only convenience overloads to provide strong contextual typing
+/*
+ * Overloads preserve sync/async result shape
+ * Steps-only convenience overloads to provide strong contextual typing
+ */
 export function pipe<A, R1>(
   fn1: () => A,
   fn2: (a: Unwrap<A>) => R1
@@ -69,6 +74,7 @@ export function pipe<A, R1, R2, R3, R4, R5>(
   fn5: (d: Unwrap<R3>) => R4,
   fn6: (e: Unwrap<R4>) => R5
 ): PipeResult<undefined, [() => A, (a: Unwrap<A>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4, (e: Unwrap<R4>) => R5]>;
+
 // Input + 1..6 step overloads for contextual typing
 export function pipe<T, R1>(
   input: T | Promise<T> | (() => T) | (() => Promise<T>),
@@ -100,11 +106,13 @@ export function pipe<T, R1, R2, R3, R4, R5>(
   fn4: (d: Unwrap<R3>) => R4,
   fn5: (e: Unwrap<R4>) => R5
 ): PipeResult<T, [(a: Unwrap<T>) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3, (d: Unwrap<R3>) => R4, (e: Unwrap<R4>) => R5]>;
+
 // Generic accumulator overload: supports arbitrary-length pipelines when the accumulator type is stable
 export function pipe<A>(
   input: A | Promise<A> | (() => A) | (() => Promise<A>),
   ...fns: Array<(a: A) => A | Promise<A>>
 ): A | Promise<A>;
+
 // Note: Intentionally omitting generic varargs overloads to improve contextual typing
 export function pipe(...args: unknown[]): unknown {
   let input: unknown;
@@ -150,9 +158,7 @@ export type SafePipeOptions<R = unknown> = {
   fallback?: R | (() => R);
 };
 
-function isFallbackFactory<R>(
-  fallback: SafePipeOptions<R>['fallback']
-): fallback is () => R {
+function isFallbackFactory<R>(fallback: SafePipeOptions<R>['fallback']): fallback is () => R {
   return typeof fallback === 'function';
 }
 
@@ -193,9 +199,11 @@ function runAsyncSafe<R>(v: unknown, fns: AnyFn[], startIndex: number, opts: Saf
   });
 }
 
-// Overloads for safePipe
-// Note: input-first forms are not supported. Use options-first and steps-only.
-// Place options-first overloads before steps-only to improve resolution when first arg is an object
+/*
+ * Overloads for safePipe
+ * Note: input-first forms are not supported. Use options-first and steps-only.
+ * Place options-first overloads before steps-only to improve resolution when first arg is an object
+ */
 export function safePipe<A, R1>(
   options: SafePipeOptions<any>,
   fn1: (a?: A) => R1
@@ -211,6 +219,7 @@ export function safePipe<A, R1, R2, R3>(
   fn2: (b: Unwrap<R1>) => R2,
   fn3: (c: Unwrap<R2>) => R3
 ): PipeResult<undefined, [(a?: A) => R1, (b: Unwrap<R1>) => R2, (c: Unwrap<R2>) => R3]> extends Promise<any> ? Promise<R3 | undefined> : R3 | undefined;
+
 // SafePipe steps-only (no input, no options)
 export function safePipe<A, R1>(
   fn1: () => A,

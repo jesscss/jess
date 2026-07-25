@@ -74,12 +74,10 @@ describe('selectorCompare', () => {
     const complexA = sel([
       el('.foo'),
       co(' '),
-      is(
-        sellist([
-          sel([el('.bar'), co(' '), el('.baz')]),
-          pseudo({ name: ':is', arg: sellist([el('.bar')]) })
-        ])
-      )
+      is(sellist([
+        sel([el('.bar'), co(' '), el('.baz')]),
+        pseudo({ name: ':is', arg: sellist([el('.bar')]) })
+      ]))
     ]);
     const complexB = sel([el('.foo'), co(' '), el('.bar')]);
     const result = selectorCompare(complexA, complexB);
@@ -128,12 +126,10 @@ describe('selectorCompare parity with matchSelectors', () => {
       target: sel([
         el('.foo'),
         co(' '),
-        is(
-          sellist([
-            sel([el('.bar'), co(' '), el('.baz')]),
-            pseudo({ name: ':is', arg: sellist([el('.bar')]) })
-          ])
-        )
+        is(sellist([
+          sel([el('.bar'), co(' '), el('.baz')]),
+          pseudo({ name: ':is', arg: sellist([el('.bar')]) })
+        ]))
       ]),
       find: sel([el('.foo'), co(' '), el('.bar')])
     },

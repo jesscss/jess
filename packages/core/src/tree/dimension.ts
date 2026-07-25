@@ -16,8 +16,10 @@ import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './ut
 import { finalizeOperationMetadataResult, finalizePublicOperationResult } from './util/operation-result.js';
 import { isRenderBuffer, type RenderBuffer, writeRenderText } from './util/render-buffer.js';
 
-// import type { Context } from '../context.js'
-// import type { OutputCollector } from '../output'
+/*
+ * import type { Context } from '../context.js'
+ * import type { OutputCollector } from '../output'
+ */
 
 export type DimensionValue = {
   number: number;
@@ -39,11 +41,9 @@ const enum ConversionGroup {
   Duration = 1,
   Angle = 2
 }
-const UNIT_TO_GROUP: ReadonlyMap<string, ConversionGroup> = new Map<ConversionUnit, ConversionGroup>(
-  (LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]) as UnitMapEntries)
-    .concat(DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]) as UnitMapEntries)
-    .concat(ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]) as UnitMapEntries)
-);
+const UNIT_TO_GROUP: ReadonlyMap<string, ConversionGroup> = new Map<ConversionUnit, ConversionGroup>((LENGTH_UNITS.map(unit => [unit, ConversionGroup.Length]) as UnitMapEntries)
+  .concat(DURATION_UNITS.map(unit => [unit, ConversionGroup.Duration]) as UnitMapEntries)
+  .concat(ANGLE_UNITS.map(unit => [unit, ConversionGroup.Angle]) as UnitMapEntries));
 
 export interface Dimension extends Node<DimensionValue> {
   eval(context: Context): Dimension;
@@ -64,9 +64,12 @@ export class Dimension extends Node<DimensionValue> {
     location?: NodeLocation
   ) {
     super(value, options, location);
-    // Invariant 7: each node owns its own fields. `number`/`unit` are plain
-    // scalars (not Node children), so `childKeys = null` and Dimension carries
-    // no `value` — clone() below rebuilds the {number,unit} record directly.
+
+    /*
+     * Invariant 7: each node owns its own fields. `number`/`unit` are plain
+     * scalars (not Node children), so `childKeys = null` and Dimension carries
+     * no `value` — clone() below rebuilds the {number,unit} record directly.
+     */
     this.number = value.number;
     this.unit = value.unit;
     this.addFlag(F_STATIC);
@@ -132,10 +135,13 @@ export class Dimension extends Node<DimensionValue> {
     }
     if (!aUnit || !bUnit) {
       let outUnit = aUnit ?? bUnit;
+
       /** One or both doesn't have a unit, so just calculate the number */
       if ((isStrictMode || isPreserveMode) && bUnit && op === '/') {
-        // A unitless numerator over a united denominator (`10 / 2s`) has no
-        // single-unit result; preserve the operation (Operation wraps in calc).
+        /*
+         * A unitless numerator over a united denominator (`10 / 2s`) has no
+         * single-unit result; preserve the operation (Operation wraps in calc).
+         */
         throw new TypeError('Cannot divide a number by a unit');
       }
       return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: outUnit }));
@@ -148,8 +154,10 @@ export class Dimension extends Node<DimensionValue> {
       }
       if (isStrictMode || isPreserveMode) {
         if (op === '*') {
-          // Two united operands multiplied has no single-unit result; preserve
-          // the operation (Operation wraps it in `calc()`).
+          /*
+           * Two united operands multiplied has no single-unit result; preserve
+           * the operation (Operation wraps it in `calc()`).
+           */
           throw new TypeError('Cannot multiply two units together');
         } else {
           /** Cancel units during division */
@@ -171,6 +179,7 @@ export class Dimension extends Node<DimensionValue> {
          */
         throw new TypeError('Incompatible units. Change the units or use the unit function');
       }
+
       /** Just coerce to the left-hand unit */
       return finalizeOperationMetadataResult(this, new Dimension({ number: calculate(aVal, op, bVal), unit: aUnit }));
     }
@@ -186,8 +195,10 @@ export class Dimension extends Node<DimensionValue> {
     }
 
     if ((isPreserveMode || isStrictMode) && (op === '*' || op === '/')) {
-      // Multiplying/dividing two dimensions doesn't collapse to a single unit;
-      // preserve the operation as authored (Operation wraps it in `calc()`).
+      /*
+       * Multiplying/dividing two dimensions doesn't collapse to a single unit;
+       * preserve the operation as authored (Operation wraps it in `calc()`).
+       */
       throw new TypeError('Cannot multiply or divide two units together');
     }
 
@@ -330,17 +341,21 @@ export class Dimension extends Node<DimensionValue> {
   }
 
   /** @todo - move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   out.add(this.toString(), sourceSpanOf(this))
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * out.add(this.toString(), sourceSpanOf(this))
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.num({\n' +
-  //     `  value: ${this.value},\n` +
-  //     `  unit: "${this.unit ?? ''}"\n` +
-  //     `})`
-  //   , sourceSpanOf(this))
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * out.add('$J.num({\n' +
+   * `  value: ${this.value},\n` +
+   * `  unit: "${this.unit ?? ''}"\n` +
+   * `})`
+   * , sourceSpanOf(this))
+   * }
+   */
 }
 
 const conversions: Record<ConversionGroup, Partial<Record<ConversionUnit, number>>> = {

@@ -36,9 +36,11 @@ describe('built-in call failures', () => {
     const registry = makeLessRegistry();
     const args = makeList([makeDimension(1, 'px'), makeDimension(1, 's')], ',');
 
-    // `min`/`max` used to swallow this and hand back a `min(1px, 1s)` keyword,
-    // which made `functionMode` inert for these two names. The body now fails
-    // and the evaluator decides — and `unitMode` was never the right lever.
+    /*
+     * `min`/`max` used to swallow this and hand back a `min(1px, 1s)` keyword,
+     * which made `functionMode` inert for these two names. The body now fails
+     * and the evaluator decides — and `unitMode` was never the right lever.
+     */
     for (const unitMode of ['preserve', 'strict'] as const) {
       expect(() => registry.dispatch('min', args, {
         modes: { unitMode },
@@ -48,14 +50,16 @@ describe('built-in call failures', () => {
   });
 
   it('preserves the WHOLE unreducible min/max call, never a partial reduction', () => {
-    // The old body reduced each unit group and emitted the survivors, giving
-    // `min(1, 4ex, 2pt)` / `max(5m, 3em)`. lessc 4.8.0 emits exactly that for
-    // these inputs — its unconditional throw is BYPASSED when an intervening
-    // unitless argument resets `unitStatic`, so the partial-reduction branch is
-    // reachable after all. dart-sass reduces the same input all the way to `1`.
-    // Preserving every argument deliberately agrees with neither: less.js's
-    // output depends on argument ORDER, which is not a policy worth porting.
-    // The Less fixture expecting the old bytes was graduated with this change.
+    /*
+     * The old body reduced each unit group and emitted the survivors, giving
+     * `min(1, 4ex, 2pt)` / `max(5m, 3em)`. lessc 4.8.0 emits exactly that for
+     * these inputs — its unconditional throw is BYPASSED when an intervening
+     * unitless argument resets `unitStatic`, so the partial-reduction branch is
+     * reachable after all. dart-sass reduces the same input all the way to `1`.
+     * Preserving every argument deliberately agrees with neither: less.js's
+     * output depends on argument ORDER, which is not a policy worth porting.
+     * The Less fixture expecting the old bytes was graduated with this change.
+     */
     const minArgs = makeList([
       makeDimension(6, 'em'), makeDimension(5), makeDimension(4, 'ex'),
       makeDimension(3), makeDimension(2, 'pt'), makeDimension(1)

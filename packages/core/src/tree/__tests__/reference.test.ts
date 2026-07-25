@@ -2403,8 +2403,11 @@ describe('reference', () => {
         expect((resolvedColl.entries[0] as Mixin | undefined)?.sourceNode).toBe(mixinDef);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         expect((resolvedColl.entries[0] as Mixin | undefined)?.rules).toBe(mixinDef.rules);
-        // rules is Node[]; the mixin body is owned by the mixin node itself,
-        // so each body child is parented to the mixin.
+
+        /*
+         * rules is Node[]; the mixin body is owned by the mixin node itself,
+         * so each body child is parented to the mixin.
+         */
         expect(mixinDef.rules[0]?.parent).toBe(mixinDef);
         expect(inheritedMixins).toBe(0);
 
@@ -2435,10 +2438,13 @@ describe('reference', () => {
           }, { type: 'index' })
         })
       ]);
-      // New model: the mixin IS its own body container. Materializing a mixin
-      // index-reference evaluates the mixin in place (Mixin.evalNode returns
-      // `this`) and looks the key up directly in the mixin's own rules — the
-      // canonical mixin body is never re-inherited into a separate surface.
+
+      /*
+       * New model: the mixin IS its own body container. Materializing a mixin
+       * index-reference evaluates the mixin in place (Mixin.evalNode returns
+       * `this`) and looks the key up directly in the mixin's own rules — the
+       * canonical mixin body is never re-inherited into a separate surface.
+       */
       const originalInherit = MixinClass.prototype.inherit;
       let inheritedFromMixinRules = 0;
       MixinClass.prototype.inherit = function inheritForCounting(
@@ -2476,6 +2482,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
+
       /** The var declaration will be removed when going to CSS */
       expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
@@ -2638,6 +2645,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
+
       /** The var declaration will be removed when going to CSS */
       expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
@@ -2815,10 +2823,14 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
+
         // Declaration eval flattens the nested list into a fresh normalized list.
         expect(latestCopiedList).toBeDefined();
-        // That result is already flat + static, so the public resolve REUSES it
-        // (invariants 2/3) rather than re-normalizing and inheriting onto the ref.
+
+        /*
+         * That result is already flat + static, so the public resolve REUSES it
+         * (invariants 2/3) rather than re-normalizing and inheriting onto the ref.
+         */
         expect(finalizedList).toBeUndefined();
       } finally {
         Any.prototype.cloneForPlacement = originalCopy;
@@ -2838,6 +2850,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
+
       /** The var declaration will be removed when going to CSS */
       expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
@@ -3168,8 +3181,10 @@ describe('reference', () => {
       };
 
       try {
-        // New model: nested scope Rules parented directly under root (the passed
-        // `rules:` wrapper is unwrapped + discarded, which would orphan childRules).
+        /*
+         * New model: nested scope Rules parented directly under root (the passed
+         * `rules:` wrapper is unwrapped + discarded, which would orphan childRules).
+         */
         const colorRef = ref({ key: 'color' }, { type: 'variable' });
         const childRules = rules([
           decl({
@@ -3379,8 +3394,10 @@ describe('reference', () => {
     });
 
     it('property lookup ignores a same-named VarDeclaration (Less #ns[foo] vs @foo)', async () => {
-      // Mirrors `#ns { foo: bar; @foo: baz; }` accessed as `#ns[foo]` — the
-      // index/property lane must return the property `foo`, never the variable.
+      /*
+       * Mirrors `#ns { foo: bar; @foo: baz; }` accessed as `#ns[foo]` — the
+       * index/property lane must return the property `foo`, never the variable.
+       */
       const node = rules([
         decl({ name: 'foo', value: any('bar') }),
         vardecl({ name: 'foo', value: any('baz') })
@@ -3408,9 +3425,7 @@ describe('reference', () => {
         'background-color',
         { searchParents: false }
       )?.node;
-      const cachedSlot = getDirectDeclarationSlot(
-        directLookupNode.directDeclarationLookupCache?.values().next().value?.publicMatch
-      );
+      const cachedSlot = getDirectDeclarationSlot(directLookupNode.directDeclarationLookupCache?.values().next().value?.publicMatch);
 
       const renderNode = rules([
         decl({
@@ -3466,15 +3481,9 @@ describe('reference', () => {
 
       expect(node.directDeclarationsByName).toBe(buckets);
       expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('color\u001f')
-      )).toEqual(colorCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('missing\u001f')
-      )).toEqual(missingCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('unrelated\u001f')
-      )).toEqual([]);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('color\u001f'))).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('missing\u001f'))).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('unrelated\u001f'))).toEqual([]);
       expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
       expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.value.valueOf()).toBe('1');
     });
@@ -3508,15 +3517,9 @@ describe('reference', () => {
       expect(node.getDeclarationLookupVersion('child-color')).toBeGreaterThan(childColorLookupVersion);
       expect(node.directDeclarationsByName).toBe(buckets);
       expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('color\u001f')
-      )).toEqual(colorCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('missing\u001f')
-      )).toEqual(missingCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('child-color\u001f')
-      )).toEqual([]);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('color\u001f'))).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('missing\u001f'))).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('child-color\u001f'))).toEqual([]);
       expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.value.valueOf()).toBe('green');
     });
 
@@ -4117,9 +4120,11 @@ describe('reference', () => {
       };
 
       try {
-        // New model: the nested scope is a Rules parented directly under root (the
-        // old `ruleset({ rules: childRules })` unwrapped + discarded the wrapper, so
-        // `childRules` would be orphaned and `color` would miss the parent frame).
+        /*
+         * New model: the nested scope is a Rules parented directly under root (the
+         * old `ruleset({ rules: childRules })` unwrapped + discarded the wrapper, so
+         * `childRules` would be orphaned and `color` would miss the parent frame).
+         */
         const childRules = rules([
           decl({
             name: 'seen',
@@ -4772,19 +4777,21 @@ describe('reference', () => {
     });
 
     it('should resolve nested References: #theme → .dark → .navbar → .colors', async () => {
-      // #theme {
-      //   .dark {
-      //     .navbar {
-      //       .colors() {
-      //         primary: red;
-      //       }
-      //     }
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
+      /*
+       * #theme {
+       * .dark {
+       * .navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       */
       const node = rules([
         ruleset({
           selector: el('#theme'),
@@ -4844,15 +4851,17 @@ describe('reference', () => {
     });
 
     it('should resolve compound selector as single Reference: #theme.dark.navbar.colors', async () => {
-      // #theme.dark.navbar {
-      //   .colors() {
-      //     primary: red;
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
+      /*
+       * #theme.dark.navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       */
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
@@ -4895,15 +4904,17 @@ describe('reference', () => {
     });
 
     it('should resolve string array as key: [\'#theme\', \'.dark\', \'.navbar\', \'.colors\']', async () => {
-      // #theme.dark.navbar {
-      //   .colors() {
-      //     primary: red;
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
+      /*
+       * #theme.dark.navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       */
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
@@ -6171,9 +6182,11 @@ describe('reference', () => {
           requiredDeclarationAssignments: [AssignmentType.MergeList]
         });
 
-        // The merge-chain anchor holds the COALESCED value (`red, blue`), not the
-        // last member's own value — a `+:` read sees the full combined chain. (The
-        // internal `List` valueOf joins with `;`.)
+        /*
+         * The merge-chain anchor holds the COALESCED value (`red, blue`), not the
+         * last member's own value — a `+:` read sees the full combined chain. (The
+         * internal `List` valueOf joins with `;`.)
+         */
         expect(lookupRef.eval(context).valueOf()).toBe('red;blue');
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(firstHandle?.returnVal).toMatchObject({
@@ -6191,8 +6204,10 @@ describe('reference', () => {
           normalizedFromAssign: AssignmentType.MergeList
         }));
 
-        // A freshly PUSHED merge decl (post-coalesce, no leading ref, no re-coalesce)
-        // holds only its own value; the invalidated handle now resolves to it.
+        /*
+         * A freshly PUSHED merge decl (post-coalesce, no leading ref, no re-coalesce)
+         * holds only its own value; the invalidated handle now resolves to it.
+         */
         expect(lookupRef.eval(context).valueOf()).toBe('green');
         expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
         expect(declarationBridgeHits).toEqual([]);
@@ -6603,26 +6618,28 @@ describe('reference', () => {
     });
 
     it('should resolve nested mixin-ruleset reference chains through nested mixins', async () => {
-      // #theme {
-      //   .dark {
-      //     .navbar() {
-      //       .colors() {
-      //         primary: cyan;
-      //       }
-      //     }
-      //   }
-      // }
-      // #theme.dark.navbar {
-      //   .colors() {
-      //     primary: red;
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
-      // Because this is a nested reference chain, it should keep traversing the
-      // nested mixin namespace and resolve primary: cyan.
+      /*
+       * #theme {
+       * .dark {
+       * .navbar() {
+       * .colors() {
+       * primary: cyan;
+       * }
+       * }
+       * }
+       * }
+       * #theme.dark.navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       * Because this is a nested reference chain, it should keep traversing the
+       * nested mixin namespace and resolve primary: cyan.
+       */
       const node = rules([
         mixin({
           name: '#theme',

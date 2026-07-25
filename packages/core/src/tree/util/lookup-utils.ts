@@ -79,8 +79,10 @@ export function getOrderedSelectorKeys(selector: SelectorLike | Nil | undefined)
     }
   };
   if (isArray(selector)) {
-    // A bare array IS a selector list (lean strings-not-nodes surface); visit each
-    // member so the list registers under every member's leading key.
+    /*
+     * A bare array IS a selector list (lean strings-not-nodes surface); visit each
+     * member so the list registers under every member's leading key.
+     */
     for (const item of selector) {
       visit(item as CompoundSelectorComponent | Selector | Nil | undefined);
     }
@@ -101,6 +103,7 @@ export type DeclarationFindOptions = {
   semanticFilter?: boolean;
   candidates?: Set<Node>;
   optionalCandidates?: Set<Node>;
+
   /** This gets set if any parent is set to readonly */
   readonly?: boolean;
   searchParents?: boolean;
@@ -108,8 +111,10 @@ export type DeclarationFindOptions = {
   ignoreCurrentScopeStart?: boolean;
   ignoreParentScopeStart?: boolean;
   local?: boolean;
+
   /** Whether this lookup has an explicit target, e.g. #ns[@foo]. */
   hasTarget?: boolean;
+
   /** Snapshot reads use source-position declarations without current live slots. */
   includeLiveBindings?: boolean;
 };
@@ -117,13 +122,16 @@ export type DeclarationFindOptions = {
 export type CallableFindOptions = {
   searchParents?: boolean;
   local?: boolean;
+
   /** Whether this lookup has an explicit target, e.g. #ns[.mixin]. */
   hasTarget?: boolean;
   findAll?: boolean;
   childFilterType?: 'Mixin' | 'Ruleset' | undefined;
   context?: Context;
+
   /** For mixin-ruleset calls with args, namespace containers may be rulesets but terminal hits must be mixins. */
   terminalMixinOnly?: boolean;
+
   /**
    * Ruleset-only terminal match: collect ONLY plain `Ruleset` candidates, dropping
    * `Mixin`s. Used by the Jess bracket-capture call `*[.foo]()` (distinct from the
@@ -131,6 +139,7 @@ export type CallableFindOptions = {
    * namespace containers are unaffected.
    */
   rulesetsOnly?: boolean;
+
   /**
    * The lookup is an emitting mixin-ruleset CALL (`#ns > .m()`): every same-named
    * namespace on the path contributes its descendant output. Unset for bare

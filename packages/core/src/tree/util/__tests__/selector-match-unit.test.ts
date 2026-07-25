@@ -27,9 +27,11 @@ import {
   selectorCompare
 } from '../selector-match-core.js';
 
-// ─────────────────────────────────────────────────
-// componentsMatch
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * componentsMatch
+ * ─────────────────────────────────────────────────
+ */
 describe('componentsMatch', () => {
   it('matches identical simple value', () => {
     expect(componentsMatch(el('.a'), el('.a'))).toBe(true);
@@ -87,9 +89,11 @@ describe('componentsMatch', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// compoundComponentMatches
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * compoundComponentMatches
+ * ─────────────────────────────────────────────────
+ */
 describe('compoundComponentMatches', () => {
   it('matches identical simple value', () => {
     expect(compoundComponentMatches(el('.a'), el('.a'))).toBe(true);
@@ -153,9 +157,11 @@ describe('compoundComponentMatches', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// arePseudoSelectorsEquivalent
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * arePseudoSelectorsEquivalent
+ * ─────────────────────────────────────────────────
+ */
 describe('arePseudoSelectorsEquivalent', () => {
   it('returns false for non-pseudo-value', () => {
     expect(arePseudoSelectorsEquivalent(el('.a'), el('.a'))).toBe(false);
@@ -192,9 +198,11 @@ describe('arePseudoSelectorsEquivalent', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// areSelectorArgumentsEquivalent
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * areSelectorArgumentsEquivalent
+ * ─────────────────────────────────────────────────
+ */
 describe('areSelectorArgumentsEquivalent', () => {
   it('matches identical simple value', () => {
     expect(areSelectorArgumentsEquivalent(el('.a'), el('.a'))).toBe(true);
@@ -219,9 +227,11 @@ describe('areSelectorArgumentsEquivalent', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// areCompoundSelectorsEquivalent
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * areCompoundSelectorsEquivalent
+ * ─────────────────────────────────────────────────
+ */
 describe('areCompoundSelectorsEquivalent', () => {
   it('matches identical compounds', () => {
     const a = compound([el('.a'), el('.b')]);
@@ -256,9 +266,11 @@ describe('areCompoundSelectorsEquivalent', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// expandCompoundWithPseudoSelectors
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * expandCompoundWithPseudoSelectors
+ * ─────────────────────────────────────────────────
+ */
 describe('expandCompoundWithPseudoSelectors', () => {
   it('returns original for compound without :is()', () => {
     const c = compound([el('.a'), el('.b')]);
@@ -270,6 +282,7 @@ describe('expandCompoundWithPseudoSelectors', () => {
     // .a:is(.x,.y) → [.a:is(.x,.y), .a.x, .a.y]
     const c = compound([el('.a'), is(sellist([el('.x'), el('.y')]))]);
     const result = expandCompoundWithPseudoSelectors(c);
+
     // Original + 2 expanded = at least 3
     expect(result.length).toBeGreaterThanOrEqual(3);
   });
@@ -286,9 +299,11 @@ describe('expandCompoundWithPseudoSelectors', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// expandComplexSelectorWithIs
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * expandComplexSelectorWithIs
+ * ─────────────────────────────────────────────────
+ */
 describe('expandComplexSelectorWithIs', () => {
   it('returns original for complex without :is()', () => {
     const s = sel([el('.a'), co('>'), el('.b')]) as ComplexSelector;
@@ -306,9 +321,11 @@ describe('expandComplexSelectorWithIs', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// expandSelectorWithIs
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * expandSelectorWithIs
+ * ─────────────────────────────────────────────────
+ */
 describe('expandSelectorWithIs', () => {
   it('passes through simple value unchanged', () => {
     const s = el('.a');
@@ -328,9 +345,11 @@ describe('expandSelectorWithIs', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// areComplexSelectorsEquivalent
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * areComplexSelectorsEquivalent
+ * ─────────────────────────────────────────────────
+ */
 describe('areComplexSelectorsEquivalent', () => {
   it('matches identical complex value', () => {
     const a = sel([el('.a'), co('>'), el('.b')]) as ComplexSelector;
@@ -375,9 +394,11 @@ describe('areComplexSelectorsEquivalent', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// isStructurallyEqual
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * isStructurallyEqual
+ * ─────────────────────────────────────────────────
+ */
 describe('isStructurallyEqual', () => {
   it('matches identical simple value', () => {
     expect(isStructurallyEqual(el('.a'), el('.a'))).toBe(true);
@@ -418,9 +439,11 @@ describe('isStructurallyEqual', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// selectorMatchesExtendTarget
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * selectorMatchesExtendTarget
+ * ─────────────────────────────────────────────────
+ */
 describe('selectorMatchesExtendTarget', () => {
   it('matches identical simple value (non-partial)', () => {
     expect(selectorMatchesExtendTarget(el('.a'), el('.a'), false)).toBe(true);
@@ -447,9 +470,11 @@ describe('selectorMatchesExtendTarget', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// normalizeSelectorForExtend
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * normalizeSelectorForExtend
+ * ─────────────────────────────────────────────────
+ */
 describe('normalizeSelectorForExtend', () => {
   it('passes through simple value unchanged', () => {
     const s = el('.a');
@@ -466,9 +491,11 @@ describe('normalizeSelectorForExtend', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// selectorCompare — additional edge cases
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * selectorCompare — additional edge cases
+ * ─────────────────────────────────────────────────
+ */
 describe('selectorCompare edge cases', () => {
   it('reports whole match for identical simple value', () => {
     const result = selectorCompare(el('.a'), el('.a'));
@@ -485,6 +512,7 @@ describe('selectorCompare edge cases', () => {
   it('reports match for SelectorList containing the find', () => {
     const target: Selector = sellist([el('.a'), el('.b')]);
     const result = selectorCompare(target, el('.a'));
+
     // selectorCompare uses findExtendableLocations which detects presence
     expect(result.hasWholeMatch || result.hasPartialMatch).toBe(true);
   });
@@ -504,9 +532,11 @@ describe('selectorCompare edge cases', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// findExtendableLocations — additional unit tests
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * findExtendableLocations — additional unit tests
+ * ─────────────────────────────────────────────────
+ */
 describe('findExtendableLocations unit tests', () => {
   it('finds simple selector in SelectorList', () => {
     const target: Selector = sellist([el('.a'), el('.b'), el('.c')]);
@@ -538,6 +568,7 @@ describe('findExtendableLocations unit tests', () => {
     const find = el('.cached');
     const r1 = findExtendableLocations(target, find);
     const r2 = findExtendableLocations(target, find);
+
     // Should return the same cached object
     expect(r1).toBe(r2);
   });

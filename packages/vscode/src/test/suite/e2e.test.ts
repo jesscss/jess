@@ -15,8 +15,10 @@ import * as vscode from 'vscode';
 
 const EXTENSION_PACKAGE_NAME = '@jesscss/vscode-extension';
 
-// The extension has no `publisher`, so its marketplace-style id is not stable;
-// locate the extension under test by its package.json `name` instead.
+/*
+ * The extension has no `publisher`, so its marketplace-style id is not stable;
+ * locate the extension under test by its package.json `name` instead.
+ */
 function getJessExtension(): vscode.Extension<unknown> | undefined {
   return vscode.extensions.all.find((e) => {
     const pkg: unknown = e.packageJSON;
@@ -40,9 +42,11 @@ function offsetToPosition(doc: vscode.TextDocument, offset: number): vscode.Posi
   return doc.positionAt(offset);
 }
 
-// Poll until `predicate` is truthy or the timeout elapses. Language-server
-// responses are asynchronous (parse + analysis happen off the open notification),
-// so features and diagnostics need a short settle window after opening a file.
+/*
+ * Poll until `predicate` is truthy or the timeout elapses. Language-server
+ * responses are asynchronous (parse + analysis happen off the open notification),
+ * so features and diagnostics need a short settle window after opening a file.
+ */
 async function waitFor<T>(fn: () => T | Thenable<T>, predicate: (v: T) => boolean, timeoutMs = 20000, intervalMs = 250): Promise<T> {
   const start = Date.now();
   let last = await fn();
@@ -62,6 +66,7 @@ suite('Jess extension E2E', () => {
     const ext = getJessExtension();
     assert.ok(ext, `extension ${EXTENSION_PACKAGE_NAME} should be present`);
     await ext!.activate();
+
     // Open a fixture so the server processes at least one document.
     await openFixture('main.less');
   });
@@ -83,6 +88,7 @@ suite('Jess extension E2E', () => {
   test('completions round-trip (local Less variable)', async () => {
     const doc = await openFixture('main.less');
     const text = doc.getText();
+
     // Complete the partial `@lo` reference — the local `@local` declaration.
     const at = text.indexOf('@lo;');
     assert.ok(at >= 0, 'fixture should contain `@lo;`');
@@ -117,8 +123,11 @@ suite('Jess extension E2E', () => {
       e => !!e && e.size > 0
     );
     assert.ok(edit && edit.size > 0, 'expected a WorkspaceEdit with at least one file changed');
-    // The current file must be among the edited files, and its edits must rewrite
-    // the identifier to `brand`.
+
+    /*
+     * The current file must be among the edited files, and its edits must rewrite
+     * the identifier to `brand`.
+     */
     const entries = edit!.entries();
     const mainEntry = entries.find(([uri]) => uri.toString() === doc.uri.toString());
     assert.ok(mainEntry, 'rename should edit the current file');
@@ -127,6 +136,7 @@ suite('Jess extension E2E', () => {
 
   test('code actions round-trip (undefined variable quick fix)', async () => {
     const doc = await openFixture('undefined.less');
+
     // Wait for the server to publish the undefined-variable diagnostic.
     const diags = await waitFor(
       () => vscode.languages.getDiagnostics(doc.uri),
@@ -160,6 +170,7 @@ suite('Jess extension E2E', () => {
       r => Array.isArray(r) && r.length > 0 && !!r[0]?.parent
     );
     assert.ok(Array.isArray(ranges) && ranges.length > 0, 'expected a selection range');
+
     // The cursor sits inside `@primary` → Declaration → Ruleset, so the chain widens.
     assert.ok(ranges[0]!.parent, 'selection range should nest to a parent (widening chain)');
   });
@@ -176,6 +187,7 @@ suite('Jess extension E2E', () => {
   test('value completions round-trip (restriction-driven: color functions + CSS-wide keywords)', async () => {
     const doc = await openFixture('values.css');
     const text = doc.getText();
+
     // Caret right after `color: ` on line 2.
     const at = text.indexOf('color: ') + 'color: '.length;
     const position = offsetToPosition(doc, at);
@@ -216,6 +228,7 @@ suite('Jess extension E2E', () => {
   test('range formatting round-trip (formats only the selected rule)', async () => {
     const doc = await openFixture('unformatted.css');
     const text = doc.getText();
+
     // Select just the first rule `.a{color:red}` (line 0).
     const range = new vscode.Range(doc.positionAt(0), doc.positionAt(text.indexOf('\n')));
     const edits = await waitFor(
@@ -223,6 +236,7 @@ suite('Jess extension E2E', () => {
       e => Array.isArray(e) && e.length > 0
     );
     assert.ok(Array.isArray(edits) && edits.length > 0, 'expected range-format edits');
+
     // VS Code returns minimal diffs — apply them to check the formatted result.
     const sorted = [...edits].sort((a, b) => doc.offsetAt(b.range.start) - doc.offsetAt(a.range.start));
     let out = text;

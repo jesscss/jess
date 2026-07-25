@@ -27,6 +27,7 @@ const slice = defineFunction('slice', {
     const chars = codePoints(stringText(string));
     const start = requireIntIndex('start-at', startAt.number, startAt.unit);
     const end = endAt === undefined ? -1 : requireIntIndex('end-at', endAt.number, endAt.unit);
+
     // Whatever the start is, an end index of 0 selects nothing.
     if (end === 0) {
       return reString(string, '');

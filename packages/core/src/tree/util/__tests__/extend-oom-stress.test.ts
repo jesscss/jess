@@ -62,11 +62,13 @@ function logPerf(message: string): void {
 
 describe('OOM stress: expandCompoundWithPseudoSelectors', () => {
   it('does NOT create exponential expansions for compound with multiple :is()', () => {
-    // :is(.a1,.a2,.a3):is(.b1,.b2,.b3):is(.c1,.c2,.c3)
-    // With the broken implementation this produces 1+3+9+27 = 40 expansions.
-    // Each additional :is() multiplies the count again.
-    // The correct behavior: a compound with N :is() components should remain
-    // O(1) structures — we match structurally, not by expanding all forms.
+    /*
+     * :is(.a1,.a2,.a3):is(.b1,.b2,.b3):is(.c1,.c2,.c3)
+     * With the broken implementation this produces 1+3+9+27 = 40 expansions.
+     * Each additional :is() multiplies the count again.
+     * The correct behavior: a compound with N :is() components should remain
+     * O(1) structures — we match structurally, not by expanding all forms.
+     */
     const threeAlts = (prefix: string) =>
       is(sellist([el(`.${prefix}1`), el(`.${prefix}2`), el(`.${prefix}3`)]));
 
@@ -79,17 +81,21 @@ describe('OOM stress: expandCompoundWithPseudoSelectors', () => {
 
     logPerf(`expandCompoundWithPseudoSelectors produced ${expansions.length} expansions in ${ms.toFixed(1)}ms`);
 
-    // ASSERTION: the expansion count must not be exponential.
-    // 3 :is() blocks × 3 alternatives each = at most 3+3+3+1 = 10 linear items, NOT 1+3+9+27=40.
-    // For now we simply assert the operation finishes within budget.
+    /*
+     * ASSERTION: the expansion count must not be exponential.
+     * 3 :is() blocks × 3 alternatives each = at most 3+3+3+1 = 10 linear items, NOT 1+3+9+27=40.
+     * For now we simply assert the operation finishes within budget.
+     */
     expect(ms).toBeLessThan(BUDGET_MS);
 
     logPerf(`expandCompoundWithPseudoSelectors linear target: expected <= 10, actual ${expansions.length}`);
   });
 
   it('does NOT exponentially blow up with 5 :is() blocks of 4 alternatives each', () => {
-    // 4^5 = 1024 expansions with the broken implementation.
-    // This mirrors a Bootstrap compound like :is(h1,h2,h3,h4):hover:focus:active:not(:disabled)
+    /*
+     * 4^5 = 1024 expansions with the broken implementation.
+     * This mirrors a Bootstrap compound like :is(h1,h2,h3,h4):hover:focus:active:not(:disabled)
+     */
     const fourAlts = (prefix: string) =>
       is(sellist([el(`.${prefix}1`), el(`.${prefix}2`), el(`.${prefix}3`), el(`.${prefix}4`)]));
 
@@ -141,11 +147,12 @@ describe('OOM stress: areCompoundSelectorsEquivalent', () => {
 
 describe('OOM stress: findExtendableLocations on large selector lists', () => {
   it('searches a 500-item SelectorList without exponential blowup', () => {
-    // Simulate: a ruleset with 500 selectors that the extend engine must scan.
-    // Bootstrap 4 has ~5000; we use 500 for CI safety.
+    /*
+     * Simulate: a ruleset with 500 selectors that the extend engine must scan.
+     * Bootstrap 4 has ~5000; we use 500 for CI safety.
+     */
     const items: Selector[] = Array.from({ length: 500 }, (_, i) =>
-      sel([el(`.col-${i}`)])
-    );
+      sel([el(`.col-${i}`)]));
     const target = sellist(items);
     const find = el('.col-42');
 
@@ -165,8 +172,7 @@ describe('OOM stress: findExtendableLocations on large selector lists', () => {
     const N_INSTRUCTIONS = 10;
 
     const selectors: Selector[] = Array.from({ length: N_SELECTORS }, (_, i) =>
-      sel([el(`.item-${i}`)])
-    );
+      sel([el(`.item-${i}`)]));
     const instructions: ExtendInstruction[] = Array.from({ length: N_INSTRUCTIONS }, (_, i) => ({
       target: el(`.item-${i * 10}`),
       extendWith: el(`.replacement-${i}`),
@@ -192,14 +198,14 @@ describe('OOM stress: findExtendableLocations on large selector lists', () => {
 
 describe('OOM stress: applyExtendsToSelector restart loop', () => {
   it.skip('applies 50 extend instructions to a selector without O(N²) restart overhead', () => {
-    // Each instruction targets a different class; none conflict with each other.
-    // The while-loop in applyExtendsToSelector restarts from the top on each match.
-    // For N instructions this is O(N²) comparisons; for 50 it should still be fast.
-    // @todo - Re-enable after profiling/stabilizing applyExtendsToSelector budget in shared CI/prepush runs.
+    /*
+     * Each instruction targets a different class; none conflict with each other.
+     * The while-loop in applyExtendsToSelector restarts from the top on each match.
+     * For N instructions this is O(N²) comparisons; for 50 it should still be fast.
+     * @todo - Re-enable after profiling/stabilizing applyExtendsToSelector budget in shared CI/prepush runs.
+     */
     const N = 50;
-    const baseSelector = sellist(
-      Array.from({ length: N }, (_, i) => sel([el(`.target-${i}`)]))
-    );
+    const baseSelector = sellist(Array.from({ length: N }, (_, i) => sel([el(`.target-${i}`)])));
 
     const instructions: ExtendInstruction[] = Array.from({ length: N }, (_, i) => ({
       target: el(`.target-${i}`),
@@ -214,19 +220,23 @@ describe('OOM stress: applyExtendsToSelector restart loop', () => {
 
     logPerf(`applyExtendsToSelector(50 instructions) took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
+
     // All 50 targets should have been extended, so the result should differ from the input.
     expect(result!.valueOf()).not.toBe(baseSelector.valueOf());
   });
 
   it('handles 200 instructions on a single-selector target within budget', () => {
-    // Worst case for the O(N²) restart: one matching instruction causes N-1 retries.
-    // With 200 instructions and 1 matching at position 0, we do ~200 passes.
+    /*
+     * Worst case for the O(N²) restart: one matching instruction causes N-1 retries.
+     * With 200 instructions and 1 matching at position 0, we do ~200 passes.
+     */
     const N = 200;
     const targetSelector = sel([el('.only-target')]);
 
     const instructions: ExtendInstruction[] = [
       // First instruction matches
       { target: el('.only-target'), extendWith: el('.extended'), partial: false },
+
       // Remaining 199 are misses (different targets)
       ...Array.from({ length: N - 1 }, (_, i) => ({
         target: el(`.no-match-${i}`),
@@ -249,14 +259,16 @@ describe('OOM stress: applyExtendsToSelector restart loop', () => {
 
 describe('OOM stress: full eval pipeline', () => {
   it('compiles 100 rulesets with a shared base class being extended by all', async () => {
-    // This is a minimal Bootstrap-style scenario:
-    //   .base { color: red; }
-    //   .child-0 { &:extend(.base); }
-    //   .child-1 { &:extend(.base); }
-    //   ...
-    //   .child-99 { &:extend(.base); }
-    //
-    // Result: .base, .child-0, .child-1, ..., .child-99 { color: red; }
+    /*
+     * This is a minimal Bootstrap-style scenario:
+     * .base { color: red; }
+     * .child-0 { &:extend(.base); }
+     * .child-1 { &:extend(.base); }
+     * ...
+     * .child-99 { &:extend(.base); }
+     *
+     * Result: .base, .child-0, .child-1, ..., .child-99 { color: red; }
+     */
     const N = 100;
     const context = new Context();
 
@@ -271,8 +283,7 @@ describe('OOM stress: full eval pipeline', () => {
           rules: [
             extend({ target: el('.base') })
           ]
-        })
-      )
+        }))
     ]);
 
     let css = '';
@@ -282,6 +293,7 @@ describe('OOM stress: full eval pipeline', () => {
 
     logPerf(`100-ruleset extend eval took ${ms.toFixed(1)}ms`);
     expect(ms).toBeLessThan(BUDGET_MS);
+
     // The base class should now include all children
     expect(css).toContain('.base');
     expect(css).toContain('.child-0');
@@ -289,8 +301,10 @@ describe('OOM stress: full eval pipeline', () => {
   });
 
   it('compiles 50 rulesets each extending a different target without quadratic growth', async () => {
-    // 50 distinct target selectors, each extended by one child.
-    // Exercises the per-instruction × per-ruleset loop in processExtends.
+    /*
+     * 50 distinct target selectors, each extended by one child.
+     * Exercises the per-instruction × per-ruleset loop in processExtends.
+     */
     const N = 50;
     const context = new Context();
 
@@ -300,15 +314,14 @@ describe('OOM stress: full eval pipeline', () => {
         ruleset({
           selector: sellist([sel([el(`.base-${i}`)])]),
           rules: [decl({ name: 'color', value: any('red') })]
-        })
-      ),
+        })),
+
       // 50 children, each extending a different base
       ...Array.from({ length: N }, (_, i) =>
         ruleset({
           selector: sellist([sel([el(`.child-${i}`)])]),
           rules: [extend({ target: el(`.base-${i}`) })]
-        })
-      )
+        }))
     ]);
 
     const ms = await timeAsyncMs(async () => {
@@ -320,10 +333,12 @@ describe('OOM stress: full eval pipeline', () => {
   });
 
   it('compiles selectors with compound :is() nesting without blowing up', async () => {
-    // This specifically targets expandCompoundWithPseudoSelectors via the full pipeline.
-    // Creates selectors like:
-    //   :is(.a1,.a2,.a3):is(.b1,.b2,.b3) { color: red; }
-    //   .c:extend(:is(.a1,.a2,.a3):is(.b1,.b2,.b3));
+    /*
+     * This specifically targets expandCompoundWithPseudoSelectors via the full pipeline.
+     * Creates selectors like:
+     * :is(.a1,.a2,.a3):is(.b1,.b2,.b3) { color: red; }
+     * .c:extend(:is(.a1,.a2,.a3):is(.b1,.b2,.b3));
+     */
     const context = new Context();
 
     const compoundTarget = compound([
@@ -362,9 +377,11 @@ describe('OOM stress: full eval pipeline', () => {
 
 describe('OOM stress: selectorCompare SelectorList normalization', () => {
   it('compares two large SelectorLists in O(N) not O(N log N) per call', () => {
-    // selectorCompare with two SelectorLists calls normalizeSelectorForExtend on each
-    // item and then sorts the resulting string arrays. With 200 items this should
-    // still be fast.
+    /*
+     * selectorCompare with two SelectorLists calls normalizeSelectorForExtend on each
+     * item and then sorts the resulting string arrays. With 200 items this should
+     * still be fast.
+     */
     const N = 200;
     const itemsA: Selector[] = Array.from({ length: N }, (_, i) => sel([el(`.item-${i}`)]));
     const itemsB: Selector[] = [...itemsA].reverse(); // same items, reversed order
@@ -416,6 +433,7 @@ describe('Benchmark: walkAndExtend vs legacy extendSelector', () => {
     logPerf(`  walk:   ${walkMs.toFixed(1)}ms`);
     logPerf(`  legacy: ${legacyMs.toFixed(1)}ms`);
     logPerf(`  speedup: ${(legacyMs / walkMs).toFixed(1)}x`);
+
     // Walk should complete within budget
     expect(walkMs).toBeLessThan(BUDGET_MS);
   });

@@ -62,8 +62,11 @@ describe('ImportAtRule', () => {
     ]);
     const document = stylesheet([
       importAtRule('@import', quoted('"loop.less"', 'loop.less', '"', false)),
-      // The root's unrelated extend engages the imported-fact preflight without
-      // changing this target's output; the imported loop supplies its extenders.
+
+      /*
+       * The root's unrelated extend engages the imported-fact preflight without
+       * changing this target's output; the imported loop supplies its extenders.
+       */
       rule('.target', [decl('color', color('red'))], [{ target: selist(sel('.does-not-match')), partial: true }])
     ]);
 
@@ -97,9 +100,7 @@ describe('ImportAtRule', () => {
 
     await expect(serialize(document, {
       collapseNesting: false,
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined)
     })).resolves.toEqual({
       css: '.imported {\n  background: green;\n}\n'
         + '@media (max-width: 768px) {\n  .mobile {\n    color: red;\n  }\n}\n'
@@ -248,9 +249,7 @@ describe('ImportAtRule', () => {
 
     const result = await serialize(document, {
       collapseNesting: false,
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'tokens.less' ? { document: imported } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'tokens.less' ? { document: imported } : undefined)
     });
 
     expect(result).toEqual({
@@ -277,9 +276,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'tokens.less' ? { document: imported } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'tokens.less' ? { document: imported } : undefined)
     })).resolves.toEqual({
       css: '.card {\n  color: red;\n  border-color: red;\n}\n'
     });
@@ -290,10 +287,13 @@ describe('ImportAtRule', () => {
       rule('.unusedAndReference', [decl('unused-and', keyword('reference'))], [{
         target: selist(sel('.theOnlySelector')),
         partial: false,
-        // This is the parser shape for `.unusedAndReference:extend(...)`.
-        // The imported-fact planner must retain its `Level[]` ancestor path,
-        // rather than passing this one selector-list Level directly to
-        // composePath().
+
+        /*
+         * This is the parser shape for `.unusedAndReference:extend(...)`.
+         * The imported-fact planner must retain its `Level[]` ancestor path,
+         * rather than passing this one selector-list Level directly to
+         * composePath().
+         */
         subject: selist(sel('.unusedAndReference'))
       }])
     ]);
@@ -307,9 +307,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'reference.less' ? { document: imported, key: 'reference.less' } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less' ? { document: imported, key: 'reference.less' } : undefined)
     })).resolves.toEqual({
       css: '.theOnlySelector {\n  shall-have: one selector;\n}\n'
     });
@@ -336,9 +334,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'nested.less' ? { document: imported } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'nested.less' ? { document: imported } : undefined)
     })).resolves.toEqual({
       css: '#used-namespaced-mixin {\n  was: included;\n  shall-see-was: included;\n}\n'
     });
@@ -362,13 +358,11 @@ describe('ImportAtRule', () => {
 
     await expect(serialize(document, {
       collapseNesting: false,
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'multiple.less'
-          ? { document: multiple, key: 'multiple.less' }
-          : specifier === 'hidden.less'
-            ? { document: hidden, key: 'hidden.less' }
-            : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'multiple.less'
+        ? { document: multiple, key: 'multiple.less' }
+        : specifier === 'hidden.less'
+          ? { document: hidden, key: 'hidden.less' }
+          : undefined)
     })).resolves.toEqual({
       css: 'show-all-content {\n  /* tralala */\n  .fix {\n    fix: fix;\n  }\n  .something {\n    inside: something;\n  }\n}\n'
     });
@@ -398,13 +392,11 @@ describe('ImportAtRule', () => {
     await expect(serialize(document, {
       importDocument: ({ specifier }) => {
         calls.push(specifier);
-        return Promise.resolve(
-          specifier === 'providers.less'
-            ? { document: providers }
-            : specifier === 'target-ready.less'
-              ? { document: deferred }
-              : undefined
-        );
+        return Promise.resolve(specifier === 'providers.less'
+          ? { document: providers }
+          : specifier === 'target-ready.less'
+            ? { document: deferred }
+            : undefined);
       }
     })).resolves.toEqual({ css: '.card {\n  color: blue;\n}\n' });
     expect(calls).toEqual(['providers.less', 'target-ready.less']);
@@ -506,9 +498,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier, tail }) => Promise.resolve(
-        specifier === 'raw.css' ? { inline: '#raw { color: yellow; }', media: tail } : undefined
-      )
+      importDocument: ({ specifier, tail }) => Promise.resolve(specifier === 'raw.css' ? { inline: '#raw { color: yellow; }', media: tail } : undefined)
     })).resolves.toEqual({
       css: '@media (min-width: 600px) {\n  #raw { color: yellow; }\n}\n'
     });

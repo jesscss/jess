@@ -69,8 +69,7 @@ async function scenario1(N: number) {
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
         rules: [extend({ target: el('.base') })]
-      })
-    )
+      }))
   ]);
 
   await bench(`N=${N}`, async () => {
@@ -89,8 +88,7 @@ async function scenario2(N: number) {
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
         rules: [extend({ target: el('.base'), flag: ExtendFlag.All })]
-      })
-    )
+      }))
   ]);
 
   await bench(`N=${N}`, async () => {
@@ -100,19 +98,14 @@ async function scenario2(N: number) {
 
 async function scenario3(N: number) {
   const context = new Context();
+
   // Target with :is() compound — the Bootstrap pattern
   const ALTS = 4;
   const IS_BLOCKS = 3;
   const prefixes = ['a', 'b', 'c'];
-  const targetSel = compound(
-    Array.from({ length: IS_BLOCKS }, (_, block) =>
-      is(sellist(
-        Array.from({ length: ALTS }, (_, i) =>
-          el(`.${prefixes[block]}${i}`)
-        )
-      ))
-    )
-  );
+  const targetSel = compound(Array.from({ length: IS_BLOCKS }, (_, block) =>
+    is(sellist(Array.from({ length: ALTS }, (_, i) =>
+      el(`.${prefixes[block]}${i}`))))));
 
   const node = rules([
     ruleset({
@@ -123,8 +116,7 @@ async function scenario3(N: number) {
       ruleset({
         selector: sellist([sel([el(`.child-${i}`)])]),
         rules: [extend({ target: el('.a0'), flag: ExtendFlag.All })]
-      })
-    )
+      }))
   ]);
 
   await bench(`N=${N} (${IS_BLOCKS}×${ALTS} :is())`, async () => {
@@ -140,14 +132,12 @@ async function scenario4(N: number) {
       ruleset({
         selector: sellist([sel([el(`.target-${i}`)])]),
         rules: [decl({ name: 'color', value: any('red') })]
-      })
-    ),
+      })),
     ...Array.from({ length: N }, (_, i) =>
       ruleset({
         selector: sellist([sel([el(`.ext-${i}`)])]),
         rules: [extend({ target: el(`.target-${i}`) })]
-      })
-    )
+      }))
   ]);
 
   await bench(`N=${N} (N×N)`, async () => {

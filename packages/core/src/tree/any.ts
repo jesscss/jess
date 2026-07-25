@@ -59,15 +59,19 @@ export class Any<
     location?: LocationInfo
   ) {
     super(value, options, location);
+
     // Each node owns its field values (invariant 7): the base stores nothing.
     this.value = value;
     this.role = options?.role as Role | undefined;
     this.addFlag(F_STATIC);
-    // Less's `Anonymous` (this node's namesake) is statement-legal by type
-    // (`allowRoot = true`). A root-position call/mixin/detached-ruleset that
-    // evaluates to a bare value produces an `Any`, and Less emits it as the
-    // final statement — e.g. root-level `e('/* … */')`. Keyword (a subclass)
-    // is NOT root-legal in Less, so it strips this flag in its constructor.
+
+    /*
+     * Less's `Anonymous` (this node's namesake) is statement-legal by type
+     * (`allowRoot = true`). A root-position call/mixin/detached-ruleset that
+     * evaluates to a bare value produces an `Any`, and Less emits it as the
+     * final statement — e.g. root-level `e('/* … *\/')`. Keyword (a subclass)
+     * is NOT root-legal in Less, so it strips this flag in its constructor.
+     */
     this.addFlag(F_ALLOW_ROOT);
   }
 
@@ -160,9 +164,12 @@ export class Keyword extends Any<'keyword'> {
   ) {
     // Force role to 'keyword'
     super(value, { ...options, role: 'keyword' }, location);
-    // Less's `Keyword` is NOT statement-legal (no `allowRoot`), unlike the
-    // `Anonymous`/`Any` base. A bare keyword in statement position stays an
-    // eval/invalid-statement error, matching Less.
+
+    /*
+     * Less's `Keyword` is NOT statement-legal (no `allowRoot`), unlike the
+     * `Anonymous`/`Any` base. A bare keyword in statement position stays an
+     * eval/invalid-statement error, matching Less.
+     */
     this.removeFlag(F_ALLOW_ROOT);
   }
 }

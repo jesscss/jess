@@ -7,8 +7,10 @@ import { isNode } from '../is-node.js';
 import { N } from '../../node-type.js';
 import { TreeContext } from '../../../context.js';
 
-// Nodes now carry only source OFFSETS (spanStart/spanEnd); the source map derives
-// original line/column from the offset + the file source on the cold gen path.
+/*
+ * Nodes now carry only source OFFSETS (spanStart/spanEnd); the source map derives
+ * original line/column from the offset + the file source on the cold gen path.
+ */
 const spanOf = (start: number, end: number) => ({ start, end });
 
 describe('source map segments', () => {
@@ -86,6 +88,7 @@ describe('source map segments', () => {
 
   it('writer line/column advance for newlines between rules', () => {
     const w = new OutputWriter();
+
     // Source with `a` on line 0 and `b` on line 3 (offsets 0 and 8).
     const source = 'a: 1;\n\n\nb: 2;';
     const treeContext = new TreeContext({

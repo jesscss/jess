@@ -115,8 +115,10 @@ function setOwnSelectorOption(ruleset: Ruleset, selector: Selector): void {
 }
 
 function hasExplicitExtendSelector(node: Node | undefined): boolean {
-  // Extend stores its authored replaceWith override on the `selector` field (its
-  // base `value` is undefined per invariant 7), so read the field directly.
+  /*
+   * Extend stores its authored replaceWith override on the `selector` field (its
+   * base `value` is undefined per invariant 7), so read the field directly.
+   */
   return !!node && 'selector' in node && !!(node as { selector?: unknown }).selector;
 }
 
@@ -126,9 +128,12 @@ function hasExplicitExtendSelector(node: Node | undefined): boolean {
  */
 function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
   const parentRules = ruleset.parent;
-  // Copy-on-write eval surfaces link a nested ruleset directly to its parent
-  // Ruleset (the intermediate body-Rules wrapper is not interposed). Canonical
-  // trees go ruleset -> body Rules -> parent Ruleset. Accept both.
+
+  /*
+   * Copy-on-write eval surfaces link a nested ruleset directly to its parent
+   * Ruleset (the intermediate body-Rules wrapper is not interposed). Canonical
+   * trees go ruleset -> body Rules -> parent Ruleset. Accept both.
+   */
   if (isRulesetValue(parentRules)) {
     return parentRules;
   }
@@ -147,8 +152,10 @@ function getParentRuleset(ruleset: Ruleset): Ruleset | undefined {
  * Returns undefined if there's no parent Ruleset (root level).
  */
 function getParentSelector(ruleset: Ruleset): Selector | undefined {
-  // Walk up through & -only parents (implicit wrappers around at-rule contents)
-  // to find the nearest parent Ruleset with actual selector content.
+  /*
+   * Walk up through & -only parents (implicit wrappers around at-rule contents)
+   * to find the nearest parent Ruleset with actual selector content.
+   */
   let current: Ruleset = ruleset;
   while (true) {
     const parentRuleset = getParentRuleset(current);
@@ -159,6 +166,7 @@ function getParentSelector(ruleset: Ruleset): Selector | undefined {
     if (!sel) {
       return undefined;
     }
+
     // If the parent selector is just an Ampersand, keep walking up
     if (typeof sel !== 'string' && !Array.isArray(sel) && isNode(sel, N.Ampersand)) {
       current = parentRuleset;
@@ -203,18 +211,17 @@ export function asExtendSelectorNode(value: SelectorLike): Selector {
       const item = value[0]!;
       return typeof item === 'string' ? new BasicSelector(item) : item;
     }
-    return SelectorList.create(
-      value.map(item => selectorListItemForRootExtend(item))
-    );
+    return SelectorList.create(value.map(item => selectorListItemForRootExtend(item)));
   }
-  // Materialize any string-backed components of a legacy SelectorList node.
-  // Factory/parser-delivered lists may carry raw strings (e.g. `sellist(['.child'])`);
-  // those strings are dropped by the node-only placement copy downstream, leaving an
-  // empty appended slot. Turning them into nodes up front keeps the selector intact.
+
+  /*
+   * Materialize any string-backed components of a legacy SelectorList node.
+   * Factory/parser-delivered lists may carry raw strings (e.g. `sellist(['.child'])`);
+   * those strings are dropped by the node-only placement copy downstream, leaving an
+   * empty appended slot. Turning them into nodes up front keeps the selector intact.
+   */
   if (isNode(value, N.SelectorList) && value.value.some(item => typeof item === 'string')) {
-    return SelectorList.create(
-      value.value.map(item => selectorListItemForRootExtend(item))
-    ).inherit(value);
+    return SelectorList.create(value.value.map(item => selectorListItemForRootExtend(item))).inherit(value);
   }
   return value;
 }
@@ -278,12 +285,15 @@ function composeExtendWithRelativeToTarget(
   if (!extendingLocal) {
     return undefined;
   }
-  // Walk up from extending ruleset, collecting local value, until we
-  // reach a ruleset that is also an ancestor of the target (or root).
-  // Copy-on-write eval clones target and extender into separate frame surfaces,
-  // so the SAME source `.attributes` is a different Ruleset instance on each
-  // chain — instance identity would never match. Compare by pre-extend local
-  // selector text, which is stable across those surface copies.
+
+  /*
+   * Walk up from extending ruleset, collecting local value, until we
+   * reach a ruleset that is also an ancestor of the target (or root).
+   * Copy-on-write eval clones target and extender into separate frame surfaces,
+   * so the SAME source `.attributes` is a different Ruleset instance on each
+   * chain — instance identity would never match. Compare by pre-extend local
+   * selector text, which is stable across those surface copies.
+   */
   const targetAncestorKeys = new Set<string>();
   if (targetRuleset) {
     for (const anc of [targetRuleset, ...getRulesetAncestors(targetRuleset)]) {
@@ -306,10 +316,12 @@ function composeExtendWithRelativeToTarget(
     }
     current = getParentRuleset(current);
   }
+
   // Compose from outermost to innermost
   let result: Selector = pathLocals[0]!;
   for (let i = 1; i < pathLocals.length; i++) {
     let child: Selector = pathLocals[i]!;
+
     // Wrap child selector list in :is() to avoid distribution
     if (isSelectorListLike(child) && !child.hasFlag(F_AMPERSAND)) {
       const childIs = PseudoSelector.create({ name: ':is', arg: copySelectorForExtend(child) });
@@ -347,6 +359,7 @@ function getFullComposedForm(ruleset: Ruleset): Selector | undefined {
   if (!parentComposed) {
     return localNode;
   }
+
   // Wrap child SelectorList in :is() to avoid distribution in composeSelector
   let childForCompose: Selector = localNode;
   if (isNode(localNode, N.SelectorList) && !localNode.hasFlag(F_AMPERSAND)) {
@@ -408,8 +421,10 @@ function targetCanPossiblyMatch(
   recordExtendProfile?.('filter.admissionCalls');
   const library = target.keySetLibrary;
   if (!library || selector.keySetLibrary !== library) {
-    // No shared key-set library: the gate cannot cheaply decide, so it admits
-    // (conservative). No bitset allocated on this branch.
+    /*
+     * No shared key-set library: the gate cannot cheaply decide, so it admits
+     * (conservative). No bitset allocated on this branch.
+     */
     recordExtendProfile?.('filter.admittedCalls');
     return true;
   }
@@ -419,6 +434,7 @@ function targetCanPossiblyMatch(
     ? parentSelector
     : undefined;
   let available = keySetOf(selector);
+
   // Bounded per-probe key-set work; each `.or`/`.and` allocates one bitset.
   recordExtendProfile?.('filter.admissionItemsVisited');
   let allocations = 0;
@@ -437,9 +453,11 @@ function targetCanPossiblyMatch(
   if (admitted) {
     recordExtendProfile?.('filter.admittedCalls');
   } else {
-    // Rejected probe: it bears no feature, yet the conservative gate still paid
-    // for its bitset allocations. This is the no-feature allocation the precise
-    // zero-alloc model forbids and the conservative-filter contract admits.
+    /*
+     * Rejected probe: it bears no feature, yet the conservative gate still paid
+     * for its bitset allocations. This is the no-feature allocation the precise
+     * zero-alloc model forbids and the conservative-filter contract admits.
+     */
     recordExtendProfile?.('filter.noFeatureMisses');
     recordExtendProfile?.('filter.noFeatureAllocations', allocations);
   }
@@ -452,8 +470,11 @@ function classifyInstructionMatch(
   parentSelector?: Selector
 ): MatchResult {
   const { target, extendWith, partial } = instruction;
-  // Conservative keyset gate encloses the whole speculative classify/apply body,
-  // so the expensive fallback and walk run ONLY for probes the gate admits.
+
+  /*
+   * Conservative keyset gate encloses the whole speculative classify/apply body,
+   * so the expensive fallback and walk run ONLY for probes the gate admits.
+   */
   if (targetCanPossiblyMatch(selector, target, partial, parentSelector)) {
     recordExtendProfile?.('filter.calls');
     if (canUseWalkAndConsume(selector, target, !!parentSelector)) {
@@ -468,12 +489,15 @@ function classifyInstructionMatch(
         && selector.hoistToRoot !== true
         && selector.valueOf() === target.valueOf()
       ) {
-        // Exact nested matches like `.dd` under `.aa` must not fall back to the
-        // parentless matcher, which would incorrectly treat the local fragment
-        // as the full selector.
+        /*
+         * Exact nested matches like `.dd` under `.aa` must not fall back to the
+         * parentless matcher, which would incorrectly treat the local fragment
+         * as the full selector.
+         */
         return false;
       }
     }
+
     // Fallback for value that do not need parent-context matching.
     const after = applyExtendsToSelector(selector, [instruction]);
     const localMatch = after.valueOf() !== selector.valueOf();
@@ -502,16 +526,12 @@ function analyzeNonPartialExtends(
     const ownChangedSingle = wouldInstructionChangeSel(ownSelector, instruction);
     const fullAfterSingle = applyExtendsToSelector(selector, [instruction]);
     const fullChangedSingle = fullAfterSingle.valueOf() !== selector.valueOf();
-    const parentHasTargetMatch = Boolean(
-      parentSelector
+    const parentHasTargetMatch = Boolean(parentSelector
       && !(parentSelector instanceof Nil)
-      && findExtendableLocations(parentSelector, instruction.target).hasMatches
-    );
+      && findExtendableLocations(parentSelector, instruction.target).hasMatches);
     return { instruction, ownChangedSingle, fullChangedSingle, parentHasTargetMatch };
   });
-  const fullChangedExtendWith = new Set(
-    perInstruction.filter(d => d.fullChangedSingle).map(d => d.instruction.extendWith.valueOf())
-  );
+  const fullChangedExtendWith = new Set(perInstruction.filter(d => d.fullChangedSingle).map(d => d.instruction.extendWith.valueOf()));
   const withInclusion = perInstruction.map(d => ({
     ...d,
     includeOwnOnly: (
@@ -524,11 +544,9 @@ function analyzeNonPartialExtends(
   return {
     nonPartialOwnOnly: withInclusion.filter(x => x.includeOwnOnly).map(x => x.instruction),
     hasAncestorDrivenNonPartial: withInclusion.some(d =>
-      !d.ownChangedSingle && d.fullChangedSingle && d.parentHasTargetMatch
-    ),
+      !d.ownChangedSingle && d.fullChangedSingle && d.parentHasTargetMatch),
     hasParentMatchedOwnOnlyNonPartial: withInclusion.some(d =>
-      d.ownChangedSingle && !d.fullChangedSingle && d.parentHasTargetMatch
-    )
+      d.ownChangedSingle && !d.fullChangedSingle && d.parentHasTargetMatch)
   };
 }
 
@@ -538,9 +556,12 @@ export class ExtendRootRegistry {
   private layerName = new WeakMap<Rules, string>();
   private isProtected = new WeakMap<Rules, boolean>();
   private isCompose = new WeakMap<Rules, boolean>();
-  // TODO(dev): consume a namespace as a one-boundary filter during extend
-  // lookup. `library|.box` selects library, then `.box` searches its reachable
-  // mutable descendants; nested aliases stay local to the nested module.
+
+  /*
+   * TODO(dev): consume a namespace as a one-boundary filter during extend
+   * lookup. `library|.box` selects library, then `.box` searches its reachable
+   * mutable descendants; nested aliases stay local to the nested module.
+   */
   private rootsByLayerName = new Map<string, Set<Rules>>();
   private rootsByNamespace = new Map<string, Set<Rules>>();
   private allRoots = new Set<Rules>();
@@ -743,30 +764,41 @@ function isInstructionVisibleForRoot(
 
 export function processExtends(context: Context): void {
   const extendPassStart = extendProfileNow ? extendProfileNow() : 0;
-  // Ruleset registration only happens during a root's registration prep, which
-  // runs on its FIRST eval. A re-eval of an already-prepared root (render's
-  // evalForRender path) registers nothing, so the per-root set is empty. Without
-  // registered rulesets there is nothing to search or extend; bail before the
-  // warning pass would fire spurious "extend target not found" diagnostics and
-  // before any selector state is touched.
+
+  /*
+   * Ruleset registration only happens during a root's registration prep, which
+   * runs on its FIRST eval. A re-eval of an already-prepared root (render's
+   * evalForRender path) registers nothing, so the per-root set is empty. Without
+   * registered rulesets there is nothing to search or extend; bail before the
+   * warning pass would fire spurious "extend target not found" diagnostics and
+   * before any selector state is touched.
+   */
   if (rulesetsByRoot.size === 0) {
     return;
   }
   try {
-    // No extends gathered this eval → skip the whole pre-extend selector
-    // snapshot walk over every registered ruleset. (The instructions list
-    // below would be empty anyway; bail before paying for the walk.)
+    /*
+     * No extends gathered this eval → skip the whole pre-extend selector
+     * snapshot walk over every registered ruleset. (The instructions list
+     * below would be empty anyway; bail before paying for the walk.)
+     */
     if (!context.extends.length) {
       return;
     }
-    // Install the pass-scoped matcher memo. The extend set is immutable for the
-    // whole pass, so the invariant (target, find, extendWith, partial, parent)
-    // match relation is cacheable — collapsing the O(I²) re-matching done by
-    // chained-extend discovery + classify. Torn down in the finally below.
+
+    /*
+     * Install the pass-scoped matcher memo. The extend set is immutable for the
+     * whole pass, so the invariant (target, find, extendWith, partial, parent)
+     * match relation is cacheable — collapsing the O(I²) re-matching done by
+     * chained-extend discovery + classify. Torn down in the finally below.
+     */
     beginExtendMatchPass();
-    // Snapshot eval'd value before any extend modifications.
-    // This ensures getEffectiveSelector composes with original value,
-    // not ones already modified by earlier extends in this pass.
+
+    /*
+     * Snapshot eval'd value before any extend modifications.
+     * This ensures getEffectiveSelector composes with original value,
+     * not ones already modified by earlier extends in this pass.
+     */
     preExtendSelectors = new WeakMap<Ruleset, Selector>();
     for (const [, rulesetSet] of rulesetsByRoot) {
       for (const rs of rulesetSet) {
@@ -834,13 +866,15 @@ export function processExtends(context: Context): void {
       return cached;
     };
 
-    // The extend-root graph (childrenRoots/layerName/isProtected) is fully built
-    // during eval and STABLE for the whole processExtends pass, so
-    // isSameOrDescendantRoot(rootRules, extendRoot) is invariant here. It is the
-    // O(R × I × depth) driver — a recursive descendant walk run once per
-    // (root × extend-instruction) pair. Memoize it per (extendRoot, rootRules)
-    // for this pass. Pass-scoped: the cache is discarded when processExtends
-    // returns, so no cross-render staleness is possible.
+    /*
+     * The extend-root graph (childrenRoots/layerName/isProtected) is fully built
+     * during eval and STABLE for the whole processExtends pass, so
+     * isSameOrDescendantRoot(rootRules, extendRoot) is invariant here. It is the
+     * O(R × I × depth) driver — a recursive descendant walk run once per
+     * (root × extend-instruction) pair. Memoize it per (extendRoot, rootRules)
+     * for this pass. Pass-scoped: the cache is discarded when processExtends
+     * returns, so no cross-render staleness is possible.
+     */
     const sameOrDescendantCache = new Map<Rules, Map<Rules, boolean>>();
     const getCachedSameOrDescendant = (rulesetRoot: Rules, extendRoot: Rules): boolean => {
       let byRuleset = sameOrDescendantCache.get(extendRoot);
@@ -861,14 +895,15 @@ export function processExtends(context: Context): void {
         continue;
       }
       const visibleExtends = instructions.filter(instruction =>
-        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots, getCachedSameOrDescendant)
-      );
+        isInstructionVisibleForRoot(context, rootRules, instruction, getCachedVisibleRoots, getCachedSameOrDescendant));
       if (!visibleExtends.length) {
         continue;
       }
       for (const ruleset of rulesetSet) {
-        // For classification: use pre-extend snapshot (original form).
-        // For application: use current selector (for chaining).
+        /*
+         * For classification: use pre-extend snapshot (original form).
+         * For application: use current selector (for chaining).
+         */
         const selectorLike = getLocalSelector(ruleset);
         const currentSelectorLike = selectorOrUndefined(ruleset.selector);
         const parentSel = getParentSelector(ruleset);
@@ -892,8 +927,10 @@ export function processExtends(context: Context): void {
         let hasWithinAmpersandMatch = false;
         let hasAnyLocalMatch = false;
         let crossingInstructions: RootExtendInstruction[] = [];
+
         // Instructions excluded from local application (within-ampersand / crossing):
         const excludedFromLocal = new Set<RootExtendInstruction>();
+
         // First pass: classify each instruction.
         const classifications = new Map<RootExtendInstruction, MatchResult>();
         for (const instruction of visibleExtends) {
@@ -905,9 +942,12 @@ export function processExtends(context: Context): void {
             classifications.set(instruction, classifyInstructionMatch(selector, instruction, parentSel));
           }
         }
-        // Second pass: if a local match's extending ruleset has another visible
-        // extend whose target matches the PARENT selector, reclassify as
-        // within-ampersand (parent's extension covers this via nesting).
+
+        /*
+         * Second pass: if a local match's extending ruleset has another visible
+         * extend whose target matches the PARENT selector, reclassify as
+         * within-ampersand (parent's extension covers this via nesting).
+         */
         if (parentSel) {
           for (const [instruction, matchType] of classifications) {
             if (matchType !== 'local') {
@@ -925,6 +965,7 @@ export function processExtends(context: Context): void {
               if (otherExtendingRs !== extendingRs) {
                 continue;
               }
+
               // Does this other extend match the parent selector?
               if (canUseWalkAndConsume(parentSel, other.target)
                 && wouldExtendChange(parentSel, other.target, other.extendWith, other.partial)) {
@@ -934,6 +975,7 @@ export function processExtends(context: Context): void {
             }
           }
         }
+
         // Third pass: aggregate.
         for (const instruction of visibleExtends) {
           const matchType = classifications.get(instruction);
@@ -962,10 +1004,13 @@ export function processExtends(context: Context): void {
             }
           }
         }
-        // Build apply-time instructions: when the extend has no explicit `selector`
-        // (jess-specific override), compose extendWith with the extending ruleset's
-        // parent chain relative to the current target. When `selector` IS set, use
-        // the user-specified extendWith as-is.
+
+        /*
+         * Build apply-time instructions: when the extend has no explicit `selector`
+         * (jess-specific override), compose extendWith with the extending ruleset's
+         * parent chain relative to the current target. When `selector` IS set, use
+         * the user-specified extendWith as-is.
+         */
         const localApplicableExtends: RootExtendInstruction[] = [];
         for (const inst of visibleExtends) {
           const matchType = classifications.get(inst);
@@ -991,20 +1036,26 @@ export function processExtends(context: Context): void {
           }
         }
         const hasCrossingMatch = crossingInstructions.length > 0;
-        // If all matches are within-ampersand (no local or crossing matches),
-        // the parent carries the extend — child inherits via & at render time.
+
+        /*
+         * If all matches are within-ampersand (no local or crossing matches),
+         * the parent carries the extend — child inherits via & at render time.
+         */
         if (hasWithinAmpersandMatch && !hasAnyLocalMatch && !hasCrossingMatch) {
           continue;
         }
         if (isActivatedByVisibleExtend) {
           ruleset.addFlag(F_EXTENDED);
           ruleset.addFlag(F_VISIBLE);
-          // F_VISIBLE is the blanket marker that keeps all items visible in
-          // reference-mode output. F_EXTENDED is NOT a blanket marker — it's
-          // only set by extend-walk / extend.ts on items that were actually
-          // matched by an extend or newly added by one. Keeping the two
-          // concerns separate lets the reference-mode compose filter
-          // distinguish "original, untouched" from "added by extend".
+
+          /*
+           * F_VISIBLE is the blanket marker that keeps all items visible in
+           * reference-mode output. F_EXTENDED is NOT a blanket marker — it's
+           * only set by extend-walk / extend.ts on items that were actually
+           * matched by an extend or newly added by one. Keeping the two
+           * concerns separate lets the reference-mode compose filter
+           * distinguish "original, untouched" from "added by extend".
+           */
           if (isSelectorListLike(selectorLike)) {
             for (const item of selectorListItems(selectorLike)) {
               if (typeof item !== 'string') {
@@ -1017,9 +1068,12 @@ export function processExtends(context: Context): void {
         } else {
           ruleset.removeFlag(F_EXTENDED);
         }
-        // Crossing match: target spans parent+child boundary → hoist to root.
-        // The composed (parent+child) form IS the thing being extended as a whole.
-        // Build a SelectorList: [composedForm, ...crossingExtendWithsComposed].
+
+        /*
+         * Crossing match: target spans parent+child boundary → hoist to root.
+         * The composed (parent+child) form IS the thing being extended as a whole.
+         * Build a SelectorList: [composedForm, ...crossingExtendWithsComposed].
+         */
         if (hasCrossingMatch && parentSel) {
           // Wrap child selector list in :is() so composition doesn't distribute.
           let childForCompose: SelectorLike = selectorLike;
@@ -1032,9 +1086,12 @@ export function processExtends(context: Context): void {
             childForCompose = withSelectorBitLibrary(childIs, selector, parentSel);
           }
           const composedSurface = Ruleset.composeSelector(childForCompose, parentSel);
-          // composeSelector can return a bare string when the child is a
-          // string-backed leaf (e.g. a nested `.ext9`). A string carries no
-          // bit-library slot to seed, so only thread the library into node output.
+
+          /*
+           * composeSelector can return a bare string when the child is a
+           * string-backed leaf (e.g. a nested `.ext9`). A string carries no
+           * bit-library slot to seed, so only thread the library into node output.
+           */
           const composed = typeof composedSurface === 'string'
             ? composedSurface
             : withSelectorBitLibrary(
@@ -1044,8 +1101,10 @@ export function processExtends(context: Context): void {
               );
           const items: SelectorListItem[] = [composed];
           for (const inst of crossingInstructions) {
-            // For crossing matches, the extendWith must be the fully-composed
-            // form of the extending ruleset (e.g. .footer-nav under .footer → .footer .footer-nav)
+            /*
+             * For crossing matches, the extendWith must be the fully-composed
+             * form of the extending ruleset (e.g. .footer-nav under .footer → .footer .footer-nav)
+             */
             let extendWithComposed: Selector | undefined;
             let cursor: Node | undefined = inst.extendNode?.parent;
             while (cursor) {
@@ -1076,10 +1135,8 @@ export function processExtends(context: Context): void {
           continue;
         }
         const ownSelector = getOwnSelectorOption(ruleset);
-        const hasResolvedNestedSelector = Boolean(
-          ownSelector
-          && ownSelector.valueOf() !== selectorText
-        );
+        const hasResolvedNestedSelector = Boolean(ownSelector
+          && ownSelector.valueOf() !== selectorText);
         const hasOnlyPartialExtends = localApplicableExtends.length > 0
           && localApplicableExtends.every(instruction => instruction.partial);
         if (ownSelector && hasResolvedNestedSelector && hasOnlyPartialExtends) {
@@ -1110,14 +1167,12 @@ export function processExtends(context: Context): void {
             const ownChangedByPartialOnly = ownAfterPartialOnly.valueOf() !== ownSelector.valueOf();
             const fullChangedByPartialOnly = fullAfterPartialOnly.valueOf() !== selector.valueOf();
             const parentSelector = getParentSelector(ruleset) ?? null;
-            const canDeriveOwnFromGeneratedIs = Boolean(
-              !ownChangedByPartialOnly
+            const canDeriveOwnFromGeneratedIs = Boolean(!ownChangedByPartialOnly
               && fullChangedByPartialOnly
               && parentSelector
               && !(parentSelector instanceof Nil)
               && fullAfterPartialOnly instanceof ComplexSelector
-              && !ownSelector.hasFlag(F_AMPERSAND)
-            );
+              && !ownSelector.hasFlag(F_AMPERSAND));
             if (canDeriveOwnFromGeneratedIs) {
               const complexValue: unknown = fullAfterPartialOnly.value;
               const last: unknown = Array.isArray(complexValue) ? complexValue.at(-1) : undefined;
@@ -1180,11 +1235,9 @@ export function processExtends(context: Context): void {
                 setOwnSelectorOption(ruleset, ownAfterPartial);
                 continue;
               }
-              const shouldDeferToParentForNonPartial = Boolean(
-                !ownChangedByPartial
+              const shouldDeferToParentForNonPartial = Boolean(!ownChangedByPartial
                 && nonPartialOwnOnly.length === 0
-                && hasAncestorDrivenNonPartial
-              );
+                && hasAncestorDrivenNonPartial);
               if (shouldDeferToParentForNonPartial) {
                 assignLocalSelector(ruleset, ownAfterPartial);
                 setOwnSelectorOption(ruleset, ownAfterPartial);
@@ -1222,6 +1275,7 @@ export function processExtends(context: Context): void {
         }
       }
     }
+
     // Emit warnings for unmatched extend instructions
     for (const instruction of instructions) {
       if (instruction.fromReferenceScope === true) {
@@ -1231,8 +1285,11 @@ export function processExtends(context: Context): void {
         continue;
       }
       const target = instruction.target.valueOf();
-      // Line/col are no longer stored on nodes (only offsets); the diagnostic path
-      // derives them from the node/offset + source.
+
+      /*
+       * Line/col are no longer stored on nodes (only offsets); the diagnostic path
+       * derives them from the node/offset + source.
+       */
       const targetLine: number | undefined = undefined;
       const targetColumn: number | undefined = undefined;
       const targetFile = instruction.target.sourceRoot?._treeContext?.file;
@@ -1250,9 +1307,12 @@ export function processExtends(context: Context): void {
         }
         return Array.from(rulesets).some((ruleset) => {
           const selLike = selectorOrUndefined(ruleset.selector);
-          // Parser-delivered selectors may be string/array-backed. The extend
-          // engine's placement copy calls Node methods, so materialize to a
-          // Selector node first (mirrors the main classification path above).
+
+          /*
+           * Parser-delivered selectors may be string/array-backed. The extend
+           * engine's placement copy calls Node methods, so materialize to a
+           * Selector node first (mirrors the main classification path above).
+           */
           return !!selLike && wouldInstructionChangeSel(asExtendSelectorNode(selLike), instruction);
         });
       });

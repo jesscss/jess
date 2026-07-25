@@ -26,22 +26,29 @@ import { buildCstIndex } from './cst-analysis.js';
 
 const VAR_REF = 'Reference';
 const VAR_DECL = 'VarDeclaration';
+
 // A mixin CALL site: Less `MixinCall` / SCSS `@include foo` (`ScssInclude`).
 const MIXIN_REF_TYPES = new Set(['MixinCall', 'ScssInclude']);
-// A mixin/function DEFINITION: Less `MixinOrQualifiedRule` / SCSS `@mixin foo`
-// (`ScssMixin`) and `@function bar` (`ScssFunction`). `@include`/`@mixin` are
-// DISTINCT grammarTypes (call vs def); `mixinNameOf` strips the differing keyword
-// so both resolve to the same bare `matchName`.
+
+/*
+ * A mixin/function DEFINITION: Less `MixinOrQualifiedRule` / SCSS `@mixin foo`
+ * (`ScssMixin`) and `@function bar` (`ScssFunction`). `@include`/`@mixin` are
+ * DISTINCT grammarTypes (call vs def); `mixinNameOf` strips the differing keyword
+ * so both resolve to the same bare `matchName`.
+ */
 const MIXIN_DEF_TYPES = new Set(['MixinOrQualifiedRule', 'MixinDefinition', 'Mixin', 'ScssMixin', 'ScssFunction']);
 
 /** A variable/mixin symbol resolved from a cursor position. */
 export type CstSymbol = {
   kind: 'variable' | 'mixin';
+
   /** `reference` = a use site, `definition` = the declaration. */
   role: 'reference' | 'definition';
+
   /** Name used for cross-site matching: bare (no sigil) for variables, the
    * selector-with-combinator (no parens) for mixins — mirrors the AST matcher. */
   matchName: string;
+
   /** Bare identifier to narrow to inside a span (sigil / combinator / parens
    * stripped) — what rename rewrites and prepareRename echoes as placeholder. */
   refineIdent: string;

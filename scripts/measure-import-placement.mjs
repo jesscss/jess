@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
-// Diagnostic-only benchmark for the static `(multiple)` import placement path.
-// Build the workspace first, then run:
-//   node scripts/measure-import-placement.mjs --warmup=8 --iterations=30 --rounds=3
+/*
+ * Diagnostic-only benchmark for the static `(multiple)` import placement path.
+ * Build the workspace first, then run:
+ * node scripts/measure-import-placement.mjs --warmup=8 --iterations=30 --rounds=3
+ */
 
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';

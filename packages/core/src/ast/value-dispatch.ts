@@ -203,11 +203,14 @@ export function defineFunction(
       if (definition.variadic) {
         return definition.body(value, ctx);
       }
-      // Keep evaluator invocation intentionally positional and permissive: its
-      // historical contract binds declared slots and lets a callable establish
-      // its own failure policy. A raw nested group is still one argument;
-      // `bindDirect` accepts it only for `kinds: 'any'` and rejects it for a
-      // typed scalar parameter. Flattening would destroy ordinary adjacency.
+
+      /*
+       * Keep evaluator invocation intentionally positional and permissive: its
+       * historical contract binds declared slots and lets a callable establish
+       * its own failure policy. A raw nested group is still one argument;
+       * `bindDirect` accepts it only for `kinds: 'any'` and rejects it for a
+       * typed scalar parameter. Flattening would destroy ordinary adjacency.
+       */
       const items = groupItems(value);
       const positional = definition.params.map((param, index) => param.lazy
         ? () => items[index]!
@@ -239,10 +242,13 @@ export function defineFunction(
 export interface FnRegistry {
   /** Register a single fn (overwrites any prior entry with the same name). */
   register(fn: Fn): void;
+
   /** Register every fn in a list (bulk `register`). */
   registerAll(fns: readonly Fn[]): void;
+
   /** Whether a built-in implementation exists for `name`. */
   has(name: string): boolean;
+
   /**
    * Dispatch a call by name over the typed argument group. A VARIADIC fn receives the
    * whole group plus the minimal {@link FnCtx} (modes + the
@@ -256,6 +262,7 @@ export interface FnRegistry {
 /** Create an empty {@link FnRegistry}; the caller populates it via `registerAll`. */
 export function createFnRegistry(): FnRegistry {
   const table = new Map<string, Fn>();
+
   // Keys are stored lower-cased so lookups (also lower-cased) can't silently miss.
   return {
     register(fn) {

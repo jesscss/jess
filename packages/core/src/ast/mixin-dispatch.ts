@@ -30,6 +30,7 @@ import { evalGuard, guardUsesDefault, type TypedResolver, type ValueResolver } f
 export interface CallArg {
   value: CallValue;
   name?: string;
+
   /** [spread] `@args...` — `value` is a list variable to SPLAT into positional
    *  args at the call site before binding (Less variadic-forwarding). */
   spread?: boolean;
@@ -154,10 +155,12 @@ export function bindArgs(
     } else if (pi < positional.length) {
       argVal = resolveEager(positional[pi++]!.value, resolveCaller);
     } else if (p.default !== undefined) {
-      // A default value resolves with the params bound so far in scope (Less:
-      // it can reference an earlier param), overlaid on the mixin's DEFINITION
-      // scope (`@parameter: @parameterDefault` reads the def-scope
-      // `@parameterDefault`, not a same-name caller var) — not the caller frame.
+      /*
+       * A default value resolves with the params bound so far in scope (Less:
+       * it can reference an earlier param), overlaid on the mixin's DEFINITION
+       * scope (`@parameter: @parameterDefault` reads the def-scope
+       * `@parameterDefault`, not a same-name caller var) — not the caller frame.
+       */
       argVal = resolveEagerDefault(p.default, bound, def, resolveCaller, resolveDefault, resolveDefaultBlock);
     } else {
       return null; // required slot unfilled
@@ -170,6 +173,7 @@ export function bindArgs(
       };
       return argVal.then(settled => resumeFixed(carried, at, settled));
     }
+
     // Literal-pattern param: the bound arg bytes must equal the pattern bytes.
     if (p.pattern !== undefined) {
       const patBytes = resolveCaller(p.pattern);
@@ -192,8 +196,11 @@ export function bindArgs(
       }
     }
   }
-  // The ordinary non-variadic call finishes right here, having allocated nothing
-  // beyond the two collections it must return.
+
+  /*
+   * The ordinary non-variadic call finishes right here, having allocated nothing
+   * beyond the two collections it must return.
+   */
   if (!hasRest) {
     if (positional.length - pi > 0) {
       return null; // leftover positional args and no rest param
@@ -241,9 +248,7 @@ function bindFixedFrom(st: BindState, from: number): MaybePromise<Map<string, Ca
     } else if (st.pi < st.positional.length) {
       argVal = resolveEager(st.positional[st.pi++]!.value, st.resolveCaller);
     } else if (p.default !== undefined) {
-      argVal = resolveEagerDefault(
-        p.default, st.bound, st.def, st.resolveCaller, st.resolveDefault, st.resolveDefaultBlock
-      );
+      argVal = resolveEagerDefault(p.default, st.bound, st.def, st.resolveCaller, st.resolveDefault, st.resolveDefaultBlock);
     } else {
       return null;
     }
@@ -305,10 +310,12 @@ function bindRest(st: BindState): MaybePromise<Map<string, CallValue> | null> {
       restSlots.push(value);
     }
     if (restParam.name !== undefined) {
-      // A rest is a list of CALL ARGUMENTS, not a flattened value string. A sole
-      // authored `a b c` argument consequently remains one nested space-list,
-      // while comma/semicolon call groups retain their distinct argument slots
-      // for `length()` and `extract()`.
+      /*
+       * A rest is a list of CALL ARGUMENTS, not a flattened value string. A sole
+       * authored `a b c` argument consequently remains one nested space-list,
+       * while comma/semicolon call groups retain their distinct argument slots
+       * for `length()` and `extract()`.
+       */
       st.bound.set(restParam.name, restSlots);
     }
     for (const slot of restSlots) {
@@ -320,28 +327,35 @@ function bindRest(st: BindState): MaybePromise<Map<string, CallValue> | null> {
 }
 
 function finishBind(st: BindState): Map<string, CallValue> {
-  // `@arguments` (Less special var): the bound value of EVERY variable param slot,
-  // in PARAMETER order — with named args placed in their slot, defaulted slots
-  // filled, all post-eval. This is NOT the raw positional call args: a named-only
-  // call still populates @arguments, defaulted slots appear, and the order follows
-  // the params, not the call. Pattern-literal slots bind no variable and
-  // contribute nothing; an empty variadic slot contributes nothing. Keep those
-  // slots structural so list functions can distinguish a single nested space-list
-  // from several ordinary call arguments.
+  /*
+   * `@arguments` (Less special var): the bound value of EVERY variable param slot,
+   * in PARAMETER order — with named args placed in their slot, defaulted slots
+   * filled, all post-eval. This is NOT the raw positional call args: a named-only
+   * call still populates @arguments, defaulted slots appear, and the order follows
+   * the params, not the call. Pattern-literal slots bind no variable and
+   * contribute nothing; an empty variadic slot contributes nothing. Keep those
+   * slots structural so list functions can distinguish a single nested space-list
+   * from several ordinary call arguments.
+   */
   st.bound.set('arguments', st.argumentSlots);
   return st.bound;
 }
 
 function resolveEager(v: CallValue, resolveCaller: ValueResolver): MaybePromise<CallValue> {
-  // a value-block (anonymous-mixin / collection) arg binds BY REFERENCE (never
-  // byte-flattened) so its body + closure survive to the call site.
+  /*
+   * a value-block (anonymous-mixin / collection) arg binds BY REFERENCE (never
+   * byte-flattened) so its body + closure survive to the call site.
+   */
   if ('type' in v && (isValueBlock(v) || v.type === 'MixinCall')) {
     return v;
   }
-  // A fully typed list carries comparison-relevant item tags (notably compatible
-  // units) and no caller-frame reads. Preserve it by reference just like one typed
-  // literal; any structure containing a reference or computed value still resolves
-  // eagerly in the caller frame below.
+
+  /*
+   * A fully typed list carries comparison-relevant item tags (notably compatible
+   * units) and no caller-frame reads. Preserve it by reference just like one typed
+   * literal; any structure containing a reference or computed value still resolves
+   * eagerly in the caller frame below.
+   */
   if (isTypedGuardValue(v)) {
     return v;
   }
@@ -379,10 +393,13 @@ function resolveEagerDefault(
   if ('type' in v && isValueBlock(v)) {
     return v;
   }
-  // `#m(@map: @some-detached-ruleset)` must bind the BLOCK, not its bytes — the
-  // same by-reference rule an explicitly passed block already gets. Without this
-  // the callee sees a flattened literal and every structural read of the block
-  // (a plugin's `ruleset.rules`, a lookup) fails.
+
+  /*
+   * `#m(@map: @some-detached-ruleset)` must bind the BLOCK, not its bytes — the
+   * same by-reference rule an explicitly passed block already gets. Without this
+   * the callee sees a flattened literal and every structural read of the block
+   * (a plugin's `ruleset.rules`, a lookup) fails.
+   */
   const block = resolveDefaultBlock?.(v, boundSoFar, def);
   if (block !== undefined) {
     return block;
@@ -425,10 +442,12 @@ export function selectDefinitions(
   type Viable = { def: MixinDef; bindings: Map<string, CallValue> | null; order: number };
 
   const guardDeps = (def: MixinDef, bindings: Map<string, CallValue> | null, isDefault: () => boolean) => {
-    // A guard resolves its free variables in the mixin's DEFINITION scope (closure),
-    // so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).
-    // `isDefault` also threads to the resolver so a `default()` OPERAND (`@x =
-    // default()`) folds to the decision, not just a bare `default()` guard term.
+    /*
+     * A guard resolves its free variables in the mixin's DEFINITION scope (closure),
+     * so `makeCalleeTyped` keys the typed resolver off the def (see serialize `dispatch`).
+     * `isDefault` also threads to the resolver so a `default()` OPERAND (`@x =
+     * default()`) folds to the decision, not just a bare `default()` guard term.
+     */
     const typed = makeCalleeTyped(def, bindings, isDefault);
     return { resolveTyped: typed, ev, modes, isDefault };
   };
@@ -466,9 +485,11 @@ export function selectDefinitions(
     return step(0);
   };
 
-  // Arity + literal-pattern pre-filter (guard-independent). Binding a candidate's
-  // arguments can await, so this is a fold too; it stays synchronous for a call
-  // whose arguments are all settled, which is every ordinary call.
+  /*
+   * Arity + literal-pattern pre-filter (guard-independent). Binding a candidate's
+   * arguments can await, so this is a fold too; it stays synchronous for a call
+   * whose arguments are all settled, which is every ordinary call.
+   */
   const viable: Viable[] = [];
   const prefilter = (index: number): MaybePromise<void> => {
     for (; index < candidates.length; index++) {
@@ -515,11 +536,14 @@ export function selectDefinitions(
                 if (selectedWhenDefault.length > 1 || selectedWhenNotDefault.length > 1 || conflictingSingleSelections) {
                   throw new DefaultGuardAmbiguityError();
                 }
-                // No ordinary candidate matched, so Less resolves `default()` to true.
-                // `not(default())` is therefore false and cannot manufacture a fallback
-                // body. The false pass is nevertheless part of ambiguity detection: a
-                // different definition (or several definitions) that would win there makes
-                // the overload set intrinsically ambiguous, even though it is not emitted.
+
+                /*
+                 * No ordinary candidate matched, so Less resolves `default()` to true.
+                 * `not(default())` is therefore false and cannot manufacture a fallback
+                 * body. The false pass is nevertheless part of ambiguity detection: a
+                 * different definition (or several definitions) that would win there makes
+                 * the overload set intrinsically ambiguous, even though it is not emitted.
+                 */
                 for (const v of selectedWhenDefault) {
                   matched.push(v);
                 }
@@ -528,8 +552,11 @@ export function selectDefinitions(
             )
           );
         }
-        // The overwhelmingly common overload set has NO `default()` guard at all;
-        // short-circuit before allocating a predicate, a filter buffer and a join.
+
+        /*
+         * The overwhelmingly common overload set has NO `default()` guard at all;
+         * short-circuit before allocating a predicate, a filter buffer and a join.
+         */
         if (defaultCandidates.length === 0) {
           return matched;
         }

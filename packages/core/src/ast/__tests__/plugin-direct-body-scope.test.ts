@@ -125,11 +125,13 @@ describe('typed Plugin lexical body preparation', () => {
     });
   });
 
-  // GRADUATED — an at-rule prelude used to REJECT an awaitable value ("async
-  // value in an at-rule prelude is unsupported"). The prelude builders now
-  // resolve on the MaybePromise lane, so `@media (min-width: @computed)` works.
-  // The prelude is still emitted before the opening brace, so a settled prelude
-  // costs nothing and the header cannot interleave with the body.
+  /*
+   * GRADUATED — an at-rule prelude used to REJECT an awaitable value ("async
+   * value in an at-rule prelude is unsupported"). The prelude builders now
+   * resolve on the MaybePromise lane, so `@media (min-width: @computed)` works.
+   * The prelude is still emitted before the opening brace, so a settled prelude
+   * costs nothing and the header cannot interleave with the body.
+   */
   it('resolves an async value in a true at-rule prelude', async () => {
     const host: PluginHost = { loadPlugin: () => [asyncFn('probe', 'screen')] };
     const document = stylesheet([

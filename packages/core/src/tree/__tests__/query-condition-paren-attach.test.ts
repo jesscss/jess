@@ -44,11 +44,13 @@ describe('QueryCondition paren attachment', () => {
   });
 
   it('keeps the space before a paren after a bare number (not a function name)', async () => {
-    // `@unknown foo 42 (bar)` — `42` is not a function-name identifier, so the
-    // paren must NOT attach. Regression guard for the eval class-preservation +
-    // function-name check: a QueryCondition whose value changes on eval must stay
-    // a QueryCondition (not degrade to a base Sequence) AND must not attach a paren
-    // to a numeric token.
+    /*
+     * `@unknown foo 42 (bar)` — `42` is not a function-name identifier, so the
+     * paren must NOT attach. Regression guard for the eval class-preservation +
+     * function-name check: a QueryCondition whose value changes on eval must stay
+     * a QueryCondition (not degrade to a base Sequence) AND must not attach a paren
+     * to a numeric token.
+     */
     const out = await render(query([
       keyword('foo', { role: 'keyword' }),
       keyword('42', { role: 'keyword' }),

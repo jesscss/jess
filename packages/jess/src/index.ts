@@ -64,18 +64,25 @@ function valueEvaluatorFor(language: string | undefined): typeof valueEvaluators
 export type ConfigOptions = StylesConfig & {
   /** Output file path for matching against output config options */
   outputFile?: string;
+
   /** Suppress warnings (similar to Less's suppressWarnings option) */
   suppressWarnings?: boolean;
+
   /** Break on first error (stop processing after first error). Default: true */
   breakOnError?: boolean;
+
   /** Show detailed reason and fix in diagnostics. Default: false */
   verbose?: boolean;
+
   /** Deprecation warnings of these types will cause an error to be thrown */
   fatalDeprecations?: Iterable<Deprecation>;
+
   /** Whether to limit repetition of deprecation warnings (max 5). Default: true */
   limitDeprecationRepetition?: boolean;
+
   /** Warning-display config (scalar tier or object). Default tier: `line`. */
   warnings?: WarningsConfigInput;
+
   /** Error-display config (scalar tier or object). Default tier: `frame`. */
   errors?: ErrorsConfigInput;
 };
@@ -187,6 +194,7 @@ type ResolvedRenderConfig = {
   resolvedOutputFilePath?: string;
   jsPluginConfig: JsPluginConfig;
   printOptions: { collapseNesting?: boolean };
+
   /** Dialect of this render's entry source; selects the built-in fn set. */
   language?: string;
 };
@@ -269,11 +277,9 @@ function prepareRootLessSource(source: string, options: RootLessSourceOptions): 
 }
 
 function hasRootLessSourceOptions(options: RootLessSourceOptions): boolean {
-  return Boolean(
-    options.banner
+  return Boolean(options.banner
     || (options.globalVars && Object.keys(options.globalVars).length > 0)
-    || (options.modifyVars && Object.keys(options.modifyVars).length > 0)
-  );
+    || (options.modifyVars && Object.keys(options.modifyVars).length > 0));
 }
 
 function getSearchPaths(options: Record<string, unknown>): string[] | undefined {
@@ -380,19 +386,17 @@ const finalizeRenderProfile = (
   }
   const endedAtMs = nowMs();
   const endedMemory = getMemorySnapshot();
-  console.error(
-    `[jess-profile] ${JSON.stringify({
-      id: profile.id,
-      label: profile.label,
-      metadata: {
-        ...profile.metadata,
-        ...extraMetadata
-      },
-      totalDurationMs: endedAtMs - profile.startedAtMs,
-      totalMemoryDelta: diffMemorySnapshot(profile.startedMemory, endedMemory),
-      phases: profile.phases
-    })}`
-  );
+  console.error(`[jess-profile] ${JSON.stringify({
+    id: profile.id,
+    label: profile.label,
+    metadata: {
+      ...profile.metadata,
+      ...extraMetadata
+    },
+    totalDurationMs: endedAtMs - profile.startedAtMs,
+    totalMemoryDelta: diffMemorySnapshot(profile.startedMemory, endedMemory),
+    phases: profile.phases
+  })}`);
 };
 
 const createConsumerRequire = (fromDir?: string) => {
@@ -508,21 +512,22 @@ export class Compiler {
   private jsPluginFactoryCache = new Map<PluginFactoryCacheKey, Promise<PluginFactoryRecord>>();
   private jsPluginProxyCache = new Map<PluginFactoryCacheKey, LazyPluginInterface>();
   private lessPluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
-  // Native Less plugin hooks are objects supplied by the consumer. Their
-  // identity and order change the adapter's registered function set, so they
-  // are part of its cache identity without serializing executable objects.
+
+  /*
+   * Native Less plugin hooks are objects supplied by the consumer. Their
+   * identity and order change the adapter's registered function set, so they
+   * are part of its cache identity without serializing executable objects.
+   */
   private nativeLessPluginIds = new Map<unknown, number>();
   private nextNativeLessPluginId = 0;
   private jessPluginInstance: PluginInterface | undefined;
   private scssPluginInstance: PluginInterface | undefined;
 
-  constructor(
-    opts: ConfigOptions = {
+  constructor(opts: ConfigOptions = {
       compile: {},
       output: {},
       language: {}
-    }
-  ) {
+    }) {
     this.opts = opts;
     this.baseOptsNormalized = mergeWith(
       createBaseConfig(),
@@ -546,10 +551,13 @@ export class Compiler {
       renderOptions || {},
       arrayConcatCustomizer
     );
-    // Expand the `strict` convenience preset once, on the compile config, so the
-    // bundle it sets (unitMode/equalityMode/leakyScope/allowOverloadedImport)
-    // reaches eval via `context.opts` (contextOptions spreads compile). Individual
-    // options already set always win.
+
+    /*
+     * Expand the `strict` convenience preset once, on the compile config, so the
+     * bundle it sets (unitMode/equalityMode/leakyScope/allowOverloadedImport)
+     * reaches eval via `context.opts` (contextOptions spreads compile). Individual
+     * options already set always win.
+     */
     if (effectiveConfig.compile?.strict) {
       effectiveConfig.compile = applyStrictPreset(effectiveConfig.compile);
     }
@@ -585,13 +593,18 @@ export class Compiler {
       input: configInputPath,
       output: resolvedOutputFilePath
     });
-    // The entry source's dialect: an explicit `language` wins, else the file (or
-    // virtual `.ext`) extension, via the same map option resolution uses.
+
+    /*
+     * The entry source's dialect: an explicit `language` wins, else the file (or
+     * virtual `.ext`) extension, via the same map option resolution uses.
+     */
     const language = parseInput.language ?? inferLanguage(configInputPath);
 
-    // The output `collapseNesting`, honored whether or not an `outputFile`
-    // selects a specific array entry. Returns undefined when nothing sets it —
-    // the caller falls back to the language default.
+    /*
+     * The output `collapseNesting`, honored whether or not an `outputFile`
+     * selects a specific array entry. Returns undefined when nothing sets it —
+     * the caller falls back to the language default.
+     */
     const collapseFromOutput = (): boolean | undefined => {
       const output = effectiveConfig.output;
       if (!Array.isArray(output)) {
@@ -619,10 +632,12 @@ export class Compiler {
         return undefined;
       }
 
-      // No target selects an entry. `activeOptions` already absorbs file-less
-      // defaults entries (via getMatchingOptions), but not `file`-bearing ones —
-      // so honor a file-less default here, else a lone file entry's flag. Stay
-      // out of it when several file entries disagree (fall to the default).
+      /*
+       * No target selects an entry. `activeOptions` already absorbs file-less
+       * defaults entries (via getMatchingOptions), but not `file`-bearing ones —
+       * so honor a file-less default here, else a lone file entry's flag. Stay
+       * out of it when several file entries disagree (fall to the default).
+       */
       if (defaults && 'collapseNesting' in defaults) {
         return defaults.collapseNesting;
       }
@@ -862,8 +877,7 @@ export class Compiler {
           factory.create({
             ...jsConfig,
             runtimeApi: 'less'
-          })
-        );
+          }));
       }
       return lessPluginPromise;
     };
@@ -916,9 +930,12 @@ export class Compiler {
   private buildPlugins(resolved: ResolvedRenderConfig): PluginInterface[] {
     const pluginMap = new Map<string, PluginInterface>();
     const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
-    // Node package lookup is a resolver-plugin capability. It must run before
-    // generic filesystem resolvers turn a bare specifier into an absolute
-    // candidate, while Context continues to own the resolve → locate sequence.
+
+    /*
+     * Node package lookup is a resolver-plugin capability. It must run before
+     * generic filesystem resolvers turn a bare specifier into an absolute
+     * candidate, while Context continues to own the resolve → locate sequence.
+     */
     pluginMap.set('node-modules', nodeModulesPlugin({ basePath: resolutionBaseDir }));
     const coreJessPlugin = this.getOrCreateJessPlugin();
     pluginMap.set(coreJessPlugin.name, coreJessPlugin);
@@ -945,18 +962,19 @@ export class Compiler {
           throw new Error('Configured plugin did not resolve to a valid plugin instance');
         }
         const pluginInstance = plugin;
-        // A configured Less plugin commonly supplies native Less-plugin hooks
-        // for the host test/application. It must not replace the per-render
-        // Less adapter: that adapter carries the resolved language options
-        // (including URL policy) for this particular input. Keep the supplied
-        // hooks and overlay only defined resolved options from this render.
+
+        /*
+         * A configured Less plugin commonly supplies native Less-plugin hooks
+         * for the host test/application. It must not replace the per-render
+         * Less adapter: that adapter carries the resolved language options
+         * (including URL policy) for this particular input. Keep the supplied
+         * hooks and overlay only defined resolved options from this render.
+         */
         if (pluginInstance.name === 'less') {
           const pluginOptions = isObjectRecord(pluginInstance) && isObjectRecord(pluginInstance.opts)
             ? pluginInstance.opts
             : {};
-          const resolvedLessOptions = Object.fromEntries(
-            Object.entries(resolved.lessOptions).filter(([, value]) => value !== undefined)
-          );
+          const resolvedLessOptions = Object.fromEntries(Object.entries(resolved.lessOptions).filter(([, value]) => value !== undefined));
           const nativePlugins = Array.isArray(pluginOptions.plugins) ? pluginOptions.plugins : [];
           pluginMap.set('less', this.getOrCreateLessPlugin({
             ...pluginOptions,
@@ -1003,11 +1021,14 @@ export class Compiler {
       ...resolved.activeOptions,
       ...(searchPaths ? { searchPaths } : {})
     };
-    // Auto-wire @jesscss/plugin-js when it is resolvable: Less `@plugin` and
-    // script-module imports lazily request an importer for the JS/TS extension
-    // via `loadPluginForExtension`. When plugin-js is absent, the proxy factory
-    // returns undefined and core emits the "Install @jesscss/plugin-js" gate.
-    // A user-configured `loadPluginForExtension` (if any) still wins.
+
+    /*
+     * Auto-wire @jesscss/plugin-js when it is resolvable: Less `@plugin` and
+     * script-module imports lazily request an importer for the JS/TS extension
+     * via `loadPluginForExtension`. When plugin-js is absent, the proxy factory
+     * returns undefined and core emits the "Install @jesscss/plugin-js" gate.
+     * A user-configured `loadPluginForExtension` (if any) still wins.
+     */
     const userLoadPluginForExtension = contextOptions.loadPluginForExtension;
     const resolutionBaseDir = getConsumerResolutionBaseDir(resolved.filePath, resolved.configFilePath);
     const autoWireJsPlugin = (extension: string): PluginInterface | undefined => {
@@ -1028,19 +1049,19 @@ export class Compiler {
       return fromUser ?? autoWireJsPlugin(extension);
     };
 
-    // `breakOnError` is a top-level render option (consumed by outputDiagnostics for
-    // display), but eval-time collection-vs-throw also reads it off `context.opts`
-    // (Context.getTree / the spine import fold). Thread it through so a render called
-    // with `breakOnError: false` actually COLLECTS parse/resolution failures instead
-    // of hard-throwing out of the whole render.
+    /*
+     * `breakOnError` is a top-level render option (consumed by outputDiagnostics for
+     * display), but eval-time collection-vs-throw also reads it off `context.opts`
+     * (Context.getTree / the spine import fold). Thread it through so a render called
+     * with `breakOnError: false` actually COLLECTS parse/resolution failures instead
+     * of hard-throwing out of the whole render.
+     */
     if (resolved.effectiveConfig.breakOnError !== undefined) {
       contextOptions.breakOnError = resolved.effectiveConfig.breakOnError;
     }
     const usesDeprecatedDisablePluginRule = Boolean(contextOptions.disablePluginRule);
-    contextOptions.disableScriptModules = Boolean(
-      contextOptions.disableScriptModules
-      || contextOptions.disablePluginRule
-    );
+    contextOptions.disableScriptModules = Boolean(contextOptions.disableScriptModules
+      || contextOptions.disablePluginRule);
     const cfgOutput = typeof resolved.effectiveConfig.output === 'object' && !Array.isArray(resolved.effectiveConfig.output)
       ? resolved.effectiveConfig.output
       : null;
@@ -1072,14 +1093,11 @@ export class Compiler {
   ) {
     const profile = createRenderProfile('prepareRender', { filePath });
     const resolved = measureProfileSync(profile, 'resolveEffectiveConfig', () =>
-      this.resolveEffectiveConfig(filePath, renderOptions, parseInput)
-    );
+      this.resolveEffectiveConfig(filePath, renderOptions, parseInput));
     const plugins = measureProfileSync(profile, 'buildPlugins', () =>
-      this.buildPlugins(resolved)
-    );
+      this.buildPlugins(resolved));
     const context = measureProfileSync(profile, 'createContextFromResolved', () =>
-      this.createContextFromResolved(resolved, plugins)
-    );
+      this.createContextFromResolved(resolved, plugins));
     return { resolved, plugins, context, profile };
   }
 
@@ -1128,8 +1146,7 @@ export class Compiler {
           filePath,
           type: language,
           extension
-        })
-      );
+        }));
       return parsed.node;
     }
     const loaded = shouldPrepareRootLessSource
@@ -1168,8 +1185,7 @@ export class Compiler {
         context,
         pluginHost: context.pluginHost,
         io: { readFile: specifier => context.readBinary(specifier).catch(() => null) }
-      })))
-    );
+      }))));
     let css = result.css;
     for (const plugin of context.plugins || []) {
       if (plugin.runPostProcessors) {

@@ -11,12 +11,10 @@ const lessPkgRoot = path.resolve(repoRoot, '../less.js/packages/less');
 const benchDir = path.join(lessPkgRoot, 'benchmark');
 const preloadPath = path.join(__dirname, 'deno-proof-preload.mjs');
 
-const args = new Map(
-  process.argv.slice(2).map((arg) => {
-    const [key, value = 'true'] = arg.split('=');
-    return [key, value];
-  })
-);
+const args = new Map(process.argv.slice(2).map((arg) => {
+  const [key, value = 'true'] = arg.split('=');
+  return [key, value];
+}));
 
 const files = (args.get('--files') ?? 'benchmark.less,benchmark-v3.less,benchmark-v37.less,benchmark-v39.less')
   .split(',')

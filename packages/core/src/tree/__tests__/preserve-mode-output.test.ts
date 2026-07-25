@@ -11,9 +11,11 @@ describe('Preserve Mode Output Examples', () => {
     return result.render(context);
   }
 
-  // Preserve mode keeps incompatible/compound arithmetic un-collapsed with the
-  // ORIGINAL operands — `calc(l op r)` for `+`/`-`/`*`, and a raw `l / r` for
-  // division that doesn't cancel to a single unit. No fabricated fused units.
+  /*
+   * Preserve mode keeps incompatible/compound arithmetic un-collapsed with the
+   * ORIGINAL operands — `calc(l op r)` for `+`/`-`/`*`, and a raw `l / r` for
+   * division that doesn't cancel to a single unit. No fabricated fused units.
+   */
   it('renders preserve-mode operation outputs through render(context)', async () => {
     await expect(renderOperation([dimension([10, 'px']), '+', dimension([2, 'rem'])]))
       .resolves.toBe('calc(10px + 2rem)');

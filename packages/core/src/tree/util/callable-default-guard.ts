@@ -159,9 +159,12 @@ export async function probeCallableDefaultGuard({
     if (candidateGuard instanceof Condition) {
       return await candidateGuard.evaluateBoolean(context);
     }
-    // Bare (non-Condition) guard bodies resolve to a Bool or a keyword
-    // `true`/`false`; honour both, matching Less (a strict `instanceof Bool`
-    // would drop a keyword-valued guard from a default-overload group).
+
+    /*
+     * Bare (non-Condition) guard bodies resolve to a Bool or a keyword
+     * `true`/`false`; honour both, matching Less (a strict `instanceof Bool`
+     * would drop a keyword-valued guard from a default-overload group).
+     */
     const probeResult = await candidateGuard.eval(context);
     return Condition.resultPasses(probeResult);
   };

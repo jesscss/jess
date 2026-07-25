@@ -20,10 +20,12 @@ import { HEX } from './color.js';
 import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
 
-// SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
-// PARSED literal reaches materialize already typed (its node), so it never touches
-// these; classifying a genuinely-synthetic string here is not re-deriving parser
-// output (the parser never saw it).
+/*
+ * SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
+ * PARSED literal reaches materialize already typed (its node), so it never touches
+ * these; classifying a genuinely-synthetic string here is not re-deriving parser
+ * output (the parser never saw it).
+ */
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
@@ -139,6 +141,7 @@ function sniffBuild(text: string): ValueObj {
     const { rgb, alpha } = parseHex(text);
     return makeColorRgb(rgb, alpha, HEX, { node: text });
   }
+
   // Numeric: ONE family (united or unitless — no split).
   if ((c0 >= 48 && c0 <= 57) || c0 === 43 || c0 === 45 || c0 === 46) {
     if (NUM_RE.test(text)) {
@@ -148,6 +151,7 @@ function sniffBuild(text: string): ValueObj {
   if (text === 'true' || text === 'false') {
     return { type: 'Bool', value: text === 'true', bytes: text };
   }
+
   // A bare identifier that names a CSS color materializes as a Color.
   if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
     const named = namedColor(text);

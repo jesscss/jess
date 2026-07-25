@@ -31,6 +31,7 @@ export class Expression extends Node<Node> {
     location?: NodeLocation
   ) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
     this.addFlag(F_NON_STATIC);
@@ -42,6 +43,7 @@ export class Expression extends Node<Node> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     const out = this.value.eval(context);
+
     /** @todo - Cast as selector if the context is within a selector */
     if (isThenable(out)) {
       return out as Promise<Node>;

@@ -22,6 +22,7 @@ export function getColorFunctionValues(one: Sequence | Dimension, two: Dimension
     one = val[0]!;
     two = val[1]!;
     three = val[2]!;
+
     /**
      * @todo - should this be normalized in
      *   function caller? Or parsed differently?

@@ -41,10 +41,12 @@ describe('Less min()/max()', () => {
   });
 
   it('fails on incompatible units rather than partially reducing', () => {
-    // less.js emits `min(5, 4ex)` here, reducing each unit group and keeping the
-    // survivors — a branch it reaches only when an intervening unitless argument
-    // resets its bookkeeping, so the same expression reduces or is preserved
-    // depending on argument ORDER. Not ported; the engine preserves instead.
+    /*
+     * less.js emits `min(5, 4ex)` here, reducing each unit group and keeping the
+     * survivors — a branch it reaches only when an intervening unitless argument
+     * resets its bookkeeping, so the same expression reduces or is preserved
+     * depending on argument ORDER. Not ported; the engine preserves instead.
+     */
     expect(() => run(true, makeDimension(6, 'em'), makeDimension(5), makeDimension(4, 'ex')))
       .toThrow('min() arguments have incompatible units');
     expect(() => run(false, makeDimension(1, 'px'), makeDimension(2, 'em')))

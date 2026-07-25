@@ -400,9 +400,11 @@ describe('Condition', () => {
       expect(evald.render(context)).toBe('true');
     });
 
-    // Regression (namespacing-7): a keyword `true`/`false` — e.g. read back from a
-    // namespace mixin lookup `#ns.opts[flag]` where `flag: true` — is a bare
-    // Keyword, not a Bool, but Less treats it as boolean in a bare guard.
+    /*
+     * Regression (namespacing-7): a keyword `true`/`false` — e.g. read back from a
+     * namespace mixin lookup `#ns.opts[flag]` where `flag: true` — is a bare
+     * Keyword, not a Bool, but Less treats it as boolean in a bare guard.
+     */
     it('treats a keyword true as a truthy bare guard', async () => {
       let node = condition([any('true')]);
       let evald = await node.eval(context);
@@ -427,8 +429,10 @@ describe('Condition', () => {
       expect(evald.render(context)).toBe('true');
     });
 
-    // `Condition.resultPasses` is what a Ruleset uses for a non-Condition guard
-    // whose eval yields a bare value node.
+    /*
+     * `Condition.resultPasses` is what a Ruleset uses for a non-Condition guard
+     * whose eval yields a bare value node.
+     */
     it('resultPasses honours a keyword true/false result', () => {
       expect(Condition.resultPasses(any('true'))).toBe(true);
       expect(Condition.resultPasses(any('false'))).toBe(false);

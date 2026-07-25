@@ -39,7 +39,10 @@ function isStylesheet(value: unknown): value is Stylesheet {
 function collectUserFunctionNames(node: unknown, into: Set<string>): void {
   if (Array.isArray(node)) {
     for (const child of node) {
-      collectUserFunctionNames(child, into);
+      collectUserFunctionNames(
+        child,
+        into
+      );
     }
     return;
   }
@@ -51,7 +54,10 @@ function collectUserFunctionNames(node: unknown, into: Set<string>): void {
     into.add(node.name);
   }
   for (const key of Object.keys(node)) {
-    collectUserFunctionNames(node[key], into);
+    collectUserFunctionNames(
+      node[key],
+      into
+    );
   }
 }
 
@@ -74,19 +80,32 @@ function argRaw(slot: ValueSlot): string {
  *  so nested user calls inside the args lower first). Non-AST scalars pass through. */
 function rewrite(node: unknown, userFns: Set<string>): unknown {
   if (Array.isArray(node)) {
-    return node.map(child => rewrite(child, userFns));
+    return node.map(child => rewrite(
+      child,
+      userFns
+    ));
   }
   if (!isRecord(node)) {
     return node;
   }
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(node)) {
-    out[key] = rewrite(node[key], userFns);
+    out[key] = rewrite(
+      node[key],
+      userFns
+    );
   }
   if (isFunctionCall(out) && userFns.has(out.name)) {
     const args: CallArg[] = out.args.map(value => ({ value }));
     const raw = `${out.name}(${out.args.map(argRaw).join(', ')})`;
-    return reference(variableReference(out.name, 'live'), [{ type: 'Call', args }], raw);
+    return reference(
+      variableReference(
+        out.name,
+        'live'
+      ),
+      [{ type: 'Call', args }],
+      raw
+    );
   }
   return out;
 }
@@ -97,11 +116,17 @@ function rewrite(node: unknown, userFns: Set<string>): unknown {
  */
 export function lowerUserFunctionCalls(sheet: Stylesheet): Stylesheet {
   const userFns = new Set<string>();
-  collectUserFunctionNames(sheet.children, userFns);
+  collectUserFunctionNames(
+    sheet.children,
+    userFns
+  );
   if (userFns.size === 0) {
     return sheet;
   }
-  const lowered = rewrite(sheet, userFns);
+  const lowered = rewrite(
+    sheet,
+    userFns
+  );
   if (!isStylesheet(lowered)) {
     throw new TypeError('SCSS user-function lowering did not preserve the Stylesheet root.');
   }

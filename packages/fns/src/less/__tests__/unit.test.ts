@@ -10,12 +10,8 @@ describe('unit()', () => {
   });
 
   it('sets unit from Any keyword and Quoted values', () => {
-    const fromAny = unit(
-      makeDimension(5, 'px'), makeKeyword('em')
-    );
-    const fromQuoted = unit(
-      makeDimension(7, 'px'), makeQuoted('ch')
-    );
+    const fromAny = unit(makeDimension(5, 'px'), makeKeyword('em'));
+    const fromQuoted = unit(makeDimension(7, 'px'), makeQuoted('ch'));
     expect(fromAny.number).toBe(5);
     expect(fromAny.unit).toBe('em');
     expect(fromQuoted.number).toBe(7);

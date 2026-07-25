@@ -17,11 +17,9 @@ describe('direct canonical declaration merge', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  box-shadow: navy, white !important;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('resets an important merge member before later merge groups and plain declarations', () => {
@@ -36,12 +34,10 @@ describe('direct canonical declaration merge', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  box-shadow: navy, white !important;\n'
       + '  background: black, gray;\n'
       + '  color: teal;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 });

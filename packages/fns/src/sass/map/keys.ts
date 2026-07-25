@@ -13,9 +13,11 @@ import { isNode, N } from '@jesscss/core';
 const keys = defineFunction(
   'keys',
   function(this: FunctionThis | Context | undefined, map: Collection): List {
-    // A Collection entry's name is either a plain string or an already-built
-    // name node (`Any<'property'>` / `Interpolated<'property'>`). A node is the
-    // key itself; a string becomes an unquoted `Quoted`.
+    /*
+     * A Collection entry's name is either a plain string or an already-built
+     * name node (`Any<'property'>` / `Interpolated<'property'>`). A node is the
+     * key itself; a string becomes an unquoted `Quoted`.
+     */
     const keyNodes: Node[] = [];
     for (const node of map.rules) {
       if (isNode(node, N.Declaration)) {

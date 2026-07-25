@@ -43,25 +43,31 @@ export const LINT_CODES = {
  * loaded from `@vscode/web-custom-data` + `known-css-properties`). */
 export type LintDeps = {
   severityOf(code: string): DiagnosticSeverity | null;
+
   /** Bare, lowercased property name → is it a known CSS property? */
   isKnownProperty(name: string): boolean;
+
   /** Bare, lowercased at-rule name (no `@`) → is it a known CSS at-rule? */
   isKnownAtRule(name: string): boolean;
 };
 
-// Length units where a zero value makes the unit redundant (`0px` → `0`).
-// Percentages, angles, times, resolutions and frequencies are NOT flagged: a
-// bare `0` is not always interchangeable there.
+/*
+ * Length units where a zero value makes the unit redundant (`0px` → `0`).
+ * Percentages, angles, times, resolutions and frequencies are NOT flagged: a
+ * bare `0` is not always interchangeable there.
+ */
 const LENGTH_UNITS = new Set([
   'px', 'em', 'rem', 'ex', 'ch', 'cap', 'ic', 'lh', 'rlh',
   'vw', 'vh', 'vi', 'vb', 'vmin', 'vmax',
   'cm', 'mm', 'q', 'in', 'pt', 'pc'
 ]);
 
-// Dialect at-rules that are legitimate but absent from the CSS at-rule data.
-// The dialect grammars usually give these their OWN grammarType (`ScssMixin`
-// etc.) so they never reach the unknown-at-rule check; this is a safety net for
-// tolerant parses that fall back to a generic `AtRuleBlock`.
+/*
+ * Dialect at-rules that are legitimate but absent from the CSS at-rule data.
+ * The dialect grammars usually give these their OWN grammarType (`ScssMixin`
+ * etc.) so they never reach the unknown-at-rule check; this is a safety net for
+ * tolerant parses that fall back to a generic `AtRuleBlock`.
+ */
 const DIALECT_AT_RULES: Record<JessLangLike, Set<string>> = {
   css: new Set(),
   less: new Set(['plugin']),
@@ -77,8 +83,10 @@ const DIALECT_AT_RULES: Record<JessLangLike, Set<string>> = {
   ])
 };
 
-// Selector-ish children of a Ruleset (used to tell an empty body from a bare
-// selector node when deciding whether a rule has content).
+/*
+ * Selector-ish children of a Ruleset (used to tell an empty body from a bare
+ * selector node when deciding whether a rule has content).
+ */
 const RULESET_TYPES = new Set(['Ruleset']);
 
 // `@forward` prelude forms Jess parses but will never evaluate.

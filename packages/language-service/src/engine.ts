@@ -1,6 +1,9 @@
 import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
-// CST parsing is a language-service capability. Compiler/plugin imports use the
-// root parser entrypoints, which construct canonical AST v2 Stylesheets directly.
+
+/*
+ * CST parsing is a language-service capability. Compiler/plugin imports use the
+ * root parser entrypoints, which construct canonical AST v2 Stylesheets directly.
+ */
 import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
 import { parseJessDoc } from '@jesscss/jess-parser';
@@ -47,12 +50,18 @@ export type JessLang = 'css' | 'less' | 'scss' | 'jess';
 type TrackedDoc = {
   document: TextDocument;
   lang: JessLang;
-  // The language service is syntactic and incremental: Parseman's tolerant CST
-  // is its one source tree. Compiler-facing parser entrypoints build AST v2;
-  // language-service features never reparse through a legacy core tree.
+
+  /*
+   * The language service is syntactic and incremental: Parseman's tolerant CST
+   * is its one source tree. Compiler-facing parser entrypoints build AST v2;
+   * language-service features never reparse through a legacy core tree.
+   */
   cstDoc: ParseDoc<CssCstNode> | null;
-  // Diagnostic counters (test-visible via `_debugState`): how many content
-  // changes took the incremental `.edit()` path vs a full CST rebuild.
+
+  /*
+   * Diagnostic counters (test-visible via `_debugState`): how many content
+   * changes took the incremental `.edit()` path vs a full CST rebuild.
+   */
   editApplied: number;
   fullRebuild: number;
 };
@@ -84,12 +93,14 @@ function parseDocFor(text: string, lang: JessLang): ParseDoc<CssCstNode> {
   return parseCssDoc(text);
 }
 
-// Minimal single-range diff between old and new text: the shared prefix and
-// (non-overlapping) shared suffix pin down one contiguous replaced span, which
-// is exactly the `(from, to, replacement)` shape `ParseDoc.edit` wants. An LSP
-// incremental change is already this shape; when the client hands us only merged
-// full text (the `TextDocuments` manager does), this recovers the same edit so a
-// one-character keystroke stays a one-character `.edit()`.
+/*
+ * Minimal single-range diff between old and new text: the shared prefix and
+ * (non-overlapping) shared suffix pin down one contiguous replaced span, which
+ * is exactly the `(from, to, replacement)` shape `ParseDoc.edit` wants. An LSP
+ * incremental change is already this shape; when the client hands us only merged
+ * full text (the `TextDocuments` manager does), this recovers the same edit so a
+ * one-character keystroke stays a one-character `.edit()`.
+ */
 function diffRange(oldText: string, newText: string): { from: number; to: number; replacement: string } {
   const oldLen = oldText.length;
   const newLen = newText.length;
@@ -107,11 +118,13 @@ function diffRange(oldText: string, newText: string): { from: number; to: number
   return { from: start, to: oldEnd, replacement: newText.slice(start, newEnd) };
 }
 
-// The functional parsers do not expose the legacy Chevrotain `.suggest()`
-// content-assist entry, so completion routing is driven off the document text
-// and the Jess AST (see `getCompletions`) rather than a token-lookahead stream.
-// Kept as a stable no-op so the routing heuristics fall through to their
-// text/AST-based defaults.
+/*
+ * The functional parsers do not expose the legacy Chevrotain `.suggest()`
+ * content-assist entry, so completion routing is driven off the document text
+ * and the Jess AST (see `getCompletions`) rather than a token-lookahead stream.
+ * Kept as a stable no-op so the routing heuristics fall through to their
+ * text/AST-based defaults.
+ */
 function suggestWithJess(_text: string, _lang: JessLang, _offset: number): Array<{ nextTokenType: string }> {
   return [];
 }
@@ -136,8 +149,10 @@ function getCurrentWord(text: string, offset: number): string {
 }
 
 function findPropertyNameBeforeColon(text: string, offset: number): string | null {
-  // Look backwards from offset to find the most recent `:` that's inside a block.
-  // Then extract the property name before that colon.
+  /*
+   * Look backwards from offset to find the most recent `:` that's inside a block.
+   * Then extract the property name before that colon.
+   */
   let depth = 0;
   let colonPos = -1;
   for (let i = Math.min(offset - 1, text.length - 1); i >= 0; i--) {
@@ -189,9 +204,11 @@ function braceDepthBefore(text: string, offset: number): number {
   return depth;
 }
 
-// Conditional-group at-rules whose body may hold nested at-rules AND style rules,
-// so at-rules valid at stylesheet root stay valid inside them (`@font-face` inside
-// `@media` is fine; `@font-face` inside `.a { … }` is not).
+/*
+ * Conditional-group at-rules whose body may hold nested at-rules AND style rules,
+ * so at-rules valid at stylesheet root stay valid inside them (`@font-face` inside
+ * `@media` is fine; `@font-face` inside `.a { … }` is not).
+ */
 const NESTABLE_GROUP_AT = /@(?:media|supports|container|layer|scope|document|-moz-document)\b/i;
 
 /** Is the block enclosing `offset` a STYLE-RULE body (`selector { … }`) rather than
@@ -216,6 +233,7 @@ function enclosingBlockIsStyleRule(text: string, offset: number): boolean {
   if (openAt < 0) {
     return false; // stylesheet root
   }
+
   // The block's header runs back to the previous `{` / `}` / `;`.
   let start = openAt - 1;
   while (start >= 0) {
@@ -272,6 +290,7 @@ function pathCompletions(document: TextDocument, offset: number): CompletionItem
     return null;
   }
   const partial = m[1] ?? '';
+
   // Skip absolute URLs / protocol / data URIs / fragments — nothing on disk.
   if (/^(?:[a-z][\w+.-]*:|\/\/|#|\/)/i.test(partial)) {
     return null;
@@ -319,14 +338,16 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Within `[start, end)` of `text`, find the first whole-identifier occurrence of
-// `ident` and return its absolute offsets. "Whole identifier" = not flanked by a
-// CSS identifier character (letter/digit/hyphen/underscore), so inside `@primary`
-// the `primary` matches but inside `@primary-alt` / `@primaryX` it does not. This
-// is how a node-level span (a reference `@primary`, or a whole declaration
-// `@primary: red;`, or a mixin block `.button() { … }`) is narrowed to just the
-// name token — rename edits and did-you-mean fixes only touch the identifier and
-// leave the sigil / combinator / punctuation in place.
+/*
+ * Within `[start, end)` of `text`, find the first whole-identifier occurrence of
+ * `ident` and return its absolute offsets. "Whole identifier" = not flanked by a
+ * CSS identifier character (letter/digit/hyphen/underscore), so inside `@primary`
+ * the `primary` matches but inside `@primary-alt` / `@primaryX` it does not. This
+ * is how a node-level span (a reference `@primary`, or a whole declaration
+ * `@primary: red;`, or a mixin block `.button() { … }`) is narrowed to just the
+ * name token — rename edits and did-you-mean fixes only touch the identifier and
+ * leave the sigil / combinator / punctuation in place.
+ */
 function findIdentInSpan(text: string, start: number, end: number, ident: string): { start: number; end: number } | null {
   if (!ident) {
     return null;
@@ -340,8 +361,10 @@ function findIdentInSpan(text: string, start: number, end: number, ident: string
   return { start: start + m.index, end: start + m.index + ident.length };
 }
 
-// Small Levenshtein edit distance, capped: powers the "did you mean" quick fix
-// (suggest a declared symbol close to an undefined reference).
+/*
+ * Small Levenshtein edit distance, capped: powers the "did you mean" quick fix
+ * (suggest a declared symbol close to an undefined reference).
+ */
 function editDistance(a: string, b: string): number {
   const al = a.length;
   const bl = b.length;
@@ -367,10 +390,12 @@ function editDistance(a: string, b: string): number {
   return prev[bl]!;
 }
 
-// Data sources:
-// - At-rules: from VS Code's published web custom data (npm package).
-// - Properties: use the same package Less parser uses (`known-css-properties`).
-// - Property values: from web custom data (properties have `values` arrays).
+/*
+ * Data sources:
+ * - At-rules: from VS Code's published web custom data (npm package).
+ * - Properties: use the same package Less parser uses (`known-css-properties`).
+ * - Property values: from web custom data (properties have `values` arrays).
+ */
 const require = createRequire(import.meta.url);
 
 // Shared enrichment fields carried by web-custom-data entries (used in hover).
@@ -387,18 +412,26 @@ type WebCssData = {
   pseudoElements?: PseudoEntry[];
 };
 
-// Host-injectable custom CSS data (MS `setDataProviders` shape) — extra
-// properties / at-rules / pseudos merged into completion + hover per engine.
+/*
+ * Host-injectable custom CSS data (MS `setDataProviders` shape) — extra
+ * properties / at-rules / pseudos merged into completion + hover per engine.
+ */
 export type CustomCssData = WebCssData;
 
 const webCssData: WebCssData = require('@vscode/web-custom-data/data/browsers.css-data.json');
 
 const AT_RULES: string[] = (webCssData.atDirectives ?? []).map(d => d.name).filter(Boolean);
-// At-rules valid ONLY at stylesheet root — never nested at all (not even in a
-// conditional-group like `@media`). `@import`/`@charset` must precede all rules.
+
+/*
+ * At-rules valid ONLY at stylesheet root — never nested at all (not even in a
+ * conditional-group like `@media`). `@import`/`@charset` must precede all rules.
+ */
 const ROOT_ONLY_AT_RULES = new Set(['charset', 'import', 'namespace']);
-// At-rules invalid directly inside a STYLE rule, but fine at root or in a
-// conditional-group (`@font-face` inside `@media` is valid). Mirrors MS filtering.
+
+/*
+ * At-rules invalid directly inside a STYLE rule, but fine at root or in a
+ * conditional-group (`@font-face` inside `@media` is valid). Mirrors MS filtering.
+ */
 const STYLE_RULE_INVALID_AT_RULES = new Set([
   'font-face', 'keyframes', 'page', 'property', 'counter-style',
   'font-feature-values', 'viewport', 'document'
@@ -412,16 +445,22 @@ for (const d of webCssData.atDirectives ?? []) {
 
 const knownCssProperties: { all?: unknown } = require('known-css-properties');
 const CSS_PROPERTIES: string[] = Array.isArray(knownCssProperties.all) ? knownCssProperties.all.filter((v): v is string => typeof v === 'string') : [];
-// Lowercased set for the unknown-property lint (reuses the `known-css-properties`
-// data that also feeds completions). The web-custom-data `PROPERTIES_MAP` is
-// consulted alongside it at lint time for extra coverage.
+
+/*
+ * Lowercased set for the unknown-property lint (reuses the `known-css-properties`
+ * data that also feeds completions). The web-custom-data `PROPERTIES_MAP` is
+ * consulted alongside it at lint time for extra coverage.
+ */
 const CSS_PROPERTY_SET = new Set<string>(CSS_PROPERTIES.map(p => p.toLowerCase()));
 
 // Build property name -> property data map for hover/completions.
 const PROPERTIES_MAP = new Map<string, PropertyEntry>();
 const PROPERTY_VALUES = new Map<string, string[]>();
-// `restrictions` is the value-KIND hint (color/length/timing-function/…) that
-// drives rich value completions — the data MS reads and Jess previously ignored.
+
+/*
+ * `restrictions` is the value-KIND hint (color/length/timing-function/…) that
+ * drives rich value completions — the data MS reads and Jess previously ignored.
+ */
 const PROPERTY_RESTRICTIONS = new Map<string, string[]>();
 for (const prop of webCssData.properties ?? []) {
   if (prop.name) {
@@ -474,13 +513,17 @@ function hoverExtras(entry: Enrich): string {
   return parts.length ? `\n\n${parts.join('  \n')}` : '';
 }
 
-// Value-completion vocab. CSS-wide keywords are valid for every property; the
-// rest are gated on the property's `restrictions`.
+/*
+ * Value-completion vocab. CSS-wide keywords are valid for every property; the
+ * rest are gated on the property's `restrictions`.
+ */
 const CSS_WIDE_KEYWORDS = ['inherit', 'initial', 'unset', 'revert', 'revert-layer'];
 const COLOR_FUNCTIONS = ['rgb()', 'rgba()', 'hsl()', 'hsla()', 'hwb()', 'lab()', 'lch()', 'oklab()', 'oklch()', 'color()'];
+
 // @media prelude vocabulary (feature names + types + logical operators).
 const MEDIA_FEATURES = ['width', 'min-width', 'max-width', 'height', 'min-height', 'max-height', 'aspect-ratio', 'orientation', 'resolution', 'min-resolution', 'max-resolution', 'prefers-color-scheme', 'prefers-reduced-motion', 'prefers-contrast', 'hover', 'any-hover', 'pointer', 'any-pointer', 'display-mode', 'color', 'color-gamut', 'forced-colors', 'scripting'];
 const MEDIA_PRELUDE = [...MEDIA_FEATURES, 'screen', 'print', 'all', 'speech', 'and', 'or', 'not', 'only'];
+
 // Built-in Sass modules (scss/jess) and their members — for `math.<x>` completions.
 const SASS_MODULES: Record<string, string[]> = {
   math: ['abs()', 'ceil()', 'floor()', 'round()', 'div()', 'max()', 'min()', 'percentage()', 'random()', 'clamp()', 'pow()', 'sqrt()', 'hypot()', 'log()', 'sin()', 'cos()', 'tan()', 'compatible()', 'is-unitless()', 'unit()', '$pi', '$e'],
@@ -492,6 +535,7 @@ const SASS_MODULES: Record<string, string[]> = {
   selector: ['append()', 'extend()', 'is-superselector()', 'nest()', 'parse()', 'replace()', 'simple-selectors()', 'unify()']
 };
 const TIMING_FUNCTIONS = ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'cubic-bezier()', 'steps()'];
+
 // Units to append to a numeric prefix, keyed by the property's restriction kind.
 const UNITS_BY_RESTRICTION: Record<string, string[]> = {
   length: ['px', 'em', 'rem', 'vh', 'vw', 'vmin', 'vmax', 'pt', 'cm', 'mm', 'in', 'pc', 'ex', 'ch', 'q'],
@@ -520,6 +564,7 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
       return;
     }
     seen.add(lower);
+
     // A `foo()` completion inserts as a snippet placing the cursor inside the parens.
     const isFn = label.endsWith('()');
     const newText = isFn ? `${label.slice(0, -1)}$1)` : label;
@@ -541,6 +586,7 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
     for (const f of COLOR_FUNCTIONS) {
       add(f, CompletionItemKind.Function);
     }
+
     // Named CSS colors rendered with a swatch (kind Color + hex documentation).
     for (const [name, hex] of Object.entries(colorUtils.colorKeywords)) {
       add(name, CompletionItemKind.Color, hex);
@@ -551,6 +597,7 @@ function buildValueCompletions(propName: string, prefix: string, replaceRange: R
       add(t, CompletionItemKind.Value);
     }
   }
+
   // Units appended to a numeric prefix (`10` → `10px`), per restriction kind.
   if (/^\d*\.?\d+$/.test(prefix)) {
     const units = new Set<string>();
@@ -577,6 +624,7 @@ export type JessLanguageServiceEngine = {
   change(uri: string, version: number, text: string): void;
   edit(uri: string, version: number, changes: ReadonlyArray<{ range?: Range; text: string }>): void;
   close(uri: string): void;
+
   /** Test/diagnostic hook (not LSP): incremental CST tree + edit-path counters. */
   _debugState(uri: string): { cstTree: CssCstNode | null; editApplied: number; fullRebuild: number };
 
@@ -621,6 +669,7 @@ function formatVarName(lang: JessLang, rawName: string): string {
   if (!trimmed) {
     return trimmed;
   }
+
   // Already has a sigil / prefix.
   if (trimmed.startsWith('@') || trimmed.startsWith('$') || trimmed.startsWith('--')) {
     return trimmed;
@@ -692,21 +741,27 @@ function formatStyleSource(source: string): string {
 
 export function createEngine(): JessLanguageServiceEngine {
   const docs = new Map<string, TrackedDoc>();
+
   // Host-injected custom CSS data (setDataProviders), merged into completion/hover.
   let customData: CustomCssData[] = [];
   const customProperties = () => customData.flatMap(d => d.properties ?? []);
   const customAtRules = () => customData.flatMap(d => d.atDirectives ?? []);
+
   // Import graph: maps URI -> Set of imported URIs
   const importGraph = new Map<string, Set<string>>();
+
   // Cached imported documents (loaded from disk)
   const importedDocs = new Map<string, TrackedDoc>();
   let semanticDiagnosticSeverities: Record<string, DiagnosticSeverity> = {
     /* eslint-disable @typescript-eslint/naming-convention */
     'var/undefined': DiagnosticSeverity.Warning,
     'mixin/undefined': DiagnosticSeverity.Warning,
-    // CST lint rules (MS vscode-css-languageservice parity). Keys match
-    // `LINT_CODES`; every rule's severity is settable via `configure()` and
-    // disabled with `ignore`/`off`.
+
+    /*
+     * CST lint rules (MS vscode-css-languageservice parity). Keys match
+     * `LINT_CODES`; every rule's severity is settable via `configure()` and
+     * disabled with `ignore`/`off`.
+     */
     [LINT_CODES.emptyRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
@@ -738,8 +793,10 @@ export function createEngine(): JessLanguageServiceEngine {
     }
   }
 
-  // Raw fetch (no analysis) — for the sync path (`change`/`edit`) that only needs
-  // to update text + the CST doc, deferring the Jess-AST re-derivation.
+  /*
+   * Raw fetch (no analysis) — for the sync path (`change`/`edit`) that only needs
+   * to update text + the CST doc, deferring the Jess-AST re-derivation.
+   */
   function get(uri: string): TrackedDoc {
     const doc = docs.get(uri);
     if (!doc) {
@@ -748,8 +805,10 @@ export function createEngine(): JessLanguageServiceEngine {
     return doc;
   }
 
-  // Rebuild the incremental CST document from scratch (used on open and as the
-  // fallback when an edit can't be expressed as one contiguous range).
+  /*
+   * Rebuild the incremental CST document from scratch (used on open and as the
+   * fallback when an edit can't be expressed as one contiguous range).
+   */
   function rebuildCstDoc(t: TrackedDoc) {
     try {
       t.cstDoc = parseDocFor(t.document.getText(), t.lang);
@@ -817,8 +876,11 @@ export function createEngine(): JessLanguageServiceEngine {
     }
 
     const document = TextDocument.create(importedUri, inferredLang, 0, text);
-    // Imported files are loaded from disk and never edited in place. They still
-    // need a CST doc so symbol features can search across imports.
+
+    /*
+     * Imported files are loaded from disk and never edited in place. They still
+     * need a CST doc so symbol features can search across imports.
+     */
     const tracked: TrackedDoc = { document, lang: inferredLang, cstDoc: null, editApplied: 0, fullRebuild: 0 };
     rebuildCstDoc(tracked);
     importedDocs.set(importedUri, tracked);
@@ -851,14 +913,18 @@ export function createEngine(): JessLanguageServiceEngine {
         if (resolved) {
           const importedUri = String(pathToFileURL(resolved.filePath));
           imports.add(importedUri);
-          // Recursively load imported file (with cycle detection)
-          // If file is already in docs, we still want to track it in the import graph
-          // but we don't need to load it again
+
+          /*
+           * Recursively load imported file (with cycle detection)
+           * If file is already in docs, we still want to track it in the import graph
+           * but we don't need to load it again
+           */
           if (!importedDocs.has(importedUri) && !visited.has(importedUri)) {
             // Check if file is already in docs - if so, use that instead of loading from disk
             const existingDoc = docs.get(importedUri);
             if (existingDoc) {
               importedDocs.set(importedUri, existingDoc);
+
               // Still build import graph for it
               updateImportGraph(importedUri, existingDoc, visited);
             } else {
@@ -876,9 +942,11 @@ export function createEngine(): JessLanguageServiceEngine {
     importGraph.set(uri, imports);
   }
 
-  // Resolve a URI to its CST tree + document, for cross-document symbol search.
-  // Both open (`docs`) and imported (`importedDocs`) files carry an eagerly-built
-  // CST doc; a doc whose CST failed to build (null tree) is skipped.
+  /*
+   * Resolve a URI to its CST tree + document, for cross-document symbol search.
+   * Both open (`docs`) and imported (`importedDocs`) files carry an eagerly-built
+   * CST doc; a doc whose CST failed to build (null tree) is skipped.
+   */
   function cstDocRef(targetUri: string): { doc: TextDocument; tree: CssCstNode } | null {
     const tracked = docs.get(targetUri) ?? importedDocs.get(targetUri);
     const tree = tracked?.cstDoc?.tree;
@@ -888,9 +956,11 @@ export function createEngine(): JessLanguageServiceEngine {
     return { doc: tracked.document, tree };
   }
 
-  // Collect declared CSS custom properties (`--name:`) from a document and all of
-  // its transitive imports, for `var()` completion. Text-mined (cheap + tolerant);
-  // custom properties are a flat global namespace, so cross-import merge is exact.
+  /*
+   * Collect declared CSS custom properties (`--name:`) from a document and all of
+   * its transitive imports, for `var()` completion. Text-mined (cheap + tolerant);
+   * custom properties are a flat global namespace, so cross-import merge is exact.
+   */
   function collectCustomProps(startUri: string): Set<string> {
     const props = new Set<string>();
     const visited = new Set<string>();
@@ -916,8 +986,10 @@ export function createEngine(): JessLanguageServiceEngine {
     return props;
   }
 
-  // Helper: find a symbol's definition across documents (current doc first, then
-  // its imports, depth-first with cycle detection) off the tolerant CST.
+  /*
+   * Helper: find a symbol's definition across documents (current doc first, then
+   * its imports, depth-first with cycle detection) off the tolerant CST.
+   */
   function findDefinitionAcrossDocs(targetUri: string, target: CstSymbol, visited: Set<string>): Location | null {
     if (visited.has(targetUri)) {
       return null; // Cycle detection
@@ -945,9 +1017,11 @@ export function createEngine(): JessLanguageServiceEngine {
     return null;
   }
 
-  // Helper: collect a symbol's references + declaration in a single document's
-  // CST (the caller loops all open + imported docs with a shared `visited` set,
-  // so each doc is processed once regardless of import edges).
+  /*
+   * Helper: collect a symbol's references + declaration in a single document's
+   * CST (the caller loops all open + imported docs with a shared `visited` set,
+   * so each doc is processed once regardless of import edges).
+   */
   function collectReferencesInDoc(targetUri: string, target: CstSymbol, visited: Set<string>, results: Location[]): void {
     if (visited.has(targetUri)) {
       return; // Already processed
@@ -961,12 +1035,14 @@ export function createEngine(): JessLanguageServiceEngine {
     cstCollectReferencesInDoc(ref.tree, ref.doc, targetUri, target, results);
   }
 
-  // Shared resolver behind find-references AND rename: from a cursor position,
-  // resolve the innermost variable/mixin declaration or reference off the CST,
-  // then collect every reference to that symbol across the current + imported +
-  // open docs. Returns the symbol kind, the bare identifier to target inside each
-  // span, and the node-level locations. `findReferences` returns `.locations`
-  // verbatim; rename narrows each location to its identifier via `findIdentInSpan`.
+  /*
+   * Shared resolver behind find-references AND rename: from a cursor position,
+   * resolve the innermost variable/mixin declaration or reference off the CST,
+   * then collect every reference to that symbol across the current + imported +
+   * open docs. Returns the symbol kind, the bare identifier to target inside each
+   * span, and the node-level locations. `findReferences` returns `.locations`
+   * verbatim; rename narrows each location to its identifier via `findIdentInSpan`.
+   */
   function collectReferenceSet(uri: string, position: Position):
     { kind: 'variable' | 'mixin'; refineIdent: string; locations: Location[] } | null {
     const tracked = get(uri);
@@ -993,8 +1069,10 @@ export function createEngine(): JessLanguageServiceEngine {
 
   return {
     configure(config) {
-      // Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
-      // Example: { diagnostics: { severity: { "var/undefined": "error" } } }
+      /*
+       * Expected shape (from client settings): { diagnostics?: { severity?: Record<string, string> } }
+       * Example: { diagnostics: { severity: { "var/undefined": "error" } } }
+       */
       const diagnosticsObj = (config && typeof config === 'object' && 'diagnostics' in config)
         ? config.diagnostics
         : undefined;
@@ -1006,8 +1084,10 @@ export function createEngine(): JessLanguageServiceEngine {
         for (const [k, v] of Object.entries(severity)) {
           const parsed = parseSeverity(v);
           if (parsed === null) {
-            // off/ignore or invalid: delete so the rule is disabled (a missing
-            // key yields no severity at lookup-time, so the rule emits nothing).
+            /*
+             * off/ignore or invalid: delete so the rule is disabled (a missing
+             * key yields no severity at lookup-time, so the rule emits nothing).
+             */
             if (v === 'off' || v === 'ignore') {
               delete next[k];
             }
@@ -1028,9 +1108,11 @@ export function createEngine(): JessLanguageServiceEngine {
       updateImportGraph(uri, tracked);
     },
     change(uri, version, text) {
-      // Full-text change notification (what the `TextDocuments` manager delivers):
-      // recover the minimal contiguous edit vs the previous text and drive the CST
-      // doc through `.edit()`, so a keystroke reparses one subtree, not the file.
+      /*
+       * Full-text change notification (what the `TextDocuments` manager delivers):
+       * recover the minimal contiguous edit vs the previous text and drive the CST
+       * doc through `.edit()`, so a keystroke reparses one subtree, not the file.
+       */
       const tracked = get(uri);
       const oldText = tracked.document.getText();
       const { from, to, replacement } = diffRange(oldText, text);
@@ -1038,14 +1120,16 @@ export function createEngine(): JessLanguageServiceEngine {
       updateImportGraph(uri, tracked);
     },
     edit(uri, version, changes) {
-      // LSP incremental-change form: each change is `{ range?, text }`. A single
-      // ranged change maps directly to one `(from, to, replacement)` `.edit()`.
-      // Anything else (a rangeless full replace, or a multi-range batch that a
-      // single `.edit()` can't express) falls back to a full CST rebuild — still
-      // correct, just not incremental.
+      /*
+       * LSP incremental-change form: each change is `{ range?, text }`. A single
+       * ranged change maps directly to one `(from, to, replacement)` `.edit()`.
+       * Anything else (a rangeless full replace, or a multi-range batch that a
+       * single `.edit()` can't express) falls back to a full CST rebuild — still
+       * correct, just not incremental.
+       */
       const tracked = get(uri);
       const single = changes.length === 1 ? changes[0] : undefined;
-      if (single && single.range) {
+      if (single?.range) {
         const from = tracked.document.offsetAt(single.range.start);
         const to = tracked.document.offsetAt(single.range.end);
         const oldText = tracked.document.getText();
@@ -1061,11 +1145,14 @@ export function createEngine(): JessLanguageServiceEngine {
     close(uri) {
       docs.delete(uri);
       importGraph.delete(uri);
+
       // Note: We keep importedDocs in cache even after close, as they may be referenced by other files
     },
 
-    // Test/diagnostic hook: the incremental CST tree (Parseman relative spans) and
-    // the edit-path counters. Not part of the LSP surface.
+    /*
+     * Test/diagnostic hook: the incremental CST tree (Parseman relative spans) and
+     * the edit-path counters. Not part of the LSP surface.
+     */
     _debugState(uri) {
       const tracked = get(uri);
       return {
@@ -1076,9 +1163,11 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getCompletions(uri, position) {
-      // CST-grounded for the syntactic paths (declared variables/mixins): reads
-      // the tolerant CST (no AST reparse) so completion survives half-typed input.
-      // Property / value / at-rule / pseudo completions are data + text driven.
+      /*
+       * CST-grounded for the syntactic paths (declared variables/mixins): reads
+       * the tolerant CST (no AST reparse) so completion survives half-typed input.
+       * Property / value / at-rule / pseudo completions are data + text driven.
+       */
       const tracked = get(uri);
       const document = tracked.document;
       const text = document.getText();
@@ -1099,17 +1188,21 @@ export function createEngine(): JessLanguageServiceEngine {
         items.push({ label, kind, textEdit: TextEdit.replace(replaceRange, insert ?? label) });
       };
 
-      // 0) Filesystem path completion inside `url(…)` / `@import`/`@use` strings.
-      //    Returns null when not in a path context (fall through to normal logic).
+      /*
+       * 0) Filesystem path completion inside `url(…)` / `@import`/`@use` strings.
+       * Returns null when not in a path context (fall through to normal logic).
+       */
       const pathItems = pathCompletions(document, offset);
       if (pathItems) {
         return { isIncomplete: false, items: pathItems };
       }
 
-      // 0b) Placeholder completions, mined from every placeholder token in the doc
-      //     (defs + prior usages), deduped. SCSS uses the `%name` sigil (after `%`
-      //     / `@extend %`); Jess uses `\\name` (after `\\` / `$extend \\`) — the
-      //     escaped-backslash sigil the scss `%` lowers to.
+      /*
+       * 0b) Placeholder completions, mined from every placeholder token in the doc
+       * (defs + prior usages), deduped. SCSS uses the `%name` sigil (after `%`
+       * / `@extend %`); Jess uses `\\name` (after `\\` / `$extend \\`) — the
+       * escaped-backslash sigil the scss `%` lowers to.
+       */
       const placeholderSigil =
         tracked.lang === 'scss' && currentWord.startsWith('%')
           ? /%[-\w]+/g
@@ -1137,8 +1230,10 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
-      // 0a2) `var(…)` custom-property completion, mined across the document AND its
-      //      transitive imports (custom props are a flat global namespace).
+      /*
+       * 0a2) `var(…)` custom-property completion, mined across the document AND its
+       * transitive imports (custom props are a flat global namespace).
+       */
       {
         const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
         const lineBefore = text.slice(lineStart, offset);
@@ -1155,12 +1250,14 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
-      // 0c) Interpolation-context variable completion: inside Less `@{…}` or Jess
-      //     `${…}` / `$[…]` the sigil is the wrapper, so offer BARE variable
-      //     names. (SCSS `#{$x}` already flows through the `$`-prefixed variable
-      //     path below.) Jess spells interpolation `${…}` in name, selector, and
-      //     string positions and keeps `$[…]` as the value-position lookup, so
-      //     both openers are completion contexts.
+      /*
+       * 0c) Interpolation-context variable completion: inside Less `@{…}` or Jess
+       * `${…}` / `$[…]` the sigil is the wrapper, so offer BARE variable
+       * names. (SCSS `#{$x}` already flows through the `$`-prefixed variable
+       * path below.) Jess spells interpolation `${…}` in name, selector, and
+       * string positions and keeps `$[…]` as the value-position lookup, so
+       * both openers are completion contexts.
+       */
       {
         const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
         const lineBefore = text.slice(lineStart, offset);
@@ -1180,8 +1277,10 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
-      // 1) Variable completions: Less @var, SCSS $var, CSS custom properties --x.
-      // .jess uses `$`-sigil variables like SCSS (both parse to VarDeclaration/Reference).
+      /*
+       * 1) Variable completions: Less @var, SCSS $var, CSS custom properties --x.
+       * .jess uses `$`-sigil variables like SCSS (both parse to VarDeclaration/Reference).
+       */
       const scssLike = tracked.lang === 'scss' || tracked.lang === 'jess';
       const wantVar =
         tracked.lang === 'less'
@@ -1204,8 +1303,10 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
-      // 2) SCSS mixin completions after `@include ` — reuses the CST declared-mixin
-      //    inventory (same one the did-you-mean quick fix uses).
+      /*
+       * 2) SCSS mixin completions after `@include ` — reuses the CST declared-mixin
+       * inventory (same one the did-you-mean quick fix uses).
+       */
       if (tracked.lang === 'scss' && cstTree && /@include\s+$/.test(before)) {
         for (const name of cstDeclaredSymbols(cstTree, document).mixins) {
           if (prefix && !name.toLowerCase().startsWith(prefix)) {
@@ -1216,9 +1317,11 @@ export function createEngine(): JessLanguageServiceEngine {
         return { isIncomplete: false, items };
       }
 
-      // 2b) Less/Jess mixin-call completions: `.foo(` inside a rule block (a `.foo`
-      //     at top level is a selector definition, so gate on nesting depth). Jess
-      //     reuses Less-style `.name() { … }` mixins (grammarType `Mixin`).
+      /*
+       * 2b) Less/Jess mixin-call completions: `.foo(` inside a rule block (a `.foo`
+       * at top level is a selector definition, so gate on nesting depth). Jess
+       * reuses Less-style `.name() { … }` mixins (grammarType `Mixin`).
+       */
       if ((tracked.lang === 'less' || tracked.lang === 'jess') && cstTree && currentWord.startsWith('.') && braceDepthBefore(text, offset) > 0) {
         const bare = currentWord.slice(1).toLowerCase();
         for (const name of cstDeclaredSymbols(cstTree, document).mixins) {
@@ -1286,8 +1389,10 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
-      // 3) Pseudo-class / -element completions: a `:`/`::` in SELECTOR position —
-      //    i.e. the colon is NOT a declaration value colon after a known property.
+      /*
+       * 3) Pseudo-class / -element completions: a `:`/`::` in SELECTOR position —
+       * i.e. the colon is NOT a declaration value colon after a known property.
+       */
       if (text.charAt(wordStart - 1) === ':') {
         const doubleColon = text.charAt(wordStart - 2) === ':';
         const propBeforeColon = findPropertyNameBeforeColon(text, offset);
@@ -1299,6 +1404,7 @@ export function createEngine(): JessLanguageServiceEngine {
             if (prefix && !bare.toLowerCase().startsWith(prefix)) {
               continue;
             }
+
             // Insert the bare name — the `:`/`::` the user typed is before wordStart.
             push(name, doubleColon ? CompletionItemKind.Function : CompletionItemKind.Value, bare);
           }
@@ -1308,8 +1414,10 @@ export function createEngine(): JessLanguageServiceEngine {
         }
       }
 
-      // 4) At-rule names — context-filtered: inside a style rule, hide at-rules
-      //    that are only valid at stylesheet root (or in a conditional-group).
+      /*
+       * 4) At-rule names — context-filtered: inside a style rule, hide at-rules
+       * that are only valid at stylesheet root (or in a conditional-group).
+       */
       if (wantsAt) {
         const nested = braceDepthBefore(text, offset) > 0;
         const inStyleRule = nested && enclosingBlockIsStyleRule(text, offset);
@@ -1458,10 +1566,12 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     findDefinition(uri, position) {
-      // CST-grounded (Option B): resolve the symbol under the cursor off the
-      // tolerant CST (no AST reparse), then search the current doc + its imports
-      // for its declaration. Only a REFERENCE navigates (a cursor on a
-      // declaration has nothing to go to), matching the AST behavior.
+      /*
+       * CST-grounded (Option B): resolve the symbol under the cursor off the
+       * tolerant CST (no AST reparse), then search the current doc + its imports
+       * for its declaration. Only a REFERENCE navigates (a cursor on a
+       * declaration has nothing to go to), matching the AST behavior.
+       */
       const tracked = get(uri);
       const document = tracked.document;
       const tree = tracked.cstDoc?.tree;
@@ -1471,7 +1581,7 @@ export function createEngine(): JessLanguageServiceEngine {
 
       const offset = document.offsetAt(position);
       const sym = cstSymbolAtOffset(tree, document, offset);
-      if (!sym || sym.role !== 'reference') {
+      if (sym?.role !== 'reference') {
         return null;
       }
 
@@ -1483,8 +1593,10 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     findDocumentHighlights(uri, position) {
-      // Highlight all occurrences of the symbol under the cursor in THIS document
-      // (reuses the reference resolver, scoped to the current file).
+      /*
+       * Highlight all occurrences of the symbol under the cursor in THIS document
+       * (reuses the reference resolver, scoped to the current file).
+       */
       const set = collectReferenceSet(uri, position);
       if (!set) {
         return [];
@@ -1516,8 +1628,11 @@ export function createEngine(): JessLanguageServiceEngine {
       if (!r) {
         return null;
       }
-      // Only offer rename when the cursor is on the symbol itself (its sigil or
-      // name), not elsewhere in a wider declaration span (e.g. on the value).
+
+      /*
+       * Only offer rename when the cursor is on the symbol itself (its sigil or
+       * name), not elsewhere in a wider declaration span (e.g. on the value).
+       */
       if (offset < from || offset > r.end) {
         return null;
       }
@@ -1529,10 +1644,13 @@ export function createEngine(): JessLanguageServiceEngine {
       if (!set || set.locations.length === 0) {
         return null;
       }
-      // Normalize the requested name to a bare identifier: only the name token is
-      // rewritten at each site, so the sigil (`@`/`$`) or mixin combinator (`.`/`#`)
-      // already present in the source is preserved. A user who types a sigil is
-      // tolerated (it is stripped).
+
+      /*
+       * Normalize the requested name to a bare identifier: only the name token is
+       * rewritten at each site, so the sigil (`@`/`$`) or mixin combinator (`.`/`#`)
+       * already present in the source is preserved. A user who types a sigil is
+       * tolerated (it is stripped).
+       */
       const clean = newName.trim().replace(/^[@$.#]+/, '').replace(/\(\s*\)\s*$/, '').trim();
       if (!clean) {
         return null;
@@ -1567,9 +1685,11 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getDocumentSymbols(uri) {
-      // CST-grounded (Option B): the tolerant, incremental CST powers the
-      // outline, so it survives half-typed input where the eval AST yields
-      // nothing. No AST reparse needed (uses the eagerly-synced cstDoc).
+      /*
+       * CST-grounded (Option B): the tolerant, incremental CST powers the
+       * outline, so it survives half-typed input where the eval AST yields
+       * nothing. No AST reparse needed (uses the eagerly-synced cstDoc).
+       */
       const tracked = get(uri);
       const tree = tracked.cstDoc?.tree;
       if (!tree) {
@@ -1612,9 +1732,11 @@ export function createEngine(): JessLanguageServiceEngine {
         };
       };
 
-      // ParseDoc is the parser's editor-facing result: recovery errors and a
-      // hard failure are already absolute, so report the first one rather than
-      // reparsing through an obsolete AST result.
+      /*
+       * ParseDoc is the parser's editor-facing result: recovery errors and a
+       * hard failure are already absolute, so report the first one rather than
+       * reparsing through an obsolete AST result.
+       */
       const parseError = cstDoc.errors[0];
       if (parseError) {
         diagnostics.push({
@@ -1647,9 +1769,11 @@ export function createEngine(): JessLanguageServiceEngine {
           isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
         }));
 
-        // Undefined-name diagnostics are editor heuristics, not compiler
-        // evaluation. Keep them CST/source-grounded: declarations come from the
-        // tolerant tree and every occurrence retains its exact source span.
+        /*
+         * Undefined-name diagnostics are editor heuristics, not compiler
+         * evaluation. Keep them CST/source-grounded: declarations come from the
+         * tolerant tree and every occurrence retains its exact source span.
+         */
         if (tracked.lang !== 'css') {
           const declared = cstDeclaredSymbols(tree, doc);
           const modern = tracked.lang === 'scss'
@@ -1720,6 +1844,7 @@ export function createEngine(): JessLanguageServiceEngine {
       const tracked = get(uri);
       const tree = tracked.cstDoc?.tree;
       const structural = tree ? cstFoldingRanges(tree, tracked.document) : [];
+
       // Region markers fold independently of structure (and survive invalid input).
       return structural.concat(regionFoldingRanges(tracked.document));
     },
@@ -1734,11 +1859,13 @@ export function createEngine(): JessLanguageServiceEngine {
     },
 
     getCodeActions(uri, _range, context) {
-      // CST-grounded for the SYNTACTIC paths: the declared-symbol inventory
-      // behind "did you mean" reads the tolerant CST (no AST reparse), and the
-      // undefined identifier is recovered from the diagnostic message. The
-      // create-variable / create-mixin fixes are pure text edits. All of this
-      // survives an otherwise-invalid document.
+      /*
+       * CST-grounded for the SYNTACTIC paths: the declared-symbol inventory
+       * behind "did you mean" reads the tolerant CST (no AST reparse), and the
+       * undefined identifier is recovered from the diagnostic message. The
+       * create-variable / create-mixin fixes are pure text edits. All of this
+       * survives an otherwise-invalid document.
+       */
       const tracked = get(uri);
       const doc = tracked.document;
       const actions: CodeAction[] = [];
@@ -1768,8 +1895,10 @@ export function createEngine(): JessLanguageServiceEngine {
         return scored.slice(0, 3).map(s => s.n);
       };
 
-      // Rewrite just the identifier inside a diagnostic range, keeping the sigil /
-      // combinator, and yield a "Change to X" quick fix per close-by candidate.
+      /*
+       * Rewrite just the identifier inside a diagnostic range, keeping the sigil /
+       * combinator, and yield a "Change to X" quick fix per close-by candidate.
+       */
       const pushDidYouMean = (diag: Diagnostic, undefinedIdent: string, pool: Set<string>) => {
         if (!diag.range) {
           return;
@@ -1800,8 +1929,10 @@ export function createEngine(): JessLanguageServiceEngine {
       for (const diag of diagnostics) {
         const code = String(diag?.code ?? '');
         if (code === 'var/undefined') {
-          // The undefined name is carried by the diagnostic message (produced by
-          // getDiagnostics), so no AST node lookup is needed.
+          /*
+           * The undefined name is carried by the diagnostic message (produced by
+           * getDiagnostics), so no AST node lookup is needed.
+           */
           const raw = String(diag?.message ?? '').match(/Undefined variable\s+(.+)$/)?.[1] ?? '';
           const name = raw.trim() || 'var';
 
@@ -1887,8 +2018,7 @@ export function createEngine(): JessLanguageServiceEngine {
       const start = doc.offsetAt(range.start);
       const end = doc.offsetAt(range.end);
       const topLevelRules = buildCstIndex(tree).nodes.filter(({ node, start: nodeStart, end: nodeEnd }) =>
-        node.grammarType === 'Ruleset' && nodeStart < end && nodeEnd > start
-      );
+        node.grammarType === 'Ruleset' && nodeStart < end && nodeEnd > start);
       if (topLevelRules.length === 0) {
         return [];
       }
@@ -1975,8 +2105,10 @@ export function createEngine(): JessLanguageServiceEngine {
         });
       };
 
-      // 1) url(...) links (quoted or unquoted)
-      // We keep this regex conservative to avoid false positives.
+      /*
+       * 1) url(...) links (quoted or unquoted)
+       * We keep this regex conservative to avoid false positives.
+       */
       const urlRe = /url\(\s*(?:'([^']+)'|"([^"]+)"|([^) \t\r\n]+))\s*\)/g;
       for (let m: RegExpExecArray | null; (m = urlRe.exec(text));) {
         const raw = m[1] ?? m[2] ?? m[3] ?? '';
@@ -1990,8 +2122,10 @@ export function createEngine(): JessLanguageServiceEngine {
         pushLink(start, end, raw);
       }
 
-      // 2) @import/@use links (tolerant extraction + real resolution).
-      // Skip links for imports with interpolations (they're not static file links)
+      /*
+       * 2) @import/@use links (tolerant extraction + real resolution).
+       * Skip links for imports with interpolations (they're not static file links)
+       */
       const fromFilePath = (() => {
         try {
           return doc.uri.startsWith('file:') ? fileURLToPath(doc.uri) : null;
@@ -2004,8 +2138,10 @@ export function createEngine(): JessLanguageServiceEngine {
         const start = imp.specifierRange.startOffset;
         const end = imp.specifierRange.endOffset;
 
-        // Check if this import specifier contains interpolations
-        // Look for @{...} pattern in the specifier text
+        /*
+         * Check if this import specifier contains interpolations
+         * Look for @{...} pattern in the specifier text
+         */
         const specifierText = text.substring(start, end);
         const hasInterpolation = /@\{[^}]+\}/.test(specifierText);
 

@@ -77,6 +77,7 @@ describe('Sass map functions', () => {
       const value = new Num(2);
       const result = (set as RuntimeFunction).call(context, map, key, value);
       expect(result).toBeInstanceOf(Collection);
+
       // Check that both keys exist
       const getA = (get as RuntimeFunction).call(context, result, new Any('a', { role: 'property' }));
       const getB = (get as RuntimeFunction).call(context, result, new Any('b', { role: 'property' }));
@@ -98,6 +99,7 @@ describe('Sass map functions', () => {
       const key = new Any('b', { role: 'property' });
       const value = new Num(2);
       const result = (set as RuntimeFunction).call(context, map, key, value);
+
       // Original should still have only 'a'
       const originalA = (get as RuntimeFunction).call(context, map, new Any('a', { role: 'property' }));
       expect((originalA as Num).number).toBe(1);

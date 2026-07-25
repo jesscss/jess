@@ -10,9 +10,7 @@ export async function activate(context: vscode.ExtensionContext) {
     return;
   }
 
-  const serverModule = context.asAbsolutePath(
-    path.join('..', 'language-service', 'lib', 'server.js')
-  );
+  const serverModule = context.asAbsolutePath(path.join('..', 'language-service', 'lib', 'server.js'));
 
   const serverOptions: ServerOptions = {
     run: { module: serverModule, transport: TransportKind.stdio },
@@ -25,6 +23,7 @@ export async function activate(context: vscode.ExtensionContext) {
       { scheme: 'file', language: 'less' },
       { scheme: 'file', language: 'scss' }
     ],
+
     // Keep it simple for now; we can add config sync later.
     synchronize: {}
   };

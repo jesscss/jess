@@ -135,9 +135,8 @@ describe('processExtends function (eval flow)', () => {
       const outerRuleset = evald.rules[0] as Ruleset | undefined;
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const nestedRuleset = outerRuleset?.rules?.[0] as Ruleset | undefined;
-      expect(outerRuleset?.selector?.valueOf()).toBe(
-        ':is(.replace,.rep_ace):is(.replace,.rep_ace),.c:is(.replace,.rep_ace)+:is(.replace,.rep_ace)'
-      );
+      expect(outerRuleset?.selector?.valueOf()).toBe(':is(.replace,.rep_ace):is(.replace,.rep_ace),.c:is(.replace,.rep_ace)+:is(.replace,.rep_ace)');
+
       // Selector list order may vary; all three must be present
       const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
       expect(nestedSel).toContain('.replace');
@@ -167,9 +166,7 @@ describe('processExtends function (eval flow)', () => {
       const evald = await root.eval(context);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const firstRuleset = evald.rules[0] as Ruleset | undefined;
-      expect(firstRuleset?.selector?.valueOf()).toBe(
-        ':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz'
-      );
+      expect(firstRuleset?.selector?.valueOf()).toBe(':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
     });
   });
 

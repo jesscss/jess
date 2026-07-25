@@ -36,8 +36,10 @@ function uriFor(lang: Lang): string {
 }
 
 describe('Parseman .edit() incremental sync — equivalence oracle', () => {
-  // Each case: initial source + a sequence of single-range edits expressed as
-  // (from, to, replacement) byte offsets against the CURRENT text.
+  /*
+   * Each case: initial source + a sequence of single-range edits expressed as
+   * (from, to, replacement) byte offsets against the CURRENT text.
+   */
   const cases: Record<Lang, { initial: string; edits: Array<[number, number, string]> }> = {
     css: {
       initial: 'a { color: red; }\n.b { width: 10px; }\n',
@@ -79,13 +81,18 @@ describe('Parseman .edit() incremental sync — equivalence oracle', () => {
         const to = to0 < 0 ? text.length : to0;
         text = text.slice(0, from) + repl + text.slice(to);
         version++;
-        // Full-text change notification — the engine recovers the minimal edit and
-        // drives ParseDoc.edit() under the hood.
+
+        /*
+         * Full-text change notification — the engine recovers the minimal edit and
+         * drives ParseDoc.edit() under the hood.
+         */
         engine.change(uri, version, text);
       }
 
-      // Oracle 1: the incrementally-synced CST equals a from-scratch parse of the
-      // final text (compare against a fresh engine opened on that exact text).
+      /*
+       * Oracle 1: the incrementally-synced CST equals a from-scratch parse of the
+       * final text (compare against a fresh engine opened on that exact text).
+       */
       const fresh = createEngine();
       fresh.open(uri, lang, 1, text);
       expect(cstKey(engine._debugState(uri).cstTree)).toEqual(cstKey(fresh._debugState(uri).cstTree));
@@ -132,6 +139,7 @@ describe('Parseman .edit() incremental sync — equivalence oracle', () => {
     engine.open(uri, 'scss', 1, initial);
 
     const doc = TextDocument.create(uri, 'scss', 1, initial);
+
     // Two disjoint ranges in one notification — not expressible as one .edit().
     const c1 = { range: Range.create(doc.positionAt(4), doc.positionAt(7)), text: 'green' };
     const c2 = { range: Range.create(doc.positionAt(0), doc.positionAt(0)), text: '// top\n' };
@@ -146,10 +154,12 @@ describe('Parseman .edit() incremental sync — equivalence oracle', () => {
   });
 
   it('rename multi-site edits re-sync incrementally via .edit() and match a full reparse', () => {
-    // Dogfood: a rename touches N sites; feeding each site back through the LSP
-    // incremental `edit()` entry drives ParseDoc.edit() once per site. The oracle
-    // is that the incrementally-synced CST (and observable analysis) after the
-    // whole multi-site rename equals a from-scratch parse of the renamed text.
+    /*
+     * Dogfood: a rename touches N sites; feeding each site back through the LSP
+     * incremental `edit()` entry drives ParseDoc.edit() once per site. The oracle
+     * is that the incrementally-synced CST (and observable analysis) after the
+     * whole multi-site rename equals a from-scratch parse of the renamed text.
+     */
     const engine = createEngine();
     const uri = uriFor('less');
     const initial = '@primary: red;\n.a { color: @primary; }\n.b { border-color: @primary; }\n';
@@ -163,8 +173,10 @@ describe('Parseman .edit() incremental sync — equivalence oracle', () => {
     const changes = workspaceEdit?.changes?.[uri] ?? [];
     expect(changes.length).toBe(3);
 
-    // Offsets in `changes` are against `initial`. Apply right-to-left so each
-    // higher-offset edit does not invalidate the lower-offset ranges still pending.
+    /*
+     * Offsets in `changes` are against `initial`. Apply right-to-left so each
+     * higher-offset edit does not invalidate the lower-offset ranges still pending.
+     */
     const refDoc = TextDocument.create(uri, 'less', 1, initial);
     const ordered = [...changes].sort((a, b) => refDoc.offsetAt(b.range.start) - refDoc.offsetAt(a.range.start));
 
@@ -200,8 +212,10 @@ describe('Parseman .edit() incremental sync — equivalence oracle', () => {
       const uri = uriFor(lang);
       engine.open(uri, lang, 1, 'a { color: red; }\n');
 
-      // A sequence that passes through several malformed intermediate states:
-      // unbalanced brace, unterminated comment, stray tokens.
+      /*
+       * A sequence that passes through several malformed intermediate states:
+       * unbalanced brace, unterminated comment, stray tokens.
+       */
       const badEdits: Array<[number, number, string]> = [
         [17, 17, '\n.b { '],        // open a block, never close
         [-1, -1, 'color: ;;; )'],   // stray/invalid value tokens
@@ -217,6 +231,7 @@ describe('Parseman .edit() incremental sync — equivalence oracle', () => {
         text = text.slice(0, from) + repl + text.slice(to);
         version++;
         expect(() => engine.change(uri, version, text)).not.toThrow();
+
         // Every query still works and never throws.
         expect(() => engine.getDiagnostics(uri)).not.toThrow();
         expect(() => engine.getDocumentSymbols(uri)).not.toThrow();

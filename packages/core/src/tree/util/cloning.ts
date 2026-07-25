@@ -52,10 +52,13 @@ function copyForPlacement(
   if (!options.owned && canReuseLeaf(node)) {
     return reuseLeaf(node);
   }
-  // A Selector's placement clone SHARES its child selectors (frozen) instead of
-  // deep-copying them: `Selector.inherit()` adopts each child, but the frozen bit
-  // makes `adopt` skip the reparent, so the shared SOURCE children keep their
-  // canonical `.parent` and are not mutated. Scalar leaves are still reused.
+
+  /*
+   * A Selector's placement clone SHARES its child selectors (frozen) instead of
+   * deep-copying them: `Selector.inherit()` adopts each child, but the frozen bit
+   * makes `adopt` skip the reparent, so the shared SOURCE children keep their
+   * canonical `.parent` and are not mutated. Scalar leaves are still reused.
+   */
   if (node instanceof Selector) {
     return node.cloneForPlacement({
       reuseLeaves: true,

@@ -129,21 +129,15 @@ describe('Extend render', () => {
     const originalBClone = parentB.clone;
     const originalChildClone = child.clone;
     let sourceLeafClones = 0;
-    parentA.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalAClone>
-    ): ReturnType<typeof originalAClone> {
+    parentA.clone = function cloneForCounting(...args: Parameters<typeof originalAClone>): ReturnType<typeof originalAClone> {
       sourceLeafClones++;
       return originalAClone.apply(this, args);
     };
-    parentB.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalBClone>
-    ): ReturnType<typeof originalBClone> {
+    parentB.clone = function cloneForCounting(...args: Parameters<typeof originalBClone>): ReturnType<typeof originalBClone> {
       sourceLeafClones++;
       return originalBClone.apply(this, args);
     };
-    child.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalChildClone>
-    ): ReturnType<typeof originalChildClone> {
+    child.clone = function cloneForCounting(...args: Parameters<typeof originalChildClone>): ReturnType<typeof originalChildClone> {
       sourceLeafClones++;
       return originalChildClone.apply(this, args);
     };

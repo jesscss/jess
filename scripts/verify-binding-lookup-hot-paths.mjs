@@ -117,9 +117,12 @@ let failed = false;
 
 for (const check of checks) {
   const checkPath = resolve(root, check.file);
-  // A guarded file that no longer exists cannot contain a forbidden pattern; the
-  // repo-wide scan below still enforces the same rules across whatever replaced
-  // it. Skip rather than crash so the gate stays runnable after refactors.
+
+  /*
+   * A guarded file that no longer exists cannot contain a forbidden pattern; the
+   * repo-wide scan below still enforces the same rules across whatever replaced
+   * it. Skip rather than crash so the gate stays runnable after refactors.
+   */
   if (!existsSync(checkPath)) {
     console.log(`- skip ${check.label} (${check.file} no longer exists; covered by repo-wide scan)`);
     continue;

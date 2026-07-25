@@ -13,6 +13,7 @@ export function createTestContext(): Context {
     supportedExtensions: ['.jess'],
     resolve(filePath: string | string[], currentDir: string) {
       const paths = Array.isArray(filePath) ? filePath : [filePath];
+
       // Resolve all paths to absolute paths
       return paths.map((p) => {
         // If already absolute, return as-is
@@ -29,18 +30,23 @@ export function createTestContext(): Context {
         if (ctx.sourceTrees.has(candidate)) {
           return candidate;
         }
+
         // Try resolving relative to currentDir
         const absPath = resolve(currentDir, candidate);
         if (ctx.sourceTrees.has(absPath)) {
           return absPath;
         }
+
         // Also try resolving relative to process.cwd() as fallback
         const cwdPath = resolve(process.cwd(), candidate);
         if (ctx.sourceTrees.has(cwdPath)) {
           return cwdPath;
         }
-        // Check if any sourceTree key ends with the candidate filename
-        // (handles cases where path resolution differs)
+
+        /*
+         * Check if any sourceTree key ends with the candidate filename
+         * (handles cases where path resolution differs)
+         */
         const candidateName = candidate.split('/').pop() || candidate;
         for (const [key] of ctx.sourceTrees) {
           if (key.endsWith(candidateName) || key.endsWith(candidate)) {

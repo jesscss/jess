@@ -54,9 +54,12 @@ export const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
  */
 export function percentAmount(value: ValueObj, max = 100): number {
   const d = requireDimension(value);
-  // A foreign unit is TOLERATED, not rejected: `invert/legacy.hrx` has
-  // `color.invert(turquoise, 10px)` → `rgb(76.7, 204.7, 191.9)`, i.e. `10px`
-  // read as 10%, emitting a `function-units` deprecation rather than an error.
+
+  /*
+   * A foreign unit is TOLERATED, not rejected: `invert/legacy.hrx` has
+   * `color.invert(turquoise, 10px)` → `rgb(76.7, 204.7, 191.9)`, i.e. `10px`
+   * read as 10%, emitting a `function-units` deprecation rather than an error.
+   */
   if (d.number < 0 || d.number > max) {
     throw new RangeError(`$amount: Expected ${d.bytes} to be within 0% and ${max}%.`);
   }
@@ -316,8 +319,11 @@ export function makeHsl(args: readonly (ValueGroup | undefined)[], modernSyntax:
   const items = channelSlots(args);
   requireArity(items, [3, 4], 'hsl');
   const h = normalizeHue(requireDimension(requireValue(items[0])));
-  // Saturation/lightness read their NUMBER as the percentage regardless of unit —
-  // `hsl(0, 50, 50%)` and `hsl(0, 50in, 50%)` both give `hsl(0, 50%, 50%)`.
+
+  /*
+   * Saturation/lightness read their NUMBER as the percentage regardless of unit —
+   * `hsl(0, 50, 50%)` and `hsl(0, 50in, 50%)` both give `hsl(0, 50%, 50%)`.
+   */
   const s = Math.max(0, requireDimension(requireValue(items[1])).number / 100);
   const l = Math.max(0, requireDimension(requireValue(items[2])).number / 100);
   const alpha = items[3] !== undefined ? alphaOf(items[3]) : 1;

@@ -40,14 +40,15 @@ export interface OutputTestConfig {
  * @param lessFilePath - Path to the LESS file
  * @returns Single output config, or array of output configs if multiple outputs defined
  */
-export function getExpectedOutputFiles(
-  lessFilePath: string
-): OutputTestConfig | OutputTestConfig[] {
+export function getExpectedOutputFiles(lessFilePath: string): OutputTestConfig | OutputTestConfig[] {
   // getConfig expects a directory, so pass the directory of the less file
   const config = getConfig(path.dirname(lessFilePath));
   const outputConfig = config.output;
-  // Preserve non-output config (compile/language/etc.) so fixture-level styles.config
-  // can drive compiler behavior in tests.
+
+  /*
+   * Preserve non-output config (compile/language/etc.) so fixture-level styles.config
+   * can drive compiler behavior in tests.
+   */
   const { output: outputIgnored, ...baseConfig } = config;
   void outputIgnored;
 
@@ -69,9 +70,7 @@ export function getExpectedOutputFiles(
     const outputFile = file.replace('{name}', name);
 
     // Extract config options (everything except 'file')
-    const configOptions = Object.fromEntries(
-      Object.entries(outputConfig).filter(([key]) => key !== 'file')
-    );
+    const configOptions = Object.fromEntries(Object.entries(outputConfig).filter(([key]) => key !== 'file'));
     return {
       file: path.join(dir, outputFile),
       config: { ...baseConfig, output: configOptions }

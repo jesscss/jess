@@ -39,11 +39,14 @@ function workspaceSrcAliases() {
     }
     alias.push({ find: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`), replacement: src });
   }
-  // CSS-parser subpaths used by source-aliased workspace parsers. Subpaths
-  // normally fall through to node resolution, which misses from a consuming
-  // package when the direct parser package itself has been aliased to `src`.
-  // These aliases preserve the same source-to-source graph that the built
-  // package exports provide to production consumers.
+
+  /*
+   * CSS-parser subpaths used by source-aliased workspace parsers. Subpaths
+   * normally fall through to node resolution, which misses from a consuming
+   * package when the direct parser package itself has been aliased to `src`.
+   * These aliases preserve the same source-to-source graph that the built
+   * package exports provide to production consumers.
+   */
   const cssJess = resolve(root, 'packages/css-parser/src/jess.ts');
   if (existsSync(cssJess)) {
     alias.push({ find: /^@jesscss\/css-parser\/jess$/, replacement: cssJess });
@@ -76,8 +79,10 @@ function lessTestDataRoot(): string | undefined {
 
 export default defineConfig({
   plugins: [
-    // Compiles grammars that import parseman `with { type: 'macro' }` at build
-    // time. No-op for files without the macro attribute, so it's safe globally.
+    /*
+     * Compiles grammars that import parseman `with { type: 'macro' }` at build
+     * time. No-op for files without the macro attribute, so it's safe globally.
+     */
     parseman.vite(),
     circleDependency()
   ],
@@ -90,18 +95,25 @@ export default defineConfig({
      * @todo - This doesn't work yet because the modules are mapped incorrectly somehow.
      *         But might make test running faster.
      */
-    // experimental: {
-    //   viteModuleRunner: false,
-    // },
+    /*
+     * experimental: {
+     * viteModuleRunner: false,
+     * },
+     */
     watch: false,
+
     // Set TEST environment variable for packages that depend on it
     env: {
       TEST: 'true',
-      // Resolve @less/test-data ONCE here (plain Node, reliable) so tests don't
-      // depend on the relative workspace symlink that `pnpm install` reintroduces
-      // broken in git worktrees. Empty string if not found (tests fall back).
+
+      /*
+       * Resolve @less/test-data ONCE here (plain Node, reliable) so tests don't
+       * depend on the relative workspace symlink that `pnpm install` reintroduces
+       * broken in git worktrees. Empty string if not found (tests fall back).
+       */
       ...(lessTestDataRoot() ? { LESS_TEST_DATA_ROOT: lessTestDataRoot()! } : {})
     },
+
     // Ensure environment variables are passed to test processes
     environment: 'node',
     onConsoleLog(log, type) {
@@ -110,8 +122,10 @@ export default defineConfig({
     },
     testTimeout: 30_000,
     reporters: [['tree', { summary: true }]],
+
     // Enable globals for describe, test, etc.
     globals: true,
+
     // Include all test files from all packages - use absolute paths relative to config file
 
     projects: [
@@ -139,6 +153,7 @@ export default defineConfig({
 
     // Global setup file - use absolute path so it works from any subfolder
     setupFiles: [resolve(__dirname, './test/setup.ts')],
+
     // Disable coverage by default to save memory
     coverage: {
       enabled: false,

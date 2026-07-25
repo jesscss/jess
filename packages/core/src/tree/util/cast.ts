@@ -1,10 +1,13 @@
 import type { Node } from '../node.js';
 import { Nil } from '../nil.js';
 import { List } from '../list.js';
-// dimension.ts/number.ts sit in the same import cycle as color.ts
-// (dimension → color → call → cast → dimension). ESM tolerates the cycle: the
-// bindings are only dereferenced at call time (getNodeType), by which point the
-// modules are fully initialized — same as the Color import above.
+
+/*
+ * dimension.ts/number.ts sit in the same import cycle as color.ts
+ * (dimension → color → call → cast → dimension). ESM tolerates the cycle: the
+ * bindings are only dereferenced at call time (getNodeType), by which point the
+ * modules are fully initialized — same as the Color import above.
+ */
 import { Dimension } from '../dimension.js';
 import { Num } from '../number.js';
 import { Any } from '../any.js';
@@ -50,11 +53,10 @@ function getNodeType(value: any): Node {
   if (typeof value === 'string') {
     if (value.startsWith('#')) {
       return new Color(value);
-    } else {
-      let result = value.match(/^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)$/i);
-      if (result) {
-        return new Dimension({ number: parseFloat(result[1]!), unit: result[2] });
-      }
+    }
+    let result = value.match(/^([+-]?(?:\d+\.?\d*|\.\d+))([a-z%]*)$/i);
+    if (result) {
+      return new Dimension({ number: parseFloat(result[1]!), unit: result[2] });
     }
   }
   return new Any(value.toString());
@@ -69,6 +71,7 @@ function getNodeType(value: any): Node {
  */
 export function cast(value: any): Node {
   const node = getNodeType(value);
+
   /**
    * If converting from a primitive, then
    * the value should be considered evaluated.

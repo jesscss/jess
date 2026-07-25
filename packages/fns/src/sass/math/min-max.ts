@@ -72,9 +72,12 @@ export function sassMinMax(isMin: boolean, list: ValueGroup, strict: boolean): V
   let best = numbers[0]!;
   for (let index = 1; index < numbers.length; index++) {
     const candidate = numbers[index]!;
-    // Throws here, mid-fold, exactly where dart-sass gives up. The running
-    // winner is the LEFT operand so the diagnostic names the pair in dart-sass's
-    // order ("1px and 2em have incompatible units.").
+
+    /*
+     * Throws here, mid-fold, exactly where dart-sass gives up. The running
+     * winner is the LEFT operand so the diagnostic names the pair in dart-sass's
+     * order ("1px and 2em have incompatible units.").
+     */
     const ordering = compareSassNumbers(best, candidate);
     if (isMin ? ordering > 0 : ordering < 0) {
       best = candidate;

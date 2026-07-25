@@ -48,15 +48,19 @@ export { fadeOut } from './fade-out.js';
 // Output formatting.
 export { ieHexStr } from './ie-hex-str.js';
 
-// Constructors. These are Sass GLOBALS rather than `sass:color` members
-// (`meta.module-functions("color")` does not list them), but they are colour
-// construction and belong to this folder; the dialect index decides the surface.
+/*
+ * Constructors. These are Sass GLOBALS rather than `sass:color` members
+ * (`meta.module-functions("color")` does not list them), but they are colour
+ * construction and belong to this folder; the dialect index decides the surface.
+ */
 export { rgb } from './rgb.js';
 export { rgba } from './rgba.js';
 export { hsl } from './hsl.js';
 export { hsla } from './hsla.js';
 
-// Not implemented — each needs a colour-space model jess does not have yet:
-// color.hwb / lab / lch / oklab / oklch, color.space / to-space / channel /
-// same / is-legacy / is-missing / is-in-gamut / to-gamut / is-powerless,
-// color.whiteness / blackness, color.adjust / scale / change.
+/*
+ * Not implemented — each needs a colour-space model jess does not have yet:
+ * color.hwb / lab / lch / oklab / oklch, color.space / to-space / channel /
+ * same / is-legacy / is-missing / is-in-gamut / to-gamut / is-powerless,
+ * color.whiteness / blackness, color.adjust / scale / change.
+ */

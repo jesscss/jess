@@ -52,6 +52,7 @@ describe('B2 share-without-reparent proof', () => {
     const source = sellist([compoundA, compoundB]);
 
     const sourceChildren = childNodes(source);
+
     // Sanity: canonical children are parented to the source list.
     expect(sourceChildren.map(c => c.parent)).toEqual(sourceChildren.map(() => source));
 
@@ -61,6 +62,7 @@ describe('B2 share-without-reparent proof', () => {
     expect(placed).not.toBe(source);
 
     const placedChildren = childNodes(placed);
+
     // The shared source children are the SAME objects, still canonically parented.
     for (let i = 0; i < sourceChildren.length; i++) {
       const sourceChild = sourceChildren[i]!;
@@ -101,6 +103,7 @@ describe('B2 share-without-reparent proof', () => {
     for (const part of childParts) {
       expect(part.parent).toBe(childSelector);
     }
+
     // No circular structure in the registered extend selector.
     const registered = context.extends[0]?.[1];
     expect(registered).toBeDefined();
@@ -108,15 +111,17 @@ describe('B2 share-without-reparent proof', () => {
   });
 
   it('B3: full extend eval over a compound with a CONTAINER sibling leaves the source AST unmutated', async () => {
-    // Extend a compound `:is(.x, .y).target` whose sibling part is a CONTAINER
-    // (`:is(.x, .y)`, has node children) — the non-trivial placement case (a leaf
-    // would `reuseAsLeaf` regardless). This guards the general extend-eval
-    // source-integrity invariant that the B3 share-frozen placement helpers
-    // (`copySimpleSelectorsForPlacement`/`copyComplexComponentForPlacement`) must
-    // preserve: the AUTHORED source nodes below stay byte-for-byte unmutated —
-    // same objects, canonical parents, no cycle — after a full extend eval.
-    // (The changed helpers' exact-output correctness is pinned separately by the
-    // `extend-selector-algorithm` suite, which drives them directly.)
+    /*
+     * Extend a compound `:is(.x, .y).target` whose sibling part is a CONTAINER
+     * (`:is(.x, .y)`, has node children) — the non-trivial placement case (a leaf
+     * would `reuseAsLeaf` regardless). This guards the general extend-eval
+     * source-integrity invariant that the B3 share-frozen placement helpers
+     * (`copySimpleSelectorsForPlacement`/`copyComplexComponentForPlacement`) must
+     * preserve: the AUTHORED source nodes below stay byte-for-byte unmutated —
+     * same objects, canonical parents, no cycle — after a full extend eval.
+     * (The changed helpers' exact-output correctness is pinned separately by the
+     * `extend-selector-algorithm` suite, which drives them directly.)
+     */
     const context = new Context();
 
     const argX = el('.x');
@@ -150,6 +155,7 @@ describe('B2 share-without-reparent proof', () => {
     for (const argItem of argItems) {
       expect(argItem.parent).toBe(argList);
     }
+
     // No cycle introduced into the authored source tree.
     expect(() => assertAcyclic(sourceCompound)).not.toThrow();
   });

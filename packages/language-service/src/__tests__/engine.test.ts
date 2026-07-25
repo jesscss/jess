@@ -234,12 +234,15 @@ describe('JessLanguageServiceEngine', () => {
         const engine = createEngine();
         const mixinsUri = String(pathToFileURL(mixinsFile));
         const mainUri = String(pathToFileURL(mainFile));
+
         // Open both files to ensure import graph is built
         engine.open(mixinsUri, 'less', 1, fs.readFileSync(mixinsFile, 'utf-8'));
         engine.open(mainUri, 'less', 1, fs.readFileSync(mainFile, 'utf-8'));
 
-        // Position at .button() reference in main.less
-        // Line 1 is ".a { .button(); }", try position on "button" (column 7)
+        /*
+         * Position at .button() reference in main.less
+         * Line 1 is ".a { .button(); }", try position on "button" (column 7)
+         */
         const def = engine.findDefinition(mainUri, Position.create(1, 7));
         expect(def).not.toBeNull();
         expect(def?.uri).toBe(mixinsUri);
@@ -328,13 +331,15 @@ describe('JessLanguageServiceEngine', () => {
     });
 
     it('reports the single earliest parser error (1-error-stop contract)', () => {
-      // The functional parsers implement a deliberate "one error and stop" contract:
-      // every diagnostic source is collected, then collapsed to the EARLIEST by
-      // position. So even input with several structurally-invalid spots yields
-      // exactly one parser diagnostic, anchored at the first failure — not a
-      // recovery cascade. These inputs each have two bad `)` value tokens; only the
-      // first failure is reported (the CSS grammar rejects the whole declaration a
-      // little earlier than the Less/SCSS value grammars, hence a distinct anchor).
+      /*
+       * The functional parsers implement a deliberate "one error and stop" contract:
+       * every diagnostic source is collected, then collapsed to the EARLIEST by
+       * position. So even input with several structurally-invalid spots yields
+       * exactly one parser diagnostic, anchored at the first failure — not a
+       * recovery cascade. These inputs each have two bad `)` value tokens; only the
+       * first failure is reported (the CSS grammar rejects the whole declaration a
+       * little earlier than the Less/SCSS value grammars, hence a distinct anchor).
+       */
       const cases: Array<{ languageId: 'css' | 'less' | 'scss'; input: string; start: { line: number; character: number } }> = [
         { languageId: 'css', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 4 } },
         { languageId: 'less', input: 'a { color: ) ; background: ) ; }', start: { line: 0, character: 11 } },
@@ -346,13 +351,16 @@ describe('JessLanguageServiceEngine', () => {
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diagnostics = engine.getDiagnostics(doc.uri);
         const parserDiags = diagnostics.filter(d => d.code === 'parse/parser');
+
         // Exactly one parser error (1-error-stop), no recovery cascade.
         expect(parserDiags).toHaveLength(1);
         expect(diagnostics).toHaveLength(1);
         const diag = parserDiags[0]!;
         expect(diag.source).toBe('jess');
+
         // Anchored at the earliest failure position (the first bad `)`).
         expect(diag.range.start).toEqual(start);
+
         // Well-formed, non-degenerate range.
         expect(diag.range.end.line).toBeGreaterThanOrEqual(diag.range.start.line);
         const doc2 = createDocument(languageId, input);
@@ -361,20 +369,24 @@ describe('JessLanguageServiceEngine', () => {
     });
 
     it('reports one earliest diagnostic on very broken input (1-error-stop, css/less/scss)', () => {
-      // An unterminated block/comment: the parser stops at the first failure
-      // (the point it needed a closing `}`) rather than emitting a cascade. This
-      // asserts the single-error contract precisely, including the anchor position.
+      /*
+       * An unterminated block/comment: the parser stops at the first failure
+       * (the point it needed a closing `}`) rather than emitting a cascade. This
+       * asserts the single-error contract precisely, including the anchor position.
+       */
       const input = 'a { /*';
       for (const languageId of ['css', 'less', 'scss'] as const) {
         const engine = createEngine();
         const doc = createDocument(languageId, input);
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
         const diagnostics = engine.getDiagnostics(doc.uri);
+
         // Exactly one diagnostic — the earliest error, not a recovery cascade.
         expect(diagnostics).toHaveLength(1);
         const diag = diagnostics[0]!;
         expect(diag.code).toBe('parse/parser');
         expect(diag.source).toBe('jess');
+
         // Anchored just after the opening `a { ` where the closer was expected.
         expect(diag.range.start).toEqual({ line: 0, character: 4 });
       }
@@ -473,8 +485,10 @@ describe('JessLanguageServiceEngine', () => {
     const codesOf = (engine: ReturnType<typeof createEngine>, uri: string): string[] =>
       engine.getDiagnostics(uri).map(d => String(d.code));
 
-    // Build a `configure()` severity payload with a computed key, so the
-    // slash-bearing lint codes are not written as object-literal property names.
+    /*
+     * Build a `configure()` severity payload with a computed key, so the
+     * slash-bearing lint codes are not written as object-literal property names.
+     */
     const sevCfg = (code: string, severity: string): unknown =>
       ({ diagnostics: { severity: { [code]: severity } } });
 
@@ -492,6 +506,7 @@ describe('JessLanguageServiceEngine', () => {
         const engine = createEngine();
         const doc = createDocument('scss', '.a {   \n  .b {}\n}');
         engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+
         // `.a` is NOT empty (contains `.b`); only `.b` is flagged.
         const diags = engine.getDiagnostics(doc.uri).filter(d => d.code === 'lint/empty-rules');
         expect(diags).toHaveLength(1);
@@ -678,9 +693,12 @@ describe('JessLanguageServiceEngine', () => {
 
     it('lint rules stay tolerant: they fire despite a syntax error elsewhere', () => {
       const engine = createEngine();
-      // The trailing `.bad { color: ) ;` region is malformed, but the earlier
-      // empty ruleset and unknown property are still flagged off the tolerant
-      // CST (the AST-based semantic path would yield nothing on invalid input).
+
+      /*
+       * The trailing `.bad { color: ) ;` region is malformed, but the earlier
+       * empty ruleset and unknown property are still flagged off the tolerant
+       * CST (the AST-based semantic path would yield nothing on invalid input).
+       */
       const doc = createDocument('css', '.empty {}\n.a { color: red; colr: red; }\n.bad { color: ) ;');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
       const codes = codesOf(engine, doc.uri);
@@ -690,8 +708,10 @@ describe('JessLanguageServiceEngine', () => {
   });
 
   describe('semantic tokens', () => {
-    // Helper to decode semantic tokens data array
-    // Format: [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
+    /*
+     * Helper to decode semantic tokens data array
+     * Format: [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
+     */
     function decodeSemanticTokens(data: number[], types: string[], modifiers: string[]): Array<{
       line: number;
       char: number;
@@ -750,14 +770,16 @@ describe('JessLanguageServiceEngine', () => {
       // Debug: log all tokens to see what we're getting
       console.log('Line 0 tokens:', JSON.stringify(line0Tokens, null, 2));
 
-      // Should have separate tokens for:
-      // - @import (namespace)
-      // - " (string - opening quote)
-      // - import/import- (string)
-      // - @{my_theme} (variable)
-      // - -e.less (string)
-      // - " (string - closing quote)
-      // - ; (operator)
+      /*
+       * Should have separate tokens for:
+       * - @import (namespace)
+       * - " (string - opening quote)
+       * - import/import- (string)
+       * - @{my_theme} (variable)
+       * - -e.less (string)
+       * - " (string - closing quote)
+       * - ; (operator)
+       */
 
       const stringTokens = line0Tokens.filter(t => t.type === 'string');
       const variableTokens = line0Tokens.filter(t => t.type === 'variable');
@@ -765,8 +787,10 @@ describe('JessLanguageServiceEngine', () => {
 
       // Should have at least 3 string tokens (opening quote, content parts, closing quote)
       expect(stringTokens.length).toBeGreaterThanOrEqual(3);
+
       // Should have 1 variable token for @{my_theme}
       expect(variableTokens.length).toBeGreaterThanOrEqual(1);
+
       // Should have 1 namespace token for @import
       expect(namespaceTokens.length).toBeGreaterThanOrEqual(1);
     });
@@ -952,6 +976,7 @@ describe('JessLanguageServiceEngine', () => {
       const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
       const didYouMean = actions.find(a => a.title === 'Change to @primary');
       expect(didYouMean).toBeDefined();
+
       // The fix rewrites only the identifier, keeping the `@` sigil.
       const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
       expect(textEdits.length).toBe(1);
@@ -969,6 +994,7 @@ describe('JessLanguageServiceEngine', () => {
       const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
       const didYouMean = actions.find(a => a.title.startsWith('Change to .button'));
       expect(didYouMean).toBeDefined();
+
       // The fix keeps the `.` combinator and only swaps the identifier.
       const textEdits = didYouMean?.edit?.changes?.[doc.uri] ?? [];
       expect(textEdits.length).toBe(1);
@@ -983,6 +1009,7 @@ describe('JessLanguageServiceEngine', () => {
       const target = diags.find(d => d.code === 'var/undefined');
       const actions = engine.getCodeActions(doc.uri, target!.range, { diagnostics: [target!] });
       expect(actions.some(a => a.title.startsWith('Change to'))).toBe(false);
+
       // The create-variable fix is still offered.
       expect(actions.some(a => a.title.includes('Create variable'))).toBe(true);
     });
@@ -997,8 +1024,10 @@ describe('JessLanguageServiceEngine', () => {
       tempDir = '';
     });
 
-    // Apply a WorkspaceEdit's edits for one uri to `text` (offsets computed
-    // against `text`; edits are applied right-to-left so earlier ones stay valid).
+    /*
+     * Apply a WorkspaceEdit's edits for one uri to `text` (offsets computed
+     * against `text`; edits are applied right-to-left so earlier ones stay valid).
+     */
     function applyEdits(text: string, uri: string, edit: { changes?: Record<string, Array<{ range: { start: Position; end: Position }; newText: string }>> } | null): string {
       const doc = TextDocument.create(uri, 'less', 1, text);
       const edits = edit?.changes?.[uri] ?? [];
@@ -1042,6 +1071,7 @@ describe('JessLanguageServiceEngine', () => {
       expect(edit).not.toBeNull();
       const edits = edit?.changes?.[doc.uri] ?? [];
       expect(edits.length).toBe(3);
+
       // Every edit rewrites only the bare identifier.
       expect(edits.every(e => e.newText === 'secondary')).toBe(true);
 
@@ -1179,6 +1209,7 @@ describe('JessLanguageServiceEngine', () => {
 
       // Red is rgb(255, 0, 0)
       expect(colorValues).toContain('255,0,0');
+
       // Blue is rgb(0, 0, 255)
       expect(colorValues).toContain('0,0,255');
     });
@@ -1200,6 +1231,7 @@ describe('JessLanguageServiceEngine', () => {
 
       // #ff0000 is red
       expect(colorValues).toContain('255,0,0');
+
       // #00ff00 is green
       expect(colorValues).toContain('0,255,0');
     });
@@ -1221,6 +1253,7 @@ describe('JessLanguageServiceEngine', () => {
 
       // rgb(255, 0, 0) is red
       expect(colorValues).toContain('255,0,0');
+
       // rgb(0, 128, 255) is a blue
       expect(colorValues).toContain('0,128,255');
     });
@@ -1242,6 +1275,7 @@ describe('JessLanguageServiceEngine', () => {
 
       // hsl(0, 100%, 50%) is red (approximately 255, 0, 0)
       expect(colorValues.some(v => v.startsWith('255,0,0') || v.startsWith('254,0,0'))).toBe(true);
+
       // hsl(120, 100%, 50%) is green (approximately 0, 255, 0)
       expect(colorValues.some(v => v.startsWith('0,255,0') || v.startsWith('0,254,0'))).toBe(true);
     });
@@ -1282,25 +1316,31 @@ describe('JessLanguageServiceEngine', () => {
 
     it('handles invalid color functions gracefully', async () => {
       const engine = createEngine();
+
       // rgb() with wrong number of arguments or invalid values
       const doc = createDocument('css', 'a { color: rgb(255); background: rgb(256, 0, 0); }');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       // Should not throw, but may or may not detect colors depending on evaluation
       const colors = await engine.getDocumentColors(doc.uri);
+
       // Should still work (might detect some colors or none, but shouldn't crash)
       expect(Array.isArray(colors)).toBe(true);
     });
 
     it('handles color functions with variables (should not evaluate)', async () => {
       const engine = createEngine();
+
       // Less variable in color function - should not be evaluated
       const doc = createDocument('less', '@r: 255;\na { color: rgb(@r, 0, 0); }');
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const colors = await engine.getDocumentColors(doc.uri);
-      // Since @r is a variable, the function can't be statically evaluated
-      // So we might not get a color, but it shouldn't crash
+
+      /*
+       * Since @r is a variable, the function can't be statically evaluated
+       * So we might not get a color, but it shouldn't crash
+       */
       expect(Array.isArray(colors)).toBe(true);
     });
 

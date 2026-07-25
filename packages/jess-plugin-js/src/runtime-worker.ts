@@ -18,13 +18,11 @@ const runtimeApi = Deno.args.includes('--runtime-api=less') ? 'less' : 'module';
  */
 class UnsupportedTreeNodeError extends Error {
   constructor(name, reason) {
-    super(
-      `Less @plugin: "tree.${name}" is not supported by the Jess less-compat shim.\n`
+    super(`Less @plugin: "tree.${name}" is not supported by the Jess less-compat shim.\n`
       + `${reason}\n`
       + 'Supported members: Node, Anonymous, Keyword, Quoted, Dimension, Unit, Color, '
       + 'Expression, Value, Declaration, Variable, Property, Operation, Paren, Negative, '
-      + 'Call, URL, Comment, Assignment, UnicodeDescriptor, Ruleset, DetachedRuleset, Mixin, Nil.'
-    );
+      + 'Call, URL, Comment, Assignment, UnicodeDescriptor, Ruleset, DetachedRuleset, Mixin, Nil.');
     this.name = 'UnsupportedTreeNodeError';
   }
 }
@@ -237,9 +235,12 @@ class Quoted extends Node {
   constructor(quote, value, escaped = false) {
     super();
     this.quote = quote === undefined ? '"' : String(quote);
-    // less.js: `this.value = content || ''`. `new tree.Quoted('"')` is the empty
-    // string, NOT the text "undefined" — bootstrap relies on that for its
-    // "no breakpoint" sentinel.
+
+    /*
+     * less.js: `this.value = content || ''`. `new tree.Quoted('"')` is the empty
+     * string, NOT the text "undefined" — bootstrap relies on that for its
+     * "no breakpoint" sentinel.
+     */
     this.value = value === undefined || value === null ? '' : String(value);
     this.escaped = escaped;
   }
@@ -375,9 +376,11 @@ class DetachedRuleset extends Node {
   }
 }
 
-// The legacy-plugin map façade is an anonymous callable Mixin, not a second
-// detached-ruleset value model.  Existing helpers inspect `ruleset.rules` and
-// declaration values; Nil carries the intentionally absent name/args facts.
+/*
+ * The legacy-plugin map façade is an anonymous callable Mixin, not a second
+ * detached-ruleset value model.  Existing helpers inspect `ruleset.rules` and
+ * declaration values; Nil carries the intentionally absent name/args facts.
+ */
 class Mixin extends Node {
   type = 'Mixin';
   name = new Nil();
@@ -630,9 +633,12 @@ const decodeBridgeValue = (value) => {
     case 'mixin': {
       const rules = (value.rules ?? []).map((decl) => {
         const decoded = decodeBridgeValue(decl.value);
-        // Legacy Less @plugin map helpers read the declaration's `.value.value`
-        // as the raw CSS string (e.g. "576px"), then parseFloat it. Mirror the
-        // less.js Anonymous shape so that access pattern keeps working.
+
+        /*
+         * Legacy Less @plugin map helpers read the declaration's `.value.value`
+         * as the raw CSS string (e.g. "576px"), then parseFloat it. Mirror the
+         * less.js Anonymous shape so that access pattern keeps working.
+         */
         const cssText = decoded?.toCSS ? decoded.toCSS() : String(decoded);
         return new Declaration(decl.name, new Anonymous(cssText));
       });
@@ -675,8 +681,10 @@ const encodeBridgeValue = (value) => {
     };
   }
   if (value instanceof Quoted) {
-    // An empty quote character is less.js's "raw text" spelling (bootstrap's
-    // escape-svg returns `new tree.Quoted('', str)`); it must not be re-quoted.
+    /*
+     * An empty quote character is less.js's "raw text" spelling (bootstrap's
+     * escape-svg returns `new tree.Quoted('', str)`); it must not be re-quoted.
+     */
     return value.quote === ''
       ? { __jessBridge: true, kind: 'anonymous', value: String(value.value) }
       : {
@@ -718,8 +726,11 @@ const encodeBridgeValue = (value) => {
       .map(rule => ({ name: rule.name, value: encodeBridgeChildValue(rule.value) }));
     return { __jessBridge: true, kind: 'mixin', rules };
   }
-  // Every remaining shim node is byte-faithful through `toCSS()`; the engine
-  // re-sniffs those bytes into a typed value on the host side.
+
+  /*
+   * Every remaining shim node is byte-faithful through `toCSS()`; the engine
+   * re-sniffs those bytes into a typed value on the host side.
+   */
   if (value instanceof Node) {
     return { __jessBridge: true, kind: 'anonymous', value: value.toCSS() };
   }
@@ -759,8 +770,10 @@ const loadModule = async (modulePath) => {
   return exports;
 };
 
-// Deprecated Less @plugin support only. Jess @-use is plain ESM and must not
-// pass through this injected-variable wrapper.
+/*
+ * Deprecated Less @plugin support only. Jess @-use is plain ESM and must not
+ * pass through this injected-variable wrapper.
+ */
 const createLegacyLessPluginRuntime = (modulePath, options) => {
   const localFunctions = new Map();
   const functions = {
@@ -817,10 +830,13 @@ const createLegacyLessPluginRuntime = (modulePath, options) => {
     if (candidate && options != null && typeof candidate.setOptions === 'function') {
       candidate.setOptions(options);
     }
-    // `use` and `eval` are Less plugin lifecycle hooks. A plugin that fails in
-    // either is broken, and Less rejects the compile — so they run here, and a
-    // throw propagates out of the load as a real, attributable failure rather
-    // than being quietly skipped.
+
+    /*
+     * `use` and `eval` are Less plugin lifecycle hooks. A plugin that fails in
+     * either is broken, and Less rejects the compile — so they run here, and a
+     * throw propagates out of the load as a real, attributable failure rather
+     * than being quietly skipped.
+     */
     if (candidate && typeof candidate.use === 'function') {
       candidate.use(less);
     }
@@ -1073,8 +1089,10 @@ const computeResponse = async (req) => {
     }
     return { id: req.id, ok: false, error: `Unknown request type "${req.type}".` };
   } catch (err) {
-    // A plugin throw is a real failure, so it carries its stack across the wire:
-    // the host turns it into a diagnostic that names the function and the throw.
+    /*
+     * A plugin throw is a real failure, so it carries its stack across the wire:
+     * the host turns it into a diagnostic that names the function and the throw.
+     */
     return {
       id: req.id,
       ok: false,

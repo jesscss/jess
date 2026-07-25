@@ -25,6 +25,7 @@ export interface ErrorDiagnostic {
   filePath?: string;
   line: number;
   column: number;
+
   /**
    * Relevant source lines for code frame display, keyed by 1-indexed line number
    * (error line + before/after context), e.g. `{ 55: 'before', 56: 'err', 57: 'after' }`.
@@ -119,6 +120,7 @@ export interface WarningDiagnostic {
     name: string;
     path: string;
     fullPath: string;
+
     // Note: source is NOT included - use 'lines' property for code frame display
   };
   filePath?: string;
@@ -126,6 +128,7 @@ export interface WarningDiagnostic {
   column: number;
   endLine?: number;
   endColumn?: number;
+
   /** Relevant source lines for code frame display (see `ErrorDiagnostic.lines`). */
   lines?: Record<number, string>;
 }
@@ -218,6 +221,7 @@ export const ERR = {
   rulesetOnProperty(args: Common & { meta: { what: string } }) {
     return makeJessError({ code: 'eval/ruleset-on-property', phase: 'eval', ...args });
   },
+
   /**
    * A value resolved asynchronously in one of the few positions still confined
    * to the synchronous lane. A real limitation, not a wrong answer: it names the
@@ -245,10 +249,12 @@ export const ERR = {
   pluginUnsupported(args: Common & { meta: { plugin: string; feature: string } }) {
     return makeJessError({ code: 'plugin/unsupported-feature', phase: 'plugin', ...args });
   },
+
   /** A `@plugin`/`@use` function raised — user code failed, not a value mismatch. */
   pluginFunctionThrew(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({ code: 'plugin/function-threw', phase: 'plugin', ...args });
   },
+
   /**
    * A `@plugin` could not be loaded — the path did not resolve, or the script
    * threw while installing. The phase is `eval` because the load happens while
@@ -288,6 +294,7 @@ export const WARN = {
   extendNotAccessible(args: Common & { meta: { target: string } }) {
     return makeJessError({ severity: 'warn', code: 'extend/not-accessible', phase: 'extend', ...args });
   },
+
   /**
    * A `@plugin`/`@use` function raised and the render continued. The call is
    * preserved verbatim, but never silently: this names the function, the throw,
@@ -296,6 +303,7 @@ export const WARN = {
   pluginFunctionThrew(args: Common & { meta: { name: string; reason: string } }) {
     return makeJessError({ severity: 'warn', code: 'plugin/function-threw', phase: 'plugin', ...args });
   },
+
   /** A record a plugin emitted through `less.logger`, attributed to its call site. */
   pluginLog(args: Common & { meta: { name: string; level: string; message: string } }) {
     return makeJessError({ severity: 'warn', code: 'plugin/log', phase: 'plugin', ...args });

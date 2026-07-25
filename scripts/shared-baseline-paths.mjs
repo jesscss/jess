@@ -13,6 +13,5 @@ export const FULL_BASELINE_PATH_PATTERNS = [
 
 export function shouldRunFullBaselineForFiles(files) {
   return files.some(file =>
-    FULL_BASELINE_PATH_PATTERNS.some(pattern => pattern.test(file))
-  );
+    FULL_BASELINE_PATH_PATTERNS.some(pattern => pattern.test(file)));
 }

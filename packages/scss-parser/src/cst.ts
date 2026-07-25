@@ -6,12 +6,21 @@ export function parseScssCst(
   startRule = 'Stylesheet',
   options?: CssCstParseOptions
 ): CssCstParseResult {
-  return parseCst(scssGrammar as Record<string, unknown>, input, startRule, options);
+  return parseCst(
+    scssGrammar as Record<string, unknown>,
+    input,
+    startRule,
+    options
+  );
 }
 
 /** Incremental (`.edit()`-able) SCSS document — see `parseDocCst`. */
 export function parseScssDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
-  return parseDocCst(scssGrammar as Record<string, unknown>, input, startRule);
+  return parseDocCst(
+    scssGrammar as Record<string, unknown>,
+    input,
+    startRule
+  );
 }
 
 export type {

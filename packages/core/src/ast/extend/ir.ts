@@ -40,6 +40,7 @@ export interface Seg {
  * branches of a mixed rule. */
 export interface Branch {
   segs: Seg[];
+
   /**
    * Memoized `branchText(this)`. PRE-DECLARED (initialized `undefined`) by the sole
    * `mkBranch` factory so every branch is born with this field, and `branchText`'s
@@ -49,6 +50,7 @@ export interface Branch {
    * (hence its text) is fixed for its lifetime. `hidden`/`ext` are provenance only
    * and ignored by `branchText`, so stamping them after a text read cannot stale it. */
   key?: string;
+
   /**
    * [&-boundary] Per-SEGMENT ampersand-compose origin, one `Int8Array` entry per
    * `segs[i]`. `bnd[i] === 0` ⇒ the segment is the ruleset's OWN-LOCAL selector;
@@ -62,6 +64,7 @@ export interface Branch {
    * origin provenance, not selector text); `cloneBranch` copies it. */
   bnd?: Int8Array;
   hidden?: boolean;
+
   /** [import:reference] true when this branch was PRODUCED by an extend (a folded-in
    * extender), false/absent for an original seed branch. Chaining an extend off a
    * HIDDEN extender branch yields a hidden result (matching less.js's per-chain
@@ -167,11 +170,16 @@ export function cloneSeg(seg: Seg): Seg {
 }
 
 export function cloneBranch(b: Branch): Branch {
-  // [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
-  // every clone so a branch's visibility survives compose/solve/compaction unchanged.
+  /*
+   * [import:reference] `hidden`/`ext` are provenance, not text — preserve them across
+   * every clone so a branch's visibility survives compose/solve/compaction unchanged.
+   */
   const out: Branch = mkBranch(b.segs.map(cloneSeg));
-  // [&-boundary] `bnd` is per-segment origin provenance, not text — carry it across
-  // every clone (a fresh `Int8Array`, since a clone's segs are a fresh array too).
+
+  /*
+   * [&-boundary] `bnd` is per-segment origin provenance, not text — carry it across
+   * every clone (a fresh `Int8Array`, since a clone's segs are a fresh array too).
+   */
   if (b.bnd) {
     out.bnd = Int8Array.from(b.bnd);
   }

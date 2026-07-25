@@ -39,13 +39,20 @@ export function parse(input: string): Stylesheet {
   if (entry === undefined || trivia === undefined) {
     throw new TypeError('Jess AST grammar is missing its public document entry.');
   }
-  const result = run(entry, input, { trivia });
+  const result = run(
+    entry,
+    input,
+    { trivia }
+  );
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     const offset = result.ok
       ? result.unconsumedFrom ?? result.span.end
       : result.span.start;
     const expected = result.expected;
-    throw new JessParseError(offset, expected);
+    throw new JessParseError(
+      offset,
+      expected
+    );
   }
   return result.value;
 }

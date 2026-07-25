@@ -50,13 +50,15 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
   describe('Private variables', () => {
     it('should NOT find private variables when searching from within the Rules', async () => {
-      // Create nested Rules structure:
-      // rootRules {
-      //   @private-var: public-value;
-      //   privateRules {
-      //     @private-var: private-value;  // private visibility
-      //   }
-      // }
+      /*
+       * Create nested Rules structure:
+       * rootRules {
+       * @private-var: public-value;
+       * privateRules {
+       * @private-var: private-value;  // private visibility
+       * }
+       * }
+       */
       const privateRules = rules([
         vardecl({ name: 'private-var', value: any('private-value') })
       ], {
@@ -72,8 +74,10 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
       await node.eval(context);
 
-      // When searching from within the private Rules (same scope), private does NOT block.
-      // Private only blocks external access (outside looking in via child searches).
+      /*
+       * When searching from within the private Rules (same scope), private does NOT block.
+       * Private only blocks external access (outside looking in via child searches).
+       */
       const found = getVar(context, privateRules, 'private-var');
 
       // Should find the private one — same-scope lookups are not blocked by private visibility
@@ -82,12 +86,14 @@ describe('Detached Rulesets - Variable Lookups', () => {
     });
 
     it('should NOT find private variables when searching from outside the Rules', async () => {
-      // Create nested Rules structure:
-      // rootRules {
-      //   privateRules {
-      //     @private-var: private-value;  // private visibility
-      //   }
-      // }
+      /*
+       * Create nested Rules structure:
+       * rootRules {
+       * privateRules {
+       * @private-var: private-value;  // private visibility
+       * }
+       * }
+       */
       const privateRules = rules([
         vardecl({ name: 'private-var', value: any('private-value') })
       ], {
@@ -182,9 +188,11 @@ describe('Detached Rulesets - Variable Lookups', () => {
 
   describe('Variable lookup parent chain traversal', () => {
     it('should traverse parent chain correctly', async () => {
-      // Root: @a: root-value;
-      // Middle: @a: middle-value;
-      // Inner: (lookup @a)
+      /*
+       * Root: @a: root-value;
+       * Middle: @a: middle-value;
+       * Inner: (lookup @a)
+       */
       const innerRules = rules([
         // Just a reference to test lookup
         decl({ name: 'test', value: ref('a', { type: 'variable' }) })

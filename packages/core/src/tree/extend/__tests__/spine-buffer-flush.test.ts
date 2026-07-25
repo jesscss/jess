@@ -30,8 +30,10 @@ import {
  * @see UNIFIED-EVAL-EMIT-DESIGN.md §4.4.1 (value/selector split), §4.4.2 (baseline flush)
  */
 describe('spine buffer-then-flush mechanism (P3 increment 1)', () => {
-  // The simplest reaching-extend subject: target `.a` (order 0) gaining extender `.b`
-  // (order 1). Both are root-level bucket paths of length 1 — no crossing, no nesting.
+  /*
+   * The simplest reaching-extend subject: target `.a` (order 0) gaining extender `.b`
+   * (order 1). Both are root-level bucket paths of length 1 — no crossing, no nesting.
+   */
   const subjectShape = (decls: string): BufferedSubject => ({
     targetPath: [el('.a')],
     order: 0,
@@ -70,8 +72,10 @@ describe('spine buffer-then-flush mechanism (P3 increment 1)', () => {
     const captured = bufferSubjectDecls(writer, () => {
       writer.add('  color: red;\n');
     });
+
     // Sync path returns the captured bytes directly...
     expect(captured).toBe('  color: red;\n');
+
     // ...and the writer was rolled back to BEFORE (the decls did NOT stream).
     expect(writer.toString()).toBe('BEFORE');
   });
@@ -79,27 +83,36 @@ describe('spine buffer-then-flush mechanism (P3 increment 1)', () => {
   it('ASYNC capture: preview parks bytes written in a later microtask, rolls back only AFTER settle', async () => {
     const writer = new OutputWriter(false);
     writer.add('BEFORE');
-    // An async body (the calc()/alpha() case): the write lands in a LATER microtask. The
-    // capture MUST wait for that write, then roll back — never restore early (the B1s bug).
+
+    /*
+     * An async body (the calc()/alpha() case): the write lands in a LATER microtask. The
+     * capture MUST wait for that write, then roll back — never restore early (the B1s bug).
+     */
     const capturedMaybe = bufferSubjectDecls(writer, async () => {
       await Promise.resolve();
       writer.add('  width: 10px;\n');
     });
     expect(isThenable(capturedMaybe)).toBe(true);
     const captured = await capturedMaybe;
+
     // The async bytes were captured (proving the rollback did NOT run before the write)...
     expect(captured).toBe('  width: 10px;\n');
+
     // ...and the writer rolled back cleanly afterward (the async bytes did NOT leak into output).
     expect(writer.toString()).toBe('BEFORE');
   });
 
   it('end-to-end: buffer decls live, then flush at the target position (baseline §4.4.2)', () => {
     const writer = new OutputWriter(false);
-    // The extender `.b`'s own block streams first (extender-before-target document order is
-    // possible; here we emit the target block via the buffered path).
+
+    /*
+     * The extender `.b`'s own block streams first (extender-before-target document order is
+     * possible; here we emit the target block via the buffered path).
+     */
     const capturedMaybe = bufferSubjectDecls(writer, () => {
       writer.add('  color: red;\n');
     });
+
     // Sync body → sync capture (not a promise); guard rather than assert the type.
     expect(isThenable(capturedMaybe)).toBe(false);
     const captured = isThenable(capturedMaybe) ? '' : capturedMaybe;

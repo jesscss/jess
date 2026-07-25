@@ -18,8 +18,10 @@ import {
   type RenderBuffer
 } from './util/render-buffer.js';
 
-// Placeholder that's very unlikely to appear in user strings
-// but is also easily typeable for tests
+/*
+ * Placeholder that's very unlikely to appear in user strings
+ * but is also easily typeable for tests
+ */
 export const INTERPOLATION_PLACEHOLDER = '%%';
 
 /** True if `str` contains a comma at the top level (outside quotes and ()/[] groups). */
@@ -35,14 +37,15 @@ function hasTopLevelComma(str: string): boolean {
       } else if (ch === inQuote) {
         inQuote = null;
       }
-    // eslint-disable-next-line @stylistic/quotes
-    } else if (ch === '"' || ch === "'") {
+    } else if (ch === '"' || ch === '\'') {
       inQuote = ch;
     } else if (ch === '(' || ch === '[') {
       depth++;
     } else if ((ch === ')' || ch === ']') && depth > 0) {
-      // Clamp at 0 — an unbalanced closer must not drive depth negative and mask a
-      // later top-level comma (that's the exact dangling-selector case this guards).
+      /*
+       * Clamp at 0 — an unbalanced closer must not drive depth negative and mask a
+       * later top-level comma (that's the exact dangling-selector case this guards).
+       */
       depth--;
     } else if (ch === ',' && depth === 0) {
       return true;
@@ -51,9 +54,11 @@ function hasTopLevelComma(str: string): boolean {
   return false;
 }
 
-// A genuine selector-list / complex replacement is wrapped in a generated `:is(…)` when
-// embedded in a larger selector. (A comma-list *value* is NOT — that's an error; see
-// createSelector.)
+/*
+ * A genuine selector-list / complex replacement is wrapped in a generated `:is(…)` when
+ * embedded in a larger selector. (A comma-list *value* is NOT — that's an error; see
+ * createSelector.)
+ */
 function shouldWrapSelectorInIs(replacement: Node): boolean {
   if (isNode(replacement, N.SelectorList)) {
     return true;
@@ -102,8 +107,10 @@ function stringifyReplacement(replacement: Node, options: PrintOptions, preserve
 function writeReplacementSyntax(replacement: Node, options: FinalPrintOptions, preserveQuotedSyntax?: boolean): void {
   const w = options.writer;
   if (isNode(replacement, N.Quoted) && !preserveQuotedSyntax) {
-    // Interpolated string slots merge raw string content.
-    // Using valueOf() avoids re-emitting inner quote delimiters.
+    /*
+     * Interpolated string slots merge raw string content.
+     * Using valueOf() avoids re-emitting inner quote delimiters.
+     */
     w.add(String(replacement.valueOf()), replacement);
     return;
   }
@@ -195,6 +202,7 @@ export interface Interpolated<
 > extends Node<InterpolatedValue, InterpolatedOptions<Role>> {
   eval(context: Context): MaybePromise<Any<Role>>;
 }
+
 /**
  * An interpolated value is one that contains
  * reference variables, or expressions, but
@@ -224,6 +232,7 @@ export class Interpolated<
     this.source = value.source;
     this.replacements = value.replacements;
     this.role = options?.role as Role | undefined;
+
     // Interpolated nodes are always non-static
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
@@ -331,8 +340,11 @@ export class Interpolated<
       && source.slice(0, firstPlaceholder).trim() === ''
       && source.slice(firstPlaceholder + INTERPOLATION_PLACEHOLDER.length).trim() === ''
     );
-    // For full-selector interpolation, collapse directly to the resolved selector/text.
-    // Generated :is wrappers are only needed for embedded interpolation fragments.
+
+    /*
+     * For full-selector interpolation, collapse directly to the resolved selector/text.
+     * Generated :is wrappers are only needed for embedded interpolation fragments.
+     */
     if (isWholeSelectorInterpolation) {
       const replacement = replacements[0]!;
       if (isNode(replacement, N.Selector)) {
@@ -364,18 +376,25 @@ export class Interpolated<
         sourceOffset = nextPlaceholder + INTERPOLATION_PLACEHOLDER.length;
       }
     }
+
     // Preserve any trailing literal segment after the last interpolation placeholder.
     if (sourceOffset < source.length) {
       output += source.slice(sourceOffset);
     }
-    // A comma-list VALUE spliced into a selector can't be a selector position — error
-    // (distribute with each() instead). Commas inside a generated `:is(…)` are nested,
-    // not top-level, so a genuine selector-list interpolation is unaffected.
+
+    /*
+     * A comma-list VALUE spliced into a selector can't be a selector position — error
+     * (distribute with each() instead). Commas inside a generated `:is(…)` are nested,
+     * not top-level, so a genuine selector-list interpolation is unaffected.
+     */
     if (hasTopLevelComma(output)) {
       throw ERR.commaListInterpolation({ meta: { selector: output } });
     }
-    // Interpolated selector output can produce compound selectors (e.g. ".a#b").
-    // Preserve token boundaries so direct callable lookup can match correctly.
+
+    /*
+     * Interpolated selector output can produce compound selectors (e.g. ".a#b").
+     * Preserve token boundaries so direct callable lookup can match correctly.
+     */
     return createSimpleInterpolatedSelector(output, this);
   }
 
@@ -486,14 +505,17 @@ export class Interpolated<
     const node = this;
     const currentReplacements = node.replacements;
     const evaluatedReplacements = new Array<Node>(currentReplacements.length);
-    // Every `@{...}` slot of one interpolation resolves in the SAME scope — the
-    // one active when we start. But `context.rulesContext` is a single mutable
-    // field, and evaluating an earlier slot can descend through an async plugin
-    // function (e.g. Bootstrap `breakpoint-infix`) whose deferred save/restore of
-    // `rulesContext` interleaves and lands a stale scope back on the context
-    // between slots. A later slot reading a per-iteration loop binding (`@value`)
-    // would then resolve against that leaked scope and miss. Pin the entry scope
-    // and re-assert it before each slot so every slot sees the interpolation's own.
+
+    /*
+     * Every `@{...}` slot of one interpolation resolves in the SAME scope — the
+     * one active when we start. But `context.rulesContext` is a single mutable
+     * field, and evaluating an earlier slot can descend through an async plugin
+     * function (e.g. Bootstrap `breakpoint-infix`) whose deferred save/restore of
+     * `rulesContext` interleaves and lands a stale scope back on the context
+     * between slots. A later slot reading a per-iteration loop binding (`@value`)
+     * would then resolve against that leaked scope and miss. Pin the entry scope
+     * and re-assert it before each slot so every slot sees the interpolation's own.
+     */
     const scope = context.rulesContext;
     let changed = false;
     for (let idx = 0; idx < currentReplacements.length; idx++) {
@@ -539,8 +561,10 @@ export class Interpolated<
   }
 
   private evaluateReplacement(context: Context, node: Node, mode: 'eval' | 'resolve', scope: Context['rulesContext']): MaybePromise<Node> {
-    // Re-assert the interpolation's own scope: a prior slot's async eval may have
-    // leaked a stale `rulesContext` back onto the shared context.
+    /*
+     * Re-assert the interpolation's own scope: a prior slot's async eval may have
+     * leaked a stale `rulesContext` back onto the shared context.
+     */
     context.rulesContext = scope;
     return mode === 'eval' ? node.eval(context) : node.resolve(context);
   }

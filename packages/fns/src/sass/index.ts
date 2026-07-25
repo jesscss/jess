@@ -25,9 +25,12 @@
 // Global Math Functions (Deprecated - use math.* module instead)
 export { abs, ceil, floor } from '../shared/index.js';
 export { round } from './math/round.js';
-// The GLOBAL `min`/`max` are Sass-owned: a bare call the engine preserves when
-// it fails. `math.min`/`math.max` (the module pair, whose failure reaches the
-// user) live in `./math/index.ts`.
+
+/*
+ * The GLOBAL `min`/`max` are Sass-owned: a bare call the engine preserves when
+ * it fails. `math.min`/`math.max` (the module pair, whose failure reaches the
+ * user) live in `./math/index.ts`.
+ */
 export { min } from './math/min.js';
 export { max } from './math/max.js';
 export { unitless } from './math/is-unitless.js';
@@ -66,16 +69,19 @@ export {
   hsl,
   hsla
 } from './color/index.js';
-// TODO: Implement remaining global color functions
-// - color()
-// - hwb()
-// - lab()
-// - lch()
-// - oklab()
-// - oklch()
-// - adjust-color()
-// - scale-color()
-// - change-color()
+
+/*
+ * TODO: Implement remaining global color functions
+ * - color()
+ * - hwb()
+ * - lab()
+ * - lch()
+ * - oklab()
+ * - oklch()
+ * - adjust-color()
+ * - scale-color()
+ * - change-color()
+ */
 
 // Global Meta Functions (Deprecated - use meta.* module instead)
 export { typeOf } from './meta/type-of.js';
@@ -89,8 +95,11 @@ export { default as uniqueId } from './unique-id.js';
 export { default as strInsert } from './str-insert.js';
 export { default as strIndex } from './str-index.js';
 export { default as strSlice } from './str-slice.js';
-// TODO: Implement remaining global string functions
-// - str-length() (use string.length instead)
+
+/*
+ * TODO: Implement remaining global string functions
+ * - str-length() (use string.length instead)
+ */
 
 // Global List Functions (Deprecated - use list.* module instead)
 export { default as length } from './list/length.js';
@@ -111,9 +120,11 @@ export { default as mapKeys } from './map/keys.js';
 export { default as mapValues } from './map/values.js';
 export { default as mapHasKey } from './map/has-key.js';
 
-// Note: Module-specific functions are exported from their respective module files:
-// - import * as color from '@jesscss/fns/sass/color';
-// - import * as math from '@jesscss/fns/sass/math';
-// - import * as string from '@jesscss/fns/sass/string';
-// - import * as list from '@jesscss/fns/sass/list';
-// - import * as map from '@jesscss/fns/sass/map';
+/*
+ * Note: Module-specific functions are exported from their respective module files:
+ * - import * as color from '@jesscss/fns/sass/color';
+ * - import * as math from '@jesscss/fns/sass/math';
+ * - import * as string from '@jesscss/fns/sass/string';
+ * - import * as list from '@jesscss/fns/sass/list';
+ * - import * as map from '@jesscss/fns/sass/map';
+ */

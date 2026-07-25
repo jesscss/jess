@@ -70,6 +70,7 @@ const { isArray } = Array;
 
 export interface ColorData {
   node?: string | Node;
+
   /** Legacy field; format now lives on Color options. */
   format?: ColorFormat;
   rgb?: RGBChannels;
@@ -122,8 +123,11 @@ export class Color extends Node<ColorData, ColorOptions> {
       if (!colorData.rgb && !colorData.hsl && !colorData.node) {
         throw new TypeError('Color constructor requires rgb, hsl, or node property');
       }
-      // Resolve a bare color-keyword node (e.g. `yellow`, `transparent`) to
-      // channels up front so `rgb`/`alpha` are correct before any operation.
+
+      /*
+       * Resolve a bare color-keyword node (e.g. `yellow`, `transparent`) to
+       * channels up front so `rgb`/`alpha` are correct before any operation.
+       */
       if (colorData.node && typeof colorData.node === 'string'
         && !colorData.node.startsWith('#') && !colorData.rgb && !colorData.hsl) {
         const named = namedColor(colorData.node);
@@ -161,12 +165,14 @@ export class Color extends Node<ColorData, ColorOptions> {
     return F_STATIC;
   }
 
-  // A Color's state lives on the channel fields (`_rgbChannels` / `_hslChannels`
-  // / `_alphaValue`) and `node`, not on `value` — a Color built from `rgba(...)`
-  // has `node === undefined` and channels only. The base `clone()` rebuilds from
-  // `childKeys = ['node']` alone, producing `new Color({ node: undefined })`
-  // which throws "requires rgb, hsl, or node". Own the clone so the channels
-  // round-trip. (Invariant 7.)
+  /*
+   * A Color's state lives on the channel fields (`_rgbChannels` / `_hslChannels`
+   * / `_alphaValue`) and `node`, not on `value` — a Color built from `rgba(...)`
+   * has `node === undefined` and channels only. The base `clone()` rebuilds from
+   * `childKeys = ['node']` alone, producing `new Color({ node: undefined })`
+   * which throws "requires rgb, hsl, or node". Own the clone so the channels
+   * round-trip. (Invariant 7.)
+   */
   override clone(cloneFn?: (n: Node) => Node): this {
     const node = cloneFn && this.node instanceof Node ? cloneFn(this.node) : this.node;
     const colorData: ColorData = {
@@ -357,18 +363,22 @@ export class Color extends Node<ColorData, ColorOptions> {
       // Convert from 0-1 to 0-255 range
       const rgb: [number, number, number] = [r * 255, g * 255, b * 255];
       this._rgbChannels = rgb;
+
       // Clear HSL - computed RGB might not match existing HSL
       this._hslChannels = undefined;
       return rgb;
     }
 
-    // If value has a node that's a string, resolve it: a CSS color keyword
-    // (e.g. `yellow`, `transparent`) via the named-color table, else as hex.
+    /*
+     * If value has a node that's a string, resolve it: a CSS color keyword
+     * (e.g. `yellow`, `transparent`) via the named-color table, else as hex.
+     */
     if (this.node && typeof this.node === 'string') {
       const named = this.node.startsWith('#') ? undefined : namedColor(this.node);
       const { rgb, alpha } = named ?? parseHexString(this.node);
       this._rgbChannels = rgb;
       this._alphaValue = alpha;
+
       // Clear HSL - parsed RGB might not match existing HSL
       this._hslChannels = undefined;
       return rgb;
@@ -379,6 +389,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
   set rgb(rgb: [number, number, number] | RGBChannels) {
     this._rgbChannels = rgb;
+
     // Clear HSL since new RGB might not match the old HSL
     this._hslChannels = undefined;
   }
@@ -413,6 +424,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     // Convert RGB to HSL
     let [r, g, b] = this._rgb;
+
     // Convert RGB from 0-255 range to 0-1 range for HSL calculation
     r = r / 255;
     g = g / 255;
@@ -448,6 +460,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
     const hsl: [number, number, number] = [h! * 360, s, l];
     this._hslChannels = hsl;
+
     // Clear RGB - computed HSL might not match existing RGB
     this._rgbChannels = undefined;
     return hsl;
@@ -455,6 +468,7 @@ export class Color extends Node<ColorData, ColorOptions> {
 
   set hsl(hsl: [number, number, number] | HSLChannels) {
     this._hslChannels = hsl;
+
     // Clear RGB since new HSL might not match the old RGB
     this._rgbChannels = undefined;
   }
@@ -493,6 +507,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     const [r, g, b, a] = rgbaValues(rgba);
     this._rgbChannels = [r, g, b];
     this._alphaValue = a;
+
     // Clear HSL since new RGB might not match the old HSL
     this._hslChannels = undefined;
   }
@@ -509,6 +524,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     const [h, s, l, a] = hsla;
     this._hslChannels = [h, s, l];
     this._alphaValue = a;
+
     // Clear RGB since new HSL might not match the old RGB
     this._rgbChannels = undefined;
   }
@@ -599,7 +615,9 @@ export class Color extends Node<ColorData, ColorOptions> {
         return `rgba(${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]}, ${alphaText})`;
       }
       return `rgb(${rgbText[0]}, ${rgbText[1]}, ${rgbText[2]})`;
-    } else if (format === ColorFormat.HSL) {
+    }
+
+    if (format === ColorFormat.HSL) {
       const [h, s, l] = this.hsl;
       const hueSource = this._hslChannels?.[0];
       const alphaText = this.getSerializedAlphaText(compress);
@@ -645,6 +663,7 @@ export class Color extends Node<ColorData, ColorOptions> {
       if (bUnit && isStrictLikeMode) {
         throw new TypeError(`Cannot convert "${b}" to a color`);
       }
+
       // Apply operation to each RGB component with the number
       newColorValues = [
         calculate(aRGB[0], op, bVal),
@@ -668,6 +687,7 @@ export class Color extends Node<ColorData, ColorOptions> {
     return finalizePublicOperationResult(this, new Color({
       rgb: newColorValues,
       alpha: newAlpha
+
       // Don't preserve HSL - new RGB values represent a new color
     }, {
       format: this.options.format,

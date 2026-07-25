@@ -38,6 +38,7 @@ export const syncLog = (data: Record<string, unknown>) => {
     const logPath = getLogPath();
     const logDir = dirname(logPath);
     mkdirSync(logDir, { recursive: true });
+
     // Session ID is optional per debug run; omit it unless explicitly configured.
     const payload = { ...data };
     if (!process.env.DEBUG_SESSION_ID) {

@@ -77,9 +77,11 @@ const COLLAPSIBLE_GRAMMAR_TYPES = new Set([
 ]);
 
 function publicTypeName(grammarType: string): CssCstType {
-  // Grammar node names are already public PascalCase identifiers. Exceptional
-  // names live in the explicit contract table above; do not run a second
-  // handwritten recognizer over a grammar name at CST construction time.
+  /*
+   * Grammar node names are already public PascalCase identifiers. Exceptional
+   * names live in the explicit contract table above; do not run a second
+   * handwritten recognizer over a grammar name at CST construction time.
+   */
   return TYPE_NAMES[grammarType] ?? grammarType;
 }
 
@@ -113,9 +115,11 @@ export const cssCstBuildHost: BuildHost = (
   _triviaLog: readonly number[],
   state: unknown
 ): CssCstNode => {
-  // The unified `numeric` rule (noTrivia numPart + optional unit) surfaces in the
-  // CST-public shape as the split rules did: a Dimension when the unit leaf is
-  // present (2 leaves), otherwise a bare Num. Keeps CST type/grammarType stable.
+  /*
+   * The unified `numeric` rule (noTrivia numPart + optional unit) surfaces in the
+   * CST-public shape as the split rules did: a Dimension when the unit leaf is
+   * present (2 leaves), otherwise a bare Num. Keeps CST type/grammarType stable.
+   */
   const type = grammarType === 'Numeric'
     ? (rawChildren.length > 1 ? 'Dimension' : 'Num')
     : grammarType;
@@ -153,7 +157,15 @@ function cssCstBuildHostFor(options: CssCstParseOptions): BuildHost {
       rawChildren: ReadonlyArray<unknown>,
       triviaLog: readonly number[],
       state: unknown
-    ) => cssCstBuildHost(grammarType, children, fields, span, rawChildren, triviaLog, state),
+    ) => cssCstBuildHost(
+      grammarType,
+      children,
+      fields,
+      span,
+      rawChildren,
+      triviaLog,
+      state
+    ),
     {
       _parsemanCstCollapse: (grammarType: string) => COLLAPSIBLE_GRAMMAR_TYPES.has(grammarType)
     }
@@ -166,10 +178,20 @@ export function parseCst(
   startRule = 'Stylesheet',
   options: CssCstParseOptions = {}
 ): CssCstParseResult {
-  const result = run(rule(grammar, startRule), input, {
-    build: cssCstBuildHostFor(options),
-    trivia: rule(grammar, 'rw')
-  });
+  const result = run(
+    rule(
+      grammar,
+      startRule
+    ),
+    input,
+    {
+      build: cssCstBuildHostFor(options),
+      trivia: rule(
+        grammar,
+        'rw'
+      )
+    }
+  );
   const tree = isCssCstChild(result.value) && result.value._tag === 'node'
     ? result.value
     : emptyStyleSheet();
@@ -204,11 +226,16 @@ export function parseDocCst(
   input: string,
   startRule = 'Stylesheet'
 ): ParseDoc<CssCstNode> {
-  /* eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion */
-  return parseDoc<CssCstNode>(grammar as unknown as Registry<CssCstNode>, startRule, input, {
-    build: cssCstBuildHost,
-    structuralReuse: true
-  });
+  return parseDoc<CssCstNode>(
+    /* eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion */
+    grammar as unknown as Registry<CssCstNode>,
+    startRule,
+    input,
+    {
+      build: cssCstBuildHost,
+      structuralReuse: true
+    }
+  );
 }
 
 export type { ParseDoc } from 'parseman';

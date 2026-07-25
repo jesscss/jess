@@ -32,9 +32,11 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-// parseman-macro grammar packages, in dependency (compose) order: each composes
-// over the previous one's compiled artifact. Kept in sync with the
-// PARSER_PACKAGES list in verify-compose-integrity.mjs.
+/*
+ * parseman-macro grammar packages, in dependency (compose) order: each composes
+ * over the previous one's compiled artifact. Kept in sync with the
+ * PARSER_PACKAGES list in verify-compose-integrity.mjs.
+ */
 const PARSERS = [
   'internal-css-recognition',
   'css-parser',
@@ -84,9 +86,11 @@ for (const pkg of PARSERS) {
   let output = '';
 
   if (!noBuild) {
-    // Clean first: an incremental build leaves stale modules behind, and a stale
-    // lib both hides a fresh degrade and reports counts for code that is no
-    // longer emitted. Same reason verify-compose-integrity.mjs clears lib.
+    /*
+     * Clean first: an incremental build leaves stale modules behind, and a stale
+     * lib both hides a fresh degrade and reports counts for code that is no
+     * longer emitted. Same reason verify-compose-integrity.mjs clears lib.
+     */
     rmSync(libDir, { recursive: true, force: true });
     const result = spawnSync('pnpm', ['--filter', name, 'build'], {
       cwd: root,
@@ -102,10 +106,8 @@ for (const pkg of PARSERS) {
   }
 
   if (!existsSync(libDir)) {
-    console.error(
-      `✗ ${name}: no build output at ${relative(root, libDir)}`
-      + (noBuild ? ' — --no-build expects an already-built workspace.' : '')
-    );
+    console.error(`✗ ${name}: no build output at ${relative(root, libDir)}`
+      + (noBuild ? ' — --no-build expects an already-built workspace.' : ''));
     failed = true;
     continue;
   }
@@ -117,8 +119,10 @@ for (const pkg of PARSERS) {
     continue;
   }
 
-  // A `[parseman] … falling back to runtime` warning means a whole grammar (or a
-  // compose arg) didn't compile — a hard regression. Only checkable in build mode.
+  /*
+   * A `[parseman] … falling back to runtime` warning means a whole grammar (or a
+   * compose arg) didn't compile — a hard regression. Only checkable in build mode.
+   */
   const composeWarn = noBuild
     ? null
     : /\[parseman\].*(falling back to runtime|isn't a build-resolvable)/i.exec(output);
@@ -129,20 +133,18 @@ for (const pkg of PARSERS) {
   const charCode = (bundle.match(/charCodeAt\(/g) ?? []).length;
 
   if (interp > 0 || composeWarn) {
-    console.error(
-      `✗ ${name}: NOT fully macro-buildable — `
-      + `${interp} interpreter fallback(s)${composeWarn ? `, warning: ${composeWarn[0]}` : ''}`
-    );
+    console.error(`✗ ${name}: NOT fully macro-buildable — `
+      + `${interp} interpreter fallback(s)${composeWarn ? `, warning: ${composeWarn[0]}` : ''}`);
     failed = true;
   } else {
-    // Marker totals are a drift signal, not a census: `index.js` re-bundles the
-    // grammar, so a construct reachable from two entries is counted twice.
+    /*
+     * Marker totals are a drift signal, not a census: `index.js` re-bundles the
+     * grammar, so a construct reachable from two entries is counted twice.
+     */
     const total = charCode + regexExec;
     const pct = total === 0 ? '0' : ((charCode / total) * 100).toFixed(1);
-    console.log(
-      `✓ ${name}: fully compiled — 0 interpreter fallbacks `
-      + `(${modules.length} ESM module(s); ${charCode} charCodeAt vs ${regexExec} RegExp.exec — ${pct}% charCodeAt)`
-    );
+    console.log(`✓ ${name}: fully compiled — 0 interpreter fallbacks `
+      + `(${modules.length} ESM module(s); ${charCode} charCodeAt vs ${regexExec} RegExp.exec — ${pct}% charCodeAt)`);
   }
 }
 

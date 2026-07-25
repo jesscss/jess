@@ -23,6 +23,7 @@ export function compare(a: any, b: any, mode: EqualityMode = 'less') {
   if (isNode(a) && isNode(b)) {
     return a.compare(b);
   }
+
   /** Do comparison without strict equality */
   if (mode !== 'exact' && a == b) {
     return 0;
@@ -51,6 +52,7 @@ export function comparePosition(a: Node, b: Node) {
       b = b.rulesParent!;
     }
   }
+
   /** Now, get to the same rules ancestor */
   while (a !== b) {
     a = a.rulesParent!;

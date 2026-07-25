@@ -16,10 +16,13 @@ const allowedFiles = new Set([
   'packages/core/src/tree/util/render-buffer.ts'
 ]);
 const expectedControlIterationRenderFile = 'packages/core/src/tree/control.ts';
-// NAMED sites, not a count. `=== 2` was satisfied by deleting one legitimate
-// site and adding an illegitimate one in the same file. Each entry names the
-// loop construct that owns the site and pins the enclosing class it must sit
-// in, so the failure says WHICH site appeared or vanished.
+
+/*
+ * NAMED sites, not a count. `=== 2` was satisfied by deleting one legitimate
+ * site and adding an illegitimate one in the same file. Each entry names the
+ * loop construct that owns the site and pins the enclosing class it must sit
+ * in, so the failure says WHICH site appeared or vanished.
+ */
 const expectedControlIterationRenderNamedSites = [
   { name: 'For: per-iteration surface render', owner: 'export class For extends Rules' },
   { name: 'While: per-iteration surface render', owner: 'export class While extends Rules' }
@@ -151,33 +154,29 @@ for (const match of internalHelperExportMatches) {
 
 if (matches.length > 0) {
   console.log('');
-  console.log(
-    'Production render paths should call node render methods directly; keep renderNodeTo* helpers in tests/util only.'
-  );
+  console.log('Production render paths should call node render methods directly; keep renderNodeTo* helpers in tests/util only.');
   process.exitCode = 1;
 }
 
 if (selectedOutputMatches.length > 0) {
   console.log('');
-  console.log(
-    'Node render overloads should route local eval/resolve output through renderSourceOutput; do not reintroduce selected-output helper surfaces.'
-  );
+  console.log('Node render overloads should route local eval/resolve output through renderSourceOutput; do not reintroduce selected-output helper surfaces.');
   process.exitCode = 1;
 }
 
 if (internalHelperExportMatches.length > 0) {
   console.log('');
-  console.log(
-    'Low-level render-buffer helpers should stay internal; node code should use the narrow public render helper surface.'
-  );
+  console.log('Low-level render-buffer helpers should stay internal; node code should use the narrow public render helper surface.');
   process.exitCode = 1;
 }
 
 const unexpectedControlIterationRenderSites = controlIterationRenderMatches
   .filter(match => match.file !== expectedControlIterationRenderFile);
 
-// Resolve each match to the class that encloses it, so a site can be checked by
-// NAME rather than merely counted.
+/*
+ * Resolve each match to the class that encloses it, so a site can be checked by
+ * NAME rather than merely counted.
+ */
 const controlSourceLines = fs.existsSync(path.join(rootDir, expectedControlIterationRenderFile))
   ? fs.readFileSync(path.join(rootDir, expectedControlIterationRenderFile), 'utf8').split(/\r?\n/u)
   : [];
@@ -191,11 +190,9 @@ const ownerOf = (lineNumber) => {
   }
   return null;
 };
-const observedNamedSites = new Set(
-  controlIterationRenderMatches
-    .filter(match => match.file === expectedControlIterationRenderFile)
-    .map(match => ownerOf(match.line))
-);
+const observedNamedSites = new Set(controlIterationRenderMatches
+  .filter(match => match.file === expectedControlIterationRenderFile)
+  .map(match => ownerOf(match.line)));
 const missingNamedSites = expectedControlIterationRenderNamedSites
   .filter(site => !observedNamedSites.has(site.name))
   .map(site => site.name);
@@ -207,9 +204,7 @@ if (
   || unownedNamedSites.length > 0
 ) {
   console.log('');
-  console.log(
-    'Control loop render should stream each iteration through direct Rules.render calls; update this verifier when that native path changes.'
-  );
+  console.log('Control loop render should stream each iteration through direct Rules.render calls; update this verifier when that native path changes.');
   if (unexpectedControlIterationRenderSites.length > 0) {
     console.log('Unexpected control iteration render sites:');
     for (const match of unexpectedControlIterationRenderSites) {

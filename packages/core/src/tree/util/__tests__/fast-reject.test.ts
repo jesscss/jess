@@ -29,6 +29,7 @@ describe('BitSets and selectors', () => {
     let selector = sel([el('.foo'), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
+
     // visibleKeySet excludes combinators
     expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', ' ', '.bar']))).toBe(true);
@@ -38,6 +39,7 @@ describe('BitSets and selectors', () => {
     let selector = sel([compound([el('a'), el('.foo')]), co(' '), el('.bar')]);
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
+
     // visibleKeySet excludes combinators
     expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', '.bar']))).toBe(true);
     expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['a', '.foo', ' ', '.bar']))).toBe(true);
@@ -48,6 +50,7 @@ describe('BitSets and selectors', () => {
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
     expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
+
     // :is(.foo) with a single arg (not a SelectorList) — keys ARE required
     expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
@@ -57,6 +60,7 @@ describe('BitSets and selectors', () => {
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
     expect(visibleKeySetOf(selector).equals(context.selectorBits.getBitset(['.foo', '.bar']))).toBe(true);
+
     // :is() alternatives are not required
     expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset())).toBe(true);
   });
@@ -70,6 +74,7 @@ describe('BitSets and selectors', () => {
     ]);
     await selector.eval(context);
     expect(keySetOf(selector).equals(context.selectorBits.getBitset(['.a', '.b', ' ', '.c']))).toBe(true);
+
     // requiredKeySet has only the non-:is parts
     expect(requiredKeySetOf(selector).equals(context.selectorBits.getBitset([' ', '.c']))).toBe(true);
   });
@@ -278,8 +283,10 @@ describe('Fast-reject in selectorMatch', () => {
   });
 
   test('rejects complex find with :is(SelectorList) when non-:is keys are disjoint', async () => {
-    // find = .x > :is(.a, .b), target = .y — requiredKeySet = {.x, >}, target has {.y}
-    // requiredKeySet is disjoint with target
+    /*
+     * find = .x > :is(.a, .b), target = .y — requiredKeySet = {.x, >}, target has {.y}
+     * requiredKeySet is disjoint with target
+     */
     let find = sel([el('.x'), co('>'), pseudo({ name: ':is', arg: sellist([el('.a'), el('.b')]) })]);
     let target = el('.y');
     await find.eval(context);
@@ -290,10 +297,12 @@ describe('Fast-reject in selectorMatch', () => {
   });
 
   test('does not reject when target shares a key with :is(SelectorList) alternatives', async () => {
-    // find = .x > :is(.a, .b), target = .a — requiredKeySet = {.x, >} disjoint with {.a}
-    // BUT keySet = {.x, >, .a, .b} which shares .a — however requiredKeySet check rejects
-    // This is a known limitation: requiredKeySet disjoint can over-reject for SelectorList
-    // when no parent is provided and the partial match would go through alternatives only
+    /*
+     * find = .x > :is(.a, .b), target = .a — requiredKeySet = {.x, >} disjoint with {.a}
+     * BUT keySet = {.x, >, .a, .b} which shares .a — however requiredKeySet check rejects
+     * This is a known limitation: requiredKeySet disjoint can over-reject for SelectorList
+     * when no parent is provided and the partial match would go through alternatives only
+     */
     let find = sel([el('.x'), co('>'), pseudo({ name: ':is', arg: sellist([el('.a'), el('.b')]) })]);
     let target = el('.a');
     await find.eval(context);

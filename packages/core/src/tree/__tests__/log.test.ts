@@ -12,6 +12,7 @@ describe('Log node', () => {
 
   beforeEach(() => {
     context = new Context();
+
     // Save original logger methods
     originalLog = logger.log;
     originalWarn = logger.warn;

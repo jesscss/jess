@@ -56,9 +56,12 @@ describe('Declaration', () => {
     expect(node.value).toBe(value);
     expect(node.important).toBe(important);
     expect(node.value).not.toHaveProperty('name');
-    // The name is a bare string, not a walkable child node, so walk() yields only
-    // the node-valued fields (value, important). The string name stays the direct
-    // `node.name` field asserted above.
+
+    /*
+     * The name is a bare string, not a walkable child node, so walk() yields only
+     * the node-valued fields (value, important). The string name stays the direct
+     * `node.name` field asserted above.
+     */
     expect([...node.walk()]).toEqual([value, important]);
   });
 
@@ -99,8 +102,11 @@ describe('Declaration', () => {
     const important = any('!important', { role: 'flag' });
     const rule = decl({ name, value, important });
     let publicStringCalls = 0;
-    // The name is a bare string, so there is no name node whose public
-    // toTrimmedString could be invoked — only the value/important nodes are spied.
+
+    /*
+     * The name is a bare string, so there is no name node whose public
+     * toTrimmedString could be invoked — only the value/important nodes are spied.
+     */
     value.toTrimmedString = () => {
       publicStringCalls++;
       return 'wrong-value';
@@ -851,11 +857,13 @@ describe('Declaration', () => {
   });
 
   it('serializes comment trivia between declaration names and separators', () => {
-    // "color/* survive */ /* me too */: grey" — the name is a bare STRING with no
-    // own span. The comment between the name and the `:` round-trips via the
-    // declaration's node-level span (per-slot fieldSpans are no longer stored):
-    // any comment run inside [decl.start, value.start) is emitted. Authored
-    // whitespace in that gap is normalized away — only the comments survive.
+    /*
+     * "color/* survive *\/ /* me too *\/: grey" — the name is a bare STRING with no
+     * own span. The comment between the name and the `:` round-trips via the
+     * declaration's node-level span (per-slot fieldSpans are no longer stored):
+     * any comment run inside [decl.start, value.start) is emitted. Authored
+     * whitespace in that gap is normalized away — only the comments survive.
+     */
     const src = 'color/* survive */ /* me too */: grey';
     const name = 'color';
     const value = any('grey');
@@ -1735,11 +1743,14 @@ describe('Declaration', () => {
       }
     `);
   });
-  // it('should serialize to a module', () => {
-  //   let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     '$J.decl({\n  name: $J.expr([$J.any("color")]),\n  value: $J.spaced([$J.any("#eee")])\n})'
-  //   )
-  // })
+
+  /*
+   * it('should serialize to a module', () => {
+   * let rule = decl({ name: expr([any('color')]), value: spaced([any('#eee')]) })
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe(
+   * '$J.decl({\n  name: $J.expr([$J.any("color")]),\n  value: $J.spaced([$J.any("#eee")])\n})'
+   * )
+   * })
+   */
 });

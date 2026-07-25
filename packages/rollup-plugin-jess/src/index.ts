@@ -8,11 +8,13 @@ export type JessRollupPluginOptions = {
    * (Use this to set output options, plugins, etc.)
    */
   config?: Partial<ConfigOptions>;
+
   /**
    * Emit a CSS asset alongside the JS module.
    * Default: true
    */
   emitCss?: boolean;
+
   /**
    * Emit file name for the CSS asset. Defaults to `<basename>.css`.
    */

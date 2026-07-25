@@ -73,14 +73,19 @@ describe('BasicSelector', () => {
     expect(keySetOf(rule).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
     expect(visibleKeySetOf(rule).equals(context.selectorBits.getBitset(['.foo']))).toBe(true);
   });
-  // it('should serialize a module', () => {
-  //   let rule = el('foo')
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe('$J.el($J.any("foo"))')
 
-  //   rule = el(js('colorBrand'))
-  //   out = new OutputCollector()
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe('$J.el(colorBrand)')
-  // })
+  /*
+   * it('should serialize a module', () => {
+   * let rule = el('foo')
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe('$J.el($J.any("foo"))')
+   */
+
+  /*
+   * rule = el(js('colorBrand'))
+   * out = new OutputCollector()
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe('$J.el(colorBrand)')
+   * })
+   */
 });

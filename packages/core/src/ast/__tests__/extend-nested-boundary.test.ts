@@ -48,10 +48,12 @@ const ampThen = (...parts: string[]) =>
 
 describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
   it('CROSSING 1 level deep hoists to root, absorbing the crossed ancestor (interior &)', () => {
-    // `.p { .a & .leaf { … } }` composes the child to `.a .p .leaf` (origins 0,1,0).
-    // `.z:extend(.p .leaf all)` crosses `.p`(anc)+`.leaf`(own): maxBnd 1 == the child's
-    // whole ancestor depth, so NOTHING stays a wrapper — the rule hoists to ROOT with
-    // the full composed header, byte-identical to flat.
+    /*
+     * `.p { .a & .leaf { … } }` composes the child to `.a .p .leaf` (origins 0,1,0).
+     * `.z:extend(.p .leaf all)` crosses `.p`(anc)+`.leaf`(own): maxBnd 1 == the child's
+     * whole ancestor depth, so NOTHING stays a wrapper — the rule hoists to ROOT with
+     * the full composed header, byte-identical to flat.
+     */
     const inner = complexSelector([
       { compound: compoundSelectorOf([simpleSelector('.a')]) },
       { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) },
@@ -62,65 +64,65 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(descendant('.p', '.leaf')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe(
-      '.a :is(.p .leaf, .z) {\n'
+    expect(nested(document())).toBe('.a :is(.p .leaf, .z) {\n'
       + '  c: d;\n'
-      + '}\n'
-    );
+      + '}\n');
+
     // Semantic oracle: flat mode produces the same single top-level rule.
     expect(flat(document())).toBe(nested(document()));
   });
 
   it('CROSSING 2 levels deep hoists ONE level, preserving the outer wrapper (Case G — no double-compose)', () => {
-    // `.outer { .mid { & .leaf { … } } }` composes to `.outer .mid .leaf` (origins 2,1,0).
-    // `.z:extend(.mid .leaf all)` crosses `.mid`(anc)+`.leaf`(own): maxBnd 1, so the rule
-    // hoists out of ONLY `.mid` and re-nests under `.outer` — `.outer :is(.mid .leaf, .z)`.
-    // The naive one-level-up hoist double-composed `.outer` (`.outer { .outer :is(…) }`);
-    // the per-boundary header STRIPS the preserved `.outer` prefix.
+    /*
+     * `.outer { .mid { & .leaf { … } } }` composes to `.outer .mid .leaf` (origins 2,1,0).
+     * `.z:extend(.mid .leaf all)` crosses `.mid`(anc)+`.leaf`(own): maxBnd 1, so the rule
+     * hoists out of ONLY `.mid` and re-nests under `.outer` — `.outer :is(.mid .leaf, .z)`.
+     * The naive one-level-up hoist double-composed `.outer` (`.outer { .outer :is(…) }`);
+     * the per-boundary header STRIPS the preserved `.outer` prefix.
+     */
     const document = () => stylesheet([
       rule('.outer', [rule('.mid', [rule(ampThen('.leaf'), [decl('c', keyword('d'))])])]),
       rule('.z', [], [{ target: selist(descendant('.mid', '.leaf')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe(
-      '.outer {\n'
+    expect(nested(document())).toBe('.outer {\n'
       + '  :is(.mid .leaf, .z) {\n'
       + '    c: d;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
     expect(nested(document())).not.toContain('.outer :is'); // the double-compose regression guard
   });
 
   it('CROSSING two BOUNDARIES re-hoists two levels, preserving only the un-crossed outermost', () => {
-    // `.top { .outer { .mid { & .leaf { … } } } }` composes to `.top .outer .mid .leaf`
-    // (origins 3,2,1,0). `.z:extend(.outer .mid .leaf all)` crosses `.outer`+`.mid`(anc)
-    // +`.leaf`(own): maxBnd 2, so the rule re-hoists out of BOTH `.mid` and `.outer`
-    // (bubble 2 through the serializer queue) and re-nests under the un-crossed `.top`.
+    /*
+     * `.top { .outer { .mid { & .leaf { … } } } }` composes to `.top .outer .mid .leaf`
+     * (origins 3,2,1,0). `.z:extend(.outer .mid .leaf all)` crosses `.outer`+`.mid`(anc)
+     * +`.leaf`(own): maxBnd 2, so the rule re-hoists out of BOTH `.mid` and `.outer`
+     * (bubble 2 through the serializer queue) and re-nests under the un-crossed `.top`.
+     */
     const document = () => stylesheet([
       rule('.top', [rule('.outer', [rule('.mid', [rule(ampThen('.leaf'), [decl('c', keyword('d'))])])])]),
       rule('.z', [], [{ target: selist(descendant('.outer', '.mid', '.leaf')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe(
-      '.top {\n'
+    expect(nested(document())).toBe('.top {\n'
       + '  :is(.outer .mid .leaf, .z) {\n'
       + '    c: d;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
+
     // Same selectors as flat, just with `.top` kept as a nesting wrapper.
-    expect(flat(document())).toBe(
-      '.top :is(.outer .mid .leaf, .z) {\n'
+    expect(flat(document())).toBe('.top :is(.outer .mid .leaf, .z) {\n'
       + '  c: d;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('CROSSING across MULTIPLE interior ampersands (Case F) hoists to root', () => {
-    // `.p { .a & .b & { … } }` composes to `.a .p .b .p` (origins 0,1,0,1). The target
-    // `.p .b .p all` crosses `.p`(anc) `.b`(own) `.p`(anc): maxBnd 1 == the child's whole
-    // ancestor depth, so it hoists to ROOT (`.p` is absorbed into the graft).
+    /*
+     * `.p { .a & .b & { … } }` composes to `.a .p .b .p` (origins 0,1,0,1). The target
+     * `.p .b .p all` crosses `.p`(anc) `.b`(own) `.p`(anc): maxBnd 1 == the child's whole
+     * ancestor depth, so it hoists to ROOT (`.p` is absorbed into the graft).
+     */
     const inner = complexSelector([
       { compound: compoundSelectorOf([simpleSelector('.a')]) },
       { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) },
@@ -132,18 +134,18 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(descendant('.p', '.b', '.p')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe(
-      '.a :is(.p .b .p, .z) {\n'
+    expect(nested(document())).toBe('.a :is(.p .b .p, .z) {\n'
       + '  c: d;\n'
-      + '}\n'
-    );
+      + '}\n');
     expect(flat(document())).toBe(nested(document()));
   });
 
   it('CROSSING hoists out while a surviving sibling stays nested under the wrapper', () => {
-    // `.outer { .mid { & .leaf {c} ; & .other {e} } }`. `.z:extend(.mid .leaf all)` crosses
-    // and hoists `.leaf` up to `.outer`; `.other` (unmatched) stays nested under `.mid`,
-    // so the `.mid` wrapper is preserved for it while the crossing sibling lands beside it.
+    /*
+     * `.outer { .mid { & .leaf {c} ; & .other {e} } }`. `.z:extend(.mid .leaf all)` crosses
+     * and hoists `.leaf` up to `.outer`; `.other` (unmatched) stays nested under `.mid`,
+     * so the `.mid` wrapper is preserved for it while the crossing sibling lands beside it.
+     */
     const document = () => stylesheet([
       rule('.outer', [rule('.mid', [
         rule(ampThen('.leaf'), [decl('c', keyword('d'))]),
@@ -152,8 +154,7 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(descendant('.mid', '.leaf')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe(
-      '.outer {\n'
+    expect(nested(document())).toBe('.outer {\n'
       + '  .mid {\n'
       + '    & .other {\n'
       + '      e: f;\n'
@@ -162,15 +163,16 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       + '  :is(.mid .leaf, .z) {\n'
       + '    c: d;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('WITHIN-ampersand: the parent carries the extend, the child inherits in place (no hoist)', () => {
-    // `.box { color; .item & { … } }` composes the child to `.item .box` (origins 0,1).
-    // `.z:extend(.box all)` matches `.box`(ancestor) ONLY — a within-ampersand match. The
-    // parent rule carries it (`.box, .z`) and the child's `.box` slot renders `:is(.box, .z)`
-    // in place — no hoist, no flatten.
+    /*
+     * `.box { color; .item & { … } }` composes the child to `.item .box` (origins 0,1).
+     * `.z:extend(.box all)` matches `.box`(ancestor) ONLY — a within-ampersand match. The
+     * parent rule carries it (`.box, .z`) and the child's `.box` slot renders `:is(.box, .z)`
+     * in place — no hoist, no flatten.
+     */
     const child = complexSelector([
       { compound: compoundSelectorOf([simpleSelector('.item')]) },
       { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
@@ -180,43 +182,43 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       rule('.z', [], [{ target: selist(sel('.box')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe(
-      '.box,\n'
+    expect(nested(document())).toBe('.box,\n'
       + '.z {\n'
       + '  color: red;\n'
       + '}\n'
       + '.item :is(.box, .z) {\n'
       + '  c: d;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('LOCAL: an own-local match is substituted in place, no hoist', () => {
-    // `.box { & .leaf { … } }` composes to `.box .leaf` (origins 1,0). `.z:extend(.leaf all)`
-    // matches `.leaf`(own-local) ONLY — a local match, rewritten in place under the nested `&`.
+    /*
+     * `.box { & .leaf { … } }` composes to `.box .leaf` (origins 1,0). `.z:extend(.leaf all)`
+     * matches `.leaf`(own-local) ONLY — a local match, rewritten in place under the nested `&`.
+     */
     const document = () => stylesheet([
       rule('.box', [rule(ampThen('.leaf'), [decl('c', keyword('d'))])]),
       rule('.z', [], [{ target: selist(sel('.leaf')), partial: true }])
     ]);
 
-    expect(nested(document())).toBe(
-      '.box {\n'
+    expect(nested(document())).toBe('.box {\n'
       + '  & :is(.leaf, .z) {\n'
       + '    c: d;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('EXACT cross-& extender past a foreign split alias hoists in nested mode (not dropped)', () => {
-    // `.button { color; &:hover { color } } .submit { &:extend(.button); &:hover:extend(.button:hover) {} }`
-    // The sibling EXACT `.submit:extend(.button)` folds `.submit` into `.button`'s FLAT
-    // solve, but that alias is a top-level SPLIT — it does NOT nest `.button`'s children.
-    // The exact cross-`&` extender `.submit:hover` targets the nested `.button:hover` leaf;
-    // treating `.submit` as a header it descends from would silently DROP the extension
-    // (dev bug: `.submit { color: black }` with no `:hover`). The split alias must be
-    // excluded from the parent header so the extender routes to cross() and hoists to
-    // `:is(.button, .submit):hover` — byte-identical to the flat solve (the oracle).
+    /*
+     * `.button { color; &:hover { color } } .submit { &:extend(.button); &:hover:extend(.button:hover) {} }`
+     * The sibling EXACT `.submit:extend(.button)` folds `.submit` into `.button`'s FLAT
+     * solve, but that alias is a top-level SPLIT — it does NOT nest `.button`'s children.
+     * The exact cross-`&` extender `.submit:hover` targets the nested `.button:hover` leaf;
+     * treating `.submit` as a header it descends from would silently DROP the extension
+     * (dev bug: `.submit { color: black }` with no `:hover`). The split alias must be
+     * excluded from the parent header so the extender routes to cross() and hoists to
+     * `:is(.button, .submit):hover` — byte-identical to the flat solve (the oracle).
+     */
     const buttonHover = complexSelector([{
       compound: compoundSelectorOf([simpleSelector('.button'), simpleSelector(':hover')])
     }]);
@@ -228,7 +230,8 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
         decl('color', keyword('black')),
         rule(ampHover, [decl('color', keyword('inherit'))])
       ]),
-      rule('.submit',
+      rule(
+        '.submit',
         [rule(ampHover, [], [{ target: selist(buttonHover), partial: false }])],
         [{ target: selist(sel('.button')), partial: false }]
       )
@@ -243,6 +246,7 @@ describe('nested-mode ampersand-crossing hoist (per-boundary)', () => {
       + '  color: inherit;\n'
       + '}\n';
     expect(nested(document())).toBe(expected);
+
     // The nested projection must equal the flat solve (the semantic oracle).
     expect(nested(document())).toBe(flat(document()));
   });

@@ -10,6 +10,7 @@ import path from 'node:path';
 export interface MimeInfo {
   /** The mimetype string (e.g. `image/jpeg`). */
   readonly type: string;
+
   /** True when the payload is text (percent-encode); false → binary (base64). */
   readonly ascii: boolean;
 }

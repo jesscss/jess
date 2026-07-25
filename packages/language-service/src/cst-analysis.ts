@@ -23,6 +23,7 @@ export type CstIndexEntry = { node: CssCstNode; start: number; end: number };
  * `buildJessIndex`, but over the tolerant CST. */
 export type CstIndex = {
   nodes: CstIndexEntry[];
+
   /** Absolute [start,end) of a node, resolved from parent-relative spans. */
   spanOf(node: CssCstNode): { start: number; end: number } | undefined;
   findNodeAtOffset(offset: number): CssCstNode | null;
@@ -32,11 +33,13 @@ function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
 }
 
-// M4: memoize the index by tree identity. `cstDoc.edit()` yields a NEW tree per
-// edit, so a keyed cache auto-invalidates on change while every feature run
-// within one document version reuses a single build — no per-call rebuild, no
-// stale index. (True subtree-incremental patching is a deferred micro-opt; the
-// full walk is O(nodes) and cheap.)
+/*
+ * M4: memoize the index by tree identity. `cstDoc.edit()` yields a NEW tree per
+ * edit, so a keyed cache auto-invalidates on change while every feature run
+ * within one document version reuses a single build — no per-call rebuild, no
+ * stale index. (True subtree-incremental patching is a deferred micro-opt; the
+ * full walk is O(nodes) and cheap.)
+ */
 const INDEX_CACHE = new WeakMap<CssCstNode, CstIndex>();
 
 /** Depth-first collect, accumulating parent-relative spans into absolute
@@ -85,14 +88,20 @@ export function buildCstIndex(root: CssCstNode): CstIndex {
   return index;
 }
 
-// Grammar types (raw `grammarType`, shared across css/less/scss/jess) grouped by
-// the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
+/*
+ * Grammar types (raw `grammarType`, shared across css/less/scss/jess) grouped by
+ * the symbol they yield — matching the AST-based `getDocumentSymbols` exactly.
+ */
 const SELECTOR_TYPES = new Set(['SelectorList', 'ComplexSelector', 'CompoundSelector', 'InterpolatedSelector', 'BasicSelector']);
 const ATRULE_TYPES = new Set(['AtRuleBlock', 'AtRuleStatement', 'UnknownAtRuleBlock', 'QueryAtRuleBlock']);
-// Mixin DEFINITIONS: `Mixin`/`MixinDefinition` (legacy), the Less
-// `MixinOrQualifiedRule` (a `.foo() { … }` def — a bodyless `.foo();` CALL is the
-// SAME grammarType and is filtered out below), and the SCSS `@mixin foo` def.
+
+/*
+ * Mixin DEFINITIONS: `Mixin`/`MixinDefinition` (legacy), the Less
+ * `MixinOrQualifiedRule` (a `.foo() { … }` def — a bodyless `.foo();` CALL is the
+ * SAME grammarType and is filtered out below), and the SCSS `@mixin foo` def.
+ */
 const MIXIN_TYPES = new Set(['Mixin', 'MixinDefinition', 'MixinOrQualifiedRule', 'ScssMixin']);
+
 // Function DEFINITIONS: legacy `Func`/`FunctionDefinition` + the SCSS `@function`.
 const FUNC_TYPES = new Set(['Func', 'FunctionDefinition', 'ScssFunction']);
 
@@ -179,8 +188,11 @@ export function cstDocumentSymbols(root: CssCstNode, doc: TextDocument): Documen
       add(name || 'variable', SymbolKind.Variable, node, null, false);
     } else if (MIXIN_TYPES.has(gt)) {
       const raw = sliceOf(node);
-      // A Less `MixinOrQualifiedRule` with no block is a mixin CALL (`.h();`),
-      // not a definition — the outline lists definitions only (matches the AST).
+
+      /*
+       * A Less `MixinOrQualifiedRule` with no block is a mixin CALL (`.h();`),
+       * not a definition — the outline lists definitions only (matches the AST).
+       */
       if (gt === 'MixinOrQualifiedRule' && !raw.includes('{')) {
         continue;
       }

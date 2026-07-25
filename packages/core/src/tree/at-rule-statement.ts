@@ -46,6 +46,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
     super();
     setSourceSpan(this, location);
     this._options = options;
+
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     this.name = value.name;
     this.prelude = value.prelude;
@@ -97,6 +98,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
         sourceSpanOf(this)
       ).inherit(this);
     };
+
     // Interpolated names resolve to a plain string; the stored name stays string | Interpolated.
     const name: MaybePromise<AtRuleStatementName> = this.name instanceof Interpolated
       ? (() => {

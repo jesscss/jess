@@ -86,36 +86,48 @@ function assert(condition, message) {
 function assertPackedManifest(pkg, tarball, expectedVersion) {
   const manifest = readPackedManifest(tarball);
   assert(manifest.name === pkg.name, `${tarball}: expected ${pkg.name}, got ${manifest.name ?? '(unnamed)'}`);
-  assert(manifest.version === expectedVersion,
-    `${pkg.name}: packed ${manifest.version ?? '(missing version)'}, expected ${expectedVersion}`);
+  assert(
+    manifest.version === expectedVersion,
+    `${pkg.name}: packed ${manifest.version ?? '(missing version)'}, expected ${expectedVersion}`
+  );
 
-  // npm does not install devDependencies for a normal consumer, but it does
-  // publish their metadata. A local path here is still a broken release
-  // artifact: it leaks a workstation path to every registry consumer and makes
-  // `npm install --include=dev` impossible outside this checkout. Check every
-  // dependency section, not just the runtime installation graph.
+  /*
+   * npm does not install devDependencies for a normal consumer, but it does
+   * publish their metadata. A local path here is still a broken release
+   * artifact: it leaks a workstation path to every registry consumer and makes
+   * `npm install --include=dev` impossible outside this checkout. Check every
+   * dependency section, not just the runtime installation graph.
+   */
   for (const sectionName of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
     const section = manifest[sectionName];
     if (!section || typeof section !== 'object') {
       continue;
     }
     for (const [name, specifier] of Object.entries(section)) {
-      assert(!String(specifier).startsWith('workspace:'),
-        `${pkg.name}: packed ${sectionName}.${name} still uses ${specifier}`);
-      assert(!String(specifier).startsWith('link:'),
-        `${pkg.name}: packed ${sectionName}.${name} still uses ${specifier}`);
+      assert(
+        !String(specifier).startsWith('workspace:'),
+        `${pkg.name}: packed ${sectionName}.${name} still uses ${specifier}`
+      );
+      assert(
+        !String(specifier).startsWith('link:'),
+        `${pkg.name}: packed ${sectionName}.${name} still uses ${specifier}`
+      );
     }
   }
 
-  // This private workspace package supplies Parseman macro inputs while the
-  // parser package is built. Macro expansion leaves no runtime import of it,
-  // so it must never become a consumer dependency. It can remain a development
-  // dependency: pnpm rewrites its workspace specifier in packed metadata, and
-  // consumers do not install it.
+  /*
+   * This private workspace package supplies Parseman macro inputs while the
+   * parser package is built. Macro expansion leaves no runtime import of it,
+   * so it must never become a consumer dependency. It can remain a development
+   * dependency: pnpm rewrites its workspace specifier in packed metadata, and
+   * consumers do not install it.
+   */
   for (const sectionName of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
     const section = manifest[sectionName];
-    assert(!section?.['@jesscss/internal-css-recognition'],
-      `${pkg.name}: private macro input leaked into packed ${sectionName}`);
+    assert(
+      !section?.['@jesscss/internal-css-recognition'],
+      `${pkg.name}: private macro input leaked into packed ${sectionName}`
+    );
   }
 }
 
@@ -135,8 +147,10 @@ function assertConsumerPackagesAreReal(consumerDir, pkgNames) {
     assert(existsSync(installed), `consumer install omitted ${name}`);
     assert(!lstatSync(installed).isSymbolicLink(), `consumer install linked ${name} instead of unpacking it`);
     const resolved = realpathSync.native(installed);
-    assert(!resolved.startsWith(`${repoReal}${path.sep}`) && resolved !== repoReal,
-      `consumer resolves ${name} into the Jess workspace: ${resolved}`);
+    assert(
+      !resolved.startsWith(`${repoReal}${path.sep}`) && resolved !== repoReal,
+      `consumer resolves ${name} into the Jess workspace: ${resolved}`
+    );
   }
 
   const pending = [modulesDir];
@@ -146,8 +160,10 @@ function assertConsumerPackagesAreReal(consumerDir, pkgNames) {
       const candidate = path.join(current, entry.name);
       if (entry.isSymbolicLink()) {
         const resolved = realpathSync.native(candidate);
-        assert(!resolved.startsWith(`${repoReal}${path.sep}`) && resolved !== repoReal,
-          `consumer symlink resolves into the Jess workspace: ${candidate} -> ${resolved}`);
+        assert(
+          !resolved.startsWith(`${repoReal}${path.sep}`) && resolved !== repoReal,
+          `consumer symlink resolves into the Jess workspace: ${candidate} -> ${resolved}`
+        );
       } else if (entry.isDirectory()) {
         pending.push(candidate);
       }
@@ -239,10 +255,12 @@ assert.ok(bad.stderr.trim().length > 0, 'jess emitted no malformed-input diagnos
 console.log('packed jess command, file/import, and malformed-input paths ok');
 `.trimStart());
 
-  // plugin-js is an optional runtime capability. Install it from its tarball
-  // and prove the clean consumer reaches its deliberate missing-Deno gate,
-  // rather than silently falling back to Node execution. This stays deterministic
-  // even where a system Deno happens to be installed.
+  /*
+   * plugin-js is an optional runtime capability. Install it from its tarball
+   * and prove the clean consumer reaches its deliberate missing-Deno gate,
+   * rather than silently falling back to Node execution. This stays deterministic
+   * even where a system Deno happens to be installed.
+   */
   writeFileSync(optionalPlugin, `
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -275,8 +293,10 @@ function main() {
     fail(`Alpha publish-set validation failed:\n- ${plan.errors.join('\n- ')}`);
   }
   const versions = new Set(plan.packages.map(pkg => pkg.manifest.version));
-  assert(versions.size === 1,
-    `Packed-consumer proof requires the lockstep release set; found ${[...versions].join(', ')}`);
+  assert(
+    versions.size === 1,
+    `Packed-consumer proof requires the lockstep release set; found ${[...versions].join(', ')}`
+  );
   const version = [...versions][0];
   assert(version, 'Alpha publish set has no version.');
 
@@ -295,9 +315,12 @@ function main() {
       assert(pkg, `No package metadata for allowlisted ${name}`);
       run('pnpm', ['pack', '--pack-destination', packDir], pkg.dir);
       const expected = path.join(packDir, `${name.replace('@', '').replace('/', '-')}-${version}.tgz`);
-      // pnpm's filename escaping is documented for unscoped names, but scoped
-      // names have changed format across pnpm versions. Find the new tarball by
-      // inspecting its manifest rather than relying on a filename convention.
+
+      /*
+       * pnpm's filename escaping is documented for unscoped names, but scoped
+       * names have changed format across pnpm versions. Find the new tarball by
+       * inspecting its manifest rather than relying on a filename convention.
+       */
       const candidates = readdirSync(packDir)
         .map(file => path.join(packDir, file))
         .filter(file => file.endsWith('.tgz'));

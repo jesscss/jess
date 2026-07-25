@@ -10,9 +10,11 @@ function findExtendableLocationsNoExactCache(target: Selector, find: Selector): 
   // Clear the exact match cache by creating a temporary override
   const originalMethod = findExtendableLocations;
 
-  // For testing purposes, we'll modify the function to skip the exact match cache
-  // Since we can't easily override the cache, we'll check if they would be equal
-  // and force it through the regular path
+  /*
+   * For testing purposes, we'll modify the function to skip the exact match cache
+   * Since we can't easily override the cache, we'll check if they would be equal
+   * and force it through the regular path
+   */
   if (target.valueOf() === find.valueOf()) {
     // Bypass cache and go to optimization 2
     const locations: any[] = [];
@@ -242,6 +244,7 @@ describe.skip('Selector Performance Benchmarks', () => {
       const result1 = findExtendableLocations(testCase.target, testCase.find);
       const result2 = findExtendableLocationsNoFastPath(testCase.target, testCase.find);
       expect(result1.hasMatches).toBe(result2.hasMatches);
+
       // Note: Optimizations might find different numbers of locations but should agree on hasMatches
     }
   });
@@ -506,6 +509,7 @@ describe.skip('Selector Performance Benchmarks', () => {
     // Verify correctness for all edge cases (focus on hasMatches which should be consistent)
     const result1 = findExtendableLocations(nestedIsTarget, nestedIsFind);
     const result2 = findExtendableLocationsNoOptimizations(nestedIsTarget, nestedIsFind);
+
     // Note: Complex scenarios may have different optimization paths but should agree on whether matches exist
     console.log(`   Nested :is() - Optimized hasMatches: ${result1.hasMatches}, Unoptimized hasMatches: ${result2.hasMatches}`);
 

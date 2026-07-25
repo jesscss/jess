@@ -52,8 +52,10 @@ export function minMax(isMin: boolean, list: ValueGroup): ValueObj {
     numbers.push(arg);
   }
 
-  // The reference unit is the first unit-bearing argument's DISPLAY unit; every
-  // unitless argument is read as carrying it.
+  /*
+   * The reference unit is the first unit-bearing argument's DISPLAY unit; every
+   * unitless argument is read as carrying it.
+   */
   const reference = numbers.find(number => !isUnitlessDimension(number));
   const magnitude = (number: Dimension): number => reference === undefined
     ? number.number

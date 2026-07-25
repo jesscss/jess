@@ -36,8 +36,10 @@ function colorOperate(a: Color, b: ValueObj, op: string): Color {
   let newAlpha = a.alpha;
   let out: [number, number, number];
   if (b.type === 'Dimension') {
-    // less.js `Dimension.toColor` treats the magnitude as a per-channel scalar and
-    // IGNORES the unit (`#ff0000 + 10px` → `#ff0a0a`), so no unit clash here.
+    /*
+     * less.js `Dimension.toColor` treats the magnitude as a per-channel scalar and
+     * IGNORES the unit (`#ff0000 + 10px` → `#ff0a0a`), so no unit clash here.
+     */
     out = [calculate(aRGB[0], op, b.number), calculate(aRGB[1], op, b.number), calculate(aRGB[2], op, b.number)];
   } else if (b.type === 'Color') {
     const bRGB = colorRawRgb(b);
@@ -46,10 +48,13 @@ function colorOperate(a: Color, b: ValueObj, op: string): Color {
   } else {
     throw new TypeError(`Cannot operate on ${b.type}`);
   }
-  // An OPERATED color is a fresh canonical result: less.js `Color.operate` yields a
-  // bare rgb color with no source spelling, so it emits as HEX regardless of the
-  // operands' authored `rgb()`/`hsl()` format (the verbatim rule preserves only
-  // UN-operated literals). Drop `format`/`modernSyntax` → canonical `#rrggbb`.
+
+  /*
+   * An OPERATED color is a fresh canonical result: less.js `Color.operate` yields a
+   * bare rgb color with no source spelling, so it emits as HEX regardless of the
+   * operands' authored `rgb()`/`hsl()` format (the verbatim rule preserves only
+   * UN-operated literals). Drop `format`/`modernSyntax` → canonical `#rrggbb`.
+   */
   return makeColorRgb(out, newAlpha, HEX);
 }
 
@@ -183,9 +188,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       const from = bu.num[0] ?? bu.den[0] ?? '';
       const bVal = convertValue(b.number, from, target);
       if (isStrict && bVal === b.number && from !== target) {
-        throw new TypeError(
-          `Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`
-        );
+        throw new TypeError(`Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`);
       }
       value = calculate(a.number, op, bVal);
     }
@@ -200,8 +203,11 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
   }
 
   const unit = displayUnit(u, isStrict);
-  // Persist the multiset only when it isn't a plain single numerator (so chained
-  // ops can still cancel); a singular/empty unit round-trips through `makeDimension`.
+
+  /*
+   * Persist the multiset only when it isn't a plain single numerator (so chained
+   * ops can still cancel); a singular/empty unit round-trips through `makeDimension`.
+   */
   if (u.num.length === 1 && u.den.length === 0) {
     return makeDimension(value, unit);
   }
@@ -211,8 +217,10 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
 /** Dimension ⊕ Color: coerce the dimension to a color (unit ignored, per less.js
  * `Dimension.toColor`), then color-operate. `10px + #ff0000` → `#ff0a0a`. */
 function dimensionAsColor(a: Dimension, b: Color, op: string): Color {
-  // `thisColor.format` is inert (colorOperate reads only its channels and always
-  // returns a canonical HEX result), so build it as a plain HEX color.
+  /*
+   * `thisColor.format` is inert (colorOperate reads only its channels and always
+   * returns a canonical HEX result), so build it as a plain HEX color.
+   */
   const thisColor = makeColorRgb([a.number, a.number, a.number], 1, HEX);
   return colorOperate(thisColor, b, op);
 }
@@ -272,9 +280,12 @@ function spliceInner(inner: string): string {
     return inner;
   }
   const hasAdditive = / [-+] /.test(inner);
-  // Keep an additive nested calc as one authored computation when it is spliced
-  // into another operation. CSS can flatten the wrapper, but Less retains this
-  // grouping (`calc(2.25rem + 2px) - 2px` → `(2.25rem + 2px) - 2px`).
+
+  /*
+   * Keep an additive nested calc as one authored computation when it is spliced
+   * into another operation. CSS can flatten the wrapper, but Less retains this
+   * grouping (`calc(2.25rem + 2px) - 2px` → `(2.25rem + 2px) - 2px`).
+   */
   if (hasAdditive) {
     return `(${inner})`;
   }
@@ -307,11 +318,13 @@ function calcSafe(op: string, a: Dimension, b: Dimension): boolean {
  *      `calc(l op r)` fallback.
  */
 export function operate(op: string, left: ValueObj, right: ValueObj, modes: EvalModes): ValueObj {
-  // Guard 1: calc-wrapper keyword operand → flat calc splice.
-  // byte-faithful: opaque operand, no structured node — at the seam a calc
-  // operand is always an already-materialized keyword (the structured `calc(...)`
-  // FunctionCall was folded to bytes upstream), and a computed preserve-mode
-  // `calc(...)` fallback result has no node at all, so both are string-unwrapped.
+  /*
+   * Guard 1: calc-wrapper keyword operand → flat calc splice.
+   * byte-faithful: opaque operand, no structured node — at the seam a calc
+   * operand is always an already-materialized keyword (the structured `calc(...)`
+   * FunctionCall was folded to bytes upstream), and a computed preserve-mode
+   * `calc(...)` fallback result has no node at all, so both are string-unwrapped.
+   */
   const leftInner = left.type === 'Keyword' ? calcInner(left.bytes) : null;
   const rightInner = right.type === 'Keyword' ? calcInner(right.bytes) : null;
   if (leftInner !== null || rightInner !== null) {
@@ -319,20 +332,27 @@ export function operate(op: string, left: ValueObj, right: ValueObj, modes: Eval
     const rb = rightInner !== null ? spliceInner(rightInner) : right.bytes;
     return makeKeyword(`calc(${lb} ${op} ${rb})`);
   }
+
   // Guard 2: an un-operable keyword operand → preserve source.
   if (left.type === 'Keyword' || right.type === 'Keyword') {
     return makeKeyword(`${left.bytes} ${op} ${right.bytes}`);
   }
-  // Guard 3: inside calc, a cross-unit dimension op does NOT collapse on raw
-  // magnitudes — it is preserved as a flat `calc(l op r)` sub-expression.
+
+  /*
+   * Guard 3: inside calc, a cross-unit dimension op does NOT collapse on raw
+   * magnitudes — it is preserved as a flat `calc(l op r)` sub-expression.
+   */
   if (modes.inCalc && left.type === 'Dimension' && right.type === 'Dimension'
     && !calcSafe(op, left, right)) {
     return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);
   }
-  // A percentage product has no standalone CSS dimensional value. Preserve it
-  // as calc in the dialect's preserve mode even before an explicit calc wrapper;
-  // otherwise a lazy variable binding such as `@x: 100% * 100%` collapses to the
-  // invented scalar `10000%` and later composition cannot recover its semantics.
+
+  /*
+   * A percentage product has no standalone CSS dimensional value. Preserve it
+   * as calc in the dialect's preserve mode even before an explicit calc wrapper;
+   * otherwise a lazy variable binding such as `@x: 100% * 100%` collapses to the
+   * invented scalar `10000%` and later composition cannot recover its semantics.
+   */
   if (modes.unitMode === 'preserve' && op === '*' && left.type === 'Dimension' && right.type === 'Dimension'
     && left.unit === '%' && right.unit === '%') {
     return makeKeyword(`calc(${left.bytes} ${op} ${right.bytes})`);

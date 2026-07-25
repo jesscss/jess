@@ -50,6 +50,7 @@ type EvaluateCallableCandidateOutputOptions = {
   sourceRules: Rules;
   restrictMixinOutputLookup: boolean;
   allowSpineFold?: boolean;
+
   /** True when the resolved candidate is a Mixin DEFINITION (not a ruleset-as-mixin). */
   candidateIsMixin?: boolean;
 };
@@ -71,32 +72,40 @@ export async function evaluateCallableCandidateOutput({
   }
 
   try {
-    // Spine mixin-fold (cutover, UNIFIED-EVAL-EMIT-DESIGN §2/§3): when the
-    // emit-walk driver installed a surface sink, hand it the guard-passed BOUND
-    // surface (`rules` — shared body + wired live-cell param frame) to descend
-    // INLINE instead of building an output tree. Inside the recursion-guard
-    // bracket so a recursive body still trips `callMap`. The sink returns `true`
-    // when it consumed the surface (return `undefined` → no output-tree
-    // contribution); `false` means the shape is not spine-simple → fall through
-    // to the eval terminal for this candidate (byte-identical transition; the
-    // eval terminal dies in P4).
+    /*
+     * Spine mixin-fold (cutover, UNIFIED-EVAL-EMIT-DESIGN §2/§3): when the
+     * emit-walk driver installed a surface sink, hand it the guard-passed BOUND
+     * surface (`rules` — shared body + wired live-cell param frame) to descend
+     * INLINE instead of building an output tree. Inside the recursion-guard
+     * bracket so a recursive body still trips `callMap`. The sink returns `true`
+     * when it consumed the surface (return `undefined` → no output-tree
+     * contribution); `false` means the shape is not spine-simple → fall through
+     * to the eval terminal for this candidate (byte-identical transition; the
+     * eval terminal dies in P4).
+     */
     candidateParent.adopt(rules);
     const sink = allowSpineFold ? context.spineMixinSurfaceSink : undefined;
-    // The sink is consulted for EVERY guard-passed candidate so `resolveSpineMixin
-    // Call` sees each one; it returns false (→ eval this candidate) for a
-    // ruleset-as-mixin (`!candidateIsMixin`) or a non-simple surface, and true
-    // (→ fold, skip the output tree) only for a spine-simple Mixin-definition body.
-    if (sink && sink(rules, sourceRules, candidateIsMixin === true)) {
+
+    /*
+     * The sink is consulted for EVERY guard-passed candidate so `resolveSpineMixin
+     * Call` sees each one; it returns false (→ eval this candidate) for a
+     * ruleset-as-mixin (`!candidateIsMixin`) or a non-simple surface, and true
+     * (→ fold, skip the output tree) only for a spine-simple Mixin-definition body.
+     */
+    if (sink?.(rules, sourceRules, candidateIsMixin === true)) {
       return undefined;
     }
-    // The sink REJECTED this candidate's surface (non-spine-simple) — this candidate
-    // now eval-materializes as the byte-identical fall-back. SUSPEND the sink across
-    // that `rules.eval`: a NESTED call fired while materializing this body (e.g. a
-    // detached-ruleset call `@r()` inside the surface, whose bound value resolves to
-    // another callable) must build its OWN output tree, NOT be intercepted by the
-    // top-level call's sink (which would capture the inner body and drop its output,
-    // corrupting this candidate's eval-fallback result — the mixin-as-value / detached-
-    // ruleset-arg mis-fold). Restore after so sibling candidates are still seen.
+
+    /*
+     * The sink REJECTED this candidate's surface (non-spine-simple) — this candidate
+     * now eval-materializes as the byte-identical fall-back. SUSPEND the sink across
+     * that `rules.eval`: a NESTED call fired while materializing this body (e.g. a
+     * detached-ruleset call `@r()` inside the surface, whose bound value resolves to
+     * another callable) must build its OWN output tree, NOT be intercepted by the
+     * top-level call's sink (which would capture the inner body and drop its output,
+     * corrupting this candidate's eval-fallback result — the mixin-as-value / detached-
+     * ruleset-arg mis-fold). Restore after so sibling candidates are still seen.
+     */
     const suspendedSink = context.spineMixinSurfaceSink;
     context.spineMixinSurfaceSink = undefined;
     let newRules: Rules;
@@ -111,13 +120,16 @@ export async function evaluateCallableCandidateOutput({
     candidateParent.adopt(newRules);
     newRules.index = candidateIndex;
     attachMixinOutputSlot(newRules, sourceRules, restrictMixinOutputLookup);
-    // LEAKY forward-propagation at the document ROOT (spine): a root-level mixin
-    // call folds via the eval terminal here (the root emit path installs no surface
-    // sink), so the eval two-walk's `injectLeakyMixinOutputBindings` (rules.ts
-    // applyResult) never runs. Inject the evaluated output's leaked vars into the
-    // ROOT frame at the call's source index so a LATER root sibling ruleset
-    // (`.heightIsSet { height: @height }`) resolves the leak — byte-identical to
-    // less@4. Zero-cost off leaky mode; only a root-level spine call reaches here.
+
+    /*
+     * LEAKY forward-propagation at the document ROOT (spine): a root-level mixin
+     * call folds via the eval terminal here (the root emit path installs no surface
+     * sink), so the eval two-walk's `injectLeakyMixinOutputBindings` (rules.ts
+     * applyResult) never runs. Inject the evaluated output's leaked vars into the
+     * ROOT frame at the call's source index so a LATER root sibling ruleset
+     * (`.heightIsSet { height: @height }`) resolves the leak — byte-identical to
+     * less@4. Zero-cost off leaky mode; only a root-level spine call reaches here.
+     */
     const leakTargetRoot = context.spineRootCallEmitFrame;
     if (
       context.spineRootCallEmit

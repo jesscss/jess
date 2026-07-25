@@ -22,19 +22,24 @@ export async function evaluateCallableArgs({
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
       if (isNode(arg)) {
-        // Named arguments participate in parameter binding only; evaluating
-        // them here would register/override vars in the caller scope.
+        /*
+         * Named arguments participate in parameter binding only; evaluating
+         * them here would register/override vars in the caller scope.
+         */
         if (isNode(arg, N.VarDeclaration)) {
           evaluatedArgs.push(arg);
           continue;
         }
-        // Detached-ruleset closure capture: a Rules passed as an arg is a lexical
-        // closure over the surface where it is WRITTEN (the current caller scope T,
-        // which carries per-call param live-slots). Capture T BEFORE evaluating the
-        // arg — the body may be eagerly evaluated here (e.g. `{ x: @outer }`), and its
-        // free vars must resolve up T (the re-pointed placement surface), NOT the
-        // arg's canonical `.parent`. Setting it post-eval was too late for that eager
-        // body eval. `inherit()` propagates `_closureScope` onto the evaluated result.
+
+        /*
+         * Detached-ruleset closure capture: a Rules passed as an arg is a lexical
+         * closure over the surface where it is WRITTEN (the current caller scope T,
+         * which carries per-call param live-slots). Capture T BEFORE evaluating the
+         * arg — the body may be eagerly evaluated here (e.g. `{ x: @outer }`), and its
+         * free vars must resolve up T (the re-pointed placement surface), NOT the
+         * arg's canonical `.parent`. Setting it post-eval was too late for that eager
+         * body eval. `inherit()` propagates `_closureScope` onto the evaluated result.
+         */
         const closureScope = context.rulesContext;
         if (isNode(arg, N.Rules) && closureScope) {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -64,12 +69,15 @@ export async function evaluateCallableArgs({
         evaluatedArgs.push(evald);
         continue;
       }
-      // A non-Node arg is either a parser value-shape (a space-group array or a
-      // bare string terminal) or a JS-interop value. The former must coerce to a
-      // space `Sequence` / keyword via `coerceValueNode`; `cast` would wrap an
-      // array as a comma `List`, corrupting a space-separated argument. Route
-      // value-shapes through coercion (and evaluate the result) and keep `cast`
-      // for genuine JS primitives.
+
+      /*
+       * A non-Node arg is either a parser value-shape (a space-group array or a
+       * bare string terminal) or a JS-interop value. The former must coerce to a
+       * space `Sequence` / keyword via `coerceValueNode`; `cast` would wrap an
+       * array as a comma `List`, corrupting a space-separated argument. Route
+       * value-shapes through coercion (and evaluate the result) and keep `cast`
+       * for genuine JS primitives.
+       */
       if (typeof arg === 'string' || Array.isArray(arg)) {
         evaluatedArgs.push(await coerceValueNode(arg).eval(context));
         continue;

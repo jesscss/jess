@@ -26,6 +26,7 @@ const round = defineFunction('round', {
       return makeDimension(Number.NaN, number.unit);
     }
     const multiple = roundHalfAwayFromZero(number.number / step.number) * step.number;
+
     // Re-derive through the step so binary-fraction steps do not leak float dust.
     return makeDimension(Number(multiple.toPrecision(15)), number.unit || step.unit);
   }

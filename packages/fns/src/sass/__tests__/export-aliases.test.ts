@@ -76,8 +76,11 @@ describe('Sass export aliases', () => {
     expect(mathModuleAbs).toBe(sharedAbs);
     expect(mathModuleCeil).toBe(sharedCeil);
     expect(mathModuleFloor).toBe(sharedFloor);
-    // `round` is dialect-owned: Sass's second argument is a step, Less's is
-    // decimal precision, so the Sass module must NOT be the Less body.
+
+    /*
+     * `round` is dialect-owned: Sass's second argument is a step, Less's is
+     * decimal precision, so the Sass module must NOT be the Less body.
+     */
     expect(mathModuleRound).not.toBe(lessRound);
     expect(mathAbs).toBe(sharedAbs);
   });

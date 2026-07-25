@@ -93,11 +93,13 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
     io?: FnIo,
     onUnresolved?: (error: unknown) => void
   ): MaybePromise<ValueGroup> => {
-    // [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
-    // FIRST — but ONLY when `scope` is non-null, which the caller passes solely
-    // when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
-    // idle path `scope` is omitted/null and this whole branch is skipped, so the
-    // built-in dispatch below is reached on the identical path it took before.
+    /*
+     * [plugin/P1] Scoped `@plugin`/`@use` fns shadow built-ins and are consulted
+     * FIRST — but ONLY when `scope` is non-null, which the caller passes solely
+     * when the document registered a scoped fn somewhere (`e.anyScopedFns`). On the
+     * idle path `scope` is omitted/null and this whole branch is skipped, so the
+     * built-in dispatch below is reached on the identical path it took before.
+     */
     if (scope) {
       const scoped = scope.lookup(name);
       if (scoped) {
@@ -112,17 +114,20 @@ export function buildEvaluator(registry: FnRegistry): ValueEvaluator {
       try {
         return recoverAsyncCall(registry.dispatch(name, args, { modes, stringify, io }), name, args, modes, onUnresolved);
       } catch (err) {
-        // FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
-        // resolves to a built-in but can't produce a value for these args — a modern
-        // color syntax (`hsl(198deg 28% 50%)`), a relative/`var()` color arg, or a
-        // non-color first arg to `contrast`/`lighten` (the CSS filter) — renders
-        // as-is, like an unknown CSS function, rather than throwing. This mirrors
-        // less.js, which keeps such calls verbatim. (Only fn-dispatch errors are
-        // caught here; variable-resolution / mixin-recursion errors are thrown
-        // outside `dispatch` and still propagate.)
+        /*
+         * FunctionMode `preserve` (Less v5 default): a bare/global fn reference that
+         * resolves to a built-in but can't produce a value for these args — a modern
+         * color syntax (`hsl(198deg 28% 50%)`), a relative/`var()` color arg, or a
+         * non-color first arg to `contrast`/`lighten` (the CSS filter) — renders
+         * as-is, like an unknown CSS function, rather than throwing. This mirrors
+         * less.js, which keeps such calls verbatim. (Only fn-dispatch errors are
+         * caught here; variable-resolution / mixin-recursion errors are thrown
+         * outside `dispatch` and still propagate.)
+         */
         return recoverCallFailure(err, name, args, modes, onUnresolved);
       }
     }
+
     // Unknown function: emit verbatim.
     return fallbackCall(name, args);
   };

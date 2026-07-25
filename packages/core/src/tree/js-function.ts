@@ -2,6 +2,7 @@ import type { Context } from '../context.js';
 import { Node, defineType, type LocationInfo, type NodeOptions } from './node.js';
 
 type Fn = (...args: any[]) => any;
+
 /**
  * A JS function.
  */

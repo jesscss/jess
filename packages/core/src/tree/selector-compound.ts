@@ -33,9 +33,11 @@ function emitCompoundPart(
   cursor: { i: number }
 ): void {
   if (typeof part === 'string') {
-    // String parts carry no own location; a comment authored before this part
-    // (between adjacent simple selectors) round-trips via the owning
-    // CompoundSelector's in-span comment runs.
+    /*
+     * String parts carry no own location; a comment authored before this part
+     * (between adjacent simple selectors) round-trips via the owning
+     * CompoundSelector's in-span comment runs.
+     */
     if (emitLeadingTrivia && options.trivia && cursor.i < spanComments.length) {
       cursor.i = emitNextSpanComment(spanComments, cursor.i, options);
     }
@@ -107,16 +109,20 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
       if (typeof item !== 'string' && item.hoistToRoot) {
         hoistToRoot = true;
       }
-      // Bubble F_AMPERSAND from a resolved `&` component: a compound like
-      // `&.foo-xxx` whose `&` resolved (via its container) to the parent still
-      // CONTAINS the `&` node. composeSelector keys on this flag to substitute `&`
-      // (once) rather than prepend the parent again — without it, a nested `&`
-      // selector re-composes and duplicates the ancestor. The eval-time rebuild
-      // here missed the bubble that `adopt` performs (node-base F_AMPERSAND).
+
+      /*
+       * Bubble F_AMPERSAND from a resolved `&` component: a compound like
+       * `&.foo-xxx` whose `&` resolved (via its container) to the parent still
+       * CONTAINS the `&` node. composeSelector keys on this flag to substitute `&`
+       * (once) rather than prepend the parent again — without it, a nested `&`
+       * selector re-composes and duplicates the ancestor. The eval-time rebuild
+       * here missed the bubble that `adopt` performs (node-base F_AMPERSAND).
+       */
       if (typeof item !== 'string' && item.hasFlag(F_AMPERSAND)) {
         hasAmpersand = true;
       }
     }
+
     // Own unchanged source children; evaluated clones may carry runtime state.
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const node = new CompoundSelector(
@@ -162,10 +168,13 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override writeSyntax(printOptions: FinalPrintOptions): void {
     const value = this.value;
-    // Simple-selector parts carry no own source span; a comment authored between
-    // two of them (e.g. `.a/*c*/.b`) still round-trips via the in-span comment
-    // runs. Compound parts are adjacent (no whitespace between them), so only
-    // comments are relevant here.
+
+    /*
+     * Simple-selector parts carry no own source span; a comment authored between
+     * two of them (e.g. `.a/*c*\/.b`) still round-trips via the in-span comment
+     * runs. Compound parts are adjacent (no whitespace between them), so only
+     * comments are relevant here.
+     */
     const spanComments = printOptions.trivia
       ? commentRunsWithinSpan(printOptions.trivia, spanStartOf(this), spanEndOf(this))
       : [];
@@ -205,8 +214,10 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
         }
       }
 
-      // Element selectors must come first for valid CSS
-      // Non-element selectors maintain their original order (no sorting)
+      /*
+       * Element selectors must come first for valid CSS
+       * Non-element selectors maintain their original order (no sorting)
+       */
       value = '';
       for (let i = 0; i < elementSelectors.length; i++) {
         value += elementSelectors[i]!;
@@ -225,11 +236,14 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
 
   override evalNode(context: Context): MaybePromise<Node> {
     attachSelectorBitLibrary(this, context.selectorBits);
-    // A component's asyncness can depend on runtime var resolution (an
-    // interpolated selector `@{v}` whose var resolves via an async plugin-js
-    // value), which `F_MAY_ASYNC` cannot statically predict. `evaluateComponents`
-    // stays sync-fast when nothing is async and only promotes to a promise when a
-    // component actually evaluates async, so route through it unconditionally.
+
+    /*
+     * A component's asyncness can depend on runtime var resolution (an
+     * interpolated selector `@{v}` whose var resolves via an async plugin-js
+     * value), which `F_MAY_ASYNC` cannot statically predict. `evaluateComponents`
+     * stays sync-fast when nothing is async and only promotes to a promise when a
+     * component actually evaluates async, so route through it unconditionally.
+     */
     const evaluatedValue = this.evaluateComponents(context, false);
     return isThenable(evaluatedValue)
       ? (evaluatedValue as Promise<Array<Selector | Nil | string>>).then(value => this.finalizeComponents(value, true))
@@ -344,21 +358,25 @@ export class CompoundSelector extends Selector<CompoundSelectorComponent[]> {
   }
 
   /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   this.value.forEach(node => node.toCSS(context, out))
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * this.value.forEach(node => node.toCSS(context, out))
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', sourceSpanOf(this))
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
-  //     node.toModule(context, out)
-  //     if (i < length) {
-  //       out.add(', ')
-  //     }
-  //   })
-  //   out.add('])')
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * out.add('$J.sel([', sourceSpanOf(this))
+   * const length = this.value.length - 1
+   * this.value.forEach((node, i) => {
+   * node.toModule(context, out)
+   * if (i < length) {
+   * out.add(', ')
+   * }
+   * })
+   * out.add('])')
+   * }
+   */
 }
 
 export const compound = defineType(CompoundSelector, 'CompoundSelector', 'compound');

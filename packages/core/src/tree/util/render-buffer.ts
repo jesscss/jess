@@ -52,6 +52,7 @@ export type RenderBufferFlags = {
 export type FlatRenderBuffer = {
   kind: 'flat';
   parts: string[];
+
   /** Internal compiler-owned buffers may share this array with their writer. */
   shareWriter?: true;
 };
@@ -119,15 +120,13 @@ function createSharedFlatRenderBuffer(): FlatRenderBuffer {
 }
 
 export function createRenderBufferForFlags(flags: RenderBufferFlags): RenderBuffer {
-  return createRenderBuffer(
-    flags.hasExtends
+  return createRenderBuffer(flags.hasExtends
     || flags.hasReferenceImports
     || flags.hasHoists
     || flags.hasMerges
     || flags.hasPendingRefs
-      ? 'segmented'
-      : 'flat'
-  );
+    ? 'segmented'
+    : 'flat');
 }
 
 export function isRenderBuffer(value: unknown): value is RenderBuffer {
@@ -209,10 +208,12 @@ export function writePreparedRenderText(
     && options.writer.writesTo(buffer.parts)
     && options.writer.hasContentSince(mark)
   ) {
-    // A serializer can write a prefix and return the complete value. Preserve
-    // the writer's existing chunks, adding only an unwritten suffix. If a
-    // nested detached serializer returned bytes that were not written to the
-    // shared writer, replace the captured range so the buffer remains exact.
+    /*
+     * A serializer can write a prefix and return the complete value. Preserve
+     * the writer's existing chunks, adding only an unwritten suffix. If a
+     * nested detached serializer returned bytes that were not written to the
+     * shared writer, replace the captured range so the buffer remains exact.
+     */
     const written = options.writer.getSince(mark);
     if (written === text) {
       return text;
@@ -345,9 +346,11 @@ export function renderNodeToWriter(
   context: Context,
   options?: PrintOptions
 ): MaybePromise<string> {
-  // Test/internal adapter: serialize a node through its explicit resolve
-  // contract when a native render override is not available. Production render
-  // paths should prefer node-local render methods and flat buffers.
+  /*
+   * Test/internal adapter: serialize a node through its explicit resolve
+   * contract when a native render override is not available. Production render
+   * paths should prefer node-local render methods and flat buffers.
+   */
   const writeResolved = (resolved: RenderableOutput): string => {
     return renderedOutputToString(node, resolved, context, options);
   };
@@ -371,9 +374,11 @@ export function renderNodeToString(
 }
 
 function hasNativeBufferRender(node: object): node is NativeRenderOutput {
-  // Own instance render: a plain adapter object writing directly into a buffer
-  // declares at least (context, buffer). Read the own value directly instead of
-  // materializing a property descriptor.
+  /*
+   * Own instance render: a plain adapter object writing directly into a buffer
+   * declares at least (context, buffer). Read the own value directly instead of
+   * materializing a property descriptor.
+   */
   if (Object.prototype.hasOwnProperty.call(node, 'render')) {
     const ownRender = (node as { render?: unknown }).render;
     if (typeof ownRender === 'function' && ownRender.length >= 2) {
@@ -381,10 +386,12 @@ function hasNativeBufferRender(node: object): node is NativeRenderOutput {
     }
   }
 
-  // Inherited render: locate the first prototype that owns the method so its
-  // arity is read from the defining class, then apply the native buffer-render
-  // gate (context, buffer, options). Matches the first-owning-proto semantics of
-  // the previous descriptor walk without any property-descriptor allocation.
+  /*
+   * Inherited render: locate the first prototype that owns the method so its
+   * arity is read from the defining class, then apply the native buffer-render
+   * gate (context, buffer, options). Matches the first-owning-proto semantics of
+   * the previous descriptor walk without any property-descriptor allocation.
+   */
   let proto = getObjectPrototype(node);
   while (proto) {
     if (Object.prototype.hasOwnProperty.call(proto, 'render')) {

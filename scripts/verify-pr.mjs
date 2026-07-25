@@ -32,9 +32,11 @@ function heading(text) {
   console.log(`\n\x1b[1m==> ${text}\x1b[0m`);
 }
 
-// Returns combined stdout+stderr when `capture` is set. The script is fully
-// synchronous (spawnSync), so the log MUST be captured into memory and written
-// with a sync fs call — an async write stream would never flush.
+/*
+ * Returns combined stdout+stderr when `capture` is set. The script is fully
+ * synchronous (spawnSync), so the log MUST be captured into memory and written
+ * with a sync fs call — an async write stream would never flush.
+ */
 function run(command, args, { capture = false } = {}) {
   console.log(`\n$ ${[command, ...args].join(' ')}`);
   const result = spawnSync(command, args, {
@@ -66,8 +68,10 @@ for (const entry of readdirSync(path.join(ROOT, 'packages'))) {
   rmSync(path.join(ROOT, 'packages', entry, 'lib'), { recursive: true, force: true });
 }
 
-// 2. Clean serial build in topological order. pnpm -r builds in dependency
-//    order; --workspace-concurrency=1 forces it serial so no error is masked.
+/*
+ * 2. Clean serial build in topological order. pnpm -r builds in dependency
+ * order; --workspace-concurrency=1 forces it serial so no error is masked.
+ */
 const logDir = mkdtempSync(path.join(tmpdir(), 'jess-verify-pr-'));
 const buildLogPath = path.join(logDir, 'build.log');
 heading('Clean build (serial, topological)');
@@ -85,11 +89,13 @@ writeFileSync(buildLogPath, buildOutput);
 heading('Compose-integrity');
 run('node', ['scripts/verify-compose-integrity.mjs', '--log', buildLogPath]);
 
-// 3b. Macro-buildability against the artifacts step 2 just produced. Compose
-//     degrade is only half the concern: a single rule can stop lowering while
-//     the grammar as a whole still composes, and that shows up ONLY as
-//     `_rp[N].parse(` in the built bundle. `--no-build` so this reads step 2's
-//     output instead of paying for a second clean rebuild.
+/*
+ * 3b. Macro-buildability against the artifacts step 2 just produced. Compose
+ * degrade is only half the concern: a single rule can stop lowering while
+ * the grammar as a whole still composes, and that shows up ONLY as
+ * `_rp[N].parse(` in the built bundle. `--no-build` so this reads step 2's
+ * output instead of paying for a second clean rebuild.
+ */
 heading('Macro-buildability');
 run('node', ['scripts/check-macro-buildable.mjs', '--no-build']);
 
@@ -101,14 +107,19 @@ run('pnpm', ['run', 'verify:types']);
 heading('CI (per-package build + test)');
 run('pnpm', ['run', 'ci']);
 
-// 5. Structural / perf gates + node-creation audit. verify:config-syntax is
-//    included here because it used to run in the pre-commit/pre-push hooks that
-//    are now lint-only — its coverage moves to this gate rather than being lost.
+/*
+ * 5. Structural / perf gates + node-creation audit. verify:config-syntax is
+ * included here because it used to run in the pre-commit/pre-push hooks that
+ * are now lint-only — its coverage moves to this gate rather than being lost.
+ */
 heading('Structural & perf gates');
 for (const script of [
   'verify:config-syntax',
-  // A truthiness test on a possibly-awaitable value silently takes one branch
-  // instead of crashing, and neither tsc nor no-unnecessary-condition sees it.
+
+  /*
+   * A truthiness test on a possibly-awaitable value silently takes one branch
+   * instead of crashing, and neither tsc nor no-unnecessary-condition sees it.
+   */
   'verify:maybe-promise-truthiness',
   'verify:aggressive-cutting-review',
   'verify:node-copy-frontier',

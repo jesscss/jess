@@ -144,6 +144,7 @@ while (queue.length) {
       advanced++;
       continue;
     }
+
     // first not-done in a spawned slice = the fixture the child died on
     results.push({ file: job.file, kind: job.kind, outcome: killed ? 'timeout' : 'crash', detail: 'child died here (OOM/hang)' });
     advanced++;
@@ -153,9 +154,11 @@ while (queue.length) {
   process.stdout.write(`batch ${batchNo}: +${done.length} done, ${queue.length} left${killed ? ' (child killed)' : ''}\n`);
 }
 
-// --- 3. aggregate + report ---
-// Fixtures the hard gate (all-less.test.ts) already skips or marks
-// expected-failure — so we can flag which non-passes are already-known vs NEW.
+/*
+ * --- 3. aggregate + report ---
+ * Fixtures the hard gate (all-less.test.ts) already skips or marks
+ * expected-failure — so we can flag which non-passes are already-known vs NEW.
+ */
 const known = new Set();
 try {
   const gateSrc = readFileSync(path.join(reportDir, 'all-less.test.ts'), 'utf8');

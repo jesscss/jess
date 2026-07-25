@@ -10,9 +10,7 @@ export type StepErrorOptions<TIn, R> = {
 
 type StepFallbackFactory<TIn, R> = (error: unknown, input: TIn) => R;
 
-function isStepFallbackFactory<TIn, R>(
-  fallback: StepErrorOptions<TIn, R>['fallback']
-): fallback is StepFallbackFactory<TIn, R> {
+function isStepFallbackFactory<TIn, R>(fallback: StepErrorOptions<TIn, R>['fallback']): fallback is StepFallbackFactory<TIn, R> {
   return typeof fallback === 'function';
 }
 
@@ -27,9 +25,7 @@ function resolveStepFallback<TIn, R>(
 }
 
 // Type guard to help TypeScript narrow no-arg functions
-function isNoArgFunction<TIn, R>(
-  fn: ((input: TIn) => MaybePromise<R>) | (() => MaybePromise<R>)
-): fn is () => MaybePromise<R> {
+function isNoArgFunction<TIn, R>(fn: ((input: TIn) => MaybePromise<R>) | (() => MaybePromise<R>)): fn is () => MaybePromise<R> {
   return fn.length === 0;
 }
 
@@ -38,18 +34,25 @@ export function tryStep<TIn, R>(
   fn: (input: TIn) => MaybePromise<R>,
   options: StepErrorOptions<TIn, R> & { rethrow: true }
 ): (input: TIn) => MaybePromise<R>;
-// Overload: function with no input (for first step in pipe) with rethrow: true
-// Return type is () => MaybePromise<R> to match pipe's first overload
+
+/*
+ * Overload: function with no input (for first step in pipe) with rethrow: true
+ * Return type is () => MaybePromise<R> to match pipe's first overload
+ */
 export function tryStep<R>(
   fn: () => MaybePromise<R>,
   options: StepErrorOptions<undefined, R> & { rethrow: true }
 ): () => MaybePromise<R>;
-// Overload: function with no input (for first step in pipe), may return undefined
-// Return type is () => MaybePromise<R | undefined> to match pipe's first overload
+
+/*
+ * Overload: function with no input (for first step in pipe), may return undefined
+ * Return type is () => MaybePromise<R | undefined> to match pipe's first overload
+ */
 export function tryStep<R>(
   fn: () => MaybePromise<R>,
   options?: StepErrorOptions<undefined, R | undefined>
 ): () => MaybePromise<R | undefined>;
+
 // Default overload: may return undefined on error
 export function tryStep<TIn, R>(
   fn: (input: TIn) => MaybePromise<R>,
@@ -62,8 +65,10 @@ export function tryStep<TIn, R>(
   // Check if fn takes no arguments (for first step)
   if (isNoArgFunction(fn)) {
     const noInputFn = fn; // Type guard narrows this to () => MaybePromise<R>
-    // Even though the function takes no args, the wrapper should accept input for pipe chaining
-    // and pass it to fallback/onError
+    /*
+     * Even though the function takes no args, the wrapper should accept input for pipe chaining
+     * and pass it to fallback/onError
+     */
     const resultFn = (input?: TIn) => {
       try {
         const out = noInputFn();
@@ -95,6 +100,7 @@ export function tryStep<TIn, R>(
     };
     return resultFn as (input: TIn) => MaybePromise<R | undefined>;
   }
+
   // Original implementation for functions that take input
   return (input: TIn) => {
     try {

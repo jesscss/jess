@@ -54,6 +54,7 @@ export type JavaScriptSandboxConfig = {
 
 export interface JsPluginOptions extends JavaScriptSandboxConfig {
   denoCommand?: string;
+
   /**
    * Runtime API exposed inside the Deno worker.
    *
@@ -102,9 +103,7 @@ const DEBUG_ENV_VALUE_RE = /js-debug|bootloader/i;
  * The Deno permission sandbox is untouched; this only stops leaking the debugger
  * into it.
  */
-export const sanitizeSpawnEnv = (
-  env: NodeJS.ProcessEnv = process.env
-): NodeJS.ProcessEnv => {
+export const sanitizeSpawnEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => {
   const clean: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(env)) {
     if (DEBUG_ENV_KEY_RE.test(key)) {
@@ -215,12 +214,16 @@ export type PluginLogRecord = { level: 'warn' | 'error' | 'info' | 'debug'; mess
 export interface PluginCallCapabilities {
   /** Resolve `@name` at the call site. `null` means "no such variable". */
   lookupVariable?(name: string): { value: unknown; important?: boolean } | null;
+
   /** Evaluate a built-in function (`less.functions.functionRegistry.get(...)`). */
   callFunction?(name: string, args: unknown[]): unknown;
+
   /** The file/entry pair a plugin reads through `this.currentFileInfo`. */
   currentFileInfo?: { filename: string; entryPath: string };
+
   /** Records a diagnostic emitted by the plugin through `less.logger`. */
   log?(record: PluginLogRecord): void;
+
   /** Propagates `!important` picked up while resolving a variable. */
   markImportant?(): void;
 }
@@ -265,6 +268,7 @@ type RpcResult =
   | {
     id: number;
     ok: false;
+
     /** Present when the sandbox paused for one unresolved scope/built-in fact. */
     need?: PluginFactNeed;
     error?: string;
@@ -398,6 +402,7 @@ export class JsPlugin extends AbstractPlugin {
       const rand = `${process.pid}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
       return `\\\\.\\pipe\\jess-deno-broker-${rand}`;
     }
+
     // macOS temp dir paths can exceed unix socket limits. Keep this short.
     const rand = Math.floor(Math.random() * 10000);
     return `/tmp/jd-${process.pid}-${Date.now()}-${rand}.sock`;
@@ -546,11 +551,9 @@ export class JsPlugin extends AbstractPlugin {
     return new Promise<void>((resolve, reject) => {
       let stderrText = '';
       const timer = setTimeout(() => {
-        reject(new Error(
-          stderrText.trim()
-            ? `Timed out waiting for Deno worker startup.\n${stderrText.trim()}`
-            : 'Timed out waiting for Deno worker startup.'
-        ));
+        reject(new Error(stderrText.trim()
+          ? `Timed out waiting for Deno worker startup.\n${stderrText.trim()}`
+          : 'Timed out waiting for Deno worker startup.'));
       }, BOOT_TIMEOUT_MS);
       const onStderr = (chunk: string) => {
         stderrText += chunk;
@@ -643,20 +646,18 @@ export class JsPlugin extends AbstractPlugin {
     this.pending.clear();
   }
 
-  private async callWorker(
-    request:
-      | { type: 'load'; modulePath: string }
-      | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
-      | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
-      | {
-        type: 'invokeLessPluginFunction';
-        modulePath: string;
-        options: string | null;
-        functionName: string;
-        args: unknown[];
-        facts: PluginCallFacts;
-      }
-  ): Promise<RpcResult> {
+  private async callWorker(request:
+    | { type: 'load'; modulePath: string }
+    | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
+    | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
+    | {
+      type: 'invokeLessPluginFunction';
+      modulePath: string;
+      options: string | null;
+      functionName: string;
+      args: unknown[];
+      facts: PluginCallFacts;
+    }): Promise<RpcResult> {
     await this.ensureRuntime();
     this.clearIdleTimer();
     if (!this.worker?.stdin.writable) {
@@ -715,6 +716,7 @@ export class JsPlugin extends AbstractPlugin {
     if (isPathInside(resolvedPath, jsReadRoot)) {
       return;
     }
+
     // pnpm layouts may resolve package files outside project root.
     if (resolvedPath.includes(`${path.sep}node_modules${path.sep}`)) {
       return;
@@ -866,9 +868,11 @@ export class JsPlugin extends AbstractPlugin {
       `resolving its scope reads did not settle after ${MAX_FACT_ROUNDS} rounds.`
     );
 
-    // A `@plugin` result is an ORDINARY awaitable value. It used to travel over a
-    // blocking channel so it never reached the engine as a promise; that channel
-    // is gone, so plugin calls exercise the same lane every other async value does.
+    /*
+     * A `@plugin` result is an ORDINARY awaitable value. It used to travel over a
+     * blocking channel so it never reached the engine as a promise; that channel
+     * is gone, so plugin calls exercise the same lane every other async value does.
+     */
     const replay = async (): Promise<unknown> => {
       for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
         const settled = settle(await this.callWorker(request));

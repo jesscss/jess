@@ -96,6 +96,7 @@ export class JessError extends Error {
     // Resolve context from ctx/node first, else from explicit fields.
     const fileObj = init.ctx?.file;
     const source = fileObj?.source ?? init.source;
+
     // Line/col derive from the node's source offset + source (not stored on nodes).
     const nodeOffset = inlineSpanStart(init.node);
     const derived = nodeOffset !== undefined && source !== undefined

@@ -52,8 +52,10 @@ const surfaces = [
   }
 ];
 
-// First: the canonical docs themselves must exist. A dangling reference set is
-// worse than none.
+/*
+ * First: the canonical docs themselves must exist. A dangling reference set is
+ * worse than none.
+ */
 const missingDocs = CANONICAL_DOCS.filter(doc => !existsSync(path.join(root, doc)));
 
 let failed = missingDocs.length > 0;

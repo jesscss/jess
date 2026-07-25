@@ -37,6 +37,7 @@ describe('spine generic EMIT visitor hook (P2, core surface)', () => {
       if (isNode(node, N.Declaration)) {
         seen.push(String(node.name.valueOf()));
       }
+
       // void → no replacement
     });
     const root = rules([

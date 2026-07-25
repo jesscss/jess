@@ -253,13 +253,16 @@ describe('Compound Selector', () => {
     });
 
     test('component that evaluates async under a compound without F_MAY_ASYNC promotes to a promise instead of throwing', async () => {
-      // Repro of the bootstrap `&$infix` wall: an interpolated selector component
-      // whose var resolves via an async (plugin-js) value evaluates async, but the
-      // compound's F_MAY_ASYNC flag was not set (asyncness is only known at runtime).
-      // The sync eval path must promote to the async path rather than throw
-      // "Expected sync compound selector evaluation to return a node".
+      /*
+       * Repro of the bootstrap `&$infix` wall: an interpolated selector component
+       * whose var resolves via an async (plugin-js) value evaluates async, but the
+       * compound's F_MAY_ASYNC flag was not set (asyncness is only known at runtime).
+       * The sync eval path must promote to the async path rather than throw
+       * "Expected sync compound selector evaluation to return a node".
+       */
       const asyncComponent = el('.async');
       const resolved = el('.resolved');
+
       // Force the component to evaluate asynchronously, mimicking an async var read.
       asyncComponent.eval = () => Promise.resolve(resolved);
       const node = compound([el('.head'), asyncComponent]);

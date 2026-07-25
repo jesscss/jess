@@ -17,11 +17,13 @@ export type AstSourceSpan = Readonly<{ start: number; end: number }>;
  */
 export type ValueLayout = readonly string[];
 
-// Parser packages consume the public `@jesscss/core/ast` subpath while core
-// evaluation is also loaded through the package root. Build tools may therefore
-// materialize more than one copy of this small module. A process-global symbol
-// keeps the one parser-authored side table shared across those module identities
-// without adding properties to AST nodes or creating a test-only metadata path.
+/*
+ * Parser packages consume the public `@jesscss/core/ast` subpath while core
+ * evaluation is also loaded through the package root. Build tools may therefore
+ * materialize more than one copy of this small module. A process-global symbol
+ * keeps the one parser-authored side table shared across those module identities
+ * without adding properties to AST nodes or creating a test-only metadata path.
+ */
 const spanStoreKey = Symbol.for('jess.ast.source-span-store');
 const globalStore = globalThis as typeof globalThis & {
   [spanStoreKey]?: WeakMap<object, AstSourceSpan>;

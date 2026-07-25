@@ -75,6 +75,7 @@ async function importJsonModule(absoluteFilePath: string): Promise<Record<string
 export interface ContextOptions {
   /** Hash classes for module output */
   module?: boolean;
+
   /**
    * From docs:
    * "Changes compilation mode so dynamic content
@@ -91,9 +92,11 @@ export interface ContextOptions {
   unitMode?: UnitMode;
   functionMode?: FunctionMode;
   equalityMode?: EqualityMode;
+
   /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
   allowOverloadedImport?: boolean;
   disableScriptModules?: boolean;
+
   /**
    * @deprecated Use `disableScriptModules` instead.
    */
@@ -337,9 +340,11 @@ export class TreeContext extends DocumentContext {
   opts: Omit<TreeContextOptions, 'isModule' | 'file' | 'plugin'>;
 
   constructor(opts: TreeContextOptions = {}) {
-    // Resolve the file-level options once (no compile context yet — the eval
-    // Context folds that in on attach). Structural identity stays on the
-    // instance; every other unknown key is transient `opts` data.
+    /*
+     * Resolve the file-level options once (no compile context yet — the eval
+     * Context folds that in on attach). Structural identity stays on the
+     * instance; every other unknown key is transient `opts` data.
+     */
     super(opts);
     const { isModule, file, plugin, ...rest } = opts;
     void isModule;
@@ -407,11 +412,14 @@ export class Context {
 
   set treeContext(tc: TreeContext | undefined) {
     this._treeContext = tc;
-    // Fold the compile-level options over the tree's own, once, and SHARE the
-    // result: `context.options` and `tc.options` become the same object, so eval
-    // (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
-    // hit one resolved set with nothing left to merge. Idempotent on re-entry
-    // (compile ?? already-folded === already-folded).
+
+    /*
+     * Fold the compile-level options over the tree's own, once, and SHARE the
+     * result: `context.options` and `tc.options` become the same object, so eval
+     * (`context.options.X`) and context-less reads (`node._treeContext.options.X`)
+     * hit one resolved set with nothing left to merge. Idempotent on re-entry
+     * (compile ?? already-folded === already-folded).
+     */
     this.options = resolveOptions(this.opts, this._documentContext?.options ?? tc?.options);
     if (tc) {
       tc.options = this.options;
@@ -529,10 +537,8 @@ export class Context {
 
     if (warnCodeMatchesAny(code, cfg.fatal)) {
       const base = warning instanceof JessError ? warning.message : diag.message;
-      const error = new Error(
-        `${base}\n\nThis is only an error because you've set ${code} to be fatal.\n`
-        + 'Remove this setting if you need to keep using this feature.'
-      );
+      const error = new Error(`${base}\n\nThis is only an error because you've set ${code} to be fatal.\n`
+        + 'Remove this setting if you need to keep using this feature.');
       error.name = 'FatalWarningError';
       throw error;
     }
@@ -555,8 +561,10 @@ export class Context {
       this._warnStats.set(code, stats);
     }
 
-    // A previously-emitted site repeating, or a new site over the per-code cap:
-    // count it for the summary and drop it.
+    /*
+     * A previously-emitted site repeating, or a new site over the per-code cap:
+     * count it for the summary and drop it.
+     */
     if (stats.emittedSites.has(key) || stats.emittedSites.size >= cfg.maxSitesPerCode) {
       stats.suppressedCount++;
       stats.suppressedSites.add(key);
@@ -601,6 +609,7 @@ export class Context {
    * after the first one.
    */
   currentCharset?: Any | AtRuleStatement;
+
   /** Track whether charset has been emitted during toString to avoid duplicates */
   charsetEmitted?: boolean;
 
@@ -613,10 +622,13 @@ export class Context {
    * source-position read mode for the live-binding model.
    */
   rulesContext?: Rules;
+
   /** Entire context root (ultimate root) */
   root!: Rules;
+
   /** Canonical parsed document for the AST-v2 execution route. */
   document?: Stylesheet;
+
   /**
    * Per-session source identity for canonical AST documents. AST nodes stay
    * plain source facts; the render session carries the file/plugin context
@@ -624,6 +636,7 @@ export class Context {
    * document.
    */
   private readonly documentContexts = new WeakMap<Stylesheet, DocumentContext>();
+
   /**
    * Deferred executable bodies retain the source document that introduced
    * them into this session. This is session provenance, not AST metadata: the
@@ -631,6 +644,7 @@ export class Context {
    * node mutation, parser walk, or secondary source tree.
    */
   private readonly documentBodyContexts = new WeakMap<object, DocumentContext>();
+
   /** Set so that we can do ruleset selector lookup for extend */
   treeRoot!: Rules;
   allRoots: Rules[] = [];
@@ -793,6 +807,7 @@ export class Context {
 
   /** Frames for nested rulesets, used for selector evaluation */
   rulesetFrames: Ruleset[] = [];
+
   /**
    * Spine-mode (P1 §2, ampersand-append fold) resolved-selector side-channel. Maps a
    * SOURCE ruleset frame node to the CONCRETE selector the spine resolved for it at
@@ -804,6 +819,7 @@ export class Context {
    * cleared per frame push/pop by `serializeSpineFrameContainer`.
    */
   spineResolvedFrameSelector: WeakMap<Ruleset, Selector | Nil> | undefined;
+
   /** Unified frames array for flat rendering when collapseNesting is true */
   frames: (Ruleset | AtRule)[] = [];
 
@@ -924,8 +940,11 @@ export class Context {
 
   constructor(opts: ContextOptions = {}, plugins?: PluginInterface[]) {
     this.opts = opts;
-    // Seed resolved options from compile config (no tree context yet); the
-    // treeContext setter recomputes this once a file's context is active.
+
+    /*
+     * Seed resolved options from compile config (no tree context yet); the
+     * treeContext setter recomputes this once a file's context is active.
+     */
     this.options = resolveOptions(opts, undefined);
     this.plugins = plugins ?? [];
     this.extendRoots = new ExtendRootRegistry();
@@ -1197,6 +1216,7 @@ export class Context {
   async getTree(importPath: string, importOptions: ImportOptions = {}) {
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
     const { type } = importOptions;
+
     /**
      * We already have resolved this file and parsed it.
      */
@@ -1250,10 +1270,12 @@ export class Context {
       };
     }
 
-    // A parser diagnostic already explains why no document exists. Even when
-    // collection mode is enabled, downstream import/eval cannot proceed
-    // without a document; rethrow that exact diagnostic instead of adding a
-    // misleading unsupported-file error.
+    /*
+     * A parser diagnostic already explains why no document exists. Even when
+     * collection mode is enabled, downstream import/eval cannot proceed
+     * without a document; rethrow that exact diagnostic instead of adding a
+     * misleading unsupported-file error.
+     */
     if (parseResult.errors.length > 0) {
       throw makeJessErrorFromDiagnostic(parseResult.errors[0]!);
     }
@@ -1263,6 +1285,7 @@ export class Context {
     if (this.opts.breakOnError !== false) {
       throw notSupportedError;
     }
+
     // Add error for unsupported file
     this.errors.push({
       code: 'parse/unsupported-file',
@@ -1351,9 +1374,11 @@ export class Context {
     const document = result.document;
     if (!document) {
       if (result.errors.length > 0) {
-        // Collection mode retains the diagnostic, but a caller asking for a
-        // document still needs the structured parser failure—not a generic
-        // secondary error with no source provenance.
+        /*
+         * Collection mode retains the diagnostic, but a caller asking for a
+         * document still needs the structured parser failure—not a generic
+         * secondary error with no source provenance.
+         */
         throw makeJessErrorFromDiagnostic(result.errors[0]!);
       }
       throw new Error('Failed to parse content');
