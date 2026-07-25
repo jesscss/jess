@@ -116,7 +116,6 @@ describe('Rules', () => {
 
     expect(Object.prototype.hasOwnProperty.call(node, 'value')).toBe(false);
     expect(node.rules[0]).toBe(child);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((node.constructor as typeof Node).childKeys).toEqual(['rules']);
   });
 
@@ -475,7 +474,6 @@ describe('Rules', () => {
     const node = rules([child]);
     context.root = rules([]);
     const originalRender = child.render;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     child.render = (function countAsyncChildRender(
       this: typeof child,
       childContext: Context,
@@ -1367,7 +1365,6 @@ describe('Rules', () => {
           throw new Error(`Expected Ruleset at index 0, got ${grid?.type ?? 'undefined'}`);
         }
         const width = expectDeclarationNode(grid.rules.at(0));
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         context.rulesContext = grid.rules as unknown as Rules;
         const evald = await width.eval(context);
         expect(evald.toTrimmedString()).toBe('total-width: 96em');

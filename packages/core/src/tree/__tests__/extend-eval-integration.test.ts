@@ -299,7 +299,6 @@ describe('extend integration (eval -> toString)', () => {
 
   it('materializes async selector-list parent extend records without cloning source-free leaves', async () => {
     const originalAmpersandEval = Ampersand.prototype.eval;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (Ampersand.prototype as unknown as { eval: (context: Context) => MaybePromise<Node> }).eval = function evalAsync(
       this: Node,
       context: Context
@@ -391,7 +390,6 @@ describe('extend integration (eval -> toString)', () => {
     ]);
     const context = new Context({ output: { collapseNesting: false } });
     const evald = await root.eval(context);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const evaldRules = evald as unknown as Rules;
     const isDeclarationNamed = (node: unknown, name: string): node is Declaration => (
       node instanceof Declaration

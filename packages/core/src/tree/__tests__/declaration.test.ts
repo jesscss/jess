@@ -556,14 +556,12 @@ describe('Declaration', () => {
     try {
       const sourceNameLeaf = any('color');
       const node = decl({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: `border-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [sourceNameLeaf]
         }) as Interpolated<'property'>,
         value: ref({ key: 'tone' }, { type: 'variable' })
       });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const sourceName = node.name as Interpolated;
       const resolved = await node.resolve(context);
 

@@ -66,7 +66,6 @@ describe('control-flow block scoping', () => {
       new If({
         condition: bool(false),
         rules: [vardecl({ name: 'x', value: any('then') })],
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test-only Rules else branch
         else: rules([vardecl({ name: 'x', value: any('elsebody') })]) as unknown as Rules
       })
     ]);

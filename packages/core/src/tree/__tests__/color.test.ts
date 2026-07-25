@@ -492,7 +492,6 @@ describe('Color Node', () => {
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const callNode = new Call({ name: 'rgb', args: argItems as unknown as List<Node> });
 
       const color = new Color({
@@ -516,7 +515,6 @@ describe('Color Node', () => {
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const callNode = new Call({ name: 'hsl', args: hslArgs as unknown as List<Node> });
 
       const color = new Color({

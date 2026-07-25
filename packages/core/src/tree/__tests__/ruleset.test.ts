@@ -29,7 +29,6 @@ class CountingWriter extends OutputWriter {
   override preview(fn: () => Promise<string | void>, preserveSegments?: boolean): Promise<string>;
   override preview(fn: () => MaybePromise<string | void>, preserveSegments?: boolean): MaybePromise<string> {
     this.previews++;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     return super.preview(fn as () => string | void, preserveSegments) as MaybePromise<string>;
   }
 
@@ -245,7 +244,6 @@ describe('Rule', () => {
       ruleset({
         selector: sellist([
           sel([
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
             interpolated({
               source: INTERPOLATION_PLACEHOLDER,
               replacements: [any('.foo')]
@@ -866,7 +864,6 @@ describe('Rule', () => {
     });
     const originalRender = nestedBody.render;
     let sourceBodyRenderCalls = 0;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     nestedBody.render = function countSourceBodyRender(
       this: typeof nestedBody,
       ...args: Parameters<typeof originalRender>
@@ -901,7 +898,6 @@ describe('Rule', () => {
     });
     const originalRender = dynamicBody.render;
     let sourceBodyRenderCalls = 0;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     dynamicBody.render = function countSourceBodyRender(
       this: typeof dynamicBody,
       ...args: Parameters<typeof originalRender>
@@ -1271,7 +1267,6 @@ describe('Rule', () => {
     `);
     expect(selector.parent).toBe(node);
     expect(body.rules[0]!.parent).toBe(node);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((resolved as Ruleset).rules).not.toBe(body);
   });
 

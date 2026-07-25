@@ -16,7 +16,6 @@ function expectSelector(result: Selector | ExtendErrorType): Selector {
 function ampWithSelector(selector: any): Ampersand {
   const created = Ampersand.create({ selectorContainer: { selector } });
   if (!(created instanceof Ampersand)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     throw new Error(`Expected Ampersand, got ${(created as unknown as { type: string }).type}`);
   }
   return created;
@@ -165,11 +164,9 @@ describe('Extend Ampersand Handling Tests', () => {
       );
 
       expect(parentSelector.parent).toBeUndefined();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect(sourceSelectorChildren.map(child => (child as unknown as Node).parent)).toEqual(sourceSelectorChildren.map(() => selector));
 
       if (!isNode(result, N.SelectorList)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         throw new Error(`Expected hoisted selector list, got ${(result as unknown as { type: string }).type}`);
       }
 
@@ -304,12 +301,10 @@ describe('Extend Ampersand Handling Tests', () => {
     const parentContainer = { selector: el('.aa') };
     const original = Ampersand.create({ selectorContainer: parentContainer });
     if (!(original instanceof Ampersand)) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       throw new Error(`Expected Ampersand, got ${(original as unknown as { type: string }).type}`);
     }
     const cloned = original.clone(false);
     if (!(cloned instanceof Ampersand)) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       throw new Error(`Expected Ampersand clone, got ${(cloned as unknown as { type: string }).type}`);
     }
 

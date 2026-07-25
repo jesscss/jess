@@ -78,7 +78,6 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe('.a,.b,.c');
     expect(target.value[1]).toBe(unchanged);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((unchanged as Selector).parent).toBe(target);
   });
 
@@ -146,7 +145,6 @@ describe('walkAndExtend full mode', () => {
 
     expect(result.valueOf()).toBe(':is(.a,.b,.c)');
     expect(arg.value[1]).toBe(unchanged);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((unchanged as Selector).parent).toBe(arg);
   });
 });

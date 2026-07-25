@@ -194,7 +194,6 @@ describe('callable special-case helper', () => {
       restrictMixinOutputLookup: true,
       candidateName: candidate.name,
       candidateParams: candidate.params,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       candidateGuard: candidate.guard as Node | undefined,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules

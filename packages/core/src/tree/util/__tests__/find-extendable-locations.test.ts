@@ -161,7 +161,6 @@ describe('ExtendLocation API Tests', () => {
       const extendedStr = extended.valueOf().replace(/\s+/g, '');
       expect(extendedStr).toBe(':where(.a,.b,.c)');
       expect(selector.arg).toBe(sourceList);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect(sourceItems.map(item => (item as Node).parent)).toEqual(sourceItems.map(() => sourceList));
       expect(extendWith.parent).toBeUndefined();
     });

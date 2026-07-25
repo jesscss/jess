@@ -113,7 +113,6 @@ describe('callable guard helpers', () => {
     const parent = rules([]);
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     dynamicGuard.eval = (async (evalContext: Context) => {
       expect(evalContext.rulesContext).toBe(callableRules);
       return new Bool(evalContext.isDefault === true);
@@ -149,7 +148,6 @@ describe('callable guard helpers', () => {
     const parent = rules([]);
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     dynamicGuard.eval = (async (evalContext: Context) => {
       expect(evalContext.rulesContext).toBe(callableRules);
       return new Bool(true);

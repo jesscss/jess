@@ -415,7 +415,6 @@ describe('Extend Selector Tests', () => {
       const resultStr = result.valueOf();
 
       expect(resultStr).toBe('.i.j');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((result as Selector<any, NodeOptions>).type).toBe('CompoundSelector');
     });
 
@@ -429,7 +428,6 @@ describe('Extend Selector Tests', () => {
       const resultStr = result.valueOf();
 
       expect(resultStr).toBe(':is(.i,.k).j');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((result as Selector<any, NodeOptions>).type).toBe('CompoundSelector');
     });
 
@@ -462,7 +460,6 @@ describe('Extend Selector Tests', () => {
           throw new Error(`Expected :is() selector, got ${isResult.type}`);
         }
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         throw new Error(`Expected :is() selector, got ${(isResult as Selector<any, NodeOptions>).type}`);
       }
     });
@@ -660,37 +657,42 @@ describe('Extend Selector Tests', () => {
         sel([el('.foo'), co(' '), el('.baz')])
       ]);
 
-      // Step 1: .ext1 .ext2 extends .foo all
-      // Expected: :is(.foo,.ext1 .ext2) .bar,:is(.foo,.ext1 .ext2) .baz
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      /*
+       * Step 1: .ext1 .ext2 extends .foo all
+       * Expected: :is(.foo,.ext1 .ext2) .bar,:is(.foo,.ext1 .ext2) .baz
+       */
       selector = extendSelector(selector, el('.foo'), sel([el('.ext1'), co(' '), el('.ext2')]), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2) .bar');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2) .baz');
 
-      // Step 2: .ext3 extends .foo all
-      // Expected: :is(.foo,.ext1 .ext2,.ext3) .bar,:is(.foo,.ext1 .ext2,.ext3) .baz
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      /*
+       * Step 2: .ext3 extends .foo all
+       * Expected: :is(.foo,.ext1 .ext2,.ext3) .bar,:is(.foo,.ext1 .ext2,.ext3) .baz
+       */
       selector = extendSelector(selector, el('.foo'), el('.ext3'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3) .bar');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3) .baz');
 
-      // Step 3: .ext4 extends .foo all
-      // Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      /*
+       * Step 3: .ext4 extends .foo all
+       * Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) .bar,:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
+       */
       selector = extendSelector(selector, el('.foo'), el('.ext4'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
 
-      // Step 4: .ext3 extends .bar all
-      // Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      /*
+       * Step 4: .ext3 extends .bar all
+       * Expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
+       */
       selector = extendSelector(selector, el('.bar'), el('.ext3'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3)');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
 
-      // Step 5: .ext4 extends .bar all
-      // Final expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3,.ext4),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      /*
+       * Step 5: .ext4 extends .bar all
+       * Final expected: :is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3,.ext4),:is(.foo,.ext1 .ext2,.ext3,.ext4) .baz
+       */
       selector = extendSelector(selector, el('.bar'), el('.ext4'), true) as Selector<any, NodeOptions>;
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) :is(.bar,.ext3,.ext4)');
       expect(selector.valueOf()).toContain(':is(.foo,.ext1 .ext2,.ext3,.ext4) .baz');
@@ -724,7 +726,6 @@ describe('Extend Selector Tests', () => {
       let result = extendSelector(selector, el('.foo'), el('.bar'), false);
 
       // Extend .foo with .baz
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       result = extendSelector(result as Selector<any, NodeOptions>, el('.foo'), el('.baz'), false);
 
       /*
@@ -768,7 +769,6 @@ describe('Extend Selector Tests', () => {
 
       // Extend .foo with ".ext1 .ext2" (a complex selector)
       const ext1Ext2 = sel([el('.ext1'), co(' '), el('.ext2')]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       selector = extendSelector(selector, el('.foo'), ext1Ext2, true) as Selector<any, NodeOptions> | SelectorList;
       if (!isNode(selector, N.SelectorList)) {
         throw new Error('Expected selector list after first extend');
@@ -781,14 +781,12 @@ describe('Extend Selector Tests', () => {
       expect(ext1Count).toBeLessThanOrEqual(2);
 
       // Extend .foo with .ext3
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       selector = extendSelector(selector, el('.foo'), el('.ext3'), true) as Selector<any, NodeOptions> | SelectorList;
       if (!isNode(selector, N.SelectorList)) {
         throw new Error('Expected selector list after second extend');
       }
 
       // Extend .foo with .ext4
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       selector = extendSelector(selector, el('.foo'), el('.ext4'), true) as Selector<any, NodeOptions> | SelectorList;
       if (!isNode(selector, N.SelectorList)) {
         throw new Error('Expected selector list after third extend');
@@ -878,7 +876,6 @@ describe('Extend Selector Tests', () => {
       const selector = el('.bb');
       const result = extendSelector(selector, el('.bb'), el('.cc'), false);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((result as Selector<any, NodeOptions>).type).toBe('SelectorList');
       expect(result.valueOf()).toBe('.bb,.cc');
     });

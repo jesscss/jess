@@ -52,9 +52,7 @@ describe('Extend ampersand boundary behavior', () => {
 
     const context = new Context();
     const evald = await root.eval(context);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const headerRuleset = evald.rules[0] as unknown as Ruleset;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const innerRuleset = headerRuleset?.rules?.[0] as Ruleset | undefined;
     expect(innerRuleset?.hoistToRoot).toBe(true);
   });

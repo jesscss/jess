@@ -64,6 +64,7 @@
     "lint": "eslint --ignore-pattern '**/__tests__/**' 'packages/**/src/**/*.{mjs,cjs,js,ts}' 'scripts/**/*.{mjs,cjs,js,ts}' '*.config.{mjs,cjs,js,ts}' 'vitest.d.ts' 'test/setup.ts'",
     "lint:production": "pnpm run lint",
     "lint:tests": "eslint 'packages/**/test/**/*.{mjs,cjs,js,ts}' 'packages/**/__tests__/**/*.{mjs,cjs,js,ts}' 'packages/**/*.{test,spec}.{mjs,cjs,js,ts}' 'packages/**/perf/**/*.{mjs,cjs,js,ts}'",
+    "lint:absolute": "eslint --config eslint.absolute.config.mjs 'packages/**/*.{ts,tsx,mts,cts}' 'scripts/**/*.{ts,mts,cts}'",
     "lint:test": "pnpm run lint:tests",
     "test": "vitest",
     "test:core:debug": "cross-env TEST=true node scripts/test-core-debug.mjs",

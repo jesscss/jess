@@ -61,6 +61,20 @@ const GRAMMAR_FILES = [
   'packages/internal-css-recognition/src/**/*.ts'
 ];
 
+/**
+ * Test scope, matching the `lint:tests` glob in package.json.
+ *
+ * Deliberately WIDER than the older `**\/test\/**` block further down: that one
+ * predates `.spec.` files, nested `__tests__` subdirectories and `perf/`, so it
+ * silently missed files that `lint:tests` does lint.
+ */
+const TEST_FILES = [
+  'packages/**/test/**/*.{mjs,cjs,js,ts}',
+  'packages/**/__tests__/**/*.{mjs,cjs,js,ts}',
+  'packages/**/*.{test,spec}.{mjs,cjs,js,ts}',
+  'packages/**/perf/**/*.{mjs,cjs,js,ts}'
+];
+
 const compat = new FlatCompat({
   baseDirectory: __dirname,
   recommendedConfig: js.configs.recommended,
@@ -285,6 +299,37 @@ export default tseslint.config([
     rules: {
       '@typescript-eslint/no-unused-vars': 0,
       curly: ['error', 'all']
+    }
+  },
+
+  /*
+   * =========================================================================
+   * TESTS: the broad assertion rule is OFF; the absolute rule is enforced
+   * elsewhere and is NOT suppressible.
+   *
+   * `no-unsafe-type-assertion` fires on every `x as SomeNode` used to build a
+   * fixture or narrow a parse result. In test code that is the normal idiom,
+   * not a defect, and it had accumulated 444 per-site `eslint-disable`
+   * comments across 38 files — enough noise that adding the next one had
+   * stopped being a decision.
+   *
+   * Turning it off here is NOT a relaxation of "never `as any`". That rule is
+   * an absolute, and it now has its own enforcement that this block cannot
+   * reach and no comment can silence: `eslint.absolute.config.mjs`, run by
+   * `pnpm lint:absolute`, with `noInlineConfig`. See
+   * `scripts/eslint-rules/absolute-bans.mjs` for the ban itself.
+   *
+   * What is genuinely given up here is the NARROWING half of the rule
+   * (`x as Ruleset` where `x` is wider) in test files only. That was 222 of
+   * the 581 assertions this rule reports across the test glob; the other 359
+   * were `any`-related and are now covered by the absolute pass instead.
+   * Production `src/` keeps the full rule.
+   * =========================================================================
+   */
+  {
+    files: TEST_FILES,
+    rules: {
+      '@typescript-eslint/no-unsafe-type-assertion': 'off'
     }
   },
 

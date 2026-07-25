@@ -233,9 +233,7 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const ext8Ruleset = evald.rules[0] as unknown as Ruleset;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const nestedRuleset = ext8Ruleset?.rules?.[0] as Ruleset | undefined;
       const nestedSel = nestedRuleset?.selector?.valueOf() ?? '';
 
@@ -263,7 +261,6 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const ext8Ext9Ruleset = evald.rules[0] as unknown as Ruleset;
       const selectorStr = ext8Ext9Ruleset?.selector?.valueOf() ?? '';
       expect(selectorStr).toBe('.ext8 .ext9');
@@ -312,9 +309,7 @@ describe('Combinator Preservation in Extensions', () => {
       ]);
       const context = new Context();
       const evald = await root.eval(context);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const firstRuleset = evald.rules[0] as unknown as Ruleset;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const nested = (evald.rules[1] as Ruleset | undefined)?.rules?.[0] as Ruleset | undefined;
       expect(firstRuleset?.selector?.valueOf()).toContain('.zap');
       const nestedSel = nested?.selector?.valueOf() ?? '';

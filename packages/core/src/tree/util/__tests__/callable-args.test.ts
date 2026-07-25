@@ -43,7 +43,6 @@ describe('callable arg evaluation helper', () => {
     if (evaluated[2]?.type !== 'Sequence') {
       throw new Error('Expected coerced Sequence');
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((evaluated[2] as unknown as Sequence).value.map(item => item.valueOf())).toEqual(['a', 'b']);
   });
 });

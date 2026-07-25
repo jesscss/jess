@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-type-assertion */
 import { Collection, Context, Declaration, Dimension, Num, Quoted, List, Bool, Nil, Any, RuntimeFunction } from '@jesscss/core';
 import { beforeAll, describe, it, expect } from 'vitest';
 import get from '../sass/map/get.js';

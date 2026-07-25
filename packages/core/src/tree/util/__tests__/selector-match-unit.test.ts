@@ -104,11 +104,8 @@ describe('compoundComponentMatches', () => {
   });
 
   it('matches string-backed simple selector components without materializing leaves', () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(compoundComponentMatches('.a' as unknown as Selector, el('.a'))).toBe(true);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(compoundComponentMatches(el('.a'), '.a' as unknown as Selector)).toBe(true);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(compoundComponentMatches('.a' as unknown as Selector, '.b' as unknown as Selector)).toBe(false);
   });
 

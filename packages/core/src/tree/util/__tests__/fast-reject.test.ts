@@ -145,9 +145,7 @@ describe('Fast-reject in selectorMatch', () => {
     ]);
     find.keySetLibrary = context.selectorBits;
     for (const child of find.value) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if ('keySetLibrary' in (child as object)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (child as unknown as { keySetLibrary: typeof context.selectorBits }).keySetLibrary = context.selectorBits;
       }
     }
@@ -155,9 +153,7 @@ describe('Fast-reject in selectorMatch', () => {
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = context.selectorBits;
     for (const child of target.value) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if ('keySetLibrary' in (child as object)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (child as unknown as { keySetLibrary: typeof context.selectorBits }).keySetLibrary = context.selectorBits;
       }
     }
@@ -190,9 +186,7 @@ describe('Fast-reject in selectorMatch', () => {
     ]);
     find.keySetLibrary = contextB.selectorBits;
     for (const child of find.value) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if ('keySetLibrary' in (child as object)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (child as unknown as { keySetLibrary: typeof contextB.selectorBits }).keySetLibrary = contextB.selectorBits;
       }
     }
@@ -200,9 +194,7 @@ describe('Fast-reject in selectorMatch', () => {
     const target = sel([el('.beta'), co('>'), el('.tail')]);
     target.keySetLibrary = contextA.selectorBits;
     for (const child of target.value) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if ('keySetLibrary' in (child as object)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (child as unknown as { keySetLibrary: typeof contextA.selectorBits }).keySetLibrary = contextA.selectorBits;
       }
     }
@@ -360,7 +352,6 @@ describe('Fast-reject in selectorMatch', () => {
     const sourceTarget = el('.b');
     const find = await sourceFind.eval(context);
     const target = await sourceTarget.eval(context);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     let result = matchSelectors(target as unknown as Selector, find as unknown as Selector);
     expect(result.hasFullMatch).toBe(true);
   });

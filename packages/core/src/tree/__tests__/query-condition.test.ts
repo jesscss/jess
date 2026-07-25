@@ -325,7 +325,6 @@ describe('QueryCondition', () => {
 
   it('writes static query-condition output into shared flat buffers without mark readback', () => {
     const buffer = createRenderBuffer('flat');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
@@ -339,7 +338,6 @@ describe('QueryCondition', () => {
 
   it('renders static shared-buffer query conditions without returning prefixed buffer contents', () => {
     const buffer = createRenderBuffer('flat');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     buffer.parts.push('prefix|');
     const writer = new CountingWriter(false, buffer.parts);
@@ -468,7 +466,6 @@ describe('QueryCondition', () => {
       color('#fff')
     ]);
     const buffer: FlatRenderBuffer = createRenderBuffer('flat');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
 
@@ -485,7 +482,6 @@ describe('QueryCondition', () => {
 
   it('renders static paren conditions through the direct child contract', () => {
     const buffer: FlatRenderBuffer = createRenderBuffer('flat');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
@@ -504,7 +500,6 @@ describe('QueryCondition', () => {
 
   it('renders nested static query conditions through the direct child contract', () => {
     const buffer: FlatRenderBuffer = createRenderBuffer('flat');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (buffer as FlatRenderBuffer & { shareWriter: boolean }).shareWriter = true;
     const writer = new CountingWriter(false, buffer.parts);
     context.printState.writer = writer;
@@ -551,7 +546,6 @@ describe('QueryCondition', () => {
     const node = query([
       any('screen'),
       any('and'),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       op([dimension([10, 'px']), '>' as Operator, dimension([1, 'px'])])
     ]);
 
@@ -588,7 +582,6 @@ describe('QueryCondition', () => {
     const node = query([
       any('screen'),
       any('and'),
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       new CustomOperation([dimension([10, 'px']), '>' as Operator, dimension([1, 'px'])])
     ]);
 

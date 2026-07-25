@@ -152,7 +152,6 @@ describe('Control Nodes', () => {
     const node = new If({
       condition: bool(true),
       rules: [decl({ name: 'color', value: any('red') })],
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
@@ -210,7 +209,6 @@ describe('Control Nodes', () => {
     const node = new If({
       condition: bool(true),
       rules: [decl({ name: 'color', value: any('red') })],
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
@@ -227,7 +225,6 @@ describe('Control Nodes', () => {
     const node = new If({
       condition: condition([bool(true)]),
       rules: [decl({ name: 'color', value: any('red') })],
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
@@ -243,7 +240,6 @@ describe('Control Nodes', () => {
     const node = new If({
       condition: bool(true),
       rules: [decl({ name: 'color', value: any('red') })],
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       else: rules([decl({ name: 'color', value: any('blue') })]) as unknown as Rules
     });
 
@@ -270,7 +266,6 @@ describe('Control Nodes', () => {
       else: new If({
         condition: bool(true),
         rules: selectedRules.rules,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
       })
     });
@@ -291,7 +286,6 @@ describe('Control Nodes', () => {
       new If({
         condition: bool(false),
         rules: [decl({ name: 'color', value: any('red') })],
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         else: rules([decl({ name: 'color', value: any('green') })]) as unknown as Rules
       })
     ]);
@@ -778,7 +772,6 @@ describe('Control Nodes', () => {
     ): ReturnType<typeof originalClone> {
       if (this.rules.some(node => (
         node.type === 'Declaration'
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         && (node as any).name?.valueOf?.() === 'tick'
       ))) {
         clonedLoopRules++;
@@ -1298,7 +1291,6 @@ describe('Control Nodes', () => {
         deep === false
         && this.rules.some(node => (
           node.type === 'Declaration'
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           && (node as any).name?.valueOf?.() === 'marker'
         ))
       ) {
@@ -1352,7 +1344,6 @@ describe('Control Nodes', () => {
     ): ReturnType<typeof originalClone> {
       if (this.rules.some(node => (
         node.type === 'Declaration'
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         && (node as any).name?.valueOf?.() === 'item'
       ))) {
         clonedLoopRules++;
@@ -1459,9 +1450,7 @@ describe('Control Nodes', () => {
   it('resolves $for iteration vars via ScopeFrame live slots without declaration lookup', async () => {
     const context = new Context();
     const declarationLookupHits: string[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const originalFind = (Rules.prototype as any).find;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (Rules.prototype as any).find = function(...args: unknown[]) {
       const [type, key] = args;
       if (
@@ -1481,7 +1470,6 @@ describe('Control Nodes', () => {
       expect(css).toContain('item: b');
       expect(declarationLookupHits).toEqual([]);
     } finally {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (Rules.prototype as any).find = originalFind;
     }
   });
@@ -1752,7 +1740,6 @@ describe('Control Nodes', () => {
 
     const loopRules = rules([
       decl({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         name: interpolated({
           source: `${INTERPOLATION_PLACEHOLDER}-${INTERPOLATION_PLACEHOLDER}`,
           replacements: [

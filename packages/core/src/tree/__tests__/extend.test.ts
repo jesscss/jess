@@ -164,9 +164,7 @@ describe('Extend render', () => {
       await root.eval(context);
 
       expect(sourceLeafClones).toBe(0);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect(parentItems.map(item => (item as Node).parent)).toEqual(parentItems.map(() => parentSelector));
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect(childParts.map(part => (part as Node).parent)).toEqual(childParts.map(() => childSelector));
 
       const registeredSelector = context.extends[0]?.[1];
@@ -182,7 +180,6 @@ describe('Extend render', () => {
       expect(generatedChild).not.toBe(childSelector);
 
       if (!isNode(generatedParent, N.PseudoSelector) || !generatedParent.arg || !isNode(generatedParent.arg, N.SelectorList)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         throw new Error(`Expected generated :is(...) parent wrapper, got ${(generatedParent as unknown as Node | undefined)?.type}`);
       }
 

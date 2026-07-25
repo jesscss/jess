@@ -210,9 +210,7 @@ describe('Condition', () => {
       let boolStringCalls = 0;
       const asyncLeft = bool(true);
       const asyncRight = bool(true);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       asyncLeft.eval = (() => Promise.resolve(bool(true))) as unknown as typeof asyncLeft.eval;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       asyncRight.eval = (() => Promise.resolve(bool(true))) as unknown as typeof asyncRight.eval;
       Bool.prototype.toTrimmedString = function toTrimmedStringForCounting(
         this: Bool,

@@ -68,7 +68,6 @@ describe('callable candidate execution helper', () => {
     const context = new Context({ leakyScope: true });
     const dynamicGuard = new Bool(true);
     dynamicGuard.hasFlag = () => false;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     dynamicGuard.eval = (async (evalContext: Context) => new Bool(evalContext.isDefault === true)) as unknown as (context: Context) => Bool;
 
     const candidate = mixin({
@@ -76,7 +75,6 @@ describe('callable candidate execution helper', () => {
       rules: [
         decl({ name: 'color', value: any('red') })
       ],
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       guard: dynamicGuard as unknown as Condition
     });
     const definitionParent = rules([candidate]);
@@ -97,7 +95,6 @@ describe('callable candidate execution helper', () => {
       context,
       hasDefault: true,
       candidate,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       candidateGuard: candidate.guard as Node | undefined,
       candidateParams: candidate.params,
       candidateState,
