@@ -4,18 +4,23 @@ The four dialect grammars are being **rebuilt**, not refactored. This document i
 what an agent is handed: the scope, the constraints, the references to read
 first, the method, and the criteria that decide whether they succeeded.
 
-> **Status.** The problem statement (§2), the verification machinery in §8.2–§8.6,
-> the traps (§7) and the structural causes (§13) are present-tense and measured.
-> **Everything in §4, §5, §6 and §8.1 is planned and not built.** Two of the tools
-> the method depends on are unmerged and unreleased upstream. Per
-> [`../../README.md`](../../README.md) a document describing machinery the repo
-> does not have belongs in `design/`; this one sits in `architecture/` because
-> HANDOFF routes to it, and it carries that debt by labelling every planned item
-> rather than by hiding it. When the rebuild lands, the planned sections either
-> become present tense or move out.
+> **Status: `design/`, not `architecture/`.** The problem statement (§2), the
+> verification machinery in §8.2–§8.6, the traps (§7) and the structural causes
+> (§13) are present-tense and measured. **Everything in §4, §5, §6 and §8.1 is
+> planned and not built** — and two of the tools the method depends on are
+> unreleased and unmerged upstream. `CLAUDE.md` says not to add architecture
+> documents that mostly describe machinery the repo does not currently have, and
+> [`../README.md`](../README.md) puts such a document here. This one obeys that
+> rather than acknowledging it in a banner.
+>
+> **It graduates to `architecture/parser/` when the rebuild lands** and the
+> forward-looking sections become present tense. That move is the visible event
+> marking the rebuild as done — do not let this document age into `architecture/`
+> quietly, and do not let it sit here describing shipped machinery.
 
-Measured in-tree on **`bcb3107a1`, 2026-07-25**, with the shell method stated
-inline. Counts drift; methods do not. **Re-measure. Do not quote.**
+Measured in-tree on **`a67b5077c`, 2026-07-25** (`origin/dev` at `76680b114`),
+with the shell method stated inline. Counts drift; methods do not. **Re-measure.
+Do not quote** — §2.3 shows two of these figures moving inside a single day.
 
 ## 1. How to use this document
 
@@ -32,30 +37,43 @@ most of them in the session that produced this document.
 
 | Document | Owns | Status |
 | --- | --- | --- |
-| [`GRAMMAR-REVIEW-STANDARD.md`](./GRAMMAR-REVIEW-STANDARD.md) | The per-`const` checklist, the outcome vocabulary, the hard constraints | **Written, not on `dev`** — branch `grammar-review-standard` (`d4bd4a7bb`), with `.cursor/agents/grammar-reviewer.md` |
-| `PARSEMAN-COMBINATOR-CHEAT-SHEET.md` (placeholder, this directory) | The version-stamped combinator reference | **Not written.** It is the deliverable of Unit 1 |
-| [`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](./PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md) | The two pinned-version constraints load-bearing for every measurement | On `dev`. **Its §2 blanket claim is superseded** — see §8.6 |
+| [`GRAMMAR-REVIEW-STANDARD.md`](../architecture/parser/GRAMMAR-REVIEW-STANDARD.md) | The per-`const` checklist, the outcome vocabulary, the hard constraints | **Landed on `dev`** (`76680b114`), byte-identical to the branch version, with `.cursor/agents/grammar-reviewer.md` |
+| `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md` | The version-stamped combinator reference | **Not written.** It is the deliverable of Unit 1. It belongs in `architecture/parser/` even though this spec does not: it documents an external library's actual capability, which is a fact about the world, not a plan |
+| [`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](../architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md) | The two pinned-version constraints load-bearing for every measurement | On `dev`. **Its §2 blanket claim is superseded** — see §8.6 |
+| [`DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`](../architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md) | The SCSS-on-Less inversion, with the build-verified proof that it blocks Less-side cleanup | On `dev` (`ac02c6e0b`) — see §5.4 |
 | `docs/design/PARSEMAN-0.34-GRAMMAR-IDIOM-PLAN.md` | The P-1…P-9 parseman feature requests | **Not on `dev`** — only on branch `parseman-034-adoption` (`a49ca59da`), 981 lines |
 
 ---
 
 ## 2. The problem
 
-**Eight grammar files, 17,447 lines**, two hand-maintained specifications of the
+**Eight grammar files, 24,305 lines**, two hand-maintained specifications of the
 same language per dialect with no mechanical link between them.
 
 | dialect | CST `src/grammar.ts` | AST `src/ast/grammar.ts` | AST rule-name prefix | distinct prefixed names |
 | --- | --- | --- | --- | --- |
-| `css-parser` | 800 | 2,173 | `CssAst*` | 157 |
-| `less-parser` | 1,252 | 4,750 | `DirectLess*` | 243 |
-| `scss-parser` | 844 | 3,298 | `DirectScss*` | 167 |
-| `jess-parser` | 627 | 3,703 | `DirectJess*` | 171 |
+| `css-parser` | 1,527 | 3,455 | `CssAst*` | 157 |
+| `less-parser` | 1,281 | 4,750 | `DirectLess*` | 243 |
+| `scss-parser` | 1,379 | 5,116 | `DirectScss*` | 167 |
+| `jess-parser` | 1,210 | 5,587 | `DirectJess*` | 171 |
 
 ```sh
 wc -l packages/{css,less,scss,jess}-parser/src/grammar.ts \
       packages/{css,less,scss,jess}-parser/src/ast/grammar.ts
-grep -oE '\bDirect[A-Za-z0-9_]+' packages/less-parser/src/ast/grammar.ts | sort -u | wc -l
+grep -oE 'Direct[A-Z][A-Za-z0-9_]*' packages/less-parser/src/ast/grammar.ts | sort -u | wc -l
 ```
+
+**Use the `[A-Z]` anchor.** A bare `Direct[A-Za-z0-9_]*` returns 244/168/172 —
+the extra one in each file is the standalone word "Direct" in prose.
+
+> **Line count is now a poor metric, and it is instructive why.** It read 17,447
+> one day earlier. `516d10222` turned on
+> `@stylistic/function-call-argument-newline` at `error` across these files and
+> autofixed them into expanded call form — one argument per line. Nothing about
+> the grammars changed. `less-parser`'s two files are the control: they sit
+> behind the deferral block (§11) and did **not** move (`4750` before and after).
+> **Do not track this work by line count.** Track it by rule-name intersection
+> (§2.1) and by the §2.3 conversion classes.
 
 ### 2.1 The naming families are disjoint, and that is the structural cause
 
@@ -113,7 +131,7 @@ re-counts across all eight files:
 
 | Item | Brief | Measured | Method |
 | --- | --- | --- | --- |
-| Hand-rolled keyword regexes | 15 | **18** | `regex()` whose pattern is a pure alternation of literal words |
+| Hand-rolled keyword regexes | 15 | **9** (was 18 a day earlier) | `regex()` whose pattern, after stripping `^`/`$`/`\b`/lookaheads/`(?:…)`, is a pure `word\|word` alternation |
 | Hand-rolled separated lists | 39 | **65** (29 a literal `sepBy` swap) | `many(sequence(<separator terminal>, …))` |
 | Spellings of one operator set | 7 | **7**, +5 for the Less guard superset | distinct spellings of `< <= = >= >` |
 | Near-clone clusters | 20 | **24** at ≥3 files (69 at ≥2, 10 at ≥4) | normalise `const X = node\|choice\|sequence(` names by stripping the dialect prefix, then group |
@@ -128,12 +146,30 @@ it is the uniform house style, and `/i` case-folding is running in non-Unicode
 mode everywhere. Several patterns embed a raw non-ASCII range
 (`packages/scss-parser/src/ast/grammar.ts:934`) — exactly what `/u` would reject.
 
+**Leading `not()` must be counted multiline-aware.** Since `516d10222` expanded
+the call form, a plain `grep -c 'sequence(not('` returns 14 instead of 43. Use:
+
+```sh
+perl -0777 -ne '$c=()=/sequence\(\s*not\(/g; print "$ARGV: $c\n"' \
+  packages/{css,less,scss,jess}-parser/src/grammar.ts \
+  packages/{css,less,scss,jess}-parser/src/ast/grammar.ts
+```
+
 `sepBy` exists in 0.32.0 and is used **12** times across the eight files — and
 **zero** times in the `jess` CST or in any of the `less`/`scss`/`jess` AST
-grammars. `keywords()`/`word()` also already exist; `less-parser`'s CST uses them
-(`:399`, `:711`, `:815-817`, `:1118`, `:1132`, `:1157`, `:1189-1190`). The 18
-keyword regexes are what remains. **The API was there. It was not reached for.**
-That is what §4 step 1 exists to fix.
+grammars. `keywords()`/`word()` also already exist. **The API was there. It was
+not reached for.** That is what §4 step 1 exists to fix.
+
+**The keyword-regex count halving in one day is the proof that it works.**
+`5d0a61523` moved the CSS named-colour list to `keywords()` on the *shared*
+recognition rule, taking the count 18 → 9 and leaving `packages/less-parser/src/grammar.ts`
+as the only grammar file with `keywords()` call sites (13 of them). The
+remaining 9 are: `(?:and|or)` in the CSS CST; `(?:from|to)` repeated **identically
+in all four AST grammars** — a four-way clone, and the cleanest available
+demonstration of §2.1; `(?:reference|optional|once|multiple|inline|css|less)` and
+`(?:is|not|has|where|matches|global|local)` in the Less AST; and
+`(?:is|not|has|where|matches)` plus `(?:global|local)` in the SCSS AST — the last
+pair being the Less one split in two, i.e. the same set spelled three ways.
 
 ---
 
@@ -157,13 +193,13 @@ the reference for shape.
 The order is deliberately inverted from the obvious one. Reaching for the docs
 when stuck is how you end up with a regex.
 
-1. **Survey parseman's full export surface from source** — not from
-   recollection. Every mental model in this project is 0.32.0-era, and that
-   staleness is what produced the hand-rolled `sepBy`, the keyword regexes and
-   the boundary guards. Read the CHANGELOG `0.32.0 → 0.36.0` as a diff of
-   capability.
+1. **Survey parseman `0.32.0`'s full export surface from source** — not from
+   recollection. `sepBy`, `keywords()` and `word()` have all been there the whole
+   time and were not reached for; that is what produced the hand-rolled lists,
+   the keyword regexes and the boundary guards. Read the CHANGELOG through
+   0.36.0 too, but as a **"not available to us"** appendix (§5.1).
 2. **Produce a version-stamped combinator cheat sheet** as the artifact of that
-   survey, in this directory.
+   survey, in `docs/architecture/parser/`.
 3. **Measure test/corpus coverage of the existing grammars.** Productions no
    test reaches are where a rewrite silently drops behaviour, and where existing
    bugs most likely hide. **This measurement is the fact that decides whether
@@ -182,101 +218,225 @@ is a rename, which §3 rules out.
 
 ## 5. Blockers and sequencing
 
-None of §6 starts before these resolve. Each is stated with what is actually
-verified, because two of them were given to this document in a form the tree does
-not support.
+Each is stated with what is actually verified, because several were given to this
+document in a form the tree does not support.
 
-### 5.1 parseman 0.36.0 adoption must land first
+**Read §5.1 first: the parseman-version blocker is resolved, and the answer
+changed the sequencing.** What remains blocking is narrower than it was:
+
+| § | status |
+| --- | --- |
+| 5.1 parseman version | **RESOLVED** — 0.36.0 measured and declined; the rebuild targets the pinned 0.32.0 and is not blocked on a bump |
+| 5.2 the two 0.32.0 hazards | **not a blocker, a standing constraint** — check per unit |
+| 5.3 P1 host-aware capture elision | **open** — take delivery or drop the dependency, before Unit 4 |
+| 5.4 SCSS composing on Less | **open** — blocks Unit 5's `scss` step, and a one-line false comment blocks its `less` step |
+| 5.5 `internal-css-recognition` rename | **sequenced last**, after the rebuild |
+
+### 5.1 parseman stays at 0.32.0 — the rebuild targets the pinned version
+
+> **This section previously said 0.36.0 adoption must land first. It was measured,
+> and the answer was no.** The rebuild is **not** blocked on a parseman bump.
 
 The repo pins **`0.32.0` exactly** (root + 5 package manifests;
 `pnpm-lock.yaml:17276`). The invariant is that **compiled parser artifacts never
 cross parseman versions** — a bump regenerates every artifact and rebaselines
 every aggregate hash.
 
-parseman is at `/Users/matthew/git/oss/parser-thing` (on-disk directory name
-differs from the package name). 0.36.0 is merged to `main` at `be09b83` via PR
-#70. **There are no version tags in that repo at all**, and whether 0.36.0 is
-published to npm is **unverified** — check before writing a version into a
-manifest. Read 0.36.0 from `/Users/matthew/git/worktrees/pm-036-bump`
-(`release/0.36.0-bump`), not from `shadowed-leaf-arm`, which carries unreleased
-commits past it.
+**The 0.36.0 adoption was measured and declined. jess could not reproduce
+parseman's own −18.5%.**
 
-**Correction to the brief this document was given.** "0.34 and 0.35 both
-net-regressed Less" is half wrong, and the difference decides the target version:
+*Correctness was fully clean* — **zero AST movement across 3,053 file-parses in
+all four dialects**, four parser suites green, `all-less` 108/108, and
+`check:macro` at 0 fallbacks on **both** versions. Nothing about correctness
+motivated the decision.
 
-- **0.34.0 regressed.** jess measured Less **+10…25%** slower on the
-  `0.32.0 → 0.34.0` bump (branch `parseman-034-adoption`, `a49ca59da`;
-  same-worktree git-toggle, 4 rounds × 3 runs, AST byte-identity held across
-  1,880 corpus files). Filed as **P-9**. parseman independently measured
-  **+32.5%** on `0.33.0 → 0.34.0` and found the cause: the `not()` probe-leak fix
-  issued six unconditional `array.length` stores on a probe executed ~600×/KB by
-  the Less grammar.
-- **0.35.0 fixed it and went net-faster than the `0.32.0` we pin** — guarding all
-  ~3,000 rollback sites gave −12.0% vs 0.33.0, and vs 0.32.0 the guarded build
-  wins on every corpus (Less `benchmark.less` −3.9%, `bootstrap.css` −18.5%,
-  jess corpus −18.5%, 12/12 interleaved wins).
-- **0.36.0** deduplicates expectation sets — oversized derived sets were ~⅓ of
-  parse time on a 106 KB Less stylesheet.
+*Less regresses.* `less/css-corpus` read **+7.8 / +11.9 / +10.8 / +10.7%** across
+four runs and three independent harness designs, win-rate **2–4 out of 25**. The
+other two Less workloads are genuinely ambiguous — −7…−9% cross-process against
++2…+5% single-process interleaved — and the measuring agent **declined to claim a
+direction on them**, which is the correct outcome to record rather than a gap to
+fill.
 
-**All of the 0.35/0.36 numbers are parseman's own measurements. jess has never
-measured 0.35 or 0.36.** Reproducing them in jess, by §8.5's method, is the first
-task of Unit 2 — not an assumption it may proceed on.
+So the sequence is now settled by measurement rather than by argument:
+
+| version | Less | evidence |
+| --- | --- | --- |
+| **0.34.0** | **regressed** | jess +10…25% (`a49ca59da`, P-9); parseman +32.5% on 0.33→0.34, cause found (the `not()` probe-leak fix's six unconditional `array.length` stores on a probe running ~600×/KB) |
+| **0.35.0** | **improved, not to parity** | parseman's rollback-guard work; jess did not reach parity |
+| **0.36.0** | **improves further, still net-negative on the sharpest case** | the numbers above |
+
+**parseman's CHANGELOG claim that 0.35.0 is net-faster than 0.32.0 (−18.5% on
+bootstrap and the jess corpus, 12/12 interleaved wins) is contradicted for jess's
+Less grammar.** That is a finding worth carrying upstream, not a number to
+discard — parseman measuring its own release on its own corpora is a different
+fact from jess measuring it on four dialect grammars, and parseman's own
+`not()`-per-KB figures (css 20 / jess 121 / less 599) predict exactly this kind of
+per-dialect divergence.
+
+> **jess stays pinned at `0.32.0` exactly** (root + 5 package manifests;
+> `pnpm-lock.yaml:17276`). **The rebuild targets 0.32.0.** The residual
+> investigation into the Less regression is deferred and is **not** a blocker on
+> any unit.
+
+**Why this ordering is better, not merely tolerable.** The residual regression is
+concentrated in **Less parsing plain CSS**, not Less parsing Less. That points at
+the ported CSS value and selector productions living inside the Less grammar —
+which is precisely the duplication this rebuild exists to delete. **The rebuild
+may well remove the code the regression lives in.**
+
+> **That is a hypothesis, not a result.** It has not been tested and must not be
+> quoted as a finding. What follows from it is only a sequencing conclusion:
+> rebuilding first and re-measuring after is the **more informative** order,
+> because a re-measurement taken after the duplicated productions are gone
+> answers a question the current measurement cannot. Do not re-block the rebuild
+> on the parseman version, and do not treat the hypothesis as a reason to skip
+> the re-measurement.
+
+### 5.1.1 Reading parseman source
+
+parseman is at `/Users/matthew/git/oss/parser-thing` (the on-disk directory name
+differs from the package name), and **has no version tags at all**. Read a version
+from its worktree, never by tag:
+
+| version | worktree | branch |
+| --- | --- | --- |
+| **0.32.0 — the pinned one** | `/Users/matthew/git/worktrees/parseman-0.32-alloc` | `release/0.32.0` |
+| 0.36.0 | `/Users/matthew/git/worktrees/pm-036-bump` | `release/0.36.0-bump` |
+
+**Read `src/`, not `dist/`.** The `parseman-0.32-alloc` worktree's `dist/` is
+gitignored and stale relative to its own `src/`. For what jess actually
+typechecks and runs against, use the pinned artifact at
+`node_modules/.pnpm/parseman@0.32.0/node_modules/parseman`.
+
+Also mislabelled, and still true: branches `parseman-035-adoption` and
+`parseman-036-adoption` **both pin 0.32.0** and contain no parseman work.
 
 Also mislabelled: branches `parseman-035-adoption` and `parseman-036-adoption`
 **both still pin 0.32.0** and contain no parseman work (the latter holds
 Less-grammar refactors done against 0.32.0). The 0.34 bump at `a49ca59da` is
 **not an ancestor** of either. There is no 0.36 adoption in progress.
 
-### 5.2 What 0.36.0 actually gives you
+### 5.2 Writing against 0.32.0 — what you have, and two hazards
 
-Versus 0.32.0, exactly **three** new value exports — `peek`, `oneOrMoreSep`,
-`analyzeGatingRules` — plus types (`RepeatOptions`, `SepByOptions`,
-`TrailingSeparator`) and the `parseman/run` subpath. Nothing was removed.
+**Almost nothing is lost by targeting 0.32.0.** The whole API delta to 0.36.0 is
+**three** value exports — `peek`, `oneOrMoreSep`, `analyzeGatingRules` — plus
+three types and the `parseman/run` subpath. Nothing was removed, and the
+combinators the rebuild leans on all exist today.
 
-| Need | 0.36.0 answer |
-| --- | --- |
-| leading `not()` | **`peek(x)`** (added 0.34.0). Zero-width positive lookahead that **carries its body's first-set**, so `peek(regex(/[.#]/))` keeps O(1) first-char dispatch. `not(not(x))` reports first-set `any` and poisons the choice |
-| separated lists | `sepBy` (0.32.0) and **`oneOrMoreSep`** (0.34.0). All four repetition combinators take `{min, max}` counting items; separated forms take `trailing: 'forbid'\|'allow'\|'require'`. Prefer `min >= 1` — plain `sepBy` is nullable, which kills the enclosing choice's dispatch |
-| keyword regexes | `keywords()`, `word()`, `makeWord()` — **all three already exist in 0.32.0.** 0.34.0 adds `caseInsensitive` to `word()` and ASCII-folds case-insensitive first-sets so the arm still gates |
-| gating analysis | **`analyzeGatingRules(ruleMap, opts?)`** (0.34.0), plus `resolveRef` for the fused view, and `compileRuleMap` now runs gating over the whole map — it was **blind in the macro build** through 0.32.0 |
-| scan hygiene | 0.33.0: `scanTo`/`balanced` skip ambient `trivia` by default; `rules({ scanSkip })` for opaque units; per-call `raw: true` opts out |
+| Need | 0.32.0 answer | lost vs 0.36.0 |
+| --- | --- | --- |
+| keyword regexes | `keywords()`, `word()`, `makeWord()` — **all present** | only `caseInsensitive` on `word()`, and the ASCII case-folding soundness fix |
+| separated lists | `sepBy(item, sep)` — present | `{min,max}`, `trailing`, `oneOrMoreSep` |
+| leading `not()` | **no `peek()`.** Restructure the rule so the discriminating terminal leads, rather than spelling `not(not(x))` — which reports first-set `any` and poisons the whole choice | `peek()` |
+| gating analysis | `analyzeGating()` on a pre-`compose()` `rules()` map (§8.6). **The macro build's gating is blind at 0.32.0** | `analyzeGatingRules`, `resolveRef`, whole-map gating in `compileRuleMap` |
+| scan hygiene | `scanTo`/`balanced` do **not** skip ambient trivia at 0.32.0 | 0.33.0's ambient scan-skip and `rules({ scanSkip })` |
 
-**Two things 0.36.0 does not give you.** Say so rather than planning around
-capability that is not there:
+**Two 0.32.0 hazards are now load-bearing and must be checked per unit.**
+
+**(a) `{min, max}` does not exist — and it will not compile.** At 0.32.0 the
+signatures take positional combinators only, no options object:
+`many<T>(combinator)`, `oneOrMore<T>(combinator)`, `sepBy<T,S>(combinator, separator)`
+(`parseman-0.32-alloc/src/combinators/repeat.ts:70`, `:122`, `:196`; the shipped
+`dist/combinators/repeat.d.ts:2,3,5` matches, with no overloads). `min` is a
+hardcoded literal on the def — `0` for `many` (`repeat.ts:76-77`), `1` for
+`oneOrMore` (`:128-129`). `oneOrMoreSep` does not exist.
+
+> **Correction to how this was briefed to the spec:** it is **not** a silent
+> hazard. `many(x, { min: 1 })` is `TS2554: Expected 1 arguments, but got 2` — a
+> hard compile error. At runtime the extra argument would be ignored and the
+> combinator would stay nullable, but that code cannot get past `tsc`. Write it
+> as "the 0.34.0 idiom will not compile", not as "it silently does nothing" —
+> overstating a hazard as silent teaches agents to distrust the compiler.
+
+The practical rule: **`oneOrMore(x)` *is* `many(x, {min:1})`.** Where a rebuilt
+rule wants a non-nullable list, use `oneOrMore`. Nullability still matters for the
+same reason 0.34.0 fixed it — a nullable arm kills the enclosing choice's dispatch
+— and at 0.32.0 plain `sepBy` **is** nullable with no way to say otherwise. That
+is a real constraint on rule shape, and where it forces an awkward construction,
+record it as `blocked` with this as the reason. Zero of jess's 148 current
+`many(`/`oneOrMore(`/`sepBy(` call sites pass an options object.
+
+**(b) One gated arm disables `autoNot` for the *entire* choice — silently, and it
+changes what the grammar accepts.** This one **is** silent. In
+`src/combinators/choice.ts` at 0.32.0, `:21` computes
+`hasGates = gates.some(g => g !== null)` — a single `{ gate, combinator }` arm
+sets it for the whole choice — and `:55-57` then zeroes the autoNot table for
+**every** arm index. `:51` additionally forces the plain ordered `firstMatch`
+loop by suppressing `detectStrategy`, so `greedyClassify`,
+`literalsLongestFirst` and `sharedPrefix` all go too.
+
+**This is a semantics change, not a dispatch tweak**, by two independent routes:
+
+1. **autoNot loss.** `computeAutoNot` is longest-match disambiguation: a
+   successful short arm whose check fires is rolled back and skipped so a longer
+   arm can win. Nulled, `choice(literal('and'), regex(/[a-z]+/))` consumes `and`
+   out of `android` and leaves `roid` for the enclosing sequence — a different
+   accepted language.
+2. **`literalsLongestFirst` loss.** An all-literal choice is no longer sorted
+   longest-first, so declaration order decides and a shorter literal listed first
+   shadows a longer one.
+
+There is **no warning, no diagnostic, and no error** on this path — `autoNot`
+appears nowhere in any 0.32.0 analysis or diagnostic surface, and codegen reads
+the already-nulled `def.autoNot` without comment.
+
+> **The precise trigger condition, which is narrower than it first looks:**
+> `autoNot` is only ever computed when the choice is **not** disjoint. So adding a
+> gated arm to a genuinely disjoint choice loses nothing. **The hazard bites when
+> a gated arm is added to a non-disjoint choice** — one relying on ordered or
+> longest-match resolution among literal, or literal-vs-regex, arms.
+> **Any such change requires a corpus differential (§8.3), not a perf
+> measurement.**
+
+jess has exactly **two** `{ gate, combinator }` arms today, both in
+`simpleSelector` and both in believed-disjoint choices:
+`packages/jess-parser/src/grammar.ts:210` and
+`packages/scss-parser/src/grammar.ts:1230`. Neither currently loses anything.
+`css-parser`, `less-parser` and all four AST grammars have none.
+
+**Two things no version gives you**, unchanged through 0.36.0 — so these are not
+reasons to want a bump:
 
 - **Nothing replaces manual `optional(ws)` / `noTrivia`.** `trivia`, `noTrivia`
   and `parser({trivia})` are unchanged 0.32.0 → 0.36.0. `noTrivia` at 300 sites
   is the ambient mechanism, not an anti-pattern; the don't in §10.1 is about
-  *hand-written whitespace beside it*, not about `noTrivia` itself.
-- **No ident/boundary preset.** `keywords()` still builds `(?![<boundary>])` from
-  a plain character-class string (`src/combinators/keywords.ts:80`, default
-  `'_0-9A-Za-z'`). No `cssIdent`, no `followedBy`, no leading boundary.
-  `word(str, boundary)` is the only lever and it cannot express backslash escapes
-  or non-ASCII ident code points. jess filed these as **P-3, P-4, P-8; all still
-  open in 0.36.0.** So "no bespoke ident/boundary classes" is an *aspiration*:
-  raise it upstream, do not fake it locally.
+  *hand-written whitespace beside it*.
+- **No ident/boundary preset.** `keywords()` builds `(?![<boundary>])` from a
+  plain character-class string, default `'_0-9A-Za-z'`. No `cssIdent`, no
+  `followedBy`, no leading boundary. `word(str, boundary)` is the only lever and
+  cannot express backslash escapes or non-ASCII ident code points. Filed as
+  **P-3, P-4, P-8**; open at 0.36.0. So "no bespoke ident/boundary classes"
+  (§10.1) is an *aspiration*: raise it upstream, do not fake it locally.
 
-Not in 0.36.0: **`analyzeDuplication()`** — the structural duplication/overlap
-diagnostic with seven finding families and hand-rolled-`sepBy` detection — is
-**unreleased, `main`-only**. Do not write it into a gate.
+**`analyzeDuplication()`** is unreleased and `main`-only at any version. Not a
+gate.
 
-### 5.3 parseman host-aware capture elision — UNVERIFIED
+### 5.3 parseman host-aware capture elision — UNVERIFIED, in flight
 
-The brief cites a "P1 host-aware capture elision, without which the unified CST
-is silently lossy." **I could not find it.** No "host-aware" or "capture elision"
-string exists in parseman's `docs/` or `notes/`, nor in jess's `docs/`. The
-branch `fix/host-aware-capture` sits at `be09b83` = `main` with **zero commits of
-its own**. jess's own P-1 is something different (`composeLeaf` holes reported as
-`ungated` instead of `deferred`).
+Cited as "P1 host-aware capture elision, without which the unified CST is
+silently lossy". **An agent is actively building it**, so treat this as work in
+flight rather than a settled capability — and note that nothing about it is
+readable from here yet.
 
-The nearest real work is 0.31.0's `_parsemanReadsChildren` children-array elision
-and the `_hostReads(build, n)` arity probe discussed in
+What is verifiable as of `76680b114`: no "host-aware" or "capture elision" string
+exists in parseman's `docs/` or `notes/`, nor in jess's `docs/`; the branch
+`fix/host-aware-capture` sits at `be09b83` = `main` with **zero commits of its
+own**. That is consistent with work living in an uncommitted worktree, which is
+why this reads UNVERIFIED rather than absent. jess's own P-1 is a different item
+(`composeLeaf` holes reported as `ungated` instead of `deferred`) — do not
+conflate the two numbers.
+
+The nearest committed work is 0.31.0's `_parsemanReadsChildren` children-array
+elision and the `_hostReads(build, n)` arity probe discussed in
 `pm-036-bump/notes/PERF_IDEAS.md` and `notes/CODEGEN-FAST-PATHS.md`
 ("arity-gated capture elision").
 
-**Action: resolve this with the owner before Unit 4 starts.** If a real lossiness
-risk exists it is a hard blocker on the unified CST and must be named precisely.
-Do not proceed on the strength of a half-remembered item.
+> **Action before Unit 4: take delivery from the P1 agent, or drop Unit 4's
+> dependency on it.** If the delivery lands, read what it actually guarantees and
+> write that into Unit 4. If the delivery reports that the elision is not
+> achievable, drop the dependency and say so. **Unit 4 must not assume it in
+> either direction** — neither "it will be there" nor "it does not exist" is a
+> premise to build on.
 
 ### 5.4 SCSS composing on Less must be corrected
 
@@ -286,11 +446,25 @@ Do not proceed on the strength of a half-remembered item.
 export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules({ trivia: rw }, (g: any) => {
 ```
 
-This is now **blocking Less-side cleanup**, not merely an SCSS correctness leak:
-`packages/less-parser/src/grammar.ts:157-158` asserts "SCSS composes on the CSS
-base, NOT on Less, so it never inherits this Less body" and licenses Less-side
-edits on that premise. **That comment is false**, and any Less CST edit taken on
-its authority silently changes SCSS.
+This is **blocking Less-side cleanup**, not merely an SCSS correctness leak —
+and as of `ac02c6e0b` that is **verified by building it**, not inferred.
+`docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` records the
+mechanism: because `scssGrammar = compose([lessGrammar, …])`, `lessGrammar` may
+not itself become a non-final carried piece. Composing the shared recognition map
+into the Less CST compiles fine in `less-parser`, and then `scss-parser` reports
+`compose(): argument 0 isn't a build-resolvable grammar`. **So the Less CST
+cannot reach the shared recognition surface at all while the inversion stands.**
+
+First concrete casualty, named in that commit: the Less CST keeps a 150-name copy
+of the CSS named-colour list that `5d0a61523` could not delete — and any other
+CSS-recognition duplicate in the Less CST is stuck for the same reason. This is
+why §2.3's remaining keyword regexes cluster where they do.
+
+**The false comment is still in the tree.**
+`packages/less-parser/src/grammar.ts:157` still reads "SCSS composes on the CSS
+base, NOT on Less, so it never inherits this Less body", licensing Less-side edits
+on a premise `ac02c6e0b` disproves 560 lines lower in the same file. Deleting it
+is a one-line prerequisite for Unit 5, not a nicety.
 
 **Good news, and it changes the sequencing:** this is **CST-only**. The SCSS
 *AST* grammar does not compose on Less — it has no `compose(` call at all, only
@@ -332,57 +506,64 @@ When in doubt it is a report.
 **Off-limits.** Every file under `packages/`. This unit writes no code. It also
 does not modify parseman — jess agents never merge parseman PRs.
 
-**Read first.** `/Users/matthew/git/worktrees/pm-036-bump` (branch
-`release/0.36.0-bump`) — `CHANGELOG.md`, `src/index.ts`, `src/combinators/`.
-Then §5.2 above, which is a seed, not a substitute: it was compiled from the
-CHANGELOG and must be checked against source.
+**Read first.** `/Users/matthew/git/worktrees/parseman-0.32-alloc` (branch
+`release/0.32.0`) — **`src/index.ts` and `src/combinators/`, not `dist/`**, which
+is gitignored and stale there. Cross-check against the pinned artifact jess
+actually compiles against,
+`node_modules/.pnpm/parseman@0.32.0/node_modules/parseman`. Then §5.2 above,
+which is a seed and must be checked against source.
 
-**Method.** Read the CHANGELOG 0.32.0 → 0.36.0 as a diff of capability, then
-`src/index.ts` for the full export list, then the implementation of anything the
-grammars will use. Version-stamp the result.
+**Method.** **The cheat sheet documents 0.32.0 — the version the rebuild
+targets.** Read `src/index.ts` for the full export list, then the implementation
+of anything the grammars will use. Then read
+`/Users/matthew/git/worktrees/pm-036-bump/CHANGELOG.md` for 0.33.0 → 0.36.0 and
+record the delta as a clearly-separated **"not available to us"** appendix — so
+nobody writes a 0.34.0 idiom by mistake, and so the cost of staying pinned stays
+visible. Version-stamp the result.
 
 **Pass criteria.**
-- Every value export of 0.36.0's `src/index.ts` appears with a one-line "use it
-  when" and at least one worked example.
-- Each anti-pattern in §2.3 has a named replacement, or an explicit "no
-  replacement exists at 0.36.0, filed as P-n".
-- The sheet is stamped with the parseman version **and the SHA it was read from**.
+- Every value export of **0.32.0's** `src/index.ts` appears with a one-line "use
+  it when" and at least one worked example.
+- Each anti-pattern in §2.3 has a named 0.32.0 replacement, or an explicit "no
+  replacement exists at 0.32.0" — distinguishing *never existed* from *exists
+  only in a version we do not have*.
+- **Both §5.2 hazards are stated with their trigger conditions**: `{min,max}`
+  does not compile (and `oneOrMore(x)` is the substitute for `many(x,{min:1})`);
+  and one gated arm zeroes `autoNot` across the whole choice, which only bites on
+  a **non-disjoint** choice and needs a corpus differential when it does.
+- The sheet is stamped with the parseman version **and the SHA it was read from**,
+  and says plainly that `dist/` in that worktree is stale.
 - Anything not confirmable from source is marked UNVERIFIED — not omitted, not
   guessed.
 
-**Blocked?** If 0.36.0 is not published to npm, report — do not pin a manifest to
-an unpublished version.
+**Blocked?** Nothing blocks this unit. It reads a version already installed.
 
 ---
 
-### Unit 2 — parseman 0.36.0 adoption
+### Unit 2 — parseman 0.36.0 adoption — **CLOSED, not adopted**
 
-**Scope.** The version pin, the regenerated artifacts, and a jess-side
-measurement.
+**Outcome.** Measured and declined. Correctness fully clean (zero AST movement
+across 3,053 file-parses in all four dialects; four parser suites green;
+`all-less` 108/108; `check:macro` 0 fallbacks at both versions), but
+`less/css-corpus` regressed **+7.8 / +11.9 / +10.8 / +10.7%** across four runs and
+three harness designs, win-rate 2–4 of 25. Two other Less workloads were
+ambiguous and **no direction was claimed on them** — the right call, recorded as
+such. **jess stays pinned at 0.32.0.** Full record in §5.1.
 
-**Off-limits.** Any grammar rewrite. This unit changes a version and regenerates;
-it does not restructure. Mixing the two makes the differential unattributable.
+**This unit is no longer a blocker on anything.** Units 3, 4 and 5 target 0.32.0.
 
-**Read first.** §5.1. `docs/design/PARSEMAN-0.34-GRAMMAR-IDIOM-PLAN.md` on branch
-`parseman-034-adoption` (`a49ca59da`) for P-1…P-9 and the 0.34 measurement
-method.
+**What remains, deferred and unassigned:** the residual Less regression. It is
+concentrated in **Less parsing plain CSS**, which points at the ported CSS value
+and selector productions inside the Less grammar — the duplication Unit 5 exists
+to delete. **Hypothesis, not result** (§5.1). The useful next measurement is
+after Unit 5's `less` step, not before it.
 
-**Method.** Bump root + all five package manifests together. Rebuild every
-compiled artifact. Then measure by §8.5.
-
-**Pass criteria.**
-- §8.2 definition of done, with the **rename mapping empty** — this unit renames
-  nothing, so the oracle verdict must be `identical`, not `moved`.
-- A jess-side perf measurement of 0.32.0 → 0.36.0 by §8.5, reported as median,
-  min, spread and win-rate **per dialect**. **parseman's own numbers do not
-  substitute.**
-- 0.34.0's gating fix surfaced **202 ungated choices and 28 anti-patterns** that
-  had been invisible since 0.32.0. Re-run `analyzeGatingRules` and record the
-  current set — as a set, not a count.
-
-**Blocked?** If the measurement shows a net regression on any dialect, report with
-the numbers. Do not adopt, and do not tune the grammar to compensate — that would
-confound Unit 5.
+Still worth harvesting from the attempt: 0.34.0's gating fix surfaced **202
+ungated choices and 28 anti-patterns** invisible at 0.32.0, where the macro
+build's gating is blind. Those findings describe *our* grammars, not parseman's
+version — feed the pre-`compose()` `rules()` map to 0.32.0's `analyzeGating`
+(§8.6) and record the current set, as a set, during Unit 4. It does not need a
+bump.
 
 ---
 
@@ -453,6 +634,10 @@ combinators for that description. Then check against the old rule for accept-set
 differences only, and enumerate every difference (§8.3).
 
 **Pass criteria.** §8 in full. Additionally:
+- **The rename mapping and the residue check are built as part of this unit**
+  (§8.1b) — the oracle has no such API, and every later unit depends on it. The
+  check must prove the residue is **empty**, not smaller; a tool that only shrinks
+  the diff fails this criterion.
 - The CSS grammar's header states that three dialects compose on it (§12).
 - Rule names are CSS concept names — no `CssAst*`, no `Direct*` (§10.1).
 - The per-`const` review table has a row per `const` (§10.4).
@@ -574,12 +759,30 @@ happy". It is:
 > empty. An undeclared `moved` is a failure.**
 
 The mapping must be **total and unambiguous** — every old name maps to exactly one
-new name, and nothing maps to two. **The oracle does not support this natively**:
-there is no rename-mapping or residue API in `src/oracle` at `10ab446`. It gives a
-binary per-entry fingerprint diff — `SurfaceComparison` (`identity.ts:233`) carries
-`moved: string[]`, the entry ids whose fingerprint changed, plus
-`addedEntries`/`removedEntries`. **jess must supply the mapping and the residue
-check itself.** That is unbuilt work and belongs to Unit 4.
+new name, and nothing maps to two.
+
+**What the residue check has to prove:**
+
+> After applying the declared mapping to the old tree, **the set of remaining
+> differences is EMPTY.** Not smaller. Not "only renames left". Not a diff a human
+> reads and judges acceptable. Empty, or the change has not been shown
+> output-neutral.
+
+This is stated because the obvious tool to build is the wrong one. A mapping tool
+that merely *shrinks* the diff will always succeed — add enough mappings and any
+two trees look close — and it converts a mechanical gate into a judgement call,
+which is exactly what §8.1(a) refuses. The mapping is declared **up front**, before
+the diff is seen, for the same reason: a mapping written to explain a diff you are
+looking at is a rationalisation, not a specification. If applying the declared
+mapping leaves anything behind, the residue **is the finding** — enumerate it,
+report it, and do not extend the mapping to absorb it without saying so.
+
+**The oracle does not support any of this natively**: there is no rename-mapping or
+residue API in `src/oracle` at `10ab446`. It gives a binary per-entry fingerprint
+diff — `SurfaceComparison` (`identity.ts:233`) carries `moved: string[]`, the entry
+ids whose fingerprint changed, plus `addedEntries`/`removedEntries`. **jess must
+build the mapping and the residue check itself.** That is unbuilt work and belongs
+to Unit 4.
 
 A gained or lost corpus entry is **not** `incomparable` — it is reported in
 `addedEntries`/`removedEntries` and yields `moved`.
@@ -646,26 +849,70 @@ silent accept moves the aggregate.
   not in the baseline, a baseline entry that now passes, and a baseline entry that
   no longer exists. **A count cannot detect the second or third.**
 - **Language-service suite green** — `cd packages/language-service && pnpm test`
-  (13 test files).
+  (13 test files). **Green as of `82d0b5f13`: 189 passed / 1 skipped / 0 failed**,
+  stated in that commit message. The earlier "5 pre-existing failures" figure was
+  wrong twice over — it was 10 failures across 4 files, each double-counted by the
+  runner's project/file reporting — and it is now moot.
 
-> **Recorded dependency, and a correction.** The brief states the LS suite has 5
-> pre-existing failures being fixed in parallel. **That number is unsourced.** It
-> appears nowhere in `docs/state/PROJECT_STATE.md`, in `known-failures.json`, or in
-> HANDOFF; the LS suite has no ratchet baseline at all. Before relying on it,
-> capture the current failing set by running the suite — as a set, per §7 — and
-> record it. The dependency is real; the number is not yet evidence.
+> **Open gap: this suite has no ratchet baseline, and it just went green.** The
+> only `known-failures.json` in the repo is `packages/jess/test/known-failures.json`,
+> wired by the single ratchet at `package.json:133`. Nothing pins the LS suite at
+> 189/1/0, and `packages/language-service/package.json` has no ratchet script. **A
+> suite that just went green with nothing holding it there will drift** — and the
+> grammar rebuild is precisely the kind of change that drifts it, since the CST is
+> what the language service consumes.
+>
+> **Proposed, not built:** add `packages/language-service/test/known-failures.json`
+> as an empty named set and wire `verify:ls-ratchet` to the existing
+> `scripts/vitest-ratchet.mjs --package packages/language-service --baseline …`.
+> An empty baseline is the strongest form — every one of the script's three
+> failure conditions (new failure, baseline entry now passing, baseline entry
+> gone) reduces to "any failure fails". Cheap, uses machinery that already exists,
+> and it is what makes "language-service suite green" a gate rather than a hope.
+> **Owner decision required** before a unit takes it on; it is not grammar work.
 
-### 8.5 Perf
+### 8.5 Perf — the single-process interleaved arena is required
 
-Only where a change was motivated by cost. `packages/less-parser/test/ab-compare.mjs`
-encodes the method: **same worktree** (A = working tree, B = `git show HEAD:` of
-the grammar files), warmup then timed samples, a **full macro rebuild between every
-block**, interleaved `B A B A` across rounds and processes, reporting **median AND
-min AND spread AND win-rate**.
+Only where a change was motivated by cost. **A single median is not a result.**
+The untouched surface is the noise floor. **A neutral result is a perfectly good
+result** — the gate for this work is §8.1 through §8.4, not a speedup.
 
-Its header states the standard: **a single median is not a result.** The untouched
-surface is the noise floor. **A neutral result is a perfectly good result** — the
-gate for this work is §8.1 through §8.4, not a speedup.
+**The required harness is the single-process interleaved arena.** It was built
+for the 0.36.0 evaluation and was the only design that stayed stable when the box
+hit load average 21–29; the cross-process designs disagreed with it by 10–14
+points on the same workloads, which is how two of the three Less workloads ended
+up unclaimable. Do not substitute a simpler design and do not report a number
+from one.
+
+Its shape:
+
+- Both versions' **compiled artifacts and their own parseman copies** are
+  snapshotted into **self-contained arms**. Not two checkouts, not a shared
+  `node_modules` — each arm carries everything it needs.
+- The two arms are **alternated per iteration**, with **per-round rotation** so
+  neither arm keeps a fixed position in the ordering.
+- One process. Warmup then timed samples. Report **median AND min AND spread AND
+  win-rate** — win-rate is what exposed `less/css-corpus` as 2–4 wins out of 25
+  while its medians looked merely noisy.
+
+**The self-validation step is part of the harness, not an optional extra:**
+
+> **Prove the two arms are actually two builds.** Confirm the arms **disagree on
+> no AST across the corpus** (2,647 files in the 0.36.0 evaluation) **while
+> producing different builds**. A shared-module leak — one arm silently importing
+> the other's parseman or the other's compiled artifact — produces a harness that
+> times the same code twice and reports a clean, confident, meaningless number.
+>
+> **A harness that cannot prove its two arms are two builds produces a timing
+> that is a lie.** Run the check every time; a leak is introduced by an innocuous
+> refactor of the harness, not announced.
+
+`packages/less-parser/test/ab-compare.mjs` remains the reference for the
+surrounding discipline — same worktree, full macro rebuild between blocks,
+interleaving, and the untouched surface as a same-run control — but its
+cross-process design is **superseded** for version and grammar comparisons by the
+arena above. The arena is not yet checked in; building or importing it is part of
+the first unit that needs a perf claim.
 
 ### 8.6 What the gating diagnostic can and cannot see
 
@@ -739,9 +986,12 @@ produced this document.
    count 13→23. Neither is visible in a count.
 6. **A claim carried forward from a prior report rather than re-measured.** Four of
    the five figures this document was briefed with were wrong when checked against
-   the tree (§2.3), as were "0.35 regressed Less" (§5.1), "ESLint rules cover the
-   eight grammar files" (§11), "5 LS failures" (§8.4), "the P1 host-aware capture
-   elision item" (§5.3) and "the `internal-css-recognition` rename" (§5.5).
+   the tree (§2.3); "5 language-service failures" was wrong twice over (§8.4); and
+   "the `internal-css-recognition` rename" (§5.5) describes a proposal that does
+   not exist. **This document is not exempt.** Within one day of being written, its
+   line count went stale by 6,858 lines, its keyword-regex count halved, and its
+   "no ESLint rule applies to the eight grammar files" became false (§11). Re-run
+   the commands in §2; do not quote the tables.
 7. **A gate made to pass by shrinking what it measures.** In parseman PR #75 a
    `composeLeaf` soundness sweep ran ~5.5s under coverage against a 5s default and
    the failure message said **"timeout", not "sweep"**. The correct move was taken:
@@ -753,10 +1003,21 @@ produced this document.
    corpus subset chosen because the full one was slow is the same move, and so is
    lowering `determinismSample` to get past §8.1c. **If a gate is too slow, that is
    a budget question to raise, not a scope to quietly reduce.**
-8. **An unmeasured claim that a rewrite is faster.** Perf claims need a controlled
-   measurement in **one directory with a git toggle** (§8.5) — not a cross-worktree
-   comparison, not a prediction from the shape of the code. **"I moved N sites into
-   macros" is a count, not a result.**
+8. **An unmeasured claim that a rewrite is faster.** Perf claims require the
+   single-process interleaved arena (§8.5) — not a cross-worktree comparison, not
+   a prediction from the shape of the code. **"I moved N sites into macros" is a
+   count, not a result.**
+9. **A perf number from a harness that did not prove its two arms are two
+   builds.** The arena's self-validation — arms disagree on no AST across the
+   corpus while producing different builds — is part of the harness, not an
+   optional extra (§8.5). A shared-module leak yields a clean, confident,
+   meaningless number, and nothing about the output looks wrong.
+10. **Claiming a direction on an ambiguous measurement.** In the 0.36.0
+    evaluation two of three Less workloads read −7…−9% cross-process and +2…+5%
+    single-process interleaved. **The measuring agent declined to claim a
+    direction, and that was the correct result** — recorded as ambiguous, with
+    the decision made on the workload that was not. Reporting "roughly neutral"
+    or picking the friendlier harness would both have been failures.
 
 ---
 
@@ -767,8 +1028,11 @@ produced this document.
 - No copy/paste from the old grammars.
 - No hand-rolled keyword regexes — `keywords()` / `word()`.
 - No `not(regex(…))` as a terminator.
-- No leading `not()` — **`peek()` exists at 0.36.0** and carries its body's
-  first-set.
+- No leading `not()`. **`peek()` does not exist at 0.32.0** — restructure so the
+  discriminating terminal leads. Do not reach for `not(not(x))`: it reports
+  first-set `any` and poisons the entire choice. Where a rule genuinely needs
+  lookahead that 0.32.0 cannot express, that is `blocked`, with `peek()` as the
+  named reason.
 - No manual `optional(ws)` or hand-written whitespace beside `noTrivia`.
   (`noTrivia` itself is the ambient mechanism and is not the target — §5.2.)
 - No production consuming its own `;`. **`;` separates; the list owns it.**
@@ -780,9 +1044,14 @@ produced this document.
 - No factories, no spreads, no hoisted consts (§10.3).
 - No literal non-ASCII in regexes.
 - No `/i` without `/u`.
-- No bespoke ident/boundary classes — **aspirational at 0.36.0**: there is no
-  preset, and P-3/P-4/P-8 are open (§5.2). Raise the gap upstream; do not fake it
-  locally, and do not silently keep hand-rolling.
+- No bespoke ident/boundary classes — **aspirational at every version**: there is
+  no preset, and P-3/P-4/P-8 are open through 0.36.0 (§5.2). Raise the gap
+  upstream; do not fake it locally, and do not silently keep hand-rolling.
+- No `{ min, max }` on a repetition combinator — **it does not compile at
+  0.32.0**. `oneOrMore(x)` is `many(x, {min:1})` (§5.2a).
+- No `{ gate, combinator }` arm added to a **non-disjoint** choice without a
+  corpus differential — it silently zeroes `autoNot` for every arm and changes
+  what the grammar accepts (§5.2b).
 
 ### 10.2 Execution shape — checklist question 14
 
@@ -848,19 +1117,53 @@ restate it.**
 | Mechanism | Enforces | Status on `dev` (`bcb3107a1`) |
 | --- | --- | --- |
 | `pnpm run check:macro` | 0 interpreter fallbacks — a **correctness** gate (§8.2) | **Landed and blocking** |
-| Grammar ESLint rules | comment shape, block comments only, no literal non-ASCII in regexes, no regex outside `regex()`, no macro hazards, expanded call form | **NOT on `dev`.** Branch `grammar-lint-rules` (`7c883f7f1`, **local and unpushed**) adds `scripts/eslint-rules/grammar-rules.mjs` at **error** across all eight grammar files plus `internal-css-recognition`, with `less-parser`'s layout and non-ASCII rules deferred behind a narrow dated block |
-| `analyzeGatingRules` | ungated choices, `double-not` anti-pattern | Available from **0.34.0**; the repo pins 0.32.0, where the macro build's gating was **blind** |
+| Grammar ESLint rules | block comments only, no literal non-ASCII in regexes, no regex outside `regex()`, no macro hazards, expanded call form, comment shape | **LANDED on `dev`** (`516d10222`, `f18fc4e17`) at **error** — see below |
+| `analyzeGating` (pre-`compose()` map) | ungated choices, `double-not` anti-pattern | **Usable at 0.32.0**, but the macro build's gating is **blind** — feed it the `rules()` map by hand (§8.6). `analyzeGatingRules` and whole-map gating need 0.34.0, which was declined (§5.1) |
 | `analyzeDuplication()` | structural duplication/overlap, hand-rolled-`sepBy` detection | **Unreleased, parseman `main` only.** Not a gate |
 | `parseman/oracle` | equivalence (§8.1) | **Unmerged.** PR #75 |
 
-**Today, no ESLint rule applies to the eight grammar files.** The four local rules
-in `scripts/eslint-rules/index.mjs` are all `warn` by explicit policy
-(`eslint.config.mjs:263-268`) and scoped to `packages/*/src/ast/**` or a core
-hot-path allowlist; `eslint.config.mjs:320-321` states grammar files are out of
-their scope. The one grammar-shaped rule, `local/no-oversized-choice`, is
-implemented and **deliberately unwired** (`:305-316`). Until `grammar-lint-rules`
-lands, §8.2 item 2 has no floor for these files, and checklist items 3, 4 and 9 are
-entirely reviewer-borne.
+**This changed on `dev` within a day of being written, in the direction the spec
+wanted.** `eslint.config.mjs:56-62` defines `GRAMMAR_FILES` as
+`packages/{css,less,scss,jess}-parser/src/**/*.ts` plus
+`packages/internal-css-recognition/src/**/*.ts` — glob-covering all eight files.
+At **`error`**: `grammar/no-line-comments` (`:371`),
+`grammar/no-literal-non-ascii-in-regex` (`:380`),
+`grammar/no-regex-outside-combinator` (`:386`), `grammar/no-macro-hazards`
+(`:394`), `@stylistic/function-paren-newline` (`:423`),
+`@stylistic/function-call-argument-newline` (`:424`), plus repo-wide
+`grammar/no-multiline-line-comments` (`:320`) and
+`@stylistic/lines-around-comment` (`:330`).
+
+So §8.2 item 2 now has a real floor, and checklist items 4 and 9 are mechanised
+rather than reviewer-borne. Item 3 (prettiness) remains a judgement call by
+design — §8.7.
+
+**Three carve-outs a unit must know about**, none of which is visible from a green
+`pnpm lint`:
+
+- **`less-parser` is deferred** (`eslint.config.mjs:436-464`), explicitly because
+  its grammars are being rewritten and reformatting underneath that pass would
+  collide. Off for `packages/less-parser/src/**`: `grammar/no-line-comments`,
+  `@stylistic/function-paren-newline`, `@stylistic/function-call-argument-newline`,
+  `@stylistic/lines-around-comment`, and `grammar/no-literal-non-ascii-in-regex`.
+  Outstanding at time of writing: 1403 + 276 + 103 + 21 violations, all
+  autofixable. **The block says to delete it once that pass lands** — that is Unit
+  5's `less` step, and deleting it is part of the step.
+- **The deferral header contradicts itself.** It states the correctness rules
+  "stay ON, because those are the defects the cleanup is meant to remove", and
+  then turns `grammar/no-literal-non-ascii-in-regex` off eight lines later
+  (`:462`, justified by a second comment citing 16 raw non-ASCII characters).
+  Believe the code, not the header.
+- **`no-hand-rolled-keyword-regex` exists but is wired nowhere.** Implemented at
+  `scripts/eslint-rules/grammar-rules.mjs:446` and tested at
+  `scripts/eslint-rules/__tests__/grammar-rules.test.mjs:136`, but absent from
+  `eslint.config.mjs`. So the §2.3 keyword-regex class has **no** mechanical
+  guard in any package — the header's claim that hand-rolled keywords "stay ON"
+  is wrong twice over. Wiring it is a cheap, well-scoped win and would stop the
+  count regrowing after Unit 4.
+
+`local/no-oversized-choice` remains implemented and **deliberately unwired**,
+now labelled "RETIRED" at `eslint.config.mjs:514-527`.
 
 ---
 

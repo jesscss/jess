@@ -41,22 +41,24 @@ tree or against `git merge-base --is-ancestor` on this pass.
 
 ### Grammar rebuild — the hot area
 
-Read [`../parser/GRAMMAR-REMEDIATION-PLAN.md`](../parser/GRAMMAR-REMEDIATION-PLAN.md) before
+Read [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) before
 touching any of the eight `*-parser/src/{,ast/}grammar.ts` files. See "Grammar work" below.
 The units below are that document's §6; the blockers are its §5.
 
 | Lane | Where | State |
 | --- | --- | --- |
-| **Grammar review standard + `grammar-reviewer` agent** | branch `grammar-review-standard` | `d4bd4a7bb`, **not on `dev`**. Adds `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` (the per-`const` checklist) and `.cursor/agents/grammar-reviewer.md`. The plan adds a **question 14** to that checklist — execution shape: what does this rule do at runtime, and what part is knowable at build time. |
-| **Grammar ESLint rules** | branch `grammar-lint-rules` | `7c883f7f1`, **local and unpushed**. Adds `scripts/eslint-rules/grammar-rules.mjs` at **error** across all eight grammar files. **Until it lands, no ESLint rule applies to them at all.** |
+| ~~**Grammar review standard + `grammar-reviewer` agent**~~ | jess | **LANDED `76680b114`** — `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` (the per-`const` checklist) and `.cursor/agents/grammar-reviewer.md`. The spec adds a **question 14** to that checklist — execution shape: what does this rule do at runtime, and what part is knowable at build time. |
+| ~~**Grammar ESLint rules**~~ | jess | **LANDED `516d10222` + `f18fc4e17`** at **error** across all eight grammar files. Three carve-outs a unit must know about, none visible from a green `pnpm lint`: `less-parser` is deferred behind a dated block that says to delete it once the rewrite pass lands; that block's header **contradicts itself** (claims the non-ASCII-regex rule stays on, then turns it off); and `no-hand-rolled-keyword-regex` is implemented and tested but **wired nowhere**. See the spec §11. |
 | **Unit 1 — parseman survey + combinator cheat sheet** | unassigned | **Not started.** Deliberately first: every mental model here is 0.32.0-era, and that staleness is what produced the hand-rolled `sepBy` and keyword regexes. Deliverable is `docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`. |
-| **Unit 2 — parseman `0.36.0` adoption** | branches `parseman-03{4,5,6}-adoption` | **Blocker for everything else.** Repo pins `0.32.0` exactly. Only `parseman-034-adoption` (`a49ca59da`) holds real work — a 0.34 bump plus a 981-line idiom plan; `-035-` and `-036-` are **misnamed and still pin 0.32.0**. Correction to circulating claim: `0.34.0` regressed Less (+10…25% jess-measured, +32.5% parseman-measured), **`0.35.0` fixed it and is net-faster than the pinned 0.32.0** — but that is parseman's measurement, never reproduced in jess. |
+| ~~**Unit 2 — parseman `0.36.0` adoption**~~ | jess | **CLOSED — measured and NOT adopted; jess stays pinned at `0.32.0`.** Correctness was fully clean: **zero AST movement across 3,053 file-parses in all four dialects**, four parser suites green, `all-less` 108/108, `check:macro` 0 fallbacks at both versions. But `less/css-corpus` regressed **+7.8 / +11.9 / +10.8 / +10.7%** across four runs and three harness designs, win-rate 2–4 of 25; two other Less workloads were ambiguous (−7…−9% cross-process vs +2…+5% single-process interleaved) and **no direction was claimed on them**. So parseman's own −18.5% does not reproduce in jess. **This is no longer a blocker on anything** — the rebuild targets 0.32.0. |
 | **Unit 3 — coverage measurement (the greenfield gate)** | unassigned | **Not started, and has to be built.** Vitest coverage is disabled by default and V8 line coverage does not map back to a `const`-per-production source through the macro build. Check parseman's existing coverage exports first. This measurement decides whether greenfield is safe. |
-| **Unit 4 — the CSS pilot** | unassigned | Blocked on Units 1–3. CSS is rebuilt complete before any dialect starts. |
-| **Unit 5 — the dialects** | branches `less-grammar-cleanup`, `trace-dual-grammar` | Blocked on Unit 4. `186f58be5` and `abe41f5bc` landed two conversion classes on `less-parser` against 0.32.0; useful as accept-set evidence, not as the shape. |
+| **Unit 4 — the CSS pilot** | unassigned | Blocked on Units 1–3 only. **Targets 0.32.0.** CSS is rebuilt complete before any dialect starts. Also builds the rename mapping + residue check, which the oracle does not provide. |
+| **Unit 5 — the dialects** | branches `less-grammar-cleanup`, `trace-dual-grammar` | Blocked on Unit 4. Order `less` → `scss` → `jess`. `186f58be5` and `abe41f5bc` landed two conversion classes on `less-parser` against 0.32.0; useful as accept-set evidence, not as the shape. |
+| **Two 0.32.0 hazards, both per-unit** | jess | **`{min,max}` on a repetition combinator does not exist and will not compile** — `oneOrMore(x)` is `many(x,{min:1})`; plain `sepBy` is nullable with no way to say otherwise. **One `{ gate, combinator }` arm silently zeroes `autoNot` for EVERY arm in that choice** and forces ordered `firstMatch` — a semantics change needing a corpus differential, not a dispatch tweak. It only bites on a **non-disjoint** choice; jess's two existing gated arms (`jess-parser/src/grammar.ts:210`, `scss-parser/src/grammar.ts:1230`) are disjoint and lose nothing. |
+| **Residual Less regression** | deferred, unassigned | Concentrated in **Less parsing plain CSS**, not Less parsing Less — pointing at the ported CSS value/selector productions inside the Less grammar, i.e. the duplication Unit 5 deletes. **Hypothesis, not result.** The informative measurement is after Unit 5's `less` step. Do not re-block the rebuild on it. |
 | **`parseman/oracle` equivalence gate** | parseman PR #75 | **OPEN, unmerged, post-0.36.0.** `loadCorpus` → `digestCorpus` → `compareReports` → `formatComparison`, three verdicts. **No rename-mapping/residue API** — jess must supply that itself. Until it merges, `packages/less-parser/test/ast-identity-oracle.mjs` is what exists (707 files, `less-parser` only, no CI wiring). |
 | **`analyzeDuplication()`, prefix-trie choice dispatch** | parseman repo | Upstream. `analyzeDuplication` is **unreleased, `main`-only** — not a gate. Prefix-trie is MEASURING FIRST; may conclude "don't build". |
-| **P1 host-aware capture elision** | UNVERIFIED | Cited as a blocker on the unified CST; **found nowhere** in parseman or jess docs, and `fix/host-aware-capture` is an empty branch. Resolve with the owner before Unit 4. |
+| **P1 host-aware capture elision** | parseman, agent in flight | UNVERIFIED from here — nothing committed (`fix/host-aware-capture` is empty), consistent with work in an uncommitted worktree. Before Unit 4: **take delivery, or drop Unit 4's dependency on it** if the delivery reports the elision isn't achievable. Unit 4 must not assume it in either direction. |
 | **SCSS rebase off Less** | `docs/architecture/core/SCSS-PARSER-REBASE-DESIGN.md` | Blocking Less-side cleanup, not just an SCSS leak: `packages/less-parser/src/grammar.ts:157-158` licenses Less edits on the false premise that SCSS does not inherit them. **CST-only** — the four AST grammars are already independent. |
 
 ### `packages/fns` — sass porting
@@ -72,9 +74,9 @@ is NOT part of it — see "`#less` / `#sass` specifier resolution" below.
 | Lane | Where | State |
 | --- | --- | --- |
 | ~~**`sass:math`**~~ | jess | **LANDED `ce4e942c1`** — `unit`, `unitless`, `percentage`, `comparable`, `random`, `round`, plus `type-of` and Sass-owned `min`/`max`. Caveat recorded at `packages/fns/src/sass/math/min-max.ts:52-55`: that commit's sass-spec citations were unverified. |
-| **`sass:color`** | branch `fns-sass-color` (`d19e794fc`, pushed) | **NOT on `dev`.** 26 exports plus a sass-spec corpus runner (`packages/fns/src/sass/__tests__/sass-spec-corpus.ts`). On `dev` today only `red`/`green`/`blue`/`alpha` are value-domain; the rest of `sass/color/index.ts` is TODO or legacy tree-node. |
-| **`sass:string`** | branch `fns-sass-string-map` (`fa12d1ba5`) | **NOT on `dev`.** 9 functions. On `dev` all six exports of `sass/string/index.ts` are legacy tree-node and none register. |
-| **`sass:map`** | blocked | Blocked on the value-domain map. A `Collection` value type landed on branch `core-value-domain-map` (`d799be7f3`, `packages/core/src/ast/value-collection.ts`) but the parser still flattens keys to names — `packages/core/src/ast/nodes.ts:342` types `entries` as `(Declaration \| VariableDeclaration)[]` and `Declaration.name` is `string \| Interpolation`. Ledger **P14** is SETTLED but NOT implemented. |
+| ~~**`sass:color`**~~ | jess | **LANDED `a36ccc75e`** — ported to the value domain, verified against sass-spec, with the corpus runner at `packages/fns/src/sass/__tests__/sass-spec-corpus.ts`. |
+| ~~**`sass:string`**~~ | jess | **LANDED `2e359f473`** — 9 functions in the value domain. |
+| **`sass:map`** | **unblocked, not done** | The value-domain `Collection` **landed** (`cdf380aed` + `80446f837` ledger C14; accessors in `packages/core/src/ast/value-collection.ts`, re-exported from `packages/core/src/value.ts:24,25,47,65`), and `6dd384b33` makes `type-of` report a Collection as `map`. **The parser still flattens keys to names**: `packages/core/src/ast/nodes.ts:347` types `entries` as `(Declaration \| VariableDeclaration)[]` and `Declaration.name` is `string \| Interpolation`. Ledger **P14** (distinct `CollectionEntry {key, value}`) is SETTLED and **still NOT implemented** — that is what `sass:map` now waits on. |
 | **`min`/`max` are per-dialect, not shared** | jess | **LANDED `ca7805804`.** Less coerces unitless into the reference unit and compares canonically (`packages/fns/src/less/min-max.ts:57-77`); Sass compares display numbers with a left-to-right fold (`packages/fns/src/sass/math/min-max.ts:72-82`). Do not re-unify them. |
 | **Remaining fns debt** | unassigned | 22 sass modules still import bare `@jesscss/core` (legacy tree-node), plus 8 deliberate unregistered re-export shims. `str-length` needs a global-name binding. **There is no aliasing mechanism** (`createFnRegistry` keys solely on `fn.name.toLowerCase()`), and `fade-in`/`fadein` and `argb`/`ie-hex-str` are **not** aliases — see `packages/fns/src/sass/NAME_ALIASES.md`, corrected by `be6ef9772`. |
 | **`value-dispatch` arity defect** | unassigned | `packages/core/src/ast/value-dispatch.ts:212` maps over `definition.params`, so extra positional args are dropped and the `too many arguments` throw at `:171` is unreachable **on the evaluator path** (it still fires on the direct path at `:222-228`). Same `.map` gives a `rest: true` param a single item rather than the tail. |
@@ -92,6 +94,7 @@ function suppresses its own failure.
 | **`$` sigil / Collection model** | branches `jess-collection-and-interp` (on `dev`), `jess-cst-prelude-interp`, `design-sigil-exploration` | Settled and **not to be relitigated** — see "Settled tonight" below. |
 | **parseman docs voice sweep** | parseman repo | Removing changelog narrative from the docs. |
 | **`extend-exact` state contamination** | separate session | See the KNOWN RED section below. |
+| **Language-service ratchet baseline** | unassigned, **owner decision** | The LS suite went green at `82d0b5f13` (**189 passed / 1 skipped / 0 failed**) and **nothing pins it there** — no `known-failures.json`, no ratchet script. Proposed: an empty named-set baseline wired to the existing `scripts/vitest-ratchet.mjs`, which makes "any failure fails". The grammar rebuild is exactly what would drift it, since the CST is what the LS consumes. |
 | Chip sessions | jess | Still open: the root `pnpm test` vitest lane (127 red files), branch `root-vitest-lane`. |
 
 ### Settled tonight (2026-07-24/25) — record, do not relitigate
@@ -658,7 +661,7 @@ section is the authoritative full-scope companion to the compact task goal.
 | --- | --- |
 | Direct parser AST construction and legacy-builder deletion | [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) |
 | Parser recognition, interpolation, and scanner cleanup | [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) |
-| Any edit to one of the eight grammar files | [`../parser/GRAMMAR-REMEDIATION-PLAN.md`](../parser/GRAMMAR-REMEDIATION-PLAN.md) — the rebuild spec: dispatchable units, gates, anti-criteria; then the standing brief it points to |
+| Any edit to one of the eight grammar files | [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) — the rebuild spec: dispatchable units, gates, anti-criteria; then the standing brief it points to |
 | Feature/eval closure | [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) |
 | Eval/render allocation, lookup, and traversal cuts | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
@@ -677,7 +680,7 @@ refactored** — one grammar file per dialect, and the four should not look anyt
 the old ones. A reviewer who diffs old against new and mostly sees renames is looking at
 the wrong outcome.
 
-**[`../parser/GRAMMAR-REMEDIATION-PLAN.md`](../parser/GRAMMAR-REMEDIATION-PLAN.md)** is the
+**[`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md)** is the
 design spec and method of record: every detail of what an agent is told, and how they are
 measured on success. §6 is a set of dispatchable units — scope, boundary, references to read
 first, method, pass criteria, and what to do when blocked — each handable to an agent
@@ -685,11 +688,14 @@ verbatim. §9 is the anti-criteria list. It links to the standing brief
 ([`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md), the
 per-`const` checklist) rather than restating it.
 
-**Nothing starts until the blockers in its §5 resolve.** Two of the tools the method depends
-on — parseman `0.36.0` and the `parseman/oracle` equivalence gate (PR #75) — are unreleased
-and unmerged respectively.
+**The rebuild targets the pinned parseman `0.32.0`.** The 0.36.0 adoption was measured and
+declined (§5.1 of the spec) — correctness was fully clean, Less regressed — so the rebuild is
+**not** blocked on a parseman bump. The API delta is only three exports, but **two 0.32.0
+hazards are load-bearing**: `{min,max}` on a repetition combinator does not exist (use
+`oneOrMore`), and one `{ gate, combinator }` arm silently zeroes `autoNot` across an entire
+choice, which changes what the grammar accepts.
 
-Five things a fresh agent gets wrong here, so they are repeated at the entry point:
+Seven things a fresh agent gets wrong here, so they are repeated at the entry point:
 
 - **The gate is not the test suite.** Done is four things: diagnostic clean, lint clean, the
   oracle equivalent *modulo a declared rename mapping with empty residue*, and
@@ -707,11 +713,25 @@ Five things a fresh agent gets wrong here, so they are repeated at the entry poi
 - **Never make a gate pass by shrinking what it measures.** A corpus subset chosen because
   the full one was slow, or a lowered determinism sample, is the same move as shrinking a
   fuzz to fit a clock. Too slow is a budget question to raise, not a scope to reduce.
+- **Perf claims require the single-process interleaved arena, and its self-validation is
+  part of it.** Both versions' compiled artifacts and their own parseman copies snapshotted
+  into self-contained arms, alternated per iteration with per-round rotation. Then prove the
+  arms are actually two builds — they must disagree on no AST across the corpus while
+  producing different builds. **A harness that cannot prove that produces a timing that is a
+  lie**, and nothing about the output looks wrong.
+- **An ambiguous measurement is reported as ambiguous.** Two of three Less workloads in the
+  0.36.0 evaluation read −7…−9% one way and +2…+5% the other; declining to claim a direction
+  was the correct result, not a gap. Picking the friendlier harness is a failure.
 
-Three claims that circulate and are **false against the tree** — re-check before repeating
-them: no ESLint rule currently applies to any of the eight grammar files; parseman `0.35.0`
-did **not** regress Less (`0.34.0` did, and `0.35.0` fixed it); and SCSS composes on Less in
-the **CST only** — the four AST grammars are already independent.
+Three things that circulate and need care. **SCSS composes on Less in the CST only** — the
+four AST grammars are already independent, and `ac02c6e0b` proves by building it that the
+inversion blocks a real Less-side cleanup (the Less CST cannot reach the shared recognition
+surface at all while it stands). **The parseman version question is settled by measurement,
+not argument** — 0.34.0 regressed, 0.35.0 improved but not to parity, 0.36.0 improves further
+and is still net-negative on Less's sharpest case, so jess stays at 0.32.0. **And this repo's
+own status claims go stale in days** — the ESLint rules and the review standard both landed
+within a day of the spec recording them as unlanded, and the grammar line count moved 6,858
+lines on a lint autofix alone. Re-measure before repeating any number from either document.
 
 ## Non-negotiable rules
 
@@ -1515,28 +1535,37 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: grammar rebuild spec + WORK IN FLIGHT reconciliation against `bcb3107a1`
-  (2026-07-25). `docs/architecture/parser/GRAMMAR-REMEDIATION-PLAN.md` is now the design spec
-  and method of record for rebuilding the four grammars — five dispatchable units each carrying
-  scope, boundary, read-first references, method, pass criteria and a report-vs-decide rule; an
-  eight-entry anti-criteria list; and the `parseman/oracle` three-verdict equivalence gate.
-  HANDOFF gets a "Grammar work" section, a Router row, and a WORK IN FLIGHT rewrite covering the
-  grammar units and the sass-fns porting, every row re-checked against the tree or
-  `git merge-base --is-ancestor`.
+- Latest pass: grammar rebuild spec relocated to `design/`, rebased onto `76680b114`, and
+  reconciled (2026-07-25, worktree `a67b5077c`). `docs/design/GRAMMAR-REBUILD-SPEC.md` is the
+  design spec and method of record for rebuilding the four grammars — five dispatchable units
+  each carrying scope, boundary, read-first references, method, pass criteria and a
+  report-vs-decide rule; an eight-entry anti-criteria list; and the `parseman/oracle`
+  three-verdict equivalence gate. HANDOFF gets a "Grammar work" section, a Router row, and a
+  WORK IN FLIGHT rewrite covering the grammar units, the sass-fns porting and a proposed
+  language-service ratchet.
 - Architecture surface: unchanged. No compiler, parser, evaluator, or serializer surface was
   touched; this diff contains no runtime code.
-- Separation/duplication: reduced. The spec links to `GRAMMAR-REVIEW-STANDARD.md` (branch
-  `grammar-review-standard`) for the per-`const` checklist — adding only a new question 14 on
-  execution shape — and to `PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` for the macro-fallback
-  reproduction, rather than restating either. Seven claims were corrected in place rather than
-  carried: the blanket "parseman cannot analyse `compose()`d grammars" (the pre-`compose()`
-  `rules()` map does work); "0.35 net-regressed Less" (0.34 did, 0.35 fixed it and is
-  net-faster than the pinned 0.32.0, per parseman's own measurement — never reproduced in
-  jess); "ESLint rules cover the eight grammar files" (none does); "5 language-service
-  failures" (unsourced, no ratchet baseline exists); "P1 host-aware capture elision" (found
-  nowhere; the branch is empty); "the `internal-css-recognition` rename" (no proposal exists —
-  the only related doc proposes a move, keeping the name); and the `dev`-state claims for
-  `sass:color` and `sass:string` (both branch state).
+- Separation/duplication: reduced, and one document moved out of `architecture/`. The spec was
+  written into `architecture/parser/` with a banner acknowledging that `CLAUDE.md` forbids
+  architecture documents describing machinery the repo does not have; acknowledging the rule is
+  weaker than following it, so it now lives in `design/` with a stated graduation condition —
+  it returns to `architecture/parser/` when the rebuild lands, making graduation a visible
+  event instead of a doc aging into being wrong. It links to `GRAMMAR-REVIEW-STANDARD.md` for
+  the per-`const` checklist (adding only a question 14 on execution shape), to
+  `PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` for the macro-fallback reproduction, and now to
+  `DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` for the SCSS-on-Less proof, rather than
+  restating any of them. Claims corrected rather than carried: the blanket "parseman cannot
+  analyse `compose()`d grammars"; "5 language-service failures" (it was 10 across 4 files,
+  double-counted, and is moot — the suite is green at `82d0b5f13`); "the
+  `internal-css-recognition` rename" (no proposal exists). Two were re-corrected against this
+  document's own prior pass after the rebase: "no ESLint rule applies to the eight grammar
+  files" (landed at `error` in `516d10222`) and the `dev`-state rows for `sass:color`,
+  `sass:string` and the value-domain `Collection` (all landed). The `0.35.0`/`0.36.0` question
+  was left as competing attributed claims in the prior pass and is now **closed by
+  measurement**: not adopted, jess stays at 0.32.0, and every unit retargeted accordingly.
+  One hazard was **downgraded on inspection rather than propagated as briefed** — `many(x,
+  {min:1})` at 0.32.0 is a `TS2554` compile error, not a silent no-op, and is written that
+  way; overstating a hazard as silent teaches agents to distrust the compiler.
 - Cumulative node weight: unchanged; no AST node, field, or shape was added or removed.
 - New traversal: none.
 - New node/materialization: none.
@@ -1547,17 +1576,24 @@ involved.
 - Evidence: this pass is documentation-only and adds no runtime code, so no build or suite was
   re-measured; the previous pass's `e34bb24b3` numbers (`verify:types` GREEN 22/22,
   `test:less:test-data` 108/108 with `css-3.less` and `variable-advanced.less` as named expected
-  failures) are carried forward unchanged and are NOT re-asserted for `bcb3107a1`. This worktree
-  has no `node_modules`, which is itself recorded as a trap in the spec.
-  `pnpm run verify:aggressive-cutting-review` was run before and after this edit — GREEN both
-  times. Every count in the spec was measured in this worktree on `bcb3107a1` with the shell
-  method stated inline, and diverges from the figures it was briefed with in four places
-  (keyword regexes 15→18, separated lists 39→65, near-clone clusters 20→24, leading `not()`
-  18→43); the divergence is stated as scope/criterion rather than silently adopted, and the
-  method is given so it can be re-run. parseman claims were read from
+  failures) are carried forward and are NOT re-asserted for `76680b114`. This worktree has no
+  `node_modules`, which is itself recorded as a trap in the spec.
+  `pnpm run verify:aggressive-cutting-review` was run before and after every edit in this pass
+  — GREEN each time. Every count in the spec was re-measured after rebasing onto `76680b114`,
+  with the shell method stated inline, and **three moved within a single day**: total grammar
+  lines 17,447 → 24,305 (`516d10222`'s autofix to expanded call form; `less-parser` is the
+  control at 4,750 before and after, being deferred), hand-rolled keyword regexes 18 → 9
+  (`5d0a61523`), and the leading-`not()` grep needed replacing with a multiline-aware command
+  because the same autofix broke it (it still reads 43). That volatility is now recorded in the
+  spec as anti-criterion 6, applied to the spec itself. parseman claims were read from
   `/Users/matthew/git/worktrees/pm-036-bump` (`release/0.36.0-bump`) and PR #75 @ `10ab446`;
   anything not confirmable from source — npm publication of 0.36.0, the P1 host-aware capture
-  item — is marked UNVERIFIED in the spec rather than asserted. No performance claim is made or
-  implied; the only perf numbers quoted are attributed to parseman and explicitly flagged as
-  not reproduced in jess.
+  item — is marked UNVERIFIED rather than asserted. The 0.32.0 hazard claims were verified
+  against `/Users/matthew/git/worktrees/parseman-0.32-alloc` `src/` plus the pinned
+  `node_modules` bundle, never that worktree's `dist/`, which is gitignored and stale.
+  **No performance claim in this diff is mine**: the 0.36.0 adoption numbers (3,053
+  file-parses, `+7.8/+11.9/+10.8/+10.7%`, win-rate 2–4 of 25, the two ambiguous workloads,
+  the 2,647-file arena self-validation) are the measuring agent's, reported here as relayed
+  and not independently reproduced — that work is not yet on `dev`, so no commit can be cited
+  for it.
 - Verdict: documentation-only reconciliation; accepted with no runtime cost contract.
