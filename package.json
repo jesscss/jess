@@ -62,6 +62,7 @@
     "lint:tests": "eslint 'packages/**/test/**/*.{mjs,cjs,js,ts}' 'packages/**/__tests__/**/*.{mjs,cjs,js,ts}' 'packages/**/*.{test,spec}.{mjs,cjs,js,ts}' 'packages/**/perf/**/*.{mjs,cjs,js,ts}'",
     "lint:test": "pnpm run lint:tests",
     "test": "vitest",
+    "test:root": "vitest --run --project=root",
     "test:core:debug": "cross-env TEST=true node scripts/test-core-debug.mjs",
     "test:coverage": "vitest --coverage",
     "preinstall": "npx only-allow pnpm",

@@ -2,11 +2,18 @@ import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Compiler } from '../src/index.js';
 import { outputDiagnostics } from '../src/diagnostics.js';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+
+// Anchored to THIS file, not `process.cwd()`. The repo-root `pnpm test` lane
+// runs with cwd at the workspace root, where a relative `test/fixtures/...`
+// does not exist — the compile then failed on the missing file before emitting
+// any diagnostic, so the stderr assertion below never saw a write.
+const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
 describe('Diagnostic Output', () => {
   it('should output errors using CodeDebug', async () => {
@@ -14,7 +21,7 @@ describe('Diagnostic Output', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     try {
-      await compiler.compile('test/fixtures/invalid.less');
+      await compiler.compile(path.join(fixtures, 'invalid.less'));
     } catch (e) {
       // Expected to throw
     }

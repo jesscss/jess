@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, defaultExclude } from 'vitest/config';
 import { resolve, dirname } from 'path';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
@@ -7,6 +7,86 @@ import circleDependency from 'vite-plugin-circular-dependency';
 import parseman from 'parseman/plugin';
 
 const root = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Baseline `exclude` for every project in this repo.
+ *
+ * Vitest REPLACES its default exclude when a config supplies one — it does not
+ * merge. Dropping `**\/node_modules/**` is catastrophic in a pnpm workspace:
+ * every workspace package is symlinked into its dependents' `node_modules`, so
+ * a `**`-anchored include walks those symlink chains recursively and collects
+ * the same suites over and over (plus third-party packages' own test files).
+ * Any project that sets `exclude` MUST spread this first.
+ */
+export const sharedExclude = [
+  ...defaultExclude,
+  '**/lib/**',
+  '**/dist/**',
+  '**/*bench*'
+];
+
+/**
+ * THIS FILE IS LOADED BY BOTH TEST LANES. Most packages have no vitest config of
+ * their own, so `pnpm --filter <pkg> test` (i.e. `pnpm run -r ci`) runs `vitest`
+ * from the package directory and vitest walks UP to this file. `projects` must
+ * therefore mean different things depending on where vitest was invoked:
+ *
+ *  - from the workspace root: one project per package, plus the `root` project.
+ *  - from inside a package: NO projects at all, so this config *is* the single
+ *    project, rooted at that package. Declaring projects there would either
+ *    resolve the paths against the package directory (a hard startup error) or
+ *    make one package's `pnpm test` run the entire monorepo.
+ *
+ * That second case used to happen by accident: `projects: ['packages/*']`
+ * silently matched nothing from inside a package, leaving only the anonymous
+ * root project, which carried the aliases/globals/setupFiles that made suites
+ * pass. The root lane got a different project set for the same files — the
+ * divergence this split makes explicit.
+ */
+const invokedFromPackage = (() => {
+  const cwd = process.cwd();
+  const packagesDir = resolve(root, 'packages');
+  return cwd !== root && (cwd === packagesDir || cwd.startsWith(packagesDir + '/'));
+})();
+
+/**
+ * One vitest project per workspace package.
+ *
+ * A bare `'packages/*'` glob is NOT equivalent: for a package directory with no
+ * config file of its own, vitest builds the project from its OWN defaults and
+ * inherits nothing from this file — no `globals`, no `setupFiles`, and crucially
+ * none of the `resolve.alias` entries that point workspace imports at `src`.
+ * That is why the root lane reported `describe is not defined` and
+ * `Cannot find package '@jesscss/fns'` for suites that pass per-package.
+ *
+ * So: packages that DO have a `vitest.config.ts` are referenced by ABSOLUTE path
+ * (their own config applies, including deliberate overrides such as
+ * less-parser's `exclude` and vscode's empty `include`); every other package
+ * gets an inline project with `extends: true`, which is what actually pulls in
+ * the root plugins, aliases and test options.
+ */
+function workspaceProjects() {
+  const projects: (string | { extends: true; test: { name: string; root: string } })[] = [];
+  for (const d of readdirSync(resolve(root, 'packages')).sort()) {
+    const dir = resolve(root, 'packages', d);
+    const pj = resolve(dir, 'package.json');
+    if (!existsSync(pj)) {
+      continue;
+    }
+    if (['vitest.config.ts', 'vitest.config.js', 'vitest.config.mts'].some(f => existsSync(resolve(dir, f)))) {
+      projects.push(dir);
+      continue;
+    }
+    let name: string | undefined;
+    try {
+      name = JSON.parse(readFileSync(pj, 'utf8')).name;
+    } catch {
+      continue;
+    }
+    projects.push({ extends: true, test: { name: name ?? d, root: dir } });
+  }
+  return projects;
+}
 
 /**
  * Resolve workspace packages to their `src/index.ts` FOR VITEST ONLY, via
@@ -94,6 +174,8 @@ export default defineConfig({
     //   viteModuleRunner: false,
     // },
     watch: false,
+    // Inherited by every `extends: true` project. See `sharedExclude`.
+    exclude: sharedExclude,
     // Set TEST environment variable for packages that depend on it
     env: {
       TEST: 'true',
@@ -112,30 +194,40 @@ export default defineConfig({
     reporters: [['tree', { summary: true }]],
     // Enable globals for describe, test, etc.
     globals: true,
-    // Include all test files from all packages - use absolute paths relative to config file
-
-    projects: [
-      'packages/*',
-      {
-        extends: true,
-        test: {
-          include: [
-            '**/__tests__/**/*.test.ts',
-            '**/__tests__/**/*.spec.ts',
-            'test/**/*.test.ts',
-            'test/**/*.spec.ts'
-          ],
-          exclude: [
-            'test/setup.ts',
-            'node_modules/**',
-            'dist/**',
-            'lib/**',
-            'packages/css-parser/test/perf.test.ts',
-            '**/*bench*'
+    // Only the ROOT invocation fans out into projects; from inside a package
+    // this config is the single project, rooted at that package. See
+    // `invokedFromPackage`.
+    ...(invokedFromPackage
+      ? {}
+      : {
+          projects: [
+            // Each workspace package is its own project, rooted at the package
+            // directory. Package suites — including `src/**\/__tests__/**` —
+            // belong HERE, and only here.
+            ...workspaceProjects(),
+            {
+              extends: true,
+              test: {
+                name: 'root',
+                /**
+                 * The root project owns ONLY the workspace-root `test/`
+                 * directory (currently `test/ast-shape/`). It deliberately does
+                 * NOT glob `**\/__tests__/**`: those patterns resolve from the
+                 * repo root, so they re-collected every package's suite a second
+                 * time under root-relative settings, and — because the old
+                 * `exclude` listed a bare `node_modules/**`, which matches only
+                 * the TOP-LEVEL directory — they also descended into
+                 * `packages/*\/node_modules`, where pnpm's workspace symlinks
+                 * made collection explode (17.8k files, 17.5k of them inside
+                 * node_modules, including third-party packages' own suites).
+                 * That is what made root `pnpm test` diverge from `pnpm -r ci`.
+                 */
+                include: ['test/**/*.{test,spec}.ts'],
+                exclude: [...sharedExclude, 'test/setup.ts']
+              }
+            }
           ]
-        }
-      }
-    ],
+        }),
 
     // Global setup file - use absolute path so it works from any subfolder
     setupFiles: [resolve(__dirname, './test/setup.ts')],

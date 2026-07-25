@@ -1,7 +1,11 @@
 import { mergeConfig, defineConfig } from 'vitest/config';
-import base from '../../vitest.config.js';
+import base, { sharedExclude } from '../../vitest.config.js';
 
+// `sharedExclude` FIRST: setting `exclude` replaces vitest's default, and
+// without `**/node_modules/**` this project walked pnpm's workspace symlinks
+// and collected 578 files out of its own `node_modules`. See vitest.config.ts.
 const exclude = [
+  ...sharedExclude,
   ...(process.env.TEST_DEBUG === 'true' ? [] : ['test/debug-*.test.ts']),
   ...(process.env.TEST_PERF === 'true' ? [] : ['test/perf.test.ts'])
 ];

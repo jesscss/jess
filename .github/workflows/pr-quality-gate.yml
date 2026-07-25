@@ -90,6 +90,13 @@ jobs:
       - name: Full CI (pnpm ci)
         run: pnpm run ci
 
+      # `pnpm run -r ci` skips the workspace ROOT, so the root-only suite under
+      # `test/` (currently `test/ast-shape/shape-stability.test.ts`) was not
+      # gated by anything. Run just the root vitest project — the one that owns
+      # `test/**` — so it is actually enforced. Takes a few seconds.
+      - name: Root-only suite (test/)
+        run: pnpm run test:root
+
       # config-syntax used to run in the pre-commit/pre-push hooks, which are now
       # lint-only; its coverage moves here rather than being dropped.
       - name: Gate — config syntax
