@@ -198,8 +198,8 @@ Several gates are red on clean `dev` (`verify:types`, and `verify:baseline` whic
 so bypassing became the norm rather than the exception. The "gates made reasonable" lane owns
 the classification. Two concrete pieces of debt found on this pass:
 
-- `scripts/check-macro-buildable.mjs` exists but **no `package.json` script references it** —
-  it is a gate nobody runs.
+- ~~`scripts/check-macro-buildable.mjs` is a gate nobody runs.~~ **FIXED `064e3d985`** — repaired
+  and wired as `pnpm run check:macro` (`package.json:56`).
 - `verify:aggressive-cutting-review` gates on a *textual* diff of hot-path files, so a
   comment-only edit fires it. It should gate on a built-artifact (semantic) diff, and when it
   does fire it should run the real cost measurement rather than demand a prose block.
