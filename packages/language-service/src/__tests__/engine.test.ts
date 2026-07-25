@@ -265,8 +265,11 @@ describe('JessLanguageServiceEngine', () => {
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const diagnostics = engine.getDiagnostics(doc.uri);
+      // `@forward … as <prefix>-*` PARSES (a converted file still yields a tree);
+      // it is the evaluation that will never be supported. So this is an
+      // unsupported-form diagnostic over the whole at-rule, not a parse error.
       const diag = diagnostics.find(d =>
-        d.code === 'parse/parser'
+        d.code === 'unsupported/sass-form'
         && d.message.includes('@forward with "as <prefix>-*" prefixing is not supported')
       );
 
@@ -288,8 +291,9 @@ describe('JessLanguageServiceEngine', () => {
       engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
 
       const diagnostics = engine.getDiagnostics(doc.uri);
+      // Same as @forward: the filter form parses, but is never evaluated.
       const diag = diagnostics.find(d =>
-        d.code === 'parse/parser'
+        d.code === 'unsupported/sass-form'
         && d.message.includes('@at-root prelude/filter forms are not yet supported in Jess')
       );
 
@@ -300,6 +304,27 @@ describe('JessLanguageServiceEngine', () => {
       const lastChar = doc.positionAt(input.length - 1);
       expect(diag?.range.end.line).toBe(lastChar.line);
       expect((diag?.range.end.character ?? -1)).toBeGreaterThanOrEqual(lastChar.character);
+    });
+
+    it('flags @forward show/hide, and leaves the SUPPORTED SCSS forms alone', () => {
+      const unsupportedIn = (input: string) => {
+        const engine = createEngine();
+        const doc = createDocument('scss', input);
+        engine.open(doc.uri, doc.languageId, doc.version, doc.getText());
+        return engine.getDiagnostics(doc.uri).filter(d => d.code === 'unsupported/sass-form');
+      };
+
+      expect(unsupportedIn('@forward "foo" show $a, b;')[0]?.message)
+        .toContain('@forward with "show"/"hide" lists is not supported');
+      expect(unsupportedIn('@forward "foo" hide $a;')[0]?.message)
+        .toContain('@forward with "show"/"hide" lists is not supported');
+
+      // Supported forms must stay silent: a bare/configured `@forward`, and the
+      // `@at-root` forms that carry no prelude filter.
+      expect(unsupportedIn('@forward "foo";')).toHaveLength(0);
+      expect(unsupportedIn('@forward "foo" with ($a: 1);')).toHaveLength(0);
+      expect(unsupportedIn('@at-root { .a { color: red; } }')).toHaveLength(0);
+      expect(unsupportedIn('@at-root .b { color: red; }')).toHaveLength(0);
     });
 
     it('reports the single earliest parser error (1-error-stop contract)', () => {

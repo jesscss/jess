@@ -29,7 +29,14 @@ export const LINT_CODES = {
   unknownAtRules: 'lint/unknown-at-rule',
   duplicateProperties: 'lint/duplicate-property',
   hexColorLength: 'lint/hex-color-length',
-  zeroUnits: 'lint/zero-units'
+  zeroUnits: 'lint/zero-units',
+  /**
+   * SCSS forms Jess parses (so a converted file still yields a tree) but will
+   * never evaluate: `@forward … as <prefix>-*`, `@forward … show/hide`, and the
+   * `@at-root (<filter>)` prelude form. Documented in the "Unsupported Sass
+   * Features" guide, which specifies a warning at the use site.
+   */
+  unsupportedSassForm: 'unsupported/sass-form'
 } as const;
 
 /** Data + severity hooks the engine supplies (it owns the property/at-rule data
@@ -74,8 +81,46 @@ const DIALECT_AT_RULES: Record<JessLangLike, Set<string>> = {
 // selector node when deciding whether a rule has content).
 const RULESET_TYPES = new Set(['Ruleset']);
 
+// `@forward` prelude forms Jess parses but will never evaluate.
+const FORWARD_AS_PREFIX = /\bas\s+\S+-\*/;
+const FORWARD_VISIBILITY = /\b(show|hide)\b/;
+
 function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
+}
+
+/**
+ * Text of a `ScssForward`'s post-path prelude leaf (`as *`, `as a-*`, `show …`,
+ * `hide …`), or `null` when the at-rule has none. The grammar captures the
+ * prelude as ONE leaf after the `Quoted` path, so it is read off the CST rather
+ * than re-scanned out of the at-rule slice; only the leaf's own text is
+ * inspected. Loud/silent comments and line breaks inside it are normalized away,
+ * so a prefix form interrupted by a comment or a newline still matches.
+ */
+function forwardPreludeOf(node: CssCstNode, nodeStart: number, src: string): string | null {
+  let afterPath = false;
+  for (const child of node.children) {
+    if (isCstNode(child)) {
+      if (child.grammarType === 'Quoted') {
+        afterPath = true;
+      }
+      continue;
+    }
+    if (!afterPath) {
+      continue;
+    }
+    const text = src.slice(nodeStart + Number(child.span.start), nodeStart + Number(child.span.end));
+    const normalized = text
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\/\/[^\n\r]*/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (normalized === ';' || normalized.toLowerCase() === 'with') {
+      continue;
+    }
+    return normalized;
+  }
+  return null;
 }
 
 function toRange(doc: TextDocument, start: number, end: number): Range {
@@ -114,6 +159,7 @@ export function cstLintDiagnostics(root: CssCstNode, doc: TextDocument, lang: Je
   const dupPropSev = deps.severityOf(LINT_CODES.duplicateProperties);
   const hexSev = deps.severityOf(LINT_CODES.hexColorLength);
   const zeroSev = deps.severityOf(LINT_CODES.zeroUnits);
+  const unsupportedSev = deps.severityOf(LINT_CODES.unsupportedSassForm);
 
   const push = (code: string, sev: DiagnosticSeverity, message: string, start: number, end: number) => {
     out.push({
@@ -137,6 +183,38 @@ export function cstLintDiagnostics(root: CssCstNode, doc: TextDocument, lang: Je
       const close = slice.lastIndexOf('}');
       if (open >= 0 && close > open && slice.slice(open + 1, close).trim() === '') {
         push(LINT_CODES.emptyRules, emptyRulesSev, 'Do not use empty rulesets', start, end);
+      }
+    }
+
+    // --- unsupportedSassForm: parsed-but-never-evaluated SCSS forms. ---
+    // Recognition is STRUCTURAL: `ScssAtRootFilter` is the grammar's own node for
+    // the `@at-root (<filter>)` form, and the `@forward` prelude is the grammar's
+    // own captured leaf. Both diagnostics take the full node span, matching the
+    // spans the SCSS builder used to save before these checks moved editor-side.
+    if (unsupportedSev !== null && gt === 'ScssAtRootFilter') {
+      push(
+        LINT_CODES.unsupportedSassForm, unsupportedSev,
+        '@at-root prelude/filter forms are not yet supported in Jess. Write the hoisted rules directly instead.',
+        start, end
+      );
+    }
+    if (unsupportedSev !== null && gt === 'ScssForward') {
+      const prelude = forwardPreludeOf(node, start, src);
+      if (prelude !== null) {
+        if (FORWARD_AS_PREFIX.test(prelude)) {
+          push(
+            LINT_CODES.unsupportedSassForm, unsupportedSev,
+            '@forward with "as <prefix>-*" prefixing is not supported in Jess and will never be. Use explicit namespacing instead.',
+            start, end
+          );
+        }
+        if (FORWARD_VISIBILITY.test(prelude)) {
+          push(
+            LINT_CODES.unsupportedSassForm, unsupportedSev,
+            '@forward with "show"/"hide" lists is not supported in Jess and will never be. Visibility control belongs to the module itself.',
+            start, end
+          );
+        }
       }
     }
 

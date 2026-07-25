@@ -712,7 +712,10 @@ export function createEngine(): JessLanguageServiceEngine {
     [LINT_CODES.unknownAtRules]: DiagnosticSeverity.Warning,
     [LINT_CODES.duplicateProperties]: DiagnosticSeverity.Warning,
     [LINT_CODES.hexColorLength]: DiagnosticSeverity.Error,
-    [LINT_CODES.zeroUnits]: DiagnosticSeverity.Hint
+    [LINT_CODES.zeroUnits]: DiagnosticSeverity.Hint,
+    // Parsed-but-never-evaluated SCSS forms. The "Unsupported Sass Features"
+    // guide specifies a warning at the use site, not a hard parse error.
+    [LINT_CODES.unsupportedSassForm]: DiagnosticSeverity.Warning
     /* eslint-enable @typescript-eslint/naming-convention */
   };
 
@@ -1584,13 +1587,28 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       const diagnostics: Diagnostic[] = [];
-      const textLength = doc.getText().length;
+      const text = doc.getText();
+      const textLength = text.length;
+      // A parser reports where CONSUMPTION stopped, which is the boundary BEFORE
+      // the whitespace preceding the offending token (`a { color: |) ;`). Where
+      // the squiggle goes is an editor concern, not a parser fact: anchor it on
+      // the offending TOKEN so the underline never covers only a space. A
+      // whitespace-only tail keeps the original offset, so a stop at EOF still
+      // produces a range.
+      const skipBlank = (from: number): number => {
+        let at = from;
+        while (at < textLength && /\s/.test(text.charAt(at))) {
+          at++;
+        }
+        return at < textLength ? at : from;
+      };
       const diagnosticRange = (start: number, end: number): Range => {
         const from = Math.max(0, Math.min(textLength, start));
         const to = Math.max(from, Math.min(textLength, end));
+        const anchor = skipBlank(from);
         return {
-          start: doc.positionAt(from),
-          end: doc.positionAt(to > from ? to : Math.min(textLength, from + 1))
+          start: doc.positionAt(anchor),
+          end: doc.positionAt(to > anchor ? to : Math.min(textLength, anchor + 1))
         };
       };
 
@@ -1635,13 +1653,12 @@ export function createEngine(): JessLanguageServiceEngine {
         if (tracked.lang !== 'css') {
           const declared = cstDeclaredSymbols(tree, doc);
           const modern = tracked.lang === 'scss'
-            ? /@use\s+/.test(doc.getText())
-            : tracked.lang === 'less' && /@(from|compose)\s+/.test(doc.getText());
+            ? /@use\s+/.test(text)
+            : tracked.lang === 'less' && /@(from|compose)\s+/.test(text);
           const severity = (code: string) => {
             const configured = semanticDiagnosticSeverities[code];
             return typeof configured === 'number' ? configured : null;
           };
-          const text = doc.getText();
           const variable = /(?:@|\$)\{?\s*([\w-]+)\s*\}?/g;
           let match: RegExpExecArray | null;
           while ((match = variable.exec(text)) !== null) {

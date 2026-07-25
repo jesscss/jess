@@ -221,10 +221,35 @@ export function cstSemanticTokens(root: CssCstNode, doc: TextDocument, lang: Jes
     return null;
   };
 
+  // Absolute span of a `Reference`'s leading `$` sigil leaf, when the grammar
+  // captured the sigil separately from the name. `null` when the reference is a
+  // single leaf (css/less/scss), so those keep one variable token.
+  const sigilLeafSpan = (node: CssCstNode, nodeStart: number): { start: number; end: number } | null => {
+    const first = node.children[0];
+    if (!first || isCstNode(first)) {
+      return null;
+    }
+    const s = nodeStart + Number(first.span.start);
+    const e = nodeStart + Number(first.span.end);
+    return e === s + 1 && text.charAt(s) === '$' ? { start: s, end: e } : null;
+  };
+
   for (const { node, start, end } of index.nodes) {
     const gt = node.grammarType;
     if (gt === 'Reference') {
-      push(start, end, 'variable');
+      // .jess treats `$` as a distinct sigil/operator (it also heads control-flow
+      // `$…{}`, scope `${}`, mutation `:=`), so the `$` and the variable name are
+      // coloured as SEPARATE tokens rather than one blob. The jess grammar already
+      // captures them as two leaves (`$` then the bare name), so the split is read
+      // off the CST — never re-derived from source bytes. css/less/scss keep the
+      // conventional single-token variable.
+      const sigil = lang === 'jess' ? sigilLeafSpan(node, start) : null;
+      if (sigil) {
+        push(sigil.start, sigil.end, 'operator');
+        push(sigil.end, end, 'variable');
+      } else {
+        push(start, end, 'variable');
+      }
     } else if (gt === 'MixinCall') {
       const leaf = firstLeafSpan(node, start);
       if (leaf) {
