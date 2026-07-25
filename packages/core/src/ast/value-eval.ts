@@ -72,13 +72,12 @@ export interface Color {
 
   /**
    * OPTIONAL / LAZY HSL source of truth (perf-neutral, converged-shape addition).
-   * Carried ONLY when the color was authored or derived in HSL (`hsl(...)`, or an
-   * hsl op like `lighten`/`desaturate`); `undefined` for static hex/rgb literals.
-   * The key is always PRESENT (the factory writes one shape — see
-   * `value-factory.ts`); only the value varies. When set, it is the exact hsl carried across
+   * Present ONLY when the color was authored or derived in HSL (`hsl(...)`, or an
+   * hsl op like `lighten`/`desaturate`); ABSENT for static hex/rgb literals so
+   * they never allocate it. When present, it is the exact hsl carried across
    * chained hsl ops (no rgb round-trip → no hue drift), mirroring the legacy
    * `Color._hslChannels`. Unclamped: `[h(deg), s(0-1), l(0-1)]`. Read it through
-   * `colorHsl(c)` (which derives from rgb when unset).
+   * `colorHsl(c)` (which derives from rgb when absent).
    */
   readonly hsl?: readonly [number, number, number];
 
@@ -93,20 +92,19 @@ export interface Color {
    * SOURCE-FORMAT preservation for an un-operated color CONSTRUCTOR (the verbatim
    * rule applied to `rgb`/`hsl` literals — `rgb(50%,0,0)` stays `rgb(50%, 0, 0)`,
    * `hsl(0deg,…)` keeps `deg`, an alpha `50%` stays `50%`). Mirrors what the legacy
-   * `Color` reproduces from its channel/alpha source tuples. All `undefined` for
-   * hex/named literals and for OPERATED results (a new color drops them →
-   * canonical channels). The KEYS are always present — one color shape — and
-   * every reader tests the value, never key presence.
+   * `Color` reproduces from its channel/alpha source tuples. All ABSENT for hex/
+   * named literals and for OPERATED results (a new color drops them → canonical
+   * channels), so the common path allocates nothing.
    *
    * `rgbPct[i]` = the authored percent (raw number) when RGB channel `i` was written
-   * as `%`, else `undefined`; the field is `undefined` unless some channel used `%`.
+   * as `%`, else `undefined`; the field is present only when some channel used `%`.
    */
   readonly rgbPct?: readonly (number | undefined)[];
 
-  /** Authored alpha percent (raw number) when alpha was written as `%`; else `undefined` (alpha emits as a decimal). */
+  /** Authored alpha percent (raw number) when alpha was written as `%`; else absent (alpha emits as a decimal). */
   readonly alphaPct?: number;
 
-  /** Authored hue unit (`deg`/`turn`/`rad`/`grad`/…) for an HSL constructor; `undefined` → unitless/derived (non-modern drops it, modern defaults to `deg`). */
+  /** Authored hue unit (`deg`/`turn`/`rad`/`grad`/…) for an HSL constructor; absent → unitless/derived (non-modern drops it, modern defaults to `deg`). */
   readonly hueUnit?: string;
   readonly bytes: string;
 }
