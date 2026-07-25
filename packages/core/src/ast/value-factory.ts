@@ -64,7 +64,11 @@ export function makeDimension(number: number, unit = ''): Dimension {
  * A dimension carrying an explicit compound-unit multiset (an arithmetic result).
  * `unit` is the collapsed DISPLAY unit; `numerator`/`denominator`/`backupUnit`
  * survive so a later chained op can cancel (`8cats * 9dogs / 4cats` → `18dogs`).
- * Stored only when the multiset is non-trivial (not a single numerator).
+ * Built only when the multiset is non-trivial (not a single numerator); a plain
+ * authored dimension comes from {@link makeDimension} instead.
+ *
+ * `backupUnit` is written unconditionally (present-and-`undefined` when there is
+ * none) so every compound dimension shares ONE hidden class — see {@link makeBlock}.
  */
 export function makeCompoundDimension(
   number: number,
@@ -73,13 +77,23 @@ export function makeCompoundDimension(
   denominator: readonly string[],
   backupUnit: string | undefined
 ): Dimension {
-  const n: Mutable<Dimension> = { type: 'Dimension', number, unit, numerator, denominator, bytes: '' };
-  if (backupUnit !== undefined) {
-    n.backupUnit = backupUnit;
-  }
+  const n: Mutable<Dimension> = {
+    type: 'Dimension', number, unit, numerator, denominator, backupUnit, bytes: ''
+  };
   n.bytes = serializeDimension(n);
   return n;
 }
+
+/**
+ * THE COLOR SHAPE. Both color constructors write this exact key list in this
+ * exact order, so every color — hex, named, an rgb constructor, an hsl op result
+ * — shares ONE hidden class and every `.rgb`/`.alpha` read stays monomorphic.
+ * The source-preservation facts are written present-and-`undefined` rather than
+ * omitted; every reader tests the VALUE (`?.` / `??` / `=== undefined`), never
+ * key presence. Keep the two literals below identical, field for field.
+ *
+ * `type, rgb, alpha, hsl, format, modernSyntax, node, rgbPct, alphaPct, hueUnit, bytes`
+ */
 
 /** Build a color from an RGB source. `node` (verbatim spelling) is optional. */
 export function makeColorRgb(
@@ -88,19 +102,11 @@ export function makeColorRgb(
   format: number,
   opts?: { modernSyntax?: boolean; node?: string; rgbPct?: readonly (number | undefined)[]; alphaPct?: number }
 ): Color {
-  const c: Mutable<Color> = { type: 'Color', rgb, alpha, format, bytes: '' };
-  if (opts?.modernSyntax) {
-    c.modernSyntax = true;
-  }
-  if (opts?.node !== undefined) {
-    c.node = opts.node;
-  }
-  if (opts?.rgbPct !== undefined) {
-    c.rgbPct = opts.rgbPct;
-  }
-  if (opts?.alphaPct !== undefined) {
-    c.alphaPct = opts.alphaPct;
-  }
+  const c: Mutable<Color> = {
+    type: 'Color', rgb, alpha, hsl: undefined, format,
+    modernSyntax: opts?.modernSyntax === true, node: opts?.node,
+    rgbPct: opts?.rgbPct, alphaPct: opts?.alphaPct, hueUnit: undefined, bytes: ''
+  };
   c.bytes = serializeColor(c);
   return c;
 }
@@ -113,16 +119,11 @@ export function makeColorHsl(
   modernSyntax?: boolean,
   opts?: { hueUnit?: string; alphaPct?: number }
 ): Color {
-  const c: Mutable<Color> = { type: 'Color', rgb: [0, 0, 0], alpha, hsl, format, bytes: '' };
-  if (modernSyntax) {
-    c.modernSyntax = true;
-  }
-  if (opts?.hueUnit) {
-    c.hueUnit = opts.hueUnit;
-  }
-  if (opts?.alphaPct !== undefined) {
-    c.alphaPct = opts.alphaPct;
-  }
+  const c: Mutable<Color> = {
+    type: 'Color', rgb: [0, 0, 0], alpha, hsl, format,
+    modernSyntax: modernSyntax === true, node: undefined,
+    rgbPct: undefined, alphaPct: opts?.alphaPct, hueUnit: opts?.hueUnit || undefined, bytes: ''
+  };
   c.bytes = serializeColor(c);
   return c;
 }
@@ -154,24 +155,25 @@ export function makeList(
  * the author wrote; `map.merge` collapses), so this never silently drops a pair.
  */
 export function makeCollection(entries: readonly CollectionEntry[], base?: ValueGroup): Collection {
-  const c: Mutable<Collection> = { type: 'Collection', entries, bytes: '' };
-  if (base !== undefined) {
-    c.base = base;
-  }
+  const c: Mutable<Collection> = { type: 'Collection', entries, base, bytes: '' };
   c.bytes = serializeValue(c);
   return c;
 }
 
-/** Wrap a value in an explicit paren/square delimiter fact. */
+/**
+ * Wrap a value in an explicit paren/square delimiter fact.
+ *
+ * `escaped` is written unconditionally, so an escaped and an ordinary block are
+ * the SAME hidden class and every `.inner`/`.delimiter` read stays monomorphic.
+ * Adding the key afterwards would transition the map; carrying an always-present
+ * slot does not — which is also why `bytes` starts `''` and is stamped in place.
+ */
 export function makeBlock(
   inner: ValueGroup,
   delimiter: Block['delimiter'],
   escaped = false
 ): Block {
-  const block: Mutable<Block> = { type: 'Block', inner, delimiter, bytes: '' };
-  if (escaped) {
-    block.escaped = true;
-  }
+  const block: Mutable<Block> = { type: 'Block', inner, delimiter, escaped, bytes: '' };
   block.bytes = serializeValue(block);
   return block;
 }
