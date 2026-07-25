@@ -1,8 +1,108 @@
 # Agent Guidelines
 
-This file is the stable cross-tool contract for working in this repo.
+This file is the stable cross-tool contract for working in this repo. **It is
+the front door.** It assumes you have the repository, a shell, and nothing else
+— no conversation history, no memory of prior sessions, no access to the owner.
 
-Use it as the default guidance for Codex, Cursor, Claude, and any other agent system. Tool-specific rules may add workflow details, but they should not duplicate volatile project state here.
+Use it as the default guidance for any agent system. Tool-specific rule
+directories (`.cursor/`, `CLAUDE.md`) are one system's routing layer and may add
+workflow details; **nothing load-bearing lives only there**, and you are not
+required to read them.
+
+---
+
+## Start Here — the largest active project
+
+**The four-grammar rewrite.** Each of the four dialect parsers (`css`, `less`,
+`scss`, `jess`) currently carries two hand-maintained grammars — `src/grammar.ts`
+(positioned CST, consumed by the language service) and `src/ast/grammar.ts` (the
+shipping compile path). **Eight files are to become four.** It has not started.
+
+**The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
+Read its §0 first** — it states the goal in the owner's own words, the current
+status, the plan, what gates what, and how to re-verify every time-sensitive
+claim in it. The per-`const` review checklist that governs any grammar edit is
+[`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md).
+
+Two things to know before you plan anything:
+
+- **It is blocked on a prerequisite only the owner can clear.** The mechanism
+  that lets one grammar file serve both the AST and the CST is parseman's
+  `hostMode`, which does not exist in the version this repo pins. Publishing
+  parseman is owner-only. Spec §0.2 says exactly what to check and how.
+- **Order is `css` → `less` → `scss` → `jess`.** CSS is the base; the dialects
+  link back to it rather than restating it; no copy-paste from the old grammars.
+
+A **separate, parallel track** is the deletion of `packages/core/src/tree/` —
+inventory in [`docs/architecture/core/TREE-CUTOVER-SURFACE.md`](docs/architecture/core/TREE-CUTOVER-SURFACE.md).
+It neither blocks nor is blocked by the grammar work.
+
+## The Failure Class This Repo Pays For
+
+**A check that reports success because it cannot see the failure mode.** Nearly
+every expensive defect in this repo's history is an instance. Each rule below has
+its reason attached, because a prohibition without one gets optimised away.
+
+- **Build in dependency order, `parser-shared` FIRST**, before trusting any test
+  number. All four parsers depend on it; build them first and they link against a
+  stale recognition library and **the suite goes green** while masking real
+  failures. Order: `parser-shared` → parsers → `awaitable-pipe` → `core` →
+  `fns` → `styles-config` → `style-resolver` → plugins → `jess`.
+  `pnpm run build:release` does the whole thing.
+- **The config package is named `styles-config`, not `@jesscss/config`.** A
+  `pnpm --filter` on the wrong name matches nothing — **and a filter that matches
+  nothing exits 0.** Check what a filter actually selected before trusting a
+  count taken through it.
+- **Tests run from `lib/`, not `src/`.** A stale build silently measures an older
+  commit and reports it as today's number. A fresh worktree has no
+  `node_modules` at all.
+- **Stale artifacts fail silently and cleanly** — stale `dist/`, stale `lib/`,
+  stale `.cache/` worktrees, and `link:` overrides that dangle and resolve *up*
+  into a parent checkout's `node_modules`. **Report the resolved path and
+  resolved version per package as evidence, ahead of any numbers. If a run
+  cannot show what it loaded, its numbers are unfalsifiable.**
+- **Capture baselines as NAMED SETS before changing anything, and compare names,
+  not counts.** A matching count hides "one fixed and one broken" perfectly.
+- **`git grep` cannot see every file.** `scripts/lint-violation-report.mjs`
+  contains literal NUL bytes, so git treats it as binary and `git grep -I` skips
+  it — while it holds the grammar-lint scope list. Use `grep -r` when a negative
+  result is load-bearing.
+- **Perf harnesses are not verdicts.** The grammar/workload perf gates (which
+  live in the **parseman** repo, not here) have produced confident FAILs on
+  byte-identical inputs. Noise floor ≈ ±1.9%. Treat a perf run as
+  confirmation-only **in both directions** — a PASS certifies nothing.
+- **`check:macro` and `verify:compose-integrity` are CORRECTNESS gates, not perf
+  gates.** A build that degrades to the parseman interpreter **emits a different
+  tree**. They must show **0 interpreter fallbacks**. A green test suite does not
+  clear a fallback — the suite can pass on the interpreted tree while the shipped
+  compiled tree differs, and a red run invalidates any differential taken on that
+  build.
+
+## Hard Prohibitions
+
+- **Never `git stash`, `git restore`, `git checkout -- .`, or `git reset --hard`
+  without explicit permission.** `git stash` has silently destroyed work here.
+  Back up first (`git diff > /tmp/backup.patch`) and record where. **Commit
+  before measuring** — that is the supported way to compare two states.
+- **Never `as any`, `: any`, `@ts-ignore`, or `@ts-nocheck`.** `pnpm
+  lint:absolute` detects these. It reports **hundreds of pre-existing violations
+  and is deliberately not wired to a blocking gate** — that is a backlog, not a
+  dead rule. Do not add to it.
+- **Never add `await` to a test assertion to silence a lint warning.** Hundreds
+  of assertions deliberately omit `await` on `MaybePromise`-returning calls;
+  `Node.eval()` and `Node.render()` are not `async`, and the omission is what
+  pins the synchronous fast path under test. Adding `await` silently deletes that
+  coverage and the suite still passes. Use `test/expect-sync.ts` where synchrony
+  should be asserted explicitly.
+- **`.css` fixtures are Less v5 alpha expected output and are owner-maintained.**
+  A top-level diff against one is **a jess bug by default**, not a fixture to
+  update.
+- **Agents never merge or release parseman PRs.** That is the owner's, always.
+
+Tests are imperfect encodings of the documented design, and the design is the
+source of truth — but the less-compat bridge is a real external contract.
+
+---
 
 ## Canonical Sources
 

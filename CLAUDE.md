@@ -11,7 +11,7 @@
 @.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/tree/**, packages/core/src/define-function.ts, packages/core/src/**/__tests__/** -->
 @.cursor/rules/domains/docs.mdc <!-- Applies to: docs/**, packages/docs/**, README.md -->
 @.cursor/rules/domains/language_tooling.mdc <!-- Applies to: packages/language-service/**, packages/vscode/**, packages/language-service-tests/** -->
-@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/css-parser/**, packages/less-parser/**, packages/scss-parser/**, packages/parser/** -->
+@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/css-parser/**, packages/less-parser/**, packages/scss-parser/**, packages/jess-parser/**, packages/parser-shared/** -->
 @.cursor/rules/main.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/package-scripts.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/packages/awaitable-pipe.mdc <!-- Applies to: packages/awaitable-pipe/** -->
@@ -24,7 +24,6 @@
 @.cursor/rules/packages/jess.mdc <!-- Applies to: packages/jess/** -->
 @.cursor/rules/packages/language-service.mdc <!-- Applies to: packages/language-service/** -->
 @.cursor/rules/packages/less-parser.mdc <!-- Applies to: packages/less-parser/** -->
-@.cursor/rules/packages/parser.mdc <!-- Applies to: packages/parser/** -->
 @.cursor/rules/packages/patch-css.mdc <!-- Applies to: packages/patch-css/** -->
 @.cursor/rules/packages/plugin-less-compat.mdc <!-- Applies to: packages/jess-plugin-less-compat/** -->
 @.cursor/rules/packages/plugin-less.mdc <!-- Applies to: packages/jess-plugin-less/** -->
@@ -70,6 +69,8 @@ selector composition, dialect recognition):
 
 For grammar work (any of the eight `*-parser/src/{,ast/}grammar.ts` files):
 
+- the rebuild spec — goal, current status, plan, gating, dispatchable units — is
+  `docs/design/GRAMMAR-REBUILD-SPEC.md`; **start at its §0**
 - the standing brief is `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`
   (14 checklist items applied to **every `const`**, hard constraints, oracle
   verification loop, definition of done)

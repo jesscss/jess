@@ -28,7 +28,11 @@
 6. **Never** `as any`, `: any`, `@ts-ignore`, or `@ts-nocheck`.
 7. `~/git/oss/less.js` is off-limits. Use `~/git/worktrees/less.js/` read-only, and only for an
    explicitly authorized fixture graduation. Owner merges parseman PRs; agents never do.
-8. **Correctness has no external oracle** — see `DESIGN-DECISIONS.md` §0 (E1–E7). In
+8. **Working on grammars, not core?** This document is the *core architecture* entry point.
+   The four-grammar rewrite has its own spec —
+   [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md), start at
+   its §0 — and `AGENTS.md` is the repo-wide front door for either.
+9. **Correctness has no external oracle** — see `DESIGN-DECISIONS.md` §0 (E1–E7). In
    particular the Less v5 alpha package is a thin wrapper over jess's `Compiler`
    (`docs/architecture/core/LESS-V5-CONTENT-PR-PLAN.md:18`), so it can never adjudicate a
    jess-vs-`lessc` question.
@@ -600,6 +604,8 @@ section is the authoritative full-scope companion to the compact task goal.
 | Feature/eval closure | [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) |
 | Eval/render allocation, lookup, and traversal cuts | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) |
 | Deleting `packages/core/src/tree/` — public-surface inventory, `Context` decomposition, value-boundary options, extraction order | [`TREE-CUTOVER-SURFACE.md`](./TREE-CUTOVER-SURFACE.md) |
+| **The four-grammar rewrite** — eight grammar files to four, `hostMode`, dispatchable units, acceptance gates. Start at its §0 | [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) |
+| The per-`const` grammar review checklist and the naming law (item 14) | [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
 | Owner semantic/architecture questions and rulings | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) — the canonical OPEN/SETTLED decision ledger |
 
