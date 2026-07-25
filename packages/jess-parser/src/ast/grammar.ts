@@ -149,6 +149,12 @@ type JessAstRules = {
   DirectJessGeneralTemplateBrace: Combinator<Interpolation>;
   DirectJessGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
   DirectJessGeneralTemplateSingleQuoted: Combinator<Interpolation>;
+  DirectJessGeneralQuotedTemplate: Combinator<Interpolation>;
+  DirectJessGeneralQuotedTemplateParen: Combinator<Interpolation>;
+  DirectJessGeneralQuotedTemplateSquare: Combinator<Interpolation>;
+  DirectJessGeneralQuotedTemplateBrace: Combinator<Interpolation>;
+  DirectJessGeneralQuotedTemplateDoubleQuoted: Combinator<Interpolation>;
+  DirectJessGeneralQuotedTemplateSingleQuoted: Combinator<Interpolation>;
   DirectJessGeneralEnclosed: Combinator<GeneralEnclosed>;
   DirectJessSupportsNot: Combinator<Keyword>;
   DirectJessSupportsLogical: Combinator<Keyword>;
@@ -2517,6 +2523,31 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.DirectJessStaticValueAtom,
     children => requireValueNode(children[0])
   );
+  // ── `@supports` general-enclosed template: TWO chains, one per position ──────
+  // The general-enclosed body is an INTERPOLATED position, and every interpolated
+  // position takes `${…}` only — `$(…)` is a value-position EXPRESSION, not
+  // interpolation, so it is rejected here (HANDOFF.md: general-enclosed content
+  // admits literal structured bytes plus the dialect's explicit interpolation
+  // syntax). A QUOTED sub-template is a different position — an ordinary Jess
+  // string, which the matrix does permit `$(…)` in, exactly as `Quoted` does
+  // everywhere else in the language.
+  //
+  // Those two positions are entry-disjoint but they RECURSE, which is why this is
+  // two mirrored chains rather than one production with a flag: once inside a
+  // string you stay inside it, so a `(…)` group nested in a quoted sub-template is
+  // still string content and must stay permissive. Rejecting `$(…)` only at the
+  // top level would mean an extra paren unlocks the spelling
+  // (`@supports foo($(x))` rejected but `@supports foo(($(x)))` accepted), so the
+  // strict chain mirrors ALL its non-quoted wrappers and the permissive chain
+  // mirrors all five of its own.
+  //
+  // The duplication is deliberate and required: grammar dedup here admits only
+  // parameterless combinator consts and plain reducers, and a factory would
+  // degrade the macro-compiled artifact into the interpreter. The ONLY difference
+  // between the two chains is the `g.DirectJessExpression` arm.
+
+  // STRICT chain — the general-enclosed body and its non-quoted wrappers. Its
+  // quoted arms hand off to the permissive chain below and never come back.
   const DirectJessGeneralTemplateParen = node<Interpolation>(
     'DirectJessGeneralTemplateParen',
     sequence(literal('('), g.DirectJessGeneralTemplate, literal(')')),
@@ -2534,24 +2565,66 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   );
   const DirectJessGeneralTemplateDoubleQuoted = node<Interpolation>(
     'DirectJessGeneralTemplateDoubleQuoted',
-    sequence(literal('"'), g.DirectJessGeneralTemplate, literal('"')),
+    sequence(literal('"'), g.DirectJessGeneralQuotedTemplate, literal('"')),
     templateInterpolationFromChildren
   );
   const DirectJessGeneralTemplateSingleQuoted = node<Interpolation>(
     'DirectJessGeneralTemplateSingleQuoted',
-    sequence(literal('\''), g.DirectJessGeneralTemplate, literal('\'')),
+    sequence(literal('\''), g.DirectJessGeneralQuotedTemplate, literal('\'')),
     templateInterpolationFromChildren
   );
   const DirectJessGeneralTemplate = node<Interpolation>(
     'DirectJessGeneralTemplate',
     many(choice(
       g.DirectJessDollarBrace,
-      g.DirectJessExpression,
       g.DirectJessGeneralTemplateParen,
       g.DirectJessGeneralTemplateSquare,
       g.DirectJessGeneralTemplateBrace,
       g.DirectJessGeneralTemplateDoubleQuoted,
       g.DirectJessGeneralTemplateSingleQuoted,
+      jessGeneralTemplateText
+    )),
+    templateInterpolationFromChildren
+  );
+
+  // PERMISSIVE chain — everything reachable from inside a quoted sub-template.
+  // Reached ONLY through the two quoted arms above, and closed under its own
+  // wrappers so nesting never escapes back to the strict chain.
+  const DirectJessGeneralQuotedTemplateParen = node<Interpolation>(
+    'DirectJessGeneralQuotedTemplateParen',
+    sequence(literal('('), g.DirectJessGeneralQuotedTemplate, literal(')')),
+    templateInterpolationFromChildren
+  );
+  const DirectJessGeneralQuotedTemplateSquare = node<Interpolation>(
+    'DirectJessGeneralQuotedTemplateSquare',
+    sequence(literal('['), g.DirectJessGeneralQuotedTemplate, literal(']')),
+    templateInterpolationFromChildren
+  );
+  const DirectJessGeneralQuotedTemplateBrace = node<Interpolation>(
+    'DirectJessGeneralQuotedTemplateBrace',
+    sequence(literal('{'), g.DirectJessGeneralQuotedTemplate, literal('}')),
+    templateInterpolationFromChildren
+  );
+  const DirectJessGeneralQuotedTemplateDoubleQuoted = node<Interpolation>(
+    'DirectJessGeneralQuotedTemplateDoubleQuoted',
+    sequence(literal('"'), g.DirectJessGeneralQuotedTemplate, literal('"')),
+    templateInterpolationFromChildren
+  );
+  const DirectJessGeneralQuotedTemplateSingleQuoted = node<Interpolation>(
+    'DirectJessGeneralQuotedTemplateSingleQuoted',
+    sequence(literal('\''), g.DirectJessGeneralQuotedTemplate, literal('\'')),
+    templateInterpolationFromChildren
+  );
+  const DirectJessGeneralQuotedTemplate = node<Interpolation>(
+    'DirectJessGeneralQuotedTemplate',
+    many(choice(
+      g.DirectJessDollarBrace,
+      g.DirectJessExpression,
+      g.DirectJessGeneralQuotedTemplateParen,
+      g.DirectJessGeneralQuotedTemplateSquare,
+      g.DirectJessGeneralQuotedTemplateBrace,
+      g.DirectJessGeneralQuotedTemplateDoubleQuoted,
+      g.DirectJessGeneralQuotedTemplateSingleQuoted,
       jessGeneralTemplateText
     )),
     templateInterpolationFromChildren
@@ -3524,6 +3597,12 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessGeneralTemplateBrace,
     DirectJessGeneralTemplateDoubleQuoted,
     DirectJessGeneralTemplateSingleQuoted,
+    DirectJessGeneralQuotedTemplate,
+    DirectJessGeneralQuotedTemplateParen,
+    DirectJessGeneralQuotedTemplateSquare,
+    DirectJessGeneralQuotedTemplateBrace,
+    DirectJessGeneralQuotedTemplateDoubleQuoted,
+    DirectJessGeneralQuotedTemplateSingleQuoted,
     DirectJessGeneralEnclosed,
     DirectJessSupportsNot,
     DirectJessSupportsLogical,

@@ -18,6 +18,14 @@ and rejected in the others — so a spelling always means the same thing:
 
 `${name}` means *the value of `$name`*, spliced in as text.
 
+"At-rule prelude" means the **whole** prelude, not just its outermost level —
+including the parenthesised and function bodies of an `@supports` condition. So
+`@supports selector(${sel})` is right and `@supports selector($(sel))` is an
+error, as are `@supports ($(x))` and any deeper nesting of it: an extra pair of
+parentheses never unlocks a spelling. The one thing that does change position is
+a **quoted string** inside that prelude — it is a string like any other, so
+`@supports selector("a $(x) b")` is fine.
+
 Inside `${…}`, **bare-versus-bracketed** picks what you are reading — the same
 rule `[…]` follows everywhere else in the language:
 

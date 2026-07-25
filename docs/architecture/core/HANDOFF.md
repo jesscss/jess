@@ -1087,7 +1087,13 @@ or a legacy-tree port.
   fact. `Interpolation` is the publishable public noun (the former `Interp`
   name has no compatibility alias). Its recursive Parseman content admits only
   literal structured bytes and the dialect's explicit interpolation syntax; it
-  is not `FunctionCall`, `Block`, `Any`, or a parser-local raw fallback. The
+  is not `FunctionCall`, `Block`, `Any`, or a parser-local raw fallback. For
+  Jess, "the dialect's explicit interpolation syntax" is `${…}` and only `${…}`
+  — `$(…)` is a value-position expression, not interpolation, so it is rejected
+  in the general-enclosed body and in every `(…)`/`[…]`/`{…}` nested inside it
+  (`DirectJessGeneralTemplate`). A quoted string in that body is an ordinary
+  Jess string and keeps `$(…)`, via the mirrored
+  `DirectJessGeneralQuotedTemplate` chain. See DESIGN-DECISIONS P16. The
   serializer keeps a `GeneralEnclosed` segment structurally protected while it
   normalizes surrounding supports syntax, including when authored content has
   private-use Unicode bytes.

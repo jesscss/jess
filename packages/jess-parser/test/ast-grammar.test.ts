@@ -1386,6 +1386,61 @@ describe('Jess AST grammar facts', () => {
     expect(() => parse('@supports selector($[]) { .card { color: blue; } }')).toThrow(SyntaxError);
   });
 
+  // Every interpolated position takes `${…}` only, and a general-enclosed body is
+  // one: `$(…)` is a value-position EXPRESSION, not interpolation. A QUOTED
+  // sub-template is a different position — an ordinary Jess string — and keeps
+  // `$(…)` like every other string in the language. The two chains recurse, so
+  // this pins the nesting in both directions: an extra paren must not unlock
+  // `$(…)`, and a group nested inside a string must stay string content.
+  it('admits ${…} but not $(…) in an @supports general-enclosed body', () => {
+    for (const source of [
+      '@supports $(display) { .card { color: blue; } }',
+      '@supports ($(display)) { .card { color: blue; } }',
+      '@supports selector($(display)) { .card { color: blue; } }',
+      // The strict chain is closed under its own wrappers, so wrapping does not
+      // reopen the spelling.
+      '@supports selector(($(display))) { .card { color: blue; } }',
+      '@supports selector([$(x)]) { .card { color: blue; } }',
+      '@supports selector({$(x)}) { .card { color: blue; } }',
+      '@supports selector(a $(x) b) { .card { color: blue; } }'
+    ]) {
+      expect(() => parse(source), source).toThrow(SyntaxError);
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
+    }
+
+    for (const source of [
+      '@supports (${display}) { .card { color: blue; } }',
+      '@supports selector(${display}) { .card { color: blue; } }',
+      '@supports selector((${x})) { .card { color: blue; } }',
+      '@supports selector([${x}]) { .card { color: blue; } }',
+      '@supports selector({${x}}) { .card { color: blue; } }',
+      '@supports selector(${[x]}) { .card { color: blue; } }'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+  });
+
+  it('keeps $(…) inside a quoted sub-template of an @supports general-enclosed body', () => {
+    for (const source of [
+      '@supports selector("a $(x) b") { .card { color: blue; } }',
+      '@supports selector(\'a $(x) b\') { .card { color: blue; } }',
+      // The permissive chain is closed under ITS wrappers too: once inside a
+      // string you stay inside it, so a nested group is still string content.
+      '@supports selector("a ($(x)) b") { .card { color: blue; } }',
+      '@supports selector("a [$(x)] b") { .card { color: blue; } }',
+      '@supports selector("a {$(x)} b") { .card { color: blue; } }',
+      '@supports selector("a ${x} b") { .card { color: blue; } }'
+    ]) {
+      expect(() => parse(source), source).not.toThrow();
+    }
+
+    expect(parse('@supports selector("$(x)") { .card { color: blue; } }').children[0]).toMatchObject({
+      type: 'AtRuleBlock', name: '@supports',
+      prelude: { type: 'GeneralEnclosed', form: 'function', name: 'selector' }
+    });
+  });
+
   it('constructs typed static @supports conditions without a generic at-rule or raw-function fallback', () => {
     const source = '@supports not ((display: grid) and (color)) { .card { color: blue; } }';
     const root = parse(source);
