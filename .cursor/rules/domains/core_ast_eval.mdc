@@ -34,6 +34,13 @@ Never dismiss nested-mode correctness as "moot" or "deferred". See
   `docs/future/llm-quality-enforcement-design.md`. Load the `perf-architecture`
   skill before editing eval/render/extend, and use the
   `perf-architecture-reviewer` (evidence per invariant) before landing.
+- For anything that changes emitted CSS, the canonical checklist is
+  `docs/architecture/SEMANTIC-INVARIANTS.md` (8 invariants + incident
+  catalogue); the owner decision ledger is
+  `docs/future/core-architecture/DESIGN-DECISIONS.md`. Cite the SETTLED row a
+  change relies on or add an OPEN row, and use the `semantics-reviewer`
+  (evidence per invariant) before landing. "Matches less.js" is not a
+  justification (ledger E1/E2/E5).
 - If the work touches the evaluation-model refactor, use
   `docs/future/core-architecture/HANDOFF.md` as the active queue and
   `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` before closing a
