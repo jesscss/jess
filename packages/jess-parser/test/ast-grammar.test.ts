@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import { sourceSpanOf, type Stylesheet, type Rule, type SimpleToken } from '@jesscss/core/ast';
+import { sourceSpanOf, type InterpPart, type Stylesheet, type Rule, type SimpleToken } from '@jesscss/core/ast';
 import { JessError } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../core/src/ast/evaluator.js';
@@ -236,7 +236,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('admits existing callable and loop statements inside selected direct $if bodies', () => {
-    const source = 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $if (true) { $ > paint(); $held(); $apply paint; $for ($item of $items) { .item-$[item] { order: $item; } } } }';
+    const source = 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $if (true) { $ > paint(); $held(); $apply paint; $for ($item of $items) { .item-${item} { order: $item; } } } }';
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
@@ -259,7 +259,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('does not execute any newly admitted statement form from a false $if arm', () => {
-    const source = 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $if (false) { $ > paint(); $held(); $apply paint; $for ($item of $items) { .item-$[item] { order: $item; } } } }';
+    const source = 'paint() { color: red; } $held: { background: blue; }; $items: one, two; .host { $if (false) { $ > paint(); $held(); $apply paint; $for ($item of $items) { .item-${item} { order: $item; } } } }';
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe('');
   });
 
@@ -440,7 +440,7 @@ describe('Jess AST grammar facts', () => {
     // The static reduction must not claim an escaped string that carries
     // interpolation: dropping the quotes makes that value exactly the
     // Interpolation of its content parts, with no `Quoted` wrapper.
-    expect(parse('$theme: dark; .asset { value: ~"$[theme]"; }')).toMatchObject({
+    expect(parse('$theme: dark; .asset { value: ~"${theme}"; }')).toMatchObject({
       children: [
         { type: 'VariableDeclaration', name: 'theme' },
         { type: 'Rule', body: [{
@@ -454,7 +454,7 @@ describe('Jess AST grammar facts', () => {
 
   // Documented at docs/jess/02-Language/08-interpolation.mdx ("Any plain output").
   it('constructs escaped Jess strings that carry interpolation as unwrapped Interpolation values', () => {
-    const source = '$color-name: "red"; $w: 4px; .container { color: ~"$[color-name]"; tone: ~\'$($w * 2)\'; }';
+    const source = '$color-name: "red"; $w: 4px; .container { color: ~"${color-name}"; tone: ~\'$($w * 2)\'; }';
     expect(parse(source)).toMatchObject({
       children: [
         { type: 'VariableDeclaration', name: 'color-name' },
@@ -469,7 +469,7 @@ describe('Jess AST grammar facts', () => {
       '.container {\n  color: red;\n  tone: 8px;\n}\n'
     );
     expect(serialize(
-      parse('$n: 3.5; .a { width: ~"calc(100% - $[n]px)"; }'),
+      parse('$n: 3.5; .a { width: ~"calc(100% - ${n}px)"; }'),
       { evaluator: buildEvaluator(makeLessRegistry()) }
     ).css).toBe('.a {\n  width: calc(100% - 3.5px);\n}\n');
   });
@@ -543,7 +543,7 @@ describe('Jess AST grammar facts', () => {
       ]
     });
     const evaluator = buildEvaluator(makeLessRegistry());
-    expect(serialize(parse('$w: 20; $side: left; .a { width: $($w)px; margin-$[side]: $[w]px; ratio: $[w]%; }'), { evaluator }).css).toBe(
+    expect(serialize(parse('$w: 20; $side: left; .a { width: $($w)px; margin-${side}: $[w]px; ratio: $[w]%; }'), { evaluator }).css).toBe(
       '.a {\n  width: 20px;\n  margin-left: 20px;\n  ratio: 20%;\n}\n'
     );
   });
@@ -1033,7 +1033,7 @@ describe('Jess AST grammar facts', () => {
 
     for (const invalid of [
       '@vendor-rule $[name] { raw: 1; }',
-      '@vendor-rule $(name) { raw: 1; }',
+      '@vendor-rule ${name} { raw: 1; }',
       '@media { .card { color: red; } }',
       // The compiler namespace a module directive lowers to is never CSS output,
       // so it must reject rather than degrade to opaque bytes.
@@ -1096,8 +1096,8 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('keeps a lone Jess expression as a typed dynamic @media prelude', () => {
-    const source = '$type: screen; @media $(type) { .card { color: red; } }';
+  it('keeps a lone ${…} interpolation as a typed dynamic @media prelude', () => {
+    const source = '$type: screen; @media ${type} { .card { color: red; } }';
     const document = parse(source);
 
     expect(document).toMatchObject({
@@ -1114,10 +1114,10 @@ describe('Jess AST grammar facts', () => {
 
     for (const invalid of [
       '$type: screen; @media $type { .card { color: red; } }',
-      '$type: screen; @media $(type) screen { .card { color: red; } }',
-      '$type: screen; @media $($type) { .card { color: red; } }',
-      '$type: screen; @media $(type);',
-      '$type: screen; @container $(type) { .card { color: red; } }'
+      '$type: screen; @media ${type} screen { .card { color: red; } }',
+      '$type: screen; @media ${$type} { .card { color: red; } }',
+      '$type: screen; @media ${type};',
+      '$type: screen; @container ${type} { .card { color: red; } }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -1321,7 +1321,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('retains Jess @supports general-enclosed bodies as structural interpolation templates', () => {
-    const source = '@supports selector(.card-$[tone]:has([data-x="$[state]"])) { .card { color: blue; } }';
+    const source = '@supports selector(.card-${tone}:has([data-x="${state}"])) { .card { color: blue; } }';
     const cst = parseJessCst(source);
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
 
@@ -1602,7 +1602,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs structured Jess interpolation in ordinary and CSS-import url targets', () => {
-    const source = '$path: "images/icon.svg"; $file: "hero"; @import url($[path]) print; @import url(styles/$[file].css); .asset { direct: url($[path]); joined: url(images/$[file].svg); quoted: url("assets/$[file].svg"); }';
+    const source = '$path: "images/icon.svg"; $file: "hero"; @import url(${path}) print; @import url(styles/${file}.css); .asset { direct: url(${path}); joined: url(images/${file}.svg); quoted: url("assets/${file}.svg"); }';
     const cst = parseJessCst(source);
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
 
@@ -1630,7 +1630,7 @@ describe('Jess AST grammar facts', () => {
 
     let missingPath: unknown;
     try {
-      void serialize(parse('@import url($[path]); $path: "images/icon.svg";'));
+      void serialize(parse('@import url(${path}); $path: "images/icon.svg";'));
     } catch (error) {
       missingPath = error;
     }
@@ -1829,7 +1829,7 @@ describe('Jess AST grammar facts', () => {
   it('fuses a parent selector with a glued $[…] template into one selector atom', () => {
     // A split representation would resolve the bare `&` to `:is(parents)` first
     // and append to that; only the fused atom distributes per parent.
-    const source = '$tone: primary; .a, .b { &-$[tone] { color: blue; } }';
+    const source = '$tone: primary; .a, .b { &-${tone} { color: blue; } }';
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
 
     expect(direct.ok).toBe(true);
@@ -1890,7 +1890,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs public $[…] selector templates as Interp-backed SimpleSelector atoms', () => {
-    const source = '$side: left; .widget-$[side]-$["tone"] { tone: dark; color: blue; }';
+    const source = '$side: left; .widget-${side}-${[tone]} { tone: dark; color: blue; }';
     const legacy = parseJessCst(source);
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
 
@@ -1915,7 +1915,7 @@ describe('Jess AST grammar facts', () => {
                       { lit: '.widget-' },
                       { ref: { type: 'VariableReference', name: 'side' }, unquote: true },
                       { lit: '-' },
-                      { ref: { type: 'PropertyReference', name: 'tone', raw: '$["tone"]' }, unquote: true }
+                      { ref: { type: 'PropertyReference', name: 'tone', raw: '${[tone]}' }, unquote: true }
                     ]
                   }
                 }]
@@ -1928,7 +1928,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('evaluates parsed bare and quoted selector templates in their nesting scope', () => {
-    const document = parse('$side: left; .shell { tone: dark; .widget-$[side]-$["tone"] { color: blue; } }');
+    const document = parse('$side: left; .shell { tone: dark; .widget-${side}-${[tone]} { color: blue; } }');
 
     expect(serialize(document).css).toBe(
       '.shell {\n'
@@ -1941,7 +1941,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('feeds parsed bare and quoted selector templates through the extend planner', () => {
-    const parsed = parse('$side: bare; .scope { tone: quoted; .target { color: blue; } .bare-$[side] {} .quoted-$["tone"] {} }');
+    const parsed = parse('$side: bare; .scope { tone: quoted; .target { color: blue; } .bare-${side} {} .quoted-${[tone]} {} }');
     const scope = parsed.children[1];
     if (scope?.type !== 'Rule') {
       throw new TypeError('Expected parsed scope rule.');
@@ -1975,7 +1975,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs structural Jess key and expression interpolation in values and quoted strings', () => {
-    const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-$[tone]" = foo); .card { content: "tone-$[tone]-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
+    const source = '$tone: blue; $gap: 2px; $key: $[tone]; $quoted-key: $["theme"]; $math: $(1 + 2 * $gap); $compare: $(1  +  2 = 3); $quoted-compare: $("a-${tone}" = foo); .card { content: "tone-${tone}-$(1 + 2)"; color: rgb($[tone], $(1 + 2), blue); }';
     const legacy = parseJessCst(source);
     const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
 
@@ -1992,7 +1992,7 @@ describe('Jess AST grammar facts', () => {
         { type: 'VariableDeclaration', name: 'quoted-key', value: { type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'theme', raw: '$["theme"]' }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'math', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' } }, unquote: true }] } },
         { type: 'VariableDeclaration', name: 'compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '1  +  2 = 3' } }, unquote: true }] } },
-        { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-$[tone]" = foo' } }, unquote: true }] } },
+        { type: 'VariableDeclaration', name: 'quoted-compare', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Condition', guard: { g: 'cmp', op: '=' }, src: '"a-${tone}" = foo' } }, unquote: true }] } },
         { type: 'Rule', body: [{ type: 'Declaration', name: 'content', value: { type: 'Interpolation' } }, { type: 'Declaration', name: 'color', value: { type: 'FunctionCall', args: [{ type: 'Interpolation' }, { type: 'Interpolation' }, { type: 'Keyword', src: 'blue' }] } }] }
       ]
     });
@@ -2109,19 +2109,19 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('keeps the documented source-dependent $for list and range behavior on the public Stylesheet route', () => {
-    const listDocument = parse('$sections: header, sidebar, footer; $for ($section, $i of $sections) { .box-$[section] { padding-left: $($i * 20px); } }');
+    const listDocument = parse('$sections: header, sidebar, footer; $for ($section, $i of $sections) { .box-${section} { padding-left: $($i * 20px); } }');
     expect(serialize(listDocument, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.box-header {\n  padding-left: 20px;\n}\n.box-sidebar {\n  padding-left: 40px;\n}\n.box-footer {\n  padding-left: 60px;\n}\n'
     );
 
-    const rangeDocument = parse('$for ($i of 1 to <3) { .box-$[i] { value: $i; } }');
+    const rangeDocument = parse('$for ($i of 1 to <3) { .box-${i} { value: $i; } }');
     expect(serialize(rangeDocument, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
       '.box-1 {\n  value: 1;\n}\n.box-2 {\n  value: 2;\n}\n'
     );
   });
 
   it('constructs a documented Jess collection RHS for public bracket $for rendering', () => {
-    const source = '$collection: { header: red; footer: blue; }; $for ([$key, $value] of $collection) { .box-$[key] { color: $value; } }';
+    const source = '$collection: { header: red; footer: blue; }; $for ([$key, $value] of $collection) { .box-${key} { color: $value; } }';
     const legacy = parseJessCst(source);
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
 
@@ -2345,7 +2345,7 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('constructs documented $[…] declaration-name interpolation through public parse', () => {
-    const source = '$radius: top-right; $property: accent; .card { border-$[radius]-radius: 12px; $[property]: blue; }';
+    const source = '$radius: top-right; $property: accent; .card { border-${radius}-radius: 12px; ${property}: blue; }';
     expect(parse(source)).toMatchObject({
       type: 'Stylesheet',
       children: [
@@ -2372,11 +2372,9 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  // `${name}` is the plain interpolation form: splice the VALUE of `$name`.
-  // It is what `$[…]` cannot spell, because `$[…]` is a LOOKUP against the
-  // ambient scope — `$[$foo]` already means "the variable NAMED BY `$foo`".
-  // The body is a NAME (Less-style), not an expression, so an interpolation
-  // position stays a splice point rather than a place to compute.
+  // `${…}` is THE interpolation form for every name, selector, and string
+  // position. `$[…]` is a value-position LOOKUP and is rejected here; `$(…)` is
+  // a value-position expression. One form per position, no overlap.
   it('constructs ${…} name interpolation in every name, selector, and string position', () => {
     const evaluator = buildEvaluator(makeLessRegistry());
     const source = [
@@ -2399,27 +2397,64 @@ describe('Jess AST grammar facts', () => {
     );
   });
 
-  // `${name}` builds exactly the Interpolation `$[name]` builds — the two are
-  // the same splice, so nothing downstream has to learn a second shape.
-  it('reduces ${name} to the same Interpolation as the $[name] lookup spelling', () => {
-    const braceName = parse('.card { ${property}: blue; }');
-    const bracketName = parse('.card { $[property]: blue; }');
-    expect(braceName).toEqual(bracketName);
-    expect(parse('.card-${side} { a: b; }')).toEqual(parse('.card-$[side] { a: b; }'));
+  // Inside `${…}`, BARE-vs-BRACKETED selects the namespace — the same rule `[…]`
+  // follows everywhere else in the language. Quoting selects nothing: `[foo]` and
+  // `["foo"]` are the same plain-string key, so quotes appear only when the
+  // string is not a valid identifier.
+  it('splits the ${…} namespace on bare-vs-bracketed, never on quoting', () => {
+    // The first simple selector's interpolation, minus its leading literal — the
+    // one part whose `ref` carries the namespace this test is about.
+    const parts = (source: string): InterpPart => {
+      const rule = parse(source).children[0];
+      if (rule?.type !== 'Rule') {
+        throw new TypeError('Expected a Rule');
+      }
+      const interp = rule.selector.selectors[0]?.head.simples[0]?.interp;
+      const part = interp?.parts[1];
+      if (part === undefined) {
+        throw new TypeError('Expected an interpolated simple selector');
+      }
+      return part;
+    };
+
+    expect(parts('.w-${side} { a: b; }')).toMatchObject({
+      ref: { type: 'VariableReference', name: 'side', lookup: 'live' }
+    });
+    expect(parts('.w-${[tone]} { a: b; }')).toMatchObject({
+      ref: { type: 'PropertyReference', name: 'tone', raw: '${[tone]}' }
+    });
+    // Quotes are escaping only — `a b` is not a valid identifier.
+    expect(parts('.w-${["a b"]} { a: b; }')).toMatchObject({
+      ref: { type: 'PropertyReference', name: 'a b' }
+    });
+    // A computed key stays the two-step indirection.
+    expect(parts('.w-${[$k]} { a: b; }')).toMatchObject({
+      ref: { type: 'VarIndirect', nameRef: { type: 'VariableReference', name: 'k' } }
+    });
   });
 
-  // The body is a NAME. Every richer spelling is reserved for the documented
-  // later extension (`${m[key]}` / `${m.key}`), so it must fail now rather than
-  // degrade into raw bytes — and a value position keeps `$name` / `$(…)`.
-  it('rejects a non-name ${…} body and rejects ${…} in value position', () => {
+  // One form per position. Each of these is the RIGHT spelling in some other
+  // position, which is exactly why it must fail here rather than degrade.
+  it('rejects each $ form outside the position it belongs to', () => {
     for (const invalid of [
+      // `${…}` is not a value form — `$name` / `$[…]` / `$(…)` are.
       '.card { color: ${tone}; }',
+      '.card { color: ${[tone]}; }',
+      // `$[…]` is not an identifier or string form.
+      '.card-$[side] { a: b; }',
+      '.card { border-$[radius]-radius: 12px; }',
+      '.card { --$[side]-pad: 4px; }',
+      '.a { &-$[tone] { color: red; } }',
+      '.card { content: "font-$[family]"; }',
+      '.card { content: ~"font-$[family]"; }',
+      // Malformed bodies must be positioned errors, never raw bytes.
       '.card { ${}: blue; }',
       '.card { ${ property}: blue; }',
       '.card { ${$property}: blue; }',
-      '.card { ${m[key]}: blue; }',
       '.card { ${m.key}: blue; }',
-      '.card { ${property: blue; }'
+      '.card { ${property: blue; }',
+      '.card { ${[tone}: blue; }',
+      '.card-${[]} { a: b; }'
     ]) {
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }

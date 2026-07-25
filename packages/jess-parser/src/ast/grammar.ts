@@ -34,6 +34,7 @@ type JessAstRules = {
   DirectJessReferenceCallTail: Combinator<JessReferenceTail>;
   DirectJessDollarValue: Combinator<ValueNode>;
   DirectJessDollarBrace: Combinator<Interpolation>;
+  DirectJessExpressionDollarBrace: Combinator<ExpressionFact>;
   DirectJessDollarInterp: Combinator<Interpolation>;
   DirectJessInterpolatedValue: Combinator<Interpolation>;
   DirectJessExpressionDollarInterp: Combinator<ExpressionFact>;
@@ -138,7 +139,6 @@ type JessAstRules = {
   DirectJessStaticAtDashedIdent: Combinator<Keyword>;
   DirectJessStaticAtPreludeTerm: Combinator<ValueNode>;
   DirectJessStaticAtPrelude: Combinator<ValueNode | null>;
-  DirectJessMediaVariableExpression: Combinator<Interpolation>;
   DirectJessMediaPrelude: Combinator<ValueNode | null>;
   DirectJessStaticAtRuleHeader: Combinator<JessAtRuleHeader>;
   DirectJessAtRuleHeader: Combinator<JessAtRuleHeader>;
@@ -651,6 +651,40 @@ function interpolationFromChildren(
   return interpolation([{ ref: propertyReference(text, tokenSource(children)), unquote: true }]);
 }
 
+/**
+ * Reduce a `${…}` interpolation. BARE-vs-BRACKETED selects the namespace:
+ *
+ * - `${foo}`      → the VARIABLE `$foo`
+ * - `${[foo]}`    → a LOOKUP, i.e. the PROPERTY `foo` declared in scope
+ * - `${["a b"]}`  → the same lookup; the quotes are only escaping, because
+ *                   `a b` is not a valid identifier. `[foo]` and `["foo"]` are
+ *                   the same plain-string key (ledger P14), so quoting never
+ *                   carries meaning here.
+ * - `${[$k]}`     → a lookup whose key is computed from `$k`.
+ */
+function dollarBraceInterpolation(
+  children: readonly unknown[],
+  span?: { readonly start: number; readonly end: number }
+): Interpolation {
+  if (requireToken(children[0]).value !== '${[') {
+    const ref = variableReference(requireToken(children[1]).value, 'live');
+    if (span) {
+      withSourceSpan(ref, span);
+    }
+    return interpolation([{ ref, unquote: true }]);
+  }
+  const head = requireToken(children[1]).value;
+  if (head === '$') {
+    const named = variableReference(requireToken(children[2]).value, 'live');
+    if (span) {
+      withSourceSpan(named, span);
+    }
+    return interpolation([{ ref: varIndirect(named, 'live'), unquote: true }]);
+  }
+  const name = head === '"' || head === '\'' ? requireToken(children[2]).value : head;
+  return interpolation([{ ref: propertyReference(name, tokenSource(children)), unquote: true }]);
+}
+
 // The authored-ish source of one reference-call argument, used only to rebuild a
 // `Reference.raw` fallback string. It never feeds recognition, and it never
 // throws: a value with no direct spelling contributes nothing rather than
@@ -1048,19 +1082,38 @@ const jessGuardIsUnitPredicate = regex(/\$type\.isunit(?![-_a-zA-Z0-9\u0080-\uff
 // negative lookahead so `$type.*` can never take a generic call tail and bypass
 // the closed, arity-checked predicate grammar above.
 const jessTypeNamespace = regex(/\$type\./);
-// `${name}` — the plain interpolation form: splice the VALUE of `$name` into a
-// name, selector, or string position. Its body is a NAME, Less-style, and
-// deliberately not an expression: an interpolation position is a splice point,
-// not a place to compute. (`${m[key]}` / `${m.key}` are a backward-compatible
-// later extension, so nothing here pre-builds them.)
+// `${…}` — the interpolation form for every NAME, SELECTOR, and STRING position.
+// Its body follows the one rule `[…]` already follows everywhere else in the
+// language, so this is not new vocabulary:
 //
-// This is the spelling `$[…]` cannot provide. `$[…]` is a LOOKUP whose receiver
-// is the ambient scope, exactly as `$m[…]`'s is an explicit one — so `$[$foo]`
-// already means "the variable NAMED BY `$foo`", a double indirection, and there
-// was no way left to say "just splice `$foo` here". Bare interpolation is
-// impossible because `-` is an identifier byte, so `--$name-color` has no
-// unambiguous name boundary.
-const jessDollarBraceStructure = noTrivia(sequence(literal('${'), jessDollarName, literal('}')));
+//   `${foo}`      a bare NAME — the VARIABLE `$foo`. Less-style, and the default.
+//   `${[foo]}`    bracketed — a LOOKUP, which in a name position is the PROPERTY
+//                 `foo` declared in scope.
+//
+// BARE-vs-BRACKETED is what carries the namespace, exactly as `[…]` does
+// everywhere else in the language. Quoting carries nothing: `[foo]` and
+// `["foo"]` are the same plain string (ledger P14), so quotes appear only when
+// the string is not a valid identifier — `${["foo bar"]}`.
+//
+// The bare form is the default because an interpolation position is a splice
+// point, not a place to compute; the bracketed form is the explicit opt-in for
+// the cases a bare name cannot reach. `${[$m[key]]}` is three bracket levels and
+// is deliberately left that way — the spelling is committed to, rather than
+// sugared around.
+//
+// Bare interpolation (no braces) is impossible because `-` is an identifier byte,
+// so `--$name-color` has no unambiguous name boundary.
+//
+// The `${[` / `]}` openers are ONE literal each so that the bracketed arms carry
+// the same child layout as `jessDollarInterpStructure` and share its reducer —
+// two reducers for one body grammar would drift.
+const jessDollarBraceStructure = noTrivia(choice(
+  sequence(literal('${['), literal('$'), jessDollarName, literal(']}')),
+  sequence(literal('${['), jessDollarName, literal(']}')),
+  sequence(literal('${['), literal('\''), regex(/(?:[^'\\]|\\[\s\S])*/), literal('\''), literal(']}')),
+  sequence(literal('${['), literal('"'), regex(/(?:[^"\\]|\\[\s\S])*/), literal('"'), literal(']}')),
+  sequence(literal('${'), jessDollarName, literal('}'))
+));
 const jessDollarInterpStructure = noTrivia(choice(
   sequence(literal('$['), literal('$'), jessDollarName, literal(']')),
   sequence(literal('$['), jessDollarName, literal(']')),
@@ -1145,24 +1198,22 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessDollarBrace = node<Interpolation>(
     'DirectJessDollarBrace',
     jessDollarBraceStructure,
-    (children, _fields, span) => {
-      const ref = variableReference(requireToken(children[1]).value, 'live');
-      if (span) {
-        withSourceSpan(ref, span);
-      }
-      return interpolation([{ ref, unquote: true }]);
-    }
+    (children, _fields, span) => dollarBraceInterpolation(children, span)
   );
   const DirectJessDollarInterp = node<Interpolation>(
     'DirectJessDollarInterp',
     jessDollarInterpStructure,
     (children, _fields, span) => interpolationFromChildren(children, span)
   );
-  // The interpolation set an authored NAME, SELECTOR, or STRING position admits.
-  // `${…}` and `$[…]` are disjoint on the character after `$`, so the order here
-  // is behaviour-neutral. Value positions deliberately do NOT take this set:
-  // there, `$name` already IS the value and `$(…)` is the expression form.
-  const directJessNameInterp = choice(g.DirectJessDollarBrace, g.DirectJessDollarInterp);
+  // The expression-context spelling of `${…}`, for the quoted-string family that
+  // reduces to an `ExpressionFact` rather than a bare `Interpolation`.
+  const DirectJessExpressionDollarBrace = node<ExpressionFact>(
+    'DirectJessExpressionDollarBrace',
+    jessDollarBraceStructure,
+    (children, _fields, span) => {
+      return { value: dollarBraceInterpolation(children, span), src: tokenSource(children) };
+    }
+  );
   const DirectJessExpressionDollarInterp = node<ExpressionFact>(
     'DirectJessExpressionDollarInterp',
     jessDollarInterpStructure,
@@ -1388,10 +1439,10 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       // escape drops the quotes, so the value is exactly the Interpolation of
       // its content parts with no quote literals around them. Only the static
       // arm needs the separate `Quoted` escaped fact.
-      noTrivia(sequence(literal('~'), literal('"'), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
-      noTrivia(sequence(literal('~'), literal('\''), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\''))),
-      noTrivia(sequence(literal('"'), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(directJessNameInterp, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\'')))
+      noTrivia(sequence(literal('~'), literal('"'), many(choice(g.DirectJessDollarBrace, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('~'), literal('\''), many(choice(g.DirectJessDollarBrace, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\''))),
+      noTrivia(sequence(literal('"'), many(choice(g.DirectJessDollarBrace, directJessQuotedExpression, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.DirectJessDollarBrace, directJessQuotedExpression, interpolatedSingleQuotedText)), literal('\'')))
     ),
     (children) => {
       if (requireToken(children[0]).value !== '~') {
@@ -1518,8 +1569,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       directJessEscapedStaticQuoted,
       directJessPlainDoubleQuoted,
       directJessPlainSingleQuoted,
-      noTrivia(sequence(literal('"'), many(choice(g.DirectJessExpressionDollarInterp, directJessQuotedExpressionInterpolation, interpolatedDoubleQuotedText)), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.DirectJessExpressionDollarInterp, directJessQuotedExpressionInterpolation, interpolatedSingleQuotedText)), literal('\'')))
+      noTrivia(sequence(literal('"'), many(choice(g.DirectJessExpressionDollarBrace, directJessQuotedExpressionInterpolation, interpolatedDoubleQuotedText)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.DirectJessExpressionDollarBrace, directJessQuotedExpressionInterpolation, interpolatedSingleQuotedText)), literal('\'')))
     ),
     (children) => {
       if (requireToken(children[0]).value !== '~') {
@@ -1554,8 +1605,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     'DirectJessUrlInterpolatedValue',
     noTrivia(sequence(
       optional(jessUrlInterpolatedText),
-      choice(directJessNameInterp, g.DirectJessExpression),
-      many(choice(jessUrlInterpolatedText, directJessNameInterp, g.DirectJessExpression))
+      choice(g.DirectJessDollarBrace, g.DirectJessExpression),
+      many(choice(jessUrlInterpolatedText, g.DirectJessDollarBrace, g.DirectJessExpression))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -1624,8 +1675,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       directInterpSimpleAhead,
       optional(regex(/[.#]/)),
       many(jessSelectorTextRun),
-      directJessNameInterp,
-      many(choice(directJessNameInterp, jessSelectorTextRun))
+      g.DirectJessDollarBrace,
+      many(choice(g.DirectJessDollarBrace, jessSelectorTextRun))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -1671,8 +1722,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       directInterpParentAhead,
       literal('&'),
       many(jessSelectorTextRun),
-      directJessNameInterp,
-      many(choice(directJessNameInterp, jessSelectorTextRun))
+      g.DirectJessDollarBrace,
+      many(choice(g.DirectJessDollarBrace, jessSelectorTextRun))
     )),
     children => interpolatedSimpleSelector(templateInterpolationFromChildren(children.filter(child => !isToken(child) || !child.value.includes('$'))))
   );
@@ -2401,18 +2452,14 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       return values.length === 0 ? null : values.length === 1 ? values[0]! : list(values, ',');
     }
   );
-  // A lone `$(name)` is the documented dynamic media prelude. It lowers
-  // directly to the existing unquoted interpolation/value form; it does not
-  // borrow the general expression grammar, whose bare identifier semantics are
-  // deliberately different from this at-rule lookup spelling.
-  const DirectJessMediaVariableExpression = node<Interpolation>(
-    'DirectJessMediaVariableExpression',
-    sequence(literal('$('), jessDollarName, literal(')')),
-    children => interpolation([{ ref: variableReference(requireToken(children[1]).value, 'live'), unquote: true }])
-  );
+  // An at-rule prelude is an IDENTIFIER position, so its dynamic form is the
+  // same `${…}` every other name position takes — no prelude-local spelling.
+  // `$(…)` is a value-position expression and is deliberately not admitted here:
+  // its bare-identifier semantics differ from a name splice, which is exactly
+  // the confusion one form per position removes.
   const DirectJessMediaPrelude = node<ValueNode | null>(
     'DirectJessMediaPrelude',
-    choice(g.DirectJessMediaVariableExpression, g.DirectJessStaticAtPrelude),
+    choice(g.DirectJessDollarBrace, g.DirectJessStaticAtPrelude),
     children => children[0] === null ? null : requireValueNode(children[0])
   );
   // Statement headers remain fully static. The documented deferred media form
@@ -2498,7 +2545,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
   const DirectJessGeneralTemplate = node<Interpolation>(
     'DirectJessGeneralTemplate',
     many(choice(
-      directJessNameInterp,
+      g.DirectJessDollarBrace,
       g.DirectJessExpression,
       g.DirectJessGeneralTemplateParen,
       g.DirectJessGeneralTemplateSquare,
@@ -2804,8 +2851,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     noTrivia(sequence(
       directInterpPropertyAhead,
       optional(g.CssAstSyntaxInterpolatedPropertyStart),
-      directJessNameInterp,
-      many(choice(g.CssAstSyntaxInterpolatedPropertyTail, directJessNameInterp))
+      g.DirectJessDollarBrace,
+      many(choice(g.CssAstSyntaxInterpolatedPropertyTail, g.DirectJessDollarBrace))
     )),
     (children) => {
       const parts: Interpolation['parts'] = [];
@@ -2837,8 +2884,8 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
       noTrivia(sequence(
         literal('--'),
         many(jessCustomPropertyChunk),
-        directJessNameInterp,
-        many(choice(jessCustomPropertyChunk, directJessNameInterp))
+        g.DirectJessDollarBrace,
+        many(choice(jessCustomPropertyChunk, g.DirectJessDollarBrace))
       )),
       g.CssAstSyntaxCustomProperty
     ),
@@ -2873,7 +2920,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     children => children.slice()
   );
   const DirectJessCustomInnerPart: Combinator<unknown> = choice(
-    directJessNameInterp,
+    g.DirectJessDollarBrace,
     g.CssAstSyntaxCustomInnerContent,
     blockComment,
     g.CssAstSyntaxCustomSingleQuoted,
@@ -2883,7 +2930,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     g.DirectJessCustomCurly
   );
   const DirectJessCustomPart: Combinator<unknown> = choice(
-    directJessNameInterp,
+    g.DirectJessDollarBrace,
     g.CssAstSyntaxCustomOuterContent,
     blockComment,
     g.CssAstSyntaxCustomSingleQuoted,
@@ -3433,6 +3480,7 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessReferenceCallTail,
     DirectJessDollarValue,
     DirectJessDollarBrace,
+    DirectJessExpressionDollarBrace,
     DirectJessDollarInterp,
     DirectJessExpressionDollarInterp,
     DirectJessExpression,
@@ -3466,7 +3514,6 @@ export const jessAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition
     DirectJessStaticAtDashedIdent,
     DirectJessStaticAtPreludeTerm,
     DirectJessStaticAtPrelude,
-    DirectJessMediaVariableExpression,
     DirectJessMediaPrelude,
     DirectJessStaticAtRuleHeader,
     DirectJessAtRuleHeader,

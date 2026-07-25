@@ -42,7 +42,7 @@ mapping tables. Migration is manual today — there is no automated converter.
 | Sass | Jess | Notes |
 | --- | --- | --- |
 | `$color: #06c;` | `$color: #06c;` | Same declaration spelling. Native Jess also permits `$$color:`; either declaration creates/updates both bindings. Reads use `$color` for live/current or `$$color` for scoped/final lookup. |
-| `#{$x}` | `${…}` in name/selector/string position; `$(…)` / `$[…]` in value position | Interpolation vs expression vs lookup. |
+| `#{$x}` | `${…}` in identifier/string position; `$(…)` / `$[…]` in value position | One form per position — interpolation vs expression vs lookup. |
 | `@mixin` / `@include` | `box() {}` / `$ > box();` | See [Migrating to Jess](/docs/guides/migrating-to-jess). |
 | `@use "./x"` | `@-compose "./x"` | Namespaced module import, isolated scope. |
 | `@forward "./x"` | `@-export "./x"` | Forwarding (no `show`/`hide` filtering). |

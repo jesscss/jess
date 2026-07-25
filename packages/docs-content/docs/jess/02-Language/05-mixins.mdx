@@ -524,7 +524,7 @@ You can also assign mixin callbacks to the mixin call.
 ```less
 media(...$types) {
   $for ($type of $types) {
-    @media $(type) {
+    @media ${type} {
       $content($type);
     }
   }

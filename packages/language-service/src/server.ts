@@ -60,7 +60,7 @@ connection.onInitialize((_params: InitializeParams): InitializeResult => {
         // Sigils/openers that begin a completion context: variables (@ $ -),
         // selectors/mixins (. #), pseudo (:), scss placeholder (%), jess
         // placeholder (\\), value/function/var()/url() ((), path segments (/),
-        // scss interpolation (#{) and jess interpolation ($[).
+        // scss interpolation (#{) and jess interpolation (${ / $[).
         triggerCharacters: ['@', '-', '$', ':', '{', ';', ' ', '.', '#', '%', '\\', '(', '/', '[']
       },
       hoverProvider: true,

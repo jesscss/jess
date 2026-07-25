@@ -7,22 +7,28 @@ origin: jess
 Jess has three `$` sigil forms. Which one you reach for is decided by the
 *position* you are writing in, not by what the value turns out to be:
 
-| Form | Role | Where it goes | What goes inside |
-| --- | --- | --- | --- |
-| `${…}` | **interpolation** | name, selector, and string positions | a variable **name** |
-| `$[…]` | **lookup** | value positions | a value expression — the key |
-| `$(…)` | **expression** / grouping | value positions | an expression |
+**One form per position.** Each form is allowed in exactly one kind of place,
+and rejected in the others — so a spelling always means the same thing:
 
-`${name}` means *the value of `$name`*, spliced in as text. Its body is a plain
-name on purpose, so an interpolation position stays a splice point rather than
-turning into a place to compute. (`${m[key]}` and `${m.key}` are a planned
-extension; today the body is a name.)
+| Position | Use | Rejected there |
+| --- | --- | --- |
+| **interpolated identifiers** — selectors, property names, custom-property names, `&`-suffixes, mixin names, at-rule preludes | `${…}` | `$[…]`, `$(…)` |
+| **quoted strings**, `~"…"`, `url()` bodies | `${…}`, `$(…)` | `$[…]` |
+| **value positions** | `$[…]` (lookup), `$(…)` (expression) | `${…}` |
 
-`$[…]` is a **lookup**, and lookups always read a key from a receiver. `$m[key]`
-reads `key` from `$m`; `$[key]` reads it from the surrounding scope, which is why
-`$[$foo]` means "the variable *named by* `$foo`" — a double indirection, not a
-plain splice. That is exactly why `${…}` exists: without it there was no way to
-say "just put `$foo` here".
+`${name}` means *the value of `$name`*, spliced in as text.
+
+Inside `${…}`, **bare-versus-bracketed** picks what you are reading — the same
+rule `[…]` follows everywhere else in the language:
+
+| Spelling | Reads |
+| --- | --- |
+| `${tone}` | the **variable** `$tone` |
+| `${[tone]}` | a **lookup** — in a name position, the **property** `tone` in scope |
+| `${["a b"]}` | the same lookup; quotes only because `a b` is not a valid identifier |
+| `${[$k]}` | a lookup whose key comes from `$k` |
+
+Quoting never carries meaning: `[foo]` and `["foo"]` are the same key.
 
 Bare interpolation is not an option: `-` is an identifier character, so in
 `--$name-color` there is no unambiguous place for the name to end. The braces
@@ -36,9 +42,10 @@ In selector contexts, an interpolated value may still resolve to a non-identifie
 
 ## Quick guide: which form to use?
 
-- **Selector/property/mixin names**: use `${ident}`
+- **Selector / property / mixin names, at-rule preludes**: use `${ident}`
 - **Selector-valued variables**: use `*[...]`
 - **Strings and custom property values**: use `${ident}`
+- **Reading a property out of scope, in a name**: use `${[ident]}`
 - **Normal values**: use direct references like `$var`; use `$(...)` when you need expression behavior
 - **Reading a key out of a collection**: use `$m[key]` — see [Namespaces and maps](./10-namespaces-and-maps.mdx)
 
@@ -114,7 +121,7 @@ body {
 
 :::info
 
-Note: in normal property values, you can usually just use `$theme`. A custom property value is uninterpreted text, so a variable there has to be spliced explicitly with `${theme}`. `$['border-color']` is different again: it is a *lookup*, reading another declaration value out of scope — not a DOM-level custom property.
+Note: in normal property values, you can usually just use `$theme`. A custom property value is uninterpreted text, so a variable there has to be spliced explicitly with `${theme}`. `$['border-color']` is different again: it is a value-position *lookup*, reading another declaration value out of scope — not a DOM-level custom property. In a name position the same read is spelled `${[border-color]}`.
 
 :::
 
@@ -143,26 +150,6 @@ $family: "modern";
 →
 ```css
 @import url("fonts/modern.css");
-```
-
-### 6. Plain CSS function names
-
-A function name sits inside a *value*, so it is reached with the lookup form
-rather than `${…}`:
-
-```scss
-$fn: "min";
-$s1: 30vw;
-$s2: 50vw;
-.container {
-  width: $[fn]( $s1, $s2 );
-}
-```
-→
-```css
-.container {
-  width: min(30vw, 50vw);
-}
 ```
 
 ### 7. Less and SCSS source conversion
@@ -201,7 +188,7 @@ $color-name: "red";
 ```
 
 ## TL;DR
-1. Use `${name}` for a dynamic selector, property, or mixin-name segment; use `$(…)` for a full expression in value position; use `$m[key]` (or `$[key]`) to read a key out of a collection.
+1. Use `${name}` for a dynamic selector, property, mixin-name, or at-rule-prelude segment; use `$(…)` for a full expression in value position; use `$m[key]` (or `$[key]`) to read a key out of a collection.
 2. Use `*[]` when the variable itself should hold a selector or selector list.
 3. Don't wrap variables for no reason; use direct variables unless you need interpolation.
 4. Never interpolate numbers if you want to do math with them.

@@ -9,8 +9,8 @@ $collection: {
   sibling: declaration;
 };
 
-.$[value] {}
-.class$[value] {}
+.${value} {}
+.class${value} {}
 
 $one: 1;
 $two: 2;
@@ -27,7 +27,7 @@ $if (($one = 1) or ($two = 3)) { .or-branch {} }
   three: $(
     $one
   ) four;
-  four: url("$[value]");
+  four: url("${value}");
   width: $(20px);
   width: $(1px + 1px);
 
@@ -39,11 +39,11 @@ $if (($one = 1) or ($two = 3)) { .or-branch {} }
 
 // Braced references
 .braced {
-  // $[myVar] — braced variable reference
+  // ${myVar} — braced variable reference
   var: $collection[foo];
-  // $['prop'] — braced property reference (quoted key)
+  // ${['prop']} — braced property reference (quoted key)
   prop: $collection['sibling'];
-  // $[$var] — variable member name lookup
+  // ${[$var]} — variable member name lookup
   dynamic: $collection[$value];
 }
 

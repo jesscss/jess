@@ -52,7 +52,7 @@ describe('Jess parser plugin render-through', () => {
 
   it('renders documented $for bindings and exclusive ranges through the Jess plugin', async () => {
     const css = await new Compiler().renderString(
-      '$items: red, blue; $for ($item, $key, $counter of $items) { .item-$[key]-$[counter] { color: $item; } } $for ($i of 1 to <3) { .range-$[i] { order: $i; } }',
+      '$items: red, blue; $for ($item, $key, $counter of $items) { .item-${key}-${counter} { color: $item; } } $for ($i of 1 to <3) { .range-${i} { order: $i; } }',
       { filePath: 'entry.jess', extension: '.jess' },
     );
 
@@ -159,8 +159,8 @@ describe('Jess parser plugin render-through', () => {
       // A name concatenation DISTRIBUTES per parent — it never wraps in `:is()`.
       expect(await flat('.a, .b { &(-1) { color: red; } }')).toBe('.a-1,\n.b-1 {\n  color: red;\n}\n');
       expect(await flat('.a, .b { &__el { color: red; } }')).toBe('.a__el,\n.b__el {\n  color: red;\n}\n');
-      // A glued `$[…]` template is one atom, so it distributes too.
-      expect(await flat('$t: primary; .a, .b { &-$[t] { color: red; } }'))
+      // A glued `${…}` template is one atom, so it distributes too.
+      expect(await flat('$t: primary; .a, .b { &-${t} { color: red; } }'))
         .toBe('.a-primary,\n.b-primary {\n  color: red;\n}\n');
     });
 
@@ -185,8 +185,8 @@ describe('Jess parser plugin render-through', () => {
       // The `&(X)` spelling normalizes to the fused form it is sugar for.
       expect(await nested('.button { &(-1) { color: red; } }'))
         .toBe('.button {\n  &-1 {\n    color: red;\n  }\n}\n');
-      // A `$[…]` template still evaluates; only the parent reference is deferred.
-      expect(await nested('$t: primary; .a { &-$[t] { color: red; } }'))
+      // A `${…}` template still evaluates; only the parent reference is deferred.
+      expect(await nested('$t: primary; .a { &-${t} { color: red; } }'))
         .toBe('.a {\n  &-primary {\n    color: red;\n  }\n}\n');
     });
 
@@ -223,7 +223,7 @@ describe('Jess parser plugin render-through', () => {
 
   it('reports unresolved Jess interpolation through the public structured diagnostic route', async () => {
     const filePath = '/proj/missing-path.jess';
-    const source = '@import url($[path]); $path: "images/icon.svg";';
+    const source = '@import url(${path}); $path: "images/icon.svg";';
     const result = await new Compiler().renderToResult(
       { source, filePath, extension: '.jess' },
       { suppressWarnings: true },
@@ -237,6 +237,6 @@ describe('Jess parser plugin render-through', () => {
       line: 1,
       column: 13,
     });
-    expect(result.errors[0]?.lines?.[1]).toContain('$[path]');
+    expect(result.errors[0]?.lines?.[1]).toContain('${path}');
   });
 });

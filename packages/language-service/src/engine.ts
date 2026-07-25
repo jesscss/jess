@@ -1153,14 +1153,17 @@ export function createEngine(): JessLanguageServiceEngine {
       }
 
       // 0c) Interpolation-context variable completion: inside Less `@{…}` or Jess
-      //     `$[…]` the sigil is the wrapper, so offer BARE variable names. (SCSS
-      //     `#{$x}` already flows through the `$`-prefixed variable path below.)
+      //     `${…}` / `$[…]` the sigil is the wrapper, so offer BARE variable
+      //     names. (SCSS `#{$x}` already flows through the `$`-prefixed variable
+      //     path below.) Jess spells interpolation `${…}` in name, selector, and
+      //     string positions and keeps `$[…]` as the value-position lookup, so
+      //     both openers are completion contexts.
       {
         const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
         const lineBefore = text.slice(lineStart, offset);
         const inInterp =
           (tracked.lang === 'less' && /@\{[-\w]*$/.test(lineBefore))
-          || (tracked.lang === 'jess' && /\$\[[-\w]*$/.test(lineBefore));
+          || (tracked.lang === 'jess' && /\$[[{][-\w]*$/.test(lineBefore));
         if (inInterp && cstTree) {
           for (const name of cstVariableNames(cstTree, document)) {
             if (prefix && !name.toLowerCase().startsWith(prefix)) {

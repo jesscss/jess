@@ -208,7 +208,7 @@ These parse in css/less/scss and fail **only** in `.jess`:
 
 | Construct | The question |
 | --- | --- |
-| `@media $[m]` | The value form `$(m)` works. Whether the lookup form `$[…]` is also valid in an at-rule prelude is unrecorded. The settled sigil model is three forms by position — `${…}` interpolation in name/selector/string, `$[…]` lookup and `$(…)` expression in value position — which points at `${m}` as the prelude spelling. |
+| ~~`@media $[m]`~~ | RESOLVED (owner 2026-07-24). An at-rule prelude is an IDENTIFIER position, so it takes `${…}` and nothing else: `@media ${m}`. Both `$[m]` and the former `$(m)` are rejected there. |
 | `$a: 1px !important;` | Less accepts it and carries the flag through substitution. Whether Jess intends to keep that behaviour is unrecorded. |
 
 ## What it would take to close the gap

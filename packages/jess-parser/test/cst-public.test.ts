@@ -33,11 +33,11 @@ describe('@jesscss/jess-parser/cst', () => {
   });
 
   it('collapses transparent CST wrappers without dropping leaves', () => {
-    // A bare `$[side]` selector is a single-child `InterpolatedSelector` — the
+    // A bare `${side}` selector is a single-child `InterpolatedSelector` — the
     // canonical transparent wrapper that `collapse` folds to its child. (A `$foo`
     // `Reference` is NOT a collapse witness: it carries the `$` sigil and the name
     // as two distinct leaves, so it's a genuine container, not a passthrough.)
-    const src = '$color: red; $[side] { color: $color; }';
+    const src = '$color: red; ${side} { color: $color; }';
     const expanded = parseJessCst(src);
     const collapsed = parseJessCst(src, 'Stylesheet', { collapse: true });
 
@@ -50,47 +50,64 @@ describe('@jesscss/jess-parser/cst', () => {
     expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
   });
 
-  it('uses structural DollarInterp nodes in selector interpolation', () => {
-    const result = parseJessCst('.widget-$[side]-$[theme] { color: red; }');
-
-    expect(result.errors).toHaveLength(0);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('InterpolatedSelector')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DollarInterp')).toBe(2);
-  });
-
-  // The editor route must recognize `${…}` too, or valid source that compiles
-  // would light up red in the language service. Both spellings are arms of the
-  // SAME `DollarInterp` node, so every existing CST consumer already handles it.
-  it('uses the same structural DollarInterp node for the ${…} interpolation form', () => {
+  it('uses structural interpolation nodes in selector interpolation', () => {
     const result = parseJessCst('.widget-${side}-${theme} { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(stats(result.tree).grammarTypes.get('InterpolatedSelector')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('DollarInterp')).toBe(2);
+    expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
+  });
+
+  // The editor route must recognize `${…}` too, or valid source that compiles
+  // would light up red in the language service. `DollarBrace` and `DollarInterp`
+  // are SEPARATE nodes because they occupy disjoint positions — the editor has to
+  // reject what the compiler rejects, not merely accept what it accepts.
+  it('uses structural DollarBrace nodes for the ${…} interpolation form', () => {
+    const result = parseJessCst('.widget-${side}-${[theme]} { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(stats(result.tree).grammarTypes.get('InterpolatedSelector')).toBe(1);
+    expect(stats(result.tree).grammarTypes.get('DollarBrace')).toBe(2);
+  });
+
+  // The position split, in the route the editor actually uses.
+  it('rejects each $ form outside the position it belongs to', () => {
+    const bad = (src: string) => {
+      const r = parseJessCst(src);
+      return r.errors.length > 0 || r.unconsumedFrom !== null;
+    };
+
+    expect(bad('.card { color: ${tone}; }'), 'value ${…}').toBe(true);
+    expect(bad('.card-$[side] { a: b; }'), 'identifier $[…]').toBe(true);
+    expect(bad('.card { content: "f-$[family]"; }'), 'string $[…]').toBe(true);
+    // …and the spellings that DO belong stay accepted.
+    expect(bad('.card { color: $[tone]; }'), 'value $[…]').toBe(false);
+    expect(bad('.card-${side} { a: b; }'), 'identifier ${…}').toBe(false);
+    expect(bad('.card { content: "f-${family}"; }'), 'string ${…}').toBe(false);
   });
 
   // A `${…}` inside a quoted string has to break the string into structured
-  // parts, exactly as `$[…]` does — otherwise the fast flat-string path swallows
-  // it as literal bytes and the editor shows no interpolation at all.
+  // parts — otherwise the fast flat-string path swallows it as literal bytes and
+  // the editor shows no interpolation at all.
   it('structures ${…} inside a quoted string without disturbing plain strings', () => {
     const interpolated = parseJessCst('.a { content: "font-${family}.woff"; }');
 
     expect(interpolated.errors).toHaveLength(0);
     expect(interpolated.unconsumedFrom).toBeNull();
-    expect(stats(interpolated.tree).grammarTypes.get('DollarInterp')).toBe(1);
+    expect(stats(interpolated.tree).grammarTypes.get('DollarBrace')).toBe(1);
 
     // A lone `$` that opens nothing stays literal text inside the flat string.
     const plain = parseJessCst('.a { content: "costs $5 and $x too"; }');
 
     expect(plain.errors).toHaveLength(0);
     expect(plain.unconsumedFrom).toBeNull();
-    expect(stats(plain.tree).grammarTypes.get('DollarInterp')).toBeUndefined();
+    expect(stats(plain.tree).grammarTypes.get('DollarBrace')).toBeUndefined();
   });
 
   it('uses structural DollarInterp nodes in ordinary and @import url targets', () => {
-    const result = parseJessCst('.asset { image: url(images/$[file].svg); } @import url($[path]) print;');
+    const result = parseJessCst('.asset { image: url(images/${file}.svg); } @import url(${path}) print;');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -109,7 +126,7 @@ describe('@jesscss/jess-parser/cst', () => {
   });
 
   it('rejects malformed selector interpolation instead of swallowing it as a token', () => {
-    const result = parseJessCst('.widget-$[side { color: red; }');
+    const result = parseJessCst('.widget-${side { color: red; }');
 
     expect(result.errors.length + Number(result.unconsumedFrom !== null)).toBeGreaterThan(0);
   });

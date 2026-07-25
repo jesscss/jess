@@ -232,7 +232,9 @@ FOLLOW-UPS (out of the adjudicated scope; not yet built):
 - Function-call named arguments and the `~(…)` list-wrapper remain deferred;
   named mixin arguments are implemented as above. Rest params `...$x` and
   `$content()` callbacks still defer their own AST/evaluator models.
-- `$theme["$[foo]"]` dynamic-property key (rides on the capture machinery).
+- `$theme["${foo}"]` dynamic-property key (rides on the capture machinery).
+  Re-spelled by the position matrix — the inner splice sits in a STRING, so it
+  is `${foo}`, not `$[foo]`. Still deferred; only its spelling is settled.
 
 ---
 

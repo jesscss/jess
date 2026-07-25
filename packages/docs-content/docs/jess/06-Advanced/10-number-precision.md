@@ -104,8 +104,9 @@ a value is emitted, never *how* it is spelled.
 
 :::note Where interpolation splices
 
-Interpolation is written `${name}` in string, selector, and property-name
-position (`$[…]` is a lookup and `$( … )` an expression, both value-position).
+Interpolation is written `${name}` in string, selector, property-name, and
+at-rule-prelude position (`$[…]` is a lookup and `$( … )` an expression, both
+value-position; `$[…]` is rejected in a string).
 A `${…}` splice is grammar structure everywhere it is accepted, including
 inside a custom-property name and value (`--raw: ${n}`, `--${name}: 1`), inside
 a plain quoted string (`content: "fonts/${family}.css"`), and inside an escaped

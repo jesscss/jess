@@ -63,7 +63,7 @@ describe('Jess custom properties', () => {
   });
 
   it('accepts an interpolated custom-property name', () => {
-    expect(parse('$p: q; a { --$[p]x: red; }')).toMatchObject({
+    expect(parse('$p: q; a { --${p}x: red; }')).toMatchObject({
       children: [
         { type: 'VariableDeclaration' },
         { type: 'Rule', body: [{ type: 'Declaration', name: { type: 'Interpolation' } }] }
@@ -72,7 +72,7 @@ describe('Jess custom properties', () => {
   });
 
   it('accepts an interpolation as the whole custom-property tail', () => {
-    expect(() => parse('$p: q; a { --$[p]: red; }')).not.toThrow();
+    expect(() => parse('$p: q; a { --${p}: red; }')).not.toThrow();
   });
 
   it('keeps a custom-property value verbatim rather than evaluating it', () => {
@@ -84,8 +84,8 @@ describe('Jess custom properties', () => {
     });
   });
 
-  it('keeps a `$[…]` segment inside a custom-property value structural', () => {
-    expect(parse('$v: red; a { --x: 1px $[v]; }')).toMatchObject({
+  it('keeps a `${…}` segment inside a custom-property value structural', () => {
+    expect(parse('$v: red; a { --x: 1px ${v}; }')).toMatchObject({
       children: [
         { type: 'VariableDeclaration' },
         { type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Interpolation' } }] }

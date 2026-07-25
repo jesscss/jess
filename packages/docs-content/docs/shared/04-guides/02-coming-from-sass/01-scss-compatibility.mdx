@@ -142,7 +142,8 @@ Jess distinguishes:
 
 - a variable reference: `$var`
 - an expression: `$(...)`
-- an interpolation: `${ident}` (name, selector, and string positions)
+- an interpolation: `${ident}` (identifier and string positions; `${[ident]}` to
+  read a property rather than a variable)
 - a lookup: `$[key]` / `$m[key]` (value position)
 
 ### `#{$...}` in selector/property names

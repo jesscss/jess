@@ -72,19 +72,26 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `$[foo]` (bare → variable) / `$['foo']` (quoted → property) is a LOOKUP whose
   // receiver is the ambient scope; it remains accepted in the same positions.
   //
-  // BOTH spellings are arms of the SAME `DollarInterp` node on purpose: every CST
-  // consumer (the language service) already handles that node, so `${…}` needs no
-  // downstream change and nothing sees two forms.
+  // They are SEPARATE nodes because they occupy DISJOINT positions, and the CST
+  // must reject the same spellings the compiler rejects — an editor that accepts
+  // what the build refuses is worse than one that stays quiet:
   //
-  // This CST is deliberately looser than the direct-AST grammar, which admits
-  // `${…}` in name/selector/string positions ONLY. Here it also reaches value
-  // position, because `value` takes the whole node. The editor is therefore
-  // permissive where the compiler is strict, which is the safe direction: a
-  // rejected value-position `${…}` still reports a positioned compile error.
+  //   identifier (selector / property name / mixin name / prelude) → `${…}` only
+  //   quoted string / url body                                     → `${…}` or `$(…)`
+  //   value                                                        → `$[…]` or `$(…)`
+  //
+  // The language service dispatches on `grammarType` through allow-lists that
+  // never named `DollarInterp`, so the added `DollarBrace` type needs no
+  // downstream change.
   const interpKey = regex(/'(?:[^'\\]|\\[\s\S])*'|"(?:[^"\\]|\\[\s\S])*"|-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
   const interpName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const DollarInterp = node(choice(
-    noTrivia(sequence(literal('$'), literal('['), interpKey, expect(literal(']'), ']'))),
+  const DollarInterp = node(
+    noTrivia(sequence(literal('$'), literal('['), interpKey, expect(literal(']'), ']'))));
+  // `${…}` takes a bare NAME by default, or the bracketed `${[…]}` LOOKUP whose
+  // body is exactly `$[…]`'s — `${["tone"]}` is the property reference. The
+  // bracketed arm leads so `${[` is not first claimed by the bare-name arm.
+  const DollarBrace = node(choice(
+    noTrivia(sequence(literal('${['), interpKey, expect(literal(']}'), ']}'))),
     noTrivia(sequence(literal('$'), literal('{'), interpName, expect(literal('}'), '}')))
   ));
 
@@ -96,7 +103,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n]))*|\d+(?:\.\d+)?%|\*)/);
   const selTextRun = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
   const InterpolatedSelector = node(
-    noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), g.DollarInterp, many(choice(g.DollarInterp, selTextRun)))));
+    noTrivia(sequence(optional(regex(/[.#]/)), many(selTextRun), g.DollarBrace, many(choice(g.DollarBrace, selTextRun)))));
   // ── Parent selector ─────────────────────────────────────────────────────────
   // `&` is the parent reference; a glued identifier (`&__el`) is a second
   // `basicSel` part of the same compound, so the concatenation needs no token of
@@ -190,11 +197,11 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   const dqFlat = regex(/"(?:[^"\\$]|\\[\s\S]|\$(?![\[({]))*"/);
   const sqFlat = regex(/'(?:[^'\\$]|\\[\s\S]|\$(?![\[({]))*'/);
   // The three `.jess` `$` forms, chosen by position:
-  //   `${name}` = INTERPOLATION (DollarInterp; body is a name)
-  //   `$[key]`  = LOOKUP against the ambient scope (DollarInterp; body is the key)
+  //   `${name}` = INTERPOLATION (DollarBrace; body is a name) — allowed here
+  //   `$[key]`  = LOOKUP (DollarInterp) — a VALUE form, NOT allowed in a string
   //   `$(expr)` = EXPRESSION (the `$(…)` Expression form)
   // Interp tried FIRST in the arm so an opener wins over a contents chunk.
-  const strInterpJess = choice(g.DollarInterp, g.Expression);
+  const strInterpJess = choice(g.DollarBrace, g.Expression);
   // `noTrivia` on each arm: string spaces are literal content, NOT trivia — the
   // ambient `rw` must not skip them between the quote / contents / interp elements.
   // A referenced interp node (`g.Expression`) re-establishes the ambient trivia
@@ -573,7 +580,7 @@ export const jessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
 
   return {
     rw,
-    Reference, DollarInterp, VarDeclaration, value,
+    Reference, DollarInterp, DollarBrace, VarDeclaration, value,
     InterpolatedSelector, simpleSelector,
     Quoted,
     Expression, exprProduct, exprSum, exprCompare, JessKeyword,

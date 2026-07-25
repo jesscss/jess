@@ -204,9 +204,9 @@ Reserve `$` followed by anything **other than `=`**. The shapes in use today:
 | Shape | Used by |
 |---|---|
 | `$<ident>` | Sass variables; Jess variables (`$$name` = scoped lookup) |
-| `$(…)` | Jess value-position expression boundary |
-| `$[…]` | Jess accessor / lookup (`*[…]` = selector capture) |
-| `${…}` | Less interpolation (alongside `@{…}`); Jess interpolation in name, selector, and string positions |
+| `$(…)` | Jess value-position expression boundary (also allowed inside a string) |
+| `$[…]` | Jess value-position lookup (`*[…]` = selector capture) |
+| `${…}` | Less interpolation (alongside `@{…}`); Jess interpolation in identifier and string positions |
 | `$<ident>` block statements | Jess control flow — `$if`/`$else`, `$for`, `$extend`, `$apply` |
 
 Positions that must be covered — a value-only reservation is not sufficient,

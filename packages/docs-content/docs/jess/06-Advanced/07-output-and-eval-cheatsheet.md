@@ -122,9 +122,11 @@ optional. There are no cyclic variables — `$a: 1; $a: $a + 1;` yields `2`. See
 
 ## Jess-flavored specifics
 
-- **Three `$` forms**, chosen by position: `${name}` is interpolation (name,
-  selector, and string positions; its body is a name); `$[key]` is a lookup and
-  `$(...)` an expression, both in value position — see
+- **Three `$` forms, one per position**: `${…}` interpolates in identifier
+  positions (selectors, property names, at-rule preludes) and in strings;
+  `$[…]` (lookup) and `$(...)` (expression) are value-position forms, and
+  `$(...)` is also allowed in strings. Inside `${…}`, `${tone}` is the variable
+  and `${[tone]}` the lookup — see
   [Interpolation](../02-Language/08-interpolation.mdx).
 - **Variables:** `$name` is a live reference; `$$name` is the scoped/final
   lookup. `$!name` is retired. `$name := value` updates the live/current

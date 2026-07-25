@@ -1,7 +1,7 @@
 $list: 1, 2, 3;
 
 iterate($value, $key) {
-  .icon-$[value] {
+  .icon-${value} {
     width: $value;
     height: $key;
   }

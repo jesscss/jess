@@ -125,8 +125,8 @@ describe('.jess dialect parity (LS features on jess stylesheets)', () => {
     expect(labels).not.toContain('%button'); // jess is NOT the scss `%` sigil
   });
 
-  it('`$[…]` interpolation completes bare variable names', () => {
-    const labels = completeAt('$primary: red;\n.a-$[pri| ] { x: 1 }');
+  it('`${…}` interpolation completes bare variable names', () => {
+    const labels = completeAt('$primary: red;\n.a-${pri| } { x: 1 }');
     expect(labels).toContain('primary');
   });
 
