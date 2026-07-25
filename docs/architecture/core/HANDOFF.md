@@ -33,21 +33,77 @@
    (`docs/architecture/core/LESS-V5-CONTENT-PR-PLAN.md:18`), so it can never adjudicate a
    jess-vs-`lessc` question.
 
-## WORK IN FLIGHT (as of 2026-07-24, `e34bb24b3`) — do not duplicate
+## WORK IN FLIGHT (as of 2026-07-25, `bcb3107a1`) — do not duplicate
 
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
-Delete a row the moment it lands or is abandoned.
+Delete a row the moment it lands or is abandoned. Every row was re-checked against the
+tree or against `git merge-base --is-ancestor` on this pass.
+
+### Grammar remediation — the hot area
+
+Read [`../parser/GRAMMAR-REMEDIATION-PLAN.md`](../parser/GRAMMAR-REMEDIATION-PLAN.md) before
+touching any of the eight `*-parser/src/{,ast/}grammar.ts` files. See "Grammar work" below.
 
 | Lane | Where | State |
 | --- | --- | --- |
-| **parseman `0.34.0` adoption + showcase survey** | jess | Bump from the current `0.32.0` and regenerate every compiled artifact — the version-lock invariant is that artifacts never cross parseman versions. Then a per-parser plan to make the 4 grammars exemplary parseman usage. Gates: AST byte-identity on all four parsers, perf measured. |
-| ~~**Gates made reasonable**~~ | jess | **LANDED `c3db7e53e` + `e34bb24b3`** — see "Gate hygiene" below. |
-| ~~**fns per-dialect registry**~~ | jess | **LANDED** — `builtins/` and `builtinLessFns` deleted; registration derives from the composed dialect indexes (`less/index.ts` = `less/` + `shared/`, same for sass); per-dialect evaluators at module scope; exports map publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`, `./shared`, `./registry`, `./less/registry`, `./sass/registry`. Implements ledger C13. Specifier resolution for `#less` / `#sass/<module>` is NOT part of it — see "`#less` / `#sass` specifier resolution" below. |
-| **Numeric precision landing** | jess + less.js fixtures | Tolerance-trim, delete `emitValueInterp`, no-sci-notation guard, `ast/color.ts:118` alpha, integer fast path, `literal-tag.ts:104` fix, fixture graduation. Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md) — **nothing in it had landed as of `e34bb24b3`**. |
+| **Grammar review standard + `grammar-reviewer` agent** | branch `grammar-review-standard` | `d4bd4a7bb`, **not on `dev`**. Adds `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` (the 13-item per-`const` checklist) and `.cursor/agents/grammar-reviewer.md`. |
+| **Grammar ESLint rules** | branch `grammar-lint-rules` | `7c883f7f1`, **local and unpushed**. Adds `scripts/eslint-rules/grammar-rules.mjs` at **error** across all eight grammar files. Until it lands, no ESLint rule applies to them at all. |
+| **Grammar unification (8 files → 4)** | unassigned | **The plan document does not exist.** Placeholder path `docs/architecture/parser/GRAMMAR-UNIFICATION-PLAN.md`. Do not start migrating without it. |
+| **Per-rule remediation** | branches `less-grammar-cleanup`, `trace-dual-grammar` | Worklist and ordering rule in the remediation plan §2. `186f58be5` and `abe41f5bc` already landed the first two conversion classes on `less-parser`. |
+| **parseman `0.34.0` adoption + showcase survey** | branches `parseman-034-adoption`, `-035-`, `-036-` | Repo is pinned at `0.32.0` exactly. `0.34`/`0.35` **net-regress Less and will not be adopted**; `0.36.0` is the intended fix. Version-lock invariant: compiled artifacts never cross parseman versions, so a bump rebaselines every aggregate hash. |
+| **parseman duplication diagnostic, workload perf gate, release gate** | parseman repo | In flight upstream. None of the three exists in this repo. |
 | **parseman prefix-trie choice dispatch** | parseman repo | MEASURING FIRST; may conclude "don't build". |
+
+### `packages/fns` — sass porting
+
+The per-dialect restructure is **landed on `dev`** (`a74f7fb6f`, `9bef1fd1c`): `builtins/` and
+`builtinLessFns` are deleted, registration derives from the composed dialect indexes
+(`less/index.ts` = `less/` + `shared/`, same for `sass/`), per-dialect evaluators are built once
+at module scope (`packages/jess/src/index.ts:49-52`), and the exports map publishes `./less`,
+`./sass`, `./sass/{color,list,map,math,string}`, `./shared`, `./registry`, `./less/registry`,
+`./sass/registry`. Implements ledger C13. Specifier resolution for `#less` / `#sass/<module>`
+is NOT part of it — see "`#less` / `#sass` specifier resolution" below.
+
+| Lane | Where | State |
+| --- | --- | --- |
+| ~~**`sass:math`**~~ | jess | **LANDED `ce4e942c1`** — `unit`, `unitless`, `percentage`, `comparable`, `random`, `round`, plus `type-of` and Sass-owned `min`/`max`. Caveat recorded at `packages/fns/src/sass/math/min-max.ts:52-55`: that commit's sass-spec citations were unverified. |
+| **`sass:color`** | branch `fns-sass-color` (`d19e794fc`, pushed) | **NOT on `dev`.** 26 exports plus a sass-spec corpus runner (`packages/fns/src/sass/__tests__/sass-spec-corpus.ts`). On `dev` today only `red`/`green`/`blue`/`alpha` are value-domain; the rest of `sass/color/index.ts` is TODO or legacy tree-node. |
+| **`sass:string`** | branch `fns-sass-string-map` (`fa12d1ba5`) | **NOT on `dev`.** 9 functions. On `dev` all six exports of `sass/string/index.ts` are legacy tree-node and none register. |
+| **`sass:map`** | blocked | Blocked on the value-domain map. A `Collection` value type landed on branch `core-value-domain-map` (`d799be7f3`, `packages/core/src/ast/value-collection.ts`) but the parser still flattens keys to names — `packages/core/src/ast/nodes.ts:342` types `entries` as `(Declaration \| VariableDeclaration)[]` and `Declaration.name` is `string \| Interpolation`. Ledger **P14** is SETTLED but NOT implemented. |
+| **`min`/`max` are per-dialect, not shared** | jess | **LANDED `ca7805804`.** Less coerces unitless into the reference unit and compares canonically (`packages/fns/src/less/min-max.ts:57-77`); Sass compares display numbers with a left-to-right fold (`packages/fns/src/sass/math/min-max.ts:72-82`). Do not re-unify them. |
+| **Remaining fns debt** | unassigned | 22 sass modules still import bare `@jesscss/core` (legacy tree-node), plus 8 deliberate unregistered re-export shims. `str-length` needs a global-name binding. **There is no aliasing mechanism** (`createFnRegistry` keys solely on `fn.name.toLowerCase()`), and `fade-in`/`fadein` and `argb`/`ie-hex-str` are **not** aliases — see `packages/fns/src/sass/NAME_ALIASES.md`, corrected by `be6ef9772`. |
+| **`value-dispatch` arity defect** | unassigned | `packages/core/src/ast/value-dispatch.ts:212` maps over `definition.params`, so extra positional args are dropped and the `too many arguments` throw at `:171` is unreachable **on the evaluator path** (it still fires on the direct path at `:222-228`). Same `.map` gives a `rest: true` param a single item rather than the tail. |
+
+**Fn failure contract:** functions **throw**; the engine decides whether the user sees it.
+`functionMode` defaults to `'preserve'` (`packages/core/src/context.ts:197`, `:210`). No
+function suppresses its own failure.
+
+### Other live lanes
+
+| Lane | Where | State |
+| --- | --- | --- |
+| ~~**Gates made reasonable**~~ | jess | **LANDED `c3db7e53e` + `e34bb24b3`** — see "Gate hygiene" below. |
+| ~~**Numeric precision landing**~~ | jess | **LANDED on `dev`** (`33c4ef784`, `1c6713d23`, `145e82ec4`, `7d187d58b`, ledger V4 resolved by `66291f355`). Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md). |
+| **`$` sigil / Collection model** | branches `jess-collection-and-interp` (on `dev`), `jess-cst-prelude-interp`, `design-sigil-exploration` | Settled and **not to be relitigated** — see "Settled tonight" below. |
 | **parseman docs voice sweep** | parseman repo | Removing changelog narrative from the docs. |
 | **`extend-exact` state contamination** | separate session | See the KNOWN RED section below. |
-| Chip sessions | jess | Stale `file-resolution.ts` claim in this file — **landed `2039165db`** (the file was deleted back in `05bfb8249`). Stale `scripts/check-macro-buildable.mjs` gate — **landed `064e3d985`**, now wired as `pnpm run check:macro`. Still open: the root `pnpm test` vitest lane (127 red files). |
+| Chip sessions | jess | Still open: the root `pnpm test` vitest lane (127 red files), branch `root-vitest-lane`. |
+
+### Settled tonight (2026-07-24/25) — record, do not relitigate
+
+Each is a ledger row in [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md); cite the row rather
+than re-deriving the decision.
+
+- **Collections are value-keyed.** `foo:` ≡ `["foo"]:`, stored as a plain string. No variable
+  declarations inside. Entries are `CollectionEntry {key, value}`, not `Declaration` — ledger
+  **P14**, SETTLED, not yet implemented.
+- **Three sigil forms with a position matrix** — `${…}` interpolation (name inside, `${[…]}`
+  for lookup), `$[…]` lookup, `$(…)` expression. The subscript type decides: a number is a
+  positional index, anything else is a key.
+- **`.` is namespace member access** (`$ns.prop`, `$ns.$var`); **`[]` is data lookup**.
+- **Numeric emit** — unoperated values verbatim; computed values the shortest decimal within
+  relative tolerance `1e-10`; no cap, no scientific notation, integer fast path.
+- **Colour channels carry full precision internally**; quantization happens only at output.
 
 ## ACTIVE PRIORITY CHECKLIST — structural-rot + perf recovery
 
@@ -597,6 +653,7 @@ section is the authoritative full-scope companion to the compact task goal.
 | --- | --- |
 | Direct parser AST construction and legacy-builder deletion | [`AST-REORG-EXECUTION.md`](./AST-REORG-EXECUTION.md) |
 | Parser recognition, interpolation, and scanner cleanup | [`GRAMMAR-RELOCATION-DESIGN.md`](./GRAMMAR-RELOCATION-DESIGN.md) |
+| Any edit to one of the eight grammar files | [`../parser/GRAMMAR-REMEDIATION-PLAN.md`](../parser/GRAMMAR-REMEDIATION-PLAN.md) — the plan, the gates, and the review; then the standing brief it points to |
 | Feature/eval closure | [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) |
 | Eval/render allocation, lookup, and traversal cuts | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
@@ -605,6 +662,33 @@ section is the authoritative full-scope companion to the compact task goal.
 The detailed future plans remain active for their grammar, feature/eval,
 scanner-cleanup, and performance content. Their former bridge/host sections are
 historical evidence only.
+
+## Grammar work
+
+The eight `*-parser/src/{,ast/}grammar.ts` files are 17,447 lines carrying two
+hand-maintained specifications of each dialect with no mechanical link between them.
+They are also parseman's reference implementation. Work on them is coordinated by
+one document:
+
+**[`../parser/GRAMMAR-REMEDIATION-PLAN.md`](../parser/GRAMMAR-REMEDIATION-PLAN.md)** — the
+problem as measured, the two tracks (collapse 8 → 4, then per-rule remediation) and the rule
+for ordering them, the verification method, the review method, what is enforced mechanically,
+and the structural causes. It links out to the standing brief
+([`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md), the per-`const`
+checklist) rather than restating it.
+
+Three things a fresh agent gets wrong here, so they are repeated at the entry point:
+
+- **The gate is not the test suite.** Done is four things: diagnostic clean, lint clean,
+  `packages/less-parser/test/ast-identity-oracle.mjs` byte-identical on **both** aggregate
+  hashes, and `pnpm run check:macro` at `0 interpreter fallbacks`. A change that moves the
+  tree is a failed change, not a judgement call.
+- **`check:macro` guards correctness, not speed.** A macro-fallback build is not
+  AST-equivalent to a macro-compiled build, so a red run **invalidates any differential taken
+  on it**. Run it before you trust an oracle number.
+- **A clean parseman gating diagnostic can mean nothing.** The analysis throws on the fused
+  compiled artifact and works only when fed the pre-`compose()` `rules()` map. Say which you
+  fed it; never read an empty result from the fused artifact as evidence a grammar is clean.
 
 ## Non-negotiable rules
 
@@ -1408,16 +1492,22 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: cold-start reconciliation against `e34bb24b3` (2026-07-24). Added COLD START and
-  WORK IN FLIGHT sections so a fresh agent with no context can pick up without duplicating a
-  running lane, added an OPEN DEFECTS section with a verified file:line for every row, and
-  pruned claims that no longer hold.
+- Latest pass: grammar remediation plan + WORK IN FLIGHT reconciliation against `bcb3107a1`
+  (2026-07-25). Added `docs/architecture/parser/GRAMMAR-REMEDIATION-PLAN.md` as the single
+  statement of the grammar plan, gates, and review method; added a "Grammar work" section and a
+  Router row pointing at it; and rewrote WORK IN FLIGHT to cover the sass-fns porting and the
+  grammar lanes, with every row re-checked against the tree or `git merge-base --is-ancestor`.
 - Architecture surface: unchanged. No compiler, parser, evaluator, or serializer surface was
   touched; this diff contains no runtime code.
-- Separation/duplication: reduced. The five new owner decisions of 2026-07-24 were recorded
-  once each in the canonical ledger (`DESIGN-DECISIONS.md` E6/E7/V4/V5/O4) rather than restated
-  in prose here. The two stale `file-resolution.ts` claims this pass also corrected were landed
-  independently by `2039165db` with better evidence; that version was kept on rebase.
+- Separation/duplication: reduced. The new document links to
+  `GRAMMAR-REVIEW-STANDARD.md` (branch `grammar-review-standard`) for the per-`const` checklist
+  and to `PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` for the macro-fallback reproduction rather than
+  restating either, and it names an unwritten `GRAMMAR-UNIFICATION-PLAN.md` as a placeholder
+  rather than inventing a third copy of the unification order. Three superseded claims were
+  corrected in place instead of duplicated: the blanket "parseman cannot analyse `compose()`d
+  grammars" (the pre-`compose()` `rules()` map does work), the `dev`-state claims for
+  `sass:color` and `sass:string` (both are branch state, not `dev`), and the "landed" status of
+  numeric precision.
 - Cumulative node weight: unchanged; no AST node, field, or shape was added or removed.
 - New traversal: none.
 - New node/materialization: none.
@@ -1425,11 +1515,15 @@ involved.
 - Helper/API surface: none added. Documentation files only.
 - Metadata mutations: none.
 - Review-flagged diff tokens: none.
-- Evidence: measured in this worktree on `e34bb24b3` after `pnpm install --frozen-lockfile` +
-  `pnpm run build:release`. `pnpm run verify:types` — GREEN, 22/22 configs.
-  `pnpm run test:less:test-data` — 108/108, with `css-3.less` and `variable-advanced.less` now
-  registered as named expected failures. An earlier measurement on `93e1aa49d` (types RED with
-  1 diagnostic; corpus 106/108) is recorded in the body as the before-state, because the corpus
-  moved without any jess-side change and that is the durable lesson. Every OPEN DEFECTS row was
-  re-checked by direct file read at the cited line. No performance claim is made or implied.
+- Evidence: this pass is documentation-only and adds no runtime code, so no build or suite was
+  re-measured; the previous pass's `e34bb24b3` numbers (`verify:types` GREEN 22/22,
+  `test:less:test-data` 108/108 with `css-3.less` and `variable-advanced.less` as named expected
+  failures) are carried forward unchanged and are NOT re-asserted for `bcb3107a1`.
+  `pnpm run verify:aggressive-cutting-review` was run before and after this edit — GREEN both
+  times. Every count in the new document was measured in this worktree on `bcb3107a1` with the
+  shell method stated inline, and diverges from the figures in the task brief in four places
+  (keyword regexes 15→18, separated lists 39→65, near-clone clusters 20→24, leading `not()`
+  18→43); the divergence is stated as scope/criterion in the document rather than silently
+  adopted. Every WORK IN FLIGHT row was re-checked by direct file read or by
+  `git merge-base --is-ancestor`. No performance claim is made or implied.
 - Verdict: documentation-only reconciliation; accepted with no runtime cost contract.
