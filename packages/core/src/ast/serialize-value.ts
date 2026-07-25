@@ -2,9 +2,10 @@
  * Byte-faithful VALUE serializer for dimension / quoted / list leaves, plus the
  * `serializeValue` dispatch over the whole value domain. Emit is FREE FUNCTIONS
  * over pure data — no node is constructed, no `render()` walk. Color emit lives in
- * `color.ts`; the shared `round` in `round.ts`.
+ * `color.ts`; the number policy in `format-number.ts`.
  *
- * HARD MODULE BOUNDARY: imports only the value-domain types + `round` + `color`.
+ * HARD MODULE BOUNDARY: imports only the value-domain types + the number policy
+ * (`format-number`) + `color`.
  */
 import type { Dimension, Quoted, ValueGroup } from './value-eval.js';
 import { isValueGroupArray, sepGlue } from './value-eval.js';
