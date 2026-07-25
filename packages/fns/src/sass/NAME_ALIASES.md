@@ -15,13 +15,15 @@ running dart-sass 1.101.0 and lessc 4.8.0 side by side (see
 - **Sass**: `ie-hex-str($color)` → `#80FF0000` (UPPER case)
 - **Less**: `argb($color)` → `#80ff0000` (lower case)
 - **Functionality**: same `#AARRGGBB` layout, different output case
-- **Status**: needs a Sass implementation. Re-exporting `argb` gives SCSS the wrong case.
+- **Status**: LANDED — `sass/color/ie-hex-str.ts` is a Sass-owned body.
 
-### grayscale (Sass) = greyscale (Less) — PURE RENAME (verified)
+### grayscale (Sass) = greyscale (Less) — SAME COMPUTATION, still a separate definition
 - **Sass**: `grayscale($color)`
 - **Less**: `greyscale($color)`
 - **Functionality**: Remove all saturation from a color (same as `desaturate($color, 100%)`)
-- **Implementation**: `sass/grayscale.ts` → re-exports `less/greyscale.ts`
+- **Implementation**: `sass/color/grayscale.ts` — a Sass-owned body, NOT a re-export.
+  A fn IS its dispatch name, so re-exporting the Less callable would publish a
+  Less built-in under a Sass module. The computation is restated; nothing else.
 
 ### fade-in / opacify (Sass) ≠ fadein (Less) — DIVERGENT, not an alias
 ### fade-out / transparentize (Sass) ≠ fadeout (Less) — DIVERGENT, not an alias
@@ -33,18 +35,20 @@ running dart-sass 1.101.0 and lessc 4.8.0 side by side (see
   fade-in(rgba(255,0,0,0.5), 10%)   Sass → Error: $amount: Expected 10% to be within 0 and 1
   fade-in(rgba(255,0,0,0.5), 0.1)   Sass → rgba(255, 0, 0, 0.6)
   ```
-- **Status**: `sass/fade-in.ts`, `sass/fade-out.ts`, `sass/opacify.ts` and
-  `sass/transparentize.ts` need real Sass implementations. Re-exporting the Less
-  body errors on every correct Sass call site and mis-scales any percentage that
-  slips through.
+- **Status**: LANDED — `sass/color/fade-in.ts`, `fade-out.ts`, `opacify.ts` and
+  `transparentize.ts` are Sass-owned bodies on the 0-1 scale.
 
-### adjust-hue (Sass) = spin (Less) — PURE RENAME (verified)
+### adjust-hue (Sass) ≠ spin (Less) — DIVERGENT on ANGLE UNITS
 - **Sass**: `adjust-hue($color, $degrees)`
 - **Less**: `spin($color, $amount)`
 - **Functionality**: Adjust the hue angle of a color
-- **Verified**: `spin(#800,45)` (Less) and both `adjust-hue(#800,45)` and
-  `adjust-hue(#800,45deg)` (Sass) all give `#886600`
-- **Implementation**: `sass/adjust-hue.ts` → re-exports `less/spin.ts`
+- The earlier "pure rename (verified)" grade was reached from `45`/`45deg` only,
+  where the two happen to agree (`#886600` in both). Sass CONVERTS a true angle
+  unit and Less does not — `sass-spec`'s `adjust_hue/units.hrx` has
+  `adjust-hue(red, 60rad)` → `rgb(0, 179.576224164, 255)` (i.e. 3437.75deg),
+  where Less's `spin` reads the bare `60`. Unitless and unknown units (`60in`)
+  are degrees in both.
+- **Implementation**: `sass/color/adjust-hue.ts` — a Sass-owned body.
 
 ## Functions with Same Names
 
@@ -61,4 +65,14 @@ leave the two-argument case:
   `mix(#f00,#00f)` → Less `#800080`, Sass `rgb(127.5, 0, 127.5)`. Sass also has a
   fourth colour-space `$method` argument.
 
-These are currently exported from Less but could be moved to shared if verified to be identical.
+All of the above now have Sass-owned bodies in `sass/color/`, alongside
+`hue`/`saturation`/`lightness`/`opacity`, `complement`, `invert`, and the
+`rgb`/`rgba`/`hsl`/`hsla` constructors (which diverge on channel clamping,
+percent preservation and achromatic canonicalization). The only colour functions
+that remain SHARED are `red`/`green`/`blue`/`alpha`, per the colour-precision
+ruling: channels carry full precision internally and quantize only at the output
+boundary, which makes the two dialects' channel readers the same function.
+
+Conformance for the whole Sass set is driven by the `sass-spec` corpus
+(`spec/core_functions/color/**`) in `sass/__tests__/color-sass-spec.test.ts`,
+not by hand-picked examples.
