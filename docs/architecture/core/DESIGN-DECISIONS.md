@@ -50,6 +50,8 @@ reference"* framing is superseded by this row. Source:
 | E3 | Legacy `tree/` eval + `tree/scope-frame.ts` / `reference.ts` are NOT correctness references (known bugs) — mechanism ideas only. | SETTLED | `memory:intended-design-is-truth`, `RESOLVER-SHAPE-SPEC.md` |
 | E4 | `graduate-v5`, `upstream/alpha`, `legacy/*.css`, and `renderRealOracle`/`renderRealOracleNested` are NOT the intended-design reference. | SETTLED | `REFERENCE.md` (pitfalls) |
 | E5 | Real Less 4.x is NOT the target — v5 diverges intentionally; 4.x is at most a cross-check for non-diverging behaviors. | SETTLED | `memory:intended-design-is-truth` |
+| E6 | **No implementation can adjudicate a jess question.** The Less v5 alpha package is a thin wrapper over jess's own `Compiler`, so agreeing with it is a tautology, never evidence. Less 4.x is a compat reference, not truth. dart-sass is not truth either. Correct = documented v5 design + the CSS spec + internal coherence. | SETTLED (owner 2026-07-24) | `LESS-V5-CONTENT-PR-PLAN.md:18`; extends E1/E5 |
+| E7 | **Reference behavior ≠ intent.** If the mechanism you would have to write down to explain a reference implementation's behavior is "the context happens to lack a field", that is a LEAK, not a design — do not port it. Never one-off a behavior to make a single test pass. Corollary: the same value must never print two ways. | SETTLED (owner 2026-07-24) | `../SEMANTIC-INVARIANTS.md` |
 
 ## 1. Merge operators (`+:` / `+_:`)
 
@@ -94,6 +96,8 @@ reference"* framing is superseded by this row. Source:
 | V1 | UN-OPERATED value literals (dimension AND color) = SOURCE-VERBATIM / lazy-print (`1.0px`→`1.0px`, `2PX`→`2PX`, `1e3px`→`1e3px`, `#989`→`#989`); only COMPUTED (operated) values canonicalize. Diverges from 4.x, which canonicalizes un-operated dimensions. | SETTLED | `memory:v5-preserve-unoperated-values-verbatim`, `VALUE-LITERAL-TAG-SPEC.md` §0 |
 | V2 | CSS-superset verbatim pass-through: valid-CSS constructs (e.g. un-operated `rgb(50%,0,0)`) emit source verbatim; run the Less fn ONLY when the value is operated OR args are Less-non-CSS (contain a Less var/expr or a historical-Less form). | SETTLED | `memory:css-superset-verbatim-passthrough` |
 | V3 | Escaped `~"..."` = opaque Anonymous, never numeric-sniffed: `=` cross-compares by CONTENT (`3 = ~"3"` → true), `<`/`>` vs a number = not-comparable (guard does NOT fire). | SETTLED | `V5-OUTPUT-SEMANTICS.md` §B1 |
+| V4 | **Numeric emit.** Un-operated values stay verbatim (V1). A COMPUTED value emits the shortest decimal within a RELATIVE tolerance, with an integer fast path (an exact integer is never float noise). Explicitly rejected: any significant-figure cap, any per-unit policy, any fixed decimal-places rounding, and scientific notation. The current 8-dp floor at `serializeDimension` — and its wrongful application to source literals at `literal-tag.ts:104` — are the things being removed. **Tolerance constant discrepancy:** the fixture-graduation commit (less.js `dded69cc`) states `1e-10`; `../../design/numeric-precision-policy.md` still says `1e-12`. Reconcile before landing. | SETTLED policy / OPEN constant | Owner decision 2026-07-24; `../../design/numeric-precision-policy.md` |
+| V5 | **Color precision: quantize only at the output boundary.** Channels carry full precision internally. Rounding at construction compounds through chained color math, so it is forbidden. The five remaining `round(x, 8)` calls in `packages/core/src/ast/color.ts` (`:118`, `:137`, `:149`, `:150`, `:151`) are the holdouts. | SETTLED | Owner decision 2026-07-24 |
 
 ## 4. Output defaults & shape
 
@@ -102,6 +106,7 @@ reference"* framing is superseded by this row. Source:
 | O1 | v5 default output = NESTED (`collapseNesting:false`), NOT 4.x flatten. 4.x flatten = explicit opt-in flag. Default owned by `jess-plugin-less`; consumers import it. | SETTLED | `memory:less-v5-default-collapsenesting-false` |
 | O2 | v5 does NOT merge `@media`; extend cascades are `:is()`-compacted. `legacy/*.css` (expanded, no `:is()`) is the 4.x shape, not v5. | SETTLED | `REFERENCE.md`, `memory:fixture-v5-vs-4x-legacy-convention` |
 | O3 | Compressed output target = dart-sass `compressed` parity via differential comparison. | DEFERRED | `memory:compress-already-minimal-bit` |
+| O4 | **Fixture graduation procedure** (when a deliberate v5 change moves a `.css` fixture): (1) if `<dir>/legacy/{name}.css` does not exist, CREATE it holding the PRE-change output; (2) update the top-level `.css` to the v5 value; (3) VERIFY the harness actually reads the new legacy file. All three steps, in that order. Skipping (1) destroys the 4.x comparison evidence; skipping (3) produces a legacy file nothing loads. | SETTLED | Owner decision 2026-07-24; worked example: less.js `dded69cc`; `memory:fixture-v5-vs-4x-legacy-convention` |
 
 ### 4a. Output formatting — serialization detail
 

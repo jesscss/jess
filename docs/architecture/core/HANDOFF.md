@@ -9,9 +9,49 @@
 > explicit language-service/document use; no CST-to-AST bridge, host, or
 > compatibility route is an acceptable interim production design.
 
+## COLD START — read this first if you have no prior context
+
+1. **Where you work.** Never edit the main checkout `~/git/oss/jess`; it mirrors `dev` and
+   holds concurrent WIP. Create a worktree off `origin/dev`
+   (`git fetch && git checkout -B <branch> origin/dev`) and state the SHA in your first report.
+2. **Never** `git stash`, `git restore`, `git checkout -- .`, or `git reset --hard`. Two agents
+   lost or nearly lost work to this on 2026-07-24. Commit before measuring.
+3. **Build in order** before trusting any test number: parsers → `internal-css-recognition` →
+   `awaitable-pipe` → `core` → `fns` → `config` → `style-resolver` → plugins → `jess`
+   (`pnpm run build:release` does the whole thing). Vitest runs against `lib/`; a stale `lib/`
+   silently reports a *past* version of the repo. A stale `internal-css-recognition` build in
+   particular masks ~17 real failures.
+4. **Baseline before blaming yourself.** `docs/state/PROJECT_STATE.md` holds the measured
+   known-red set. Capture your own baseline as a NAMED SET of cases, never as a count you
+   inherited from a doc.
+5. **State a SHA with every empirical claim.** A number without a SHA is not evidence.
+6. **Never** `as any`, `: any`, `@ts-ignore`, or `@ts-nocheck`.
+7. `~/git/oss/less.js` is off-limits. Use `~/git/worktrees/less.js/` read-only, and only for an
+   explicitly authorized fixture graduation. Owner merges parseman PRs; agents never do.
+8. **Correctness has no external oracle** — see `DESIGN-DECISIONS.md` §0 (E1–E7). In
+   particular the Less v5 alpha package is a thin wrapper over jess's `Compiler`
+   (`docs/architecture/core/LESS-V5-CONTENT-PR-PLAN.md:18`), so it can never adjudicate a
+   jess-vs-`lessc` question.
+
+## WORK IN FLIGHT (as of 2026-07-24, `93e1aa49d`) — do not duplicate
+
+These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
+Delete a row the moment it lands or is abandoned.
+
+| Lane | Where | State |
+| --- | --- | --- |
+| **parseman `0.34.0` adoption + showcase survey** | jess | Bump from the current `0.32.0` and regenerate every compiled artifact — the version-lock invariant is that artifacts never cross parseman versions. Then a per-parser plan to make the 4 grammars exemplary parseman usage. Gates: AST byte-identity on all four parsers, perf measured. |
+| **Gates made reasonable** | jess | Gates are red on clean `dev`, so `--no-verify` is routine. Classify every gate: green→block, one-pass-fixable→fix then block, real-debt→ratchet, too-slow→speed up or move to CI. Also: convert every count-based pass/fail baseline into a NAMED SET (jess known-failures, `PARSE_PASS_FLOOR`/`EVAL_PASS_FLOOR`, corpus MATCH/DIFF captures). Also: redesign `verify:aggressive-cutting-review` to gate on a **semantic (built-artifact) diff** rather than a textual one — today a comment-only edit to a hot-path file fires it — and make firing run the real cost measurement. |
+| **fns per-dialect registry** | jess, branch `fix-per-dialect-registry` | Deletes `builtins/` and `builtinLessFns`; registration derives from the composed dialect indexes (`less/index.ts` = `less/` + `shared/`, same for sass); per-dialect evaluators at module scope; exports map publishes `./less`, `./sass`, `./sass/{color,list,map,math,string}`. Implements ledger C13. |
+| **Numeric precision landing** | jess + less.js fixtures | Tolerance-trim, delete `emitValueInterp`, no-sci-notation guard, `ast/color.ts:118` alpha, integer fast path, `literal-tag.ts:104` fix, fixture graduation. Design: [`../../design/numeric-precision-policy.md`](../../design/numeric-precision-policy.md) — **nothing in it had landed as of `93e1aa49d`**. |
+| **parseman prefix-trie choice dispatch** | parseman repo | MEASURING FIRST; may conclude "don't build". |
+| **parseman docs voice sweep** | parseman repo | Removing changelog narrative from the docs. |
+| **`extend-exact` state contamination** | separate session | See the KNOWN RED section below. |
+| Chip sessions | jess | Stale `file-resolution.ts` claim in this file — **landed `2039165db`** (the file was deleted back in `05bfb8249`). Stale `scripts/check-macro-buildable.mjs` gate — **landed `064e3d985`**, now wired as `pnpm run check:macro`. Still open: the root `pnpm test` vitest lane (127 red files). |
+
 ## ACTIVE PRIORITY CHECKLIST — structural-rot + perf recovery
 
-**Reconciled 2026-07-24 against `13725f894`.** Every row below was re-checked against the
+**Reconciled 2026-07-24 against `93e1aa49d`.** Every row below was re-checked against the
 tree or a named commit on this pass; a row with no evidence pointer was deleted rather than
 carried forward. Rows marked *unverified* state the date they were last known true.
 
@@ -86,7 +126,87 @@ Root cause: the scannerless port re-expanded the Chevrotain 7-arm grouped `rule`
 - [x] **First-set gating swept all four parsers** (2026-07-23 perf run, ~30 commits from
       `3aa12414d` to `44eb1237f`), and `5cc69d791` retired the local first-set regex copies
       once parseman `0.32.0` gated them natively. Workspace is on parseman `0.32.0`
-      (`3b9e5a237`).
+      (`3b9e5a237`; re-verified 2026-07-24 in `packages/*/package.json`). The `0.34.0` bump is
+      in flight — see WORK IN FLIGHT. **Version-lock invariant: compiled parser artifacts must
+      never cross parseman versions**; regenerate every one in the same change as the bump.
+
+### OPEN DEFECTS — each row is directly actionable (verified 2026-07-24 on `93e1aa49d`)
+
+Durable code defects, as distinct from the transient test reds in
+`docs/state/PROJECT_STATE.md`. Every file:line below was re-checked on this pass. Delete a row
+when it goes green; do not let one rot into folklore.
+
+- **Arity checking is dead on the evaluator route.** `packages/core/src/ast/value-dispatch.ts:212`
+  builds the positional argument array with `definition.params.map(...)`, so any input beyond
+  the declared parameter count is silently dropped before `bindDirect` ever sees it. The
+  `too many arguments` throw at `:171` therefore cannot fire from an evaluator call:
+  `length(a,b,c)` returns `1` instead of an arity error. Affects every fn in every dialect.
+- **P1.1 — serialize-then-reparse of structure.** `packages/core/src/ast/serialize.ts:1268`
+  (`selectorAtoms`) serializes a structured compound to text and regex-tokenizes it back,
+  un-memoized, at six call sites. Direct "parser owns structure" (C2) violation. The legacy
+  twin lives at `packages/core/src/tree/extend/spine-extend.ts:1241`.
+- **Extend bitset fast-reject never landed.** `packages/core/src/ast/extend/` contains
+  `compose/conflict/emit/ir/match/plan/solve` and no bitset of any spelling.
+- **`jess-parser` still text-joins the nth-`of` tail.** `staticSelectorText`
+  (`packages/jess-parser/src/ast/grammar.ts:376`, used at `:1692` and `:1770`) is the last
+  `*SelectorText` join site and the remaining gap to always-structured pseudo arguments.
+- **`literal-tag.ts:104`** applies the old 8-dp floor to un-operated SOURCE literals
+  (`dimensionFromFields` does `round(number, 8)` before the verbatim-spelling logic), so
+  `0.00000000123456789` denoises to `0`. Contradicts ruling V1.
+- **`packages/core/src/ast/color.ts` retains five `round(x, 8)` calls** at `:118` (alpha
+  percent), `:137` (`%` channels), `:149` (hue), `:150`/`:151` (S/L) — the last 8-dp holdouts.
+  (The coordinator's inventory said "4 sites"; it is 4 *concepts*, 5 calls.)
+- **`evalBytesInterp` never validates units.** `packages/core/src/ast/serialize.ts:3717`
+  has no `validateValueGroupUnits` call, while the ordinary value path calls it at `:3706`. A
+  unit error that is fatal in a declaration value is silently accepted inside an interpolation.
+  Undecided which way it should go — it deserves its own commit and an owner ruling.
+- **`--x: foo(] bar`** (arbitrary token stream in a custom property) fails in all four parsers.
+  That is the current limit of the shared-surface permissiveness ruling P2.
+- **`packages/fns/src/less/index.ts:31` exports the wrong function.** It re-exports
+  `default as format` from `./format.js`, whose default export is `formatPercent` (the `%`
+  function, `format.ts:73`). The real `string-format` is the *named* `format` export at
+  `format.ts:60` and has no barrel export at all. Ruling A5 names `string-format` as the
+  canonical public name.
+- **fns port backlog.** ~69 files under `packages/fns/src` still import from `@jesscss/core`
+  root (legacy tree nodes). `type-of`, `str-length`, and `comparable` do not exist anywhere in
+  `packages/fns/src`. There is no alias mechanism (`separator`→`list-separator`,
+  `argb`→`ie-hex-str`). `builtins/{abs,ceil,floor}.ts` are dormant and would corrupt Less
+  through `normalizeAngle` if wired in — delete before wiring anything.
+- **`extend-exact.less` flake is real cross-compile state contamination**, not test flakiness.
+  Two sharing channels: the per-`Compiler` plugin instance caches
+  (`packages/jess/src/index.ts:482-485`, plus the `jessPluginInstance` / `scssPluginInstance`
+  singletons at `:491`/`:492`) and the module-scope `astValueEvaluator`
+  (`packages/jess/src/index.ts:39`) shared by *all* Compilers. Diagnostic: a fresh `Compiler`
+  per file isolates which channel. **Constraint on any fix:** a `Compiler` must stay reusable
+  across many files. "New Compiler each time" is not an acceptable fix, and neither is a
+  `reset()` that callers have to remember. A separate session is on this.
+
+### Parked / stale branches — do not merge as-is
+
+- **`css-sharing-inventory`** — STALE. 10 of its 30 rows now name a dialect that passes.
+  Needs a §1 refresh first.
+- **`wip/jess-calc-grammar`** — parked: 3 eslint `no-unsafe-type-assertion` errors, and it now
+  conflicts with `dev` in the `$( … )`/calc region that `ad1bbd1bf` changed.
+- **`wip/maybe-promise-2b`** — explicitly NOT FOR LANDING.
+- **`fix-per-dialect-registry`** — live, see WORK IN FLIGHT. Local only; no remote tracking
+  branch as of `93e1aa49d`.
+
+### Gate hygiene — why `--no-verify` is routine
+
+Several gates are red on clean `dev` (`verify:types`, and `verify:baseline` which stops at
+`verify:node-copy-frontier` on `packages/jess-plugin-js/src/runtime-worker.ts`'s `unit.clone()`),
+so bypassing became the norm rather than the exception. The "gates made reasonable" lane owns
+the classification. Two concrete pieces of debt found on this pass:
+
+- `scripts/check-macro-buildable.mjs` exists but **no `package.json` script references it** —
+  it is a gate nobody runs.
+- `verify:aggressive-cutting-review` gates on a *textual* diff of hot-path files, so a
+  comment-only edit fires it. It should gate on a built-artifact (semantic) diff, and when it
+  does fire it should run the real cost measurement rather than demand a prose block.
+
+The `--no-verify` usage rate is **UNVERIFIED (2026-07-24)**: `--no-verify` is a git flag, not
+commit content, so it leaves no trace in `git log` and cannot be recovered from this repo. Do
+not repeat a specific ratio as if it were measured here.
 
 ### Model correction — COMPLETE
 
@@ -130,6 +250,21 @@ Recorded so the next reader does not re-derive it from the log:
 - **Bootstrap Sass corpus ratchet + SCSS construct inventory** (`bde2e982e`);
   **conversion construct-support inventory + equivalence-harness design** (`c028a7c76`,
   `docs/design/JESS-EQUIVALENCE-HARNESS.md`).
+- **Value-position `Collection` serializes instead of folding to empty bytes** (`ba8743b0e`),
+  and **SCSS nested-property flatten is shared by both emitters** (`e63c82031`). Rulings:
+  DESIGN-DECISIONS C11 / C12.
+- **Docs reorg** (`0806ccdbb`, `3098275f5`): `docs/future/` is gone; the tree is
+  `docs/{architecture,design,state,process,perf,releases}`. `.cursor/` holds tool config only.
+  The decision ledger is `DESIGN-DECISIONS.md` in this directory.
+- **Semantics governance** (`c5a58a1e7`, `95fd726ec`): `docs/architecture/SEMANTIC-INVARIANTS.md`
+  (evidence-per-item, each entry carrying a STATUS) plus `.cursor/agents/semantics-reviewer.md`.
+- **Numeric-precision policy DESIGN** (`9624e532b`, `4797ae218`, `ddd0883e4`,
+  `docs/design/numeric-precision-policy.md`). Design only — see WORK IN FLIGHT.
+- **Per-function Less/Sass dialect classification audit** (`1d253ce9c`, `1164ddd15`,
+  `docs/state/fns-dialect-classification-audit.md`).
+- **One Node engine floor across every published package** (`e7a7cc037`): all 19 publishable
+  packages declare `"node": "^20.19.0 || >=22.12.0"`. `bf7286753` dropped the CI `lts/-3` leg;
+  `93e1aa49d` backed out two files that sweep had picked up.
 
 ## Current target
 
@@ -354,11 +489,17 @@ section is the authoritative full-scope companion to the compact task goal.
 - CLI ownership is explicit: only the external `less` package provides the
   Less-compatible `lessc` command. The `jess` package provides only `jess` and
   must not claim Less CLI compatibility through a second bin or alias.
-- Node support is a rolling policy, not a permanently pinned release number:
-  support the current LTS line and the prior three LTS lines. `engines.node:
-  >=18` is the current derived floor; it advances only when that four-line
-  window advances. The Jess CLI workflow exercises `current`, `lts/*`, and
-  `lts/-1` through `lts/-3`.
+- Node support is a rolling policy, not a permanently pinned release number.
+  **Corrected `e7a7cc037` (2026-07-24):** all 19 publishable packages now declare the same
+  `"node": "^20.19.0 || >=22.12.0"` — three LTS lines (20, 22, 24), matching parseman. The
+  range is where the toolchain already stops (oxc-parser, oxlint and vite each require exactly
+  it), and the gaps are load-bearing: 20.0–20.18 and 22.0–22.11 cannot install the oxc family.
+  Node 18 was never real — it cannot run oxc, vite or vitest, so the old `>=18` floor could not
+  be exercised by our own suite. **`.github/workflows/` was NOT updated** (pushing it needs the
+  `workflow` OAuth scope, which the client did not hold): `less-alpha-readiness.yml` still
+  sweeps `lts/*` through `lts/-3` (today 24/22/20/18), and the other three workflows pin the
+  floating `lts/*` alias, so CI never exercises the declared floor. Recommended fix is explicit
+  `['20.19.0', '24']`. This is an OPEN follow-up.
 - Context remains the one render/session/cache/diagnostic/plugin/import
   coordinator. Retain its plugin-based source, parser, module, path, and
   import dispatch topology while changing carried documents to `Stylesheet`;
@@ -505,19 +646,44 @@ production lint) and its newer HANDOFF/readiness/release evidence; reconcile
 the alpha release note from final gate evidence instead of restoring the older
 alpha docs wholesale.
 
-### Less-alpha gate status (re-measured 2026-07-24 on `13725f894`)
+### Less-alpha gate status (re-measured 2026-07-24 on `93e1aa49d`)
 
-Measured in a clean worktree after `pnpm install` + `pnpm run build:release`. These are the
-numbers, not a narrative:
+Measured in a clean worktree after `pnpm install --frozen-lockfile` + `pnpm run build:release`.
+These are the numbers, not a narrative:
 
-- `pnpm run test:less:test-data` — **108/108 pass** (`all-less.test.ts`, the only
-  fixture-backed Less integration authority).
+- `pnpm run test:less:test-data` — **106/108** (`all-less.test.ts`, the only fixture-backed
+  Less integration authority). **This was 108/108 on `13725f894` and the jess side did not
+  change; the external fixture corpus moved.** See "The Less corpus authority is an external
+  mutable checkout" below.
 - `pnpm run verify:types` — **RED, 1 diagnostic**, `@jesscss/less-parser`:
   `packages/less-parser/src/ast/grammar.ts(1916,7): error TS2339: Property
   'CssAstSyntaxUnicodeRange' does not exist`. Introduced with `c1782031e`. The other 21
   configs pass. This blocks `release:alpha:preflight`, which runs `verify:types`.
-- `pnpm --filter jess test --run` — **15 failed / 739 passed / 4 skipped / 79 todo** across
-  4 red files. Per-file breakdown and disposition: `docs/state/PROJECT_STATE.md`.
+- `pnpm --filter jess test --run` — **not re-measured on `93e1aa49d`**; the last measurement is
+  15 failed / 739 passed / 4 skipped / 79 todo on `13725f894`. Per-file breakdown and
+  disposition: `docs/state/PROJECT_STATE.md`. (Note the invocation: `pnpm --filter jess test`
+  rejects a bare `--run`; pass it after `--`.)
+
+#### The Less corpus authority is an external mutable checkout
+
+`test:less:test-data` reads its fixtures from `~/git/oss/less.js/packages/test-data`, a
+checkout this repo does not pin. On 2026-07-24 the numeric-precision lane graduated four
+fixtures there (`dded69cc`, "test-data: v5 numeric-precision expectations, 4.x snapshotted to
+legacy/"), so the corpus now encodes the *intended* v5 numbers while the jess-side change has
+not landed. The two reds are therefore **expected-until-precision-lands**, not regressions:
+
+| Fixture | Expected (v5, graduated) | Current jess output | Root cause |
+| --- | --- | --- | --- |
+| `tests-unit/css-3/css-3.less` | `rotate(-0.0000000001deg)` | `rotate(0deg)` | `literal-tag.ts:104` applies the 8-dp floor to un-operated SOURCE literals |
+| `tests-unit/variables/variable-advanced.less` | `add-px-2: 393.3527559px` | `393.35275591px` | 8-dp floor instead of the tolerance trim |
+
+Consequence a fresh agent must internalize: **a Less-corpus number is only meaningful together
+with the less.js checkout state.** Record both SHAs, or the count is unfalsifiable. This is one
+of the count-based baselines the "gates made reasonable" lane is converting to a named set.
+
+The graduation commit states the landed constant as a **relative tolerance of `1e-10`**, while
+`docs/design/numeric-precision-policy.md` §"Job 1, concretely" still says `1e-12`. One of them
+is stale; the precision lane owns reconciling them.
 
 The public Less route reaches canonical AST-v2 evaluation and serialization for direct and
 imported documents: the Less plugin calls the public direct parser, Context carries its
@@ -1194,25 +1360,28 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: documentation reconciliation and relocation (2026-07-24). HANDOFF/PROJECT_STATE
-  were re-derived from the tree, and the former `docs/future` tree was split into `docs/architecture/`,
-  `docs/design/`, `docs/process/`, and `docs/state/`.
+- Latest pass: cold-start reconciliation against `93e1aa49d` (2026-07-24). Added COLD START and
+  WORK IN FLIGHT sections so a fresh agent with no context can pick up without duplicating a
+  running lane, added an OPEN DEFECTS section with a verified file:line for every row, and
+  pruned claims that no longer hold.
 - Architecture surface: unchanged. No compiler, parser, evaluator, or serializer surface was
-  touched.
-- Separation/duplication: reduced. ~3,300 lines of per-commit evidence records duplicated in
-  `git log` were deleted, and the four owner decisions of 2026-07-24 were recorded once each in
-  the canonical ledger (`DESIGN-DECISIONS.md` P11/P12/C11/C12/C13) rather than restated here.
+  touched; this diff contains no runtime code.
+- Separation/duplication: reduced. The five new owner decisions of 2026-07-24 were recorded
+  once each in the canonical ledger (`DESIGN-DECISIONS.md` E6/E7/V4/V5/O4) rather than restated
+  in prose here. The two stale `file-resolution.ts` claims this pass also corrected were landed
+  independently by `2039165db` with better evidence; that version was kept on rebase.
 - Cumulative node weight: unchanged; no AST node, field, or shape was added or removed.
 - New traversal: none.
 - New node/materialization: none.
 - Render path: untouched.
-- Helper/API surface: none added. The only non-documentation edits are documentation-path
-  strings in comments, plus `isReleaseArtifactPath` gaining `docs/state/` so the relocated
-  `PROJECT_STATE.md` keeps the release clean-tree exemption it had under `.cursor/`.
+- Helper/API surface: none added. Documentation files only.
 - Metadata mutations: none.
-- Review-flagged diff tokens: none; the diff contains no runtime code.
-- Evidence: `pnpm run test:less:test-data` 108/108, `pnpm run verify:types` 1 pre-existing
-  diagnostic, `pnpm --filter jess test --run` 15 pre-existing failures — all recorded with
-  their measurement date in `docs/state/PROJECT_STATE.md`. A repo-wide grep proves zero
-  references to the pre-move documentation paths. No performance claim is made or implied.
+- Review-flagged diff tokens: none.
+- Evidence: measured in this worktree on `93e1aa49d` after `pnpm install --frozen-lockfile` +
+  `pnpm run build:release`. `pnpm run verify:types` — RED, 1 diagnostic,
+  `@jesscss/less-parser` (21/22 configs pass). `pnpm run test:less:test-data` — 106/108, the two
+  reds being `css-3.less` and `variable-advanced.less` against less.js test-data `dded69cc`,
+  which graduated those fixtures to their v5 numeric-precision values ahead of the jess-side
+  landing. Every OPEN DEFECTS row was re-checked by direct file read at the cited line. No
+  performance claim is made or implied.
 - Verdict: documentation-only reconciliation; accepted with no runtime cost contract.
