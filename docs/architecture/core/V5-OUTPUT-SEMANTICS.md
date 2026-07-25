@@ -201,7 +201,7 @@ every emit site plus a full-precision escape on the interpolation path, so `pi()
 printed two ways in one stylesheet depending on which code reached the serializer.
 A decimal-place floor is also the wrong axis: it annihilates small magnitudes and
 under-trims large ones.
-**Ref.** DD `F6` · `../../design/numeric-precision-policy.md` ·
+**Ref.** DD `V4` (the ruling; `F6` cross-refs it) · `../../design/numeric-precision-policy.md` ·
 `packages/core/src/ast/format-number.ts` · closes SEMANTIC-INVARIANTS `S1`
 
 ---

@@ -360,10 +360,10 @@ The catalogue stays grounded in lived incidents, not style preference.
 `emitValueInterp` is deleted. A computed number now emits identical bytes in every
 position, decided by one policy module,
 [`packages/core/src/ast/format-number.ts`](../../packages/core/src/ast/format-number.ts),
-under ledger row **F6**. Each of the five stages in the incident write-up above is
-answered:
+under ledger row **V4** (cross-referenced from the formatting section as **F6**).
+Each of the five stages in the incident write-up above is answered:
 
-1. **The justification.** F6 is argued from CSS Values 4 §5, CSSOM §6.7.2, and a
+1. **The justification.** V4 is argued from CSS Values 4 §5, CSSOM §6.7.2, and a
    measured corpus cost, not from less.js's context threading.
 2. **The rule is stated over the construct** (invariant 1): "a computed number emits
    the shortest decimal within `1e-10` relative." No splice site appears in it.

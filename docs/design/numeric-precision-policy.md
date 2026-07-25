@@ -385,23 +385,47 @@ fast path** — an earlier run omitted that and was unfair to it.
 | **job 1** — digit-gated tolerance trim | 144, 112, 225, 97 | **~2.2× faster** |
 | **job 1 + 8sf cap** | 235, 122, 221, 121 | ~2.0× faster |
 
+> ⚠️ **These figures are for tolerance `1e-12` and do NOT describe what landed.**
+> The gate constant is *coupled to the tolerance* (see the next bullet), so the
+> `1e-12` measurement cannot be carried over to the `1e-10` that was adopted. At
+> `1e-10` the gate must be 10, which lets **~20%** of this same pool into the
+> search instead of 5.6% — and the win disappears. Measured on the landed code,
+> same pool, order-alternated, median-of-41, 5 repeats: **0.96–0.97×, i.e. ~4%
+> SLOWER per call, win-rate 0/5.** End to end on `benchmark.less` (same worktree,
+> git-toggle, median-of-31, 6 runs a side): 35.58ms before vs 35.87ms after,
+> **+0.8%, inside a per-run spread of 34.9–39.3ms** — no measurable difference.
+> Output grew **+22 bytes on 122,847 (+0.018%)**, matching §8.2's +0.017%
+> prediction. Adopting job 1 is a correctness change at negligible cost, **not a
+> performance win.**
+
 Spread is wide (allocation/GC dominated), so treat the absolute figures as
-indicative. The *direction* is consistent across all four runs: **adopting job 1
-is a performance win, not a cost.** Today's lodash exponential-shift round does
-two `` `${n}e`.split('e') `` allocations and two `Number()` parses on every
-non-integer; the tolerance search exits at `p` = 1–3 for almost everything.
+indicative. Today's lodash exponential-shift round does two
+`` `${n}e`.split('e') `` allocations and two `Number()` parses on every
+non-integer; at `1e-12` the tolerance search exits at `p` = 1–3 for almost
+everything, which is what made that variant look cheap.
 
 Two implementation notes that make it cheap:
 
 - **`serializeDimension` must produce a string anyway.** So make `String(n)` the
   first step rather than a cost, and gate on it.
-- **A sound, free gate.** A relative tolerance of `1e-12` can only ever shorten
-  a value carrying more than ~12 significant digits; below that the
-  shortest-round-trip form is already the shortest form within tolerance. So:
-  count significant digits in `String(n)` (a charCode scan, no allocation) and
-  short-circuit when the count is under 13. Verified against the exhaustive
-  search over 2,000,000 random doubles: **zero mismatches**. On the realistic
-  pool the gate short-circuits **94.4%** of values.
+- **A sound, free gate — whose value is COUPLED to the tolerance.** A relative
+  tolerance of `1e-N` can only ever shorten a value carrying more than ~N
+  significant digits; at or below that the shortest-round-trip form is already
+  the shortest form within tolerance. So: count significant digits in `String(n)`
+  (a charCode scan, no allocation) and short-circuit below the threshold.
+
+  **At the adopted `1e-10` the gate is 10** — short-circuit when the count is
+  `<= 10`. Re-verified for the landed code against the ungated search over
+  2,000,000 mixed random doubles **plus 2,900,927 focused 9- and
+  10-significant-digit doubles spanning 1e-20..1e19: zero mismatches.** It
+  short-circuits **~80%** of the realistic pool.
+
+  **A gate of 11 is NOT sound** — counterexample `-86731.985251`, which shortens
+  to `-86731.98525` (11 significant digits trimmed to 10, within `1e-10`). Do not
+  raise it without re-running the differential.
+
+  (At `1e-12` the gate would be 12, short-circuiting 94.4% — that pairing is what
+  the superseded table above measured.)
 
   Two cheaper-looking gates were tried and are **unsound**: a pure-arithmetic
   `Math.round(n*1e6)/1e6 === n` test (17,103 mismatches / 2M) and a string-length
@@ -418,11 +442,18 @@ every value including plain integers. Any adoption of a cap must be gated too.
 
 **Adopt job 1. Do not adopt job 2 yet.**
 
-Job 1, concretely: relative tolerance `1e-12`; significant-digit gate on
-`String(n)`; exhaustive `toPrecision(p)` search for `p` = 1…17 on the ~5% that
-fall through; take the first candidate within tolerance. Magnitude-invariant, no
-arbitrary constant to defend, faster than today, and it removes exactly the
-artifact and nothing else. `1.23456789e-9` survives, where today it becomes `0`.
+Job 1, concretely — **as recommended here, and then OVERRULED on the constant;
+the landed values are in the header**: relative tolerance `1e-12`;
+significant-digit gate on `String(n)` (12, coupled to that tolerance); exhaustive
+`toPrecision(p)` search for `p` = 1…17 on the ~5% that fall through; take the
+first candidate within tolerance. Magnitude-invariant, no arbitrary constant to
+defend, and it removes exactly the artifact and nothing else. `1.23456789e-9`
+survives, where today it becomes `0`.
+
+**What actually landed: tolerance `1e-10`, gate 10, plus an integer fast path.**
+`1e-10` keeps computed literals shorter than the old 8-dp output for values >= 10,
+which `1e-12` does not. The "faster than today" clause above did not survive that
+change — see the warning in §6.
 
 Job 2 should be argued from bytes on a real stylesheet, and §8.2 measures that
 argument at **−0.06% of output size**. That does not buy an arbitrary constant.
