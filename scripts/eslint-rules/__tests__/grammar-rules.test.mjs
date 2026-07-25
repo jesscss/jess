@@ -138,7 +138,13 @@ test('no-hand-rolled-keyword-regex: flags word + boundary lookahead, not real pa
     valid: [
       'const r = regex(/[a-z]+/);',
       `const r = regex(/-?[_a-zA-Z][-${BACKSLASH}w]*/);`,
-      `const r = regex(/${BACKSLASH}d+(?![-${BACKSLASH}w])/);`
+      `const r = regex(/${BACKSLASH}d+(?![-${BACKSLASH}w])/);`,
+      /*
+       * A sign disambiguator, not a keyword: the body has no letter, so
+       * `keywords()` is not the fix. This was the only false positive in the
+       * 70-site measurement over the five parser packages.
+       */
+      'const r = regex(/-(?![0-9.])/);'
     ],
     invalid: [
       { code: `const r = regex(/not(?![-${BACKSLASH}w])/i);`, errors: 1 },

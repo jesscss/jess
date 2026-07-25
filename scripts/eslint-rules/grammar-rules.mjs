@@ -265,13 +265,21 @@ function stripBoundaryLookahead(pattern) {
   return match ? { body: match[1], hadLookahead: true } : { body: pattern, hadLookahead: false };
 }
 
-/** True when the body is nothing but literal words, alternated and/or grouped. */
+/**
+ * True when the body is nothing but literal words, alternated and/or grouped.
+ *
+ * Every alternative must contain a LETTER. `[-\w]+` alone also admits punctuation
+ * and digit runs, which are not keywords: `regex(/-(?![0-9.])/)` is a sign
+ * disambiguator (`less-parser/src/grammar.ts`), not a hand-rolled `keyword()`, and
+ * `keywords()` is not the fix for it. Measured false-positive rate before this
+ * guard: 1 of 70 sites.
+ */
 function isPlainKeywordBody(body) {
   const unwrapped = body.replace(/^\(\?:(.*)\)$/, '$1');
   if (unwrapped === '' || /[\\[\]{}+*?.^$()]/.test(unwrapped)) {
     return false;
   }
-  return unwrapped.split('|').every(alternative => /^[-\w]+$/.test(alternative));
+  return unwrapped.split('|').every(alternative => /^[-\w]+$/.test(alternative) && /[a-zA-Z]/.test(alternative));
 }
 
 const noHandRolledKeywordRegex = {

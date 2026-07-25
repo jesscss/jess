@@ -45,10 +45,10 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // `rw` (which skips line/block comments) must not apply there.
   const urlWs = trivia(ws);
 
-  const ident = regex(/-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+  const ident = regex(/-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   // Selectors / mixin names / idents include CSS escapes (\hex, \char) — same
   // definition as css-parser grammar.ts (a mixin call is just a selector).
-  const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
+  const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
   const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
   const pseudoColon = regex(/::?/);
   const attrOp = regex(/[*~|^$]?=/);
@@ -154,8 +154,14 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // body plugs it here WITHOUT rewriting the content-gobble loop below: SCSS/.jess
   // use `#{ <expression> }` (a full expression, opened by `#{`), and Less may later
   // add `${name}` property-interp. This override is LESS-SCOPED (the delta's
-  // `Quoted` wins by name); SCSS composes on the CSS base, NOT on Less, so it never
-  // inherits this Less body.
+  // `Quoted` wins by name). SCSS does NOT inherit this body — but only because the
+  // SCSS delta declares its own `Quoted` (`scss-parser/src/grammar.ts:191`), which
+  // wins by name. It is NOT because SCSS composes on CSS: `scssGrammar` is
+  // `compose([lessGrammar, …])` (`scss-parser/src/grammar.ts:30`), so every Less
+  // production this file declares IS reachable from SCSS unless the delta overrides
+  // it. That inversion is a recorded architectural defect and a hard blocker on
+  // Less-side cleanup — see the `TODO(parseman-compose-depth)` note ~560 lines below
+  // and `docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`.
   //
   // The grammar structures `@{head[key]}` at every interpolation site. A future
   // parser-local direct-AST reduction owns any accessor-evaluation semantics.
@@ -210,7 +216,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // OR colon not immediately followed by an ident-start.
   const varColon = choice(
     noTrivia(sequence(lessVar, literal(':'))),
-    sequence(lessVar, regex(/:(?![-_a-zA-Z-￿])/))
+    sequence(lessVar, regex(/:(?![-_a-zA-Z\u0080-\uFFFF])/))
   );
   const VarDeclaration = node(
     sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';'))))));
@@ -218,13 +224,13 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // Accessor key tokens, in lookupOrCall's OR2 order: NestedReference ($@x / @@x),
   // AtKeyword (@x), PropertyReference ($x), InterpolatedIdent (…@{x}…), Ident.
   // The builder applies the index/variable typing + Quoted-wrap (see _buildReference).
-  const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
-  const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
+  const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*)?){2,}/);
+  const propRef = regex(/\$-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/);
   // An interpolation-bearing lookup key is likewise structural. This retains
   // each typed interpolation in selectors, accessors, pseudo names, and values
   // rather than accepting a parallel `@{…}`/`${…}` text shape.
-  const interpKeyStart = choice(regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/), literal('-'));
-  const interpKeyTail = regex(/[-_a-zA-Z0-9-￿]+/);
+  const interpKeyStart = choice(regex(/-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/), literal('-'));
+  const interpKeyTail = regex(/[-_a-zA-Z0-9\u0080-\uFFFF]+/);
   const interpKey = noTrivia(sequence(
     optional(interpKeyStart), lessInterpolation,
     many(choice(lessInterpolation, interpKeyTail))
@@ -268,7 +274,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // production's `Expression(Call{ name: Reference[role=name], args })` shape.
   // A var name that is NOT a known at-rule name (negative lookahead asserts the
   // known name is not the COMPLETE ident before the call parens).
-  const nonKnownAtVar = regex(/@-?(?!(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9]))[_a-zA-Z0-9-￿][-_a-zA-Z0-9-￿]*/);
+  const nonKnownAtVar = regex(/@-?(?!(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9]))[_a-zA-Z0-9\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/);
   const knownAtVar = regex(/@(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9])/);
   const VarCall = node(
     choice(
@@ -288,7 +294,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // reuse them directly. See `_buildMixinArgs` (which reuses the shared `_assembleArgs`).
   const mixinNamePath = sequence(basicSel, many(sequence(optional(combinator), basicSel)));
   // MixinCall names must start with . or # — plain idents are properties, not mixins.
-  const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+  const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
   const mixinCallPath = sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel)));
   const MixinCall = node(
     sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';'))));
@@ -371,7 +377,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // so `.foo-&` is a COMPOUND of the BasicSelector `.foo-` and a plain `&` — it parses
   // as `['.foo-', &]` (two independent simple selectors), never one merge node. The
   // `&(…)` form keeps its paren scan.
-  const ampToken = regex(/&[-_a-zA-Z0-9-￿]*/);
+  const ampToken = regex(/&[-_a-zA-Z0-9\u0080-\uFFFF]*/);
   const LessAmpersand = node(
     sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')')))));
   // Selector interpolation: an ident/`.`/`#` run interleaved with `@{…}`, with at
@@ -641,8 +647,8 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // color `#DEF` (no bracket) fall through to `Color` unchanged. The builder
   // (`nsAccessor`) assembles a `MixinCall` base + the `[key]` accessor chain. An
   // inner `[…]` chain call (`#ns.x()[k](y)`) stays out of scope.
-  const nsHeadSeg = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)/);
-  const nsTailSeg = regex(/[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)/);
+  const nsHeadSeg = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-\uFFFF][-_a-zA-Z0-9-\uFFFF]*)/);
+  const nsTailSeg = regex(/[.#]-?(?:[_a-zA-Z-\uFFFF][-_a-zA-Z0-9-\uFFFF]*)/);
   const NsAccessor = node(
     sequence(
       noTrivia(sequence(nsHeadSeg, many(nsTailSeg), regex(/(?=[([])/))),
@@ -1077,7 +1083,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // A literal chunk stops before a Less value token (`@{`/`@@`/`@name`), a
   // terminator (`{`/`;`), or a bracket/string opener; a bare `@` not introducing a
   // token (`@ `, `@)`) stays literal content.
-  const preludeChunk = regex(/(?:[^@{};()[\]'"]|@(?![{@\-_a-zA-Z0-9-￿]))+/);
+  const preludeChunk = regex(/(?:[^@{};()[\]'"]|@(?![{@\-_a-zA-Z0-9\u0080-\uFFFF]))+/);
   // Balanced `()`/`[]` groups are STRUCTURED (recursive `preludeToken`), not opaque
   // scans, so a Less value token inside a group — `@media (min-width: @bp)` — stays
   // an isolated `@var`/`@{…}` leaf the host consumes, and nested groups nest by
@@ -1140,7 +1146,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // @see https://www.w3.org/TR/mediaqueries-5/#media-query-list
   // A <media-type> is an <ident> other than the query keywords (`not only and or`,
   // plus `layer` — reserved). Mirrors the CSS `containerName` exclusion set.
-  const mediaType = regex(/(?!(?:not|only|and|or|layer)(?![-\w]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
+  const mediaType = regex(/(?!(?:not|only|and|or|layer)(?![-\w]))-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/i);
   const containerName = mediaType;
   // `[ not | only ]? <media-type> [ and <media-in-parens> ]*`.
   const mediaTypeQuery = sequence(
@@ -1184,7 +1190,7 @@ export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) =
   // statement choice, so `@supports` never falls through to the permissive arm.
   // @see https://www.w3.org/TR/css-conditional-3/#at-supports
   const supportsAtKeyword = keywords(['@supports'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|@\{|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
+  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|@\{|-?[_a-zA-Z-\uFFFF][-_a-zA-Z0-9-\uFFFF]*\()/i);
   // After the committed opener lookahead, the condition uses the SAME leaf-split
   // prelude as the generic `atPrelude` (`preludeTokenTop`): `(…)`/`not`/function-token
   // conditions become chunk + balanced-group leaves, and a `@{…}` interpolation is an

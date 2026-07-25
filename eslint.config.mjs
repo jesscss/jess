@@ -386,6 +386,27 @@ export default tseslint.config([
       'grammar/no-regex-outside-combinator': 'error',
 
       /*
+       * A hand-rolled `/word(?![-\w])/i` is a copy of the `keyword()` combinator
+       * with the combinator's own case-fold fix left out — `/i` without `/u`
+       * folds non-ASCII incorrectly, which parseman fixed INSIDE the combinator.
+       * Every hand-rolled copy therefore carries the unfixed defect. The rule
+       * only fires on a pattern that is literal words plus a trailing
+       * word-boundary lookahead, so a real character class does not trip it.
+       * Deliberately NOT autofixable: swapping a production for `keywords()` is
+       * a grammar change and needs the oracle, not a `--fix`.
+       *
+       * `warn`, NOT `error`, and that is a deliberate hold rather than the
+       * intended end state. Measured 2026-07-25 over the five packages: 69
+       * genuine sites (1 false positive, since fixed in the rule). 37 of them
+       * carry `/i` with no `/u` — the actual case-fold defect. Every one is a
+       * grammar change requiring oracle verification, so promoting this to
+       * `error` before they are converted would leave `pnpm lint` red for every
+       * other agent. PROMOTE TO `error` once the conversions land; the count is
+       * the gate, not a judgement call.
+       */
+      'grammar/no-hand-rolled-keyword-regex': 'warn',
+
+      /*
        * Keeps the file macro-buildable: no factories, no spreads into
        * combinator argument lists, no patterns assembled from variables.
        * `check-macro-buildable` catches these at build time; catching them at
@@ -452,14 +473,16 @@ export default tseslint.config([
       'grammar/no-line-comments': 'off',
       '@stylistic/function-paren-newline': 'off',
       '@stylistic/function-call-argument-newline': 'off',
-      '@stylistic/lines-around-comment': 'off',
+      '@stylistic/lines-around-comment': 'off'
 
       /*
-       * Also deferred: 16 raw non-ASCII characters in regex literals. These are
-       * autofixable and byte-preserving, but they sit in the two files being
-       * rewritten, so they belong to that pass rather than to a drive-by edit.
+       * `no-literal-non-ascii-in-regex` is deliberately NOT deferred here, per
+       * this block's own header. It previously was, which made the header and
+       * the body contradict each other; the header is the intent. The 15 sites
+       * it flagged in `src/grammar.ts` are now escaped — the fix is
+       * byte-preserving for the compiled pattern, and that was verified rather
+       * than assumed: both oracle aggregates over 707 files are unchanged.
        */
-      'grammar/no-literal-non-ascii-in-regex': 'off'
     }
   },
 
