@@ -53,6 +53,15 @@ status elsewhere.
   parameterized by a math-mode hook, bracketed lists, a GENERIC interpolation seam
   (dialect fills `@{}` vs `#{}`), custom-prop-with-interpolation, and named override
   seams (`stylesheetItem`, `blockItem`, `interpolation`, `variableRef`).
+
+  Those seam names are plain and undecorated on purpose, and the naming law in
+  [`GRAMMAR-REVIEW-STANDARD.md`](./GRAMMAR-REVIEW-STANDARD.md) item 14 is what
+  keeps them that way: a rule shared by more than one dialect does not take a
+  dialect prefix, and `Ast`/`Cst` is a compile mode rather than an identity. The
+  prefix is what hides a duplicate — `LessAstSyntaxNamedColor` and its Less-CST
+  copy (§Problem 3) are the same defect named twice. Rule identity in this
+  architecture is *what the rule accepts*; the shared base only collapses if the
+  names stop asserting divergence that is not there.
 - `less  = compose([preprocessorBase, lessSigilDelta])` — `@var`, `@{}`, `~"…"`,
   `.mixin()`, guards, `@import (options)`.
 - `scss  = compose([preprocessorBase, scssSigilDelta])` — `$var`, `#{}`,

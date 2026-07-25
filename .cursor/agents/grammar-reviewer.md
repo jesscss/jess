@@ -11,7 +11,7 @@ sample. Follow `AGENTS.md` for repo-wide constraints. Do not change code.
 
 Canonical checklist you review against:
 [`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](../../docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md)
-(13 items + the outcome vocabulary). Its dependency is
+(14 items + the outcome vocabulary). Its dependency is
 [`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](../../docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md)
 — read §1 before you accept or reject any structural change.
 
@@ -70,8 +70,8 @@ area, review the grammar file(s) there in full. State exactly what you reviewed
 
 ## What to collect (evidence required)
 
-Per const, the 13 checklist items. Most rows resolve to "conforms" without
-enumerating all 13 — but any row that is not `conforms` must name **which item**
+Per const, the 14 checklist items. Most rows resolve to "conforms" without
+enumerating all 14 — but any row that is not `conforms` must name **which item**
 it fails and cite file:line.
 
 Report these separately at file level, with counts and file:line lists:
@@ -115,6 +115,17 @@ Report these separately at file level, with counts and file:line lists:
     `lib/` with `check:macro` green. **A change that moves the tree is a failed
     change, not a judgement call.** A red `check-macro-buildable` invalidates any
     differential taken on that build — say so rather than reporting the hash.
+14. **Name claims a divergence it does not have** *(item 14)* — a dialect prefix
+    (`css…`, `less…`, `scss…`, `jess…`) asserts this rule accepts a different
+    language than its unprefixed counterpart. Check whether it does. If it does
+    not, that is a finding, not a neutral choice: report it as a `deliberate
+    exception` naming the actual divergence, or as a merge candidate. `Ast` /
+    `Cst` in a name is the same error one axis over — a compile mode is not an
+    identity. **Do not act on it: list it as evidence, never rename.** Read the
+    standard's *naming is a duplication mechanism* section before applying this;
+    it is a duplication rule with a stated cause (a prefix makes two identical
+    rules look different, so nobody ever diffs them), **not** an
+    identifier-aesthetics pass.
 
 Also check the hard constraints on any structural change:
 factories / `[...spread]` / hoisted `const`s (**including plain strings** — one
@@ -148,6 +159,9 @@ and any new `productions.ts` (never create one).
 - item 10 separator ownership — count, all `blocked`
 - item 11 gating — count vs the CSS grammar
 - item 12 reachability — unreachable / untested consts
+- item 14 unearned prefix — every dialect-prefixed or `Ast`/`Cst`-bearing const
+  name, with whether its accepted language actually differs (evidence, not
+  assertion). List only; never rename.
 - (…any item with nothing to report: "no hit — evidence: <what you read/grepped>")
 
 ### Blocking findings
@@ -163,10 +177,12 @@ guess a `conforms`.
 - Do not emit a verdict without the per-const rows above it.
 - Do not sample, summarise away rows, or write "the remainder follow the same
   pattern". The exhaustiveness is the method.
-- Do not codify naming conventions. Item 1 asks whether a *different name for
-  the same CSS thing* is justified — that is about duplication. The owner has
-  rejected written style guides and dislikes sentence-long identifiers; do not
-  invent either.
+- Do not codify naming conventions beyond the one item 14 already states. Items
+  1 and 14 are both about *duplication* — item 1 that the rule is duplicated,
+  item 14 that its name is what let the duplicate survive. Neither licenses a
+  style pass: the owner has rejected written style guides and dislikes
+  sentence-long identifiers, so do not invent either, and do not extend item 14
+  into casing, ordering, or abbreviation opinions.
 - Do not accept "matches less.js" or a green suite as justification for anything.
 - You may run `pnpm run lint`, `pnpm run verify:types`, `pnpm run check:macro`,
   and `packages/less-parser/test/ast-identity-oracle.mjs` and cite their output

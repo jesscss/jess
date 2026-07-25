@@ -15,7 +15,7 @@ do not reconstruct it.
 These grammars are parseman's reference implementation. "Exemplary" has been
 asked for repeatedly and has not stuck, because *make it good* is not checkable
 and a passing test ends the job. This document replaces that instruction with
-thirteen questions and a rule about how many things you ask them of.
+fourteen questions and a rule about how many things you ask them of.
 
 ---
 
@@ -28,7 +28,7 @@ scope — so "every const" is literally every rule, terminal, and helper.
 
 The exhaustiveness *is* the method. The failure mode being fixed is an agent
 reading linearly, pattern-matching locally, and stopping when the immediate task
-looks done. "Review the grammar" gets skimmed. "Answer these thirteen questions
+looks done. "Review the grammar" gets skimmed. "Answer these fourteen questions
 for every `const` in this file" cannot be.
 
 Two things make this tractable rather than crushing:
@@ -131,6 +131,89 @@ Every written rule must answer:
 13. **If changed, does the AST stay byte-identical?** The oracle answers this
     mechanically (§4). **A change that moves the tree is a failed change, not a
     judgement call.**
+
+14. **Does its name claim a divergence it does not have?** Item 1 asks whether
+    the rule is duplicated. This asks whether the rule's *name* is what let the
+    duplicate survive. A dialect prefix (`css…`, `less…`, `scss…`, `jess…`) is a
+    claim that this rule accepts a different language than its unprefixed
+    counterpart. **Either show the accepted languages actually differ, or it is
+    one rule.** See *naming is a duplication mechanism* below.
+
+### Naming is a duplication mechanism, not a style preference
+
+This item is here for a causal reason, and the reason is the whole point of it.
+It is not a style guide, and it must not be applied as one — the repo has
+rejected codified style guides, and a reviewer who turns this into an
+identifier-aesthetics pass has misread it.
+
+**The mechanism.** A dialect prefix makes two identical rules *look* different.
+Nobody ever diffs `cssDeclaration` against `lessDeclaration`, because the names
+assert they are different things. The name does not merely fail to advertise the
+duplication — it **hides** it. And it is self-reinforcing: once `cssDeclaration`
+exists, writing `lessDeclaration` feels like *following the convention* rather
+than like copy-pasting. That is how a codebase reaches eight grammar files
+totalling 24,305 lines where four would do (observation, `a74131e8f`: CST
+1527/1281/1379/1210, AST 3455/4750/5116/5587 for css/less/scss/jess).
+
+The rule:
+
+- **Default to a plain, undecorated name** — `declaration`, `selector`,
+  `atRule`, `block`. Most productions are not dialect-specific at all.
+- **A prefix is a claim of genuine divergence and must be earned.** The rule has
+  to actually differ in what it *accepts*.
+- **Never prefix a shared rule.** A `Declaration` used by more than one dialect
+  is `declaration`.
+- **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
+  *mode*, not an identity; one grammar serves both modes, so the mode does not
+  belong in the rule's name.
+- **When divergence is real, name the divergence, not the owner.**
+  `declarationWithInterpolatedName` beats `lessDeclaration`.
+
+**Reviewing a grammar, a dialect-prefixed rule name is a defect to justify, not
+a neutral choice.** It gets a `deliberate exception` row naming the divergence,
+or it is a finding.
+
+#### Standing evidence
+
+Observations, each re-checkable at `a74131e8f`:
+
+- The four AST grammars carry **735 distinct prefixed rule names** across four
+  mutually incompatible prefixes: `CssAst*` 157, `DirectLess*` 243,
+  `DirectScss*` 167, `DirectJess*` 168. No rule in any one of them can match a
+  rule in any other by name, because each uses a different prefix — and the
+  schemes do not even agree with each other (`Ast` in one, `Direct` in three).
+  *Interpretation:* this is the mechanism at full scale. Name-keyed sharing is
+  arithmetically impossible here; the base cannot supply `Declaration` to a
+  dialect that calls it `DirectLessDeclaration`.
+- `packages/parser-shared/src/` exports four names — `cssAstSyntax`,
+  `lessAstSyntax` (`recognition.ts`), `cssAstPseudoSyntax` (`pseudo-consts.ts`),
+  `opaqueAtRuleRecognition` (`opaque-at-rule.ts`). Three carry a dialect prefix,
+  in the package whose entire purpose is sharing, renamed to `parser-shared` at
+  `a74131e8f` for exactly that purpose. `cssAstSyntax` and `cssAstPseudoSyntax`
+  are each imported by **all four** parsers. The one name that reads correctly
+  is the one with no prefix.
+- `scss-parser/src/grammar.ts:10` — the **CST** grammar imports `cssAstSyntax`.
+  The mode word in that name is simply false at that call site. This is the
+  `Ast`-in-the-name error demonstrated rather than argued.
+- `lessAstSyntax` contains the rule key `LessAstSyntaxNamedColor`
+  (`recognition.ts:361`) — the CSS named-colour list, triple-decorated with a
+  dialect, a mode, and a surface. `less-parser/src/grammar.ts:712` carries a
+  copy of it and its own `TODO` says: CSS named colours "are not a Less
+  extension and this list does not belong here."
+- A grammar-local `requireToken` helper is defined **three times** —
+  `less-parser/src/ast/grammar.ts:260`, `scss-parser/…:190`,
+  `jess-parser/…:227` — with **310 call sites** (98/107/108 minus the three
+  definitions). The Less and SCSS bodies differ only in the dialect name inside
+  the error string; the Jess one has drifted structurally. *Interpretation:* the
+  same phenomenon one level down — duplication survives wherever nothing gives
+  the shared thing a single name and a single home, and once duplicated it
+  begins to diverge.
+
+*Interpretation, not observation:* the target architecture in
+[`DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`](./DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md)
+already names its seams correctly — `stylesheetItem`, `blockItem`,
+`interpolation`, `variableRef`, `preprocessorBase`. The convention this item
+codifies is the one that architecture assumes.
 
 ### The floor and the bar
 
