@@ -4,7 +4,7 @@
 import {
   rules, compose,
   node, regex, literal, sequence, choice, optional, trivia,
-  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not, withCtx
+  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not, noTrivia, withCtx
 } from 'parseman' with { type: 'macro' };
 import { lessGrammar } from '@jesscss/less-parser/grammar';
 import { cssAstSyntax } from '@jesscss/internal-css-recognition/recognition';
@@ -101,9 +101,18 @@ export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules(
    * Declaration rules try FIRST; this flat token owns only interpolation-free names.
    */
     const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+
+    /*
+   * The keyword is spelled inline (identically to css/less `important`) rather
+   * than referenced as `g.CssAstSyntaxImportant`. `cssAstSyntax` is a
+   * recognition-only fragment — it declares no `node()`, so `compose()` links it
+   * NON-capturing and its terminals return their scalar match without feeding the
+   * caller's CST collector. Referenced from a CST-visible position it therefore
+   * consumed `important` while emitting no leaf, leaving the marker uncovered.
+   */
     const important = sequence(
       literal('!'),
-      g.CssAstSyntaxImportant
+      regex(/important/i)
     );
 
     const ScssInterpBare = node(sequence(
@@ -1064,6 +1073,47 @@ export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules(
     );
 
     /*
+   * The strict prelude's balanced-group atoms, spelled as RECURSIVE RULES rather
+   * than the `balanced()` text scanner. This is the one CST-VISIBLE balanced site
+   * in the grammar — everywhere else `bParen`/`bSquare`/`bCurly` are `skip:`
+   * units, whose spans are covered by the enclosing `scanTo`'s single leaf. In a
+   * CST-visible position `balanced()` is a leaf-coverage hole: it emits leaves for
+   * its own delimiters and interior runs, but a NESTED group is consumed by its
+   * self-reference and emits nothing, so `@media (not (a))` left `(a)` covered by
+   * no leaf at all — position-dependent consumers read that span as absent rather
+   * than as unstructured text. Written as rules, every delimiter and content run
+   * is an ordinary terminal at any depth.
+   *
+   * Faithful to the scanner it replaces: `noTrivia` keeps the interior a
+   * contiguous raw run (a `balanced()` interior consults `scanSkip`, never ambient
+   * trivia, so a `//` or block comment inside stayed literal text), the enclosing
+   * `many(scssStrictAtom)` still skips trivia BEFORE each atom, strings stay
+   * opaque so a delimiter inside one never closes the group, and each group's
+   * content class stops only at its OWN pair (a `]` inside `(…)` is plain text,
+   * exactly as `balanced('(', ')')`'s derived class had it).
+   */
+    const ScssStrictParenGroup = noTrivia(sequence(
+      literal('('),
+      many(choice(
+        g.ScssStrictParenGroup,
+        singleStr,
+        doubleStr,
+        regex(/[^()'"]+/)
+      )),
+      expect(literal(')'))
+    ));
+    const ScssStrictSquareGroup = noTrivia(sequence(
+      literal('['),
+      many(choice(
+        g.ScssStrictSquareGroup,
+        singleStr,
+        doubleStr,
+        regex(/[^[\]'"]+/)
+      )),
+      expect(literal(']'))
+    ));
+
+    /*
    * ── Strict generic at-rule prelude (Sass+) ──────────────────────────────────
    * Mirror of the Less strict `atPrelude`, but for SCSS. Sass+ rejects invalid CSS:
    * a TOP-LEVEL (paren-depth 0) bare `$variable` in a non-value at-rule
@@ -1080,8 +1130,8 @@ export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules(
    */
     const scssStrictRun = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
     const scssStrictAtom = choice(
-      bParen,
-      bSquare,
+      g.ScssStrictParenGroup,
+      g.ScssStrictSquareGroup,
       singleStr,
       doubleStr,
       ScssInterpBare,
@@ -1371,6 +1421,7 @@ export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules(
       ScssImportItem, ImportAtRuleStatement,
       ScssNestedProps,
       ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
+      ScssStrictParenGroup, ScssStrictSquareGroup,
       QueryAtRuleBlock, SupportsAtRuleBlock, ScssQueryInterpBlock, ScssScopeBlock, ScssLayerBlock,
       AtRuleBlock, AtRuleMalformed,
       Stylesheet, simpleSelector, declarationList, atRuleBody
