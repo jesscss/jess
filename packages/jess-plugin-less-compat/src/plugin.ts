@@ -1,5 +1,6 @@
 import { AbstractPlugin, type Context } from '@jesscss/core';
 import type { Fn } from '@jesscss/core/value';
+import { LessApiBridge, type NativeLessPlugin } from './less-api-bridge.js';
 
 /**
  * Native AST-v2 functions contributed by an application. Function bodies receive
@@ -8,6 +9,7 @@ import type { Fn } from '@jesscss/core/value';
  */
 export interface LessCompatPluginOptions {
   readonly functions?: readonly Fn[];
+  readonly plugins?: readonly NativeLessPlugin[];
 }
 
 /**
@@ -21,20 +23,47 @@ export interface LessCompatPluginOptions {
  */
 export class LessCompatPlugin extends AbstractPlugin {
   name = 'less-compat';
+  private readonly bridges = new WeakMap<Context, LessApiBridge>();
 
   constructor(public readonly opts: LessCompatPluginOptions = {}) {
     super();
   }
 
   setContext(context: Context): void {
-    const functions = this.opts.functions;
-    if (!functions || functions.length === 0) {
-      return;
+    let bridge = this.bridges.get(context);
+    if (!bridge) {
+      bridge = new LessApiBridge(this.opts.plugins ?? []);
+      this.bridges.set(context, bridge);
     }
+    const bridgeHost = bridge.createPluginHost(({ specifier, options }) => context.getPluginModule(specifier, options));
+    const functions = this.opts.functions;
     const host = context.pluginHost;
+    const globalFns = [
+      ...(host?.globalFns ?? []),
+      ...(bridgeHost.globalFns ?? []),
+      ...(functions ?? [])
+    ];
     context.pluginHost = {
       ...host,
-      globalFns: [...(host?.globalFns ?? []), ...functions]
+      ...(globalFns.length === 0 ? {} : { globalFns }),
+      loadPlugin: bridgeHost.loadPlugin || host?.loadPlugin
+        ? (request) => {
+            const baseLoaded = host?.loadPlugin?.(request);
+            const bridgeLoaded = bridgeHost.loadPlugin?.(request);
+            const merge = (baseFns: readonly Fn[] | undefined, bridgeFns: readonly Fn[] | undefined) => [
+              ...(baseFns ?? []),
+              ...(bridgeFns ?? [])
+            ];
+            const baseThenable = baseLoaded && typeof baseLoaded === 'object' && 'then' in baseLoaded;
+            const bridgeThenable = bridgeLoaded && typeof bridgeLoaded === 'object' && 'then' in bridgeLoaded;
+            if (baseThenable || bridgeThenable) {
+              return Promise.all([baseLoaded ?? [], bridgeLoaded ?? []]).then(([baseFns, bridgeFns]) => merge(baseFns, bridgeFns));
+            }
+            return merge(baseLoaded, bridgeLoaded);
+          }
+        : undefined,
+      invokeRawFunction: (fn, args, ctx) =>
+        bridgeHost.invokeRawFunction?.(fn, args, ctx) ?? host?.invokeRawFunction?.(fn, args, ctx)
     };
   }
 }

@@ -1,16 +1,23 @@
 # @jesscss/plugin-less-compat
 
-**An AST-v2 native-function contribution package.**
+**A Less compatibility bridge for Jess.**
 
-[Jess](https://github.com/jesscss/jess) accepts typed AST-v2 `Fn` values here.
-The public compiler does **not** support Less 4 visitors, `functionRegistry`
-callbacks, `@plugin` scripts, post-processors, or conversion between Less tree
-nodes and Jess values.
+[Jess](https://github.com/jesscss/jess) accepts typed AST-v2 `Fn` values here
+and provides the shared Jess-owned bridge for Less-style plugin function
+registration and Less-shaped function values.
+
+The public compiler does **not** support Less 4 visitors, post-processors, file
+manager plugins, or a full Less tree AST adapter.
 
 ## How it works
 
 - **Native functions only** — pass `Fn` values from `@jesscss/core/value`; their
   bodies receive typed values and `FnCtx` capabilities.
+- **Less plugin function bridge** — pass Less-style plugins with
+  `install(less, manager, functions)` through `plugins`. The bridge supplies a
+  Less-shaped `functions.functionRegistry` and the supported `less.tree`
+  constructor facades, then lazily adapts function arguments and return values at
+  the Jess boundary.
 
 For example, migrate a Less `functionRegistry.add('increment', fn)` contribution
 to a typed function and register it through `functions`:
@@ -30,16 +37,31 @@ const compiler = new Compiler({
 });
 ```
 
-The old `plugins`/`functionRegistry` option is not a compatibility shim: it is
-not part of this package's public options. Legacy Less visitors, tree values,
-and script-plugin hooks must be migrated to an AST-v2 plugin or run under
-Less.js directly.
+For legacy Less function plugins:
+
+```ts
+const legacyPlugin = {
+  install(less, _manager, functions) {
+    functions.add('increment', value =>
+      new less.tree.Dimension(value.value + 1, value.unit)
+    );
+  }
+};
+
+const compiler = new Compiler({
+  compile: { plugins: [lessCompatPlugin({ plugins: [legacyPlugin] })] }
+});
+```
+
+Less-shaped values are boundary values only. Jess owns their conversion back
+into typed AST-v2 values.
 
 ## Status
 
-**Alpha / experimental.** The supported public route is native function
-contribution only. If you need Less visitors, `functionRegistry`, script-plugin,
-or post-processor support today, use Less.js directly.
+**Alpha / experimental.** The supported public routes are native function
+contribution and Less plugin function bridging. If you need Less visitors,
+post-processors, file managers, or broad Less tree AST mutation support today,
+use Less.js directly.
 
 The programmatic plugin/compiler API is **not yet stabilized** — the `jess` CLI
 is the documented public surface for the alpha. Watch the

@@ -8,248 +8,15 @@ import {
   type ISafeParseResult,
   type SafeParseOptions
 } from '@jesscss/core';
-import {
-  defineFunction,
-  emitValue,
-  groupItems,
-  makeDimension,
-  makeKeyword,
-  makeList,
-  makeQuoted,
-  sniffLiteral,
-  type Fn,
-  type PluginCallCtx,
-  type PluginHost,
-  type PluginRawArgument,
-  type ValueGroup,
-  type ValueObj
-} from '@jesscss/core/value';
-
+import { type PluginHost } from '@jesscss/core/value';
+import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
 import { parse as parseLess } from '@jesscss/less-parser';
 
-/**
- * A `@plugin` function bound to its live call-site capabilities. Structurally
- * identical to `@jesscss/plugin-js`'s export; declared here so the Less adapter
- * does not take a hard dependency on the sandbox package.
- */
-type ContextualPluginFunction = (
-  args: readonly unknown[],
-  capabilities: {
-    lookupVariable?(name: string): { value: unknown; important?: boolean } | null;
-    callFunction?(name: string, args: unknown[]): unknown;
-    currentFileInfo?: { filename: string; entryPath: string };
-    log?(record: { level: string; message: string }): void;
-    markImportant?(): void;
-  }
-) => unknown | Promise<unknown>;
-
 export type LessPluginOptions = LessOptions;
-
-type NativeLessFunction = (...args: unknown[]) => unknown;
-type NativeLessPlugin = { install?: (less: NativeLessApi, manager: undefined, functions: NativeLessFunctionRegistry) => void };
-type NativeLessFunctionRegistry = {
-  add(name: string, fn: NativeLessFunction): void;
-  addMultiple(functions: Record<string, NativeLessFunction>): void;
-};
-type NativeLessApi = {
-  functions: { functionRegistry: NativeLessFunctionRegistry };
-
-  /** Return-value constructors exposed by Less's public plugin API. These are
-   * plain structural values; core owns their conversion back to typed Values. */
-  tree: {
-    Dimension: new (value: number, unit?: string) => { type: 'Dimension'; value: number; unit: string };
-    Quoted: new (quote: string, value: string, escaped?: boolean) => { type: 'Quoted'; quote: string; value: string; escaped: boolean };
-  };
-};
-
-type NativeNil = { readonly type: 'Nil'; readonly value: ''; eval(): NativeNil };
-
-const nativeNil = (): NativeNil => {
-  const nil: NativeNil = { type: 'Nil', value: '', eval: () => nil };
-  return nil;
-};
-
-function isRawSequence(value: PluginRawArgument | ValueGroup): value is readonly ValueGroup[] {
-  return Array.isArray(value);
-}
-
-function isPluginDetached(value: PluginRawArgument | ValueGroup): value is Extract<PluginRawArgument, { type: 'DetachedRuleset' }> {
-  return !isRawSequence(value) && value.type === 'DetachedRuleset';
-}
-
-function toNativeLessValue(value: PluginRawArgument | ValueGroup): unknown {
-  if (isRawSequence(value)) {
-    return { type: 'Expression', value: value.map(toNativeLessValue), valueOf: () => emitValue(value) };
-  }
-  if (isPluginDetached(value)) {
-    const name = nativeNil();
-    const args = nativeNil();
-    const rules = value.rules.map(rule => ({
-      type: 'Declaration' as const,
-      name: rule.name,
-      value: toNativeLessValue(rule.value),
-      eval() {
-        return this;
-      }
-    }));
-    const mixin = {
-      type: 'Mixin' as const,
-      name,
-      args,
-      ruleset: { rules },
-      eval() {
-        return mixin;
-      }
-    };
-    return mixin;
-  }
-  return toNativeValue(value);
-}
-
-function toNativeValue(value: ValueObj): unknown {
-  switch (value.type) {
-    case 'Dimension': return { type: 'Dimension', value: value.number, unit: value.unit, valueOf: () => value.number };
-    case 'Quoted': return { type: 'Quoted', value: value.value, quote: value.quote, escaped: value.escaped, valueOf: () => value.bytes };
-    case 'Color': return { type: 'Color', rgb: value.rgb, alpha: value.alpha, valueOf: () => value.bytes };
-    case 'List':
-      return value.sep === ',' || value.sep === '/'
-        ? { type: 'Value', value: value.value.map(toNativeLessValue), separator: value.sep, valueOf: () => value.bytes }
-        : { type: 'Anonymous', value: value.bytes, valueOf: () => value.bytes };
-    default: return { type: 'Anonymous', value: value.bytes, valueOf: () => value.bytes };
-  }
-}
-
-function isNativeValue(value: unknown): value is ValueObj {
-  return value !== null
-    && typeof value === 'object'
-    && 'bytes' in value
-    && typeof value.bytes === 'string';
-}
-
-function fromNativeLessValue(value: unknown): ValueGroup {
-  if (isNativeValue(value)) {
-    return value;
-  }
-  if (typeof value === 'number') {
-    return makeDimension(value);
-  }
-  if (typeof value === 'string') {
-    return makeKeyword(value);
-  }
-  if (value && typeof value === 'object') {
-    const candidate = value as { type?: unknown; value?: unknown; unit?: unknown; quote?: unknown; escaped?: unknown; separator?: unknown; valueOf?: () => unknown };
-    if ((candidate.type === 'Dimension' || candidate.type === 'Num') && typeof candidate.value === 'number') {
-      return makeDimension(candidate.value, typeof candidate.unit === 'string' ? candidate.unit : '');
-    }
-    if (candidate.type === 'Quoted' && typeof candidate.value === 'string') {
-      return makeQuoted(candidate.value, candidate.quote === '\'' ? '\'' : '"', candidate.escaped === true);
-    }
-    if (candidate.type === 'Expression' && Array.isArray(candidate.value)) {
-      return candidate.value.map(fromNativeLessValue);
-    }
-    if (candidate.type === 'Value' && Array.isArray(candidate.value)) {
-      const separator = candidate.separator === '/' ? '/' : ',';
-      return makeList(candidate.value.map(item => fromNativeLessValue(item)), separator);
-    }
-    if (typeof candidate.value === 'string') {
-      /*
-       * A Less plugin's `Anonymous`/`Keyword` result is BYTES. Sniffing them back
-       * into a typed literal is what lets `darken(theme-color(primary), 15%)`
-       * see a colour rather than an opaque keyword — the same materialization
-       * the engine performs on any other computed byte string.
-       */
-      return sniffLiteral(candidate.value);
-    }
-    if (typeof candidate.valueOf === 'function') {
-      return sniffLiteral(String(candidate.valueOf()));
-    }
-  }
-  return makeKeyword(value == null ? '' : String(value));
-}
-
-function invokeNativeLessFunction(fn: NativeLessFunction, args: readonly PluginRawArgument[]): ValueGroup | Promise<ValueGroup> {
-  const result = fn(...args.map(toNativeLessValue));
-  return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
-    ? Promise.resolve(result).then(fromNativeLessValue)
-    : fromNativeLessValue(result);
-}
-
-/**
- * Run one `@plugin`-loaded function. Unlike a config-injected `install` plugin,
- * a `@plugin` script's body reads the live evaluation scope, so its call-site
- * capabilities are forwarded verbatim to the sandbox bridge.
- */
-function invokeContextualPluginFunction(
-  fn: ContextualPluginFunction,
-  args: readonly PluginRawArgument[],
-  ctx: PluginCallCtx
-): ValueGroup | Promise<ValueGroup> {
-  const result = fn(args.map(toNativeLessValue), {
-    lookupVariable: (name) => {
-      const hit = ctx.lookupVariable(name);
-      return hit === null ? null : { value: toNativeLessValue(hit.value), important: hit.important };
-    },
-    callFunction: (name, callArgs) => {
-      const answer = ctx.callFunction(name, callArgs.map(fromNativeLessValue));
-      return answer === undefined ? undefined : toNativeLessValue(answer);
-    },
-    currentFileInfo: ctx.currentFileInfo,
-    log: record => ctx.log(record),
-    markImportant: () => ctx.markImportant()
-  });
-
-  /*
-   * A synchronous bridge keeps the result synchronous, which is what lets a
-   * plugin value be read from a guard condition.
-   */
-  return result !== null && typeof result === 'object' && 'then' in result && typeof result.then === 'function'
-    ? Promise.resolve(result).then(fromNativeLessValue)
-    : fromNativeLessValue(result);
-}
-
-function nativeLessFn(name: string, fn: NativeLessFunction): Fn {
-  return defineFunction(name.toLowerCase(), {
-    variadic: true,
-    params: [],
-    body: value => invokeNativeLessFunction(fn, groupItems(value))
-  });
-}
-
-/**
- * A `@plugin` function's value-domain façade. It is never invoked through this
- * body — `invokeRawFunction` always claims it first, because the body has no way
- * to supply the live-frame capabilities the plugin needs. Reaching here means
- * the host seam was bypassed, which is a wiring bug, not a plugin fault.
- */
-function contextualLessFn(name: string): Fn {
-  return defineFunction(name.toLowerCase(), {
-    variadic: true,
-    params: [],
-    body: () => {
-      throw new Error(`Less @plugin function "${name}" needs the plugin invocation seam; it cannot run through plain function dispatch.`);
-    }
-  });
-}
-
-type LoadedPluginModule = {
-  readonly functions?: Record<string, ContextualPluginFunction>;
-};
-
-function isLoadedPluginModule(value: unknown): value is LoadedPluginModule {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  if (!('functions' in value) || value.functions === undefined) {
-    return true;
-  }
-  return typeof value.functions === 'object'
-    && value.functions !== null
-    && Object.values(value.functions).every(fn => typeof fn === 'function');
-}
 
 /**
  * The Less plugin's default option values — the single source of truth for the
@@ -454,51 +221,10 @@ export class LessPlugin extends AbstractPlugin {
 
     let host = this.pluginHosts.get(context);
     if (!host) {
-      const fns: Fn[] = [];
-      const nativeFns = new WeakMap<Fn, NativeLessFunction>();
-      const contextualFns = new WeakMap<Fn, ContextualPluginFunction>();
-      const addNativeFn = (name: string, fn: NativeLessFunction): Fn => {
-        const adapted = nativeLessFn(name, fn);
-        nativeFns.set(adapted, fn);
-        fns.push(adapted);
-        return adapted;
-      };
-      const addContextualFn = (name: string, fn: ContextualPluginFunction): Fn => {
-        const adapted = contextualLessFn(name);
-        contextualFns.set(adapted, fn);
-        fns.push(adapted);
-        return adapted;
-      };
-      const registry: NativeLessFunctionRegistry = {
-        add: (name, fn) => {
-          addNativeFn(name, fn);
-        },
-        addMultiple: (functions) => {
-          for (const [name, fn] of Object.entries(functions)) {
-            registry.add(name, fn);
-          }
-        }
-      };
-      const less: NativeLessApi = {
-        functions: { functionRegistry: registry },
-        tree: {
-          Dimension: class {
-            type = 'Dimension' as const;
-            constructor(readonly value: number, readonly unit = '') {}
-          },
-          Quoted: class {
-            type = 'Quoted' as const;
-            constructor(readonly quote: string, readonly value: string, readonly escaped = false) {}
-          }
-        }
-      };
       const configured = (this.opts as LessPluginOptions & { plugins?: NativeLessPlugin[] }).plugins ?? [];
-      for (const plugin of configured) {
-        plugin.install?.(less, undefined, registry);
-      }
-      host = {
-        ...(fns.length === 0 ? {} : { globalFns: fns }),
-        loadPlugin: async ({ specifier, options }) => {
+      const bridge = new LessApiBridge(configured);
+      host = bridge.createPluginHost({
+        loadPluginModule: async ({ specifier, options }) => {
           /*
            * `@plugin` loads and executes a script module. When script modules
            * are disabled the load must REFUSE here: the ast/ evaluator reaches
@@ -516,21 +242,9 @@ export class LessPlugin extends AbstractPlugin {
             });
           }
           const loaded = await context.getPluginModule(specifier, options);
-          const functions = isLoadedPluginModule(loaded.module) ? loaded.module.functions : undefined;
-          if (!functions) {
-            return [];
-          }
-          return Object.entries(functions).map(([name, fn]) => addContextualFn(name, fn));
-        },
-        invokeRawFunction: (fn, args, ctx) => {
-          const contextual = contextualFns.get(fn);
-          if (contextual) {
-            return invokeContextualPluginFunction(contextual, args, ctx);
-          }
-          const native = nativeFns.get(fn);
-          return native ? invokeNativeLessFunction(native, args) : undefined;
+          return loaded.module;
         }
-      };
+      });
       this.pluginHosts.set(context, host);
     }
     context.pluginHost = host;
