@@ -176,6 +176,26 @@ invariant** from it — a bare "Approved" is not a valid review result. These
 docs are the single source of truth; do not restate the invariant list in
 tool-specific rules — point at `docs/perf/V8-ARCHITECTURE.md`.
 
+## Semantics Architecture
+
+Before deciding or changing **what Jess emits** — value serialization, selector
+composition, dialect recognition, or any behavior visible in output CSS — work
+from the canonical semantics checklist:
+
+- `docs/architecture/SEMANTIC-INVARIANTS.md` — the **8 invariants** plus the
+  incident catalogue (`emitValueInterp` precision split, the merge anchor
+  flipped to less.js 4.x, parser-side selector joins, SCSS text-valued pseudo
+  arguments). Each invariant carries a STATUS saying whether it is a gate, a
+  buildable detector, a migration, or a reviewer obligation.
+- `docs/architecture/core/DESIGN-DECISIONS.md` — the owner decision
+  ledger. **A behavior with no ledger row is not a decided behavior.** Cite the
+  SETTLED row a change relies on, or add an OPEN row.
+
+Dispatch the `semantics-reviewer` before landing and require **evidence per
+invariant**. A bare "Approved", "tests pass", or "matches less.js" is not a
+valid review result — the last is forbidden as a justification by ledger rows
+E1/E2/E5.
+
 ## Core Architecture Handoff
 
 When working on the active evaluation-model refactor, use these docs as the canonical source:

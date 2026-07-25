@@ -57,6 +57,17 @@ For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 - load the `perf-architecture` skill before editing; use the
   `perf-architecture-reviewer` (evidence per invariant, not a verdict) before landing
 
+For semantics work (anything that changes emitted CSS — value serialization,
+selector composition, dialect recognition):
+
+- the canonical checklist is `docs/architecture/SEMANTIC-INVARIANTS.md`
+  (8 invariants + incident catalogue, each with a STATUS)
+- the owner decision ledger is
+  `docs/architecture/core/DESIGN-DECISIONS.md`; cite the SETTLED row a
+  change relies on, or add an OPEN row
+- use the `semantics-reviewer` (evidence per invariant); "matches less.js" is
+  not a valid justification
+
 For the core architecture/eval-render work:
 
 - treat `docs/architecture/core/HANDOFF.md` as the active entry point
