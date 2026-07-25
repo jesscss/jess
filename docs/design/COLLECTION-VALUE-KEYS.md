@@ -30,6 +30,37 @@ $m: {
 - **A numeric subscript is always positional** (P15), so numeric keys are not
   reachable by bracket; `map.get($m, 1px)` is their accessor.
 
+## `foo:` and `["foo"]:` are the SAME key — stored as a plain string
+
+```jess
+{
+  foo: bar;
+  ["foo"]: bar;    // identical key
+}
+```
+
+A quoted key is stored as a **plain string**, never as a `Quoted` node. The
+reasons are symmetry with JS (`{foo: 1}` ≡ `{"foo": 1}`) and reasonability: if
+`$["foo"]` resolved differently from `$[foo]`, no author could predict a lookup.
+Sass already agrees — it treats `"a"` and `a` as equal map keys.
+
+Two consequences that must be built in from the start, not normalized in later:
+
+1. **Quoting is a SERIALIZATION decision, not a storage one.** A stored string
+   that is not a valid identifier — `["foo bar"]` — has to be **re-quoted on
+   output**, or the emitted `{ foo bar: 1 }` is garbage. The serializer therefore
+   needs an "is this bare-emittable as an identifier?" test. Storing the author's
+   quotes to avoid writing that test is the wrong trade: it reintroduces two
+   spellings for one key.
+2. **The author's original quoting does not round-trip.** SCSS `("a": 1)`
+   converts to `a: 1` in `.jess`. That is a formatting change, not a semantic
+   one, because Sass considers the two the same key — but it belongs in the
+   conversion notes so it is not later reported as data loss.
+
+This also settles a divergence flagged on the value-domain map work:
+`nth(("a": 1), 1)` yielding `a 1` where dart-sass yields `"a" 1` is **intended**,
+not an artifact of quotes being dropped at parse.
+
 ## Why the node has to change
 
 `Declaration.name` is `string | Interpolation`. That type is the defect: a key's
