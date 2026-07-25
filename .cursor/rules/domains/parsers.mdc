@@ -9,6 +9,15 @@ globs:
 
 # Parsers
 
+## ⛔ BEFORE EDITING ANY OF THE EIGHT GRAMMAR FILES
+
+`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` is the standing brief:
+13 checklist items applied to **every `const` in the file** (not sampled), the
+hard constraints, the oracle verification loop, and the definition of done
+(diagnostic clean, lint clean, oracle byte-identical, macro-buildable clean —
+not "tests pass"). Use the `grammar-reviewer` agent before landing; it returns
+evidence per const, not a verdict.
+
 ## ⛔ SOURCE OF TRUTH FOR NODE SHAPES — READ THIS BEFORE TOUCHING A BUILDER
 
 The functional parseman parser (`src/grammar.ts` + `src/builders.ts`) is a **1:1 port** of

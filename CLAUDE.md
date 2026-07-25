@@ -68,6 +68,14 @@ selector composition, dialect recognition):
 - use the `semantics-reviewer` (evidence per invariant); "matches less.js" is
   not a valid justification
 
+For grammar work (any of the eight `*-parser/src/{,ast/}grammar.ts` files):
+
+- the standing brief is `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`
+  (13 checklist items applied to **every `const`**, hard constraints, oracle
+  verification loop, definition of done)
+- use the `grammar-reviewer` (evidence per const, not a verdict); "tests pass"
+  and a sampled review are both invalid results
+
 For the core architecture/eval-render work:
 
 - treat `docs/architecture/core/HANDOFF.md` as the active entry point
