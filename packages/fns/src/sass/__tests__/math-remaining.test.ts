@@ -18,7 +18,6 @@ import { describe, it, expect } from 'vitest';
 import { unit } from '../math/unit.js';
 import { percentage } from '../math/percentage.js';
 import { random } from '../math/random.js';
-import { sassMinMax } from '../math/min-max.js';
 import { min, mathMin } from '../math/min.js';
 import { max, mathMax } from '../math/max.js';
 
@@ -145,65 +144,6 @@ describe('sass:math — random', () => {
   });
 });
 
-describe('sass:math — min / max', () => {
-  const reduce = (isMin: boolean, strict: boolean, ...args: Dimension[]) =>
-    sassMinMax(isMin, makeList(args, ','), strict);
-
-  it('spec core_functions/math/{min,max}.hrx § three_args', () => {
-    expect(reduce(true, true, makeDimension(3), makeDimension(1), makeDimension(2))).toMatchObject({ number: 1 });
-    expect(reduce(false, true, makeDimension(3), makeDimension(1), makeDimension(2))).toMatchObject({ number: 3 });
-  });
-
-  it('spec core_functions/math/{min,max}.hrx § units/same', () => {
-    const args: Dimension[] = [makeDimension(6, 'px'), makeDimension(2, 'px'), makeDimension(10, 'px')];
-    expect(reduce(true, true, ...args)).toMatchObject({ number: 2, unit: 'px' });
-    expect(reduce(false, true, ...args)).toMatchObject({ number: 10, unit: 'px' });
-  });
-
-  it('spec core_functions/math/{min,max}.hrx § units/compatible — the winning ARGUMENT survives verbatim', () => {
-    const args: Dimension[] = [makeDimension(1, 'px'), makeDimension(1, 'in'), makeDimension(1, 'cm')];
-    expect(reduce(true, true, ...args)).toMatchObject({ number: 1, unit: 'px' });
-    expect(reduce(false, true, ...args)).toMatchObject({ number: 1, unit: 'in' });
-  });
-
-  it('spec core_functions/math/{min,max}.hrx § units/and_unitless — unitless compares against the DISPLAY number', () => {
-    expect(reduce(true, true, makeDimension(2, 'px'), makeDimension(1))).toMatchObject({ number: 1, unit: '' });
-    expect(reduce(false, true, makeDimension(2, 'px'), makeDimension(1))).toMatchObject({ number: 2, unit: 'px' });
-  });
-
-  it('dart-sass 1.101.0: min(3, 1cm) → 1cm and max(3, 1cm) → 3 (not canonicalised)', () => {
-    expect(reduce(true, false, makeDimension(3), makeDimension(1, 'cm'))).toMatchObject({ number: 1, unit: 'cm' });
-    expect(reduce(false, false, makeDimension(3), makeDimension(1, 'cm'))).toMatchObject({ number: 3, unit: '' });
-  });
-
-  it('spec core_functions/math/{min,max}.hrx § error/too_few_args vs the global form', () => {
-    expect(() => sassMinMax(true, [], true)).toThrow('At least one argument must be passed.');
-    expect(() => sassMinMax(true, [], false)).toThrow('Missing argument.');
-  });
-
-  it('spec core_functions/math/{min,max}.hrx § error/incompatible_units', () => {
-    expect(() => reduce(true, true, makeDimension(1, 'px'), makeDimension(2, 's')))
-      .toThrow('1px and 2s have incompatible units.');
-  });
-
-  it('spec core_functions/math/{min,max}.hrx § error/type', () => {
-    expect(() => sassMinMax(true, makeList([makeDimension(1), makeKeyword('c')], ','), true))
-      .toThrow('c is not a number.');
-  });
-
-  it('dart-sass 1.101.0: the GLOBAL form survives as plain CSS where the module form raises', () => {
-    expect(reduce(false, false, makeDimension(1, 'px'), makeDimension(2, 'em')))
-      .toMatchObject({ type: 'Keyword', text: 'max(1px, 2em)' });
-    expect(reduce(false, false, makeDimension(1, 'px'), makeDimension(1, '%')))
-      .toMatchObject({ type: 'Keyword', text: 'max(1px, 1%)' });
-    expect(sassMinMax(true, makeList([makeDimension(1, 'px'), makeKeyword('var(--x)')], ','), false))
-      .toMatchObject({ type: 'Keyword', text: 'min(1px, var(--x))' });
-  });
-
-  it('registers the module pair and the global pair under the same dispatch name', () => {
-    expect(min.name).toBe('min');
-    expect(mathMin.name).toBe('min');
-    expect(max.name).toBe('max');
-    expect(mathMax.name).toBe('max');
-  });
-});
+// `min`/`max` moved to `shared/math/` — they are the CSS math functions and
+// behave identically in every dialect. Their tests (including the strict
+// `math.min`/`math.max` wording) live in `shared/math/__tests__/min-max.test.ts`.

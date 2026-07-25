@@ -38,14 +38,25 @@ describe('per-dialect built-ins', () => {
     for (const sassOnly of ['nth', 'append', 'zip', 'is-bracketed', 'comparable', 'type-of']) {
       expect(lessNames.has(sassOnly)).toBe(false);
     }
-    // A name shared by both dialects resolves to each dialect's OWN body — never
-    // one shared entry. `unit` is the load-bearing case: Less strips the unit and
-    // returns a number, Sass returns the unit as a quoted string.
-    for (const shared of ['length', 'unit', 'percentage', 'min', 'max']) {
-      expect(lessNames.has(shared)).toBe(true);
-      expect(sassNames.has(shared)).toBe(true);
-      expect(lessFns.find(fn => fn.name === shared))
-        .not.toBe(sassFns.find(fn => fn.name === shared));
+    // A name the dialects DISAGREE on resolves to each dialect's OWN body —
+    // never one shared entry. `unit` is the load-bearing case: Less strips the
+    // unit and returns a number, Sass returns the unit as a quoted string.
+    for (const divergent of ['length', 'unit', 'percentage']) {
+      expect(lessNames.has(divergent)).toBe(true);
+      expect(sassNames.has(divergent)).toBe(true);
+      expect(lessFns.find(fn => fn.name === divergent))
+        .not.toBe(sassFns.find(fn => fn.name === divergent));
+    }
+
+    // `min`/`max` are the opposite case and must stay that way: they are the CSS
+    // Values 4 math functions, so both dialects resolve to the SAME shared fn
+    // instance. A per-dialect re-implementation of a CSS function is the
+    // anti-pattern this whole layout exists to prevent.
+    for (const css of ['min', 'max']) {
+      expect(lessNames.has(css)).toBe(true);
+      expect(sassNames.has(css)).toBe(true);
+      expect(lessFns.find(fn => fn.name === css))
+        .toBe(sassFns.find(fn => fn.name === css));
     }
   });
 

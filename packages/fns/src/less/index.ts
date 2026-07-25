@@ -9,8 +9,7 @@
  * Adding a Less fn is therefore ONE edit beyond the module itself — a line in
  * this index. Nothing else enumerates the set.
  *
- * `shared/` carries only fns whose behaviour is identical in Less and Sass, so a
- * Less-specific override (`min`/`max`) is taken from this folder instead.
+ * `shared/` carries only fns whose behaviour is identical in Less and Sass.
  *
  * `if`/`boolean`/`not`/`and`/`or`, `isdefined`, `isruleset` and `each` are NOT
  * here: core special-forms all of them during serialization
@@ -19,7 +18,7 @@
  */
 
 /** Math — shared with Sass (identical behaviour). */
-export { abs, ceil, floor } from '../shared/index.js';
+export { abs, ceil, floor, min, max } from '../shared/index.js';
 
 /** Math — Less-specific. */
 export { round } from './round.js';
@@ -40,12 +39,10 @@ export { asin } from './asin.js';
 export { acos } from './acos.js';
 export { atan } from './atan.js';
 
-/** Lists. `min`/`max` are Less-specific (Sass emits plain CSS on mixed units). */
+/** Lists. */
 export { range } from './range.js';
 export { default as length } from './length.js';
 export { default as extract } from './extract.js';
-export { min } from './min.js';
-export { max } from './max.js';
 
 /** Colour — channel getters shared with Sass (identical behaviour). */
 export { red, green, blue, alpha } from '../shared/index.js';

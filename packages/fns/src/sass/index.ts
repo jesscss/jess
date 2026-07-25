@@ -23,13 +23,11 @@
  */
 
 // Global Math Functions (Deprecated - use math.* module instead)
-export { abs, ceil, floor } from '../shared/index.js';
+export { abs, ceil, floor, min, max } from '../shared/index.js';
 export { round } from './math/round.js';
-// The GLOBAL `min`/`max` are Sass-owned: they reduce when they can and survive
-// as plain CSS otherwise, where Less raises. `math.min`/`math.max` (the strict
+// The GLOBAL `min`/`max` come from `shared/`: they are the CSS math functions
+// and behave identically in every dialect. `math.min`/`math.max` (the strict
 // module pair) live in `./math/index.ts`.
-export { min } from './math/min.js';
-export { max } from './math/max.js';
 export { unitless } from './math/is-unitless.js';
 export { comparable } from './math/compatible.js';
 export { percentage } from './math/percentage.js';

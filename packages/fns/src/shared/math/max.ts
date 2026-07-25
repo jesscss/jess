@@ -1,11 +1,11 @@
 import { defineFunction } from '@jesscss/core/value';
-import { minMax } from './min-max.js';
+import { cssMinMax } from './min-max.js';
 
-/** Less `max()` with typed list flattening and mode-aware unit reduction. */
+/** The CSS `max()` — identical in every dialect. See `min-max.ts`. */
 const max = defineFunction('max', {
   params: [{ kinds: ['Dimension'] }],
   variadic: true,
-  body: (list, context) => minMax(false, list, context.modes)
+  body: list => cssMinMax(false, list, false)
 });
 
 export { max };

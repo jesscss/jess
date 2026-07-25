@@ -38,6 +38,12 @@ but updated for the new goal: **ship a Jess-first LSP + VS Code/Cursor extension
 - [x] Formatting (uses core AST `toTrimmedString` for consistent indentation).
 - [x] Semantic tokens (parser-driven highlighting with AST-based variable reference detection).
 - [x] Dynamic diagnostic severity: undefined variables are errors when `@use` (SCSS) or `@from`/`@compose` (Less) present, warnings otherwise.
+- [ ] Math-function argument-type validity (`min()`/`max()`/`clamp()`): CSS Values 4
+      § 10.1 requires the arguments to resolve to a common type, so `min(1px, 2s)`
+      (length vs time) is INVALID CSS while `max(1px, 2em)` (both `<length>`) is
+      valid-but-unreducible. The evaluator deliberately preserves BOTH verbatim —
+      it accepts shapes and does not adjudicate validity — so the distinction is
+      only ever surfaced here. Do not "fix" this in `fns`/`core`.
 
 ### Phase 5 — Test harness (guiding star: `vscode-css-languageservice`)
 - [ ] Port/adapt a minimal subset of completion/hover/diagnostics tests as expected-output cases.

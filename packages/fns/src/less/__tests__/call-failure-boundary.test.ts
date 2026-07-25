@@ -32,36 +32,43 @@ describe('built-in call failures', () => {
     })).toThrow('Invalid arguments for rgb function');
   });
 
-  it('returns Less min/max survivor calls as successful values, while strict input still escapes', () => {
+  it('lets an unreducible min/max escape its implementation, whatever the unit mode', () => {
     const registry = makeLessRegistry();
     const args = makeList([makeDimension(1, 'px'), makeDimension(1, 's')], ',');
 
-    expect(registry.dispatch('min', args, {
-      modes: { unitMode: 'preserve' },
-      stringify: value => value.bytes
-    }).bytes).toBe('min(1px, 1s)');
-
-    expect(() => registry.dispatch('min', args, {
-      modes: { unitMode: 'strict' },
-      stringify: value => value.bytes
-    })).toThrow('min() arguments have incompatible units');
+    // `min`/`max` used to swallow this and hand back a `min(1px, 1s)` keyword,
+    // which made `functionMode` inert for these two names. The body now fails
+    // and the evaluator decides — and `unitMode` was never the right lever.
+    for (const unitMode of ['preserve', 'strict'] as const) {
+      expect(() => registry.dispatch('min', args, {
+        modes: { unitMode },
+        stringify: value => value.bytes
+      })).toThrow('min() arguments have incompatible units');
+    }
   });
 
-  it('reduces each compatible min/max unit group before producing CSS survivors', () => {
-    const registry = makeLessRegistry();
-    const ctx = { modes: { unitMode: 'preserve' as const }, stringify: (value: ValueObj) => value.bytes };
-
-    const minResult = registry.dispatch('min', makeList([
+  it('preserves the WHOLE unreducible min/max call, never a partial reduction', () => {
+    // The old body reduced each unit group and emitted the survivors, giving
+    // `min(1, 4ex, 2pt)` / `max(5m, 3em)`. lessc 4.8.0 emits exactly that for
+    // these inputs — its unconditional throw is BYPASSED when an intervening
+    // unitless argument resets `unitStatic`, so the partial-reduction branch is
+    // reachable after all. dart-sass reduces the same input all the way to `1`.
+    // Preserving every argument deliberately agrees with neither: less.js's
+    // output depends on argument ORDER, which is not a policy worth porting.
+    // The Less fixture expecting the old bytes was graduated with this change.
+    const minArgs = makeList([
       makeDimension(6, 'em'), makeDimension(5), makeDimension(4, 'ex'),
       makeDimension(3), makeDimension(2, 'pt'), makeDimension(1)
-    ], ','), ctx);
-    expect(minResult.bytes).toBe('min(1, 4ex, 2pt)');
+    ], ',');
+    const minResult = evaluator.call('min', minArgs, { unitMode: 'preserve' });
+    expect(minResult).toMatchObject({ bytes: 'min(6em, 5, 4ex, 3, 2pt, 1)' });
 
-    const maxResult = registry.dispatch('max', makeList([
+    const maxArgs = makeList([
       makeDimension(1, 'px'), makeDimension(2), makeDimension(3, 'em'),
       makeDimension(4), makeDimension(5, 'm'), makeDimension(6)
-    ], ','), ctx);
-    expect(maxResult.bytes).toBe('max(5m, 3em)');
+    ], ',');
+    const maxResult = evaluator.call('max', maxArgs, { unitMode: 'preserve' });
+    expect(maxResult).toMatchObject({ bytes: 'max(1px, 2, 3em, 4, 5m, 6)' });
   });
 
   it('does not let extract() or data-uri() manufacture their own fallback calls', () => {
