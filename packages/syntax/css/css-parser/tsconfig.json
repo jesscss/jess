@@ -7,6 +7,6 @@
     "rootDir": ".",
     "skipLibCheck": true
   },
-  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "../../../../vitest.d.ts"],
+  "include": ["src/**/*", "test/**/*", "vitest.config.ts", "tsdown.config.ts", "../../../../vitest.d.ts"],
   "exclude": ["node_modules", "lib"]
 }
