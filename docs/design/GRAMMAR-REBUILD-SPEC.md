@@ -5,14 +5,12 @@ what an agent is handed: the scope, the constraints, the references to read
 first, the method, and the criteria that decide whether they succeeded.
 
 > **Status: `design/`, not `architecture/`.** The problem statement (§2), the
-> verification machinery in §8.2–§8.6, the traps (§7) and the structural causes
-> (§13) are present-tense and measured. **Everything in §4, §5, §6 and §8.1 is
-> planned and not built** — the equivalence gate has merged upstream but sits in
-> an **unpublished** parseman, and **the eight-to-four collapse requires a
-> parseman version this repo does not run (§5.0)**. `CLAUDE.md` says not to add architecture
-> documents that mostly describe machinery the repo does not currently have, and
-> [`../README.md`](../README.md) puts such a document here. This one obeys that
-> rather than acknowledging it in a banner.
+> verification machinery in §8.2–§8.6, the traps (§7), and the structural causes
+> (§13) are present-tense and measured. The old hostMode release blocker is paid
+> as of `parseman@0.39.1`; the eight-to-four collapse is still incomplete because
+> the grammar families have not all been rebuilt and gated. Sections that preserve
+> older 0.32/0.37/0.38 planning evidence are historical unless §0.2 or
+> `docs/architecture/parser/GRAMMAR-SEQUENCE-ORCHESTRATION.md` says otherwise.
 >
 > **It graduates to `architecture/parser/` when the rebuild lands** and the
 > forward-looking sections become present tense. That move is the visible event
@@ -71,35 +69,56 @@ Four consequences, none of them optional:
 
 ### 0.2 Current status
 
-**The Stage 1 floor is paid.** parseman is now pinned to **0.37.0** on `dev`
-(bump commit `6908e7b4f`, 2026-07-25, immediately after the packages-by-syntax
-regroup commit `e96d1035d`). `hostMode` reaches the macro: §5.0 below is
-updated; the Less parse-time re-measurement came back **faster on 0.37.0 than
-on 0.32.0** (every benchmark case faster, none slower; CST route 25–30%
-faster). AST/CST byte-identity, the four parser suites, `check:macro`,
-`verify:compose-integrity`, `verify:types` and `lint` are all green at the
-bumped pin.
+**The parseman floor is paid.** parseman is now pinned to **0.39.1** in the root,
+`@jesscss/parser-shared`, and all four parser package dev dependencies; parser
+package peer ranges require `^0.39.1`. `hostMode` reaches the macro, 0.38 adds
+the keyword ergonomics this cleanup now uses:
+`word(str, { caseInsensitive: true })`,
+`word(str, boundary, { caseInsensitive: true })`, and
+`makeWord(boundary?, { caseInsensitive: true })`, and 0.39.1 provides the
+macro-compiled `dispatch(combinator, when(...), otherwise(...))` routing shape,
+case-insensitive `when(...)`, `makeWhen(...)`, matcher cases, and `routed()`.
+Current package-local resolution checks report `0.39.1` for parser-shared, CSS,
+Less, SCSS, and Jess parser workspaces. Macro probing has one important authoring boundary:
+`makeWord(...)` aliases declared inside a `rules(...)` factory lower cleanly, but
+module-scope word-factory aliases do not; keep shared recognition modules on
+direct `word(...)` / `keywords(...)` until that Parseman surface improves.
 
-**The rewrite itself has still not started.** The eight→four collapse is the
-work of Stages 3–6. Verify:
+**The rewrite has started, but the four-grammar collapse is not complete.** CSS
+is the first folded dialect: `packages/syntax/css/css-parser/src/ast/grammar.ts`
+has been deleted, and `packages/syntax/css/css-parser/src/grammar.ts` now owns a
+single `cssFactory` compiled for AST mode and CST host mode. Less has moved its
+direct AST grammar body into `packages/syntax/less/less-parser/src/grammar.ts`;
+`packages/syntax/less/less-parser/src/ast/grammar.ts` is only a compatibility
+re-export. Less still needs one host-mode-aware factory, because its CST bridge
+and direct AST factory are still separate bodies inside that one source file.
+SCSS and Jess still have separate CST and AST grammar files. Verify:
 
 ```sh
-wc -l packages/syntax/{css,less,scss,jess}/*-parser/src/grammar.ts \
-      packages/syntax/{css,less,scss,jess}/*-parser/src/ast/grammar.ts
+wc -l packages/syntax/css/css-parser/src/grammar.ts \
+      packages/syntax/less/less-parser/src/grammar.ts \
+      packages/syntax/less/less-parser/src/ast/grammar.ts \
+      packages/syntax/scss/scss-parser/src/grammar.ts \
+      packages/syntax/scss/scss-parser/src/ast/grammar.ts \
+      packages/syntax/jess/jess-parser/src/grammar.ts \
+      packages/syntax/jess/jess-parser/src/ast/grammar.ts
 ```
 
-Eight files, **24,305 lines** at `e96d1035d` (paths shown at the new
-post-regroup `packages/syntax/<lang>/<pkg>/` locations).
-
-**The work is blocked on a prerequisite only the owner can clear.** The
-mechanism that makes one grammar file serve both the AST and the CST is
-parseman's `hostMode` (§5.3). It does not exist in the version jess pins.
+Seven file paths, **23,056 lines** in the active 2026-07-26 checkout after the
+CSS single-source fold and Less AST-body move; one of those paths is the
+two-line Less compatibility re-export. CSS parser-focused gates are green, and
+the focused Less AST/CST/macro set (3 files / 232 tests) plus the Less
+byte-identity oracle are green against the updated CSS-fold baseline.
+`pnpm run check:macro` reports parser-shared, CSS, and Less fully compiled with
+0 interpreter fallbacks, but the repo-wide macro/compose gates are still red
+until SCSS and Jess are folded. Less itself remains duplicated internally until
+the CST bridge and direct AST body become one factory.
 
 | fact | value at time of writing | how to re-check |
 | --- | --- | --- |
-| parseman version jess pins | **0.37.0**, 10 pin lines across 6 manifests (§0.5) — bump commit `6908e7b4f` | `grep -rn --include=package.json '"parseman"' . --exclude-dir=node_modules` |
-| parseman published `latest` | **0.37.0** | `npm view parseman dist-tags` |
-| parseman `main` | **0.37.0** | `git -C <parseman checkout> show origin/main:package.json \| grep version` |
+| parseman version jess pins | **0.39.1** in root + parser-shared + all four parser package dev dependencies; parser package peers are `^0.39.1` | `grep -rn --include=package.json '"parseman"' . --exclude-dir=node_modules --exclude-dir=.claude` |
+| parseman published `latest` | **0.39.1** | `npm view parseman version` |
+| parseman `main` | **0.39.1** at publication time | `git -C <parseman checkout> show origin/main:package.json \| grep version` |
 | `hostMode` first ships in | **0.37.0** | parseman `CHANGELOG.md`, the 0.37.0 section |
 | PRs #75, #76, #77, #80, #81, #82, #83, #84, #85 | **merged** | `gh pr list --repo matthew-dean/parseman --state all` |
 | **PR #85 — `hostMode` reaching the macro** | **merged**, on `dev` in jess via `6908e7b4f` | `gh pr view 85 --repo matthew-dean/parseman` |
@@ -112,9 +131,19 @@ parseman's `hostMode` (§5.3). It does not exist in the version jess pins.
 > proceed.
 
 > **Publishing parseman is owner-only.** Agents never merge or release parseman
-> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). 0.37.0 IS now
-> published and jess pins it on `dev`; any future parseman bump goes through
-> the same owner gate.
+> PRs (`docs/architecture/core/HANDOFF.md`, COLD START item 7). 0.39.1 is now
+> published and jess pins it; any future parseman bump goes through the same
+> owner gate.
+
+> **Parseman routing shape:** exact keyword contexts use `word()` / `keywords()`.
+> Known-or-generic token families use macro-compiled `dispatch(combinator,
+> when(...), otherwise(...))`: consume one broad token, route by the returned
+> value, commit a matched known case, and fall back only for truly unknown token
+> values. Use `when(..., { caseInsensitive: true })` or a single grammar-local
+> `makeWhen(...)` helper for repeated cases with the same policy. Use `routed()`
+> when the selected branch node should own the already-consumed value/span. See
+> `docs/architecture/parser/GRAMMAR-SEQUENCE-ORCHESTRATION.md` for the current
+> adversarial review and sequencing decision.
 
 **Landed on `dev` and relevant to a rebuild author** — each verifiable at
 `6908e7b4f` (current `dev` tip; `92d38af4f` was the pre-bump authoring
@@ -143,8 +172,8 @@ document order; it is stated here.
 
 | step | what | gated on | who |
 | --- | --- | --- | --- |
-| **1** | **Publish parseman 0.37.0**, then bump jess's 10 pin lines and regenerate every compiled artifact | PR #85 reaching `main` | **owner only** |
-| **2** | **Rebuild the CSS grammar** — one `grammar.ts`, no dialect prefixes, no copy-paste, compiled twice via `hostMode` (Unit 4) | step 1 for the *collapse*; **not** for the authoring (§5.0) | agent |
+| **1** | **Parseman grammar floor** | paid by `parseman@0.39.1`; future parseman releases remain owner-only | **owner only for future releases** |
+| **2** | **Rebuild the CSS grammar** — one `grammar.ts`, no dialect prefixes, no copy-paste, compiled twice via `hostMode` (Unit 4) | step 1 paid; use `dispatch(...)` for known/generic token families | agent |
 | **3** | **`less`**, composing on the finished CSS base (Unit 5) | step 2 landed; §5.4 | agent |
 | **4** | **`scss`**, then **`jess`**, same shape | step 3; §5.4 blocks `scss` specifically | agent |
 
@@ -191,7 +220,7 @@ this table is the audit trail.
 
 | claim as written | corrected | why it moved |
 | --- | --- | --- |
-| `hostMode` / `analyzeDuplication()` ship in **0.40.0**; the collapse has a "hard floor of 0.40.0" | **0.37.0** | parseman PR #83, *"collapse the unpublished 0.38–0.41 versions into 0.37.0"*. There is no 0.40.0 and there never will be. Every "0.40.0" in the original text meant this |
+| `hostMode` / `analyzeDuplication()` ship in **0.40.0**; the collapse has a "hard floor of 0.40.0" | **0.37.0** | parseman PR #83, *"collapse the unpublished 0.38–0.41 versions into 0.37.0"*. There was no published 0.40.0 in that historical sequence; future 0.40.x releases can still exist. Every "0.40.0" in the original text meant the hostMode floor |
 | `DirectJess*` distinct names = **171** | **168** | `grep -ohE 'DirectJess[A-Z][A-Za-z0-9_]*' packages/jess-parser/src/ast/grammar.ts \| sort -u \| wc -l` |
 | the `internal-css-recognition` rename is unproposed and "sequenced last" | **it landed**, as `packages/parser-shared` | commit `a74131e8f` |
 | `parseman/oracle` (PR #75) is "UNMERGED AND UNRELEASED" | **merged** | `gh pr view 75 --repo matthew-dean/parseman` |
@@ -260,12 +289,15 @@ either half of that test does not belong there.
 
 It has no package-root export; consumers import by subpath —
 `./recognition`, `./opaque-at-rule`, `./pseudo-consts`. Its four value exports
-are `cssAstSyntax`, `lessAstSyntax`, `cssAstPseudoSyntax` and
-`opaqueAtRuleRecognition`. **Three of those four are themselves instances of the
-anti-pattern this rebuild exists to remove** — a dialect prefix and a compile
-mode baked into the name of a thing whose entire purpose is being shared, in the
-package whose entire purpose is sharing. They are awaiting the rewrite, not a
-model to copy (§13.3, and item 14's standing evidence).
+are `cssSyntax`, `lessAstSyntax`, `cssPseudoSyntax` and
+`opaqueAtRuleRecognition`. The CSS shared recognition exports were cleaned on
+2026-07-26 from `cssAstSyntax` / `cssAstPseudoSyntax` to `cssSyntax` /
+`cssPseudoSyntax`; their rule keys likewise moved from `CssAstSyntax*` to
+`CssSyntax*`. `lessAstSyntax` remains the obvious shared-recognition naming
+debt and should be paid in the Less rebuild. The CSS prefix is now a language
+scope marker for the base grammar rather than a compile-mode marker; if the
+four-grammar collapse later makes the base module itself unambiguous, it can be
+removed there.
 
 **Cross-artifact `compose()` is not available, so the rebuild proceeds as
 terminal leaves.** The constraint a builder must satisfy to be statically
@@ -513,9 +545,9 @@ the extra one in each file is the standalone word "Direct" in prose.
 with any of them because it uses a fourth prefix.
 
 **Four disjoint vocabularies for one language is why the four AST grammars can
-share nothing.** It is not cosmetic. A `Declaration` cannot be composed from a
-base if the base calls it `CssAstDeclaration` and the dialect calls it
-`DirectLessStandardDeclaration`.
+share nothing.** It is not cosmetic. A shared `Declaration` cannot be composed
+while equivalent rules still carry dialect/mode names such as `CssAst*` or
+`DirectLess*` instead of the common language concept.
 
 One nuance that changes the work: **the emitted node types already agree.** All
 four AST grammars import the same constructors from `@jesscss/core/ast`
@@ -656,28 +688,29 @@ changed the sequencing.** What remains blocking is narrower than it was:
 
 | § | status |
 | --- | --- |
-| 5.0 the version question | **RESOLVED.** parseman 0.37.0 is published and pinned on `dev` (bump commit `6908e7b4f`, 2026-07-25). `hostMode` reaches the macro (PR #85 merged). The Less re-measurement came back **faster on 0.37.0 than on 0.32.0** (every benchmark case faster, none slower; CST 25–30% faster). The architecture floor is paid; Stages 3–6 can proceed |
+| 5.0 the version question | **RESOLVED.** parseman 0.39.1 is published and pinned in the active checkout (2026-07-26). `hostMode` reached the macro in 0.37.0 (PR #85 merged), 0.38.0 added keyword ergonomics, 0.39.0 added `dispatch(...)`, and 0.39.1 adds the dispatch refinements the grammar cleanup now uses (`when(..., { caseInsensitive: true })`, `makeWhen(...)`, matcher cases, and `routed()`). The architecture floor is paid; Stages 3–6 can proceed |
 | 5.1 the 0.36.0 adoption | **RESOLVED** — measured and declined. Authoring is not blocked on a bump |
 | 5.2 the 0.32.0 hazards | **standing constraints**, not blockers — check per unit. Three now, including the cross-mode fusion hazard |
 | 5.3 `hostMode` | **RESOLVED** — shipped at 0.37.0 as a compile-time flag. Delivery taken; it is now a version-floor question, not a missing mechanism |
-| 5.4 SCSS composing on Less | **open** — blocks Unit 5's `scss` step, and a one-line false comment blocks its `less` step |
+| 5.4 SCSS composing on Less | **open** — blocks the `scss` fold from being a CSS-sibling grammar. Do not preserve Less seams to keep this temporary composition green; cutting those seams during the Less fold may intentionally turn SCSS red until the SCSS pass rebuilds it as a sibling |
 | 5.5 `internal-css-recognition` rename | **DONE** — landed as `packages/parser-shared` (`a74131e8f`). No longer blocks or is blocked |
 
 ### 5.0 The version question, stated plainly
 
-**The collapse's hard floor of 0.37.0 is paid. Authoring on 0.32.0 is now
-historical — the bumped tree at commit `6908e7b4f` is the authoring baseline
-for Stages 3–6, and §0.2 records the AST-identity-oracle aggregate that any
-later grammar change must preserve.**
+**The collapse's hard floor is paid.** `hostMode` arrived in 0.37.0, and the
+active checkout now pins parseman 0.39.1. Authoring on 0.32.0 is historical;
+§0.2 records the current floor and the gates that any later grammar change must
+preserve.
 
 > **Version-numbering correction, because the old numbers are still in circulation.**
 > This section previously said the floor was **0.40.0**. parseman PR #83 —
 > *"chore(release): collapse the unpublished 0.38–0.41 versions into 0.37.0"* —
-> renumbered every unpublished version into a single **0.37.0**. **There is no
-> 0.40.0 and there will not be one.** Anywhere you encounter "0.38.0", "0.40.0"
-> or "0.41.0" in a jess or parseman document written on 2026-07-25, read
-> **0.37.0**. The mechanism claims attached to those numbers are unchanged; only
-> the label moved.
+> renumbered every unpublished version into a single **0.37.0**. There was no
+> 0.40.0 in that unpublished sequence. Anywhere you encounter "0.38.0",
+> "0.40.0" or "0.41.0" in a jess or parseman document written on 2026-07-25,
+> read **0.37.0**. The mechanism claims attached to those numbers are unchanged;
+> only the label moved. This does **not** apply to later real releases such as
+> `parseman@0.38.0`, `0.39.x`, or any future `0.40.0`.
 >
 > **0.37.0 is not published.** `npm view parseman dist-tags` reads `latest:
 > 0.36.0`. parseman `main` carries 0.37.0 unpublished. **Publishing is
@@ -687,16 +720,27 @@ later grammar change must preserve.**
 > pins it on `dev` (bump commit `6908e7b4f`), `hostMode` reaches the macro
 > (PR #85 merged), and the Less re-measurement came back favourable — see
 > the benchmark table below.
+>
+> **UPDATE 2026-07-26:** 0.38.0 IS now published and pinned in the active jess
+> checkout. The key grammar-authoring addition over 0.37.0 is case-insensitive
+> `word(...)` / `makeWord(...)`.
+>
+> **UPDATE 2026-07-26:** 0.39.0 IS now published and pinned in the active jess
+> checkout. `dispatch(combinator, when(...), otherwise(...))` is the
+> macro-compiled shape for known-or-generic token dispatch.
+>
+> **UPDATE 2026-07-26:** 0.39.1 IS now published and pinned in the active jess
+> checkout. It completes the dispatch authoring surface for the grammar cleanup:
+> case-insensitive `when(...)`, `makeWhen(...)`, matcher cases, and `routed()`.
 
 | what | version | why |
 | --- | --- | --- |
-| Writing the rebuilt rules (Stages 2–7) | **0.37.0**, the bumped pin — paid | Authoring now happens on the bumped tree; the §5.1 re-measure is paid |
-| **Collapsing 8 files to 4** | **0.37.0 (paid)** | `compile(g, { hostMode })` is the mechanism that lets one grammar serve both the eval-AST and positioned-CST modes (§5.3). jess is on 0.37.0 at `6908e7b4f` |
+| Writing the rebuilt rules (Stages 2–7) | **0.39.1**, the bumped pin — paid | Authoring now happens on the 0.39.1 tree; use case-insensitive `word(...)` / `makeWord(...)`, `dispatch(...)`, `makeWhen(...)`, matcher cases, and `routed()` wherever they fit |
+| **Collapsing 8 files to 4** | **0.39.1 (paid)** | `compile(g, { hostMode })` is the mechanism that lets one grammar serve both the eval-AST and positioned-CST modes (§5.3). jess now pins 0.39.1 |
 
-> **This is not a deferrable perf matter any more. It sits between us and the
-> architecture the owner asked for.** The collapse — the entire point of §3 — is
-> gated on a version we declined for a measured Less regression. Naming the
-> tension is the job here; resolving it optimistically is not.
+> **This is not a deferrable perf matter any more.** The version floor is paid;
+> the remaining work is the grammar collapse itself, with parser correctness and
+> macro/compose gates proving each folded dialect.
 >
 > **What gates it: the Less measurement, nothing else.** Correctness at 0.36.0
 > was already fully clean. A re-measurement at 0.37.0 under the cross-process
@@ -1038,32 +1082,42 @@ upstream rather than re-declaring the union locally.
 `packages/scss-parser/src/grammar.ts:30`:
 
 ```ts
-export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules({ trivia: rw }, (g: any) => {
+export const scssGrammar = compose([lessGrammar, cssSyntax, rules({ trivia: rw }, (g: any) => {
 ```
 
-This is **blocking Less-side cleanup**, not merely an SCSS correctness leak —
-and as of `ac02c6e0b` that is **verified by building it**, not inferred.
-`docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md` records the
-mechanism: because `scssGrammar = compose([lessGrammar, …])`, `lessGrammar` may
-not itself become a non-final carried piece. Composing the shared recognition map
-into the Less CST compiles fine in `less-parser`, and then `scss-parser` reports
-`compose(): argument 0 isn't a build-resolvable grammar`. **So the Less CST
-cannot reach the shared recognition surface at all while the inversion stands.**
+This is still an architecture inversion, not merely an SCSS correctness leak:
+SCSS must become a sibling dialect on the CSS/preprocessor base rather than
+inheriting Less-only constructs. The earlier build failure mode was narrower:
+because `scssGrammar = compose([lessGrammar, …])`, moving Less grammar surfaces
+could make SCSS report `compose(): argument 0 isn't a build-resolvable grammar`.
+The current Less AST-body move avoids that specific failure by compiling Less
+unbundled, so `@jesscss/less-parser/grammar` remains a direct build-resolvable
+entry. That is a build-shape guard, not the final architecture.
 
 First concrete casualty, named in that commit: the Less CST keeps a 150-name copy
 of the CSS named-colour list that `5d0a61523` could not delete — and any other
 CSS-recognition duplicate in the Less CST is stuck for the same reason. This is
 why §2.3's remaining keyword regexes cluster where they do.
 
-**The false comment is still in the tree.**
-`packages/less-parser/src/grammar.ts:157` still reads "SCSS composes on the CSS
-base, NOT on Less, so it never inherits this Less body", licensing Less-side edits
-on a premise `ac02c6e0b` disproves 560 lines lower in the same file. Deleting it
-is a one-line prerequisite for Unit 5, not a nicety.
+**The old false Less comment has been corrected.**
+`packages/syntax/less/less-parser/src/grammar.ts` now states the active split:
+SCSS currently composes on the public Less CST grammar, while the SCSS direct AST
+grammar owns its separate interpolation body. Keep this distinction explicit
+until SCSS is folded as a CSS-sibling dialect.
+
+Do not preserve Less grammar seams merely to support that temporary SCSS-on-Less
+composition. When folding Less, keep only real Less syntax and public
+CST/language-service contracts; remove SCSS-injection scaffolding such as
+Less-owned `stylesheetItem` / `blockItem` override seams during the Less fold,
+even if the current SCSS suite turns red. That red is useful evidence that SCSS
+was depending on Less by accident. The SCSS pass must then rebuild SCSS as a
+CSS/preprocessor-base sibling. If a rule accepts Sass syntax or exists only so
+SCSS can override a Less list, it belongs in the SCSS fold or a shared
+preprocessor base, not in Less.
 
 **Good news, and it changes the sequencing:** this is **CST-only**. The SCSS
 *AST* grammar does not compose on Less — it has no `compose(` call at all, only
-`composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, …])` at
+`composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, …])` at
 `packages/scss-parser/src/ast/grammar.ts:943`, i.e. shared *terminal* tables. The
 four AST grammars are already independent of each other. Tracked in
 `docs/architecture/core/SCSS-PARSER-REBASE-DESIGN.md`.
@@ -1186,8 +1240,8 @@ measurement and a go/no-go recommendation.
 
 **Off-limits.** Any grammar edit. The point is to measure the tree as it is.
 
-**Read first.** `vitest.config.ts:142-146`;
-`packages/less-parser/test/ast-identity-oracle.mjs`.
+**Read first.** `vitest.config.ts:142-146` and the current Less byte-identity
+oracle command, `pnpm run oracle:less:byte-identity`.
 
 **Current state — this has to be built.** `@vitest/coverage-v8` is a root
 devDependency with a `test:coverage` script, but coverage is **disabled by
@@ -1338,8 +1392,8 @@ Each of these has cost real hours.
 - **Capture your own baselines as SETS, never inherit a count.**
   `docs/state/PROJECT_STATE.md:73-77`: a count cannot tell "nothing changed" apart
   from "you fixed one and broke another".
-- **A macro-fallback build is not AST-equivalent**, so a red
-  `check-macro-buildable` **invalidates any differential taken on it** (§8.2).
+- **A macro-fallback build is not AST-equivalent**, so a red `check:macro`
+  **invalidates any differential taken on it** (§8.2).
 - **`all-less` 108/108 is meaningless without the less.js checkout SHA.** The
   fixtures live in an unpinned checkout; less.js `dded69cc` moved the count
   108→106 with no jess-side change.
@@ -1354,12 +1408,13 @@ Each of these has cost real hours.
 
 > **MERGED** (PR #75, 2026-07-25) — this section previously read "UNMERGED AND
 > UNRELEASED". Re-check with `gh pr view 75 --repo matthew-dean/parseman`. It is
-> in parseman `main` at 0.37.0, which is **not published**, so jess cannot reach
-> it until the §0.3 step-1 bump. Described below as at branch `feat/ast-identity-oracle`, ref
+> in parseman `main` at 0.37.0. Jess now reaches the relevant gate through
+> `pnpm run oracle:less:byte-identity`. Described below as at branch
+> `feat/ast-identity-oracle`, ref
 > **`10ab446`**, sitting on top of the 0.36.0 bump and **not part of 0.36.0**
 > (`package.json` at that ref still reads `0.36.0`). Write the spec against it;
 > do not describe it as available until it merges. Until then,
-> `packages/less-parser/test/ast-identity-oracle.mjs` (§8.6) is what exists.
+> the current `pnpm run oracle:less:byte-identity` gate is what exists.
 
 A Node-only subpath — `package.json:46-50` at `10ab446` exports `./oracle`.
 Node-only by *imports*, not by an export condition: `node:crypto`
@@ -1454,7 +1509,7 @@ All four, each stated with evidence. **Explicitly not "tests pass."**
 2. **lint clean** — `pnpm run lint`, **0 errors**.
 3. **oracle equivalent** — modulo the declared rename mapping, with empty residue
    (§8.1b). Aggregates quoted before and after.
-4. **`check-macro-buildable` — 0 fallbacks.**
+4. **`check:macro` — 0 fallbacks.**
 
 > **Item 4 is a CORRECTNESS gate, not a performance gate.** A build that degrades
 > to the interpreter **emits a different tree**. Reproduced end to end in
@@ -2045,10 +2100,10 @@ Addressing these is what stops §2.2 recurring after the rebuild.
 ### 13.1 `all-less` is the only real corpus gate, so all work pools into `less-parser`
 
 `packages/jess/test/less/all-less.test.ts` is the only fixture-backed integration
-authority, and `packages/less-parser/test/ast-identity-oracle.mjs` is the only
-byte-identity oracle. Both are Less. So `css`, `scss` and `jess` grammar work is
-verified more weakly than `less` work — precisely backwards for `css-parser`, the
-base everything composes on.
+authority, and `pnpm run oracle:less:byte-identity` is the only byte-identity
+oracle. Both are Less. So `css`, `scss` and `jess` grammar work is verified more
+weakly than `less` work — precisely backwards for `css-parser`, the base
+everything composes on.
 
 **Consequence for Unit 4:** the CSS pilot has the widest blast radius and the
 thinnest direct verification. `parseman/oracle`'s multi-surface corpus (§8.1) is
@@ -2064,8 +2119,8 @@ explicitly that its coverage is indirect via the Less oracle.
 
 `packages/parser-shared` (formerly `internal-css-recognition`) is **368 lines
 across 3 source files**,
-publishing 4 exports and **89 rule keys, all pure terminals** — `cssAstSyntax`
-(`src/recognition.ts:198`), `lessAstSyntax` (`:251`), `cssAstPseudoSyntax`
+publishing 4 exports and **89 rule keys, all pure terminals** — `cssSyntax`
+(`src/recognition.ts:198`), `lessAstSyntax` (`:251`), `cssPseudoSyntax`
 (`src/pseudo-consts.ts:46`), `opaqueAtRuleRecognition` (`src/opaque-at-rule.ts:23`).
 No structural productions.
 

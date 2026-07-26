@@ -20,13 +20,15 @@
       "require": "./lib/pseudo-consts.cjs"
     }
   },
-  "files": ["lib"],
+  "files": [
+    "lib"
+  ],
   "scripts": {
     "build": "pnpm compile",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck"
   },
   "devDependencies": {
-    "parseman": "0.37.0",
+    "parseman": "0.39.1",
     "tsdown": "~0.21.7"
   }
 }

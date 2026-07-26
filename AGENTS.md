@@ -14,9 +14,12 @@ required to read them.
 ## Start Here — the largest active project
 
 **The four-grammar rewrite.** Each of the four dialect parsers (`css`, `less`,
-`scss`, `jess`) currently carries two hand-maintained grammars — `src/grammar.ts`
+`scss`, `jess`) started with two hand-maintained grammars — `src/grammar.ts`
 (positioned CST, consumed by the language service) and `src/ast/grammar.ts` (the
-shipping compile path). **Eight files are to become four.** It has not started.
+shipping compile path). **Eight files are becoming four.** CSS is now
+single-source, and Less has moved its direct AST body into `src/grammar.ts` while
+retaining a compatibility re-export. Less still needs the real one-factory
+hostMode collapse; SCSS and Jess remain split.
 
 **The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
 Read its §0 first** — it states the goal in the owner's own words, the current
@@ -26,10 +29,10 @@ claim in it. The per-`const` review checklist that governs any grammar edit is
 
 Two things to know before you plan anything:
 
-- **It is blocked on a prerequisite only the owner can clear.** The mechanism
-  that lets one grammar file serve both the AST and the CST is parseman's
-  `hostMode`, which does not exist in the version this repo pins. Publishing
-  parseman is owner-only. Spec §0.2 says exactly what to check and how.
+- **The parseman hostMode floor is paid.** The mechanism that lets one grammar
+  file serve both the AST and the CST is parseman's `hostMode`, and the repo now
+  pins a parseman version that carries it. Publishing future parseman releases is
+  still owner-only. Spec §0.2 says exactly what to check and how.
 - **Order is `css` → `less` → `scss` → `jess`.** CSS is the base; the dialects
   link back to it rather than restating it; no copy-paste from the old grammars.
 
@@ -138,13 +141,18 @@ For AST construction, do not introduce a replacement `BuilderHost`,
 reduction in each parser owns construction and calls parser-local AST factory
 functions directly. Move shared syntax only into explicit shared grammar
 combinators or core node factories; never into a new runtime construction host.
+This prohibition is about AST construction hosts. It does not ban a Parseman
+grammar-level routing combinator such as `dispatch(combinator, when(...),
+otherwise(...))`, whose job is recognition and macro-compilable branch
+selection.
 
 ## Parser Runtime Boundary
 
-In `packages/css-parser`, `packages/less-parser`, `packages/scss-parser`, and
-`packages/jess-parser`, runtime recognition belongs exclusively to Parseman
-grammar combinators and their macro-compiled output. No handwritten runtime
-`RegExp`, regex literal, `.exec`/`.test`/`.match`, `charCodeAt` scanner,
+In `packages/syntax/css/css-parser`, `packages/syntax/less/less-parser`,
+`packages/syntax/scss/scss-parser`, and
+`packages/syntax/jess/jess-parser`, runtime recognition belongs exclusively to
+Parseman grammar combinators and their macro-compiled output. No handwritten
+runtime `RegExp`, regex literal, `.exec`/`.test`/`.match`, `charCodeAt` scanner,
 character-by-character recognizer, or recovery re-parser may survive in parser
 package source. Move the recognition into Parseman grammar structure, or delete
 it. This does not prohibit generated macro output or Parseman internals; it
@@ -163,6 +171,29 @@ combinators, normally `many(choice(literalChunk, interpolation))`, or a
 strictly better equivalent that retains the same typed segments. Do not scan,
 sniff, regex-match, split, or re-parse text to find `@{…}`, `${…}`, `#{…}`, or
 their exact-shape variants after grammar recognition.
+
+Reparsing is rejected parser architecture. A grammar may recurse through its own
+Parseman rules, but it must not recognize a broad source region and then parse
+that same region again through a second rule, helper, lookahead route, or
+post-processing pass. Broad lookahead is also a finding by default; keep
+lookahead as small and local as possible, and require a const-level review to
+prove that no clearer Parseman structure (`dispatch`, `routed`,
+context-parameterized rules, separator helpers, or explicit recursion) can own
+the same language. In particular, Less `:extend(...)` must be collected as a
+contextual selector tail while parsing the selector once, not by reparsing
+selector branches through an inline-extend route.
+
+When several grammar arms begin by recognizing the same broad token family and
+then branch by the value already read, use Parseman's `dispatch(combinator,
+when(...), otherwise(...))` shape instead of speculative `choice(...)`
+backtracking. The first combinator parses once; `when()` handles exact or
+matcher cases; `otherwise()` owns the generic continuation; `routed()` lets the
+selected branch place the already-consumed value/span inside its CST/AST node.
+This is the canonical shape for CSS at-rules, identifier-or-function values,
+pseudos, contextual keywords, and Less/SCSS/Jess dialect-extension splits.
+Use one `makeWhen(...)` / `makeWord(...)` helper per real matching policy in the
+actual grammars; avoid separate helper names for pseudos, functions, at-rules, or
+words when the case-sensitivity and boundary policy are the same.
 
 ## Keep Guidance Durable
 

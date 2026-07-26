@@ -103,36 +103,55 @@ Every written rule must answer:
    `less-parser`: keyword regexes carrying a hand-written `(?![-\w])` boundary
    where `word()`/`keywords()` is the API (15 found in the first pass; the
    boundary appears 32 times across the two Less grammar files, so re-count);
-   39 hand-rolled separated-list sites against 6 uses of `sepBy`; and the
-   duplicate in item 1.
+  39 hand-rolled separated-list sites against 6 uses of `sepBy`; and
+  special/generic alternatives that first parse the same opener instead of
+  routing that opener once with `dispatch(combinator, when(...),
+  otherwise(...))`. Use `routed()` inside branch nodes when the selected form
+  should own the already-consumed value/span. When several `when(...)` or
+  `word(...)` cases share the same case-sensitivity and boundary policy, create
+  one grammar-local `makeWhen(...)` or `makeWord(...)` helper for that real
+  policy; do not multiply domain-named helpers such as `pseudoCase`, `fnCase`,
+  and `atCase` unless their matching policy actually differs.
 
-9. **Are its regexes correct?** Three defects found, each of which a reviewer
+9. **Does it avoid reparsing and broad lookahead?** A rule may recurse through
+   Parseman grammar structure, but it must not parse a source region, then send
+   the same region through another selector/value/at-rule recognizer to recover
+   facts. Broad `peek(...)` / `not(...)` gates are findings unless a written
+   const-level review proves they are the smallest local boundary. Prefer
+   `dispatch(...)`, `routed()`, context-parameterized rules, explicit recursive
+   grammar structure, and separator/list helpers. Less inline `:extend(...)` is
+   the standing example: it must become a context-owned selector tail that
+   collects extend facts while parsing selector branches once, not a
+   `DirectLessInlineExtendRule`-style selector reparse guarded by broad
+   lookahead.
+
+10. **Are its regexes correct?** Three defects found, each of which a reviewer
    can only catch by reading the pattern character by character:
    - `\uXXXX` escapes instead of the literal non-ASCII character — a reviewer
      cannot verify a range they cannot see.
    - the `u` flag alongside `i`, or non-ASCII case folding that is simply wrong.
    - ranges that stop at the BMP, which break astral characters.
 
-10. **Does it consume its own separator?** `optional(literal(';'))` inside a
+11. **Does it consume its own separator?** `optional(literal(';'))` inside a
     declaration — 24 sites in `less-parser`. `;` *separates*; the list owns it.
     Pending an owner ruling, so today these are `blocked`, not `converted`.
 
-11. **Is it gated?** A leading `not()` is the anti-pattern — 18 sites. So is
+12. **Is it gated?** A leading `not()` is the anti-pattern — 18 sites. So is
     `not(regex(...))` used as an end-of-value assertion: that is gating work
     done by hand where a first-set gate is the mechanism. Less carries roughly
     an order of magnitude more `not()` than the CSS grammar for the same surface
     (owner measurement: ~460 against 21); re-measure rather than quoting the
     figure.
 
-12. **Is it reachable and covered?** One production was CST-only, dead, and had
+13. **Is it reachable and covered?** One production was CST-only, dead, and had
     zero tests. Ask which entry rule reaches this const and which test exercises
     it. If neither answer exists, that is the finding.
 
-13. **If changed, does the AST stay byte-identical?** The oracle answers this
+14. **If changed, does the AST stay byte-identical?** The oracle answers this
     mechanically (§4). **A change that moves the tree is a failed change, not a
     judgement call.**
 
-14. **Does its name claim a divergence it does not have?** Item 1 asks whether
+15. **Does its name claim a divergence it does not have?** Item 1 asks whether
     the rule is duplicated. This asks whether the rule's *name* is what let the
     duplicate survive. A dialect prefix (`css…`, `less…`, `scss…`, `jess…`) is a
     claim that this rule accepts a different language than its unprefixed
@@ -185,16 +204,19 @@ Observations, each re-checkable at `a74131e8f`:
   *Interpretation:* this is the mechanism at full scale. Name-keyed sharing is
   arithmetically impossible here; the base cannot supply `Declaration` to a
   dialect that calls it `DirectLessDeclaration`.
-- `packages/parser-shared/src/` exports four names — `cssAstSyntax`,
-  `lessAstSyntax` (`recognition.ts`), `cssAstPseudoSyntax` (`pseudo-consts.ts`),
-  `opaqueAtRuleRecognition` (`opaque-at-rule.ts`). Three carry a dialect prefix,
-  in the package whose entire purpose is sharing, renamed to `parser-shared` at
-  `a74131e8f` for exactly that purpose. `cssAstSyntax` and `cssAstPseudoSyntax`
-  are each imported by **all four** parsers. The one name that reads correctly
-  is the one with no prefix.
-- `scss-parser/src/grammar.ts:10` — the **CST** grammar imports `cssAstSyntax`.
-  The mode word in that name is simply false at that call site. This is the
-  `Ast`-in-the-name error demonstrated rather than argued.
+- `packages/parser-shared/src/` exports four names — `cssSyntax`,
+  `lessAstSyntax` (`recognition.ts`), `cssPseudoSyntax` (`pseudo-consts.ts`),
+  `opaqueAtRuleRecognition` (`opaque-at-rule.ts`). The CSS recognition artifact
+  names were cleaned on 2026-07-26 from `cssAstSyntax` / `cssAstPseudoSyntax` to
+  remove the false compile-mode word. `lessAstSyntax` remains the same defect on
+  the Less side and should be paid during the Less rebuild. `cssSyntax` and
+  `cssPseudoSyntax` still carry a CSS language prefix because they define the
+  base language consumed by every dialect; if they become the one canonical base
+  module during the four-grammar collapse, that prefix can disappear too.
+- Before the 2026-07-26 cleanup, `scss-parser/src/grammar.ts` imported
+  `cssAstSyntax` from a **CST** grammar. That mode word was simply false at that
+  call site. The live import is now `cssSyntax`, so the remaining lesson is the
+  one the cleanup paid: compile mode does not belong in shared rule names.
 - `lessAstSyntax` contains the rule key `LessAstSyntaxNamedColor`
   (`recognition.ts:361`) — the CSS named-colour list, triple-decorated with a
   dialect, a mode, and a surface. `less-parser/src/grammar.ts:712` carries a
@@ -233,17 +255,24 @@ that is a finding about the config, not about the const.
 
 These override anything the checklist might suggest.
 
-**The macro constraint — parameterless combinator `const`s and plain reducers
-only. No factories, no `[...spread]`, no hoisted `const`s — including plain
-strings.** This is a *correctness* rule, not a style preference. When `compose()`
-cannot statically resolve its argument, parseman falls back to the interpreter,
-and **a macro-fallback build is not AST-equivalent to a macro-compiled build** —
-it emits a different tree for the same input. Reproduced end to end in
+**The macro constraint — macro-visible `rules(..., factory)` owners,
+parameterless combinator `const`s inside them, and plain reducers only.** Do not
+add helper factories, wrapper functions, `[...spread]`, or hoisted config
+`const`s — including plain strings — inside grammar bodies unless a focused
+macro gate proves the exact shape. The accepted exception is the final
+module-level `cssFactory` shape recorded in both CSS grammar modules in
+`GRAMMAR-SEQUENCE-ORCHESTRATION.md`: a named factory passed directly to
+`rules(...)` so Parseman can still see the whole rule map. This is a
+*correctness* rule, not a style preference. When `compose()` cannot statically
+resolve its argument, parseman falls back to the interpreter, and **a
+macro-fallback build is not AST-equivalent to a macro-compiled build** — it emits
+a different tree for the same input. Reproduced end to end in
 [`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](./PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md)
 §1: a single hoisted boundary string moved the CST aggregate, and inlining it
-back moved the aggregate back byte-for-byte. So `check-macro-buildable` guards
-correctness, not just speed, and a red run **invalidates any differential taken
-on that build**. Literal duplication at each call site is the correct answer.
+back moved the aggregate back byte-for-byte. So `check:macro` guards correctness,
+not just speed, and a red run **invalidates any differential taken on that
+build**. Literal duplication at each call site is the correct answer until the
+macro gate proves otherwise.
 
 **No regex outside `regex()`.** Pattern text belongs in a `regex()` argument,
 nowhere else.
@@ -271,8 +300,8 @@ In that order, one conversion class at a time.
 
    ```
    pnpm --filter @jesscss/less-parser build
-   node scripts/check-macro-buildable.mjs
-   node packages/less-parser/test/ast-identity-oracle.mjs before.json
+   pnpm run check:macro
+   pnpm run oracle:less:byte-identity
    # …edit, rebuild, re-run as after.json
    ```
 
@@ -285,9 +314,10 @@ In that order, one conversion class at a time.
 4. **Keep** only what survives 2 and 3. Otherwise revert, or record it as
    `blocked` / `deliberate exception` with the reason.
 
-The oracle currently exists only for `less-parser`
-(`packages/less-parser/test/ast-identity-oracle.mjs`). There is no equivalent
-script for the other three. Because `less-parser` composes on `css-parser` and
+The byte-identity oracle currently exists as `pnpm run
+oracle:less:byte-identity`, backed by the Less parser corpus under
+`packages/syntax/less/less-parser/test/`. There is no equivalent script for the
+other three dialects. Because `less-parser` composes on `css-parser` and
 `scss-parser` composes on `less-parser`, a `css-parser` change is partly covered
 by the Less oracle — but say plainly which surfaces you actually hashed rather
 than implying full coverage.

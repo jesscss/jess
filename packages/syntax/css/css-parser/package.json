@@ -44,10 +44,9 @@
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
     "lint": "eslint '**/*.{js,ts}'"
   },
-  "dependencies": {},
   "peerDependencies": {
     "@jesscss/core": "workspace:*",
-    "parseman": "^0.37.0"
+    "parseman": "^0.39.1"
   },
   "peerDependenciesMeta": {
     "@jesscss/core": {
@@ -58,7 +57,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/parser-shared": "workspace:*",
     "@jesscss/shared": "workspace:*",
-    "parseman": "0.37.0",
+    "parseman": "0.39.1",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
