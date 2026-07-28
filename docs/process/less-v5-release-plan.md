@@ -6,11 +6,11 @@ deferred past the current alpha**, what each is, why it's deferred, and the
 sequence in which it's planned to land — so "out of scope for now" is a tracked
 commitment, not a silent drop.
 
-**Owner decision (2026-07-11):** the config-lane + source-map fixtures below are
-**out of the CURRENT alpha's scope** (they render as labeled expected-failures in
-`all-less.test.ts`). They are NOT abandoned — each is sequenced here, generally
-**behind core work** (the D-EVAL flip completion and the drive to Less-4.x perf
-parity).
+**Owner decision (2026-07-11):** remaining config-lane + source-map fixtures are
+tracked outside the current alpha's main correctness bar unless the active
+stabilization pass graduates one explicitly. Deferred items are NOT abandoned —
+each is sequenced here, generally behind core work (the D-EVAL flip completion
+and the drive to Less-4.x perf parity).
 
 ## Sequencing principle
 
@@ -62,10 +62,11 @@ verified against Less 4.6.3 before this policy was recorded.
 | `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | depends on rewriteUrls                     | Phase C |
 | `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | depends on rewriteUrls                     | Phase C |
 | `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | not implemented                            | Phase C |
-| `process-imports/google.less`                              | `processImports: false` — leave remote/CSS imports un-inlined                          | remote-CSS import handling not implemented | Phase C |
 
 These are option-plumbing over the URL/import handling that the core already does;
 each is a contained addition once the render pipeline is stable post-flip.
+`process-imports/google.less` graduated on 2026-07-28: `processImports: false`
+now leaves remote/CSS imports un-inlined in the public alpha fixture lane.
 
 ## Phase D — source maps
 
@@ -82,8 +83,9 @@ positions. On the projecting spine that requires a **decided emit-time provenanc
 model** — resolving a computed value's source position from the enclosing
 source-bearing construct at emit time, gated on `tracksSources`. That model is an
 open design item (M1 / emit-context provenance); source maps are sequenced strictly
-after it settles. The lessc CLI already accepts `--source-map[=…]` flags and marks
-them engine-limited until this lands.
+after it settles. The external Less wrapper currently rejects source-map options
+as unsupported in alpha; in Jess, `renderToResult` returns CSS/diagnostics only
+and does not expose a `map` artifact yet.
 
 ## Related deferrals tracked elsewhere (not config-lane)
 
