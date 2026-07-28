@@ -2,13 +2,13 @@ import { createServer } from 'vite';
 import { parseCst } from '@jesscss/css-parser/cst';
 import { lessAstGrammar, lessCstGrammar, lessGrammar } from '../src/grammar.js';
 
-test('canonical Less grammar names the direct AST artifact while CST remains explicit', () => {
+test('canonical Less grammar is the AST artifact while CST remains explicit', () => {
   expect(lessGrammar).toBe(lessAstGrammar);
   expect(lessCstGrammar).not.toBe(lessGrammar);
   expect(lessGrammar.VarDeclaration).toBeDefined();
 });
 
-test('direct Less factory compiles and runs in CST host mode', () => {
+test('Less factory compiles and runs in CST host mode', () => {
   const result = parseCst(lessCstGrammar as Record<string, unknown>, '@color: red; .x { color: @color; }');
 
   expect(result.errors).toHaveLength(0);
@@ -18,7 +18,7 @@ test('direct Less factory compiles and runs in CST host mode', () => {
   expect(result.tree.children.some(child => child._tag === 'node' && child.grammarType === 'Ruleset')).toBe(true);
 });
 
-test('direct Less CST leaves detached binding semicolons at statement-list boundary', () => {
+test('Less CST leaves detached binding semicolons at statement-list boundary', () => {
   const result = parseCst(lessCstGrammar as Record<string, unknown>, '@theme: { color: red; };');
   const [declaration, semicolon] = result.tree.children;
 
