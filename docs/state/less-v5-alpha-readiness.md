@@ -759,8 +759,9 @@ earlier, before a manual publish attempt.
   hardcoding alpha.10. The commit hook reran `pnpm run test:alpha`, including
   typecheck/build, `lessc`, alpha support, alpha fixtures, publish dry-run
   tests, and packed-consumer proof against published Jess `2.0.0-alpha.10`.
-  Updated the PR description; GitHub CI is running for the new head and
-  CodeRabbit reports success.
+  Updated the PR description; GitHub CI is green for the new head across
+  ubuntu/macOS/windows and Node current, LTS, LTS-1, and LTS-2; CodeRabbit
+  reports success.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,
