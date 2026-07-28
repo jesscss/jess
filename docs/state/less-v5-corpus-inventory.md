@@ -86,6 +86,19 @@ The remote import fixture is tracked in
 [`less-v5-release-plan.md`](../process/less-v5-release-plan.md) as a deferred
 Phase C import/security feature, not as a flaky expected failure.
 
+Browser fixture parity is excluded from alpha.1 by design. The current browser
+contract is tracked in
+[`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md):
+alpha.1 does not promise browser-side `.less` file parsing, browser imports,
+browser plugin execution, or upstream Less browser fixture parity.
+
+Less 4.x plugin host compatibility fixtures are also staged after alpha.1 unless
+they already pass through ordinary Less `@plugin` function registration. The
+deferred Phase E surface in
+[`less-v5-release-plan.md`](../process/less-v5-release-plan.md) includes
+preprocessor, postprocessor, visitor, custom file-manager, legacy CommonJS
+plugin graph, and pre-eval/tree visitor behavior.
+
 ## Release-note rule
 
 Jess and external Less alpha release notes must link this document and state

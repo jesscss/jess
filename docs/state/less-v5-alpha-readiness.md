@@ -501,11 +501,11 @@ are expressly advertised for a later alpha.
   the API and fixture lanes are addressed. `.github/workflows/less-alpha-readiness.yml`
   runs `pnpm run verify:less-alpha` on pull requests, pushes to `main` and
   `alpha`, and manual dispatch.
-- `[?]` Browser-build spec is drafted in
-  [`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md), but needs
-  owner acceptance before adding browser package exports or browser fixture
-  parity. Jess should support tree-shaken browser builds, but the alpha should
-  not imply that arbitrary `.less` files are parsed in the browser.
+- `[x]` Browser fixtures are explicitly excluded from the first alpha lane.
+  [`less-v5-browser-build-spec.md`](../architecture/less-v5-browser-build-spec.md)
+  defines the current contract: tree-shaken browser builds remain a future
+  goal, but alpha.1 does not promise browser-side `.less` file parsing, browser
+  imports, browser plugin execution, or upstream Less browser fixture parity.
 
 ## Controlled alpha refresh policy (verified 2026-07-22)
 
@@ -656,16 +656,21 @@ Known gaps to add or close:
   covers the alpha public method shapes for `render(...)`,
   `renderString(...)`, `renderToResult(...)`, and `dispose()`; the current rerun
   is 8/8 green.
-- `[~]` Convert fixture skips from broad comments into categorized expected
+- `[x]` Convert fixture skips from broad comments into categorized expected
   failures with reasons and owners.
   The active harness now has expected-failure reasons for runnable mismatches
   and skip reasons for helper/no-CSS, plugin-scope, source-map artifact, and
-  known hang fixtures. Owner/staging decisions still need release-note wording.
-- `[ ]` Keep browser fixtures excluded, with an explicit skip category that
-  points to the browser-build spec.
-- `[ ]` Decide whether plugin, preprocessor, postprocessor, visitor, and custom
-  file-manager fixtures are in the first alpha or staged after alpha. If staged,
-  document the unsupported surface in release notes.
+  fixture-specific timeout sentinels. Release-note classifications now point to
+  the corpus inventory and the Phase C/D/E entries in the release plan.
+- `[x]` Keep browser fixtures excluded, with an explicit skip category that
+  points to the browser-build spec. The Less 5 alpha README also says browser
+  compilation is not included in alpha.1.
+- `[x]` Stage Less 4.x plugin host compatibility APIs after alpha.1:
+  preprocessor, postprocessor, visitor, custom file-manager, legacy CommonJS
+  plugin graphs, and pre-eval/tree visitor behavior are Phase E items in
+  [`less-v5-release-plan.md`](../process/less-v5-release-plan.md). The active
+  alpha lane still covers ordinary Less `@plugin` function registration and
+  diagnostics through the Jess plugin route.
 - `[ ]` Add focused core tests when a Less fixture exposes a parser/runtime
   invariant gap, then use the package-level fixture as the compatibility proof.
 
