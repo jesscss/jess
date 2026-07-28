@@ -68,7 +68,7 @@ type SlashBoundaryFact = { readonly before: string; readonly after: string };
 /** Rules this file defines; macro-fused recognition inputs are not local output. */
 type LessRules = {
   Stylesheet: Combinator<Stylesheet>;
-  LessAstDocument: Combinator<Stylesheet>;
+  Document: Combinator<Stylesheet>;
   VarDeclaration: Combinator<VariableDeclaration>;
   ImportStatement: Combinator<ImportAtRule>;
   PluginDirective: Combinator<Plugin>;
@@ -110,7 +110,7 @@ type LessRules = {
   CallArgumentValue: Combinator<MixinCallArgument['value']>;
   FunctionStatement: Combinator<FunctionCall>;
   Value: Combinator<ValueNode>;
-  DirectLessSelectorCapture: Combinator<SelectorCapture>;
+  SelectorCapture: Combinator<SelectorCapture>;
   MathAtom: Combinator<ValueNode>;
   MathUnary: Combinator<ValueNode>;
   MathProduct: Combinator<ValueNode>;
@@ -135,35 +135,35 @@ type LessRules = {
   CustomValue: Combinator<ValueNode>;
   CssCustomPropertyValue: Combinator<Keyword>;
   CustomDeclaration: Combinator<Declaration>;
-  DirectLessPunctuationMapDeclaration: Combinator<Declaration>;
+  PunctuationMapDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
-  DirectLessMixinParam: Combinator<Param>;
-  DirectLessMixinParameterList: Combinator<MixinParameterListFact>;
-  DirectLessMixinDefinition: Combinator<MixinDef>;
-  DirectLessPositionalMixinCallArgument: Combinator<MixinCallArgument>;
-  DirectLessMixinArgumentGroup: Combinator<MixinCallArgument>;
+  MixinParam: Combinator<Param>;
+  MixinParameterList: Combinator<MixinParameterListFact>;
+  MixinDefinition: Combinator<MixinDef>;
+  PositionalMixinCallArgument: Combinator<MixinCallArgument>;
+  MixinArgumentGroup: Combinator<MixinCallArgument>;
   MixinArguments: Combinator<readonly MixinCallArgument[]>;
-  DirectLessMixinCall: Combinator<MixinCall>;
-  DirectLessBareMixinCall: Combinator<MixinCall>;
-  DirectLessFlatMixinCall: Combinator<MixinCall>;
-  DirectLessNamespacedMixinCall: Combinator<MixinCall>;
-  DirectLessNamespacedMixinValue: Combinator<MixinCall>;
-  DirectLessMixinPathTail: Combinator<MixinPathTailFact>;
-  DirectLessMixinReference: Combinator<Reference>;
+  MixinCall: Combinator<MixinCall>;
+  BareMixinCall: Combinator<MixinCall>;
+  FlatMixinCall: Combinator<MixinCall>;
+  NamespacedMixinCall: Combinator<MixinCall>;
+  NamespacedMixinValue: Combinator<MixinCall>;
+  MixinPathTail: Combinator<MixinPathTailFact>;
+  MixinReference: Combinator<Reference>;
   ReferenceCall: Combinator<Reference>;
-  DirectLessMixinGuard: Combinator<MixinGuard>;
-  DirectLessMixinGuardTopOr: Combinator<MixinGuard>;
-  DirectLessMixinGuardTopAnd: Combinator<MixinGuard>;
-  DirectLessMixinGuardTopTerm: Combinator<MixinGuard>;
-  DirectLessMixinGuardOr: Combinator<MixinGuard>;
-  DirectLessMixinGuardAnd: Combinator<MixinGuard>;
-  DirectLessMixinGuardTerm: Combinator<MixinGuard>;
-  DirectLessMixinGuardOperand: Combinator<ValueNode>;
-  DirectLessEachName: Combinator<string>;
+  MixinGuard: Combinator<MixinGuard>;
+  MixinGuardTopOr: Combinator<MixinGuard>;
+  MixinGuardTopAnd: Combinator<MixinGuard>;
+  MixinGuardTopTerm: Combinator<MixinGuard>;
+  MixinGuardOr: Combinator<MixinGuard>;
+  MixinGuardAnd: Combinator<MixinGuard>;
+  MixinGuardTerm: Combinator<MixinGuard>;
+  MixinGuardOperand: Combinator<ValueNode>;
+  EachName: Combinator<string>;
   /** A complete direct Less statement body, shared by detached rulesets and `each()` callbacks. */
-  DirectLessBodyStatement: Combinator<Statement | string>;
-  DirectLessEachCallback: Combinator<LessEachCallback>;
-  DirectLessEach: Combinator<For>;
+  BodyStatement: Combinator<Statement | string>;
+  EachCallback: Combinator<LessEachCallback>;
+  Each: Combinator<For>;
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
   SupportsInParens: Combinator<ValueNode>;
@@ -206,44 +206,44 @@ type LessRules = {
   OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   AtRuleStatement: Combinator<AtRuleStatement>;
-  DirectLessStaticPseudo: Combinator<SimpleToken>;
-  DirectLessInterpolatedPseudo: Combinator<SimpleSelector>;
+  StaticPseudo: Combinator<SimpleToken>;
+  InterpolatedPseudo: Combinator<SimpleSelector>;
   InterpolatedNthPseudo: Combinator<SimpleSelector>;
-  DirectLessInterpolatedArgumentPseudo: Combinator<SimpleSelector>;
-  DirectLessStaticNthPseudo: Combinator<SimpleSelector>;
-  DirectLessStaticNthArgument: Combinator<string>;
-  DirectLessStaticNonSelectorPseudoArgument: Combinator<string>;
-  DirectLessStaticPseudoGroup: Combinator<string>;
-  DirectLessStaticPseudoSquare: Combinator<string>;
+  InterpolatedArgumentPseudo: Combinator<SimpleSelector>;
+  StaticNthPseudo: Combinator<SimpleSelector>;
+  StaticNthArgument: Combinator<string>;
+  StaticNonSelectorPseudoArgument: Combinator<string>;
+  StaticPseudoGroup: Combinator<string>;
+  StaticPseudoSquare: Combinator<string>;
   StaticPseudoQuoted: Combinator<string>;
-  DirectLessStaticPseudoCompound: Combinator<CompoundSelector>;
-  DirectLessStaticPseudoComplexTail: Combinator<ComplexTailFact>;
-  DirectLessStaticPseudoComplex: Combinator<ComplexSelector>;
-  DirectLessStaticPseudoSelectorTail: Combinator<ComplexSelector>;
-  DirectLessStaticPseudoSelector: Combinator<SelectorList>;
-  DirectLessStaticAttributeNamespace: Combinator<string>;
-  DirectLessStaticNamespaceType: Combinator<SimpleSelector>;
-  DirectLessStaticAttributeName: Combinator<StaticAttributeNameFact>;
-  DirectLessStaticAttributeQuoted: Combinator<string>;
-  DirectLessStaticAttributeMatch: Combinator<StaticAttributeMatchFact>;
-  DirectLessStaticAttribute: Combinator<SimpleSelector>;
-  DirectLessInterpolatedAttributeToken: Combinator<Interpolation>;
-  DirectLessInterpolatedAttributeValueToken: Combinator<Interpolation>;
-  DirectLessInterpolatedAttributeQuoted: Combinator<Interpolation>;
-  DirectLessInterpolatedAttribute: Combinator<SimpleSelector>;
-  DirectLessInterpolatedSimpleSelector: Combinator<SimpleSelector>;
-  DirectLessBareInterpolatedSelector: Combinator<SimpleSelector>;
-  DirectLessAdjacentInterpolatedSelector: Combinator<SimpleSelector>;
-  DirectLessBareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
-  DirectLessInterpolatedParentSuffix: Combinator<SimpleSelector>;
-  DirectLessCompound: Combinator<CompoundSelector>;
-  DirectLessComplexTail: Combinator<ComplexTailFact>;
-  DirectLessComplex: Combinator<ComplexSelector>;
-  DirectLessSelectorTail: Combinator<ComplexSelector>;
-  DirectLessSelector: Combinator<SelectorList>;
-  DirectLessExtendComplex: Combinator<ComplexSelector>;
-  DirectLessExtendTarget: Combinator<ExtendTargetFact>;
-  DirectLessExtendStatement: Combinator<ExtendInstruction[]>;
+  StaticPseudoCompound: Combinator<CompoundSelector>;
+  StaticPseudoComplexTail: Combinator<ComplexTailFact>;
+  StaticPseudoComplex: Combinator<ComplexSelector>;
+  StaticPseudoSelectorTail: Combinator<ComplexSelector>;
+  StaticPseudoSelector: Combinator<SelectorList>;
+  StaticAttributeNamespace: Combinator<string>;
+  StaticNamespaceType: Combinator<SimpleSelector>;
+  StaticAttributeName: Combinator<StaticAttributeNameFact>;
+  StaticAttributeQuoted: Combinator<string>;
+  StaticAttributeMatch: Combinator<StaticAttributeMatchFact>;
+  StaticAttribute: Combinator<SimpleSelector>;
+  InterpolatedAttributeToken: Combinator<Interpolation>;
+  InterpolatedAttributeValueToken: Combinator<Interpolation>;
+  InterpolatedAttributeQuoted: Combinator<Interpolation>;
+  InterpolatedAttribute: Combinator<SimpleSelector>;
+  InterpolatedSimpleSelector: Combinator<SimpleSelector>;
+  BareInterpolatedSelector: Combinator<SimpleSelector>;
+  AdjacentInterpolatedSelector: Combinator<SimpleSelector>;
+  BareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
+  InterpolatedParentSuffix: Combinator<SimpleSelector>;
+  Compound: Combinator<CompoundSelector>;
+  ComplexTail: Combinator<ComplexTailFact>;
+  Complex: Combinator<ComplexSelector>;
+  SelectorTail: Combinator<ComplexSelector>;
+  Selector: Combinator<SelectorList>;
+  ExtendComplex: Combinator<ComplexSelector>;
+  ExtendTarget: Combinator<ExtendTargetFact>;
+  ExtendStatement: Combinator<ExtendInstruction[]>;
   RulesetWithExtends: Combinator<Rule>;
   Quoted: Combinator<Quoted | Interpolation>;
   StaticQuoted: Combinator<Quoted>;
@@ -2155,8 +2155,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         : withSourceSpan(base, span);
     }
   );
-  const DirectLessMixinPathTail = node<MixinPathTailFact>(
-    'DirectLessMixinPathTail',
+  const MixinPathTail = node<MixinPathTailFact>(
+    'MixinPathTail',
     sequence(optional(mixinPathCombinator), mixinName),
     (children) => {
       const combToken = children.find(child => isTerminalText(child, '>'));
@@ -2434,7 +2434,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // recursively closes delimiters and preserves arbitrary option text as
   // interpolation literal/ref segments, matching Less's opaque option string.
   const PluginDirective = node<Plugin>(
-    'DirectLessPlugin',
+    'Plugin',
     sequence(
       word(
         '@plugin',
@@ -2470,7 +2470,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const VarDeclaration = node<VariableDeclaration>(
     'VarDeclaration',
-    sequence(directVariableName, literal(':'), choice(sequence(g.DirectLessNamespacedMixinValue, directMixinValueWithoutLookup), g.ImportantValue, sequence(g.DirectLessFlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
+    sequence(directVariableName, literal(':'), choice(sequence(g.NamespacedMixinValue, directMixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
@@ -2903,7 +2903,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const directMixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
   const Value = node<ValueNode>(
     'Value',
-    choice(sequence(directMixinReferenceAhead, attempt(g.DirectLessMixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.DirectLessSelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
+    choice(sequence(directMixinReferenceAhead, attempt(g.MixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.SelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
     children => requireValueNode(children.find(isValueNode))
   );
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
@@ -3088,7 +3088,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required bracket fact has been established.
-      sequence(directMixinReferenceAhead, attempt(sequence(g.DirectLessMixinReference, not(choice(topProductOperator, sumOperator))))),
+      sequence(directMixinReferenceAhead, attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator))))),
       oneOrMoreSep(
         g.ValueSequence,
         field('separator', regex(/,[ \t\n\r\f]*/))
@@ -3312,11 +3312,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // representation; ordinary whitespace is retained only when such a comment
   // is present, while Less `//` comments remain non-output lexical trivia.
   const declarationHeadTrivia: Combinator<DeclarationHeadTriviaFact> = choice(
-    node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadBlockComment', blockComment,
+    node<DeclarationHeadTriviaFact>('DeclarationHeadBlockComment', blockComment,
       children => ({ text: requireToken(children[0]).value, outputBearing: true })),
-    node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadWhitespace', regex(/[ \t\n\r\f]+/),
+    node<DeclarationHeadTriviaFact>('DeclarationHeadWhitespace', regex(/[ \t\n\r\f]+/),
       children => ({ text: requireToken(children[0]).value, outputBearing: false })),
-    node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadLineComment', regex(/\/\/[^\n\r]*/),
+    node<DeclarationHeadTriviaFact>('DeclarationHeadLineComment', regex(/\/\/[^\n\r]*/),
       () => ({ text: '', outputBearing: false }))
   );
   const StandardDeclaration = node<Declaration>(
@@ -3395,8 +3395,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   /** Less detached maps can use punctuation members (`<: %3c; #: %23;`).
    * This is a declaration fact with a non-CSS name, not an opaque body slice. */
-  const DirectLessPunctuationMapDeclaration = node<Declaration>(
-    'DirectLessPunctuationMapDeclaration',
+  const PunctuationMapDeclaration = node<Declaration>(
+    'PunctuationMapDeclaration',
     sequence(
       g.LessSyntaxPunctuationMapKey,
       literal(':'),
@@ -3415,25 +3415,25 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // next value piece; guard that transition here so `@x: 1 // note\n )` leaves
   // the comment to the signature rather than committing the whitespace first.
   const mixinParamValueTerm = node<ValueSlot>(
-    'DirectLessMixinParamValueTerm',
+    'MixinParamValueTerm',
     noTrivia(sequence(
       valuePiece,
       many(valueContinuation)
     )),
     (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
   );
-  const DirectLessMixinParam: Combinator<Param> = choice(
+  const MixinParam: Combinator<Param> = choice(
     node<Param>(
-      'DirectLessMixinRestParam',
+      'MixinRestParam',
       sequence(literal('@'), lessVariableName, literal('...')),
       (children, _fields, span) => ({
         name: requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1),
         rest: true
       })
     ),
-    node<Param>('DirectLessMixinAnonymousRestParam', literal('...'), () => ({ rest: true })),
+    node<Param>('MixinAnonymousRestParam', literal('...'), () => ({ rest: true })),
     node<Param>(
-      'DirectLessMixinBoundParam',
+      'MixinBoundParam',
       sequence(
         literal('@'),
         lessVariableName,
@@ -3450,14 +3450,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
     ),
     node<Param>(
-      'DirectLessMixinPatternParam',
+      'MixinPatternParam',
       sequence(mixinParamValueTerm, optional(whitespace)),
       children => ({ pattern: requireValueSlot(children[0]) })
     )
   );
   const mixinParamWithSignatureTrivia = node<Param>(
-    'DirectLessMixinParamWithSignatureTrivia',
-    sequence(g.DirectLessMixinParam, optional(whitespace), optional(mixinSignatureGap)),
+    'MixinParamWithSignatureTrivia',
+    sequence(g.MixinParam, optional(whitespace), optional(mixinSignatureGap)),
     (children) => {
       const param = children.find(isParam);
       if (param === undefined) {
@@ -3474,8 +3474,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // before `when`/`{`. Delimiters remain explicit private field facts so the
   // grammar—not a post-parse text pass—decides where a comment belongs; public
   // AST v2 keeps its deliberately semantic `Param[]` surface.
-  const DirectLessMixinParameterList = node<MixinParameterListFact>(
-    'DirectLessMixinParameterList',
+  const MixinParameterList = node<MixinParameterListFact>(
+    'MixinParameterList',
     parser({ trivia: mixinSignatureTrivia }, sequence(
       field('open', literal('(')),
       optional(sequence(
@@ -3499,8 +3499,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
           })
     })
   );
-  const DirectLessPositionalMixinCallArgument = node<MixinCallArgument>(
-    'DirectLessPositionalMixinArgument',
+  const PositionalMixinCallArgument = node<MixinCallArgument>(
+    'PositionalMixinArgument',
     sequence(g.CallArgumentValue, optional(literal('...'))),
     children => ({
       value: requireMixinCallArgumentValue(children[0]),
@@ -3509,30 +3509,30 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const mixinCallArgument: Combinator<MixinCallArgument> = choice(
     node<MixinCallArgument>(
-      'DirectLessNamedMixinArgument',
+      'NamedMixinArgument',
       sequence(literal('@'), lessVariableName, literal(':'), g.CallArgumentValue),
       (children, _fields, span) => {
         const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
         return { name, value: requireMixinCallArgumentValue(children[3]) };
       }
     ),
-    DirectLessPositionalMixinCallArgument
+    PositionalMixinCallArgument
   );
   // In Less, a semicolon starts a new mixin argument group; commas *within*
   // that group form one list-valued argument. Keep the semicolon branch
   // transactional so ordinary comma-only calls retain their existing individual
   // argument shape.
-  const DirectLessMixinArgumentGroup = node<MixinCallArgument>(
-    'DirectLessMixinArgumentGroup',
-    sequence(DirectLessPositionalMixinCallArgument, oneOrMore(sequence(literal(','), DirectLessPositionalMixinCallArgument))),
+  const MixinArgumentGroup = node<MixinCallArgument>(
+    'MixinArgumentGroup',
+    sequence(PositionalMixinCallArgument, oneOrMore(sequence(literal(','), PositionalMixinCallArgument))),
     (children) => {
       const args = children.filter(isMixinCallArgument);
       return { value: list(args.map(argument => requireValueSlot(argument.value)), ',') };
     }
   );
-  const mixinSemicolonArgument = choice(g.DirectLessMixinArgumentGroup, mixinCallArgument);
+  const mixinSemicolonArgument = choice(g.MixinArgumentGroup, mixinCallArgument);
   const MixinArguments = node<readonly MixinCallArgument[]>(
-    'DirectLessMixinArguments',
+    'MixinArguments',
     choice(
       attempt(sequence(
         mixinSemicolonArgument,
@@ -3582,11 +3582,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
     )
   );
-  const DirectLessMixinCall = node<MixinCall>(
+  const MixinCall = node<MixinCall>(
     'MixinCall',
     sequence(
       mixinName,
-      many(DirectLessMixinPathTail),
+      many(MixinPathTail),
       literal('('),
       optional(g.MixinArguments),
       literal(')'),
@@ -3619,9 +3619,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Less permits a zero-argument mixin call without parentheses only when the
   // semicolon fixes the statement boundary. Keep the no-semicolon spelling out
   // of this direct route: it is ambiguous with a selector/ruleset prefix.
-  const DirectLessBareMixinCall = node<MixinCall>(
-    'DirectLessBareMixinCall',
-    sequence(mixinName, many(DirectLessMixinPathTail), optional(literal('!important')), literal(';')),
+  const BareMixinCall = node<MixinCall>(
+    'BareMixinCall',
+    sequence(mixinName, many(MixinPathTail), optional(literal('!important')), literal(';')),
     (children) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
@@ -3646,8 +3646,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `@name: .mixin()`. Keep it narrower than an ordinary MixinCall: namespace
   // paths, dynamic names, and call-level modifiers have no approved binding
   // contract in this direct slice.
-  const DirectLessFlatMixinCall = node<MixinCall>(
-    'DirectLessFlatMixinCall',
+  const FlatMixinCall = node<MixinCall>(
+    'FlatMixinCall',
     sequence(
       mixinName,
       literal('('),
@@ -3661,11 +3661,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // calls: a namespace path is required, and call-level `!important`/`;` forms
   // are not iterable values.  The resulting `path` is the ordinary MixinCall
   // path already consumed by `forItemsFromMixinCall` / `expandCall`.
-  const DirectLessNamespacedMixinCall = node<MixinCall>(
-    'DirectLessNamespacedMixinCall',
+  const NamespacedMixinCall = node<MixinCall>(
+    'NamespacedMixinCall',
     sequence(
       mixinName,
-      oneOrMore(DirectLessMixinPathTail),
+      oneOrMore(MixinPathTail),
       literal('('),
       optional(g.MixinArguments),
       literal(')')
@@ -3688,11 +3688,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // differs from the `each()` iterable route above because Less permits a
   // call-level `!important` modifier here; the established MixinCall flag
   // carries it without a raw-value recovery or a new AST node family.
-  const DirectLessNamespacedMixinValue = node<MixinCall>(
-    'DirectLessNamespacedMixinValue',
+  const NamespacedMixinValue = node<MixinCall>(
+    'NamespacedMixinValue',
     sequence(
       mixinName,
-      oneOrMore(DirectLessMixinPathTail),
+      oneOrMore(MixinPathTail),
       literal('('),
       optional(g.MixinArguments),
       literal(')'),
@@ -3720,11 +3720,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // typed steps. `attempt` is essential here: a `#DEF` color or ordinary mixin
   // prefix must be returned to the later value alternatives unless this grammar
   // reaches at least one complete bracket accessor.
-  const DirectLessMixinReference = node<Reference>(
-    'DirectLessMixinReference',
+  const MixinReference = node<Reference>(
+    'MixinReference',
     sequence(
       mixinName,
-      many(DirectLessMixinPathTail),
+      many(MixinPathTail),
       optional(sequence(
         literal('('),
         optional(g.MixinArguments),
@@ -3763,12 +3763,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const mixinGuardDefaultOperand = node<ValueNode>(
-    'DirectLessMixinGuardDefaultOperand',
+    'MixinGuardDefaultOperand',
     mixinGuardDefaultCall,
     () => funcCall('default', [])
   );
-  const DirectLessMixinGuardOperand = node<ValueNode>(
-    'DirectLessMixinGuardOperand',
+  const MixinGuardOperand = node<ValueNode>(
+    'MixinGuardOperand',
     // A complete `default()` is a typed FunctionCall when used as a comparison
     // operand; the evaluator already supplies its mixin-dispatch value in that
     // exact context. Leading with that arm is the whole disambiguation needed —
@@ -3779,7 +3779,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       mixinGuardDefaultOperand,
       // Guard operands reuse the ordinary typed access References. The
       // namespace branch must backtrack for ordinary non-accessor colors.
-      attempt(g.DirectLessMixinReference),
+      attempt(g.MixinReference),
       g.VariableReferenceChain,
       g.Quoted,
       g.EscapedQuoted,
@@ -3791,13 +3791,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => requireValueNode(children[0])
   );
-  const DirectLessMixinGuardTerm = node<MixinGuard>(
-    'DirectLessMixinGuardTerm',
+  const MixinGuardTerm = node<MixinGuard>(
+    'MixinGuardTerm',
     sequence(
       optional(lessWord('not')),
       choice(
-        sequence(literal('('), g.DirectLessMixinGuardOr, literal(')')),
-        sequence(g.DirectLessMixinGuardOperand, optional(sequence(mixinGuardOperator, g.DirectLessMixinGuardOperand)))
+        sequence(literal('('), g.MixinGuardOr, literal(')')),
+        sequence(g.MixinGuardOperand, optional(sequence(mixinGuardOperator, g.MixinGuardOperand)))
       )
     ),
     (children) => {
@@ -3832,41 +3832,41 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
     }
   );
-  const DirectLessMixinGuardAnd = node<MixinGuard>(
-    'DirectLessMixinGuardAnd',
-    sequence(g.DirectLessMixinGuardTerm, many(sequence(lessWord('and'), g.DirectLessMixinGuardTerm))),
+  const MixinGuardAnd = node<MixinGuard>(
+    'MixinGuardAnd',
+    sequence(g.MixinGuardTerm, many(sequence(lessWord('and'), g.MixinGuardTerm))),
     children => foldMixinGuards('and', children)
   );
-  const DirectLessMixinGuardOr = node<MixinGuard>(
-    'DirectLessMixinGuardOr',
-    sequence(g.DirectLessMixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.DirectLessMixinGuardAnd))),
+  const MixinGuardOr = node<MixinGuard>(
+    'MixinGuardOr',
+    sequence(g.MixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardAnd))),
     children => foldMixinGuards('or', children)
   );
   const unparenthesizedMixinGuard = node<MixinGuard>(
-    'DirectLessUnparenthesizedMixinGuard',
+    'UnparenthesizedMixinGuard',
     choice(
       sequence(
         optional(lessWord('not')),
         choice(mixinGuardDefaultOperand, g.Call),
-        optional(sequence(mixinGuardOperator, g.DirectLessMixinGuardOperand))
+        optional(sequence(mixinGuardOperator, g.MixinGuardOperand))
       ),
       sequence(
         optional(lessWord('not')),
-        g.DirectLessMixinGuardOperand,
+        g.MixinGuardOperand,
         mixinGuardOperator,
-        g.DirectLessMixinGuardOperand
+        g.MixinGuardOperand
       )
     ),
     (_children, _fields, span) => {
       throw new LessUnparenthesizedMixinGuardError(span.start, span.end);
     }
   );
-  const DirectLessMixinGuardTopTerm = node<MixinGuard>(
-    'DirectLessMixinGuardTopTerm',
+  const MixinGuardTopTerm = node<MixinGuard>(
+    'MixinGuardTopTerm',
     choice(
       unparenthesizedMixinGuard,
-      sequence(optional(lessWord('not')), literal('('), g.DirectLessMixinGuardOr, literal(')')),
-      sequence(lessWord('not'), g.DirectLessMixinGuardTerm)
+      sequence(optional(lessWord('not')), literal('('), g.MixinGuardOr, literal(')')),
+      sequence(lessWord('not'), g.MixinGuardTerm)
     ),
     (children) => {
       const guard = children.find(isMixinGuard);
@@ -3876,19 +3876,19 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
     }
   );
-  const DirectLessMixinGuardTopAnd = node<MixinGuard>(
-    'DirectLessMixinGuardTopAnd',
-    sequence(g.DirectLessMixinGuardTopTerm, many(sequence(lessWord('and'), g.DirectLessMixinGuardTopTerm))),
+  const MixinGuardTopAnd = node<MixinGuard>(
+    'MixinGuardTopAnd',
+    sequence(g.MixinGuardTopTerm, many(sequence(lessWord('and'), g.MixinGuardTopTerm))),
     children => foldMixinGuards('and', children)
   );
-  const DirectLessMixinGuardTopOr = node<MixinGuard>(
-    'DirectLessMixinGuardTopOr',
-    sequence(g.DirectLessMixinGuardTopAnd, many(sequence(choice(lessWord('or'), literal(',')), g.DirectLessMixinGuardTopAnd))),
+  const MixinGuardTopOr = node<MixinGuard>(
+    'MixinGuardTopOr',
+    sequence(g.MixinGuardTopAnd, many(sequence(choice(lessWord('or'), literal(',')), g.MixinGuardTopAnd))),
     children => foldMixinGuards('or', children)
   );
-  const DirectLessMixinGuard = node<MixinGuard>(
-    'DirectLessMixinGuard',
-    parser({ trivia: mixinGuardTrivia }, sequence(lessWord('when'), g.DirectLessMixinGuardTopOr)),
+  const MixinGuard = node<MixinGuard>(
+    'MixinGuard',
+    parser({ trivia: mixinGuardTrivia }, sequence(lessWord('when'), g.MixinGuardTopOr)),
     (children) => {
       const guard = children.find(isMixinGuard);
       if (guard === undefined) {
@@ -3900,12 +3900,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Scope the signature-only trivia through the opening `{`, then leave the
   // body to its ordinary statement grammar where block comments are CSS output.
   const mixinSignature = node<MixinSignatureFact>(
-    'DirectLessMixinSignature',
+    'MixinSignature',
     parser({ trivia: mixinSignatureTrivia }, sequence(
       field('name', mixinName),
-      field('parameters', g.DirectLessMixinParameterList),
+      field('parameters', g.MixinParameterList),
       optional(mixinSignatureGap),
-      optional(field('guard', DirectLessMixinGuard)),
+      optional(field('guard', MixinGuard)),
       optional(mixinSignatureGap),
       field('open', literal('{'))
     )),
@@ -3932,7 +3932,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // ordered arm set. Factoring it into one named combinator keeps the arm-win
   // precedence identical across all block contexts instead of hand-copying the
   // arms per production. The root document and the detached-ruleset/`each`
-  // `DirectLessBodyStatement` deliberately keep their own ordered arm sets
+  // `BodyStatement` deliberately keep their own ordered arm sets
   // because they legitimately differ (comment-first root ordering; the
   // punctuation-map arm and Each/Ruleset reordering in body statements).
   // `@`-led statement group. Every body context lists these ten arms in this
@@ -3976,8 +3976,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // so the emitted AST and its `type`-keyed shape are identical to the ungrouped
   // arms. `collapse` lets parseman drop the transparent wrapper allocation.
   const mixinStatement = node<Statement>(
-    'DirectLessMixinStatement',
-    sequence(mixinStatementAhead, choice(UnsupportedDashOnlyMixin, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall)),
+    'MixinStatement',
+    sequence(mixinStatementAhead, choice(UnsupportedDashOnlyMixin, g.MixinDefinition, g.MixinCall, g.BareMixinCall)),
     (children) => {
       const statement = children.find(isStatement);
       if (statement === undefined) {
@@ -4001,7 +4001,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // lookahead marker from splicing into the statement list.
   const rulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
   const guardedRuleset = node<Rule>(
-    'DirectLessGuardedRuleset',
+    'GuardedRuleset',
     sequence(rulesetNotDeclaration, g.RulesetWithExtends),
     (children) => {
       const ruleset = children.find(isRule);
@@ -4013,7 +4013,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     { collapse: true }
   );
   const declarationItem = node<Declaration>(
-    'DirectLessDeclarationItem',
+    'DeclarationItem',
     sequence(
       g.Declaration,
       choice(
@@ -4032,7 +4032,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const stylesheetEnd = not(regex(/[\s\S]/));
   const rootDeclarationItem = node<Declaration>(
-    'DirectLessRootDeclarationItem',
+    'RootDeclarationItem',
     sequence(
       g.Declaration,
       choice(
@@ -4050,9 +4050,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     { collapse: true }
   );
   const punctuationMapDeclarationItem = node<Declaration>(
-    'DirectLessPunctuationMapDeclarationItem',
+    'PunctuationMapDeclarationItem',
     sequence(
-      DirectLessPunctuationMapDeclaration,
+      PunctuationMapDeclaration,
       choice(
         literal(';'),
         peek(literal('}'))
@@ -4067,16 +4067,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     },
     { collapse: true }
   );
-  const blockItem = choice(atStatement, mixinStatement, g.DirectLessEach, g.FunctionStatement, guardedRuleset, declarationItem, literal(';'));
+  const blockItem = choice(atStatement, mixinStatement, g.Each, g.FunctionStatement, guardedRuleset, declarationItem, literal(';'));
   const blockBody = many(blockItem);
-  // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
+  // The ruleset body adds one extra arm (`ExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
   // precedence: the shared arms (including the empty `;`) are tried in the same
   // order first, then the extend statement — behaviourally identical to the
-  // former flat `choice(<shared arms>, DirectLessExtendStatement, ';')` because
+  // former flat `choice(<shared arms>, ExtendStatement, ';')` because
   // an extend head never matches `;` or any shared arm the flat list did not.
-  const rulesetBody = many(choice(blockItem, g.DirectLessExtendStatement));
-  const DirectLessMixinDefinition = node<MixinDef>(
+  const rulesetBody = many(choice(blockItem, g.ExtendStatement));
+  const MixinDefinition = node<MixinDef>(
     'MixinOrQualifiedRule',
     sequence(
       mixinSignature,
@@ -4096,8 +4096,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ), span);
     }
   );
-  const DirectLessEachName = node<string>(
-    'DirectLessEachName',
+  const EachName = node<string>(
+    'EachName',
     sequence(literal('@'), lessVariableName),
     (children, _fields, span) => requireSupportedVariableName(
       children[1],
@@ -4110,15 +4110,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
-  const DirectLessBodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, guardedRuleset, g.DirectLessEach, g.FunctionStatement, declarationItem, literal(';'));
+  const BodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, guardedRuleset, g.Each, g.FunctionStatement, declarationItem, literal(';'));
   const ValueBlock = node<ValueNode>(
     'ValueBlock',
-    sequence(literal('{'), many(g.DirectLessBodyStatement), optional(g.Call), literal('}')),
+    sequence(literal('{'), many(g.BodyStatement), optional(g.Call), literal('}')),
     children => classifyValueBlock(requireValueBlockBody(children))
   );
   const CallArgumentValue = node<MixinCallArgument['value']>(
-    'DirectLessCallArgumentValue',
-    choice(attempt(g.DirectLessFlatMixinCall), g.ValueBlock, g.ValueSequence),
+    'CallArgumentValue',
+    choice(attempt(g.FlatMixinCall), g.ValueBlock, g.ValueSequence),
     (children) => {
       const value = children[0];
       if (isMixinCall(value) || isValueSlotValue(value)) {
@@ -4127,22 +4127,22 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       throw new TypeError('Direct Less call argument must reduce to a value or typed mixin call.');
     }
   );
-  const DirectLessEachCallback = node<LessEachCallback>(
-    'DirectLessEachCallback',
+  const EachCallback = node<LessEachCallback>(
+    'EachCallback',
     choice(
       sequence(
         literal('{'),
-        many(g.DirectLessBodyStatement),
+        many(g.BodyStatement),
         optional(g.Call),
         literal('}')
       ),
       sequence(
         // Less anonymous mixin callbacks accept either `.(...) { ... }` or
         // `#(...) { ... }`; both lower to the same canonical For binding.
-        eachCallbackSigil, literal('('), g.DirectLessEachName,
-        optional(sequence(commaOrSemicolon, g.DirectLessEachName, optional(sequence(commaOrSemicolon, g.DirectLessEachName)))),
+        eachCallbackSigil, literal('('), g.EachName,
+        optional(sequence(commaOrSemicolon, g.EachName, optional(sequence(commaOrSemicolon, g.EachName)))),
         literal(')'), literal('{'),
-        many(g.DirectLessBodyStatement),
+        many(g.BodyStatement),
         optional(g.Call),
         literal('}')
       )
@@ -4172,7 +4172,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       throw new TypeError('Direct Less AST grammar produced an invalid each() callback binding.');
     }
   );
-  const DirectLessEach = node<For>(
+  const Each = node<For>(
     'For',
     // An inline detached ruleset is an ordinary `each()` iterable
     // (`each({ margin: m; padding: p; }, \u2026)`). It is listed here rather than in
@@ -4188,8 +4188,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         literal('(')
       )),
       choice(
-        g.DirectLessNamespacedMixinCall,
-        g.DirectLessFlatMixinCall,
+        g.NamespacedMixinCall,
+        g.FlatMixinCall,
         g.ValueBlock,
         g.ValueList
       ),
@@ -4197,7 +4197,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         literal(','),
         literal(';')
       ),
-      g.DirectLessEachCallback,
+      g.EachCallback,
       literal(')'),
       optional(literal(';'))
     ),
@@ -4211,12 +4211,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const generalEnclosedRaw = node<string>(
-    'DirectLessGeneralEnclosedRaw',
+    'GeneralEnclosedRaw',
     noTrivia(choice(g.CssSyntaxBlockComment, generalEnclosedText)),
     children => requireToken(children[0]).value
   );
   const GeneralEnclosedQuoted = node<Interpolation>(
-    'DirectLessGeneralEnclosedQuoted',
+    'GeneralEnclosedQuoted',
     choice(
       noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, BareVariableInterpolation, generalEnclosedDoubleChunk)), literal('"'))),
       noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, BareVariableInterpolation, generalEnclosedSingleChunk)), literal('\'')))
@@ -4224,7 +4224,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     generalEnclosedInterpolationFromChildren
   );
   const GeneralEnclosedGroup = node<Interpolation>(
-    'DirectLessGeneralEnclosedGroup',
+    'GeneralEnclosedGroup',
     choice(
       noTrivia(sequence(literal('('), g.GeneralEnclosedContent, literal(')'))),
       noTrivia(sequence(literal('['), g.GeneralEnclosedContent, literal(']'))),
@@ -4233,7 +4233,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     generalEnclosedInterpolationFromChildren
   );
   const GeneralEnclosedContent = node<Interpolation>(
-    'DirectLessGeneralEnclosedContent',
+    'GeneralEnclosedContent',
     noTrivia(many(choice(
       BareVariableInterpolation,
       generalEnclosedRaw,
@@ -4244,12 +4244,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     generalEnclosedInterpolationFromChildren
   );
   const GeneralEnclosedFunctionName = node<GeneralEnclosedNameFact>(
-    'DirectLessGeneralEnclosedFunctionName',
+    'GeneralEnclosedFunctionName',
     token(noTrivia(sequence(g.CssSyntaxQueryFunctionName, literal('(')))),
     children => ({ name: functionNameFromOpener(children[0]) })
   );
   const GeneralEnclosed = node<GeneralEnclosed>(
-    'DirectLessGeneralEnclosed',
+    'GeneralEnclosed',
     choice(
       noTrivia(sequence(g.GeneralEnclosedFunctionName, g.GeneralEnclosedContent, literal(')'))),
       noTrivia(sequence(literal('('), g.GeneralEnclosedContent, literal(')')))
@@ -4460,7 +4460,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // A namespace/map read is a whole query term only after its required
       // accessor has succeeded; otherwise ordinary colors and mixin prefixes
       // continue to the existing query alternatives.
-      attempt(g.DirectLessMixinReference),
+      attempt(g.MixinReference),
       g.QueryFeature,
       g.VariableReference,
       QueryNonOnlyKeyword
@@ -5001,11 +5001,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
     )
   );
-  const DirectLessStaticNthArgument = node<string>(
-    'DirectLessStaticNthArgument',
+  const StaticNthArgument = node<string>(
+    'StaticNthArgument',
     sequence(
       g.CssSyntaxNth,
-      optional(sequence(g.CssSyntaxOfKeyword, parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector)))
+      optional(sequence(g.CssSyntaxOfKeyword, parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector)))
     ),
     (children) => {
       const nth = requireToken(children[0]).value;
@@ -5013,18 +5013,18 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return selector === undefined ? nth : `${nth} of ${selector.selectors.map(complexCanonical).join(',')}`;
     }
   );
-  const DirectLessStaticNthPseudo: Combinator<SimpleSelector> = choice(
+  const StaticNthPseudo: Combinator<SimpleSelector> = choice(
     node<SimpleSelector>(
-      'DirectLessStaticNthChildPseudo',
+      'StaticNthChildPseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
         token(noTrivia(sequence(pseudoDelimiter, g.CssSyntaxNthChildName, literal('(')))),
-        g.DirectLessStaticNthArgument,
+        g.StaticNthArgument,
         literal(')')
       )),
       children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
     ),
     node<SimpleSelector>(
-      'DirectLessStaticNthTypePseudo',
+      'StaticNthTypePseudo',
       parser({ trivia: staticSelectorTrivia }, sequence(
         token(noTrivia(sequence(pseudoDelimiter, g.CssSyntaxNthTypeName, literal('(')))),
         g.CssSyntaxNth,
@@ -5038,7 +5038,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // typed interpolation segments; no raw selector recovery or second parse is
   // needed when the value is substituted during evaluation.
   const InterpolatedNthPseudo = node<SimpleSelector>(
-    'DirectLessInterpolatedNthPseudo',
+    'InterpolatedNthPseudo',
     parser({ trivia: staticSelectorTrivia }, sequence(
       token(noTrivia(sequence(pseudoDelimiter, choice(g.CssSyntaxNthChildName, g.CssSyntaxNthTypeName), literal('(')))),
       g.VariableInterpolation,
@@ -5065,9 +5065,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // literal/ref parts, exactly like the interpolated nth and name pseudos. The
   // parser never joins it into text and never re-scans the span.
   // At least one interpolation is required, so a fully static argument stays on
-  // the DirectLessStaticPseudo route it already had.
-  const DirectLessInterpolatedArgumentPseudo = node<SimpleSelector>(
-    'DirectLessInterpolatedArgumentPseudo',
+  // the StaticPseudo route it already had.
+  const InterpolatedArgumentPseudo = node<SimpleSelector>(
+    'InterpolatedArgumentPseudo',
     parser({ trivia: staticSelectorTrivia }, sequence(
       token(noTrivia(sequence(
         pseudoDelimiter,
@@ -5088,23 +5088,23 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const StaticPseudoQuoted = node<string>(
-    'DirectLessStaticPseudoQuoted',
+    'StaticPseudoQuoted',
     staticQuotedBody,
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
-  const staticPseudoInner = choice(g.DirectLessStaticPseudoGroup, g.DirectLessStaticPseudoSquare, g.StaticPseudoQuoted, blockComment, staticPseudoChunk);
-  const DirectLessStaticPseudoGroup = node<string>(
-    'DirectLessStaticPseudoGroup',
+  const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, g.StaticPseudoQuoted, blockComment, staticPseudoChunk);
+  const StaticPseudoGroup = node<string>(
+    'StaticPseudoGroup',
     sequence(literal('('), many(staticPseudoInner), literal(')')),
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
-  const DirectLessStaticPseudoSquare = node<string>(
-    'DirectLessStaticPseudoSquare',
+  const StaticPseudoSquare = node<string>(
+    'StaticPseudoSquare',
     sequence(literal('['), many(staticPseudoInner), literal(']')),
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
-  const DirectLessStaticNonSelectorPseudoArgument = node<string>(
-    'DirectLessStaticNonSelectorPseudoArgument',
+  const StaticNonSelectorPseudoArgument = node<string>(
+    'StaticNonSelectorPseudoArgument',
     oneOrMore(staticPseudoInner),
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
@@ -5116,23 +5116,23 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // component of the public pseudo production, not a second parser API.
   // Retain the parsed `SelectorList` rather than collapsing it to text. A
   // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
-  // `args`; `DirectLessStaticSelectorPseudo` joins the opaque `:global`/`:local`
+  // `args`; `StaticSelectorPseudo` joins the opaque `:global`/`:local`
   // fallback via `complexCanonical`. The parser never bakes the inline
   // `:is(a, b)` spelling — core serialization owns that.
   const staticPseudoArgument = node<SelectorList>(
-    'DirectLessStaticPseudoArgument',
-    parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector),
+    'StaticPseudoArgument',
+    parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector),
     children => requireSelectorList(children[0])
   );
   // This selector family is private to functional pseudo arguments.  A block
   // comment immediately between two simple selectors is lexical trivia, not a
   // descendant relation (`.a/*x*/.b` is one compound); actual whitespace still
   // belongs to the complex-tail descendant boundary.
-  const DirectLessStaticPseudoCompound = node<CompoundSelector>(
-    'DirectLessStaticPseudoCompound',
+  const StaticPseudoCompound = node<CompoundSelector>(
+    'StaticPseudoCompound',
     parser(
       { trivia: compoundSelectorTrivia },
-      oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticPseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute))
+      oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, g.StaticPseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
     children => compoundSelectorOf(children.map((child) => {
       return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
@@ -5141,19 +5141,19 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // This selector family is private to functional pseudo arguments.  Its tail
   // admits Less selector trivia immediately before the next compound, so
   // `.a /* note */ > /* note */ .b` remains one structured complex selector.
-  // The ordinary outer selector continues to use DirectLessComplexTail, whose
+  // The ordinary outer selector continues to use ComplexTail, whose
   // no-trivia compound boundary is intentionally unchanged.
-  const DirectLessStaticPseudoComplexTail = node<ComplexTailFact>(
-    'DirectLessStaticPseudoComplexTail',
-    sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoCompound)),
+  const StaticPseudoComplexTail = node<ComplexTailFact>(
+    'StaticPseudoComplexTail',
+    sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoCompound)),
     combinatorTailReducer
   );
-  const DirectLessStaticPseudoComplex = node<ComplexSelector>(
-    'DirectLessStaticPseudoComplex',
+  const StaticPseudoComplex = node<ComplexSelector>(
+    'StaticPseudoComplex',
     sequence(
       optional(relativeSelectorCombinator),
-      g.DirectLessStaticPseudoCompound,
-      many(sequence(not(whenGuardAhead), g.DirectLessStaticPseudoComplexTail))
+      g.StaticPseudoCompound,
+      many(sequence(not(whenGuardAhead), g.StaticPseudoComplexTail))
     ),
     (children) => {
       const head = requireCompound(children.find(isCompound));
@@ -5164,23 +5164,23 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ], leading === undefined ? undefined : requireCombinator(leading));
     }
   );
-  const DirectLessStaticPseudoSelectorTail = node<ComplexSelector>(
-    'DirectLessStaticPseudoSelectorTail',
-    sequence(literal(','), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoComplex)),
+  const StaticPseudoSelectorTail = node<ComplexSelector>(
+    'StaticPseudoSelectorTail',
+    sequence(literal(','), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoComplex)),
     children => requireComplex(children[1])
   );
-  const DirectLessStaticPseudoSelector = node<SelectorList>(
-    'DirectLessStaticPseudoSelector',
-    sequence(g.DirectLessStaticPseudoComplex, many(g.DirectLessStaticPseudoSelectorTail)),
+  const StaticPseudoSelector = node<SelectorList>(
+    'StaticPseudoSelector',
+    sequence(g.StaticPseudoComplex, many(g.StaticPseudoSelectorTail)),
     children => selist(...requireComplexes(children))
   );
   // `*[ … ]` is only the glued capture delimiter around the existing static
   // selector-list grammar. It is a selector-valued Less value, not a text
   // capture: the selector grammar owns every branch boundary and the AST keeps
   // the canonical branches for selector interpolation.
-  const DirectLessSelectorCapture = node<SelectorCapture>(
-    'DirectLessSelectorCapture',
-    sequence(noTrivia(literal('*[')), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector), noTrivia(literal(']'))),
+  const SelectorCapture = node<SelectorCapture>(
+    'SelectorCapture',
+    sequence(noTrivia(literal('*[')), parser({ trivia: staticSelectorTrivia }, g.StaticPseudoSelector), noTrivia(literal(']'))),
     (children) => {
       const selector = requireSelectorList(children[1]);
       const branches = selector.selectors.map(complexCanonical);
@@ -5195,7 +5195,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     optional(literal('('))
   )));
   const staticSelectorPseudoRouted = node<SimpleToken>(
-    'DirectLessStaticSelectorPseudo',
+    'StaticSelectorPseudo',
     sequence(routed(), staticPseudoArgument, literal(')')),
     children => staticSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
@@ -5203,7 +5203,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )
   );
   const interpolatedArgumentPseudoRouted = node<SimpleSelector>(
-    'DirectLessInterpolatedArgumentPseudo',
+    'InterpolatedArgumentPseudo',
     sequence(
       routed(),
       many(staticPseudoChunk),
@@ -5219,15 +5219,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const staticNonSelectorPseudoRouted = node<SimpleSelector>(
-    'DirectLessStaticNonSelectorPseudo',
-    sequence(routed(), g.DirectLessStaticNonSelectorPseudoArgument, literal(')')),
+    'StaticNonSelectorPseudo',
+    sequence(routed(), g.StaticNonSelectorPseudoArgument, literal(')')),
     children => staticNonSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
       requireString(children[1])
     )
   );
   const staticBarePseudoRouted = node<SimpleSelector>(
-    'DirectLessStaticNonSelectorPseudo',
+    'StaticNonSelectorPseudo',
     routed(),
     children => staticNonSelectorPseudoFrom(requireToken(children[0]).value, null)
   );
@@ -5259,8 +5259,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     otherwise(staticBarePseudoRouted)
   );
-  const DirectLessStaticPseudo = node<SimpleToken>(
-    'DirectLessStaticPseudo',
+  const StaticPseudo = node<SimpleToken>(
+    'StaticPseudo',
     staticPseudoDispatch,
     children => requireSimpleToken(children.find(isSimpleToken))
   );
@@ -5268,8 +5268,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // and remains one interpolation-backed selector atom. Keep the delimiter and
   // interpolation structural so evaluation can substitute the name without a
   // selector-string reparse.
-  const DirectLessInterpolatedPseudo = node<SimpleSelector>(
-    'DirectLessInterpolatedPseudo',
+  const InterpolatedPseudo = node<SimpleSelector>(
+    'InterpolatedPseudo',
     noTrivia(sequence(pseudoDelimiter, g.VariableInterpolation)),
     (children) => {
       const delimiter = requireTerminalText(children[0]);
@@ -5280,8 +5280,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ]));
     }
   );
-  const DirectLessStaticAttributeNamespace = node<string>(
-    'DirectLessStaticAttributeNamespace',
+  const StaticAttributeNamespace = node<string>(
+    'StaticAttributeNamespace',
     choice(
       // `|=` is the CSS attribute operator, not a namespace separator. Guard
       // the namespace arm before consuming `|` so a quoted interpolation after
@@ -5292,21 +5292,21 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => children.map(requireToken).map(token => token.value).join('')
   );
-  const DirectLessStaticNamespaceType = node<SimpleSelector>(
-    'DirectLessStaticNamespaceType',
-    sequence(g.DirectLessStaticAttributeNamespace, choice(directStaticIdentifier, literal('*'))),
+  const StaticNamespaceType = node<SimpleSelector>(
+    'StaticNamespaceType',
+    sequence(g.StaticAttributeNamespace, choice(directStaticIdentifier, literal('*'))),
     children => simpleSelector(children.map(requireTerminalText).join(''))
   );
-  const DirectLessStaticAttributeName = node<StaticAttributeNameFact>(
-    'DirectLessStaticAttributeName',
-    sequence(optional(g.DirectLessStaticAttributeNamespace), directStaticIdentifier),
+  const StaticAttributeName = node<StaticAttributeNameFact>(
+    'StaticAttributeName',
+    sequence(optional(g.StaticAttributeNamespace), directStaticIdentifier),
     children => ({
       namespace: children.find((child): child is string => typeof child === 'string') ?? '',
       name: requireToken(children.at(-1)).value
     })
   );
-  const DirectLessStaticAttributeQuoted = node<string>(
-    'DirectLessStaticAttributeQuoted',
+  const StaticAttributeQuoted = node<string>(
+    'StaticAttributeQuoted',
     staticQuotedBody,
     children => children.map(requireToken).map(token => token.value).join('')
   );
@@ -5322,29 +5322,29 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.Interpolation,
     many(interpolatedValueTail)
   ));
-  const DirectLessInterpolatedAttributeToken = node<Interpolation>(
-    'DirectLessInterpolatedAttributeToken',
+  const InterpolatedAttributeToken = node<Interpolation>(
+    'InterpolatedAttributeToken',
     directAttributeInterpolationTokenBody,
     children => interpolation(interpolationPartsFrom(children, true))
   );
-  const DirectLessInterpolatedAttributeValueToken = node<Interpolation>(
-    'DirectLessInterpolatedAttributeValueToken',
+  const InterpolatedAttributeValueToken = node<Interpolation>(
+    'InterpolatedAttributeValueToken',
     directAttributeInterpolationTokenBody,
     children => interpolation(interpolationPartsFrom(children, false))
   );
-  const DirectLessInterpolatedAttributeQuoted = node<Interpolation>(
-    'DirectLessInterpolatedAttributeQuoted',
+  const InterpolatedAttributeQuoted = node<Interpolation>(
+    'InterpolatedAttributeQuoted',
     choice(
       noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.LessSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
       noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.LessSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
     ),
     children => interpolation(interpolationPartsFrom(children, true))
   );
-  const DirectLessStaticAttributeMatch = node<StaticAttributeMatchFact>(
-    'DirectLessStaticAttributeMatch',
+  const StaticAttributeMatch = node<StaticAttributeMatchFact>(
+    'StaticAttributeMatch',
     sequence(
       g.CssSyntaxAttributeOperator,
-      choice(directStaticIdentifier, g.DirectLessStaticAttributeQuoted),
+      choice(directStaticIdentifier, g.StaticAttributeQuoted),
       optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
     ),
     children => ({
@@ -5353,9 +5353,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       modifier: children.length === 2 ? null : requireToken(children[3]).value
     })
   );
-  const DirectLessStaticAttribute = node<SimpleSelector>(
-    'DirectLessStaticAttribute',
-    sequence(literal('['), g.DirectLessStaticAttributeName, optional(g.DirectLessStaticAttributeMatch), literal(']')),
+  const StaticAttribute = node<SimpleSelector>(
+    'StaticAttribute',
+    sequence(literal('['), g.StaticAttributeName, optional(g.StaticAttributeMatch), literal(']')),
     (children) => {
       const match = children.find((child): child is StaticAttributeMatchFact =>
         typeof child === 'object' && child !== null && 'operator' in child && 'value' in child && 'modifier' in child
@@ -5369,24 +5369,24 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return simpleSelector(`[${name.namespace}${name.name}${match === undefined ? '' : `${match.operator}${match.value}${match.modifier === null ? '' : ` ${match.modifier}`}`}]`);
     }
   );
-  const DirectLessInterpolatedAttribute = node<SimpleSelector>(
-    'DirectLessInterpolatedAttribute',
+  const InterpolatedAttribute = node<SimpleSelector>(
+    'InterpolatedAttribute',
     sequence(
       literal('['),
       choice(
         sequence(
-          optional(g.DirectLessStaticAttributeNamespace),
-          g.DirectLessInterpolatedAttributeToken,
+          optional(g.StaticAttributeNamespace),
+          g.InterpolatedAttributeToken,
           optional(sequence(
             g.CssSyntaxAttributeOperator,
-            choice(g.DirectLessInterpolatedAttributeValueToken, g.DirectLessInterpolatedAttributeQuoted, g.LessSyntaxIdentifier, g.DirectLessStaticAttributeQuoted),
+            choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted, g.LessSyntaxIdentifier, g.StaticAttributeQuoted),
             optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
           ))
         ),
         sequence(
-          g.DirectLessStaticAttributeName,
+          g.StaticAttributeName,
           g.CssSyntaxAttributeOperator,
-          choice(g.DirectLessInterpolatedAttributeValueToken, g.DirectLessInterpolatedAttributeQuoted),
+          choice(g.InterpolatedAttributeValueToken, g.InterpolatedAttributeQuoted),
           optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
         )
       ),
@@ -5415,8 +5415,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return interpolatedSimpleSelector(interpolation(parts));
     }
   );
-  const DirectLessBareInterpolatedSelector = node<SimpleSelector>(
-    'DirectLessBareInterpolatedSelector',
+  const BareInterpolatedSelector = node<SimpleSelector>(
+    'BareInterpolatedSelector',
     sequence(g.VariableInterpolation, directBareInterpolatedSelectorEnd),
     (children) => {
       const fact = requireInterpolationFact(children[0]);
@@ -5427,21 +5427,21 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // branches. Keep this arm separate from literal suffixes so Parseman's
   // generated choice commits on the second `@{…}` without treating it as a
   // static selector-tail byte sequence.
-  const DirectLessAdjacentInterpolatedSelector = node<SimpleSelector>(
-    'DirectLessAdjacentInterpolatedSelector',
+  const AdjacentInterpolatedSelector = node<SimpleSelector>(
+    'AdjacentInterpolatedSelector',
     noTrivia(sequence(g.VariableInterpolation, oneOrMore(g.VariableInterpolation))),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   // A bare interpolation may be followed by a glued selector simple, such as
   // `@{base}.bbb`. Keep that suffix as an interpolation literal segment rather
   // than recovering a completed selector string after parse.
-  const DirectLessBareInterpolatedSelectorWithSuffix = node<SimpleSelector>(
-    'DirectLessBareInterpolatedSelectorWithSuffix',
+  const BareInterpolatedSelectorWithSuffix = node<SimpleSelector>(
+    'BareInterpolatedSelectorWithSuffix',
     noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(directInterpolatedSelectorTail, staticSimpleSelector)))),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
-  const DirectLessInterpolatedSimpleSelector = node<SimpleSelector>(
-    'DirectLessInterpolatedSimpleSelector',
+  const InterpolatedSimpleSelector = node<SimpleSelector>(
+    'InterpolatedSimpleSelector',
     noTrivia(sequence(
       directInterpolatedSelectorPrefix,
       g.VariableInterpolation,
@@ -5452,8 +5452,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `&` plus a glued Less interpolation is one parent-suffix selector token,
   // not a static parent selector followed by a second compound member. The
   // existing Interpolation-backed SimpleSelector is its complete canonical model.
-  const DirectLessInterpolatedParentSuffix = node<SimpleSelector>(
-    'DirectLessInterpolatedParentSuffix',
+  const InterpolatedParentSuffix = node<SimpleSelector>(
+    'InterpolatedParentSuffix',
     noTrivia(sequence(
       staticAmpersand,
       g.VariableInterpolation,
@@ -5462,17 +5462,17 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   const compoundSimple = choice(
-    g.DirectLessInterpolatedParentSuffix,
-    g.DirectLessInterpolatedSimpleSelector,
-    g.DirectLessAdjacentInterpolatedSelector,
-    g.DirectLessBareInterpolatedSelectorWithSuffix,
-    g.DirectLessBareInterpolatedSelector,
-    g.DirectLessStaticNamespaceType,
+    g.InterpolatedParentSuffix,
+    g.InterpolatedSimpleSelector,
+    g.AdjacentInterpolatedSelector,
+    g.BareInterpolatedSelectorWithSuffix,
+    g.BareInterpolatedSelector,
+    g.StaticNamespaceType,
     staticSimpleSelector,
     staticAmpersand,
     // Generic and selector pseudos (`:hover`, `::before`, `:not(...)`) dominate
     // real selectors; the two nth arms and the interpolated-name arm are rare.
-    // DirectLessStaticPseudo carries the generic/selector case and is name-set
+    // StaticPseudo carries the generic/selector case and is name-set
     // disjoint from the other three — its NonSelectorPseudo `not(nth-name)` /
     // `not(selector-name)` guards and its SelectorPseudo name regex mean it can
     // never match an nth pseudo or an interpolated-name pseudo (`:@{n}`). So
@@ -5482,14 +5482,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     // priority unchanged.
     pseudo,
     g.InterpolatedNthPseudo,
-    g.DirectLessStaticNthPseudo,
-    g.DirectLessInterpolatedArgumentPseudo,
-    g.DirectLessInterpolatedPseudo,
-    g.DirectLessStaticAttribute,
-    g.DirectLessInterpolatedAttribute
+    g.StaticNthPseudo,
+    g.InterpolatedArgumentPseudo,
+    g.InterpolatedPseudo,
+    g.StaticAttribute,
+    g.InterpolatedAttribute
   );
-  const DirectLessCompound: Combinator<CompoundSelector> = node<CompoundSelector>(
-    'DirectLessCompound',
+  const Compound: Combinator<CompoundSelector> = node<CompoundSelector>(
+    'Compound',
     // Production's CompoundSelector is a run of adjacent simple selectors.
     // Keep that same structural distinction here: `.a#id` is one CompoundSelector with
     // two SimpleSelector children, not a recovered selector string. Static pseudos use
@@ -5504,12 +5504,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return compoundSelectorOf(simples);
     }
   );
-  const DirectLessComplex = node<ComplexSelector>(
-    'DirectLessComplex',
+  const Complex = node<ComplexSelector>(
+    'Complex',
     sequence(
       optional(relativeSelectorCombinator),
-      g.DirectLessCompound,
-      many(sequence(not(whenGuardAhead), g.DirectLessComplexTail))
+      g.Compound,
+      many(sequence(not(whenGuardAhead), g.ComplexTail))
     ),
     (children, _fields, span) => {
       const head = children.find(isCompound);
@@ -5529,37 +5529,37 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ], leading === undefined ? undefined : requireCombinator(leading)), span);
     }
   );
-  const DirectLessComplexTail = node<ComplexTailFact>(
-    'DirectLessComplexTail',
-    sequence(optional(staticCombinator), g.DirectLessCompound),
+  const ComplexTail = node<ComplexTailFact>(
+    'ComplexTail',
+    sequence(optional(staticCombinator), g.Compound),
     combinatorTailReducer
   );
-  const DirectLessSelectorTail = node<ComplexSelector>(
-    'DirectLessSelectorTail',
-    sequence(literal(','), g.DirectLessComplex),
+  const SelectorTail = node<ComplexSelector>(
+    'SelectorTail',
+    sequence(literal(','), g.Complex),
     children => requireComplex(children[1])
   );
-  const DirectLessSelector = node<SelectorList>(
-    'DirectLessSelector',
-    parser({ trivia: outerSelectorTrivia }, sequence(g.DirectLessComplex, many(g.DirectLessSelectorTail))),
+  const Selector = node<SelectorList>(
+    'Selector',
+    parser({ trivia: outerSelectorTrivia }, sequence(g.Complex, many(g.SelectorTail))),
     (children, _fields, span) => withSourceSpan(selist(...requireComplexes(children)), span)
   );
   const directExtendAll = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const StaticExtendCompound = node<CompoundSelector>(
-    'DirectLessStaticExtendCompound',
+    'StaticExtendCompound',
     parser(
       { trivia: compoundSelectorTrivia },
-      oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, pseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute))
+      oneOrMore(choice(g.StaticNamespaceType, staticSimpleSelector, staticAmpersand, pseudo, g.StaticNthPseudo, g.StaticAttribute))
     ),
     children => compoundSelectorOf(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
   const StaticExtendComplexTail = node<ComplexTailFact>(
-    'DirectLessStaticExtendComplexTail',
+    'StaticExtendComplexTail',
     sequence(optional(staticCombinator), StaticExtendCompound),
     combinatorTailReducer
   );
-  const DirectLessExtendComplex = node<ComplexSelector>(
-    'DirectLessExtendComplex',
+  const ExtendComplex = node<ComplexSelector>(
+    'ExtendComplex',
     sequence(
       StaticExtendCompound,
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), StaticExtendComplexTail))
@@ -5573,16 +5573,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ]), span)
   );
   const ExtendTargetComplexTail = node<ComplexTailFact>(
-    'DirectLessExtendTargetComplexTail',
-    sequence(optional(staticCombinator), g.DirectLessCompound),
+    'ExtendTargetComplexTail',
+    sequence(optional(staticCombinator), g.Compound),
     combinatorTailReducer
   );
   const ExtendTargetComplex = node<ComplexSelector>(
-    'DirectLessExtendTargetComplex',
+    'ExtendTargetComplex',
     sequence(
       // An extend target can carry a typed selector interpolation, unlike its
       // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
-      g.DirectLessCompound,
+      g.Compound,
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), ExtendTargetComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(complexSelector([
@@ -5590,8 +5590,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ...children.slice(1).filter(isComplexTailFact)
     ]), span)
   );
-  const DirectLessExtendTarget = node<ExtendTargetFact>(
-    'DirectLessExtendTarget',
+  const ExtendTarget = node<ExtendTargetFact>(
+    'ExtendTarget',
     sequence(ExtendTargetComplex, optional(directExtendAll)),
     children => ({
       target: selist(requireComplex(children[0])),
@@ -5603,7 +5603,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(
       noTrivia(sequence(literal(':'), literal('extend'), literal('('))),
       oneOrMoreSep(
-        g.DirectLessExtendTarget,
+        g.ExtendTarget,
         literal(',')
       ),
       literal(')')
@@ -5611,7 +5611,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     children => children.filter(isExtendTargetFact)
   );
   const directSelectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
-  const DirectLessExtendStatement = node<ExtendInstruction[]>(
+  const ExtendStatement = node<ExtendInstruction[]>(
     'ExtendStatement',
     sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
     children => children
@@ -5624,7 +5624,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const SelectorBranch = node<SelectorBranchFact>(
     'SelectorBranch',
-    sequence(DirectLessExtendComplex, directSelectorBranchContinuation),
+    sequence(ExtendComplex, directSelectorBranchContinuation),
     (children) => {
       const subject = requireComplex(children[0]);
       const extensions = children
@@ -5636,7 +5636,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const DynamicSelectorBranch = node<SelectorBranchFact>(
     'SelectorBranch',
-    g.DirectLessComplex,
+    g.Complex,
     children => ({ selector: requireComplex(children[0]), extensions: [] })
   );
   const selectorListWithExtends = node<SelectorListWithExtendsFact>(
@@ -5657,7 +5657,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const RulesetWithExtends = node<Rule>(
     'Ruleset',
-    sequence(selectorListWithExtends, optional(g.DirectLessMixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
+    sequence(selectorListWithExtends, optional(g.MixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
@@ -5677,14 +5677,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
-    sequence(many(choice(atStatement, mixinStatement, g.DirectLessEach, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    sequence(many(choice(atStatement, mixinStatement, g.Each, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
 
   return {
     Stylesheet,
-    LessAstDocument: Stylesheet,
+    Document: Stylesheet,
     VarDeclaration,
     ImportStatement,
     PluginDirective,
@@ -5726,7 +5726,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     CallArgumentValue,
     FunctionStatement,
     Value,
-    DirectLessSelectorCapture,
+    SelectorCapture,
     MathAtom,
     MathUnary,
     MathProduct,
@@ -5751,34 +5751,34 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     CustomValue,
     CssCustomPropertyValue,
     CustomDeclaration,
-    DirectLessPunctuationMapDeclaration,
+    PunctuationMapDeclaration,
     Declaration,
-    DirectLessMixinParam,
-    DirectLessMixinParameterList,
-    DirectLessMixinDefinition,
-    DirectLessPositionalMixinCallArgument,
-    DirectLessMixinArgumentGroup,
+    MixinParam,
+    MixinParameterList,
+    MixinDefinition,
+    PositionalMixinCallArgument,
+    MixinArgumentGroup,
     MixinArguments,
-    DirectLessMixinCall,
-    DirectLessBareMixinCall,
-    DirectLessFlatMixinCall,
-    DirectLessNamespacedMixinCall,
-    DirectLessNamespacedMixinValue,
-    DirectLessMixinPathTail,
-    DirectLessMixinReference,
+    MixinCall,
+    BareMixinCall,
+    FlatMixinCall,
+    NamespacedMixinCall,
+    NamespacedMixinValue,
+    MixinPathTail,
+    MixinReference,
     ReferenceCall,
-    DirectLessMixinGuard,
-    DirectLessMixinGuardTopOr,
-    DirectLessMixinGuardTopAnd,
-    DirectLessMixinGuardTopTerm,
-    DirectLessMixinGuardOr,
-    DirectLessMixinGuardAnd,
-    DirectLessMixinGuardTerm,
-    DirectLessMixinGuardOperand,
-    DirectLessEachName,
-    DirectLessBodyStatement,
-    DirectLessEachCallback,
-    DirectLessEach,
+    MixinGuard,
+    MixinGuardTopOr,
+    MixinGuardTopAnd,
+    MixinGuardTopTerm,
+    MixinGuardOr,
+    MixinGuardAnd,
+    MixinGuardTerm,
+    MixinGuardOperand,
+    EachName,
+    BodyStatement,
+    EachCallback,
+    Each,
     SupportsValue,
     SupportsFeature,
     SupportsInParens,
@@ -5821,44 +5821,44 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     OpaqueBody,
     OpaqueAtRuleBlock,
     AtRuleStatement,
-    DirectLessStaticPseudo,
-    DirectLessInterpolatedPseudo,
+    StaticPseudo,
+    InterpolatedPseudo,
     InterpolatedNthPseudo,
-    DirectLessInterpolatedArgumentPseudo,
-    DirectLessStaticNthPseudo,
-    DirectLessStaticNthArgument,
-    DirectLessStaticNonSelectorPseudoArgument,
-    DirectLessStaticPseudoGroup,
-    DirectLessStaticPseudoSquare,
+    InterpolatedArgumentPseudo,
+    StaticNthPseudo,
+    StaticNthArgument,
+    StaticNonSelectorPseudoArgument,
+    StaticPseudoGroup,
+    StaticPseudoSquare,
     StaticPseudoQuoted,
-    DirectLessStaticPseudoCompound,
-    DirectLessStaticPseudoComplexTail,
-    DirectLessStaticPseudoComplex,
-    DirectLessStaticPseudoSelectorTail,
-    DirectLessStaticPseudoSelector,
-    DirectLessStaticAttributeNamespace,
-    DirectLessStaticNamespaceType,
-    DirectLessStaticAttributeName,
-    DirectLessStaticAttributeQuoted,
-    DirectLessStaticAttributeMatch,
-    DirectLessStaticAttribute,
-    DirectLessInterpolatedAttributeToken,
-    DirectLessInterpolatedAttributeValueToken,
-    DirectLessInterpolatedAttributeQuoted,
-    DirectLessInterpolatedAttribute,
-    DirectLessInterpolatedSimpleSelector,
-    DirectLessBareInterpolatedSelector,
-    DirectLessAdjacentInterpolatedSelector,
-    DirectLessBareInterpolatedSelectorWithSuffix,
-    DirectLessInterpolatedParentSuffix,
-    DirectLessCompound,
-    DirectLessComplexTail,
-    DirectLessComplex,
-    DirectLessSelectorTail,
-    DirectLessSelector,
-    DirectLessExtendComplex,
-    DirectLessExtendTarget,
-    DirectLessExtendStatement,
+    StaticPseudoCompound,
+    StaticPseudoComplexTail,
+    StaticPseudoComplex,
+    StaticPseudoSelectorTail,
+    StaticPseudoSelector,
+    StaticAttributeNamespace,
+    StaticNamespaceType,
+    StaticAttributeName,
+    StaticAttributeQuoted,
+    StaticAttributeMatch,
+    StaticAttribute,
+    InterpolatedAttributeToken,
+    InterpolatedAttributeValueToken,
+    InterpolatedAttributeQuoted,
+    InterpolatedAttribute,
+    InterpolatedSimpleSelector,
+    BareInterpolatedSelector,
+    AdjacentInterpolatedSelector,
+    BareInterpolatedSelectorWithSuffix,
+    InterpolatedParentSuffix,
+    Compound,
+    ComplexTail,
+    Complex,
+    SelectorTail,
+    Selector,
+    ExtendComplex,
+    ExtendTarget,
+    ExtendStatement,
     RulesetWithExtends,
     Quoted,
     StaticQuoted,
