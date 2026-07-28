@@ -669,11 +669,10 @@ section is the authoritative full-scope companion to the compact task goal.
 
 Use [`docs/state/less-v5-alpha-readiness.md`](../../state/less-v5-alpha-readiness.md)
 as the current source of truth. As of 2026-07-28, the external Less branch has
-the desired direct compiler/plugin dependency shape, but its lockfile and
-`lessc` smoke cannot be refreshed until `@jesscss/compiler` is published in the
-next Jess alpha closure. Do not publish Less until Jess's selected alpha version
-is queryable from npm, Less has been rebuilt/relinked against that exact
-package set, and the registry-backed packed-consumer proof passes.
+the desired direct compiler/plugin dependency shape and resolves the direct
+Jess runtime closure from published `2.0.0-alpha.10` registry packages,
+including `@jesscss/compiler`. Do not publish Less until the final PR-head
+release preflight passes and the owner authorizes the Less release flow.
 
 ## Router
 

@@ -18,12 +18,12 @@ with 120 throws and
 `cst=7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4`
 with 0 throws over 709 entries.
 
-The next Less work is no longer "make direct CST safe to switch"; it is quality
-cleanup on the surviving grammar. Remove `DirectLess*` migration names as each
-family is reviewed, keep public CST labels only where they are real contract
-labels, and replace duplicate known/generic routes with Parseman 0.40
-`dispatch(...)`, `makeWhen(...)`, and `routed()` shapes. The remaining gating
-warnings are a cleanup queue, not evidence to resurrect the old bridge.
+The physical fold is done. In this report, "fold" now means deleting remaining
+duplicate private recognition families inside the single host-mode
+`src/grammar.ts`, not restoring a CST bridge or recreating a second grammar
+file. Use the active Parseman 0.41 surface (`dispatch(...)`, `makeWhen(...)`,
+matcher cases, `routed()`, and `node(..., { project })`) where it removes
+repeated recognition.
 
 ## Performance checkpoint
 
@@ -206,7 +206,7 @@ Preferred local vocabulary by region:
   really differ, name the context (`InlineExtendSubject`, `ExtendTarget`), not
   the migration path.
 
-## Parseman 0.40 routing targets
+## Parseman 0.41 routing targets
 
 Apply these while folding each family, not as polish on duplicate bodies:
 
@@ -535,7 +535,7 @@ small. The important shape is the contract:
 - `extendTargetFlags: true` adds the terminal `all` / `!all` flag only in the
   `:extend(...)` target list. Do not let ordinary selector lists know about that
   flag.
-- `PseudoSelector` should use Parseman 0.40 `dispatch(...)` only where it routes
+- `PseudoSelector` should use Parseman 0.41 `dispatch(...)` only where it routes
   one already-consumed pseudo/function opener. Branch nodes that need the opener
   use `routed()`. The selector-list branch itself should not be an outer
   `attempt(...)` fallback.

@@ -283,9 +283,10 @@ their method rather than as bare numbers:
   the less/scss/jess grammars. So the headline **735** total holds under
   per-package scoping and is **744** repo-wide. Both are true; say which you
   mean.
-- **`parseman` is pinned at 10 sites** counts _pin lines_, across **6**
-  manifests. Two range forms coexist: four caret ranges (`^0.32.0`) and six
-  exact pins (§0.5).
+- **`parseman` manifest ranges are all `^0.41.0`** across the root,
+  `@jesscss/parser-shared`, and the four parser packages. There are no exact
+  parseman pins in package manifests; compiled parser artifacts still must never
+  cross parseman versions.
 
 ### 0.5 Two mechanisms a rebuild author has to have straight
 

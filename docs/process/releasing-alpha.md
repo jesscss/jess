@@ -95,9 +95,10 @@ direct Jess runtime closure (`@jesscss/compiler`, `@jesscss/core`,
 packing/publishing, then restores the local manifest. `@jesscss/plugin-js`
 must remain an optional peer for script-module support, not a shipped runtime
 dependency. Publish Less only after the selected Jess alpha artifacts are
-queryable. As of 2026-07-28, the Jess release resolver selects
-`2.0.0-alpha.10` because `2.0.0-alpha.9` is already published for the existing
-allowlist and `@jesscss/compiler` is new in the closure:
+queryable. As of 2026-07-28, Jess `2.0.0-alpha.10` is published and queryable
+for the direct runtime closure, including `@jesscss/compiler`; use that version
+for Less.js PR #19 unless the owner deliberately selects and publishes a newer
+Jess alpha first:
 
 ```bash
 JESS_VERSION=2.0.0-alpha.10 npm publish --tag alpha --access public
@@ -150,11 +151,11 @@ bump is performed later.
 
 For the first Less-focused alpha, the release notes must also include a
 discoverable **Known limitations** section linking
-[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md). The current
-corpus result (84 byte-identical passes, 32 output mismatches, and 15 known
-errors) is classified compatibility evidence, not a requirement to drain before
-the Jess alpha. Do not omit it or call it passing; block only on the advertised
-public-route, package/CLI, and core-safety gates.
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md) and
+[`less-v5-corpus-inventory.md`](../state/less-v5-corpus-inventory.md). Do not
+duplicate stale fixture totals here; the current inventory owns the
+release-facing counts and distinguishes ordinary byte-identical checks from
+active expected-failure checks.
 
 The previous alpha.9 draft note at
 [`docs/releases/jess-2.0.0-alpha.9.md`](../releases/jess-2.0.0-alpha.9.md) is

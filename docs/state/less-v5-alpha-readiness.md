@@ -51,26 +51,12 @@ baseline only and never as a performance acceptance claim.
   topological order publishes `@jesscss/compiler` before `@jesscss/plugin-less`
   and `jess`.
 
-  Release-tool dry-run note, verified 2026-07-28 on `dev`: `node
-  scripts/release/publish-alpha.mjs --dry-run --tag alpha` resolves the next
-  lockstep version as **`2.0.0-alpha.10`** because the allowlisted packages are
-  already published through `2.0.0-alpha.9` except the new
-  `@jesscss/compiler` package. The dry-run then correctly refuses the clobbered
-  dev-branch manifest (`2.0.0-alpha.5`) and restores temporary manifest edits.
-  A real release must refresh/sync the `alpha` branch, run the alpha version
-  bump/provenance flow there, and publish the whole allowlist at the resolver's
-  selected version.
-
-  Release-chain blocker, verified 2026-07-28: `origin/alpha` is stale. Its
-  allowlist does **not** include `@jesscss/compiler`, and
-  `packages/compiler/package.json` does not exist on that branch. npm likewise
-  has `jess@2.0.0-alpha.9` and the other Jess runtime packages, but
-  `npm view @jesscss/compiler@alpha` and
-  `npm view @jesscss/compiler@2.0.0-alpha.9` both return 404. External
-  `less@5.0.0-alpha.1` release hygiene now correctly depends on
-  `@jesscss/compiler` directly instead of `jess`, so its lockfile refresh,
-  `lessc` smoke test, and packed-consumer proof are blocked until alpha is
-  refreshed from a pushed `dev` source and the compiler package is published.
+  Release status, verified 2026-07-28: `origin/alpha` is at `b1f276458` and
+  tagged `v2.0.0-alpha.10`. The alpha allowlist contains 18 packages including
+  `@jesscss/compiler`, and npm resolves both `jess@alpha` and
+  `@jesscss/compiler@alpha` to `2.0.0-alpha.10`. The `dev` manifests remain
+  placeholder `2.0.0-alpha.5`; future alpha releases still use the
+  registry-aware resolver from a controlled `alpha` snapshot.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
 instrumentation. Diagnostic coverage/trace uses a separate macro transform and
@@ -92,6 +78,13 @@ checkout; the root, `@jesscss/parser-shared`, and all four parser packages now
 depend on `^0.41.0`. A registry-backed dependency-order build completed, and
 `pnpm run check:macro` plus `pnpm run verify:compose-integrity` both pass with
 0 interpreter fallbacks.
+
+Import/cache stabilization also landed on `dev`: `Context.loadImport(...)`
+memoizes loaded imports, `Compiler.compile()` exposes reusable prepared import
+plans, and compile-cycle/parsed-import caches are keyed by parse/parser
+identity. These are local session and prepared-static-import fixes; they do not
+change the remote URL import deferral, which remains excluded from the alpha
+lane pending an explicit network/security model.
 
 Release tooling now has a narrow `pnpm run test:release` gate. The alpha
 publish-set scanner recurses through `packages/**`, so nested syntax packages
