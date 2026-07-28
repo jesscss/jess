@@ -62,11 +62,14 @@ verified against Less 4.6.3 before this policy was recorded.
 | `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | depends on rewriteUrls                     | Phase C |
 | `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | depends on rewriteUrls                     | Phase C |
 | `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | not implemented                            | Phase C |
+| `import/import-remote`                                     | Remote URL imports that fetch and inline external Less sources                         | needs explicit network/IO allowlisting     | Phase C |
 
 These are option-plumbing over the URL/import handling that the core already does;
 each is a contained addition once the render pipeline is stable post-flip.
 `process-imports/google.less` graduated on 2026-07-28: `processImports: false`
 now leaves remote/CSS imports un-inlined in the public alpha fixture lane.
+Remote URL import loading remains excluded from the alpha fixture lane until the
+resolver has an explicit allowlist/security model for network access.
 
 ## Phase D — source maps
 
