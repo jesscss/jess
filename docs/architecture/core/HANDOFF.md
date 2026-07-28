@@ -658,12 +658,14 @@ section is the authoritative full-scope companion to the compact task goal.
   `composeLeaf()` shape, and historical feature equivalence independently.
   Optimize only with semantic/output proof and matched parse plus end-to-end
   measurements; never restore legacy architecture for speed.
-- Prepare the next Jess alpha from pushed `dev`. `2.0.0-alpha.10` is already
-  published; the next registry-safe lockstep publish is expected to be
-  `2.0.0-alpha.11` so the external Less alpha can consume the single-frame
-  Linecraft diagnostic renderer from `dev`. Validate final `dev`, keep
-  owner-reviewed release notes in the source tree, then use the controlled
-  alpha refresh flow; do not ordinary-merge/rebase shared alpha history or
+- Publish the prepared Jess alpha snapshot when the owner is ready.
+  `origin/alpha` is prepared at `dd6359ed3` for `2.0.0-alpha.11`, and
+  `release:alpha:push-check` plus `release:alpha:dry-run` passed before that
+  push. npm still resolves `jess@alpha` / `@jesscss/compiler@alpha` to
+  `2.0.0-alpha.10`, so the external Less alpha cannot consume the single-frame
+  Linecraft diagnostic renderer until `.11` is published and queryable. Future
+  alpha snapshots should use `pnpm run release:alpha:update-from-dev` from a
+  clean `alpha` worktree; do not ordinary-merge/rebase shared alpha history or
   publish before every gate passes.
 
 ### Current Less v5 alpha readiness evidence
