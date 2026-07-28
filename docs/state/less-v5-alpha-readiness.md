@@ -650,8 +650,8 @@ Known gaps to add or close:
 
 The complete, reproducible first-alpha inventory is
 [`less-v5-corpus-inventory.md`](./less-v5-corpus-inventory.md). Its current
-snapshot distinguishes 32 registered cases from 21 active expected-failure
-checks in the 107-case alpha fixture lane. They are test instrumentation, not
+snapshot distinguishes 26 registered cases from 16 active expected-failure
+checks in the 108-case alpha fixture lane. They are test instrumentation, not
 passing compatibility evidence: a named active marker makes a mismatching
 render pass the harness while preserving the observed failure. A marker may be
 removed only with byte-identical fixture proof; otherwise its release-note

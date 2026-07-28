@@ -63,6 +63,24 @@ diagnostic hardening recorded in the readiness tracker.
 - It does not publish from workspace links; registry-backed package resolution
   remains part of the release proof.
 
+## Known Limitations
+
+The Less alpha fixture lane is intentionally a classified compatibility signal,
+not a claim that every upstream Less 4.x fixture is byte-identical. The current
+release-facing inventory is
+[`less-v5-corpus-inventory.md`](../state/less-v5-corpus-inventory.md); the
+readiness gates and open package-flow blockers are tracked in
+[`less-v5-alpha-readiness.md`](../state/less-v5-alpha-readiness.md).
+
+As of this candidate, the public-route corpus contains 108 exercised cases: 92
+ordinary byte-identical checks and 16 active expected-failure checks. The
+expected-failure registry contains 26 named cases, including cases outside the
+current alpha selection. Those entries document known gaps such as URL/import
+option handling, source-map artifacts, removed legacy plugin/parser behavior,
+and settled Less 5 policy boundaries. Keep those names visible until the
+corresponding behavior is implemented or intentionally removed from the alpha
+scope.
+
 ## Before publishing
 
 Refresh `alpha` from pushed `dev` with the controlled two-tree patch flow, run
