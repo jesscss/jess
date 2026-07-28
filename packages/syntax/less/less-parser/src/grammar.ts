@@ -1921,7 +1921,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const IndirectVariableReference = node<VarIndirect>(
     'Reference',
     noTrivia(sequence(literal('@@'), g.LessSyntaxVariableName)),
-    children => varIndirect(variableReference(requireToken(children[1]).value, 'scoped'), 'scoped')
+    (children, _fields, span) => withSourceSpan(
+      varIndirect(variableReference(requireToken(children[1]).value, 'scoped'), 'scoped'),
+      span
+    )
   );
   const VariableReference = node<VariableReference>(
     'Reference',
@@ -1938,7 +1941,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const PropertyReference = node<ValueNode>(
     'Reference',
     noTrivia(sequence(literal('$'), g.LessSyntaxIdentifier)),
-    children => propertyReference(requireToken(children[1]).value)
+    (children, _fields, span) => withSourceSpan(propertyReference(requireToken(children[1]).value), span)
   );
   const InterpolationAccessor = choice(
     // Less `[]` selects the final declaration of a namespace/mixin result.
@@ -2008,7 +2011,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const name = requireToken(children[1]).value;
       const base = variableReference(name, 'scoped');
       return children.length > 2
-        ? referenceWithTails(base, `@${name}`, children.slice(2))
+        ? withSourceSpan(referenceWithTails(base, `@${name}`, children.slice(2)), span)
         : withSourceSpan(base, span);
     }
   );
@@ -3551,7 +3554,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       )),
       oneOrMore(g.ReferenceTail)
     ),
-    (children) => {
+    (children, _fields, span) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const terminal = tails.at(-1);
@@ -3561,7 +3564,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         : { ...call, path: [{ comb: ' ', sel: head }, ...tails.slice(0, -1)] as MixinCall['path'] };
       const hasCall = children.some(child => isTerminalText(child, '('));
       const baseRaw = `${head}${tails.map(tail => `${tail.comb}${tail.sel}`).join('')}${hasCall ? `(${base.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
-      return referenceWithTails(base, baseRaw, children.filter(isReferenceTailFact));
+      return withSourceSpan(referenceWithTails(base, baseRaw, children.filter(isReferenceTailFact)), span);
     }
   );
   const ReferenceCall = node<Reference>(
@@ -3575,10 +3578,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       optional(g.MixinArguments),
       literal(')'), optional(literal(';'))
     ),
-    (children) => {
+    (children, _fields, span) => {
       const name = requireToken(children[1]).value;
       const args = mixinArgumentsFromChildren(children);
-      return reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`);
+      return withSourceSpan(reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`), span);
     }
   );
   const DirectLessMixinGuardDefaultOperand = node<ValueNode>(

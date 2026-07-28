@@ -123,6 +123,53 @@ describe('Eval error source location', () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('points an undefined property accessor at the property reference', async () => {
+    const source = [
+      '.a {',
+      '  width: $missing-width;',
+      '}'
+    ].join('\n');
+
+    const result = await evalCompiler().renderToResult(
+      { source, filePath: '/proj/undef-property.less', extension: '.less' },
+      { suppressWarnings: true }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    const err = result.errors[0]!;
+    expect(err.phase).toBe('resolve');
+    expect(err.code).toBe('resolve/name-not-found');
+    expect(err.line).toBe(2);
+    expect(err.column).toBe(10);
+    expect(err.reason).toContain('$missing-width');
+    expect(err.lines?.[2]).toContain('$missing-width');
+  });
+
+  it('points a missing namespace member at the accessor chain', async () => {
+    const source = [
+      '#namespace {',
+      '  @existing: value;',
+      '}',
+      '.a {',
+      '  width: #namespace[@missing];',
+      '}'
+    ].join('\n');
+
+    const result = await evalCompiler().renderToResult(
+      { source, filePath: '/proj/undef-namespace-member.less', extension: '.less' },
+      { suppressWarnings: true }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    const err = result.errors[0]!;
+    expect(err.phase).toBe('resolve');
+    expect(err.code).toBe('resolve/name-not-found');
+    expect(err.line).toBe(5);
+    expect(err.column).toBe(10);
+    expect(err.reason).toContain('@missing');
+    expect(err.lines?.[5]).toContain('#namespace[@missing]');
+  });
 });
 
 describe('Public parser diagnostic provenance', () => {
