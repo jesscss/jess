@@ -359,24 +359,27 @@ SCSS-on-Less inheritance path rather than for Less syntax:
 - SCSS no longer imports or composes on `lessGrammar`; `check:macro` and
   `verify:compose-integrity` pass with SCSS as a sibling grammar. The remaining
   SCSS/Less separation cleanup is narrower: remove explicit Less compatibility
-  syntax that was copied into SCSS, such as Less-style `@import (css, once)`
-  options, and pin rejection tests so the leak does not return.
+  syntax that was copied into SCSS. SCSS now rejects Less-style
+  `@import (css, once)` options, Less rule-body mixin calls, Less inline
+  `&:extend(...)` rule-body statements, and Less declaration merge modifiers
+  (`font+:` / `font+_:`), with public CST and direct AST rejection tests pinning
+  the boundary.
 
 Recommended handling: delete or internalize these during the Less fold whenever
 the Less parser's own CST/AST/language-service contracts do not require them.
 If SCSS turns red, treat that as evidence for the SCSS sibling rebase, not as a
 reason to keep Less broad.
 
-SCSS tests to pin the sever later:
+Current SCSS proof:
 
-- Add `packages/syntax/scss/scss-parser/test/less-inheritance-rejection.test.ts`
-  with public parse rejection cases for Less-only syntax: `@color: red;`,
-  `.m() when (true) {}`, `.a { color: ~"x"; }`, `.a { &:extend(.b); }`,
-  `.a { @rules(); }`, and `.a { #ns[value]; }`.
-- Add one CST compose test asserting SCSS no longer imports
-  `@jesscss/less-parser/grammar` once it is re-pointed to a CSS/preprocessor
-  base. Today's `compose-integrity.test.ts` still documents the old
-  css -> less -> scss path.
+- `packages/syntax/scss/scss-parser/test/compose-integrity.test.ts` imports the
+  public grammar, asserts no missing-rule/runtime-fallback compose diagnostics,
+  asserts representative Less-only rules are absent from SCSS's rule map, and
+  rejects Less-only declaration/rule-body constructs through both public CST and
+  direct AST routes.
+- `packages/syntax/scss/scss-parser/test/ast-grammar.test.ts` and
+  `packages/syntax/scss/scss-parser/test/public-parse.test.ts` pin Less import
+  options and declaration merge modifiers as SCSS parse failures.
 
 ## First fold blockers
 

@@ -42,8 +42,10 @@ describe('SCSS grammar compose integrity', () => {
     }
   });
 
-  it('rejects Less-only rule-body constructs instead of reaching hidden Less routes', () => {
+  it('rejects Less-only declarations and rule-body constructs instead of reaching hidden Less routes', () => {
     for (const source of [
+      '.a { font+: Arial; }',
+      '.a { font+_: Arial; }',
       '.a { .mixin(); }',
       '.a { .mixin(1, 2); }',
       '.a { &:extend(.b all); }'
