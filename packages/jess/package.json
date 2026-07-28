@@ -24,8 +24,8 @@
     "node": "^20.19.0 || >=22.12.0"
   },
   "dependencies": {
+    "@jesscss/compiler": "workspace:*",
     "@jesscss/core": "workspace:*",
-    "@jesscss/fns": "workspace:*",
     "@jesscss/patch-css": "workspace:*",
     "@jesscss/plugin-jess": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
@@ -35,8 +35,13 @@
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "@jesscss/plugin-js": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@jesscss/plugin-js": {
+      "optional": true
+    }
   },
   "scripts": {
     "ci": "pnpm build && pnpm run test:ratchet",
@@ -61,6 +66,7 @@
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/fns": "workspace:*",
     "@jesscss/plugin-js": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",

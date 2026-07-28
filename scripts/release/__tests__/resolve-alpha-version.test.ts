@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 // The release tooling is plain ESM (.mjs); import it directly.
 import {
   compareSemver,
   findAllowlistDuplicates,
   isReleaseArtifactPath,
+  listWorkspacePackages,
   nextAlphaAfter,
   resolveAlphaPublishVersion
 } from '../release-utils.mjs';
@@ -80,6 +84,31 @@ describe('findAllowlistDuplicates (publish-set dup guard)', () => {
   });
   it('reports a name once even when it appears three times', () => {
     expect(findAllowlistDuplicates(['x', 'x', 'x'])).toEqual(['x']);
+  });
+});
+
+describe('listWorkspacePackages', () => {
+  it('finds nested syntax packages under packages/**', () => {
+    const root = mkdtempSync(join(tmpdir(), 'jess-release-utils-'));
+    mkdirSync(join(root, 'packages', 'syntax', 'less', 'less-parser'), { recursive: true });
+    mkdirSync(join(root, 'packages', 'jess'), { recursive: true });
+    mkdirSync(join(root, 'packages', 'jess', 'node_modules', 'ignored'), { recursive: true });
+    writeFileSync(
+      join(root, 'packages', 'syntax', 'less', 'less-parser', 'package.json'),
+      JSON.stringify({ name: '@jesscss/less-parser', version: '2.0.0-alpha.1' })
+    );
+    writeFileSync(
+      join(root, 'packages', 'jess', 'package.json'),
+      JSON.stringify({ name: 'jess', version: '2.0.0-alpha.1' })
+    );
+    writeFileSync(
+      join(root, 'packages', 'jess', 'node_modules', 'ignored', 'package.json'),
+      JSON.stringify({ name: 'ignored', version: '0.0.0' })
+    );
+
+    const packages = listWorkspacePackages(root);
+
+    expect([...packages.keys()].sort()).toEqual(['@jesscss/less-parser', 'jess']);
   });
 });
 

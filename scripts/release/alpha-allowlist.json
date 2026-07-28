@@ -1,5 +1,6 @@
 [
   "@jesscss/awaitable-pipe",
+  "@jesscss/compiler",
   "@jesscss/core",
   "@jesscss/css-parser",
   "@jesscss/jess-parser",

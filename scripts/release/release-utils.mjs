@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const RUNTIME_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
+const WORKSPACE_SCAN_SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', '.cache']);
 
 export function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'));
@@ -10,30 +11,35 @@ export function readJson(filePath) {
 
 export function listWorkspacePackages(rootDir) {
   const packagesDir = path.join(rootDir, 'packages');
-  const entries = readdirSync(packagesDir, { withFileTypes: true });
   const byName = new Map();
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const packageJsonPath = path.join(packagesDir, entry.name, 'package.json');
+  const visit = (dir) => {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const packageJsonPath = path.join(dir, 'package.json');
     let manifest;
     try {
       manifest = readJson(packageJsonPath);
     } catch {
-      continue;
+      manifest = null;
     }
-    if (!manifest.name) {
-      continue;
+    if (manifest?.name) {
+      byName.set(manifest.name, {
+        name: manifest.name,
+        dir,
+        packageJsonPath,
+        manifest
+      });
     }
-    byName.set(manifest.name, {
-      name: manifest.name,
-      dir: path.join(packagesDir, entry.name),
-      packageJsonPath,
-      manifest
-    });
-  }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || WORKSPACE_SCAN_SKIP_DIRS.has(entry.name)) {
+        continue;
+      }
+      visit(path.join(dir, entry.name));
+    }
+  };
+
+  visit(packagesDir);
 
   return byName;
 }

@@ -174,7 +174,7 @@ describe('Config Merging', () => {
   });
 
   it('auto-wires the optional plugin-js for script imports without listing it in plugins', async () => {
-    // @jesscss/plugin-js is an OPTIONAL dependency: when it is resolvable, script
+    // @jesscss/plugin-js is end-user installed: when it is resolvable, script
     // (JS/TS) imports auto-wire without configuring it in `plugins`. The auto-wire
     // hook resolves the plugin proxy for JS extensions; when plugin-js is absent
     // the hook returns undefined and core emits the "Install @jesscss/plugin-js" gate.
