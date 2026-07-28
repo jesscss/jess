@@ -8846,7 +8846,7 @@ describe('Less AST grammar facts', () => {
 
   it('constructs static non-selector functional pseudos as existing SimpleSelector text', () => {
     const source =
-      '.card:lang(en-US)::part(icon):state(foo[bar]) { color: blue; }';
+      '.card:lang(en-US)::part(icon):state(foo /* note */ [bar]) { color: blue; }';
     const cst = parseLessCst(source);
     const result = run(lessAstGrammar.Document, source, {
       trivia: lessAstGrammar.whitespace
@@ -8869,7 +8869,7 @@ describe('Less AST grammar facts', () => {
                     { type: 'SimpleSelector', text: '.card' },
                     { type: 'SimpleSelector', text: ':lang(en-US)' },
                     { type: 'SimpleSelector', text: '::part(icon)' },
-                    { type: 'SimpleSelector', text: ':state(foo[bar])' }
+                    { type: 'SimpleSelector', text: ':state(foo [bar])' }
                   ]
                 }
               }
@@ -8881,8 +8881,9 @@ describe('Less AST grammar facts', () => {
     expect(
       isStylesheet(result.value) ? serialize(result.value).css : undefined
     ).toBe(
-      '.card:lang(en-US)::part(icon):state(foo[bar]) {\n  color: blue;\n}\n'
+      '.card:lang(en-US)::part(icon):state(foo [bar]) {\n  color: blue;\n}\n'
     );
+    expect(findCstNodes(cst.tree, 'BlockComment')).toHaveLength(0);
 
     for (const invalid of [
       '.card:nth-child(2n +) { color: blue; }',

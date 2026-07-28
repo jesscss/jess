@@ -5092,21 +5092,21 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     staticQuotedBody,
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
-  const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, g.StaticPseudoQuoted, blockComment, staticPseudoChunk);
+  const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, g.StaticPseudoQuoted, staticPseudoChunk);
   const StaticPseudoGroup = node<string>(
     'StaticPseudoGroup',
-    sequence(literal('('), many(staticPseudoInner), literal(')')),
-    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+    parser({ trivia: staticSelectorTrivia }, sequence(literal('('), many(staticPseudoInner), literal(')'))),
+    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const StaticPseudoSquare = node<string>(
     'StaticPseudoSquare',
-    sequence(literal('['), many(staticPseudoInner), literal(']')),
-    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+    parser({ trivia: staticSelectorTrivia }, sequence(literal('['), many(staticPseudoInner), literal(']'))),
+    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const StaticNonSelectorPseudoArgument = node<string>(
     'StaticNonSelectorPseudoArgument',
-    oneOrMore(staticPseudoInner),
-    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+    parser({ trivia: staticSelectorTrivia }, oneOrMore(staticPseudoInner)),
+    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   // A functional pseudo's static selector argument is the same recursive
   // selector grammar as a rule header. `rules()` names the cycle at macro
