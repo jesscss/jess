@@ -128,7 +128,7 @@ import type { Context } from '../context.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { bodySpanOf, sourceSpanOf, triviaMapOf, valueLayoutOf } from './provenance.js';
+import { bodySpanOf, sourceSpanOf, triviaMapOf, valueLayoutOf, type AstSourceSpan } from './provenance.js';
 import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
@@ -5399,6 +5399,42 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   put(e, source.slice(start, end));
 }
 
+function cursorAfterLiteralWithTrivia(source: string, start: number, end: number, lit: string): number | null {
+  let cursor = start;
+  for (let i = 0; i < lit.length; i += 1) {
+    while (source.startsWith('/*', cursor)) {
+      const close = source.indexOf('*/', cursor + 2);
+      if (close < 0 || close + 2 > end) {
+        return null;
+      }
+      cursor = close + 2;
+    }
+    if (cursor >= end || source[cursor] !== lit[i]) {
+      return null;
+    }
+    cursor += 1;
+  }
+  return cursor;
+}
+
+function markCustomValueBlockTrivia(source: string, span: AstSourceSpan, e: Emit): void {
+  const trivia = e.trivia;
+  if (trivia === undefined) {
+    return;
+  }
+  for (const run of trivia.commentRuns()) {
+    if (run.start < span.start) {
+      continue;
+    }
+    if (run.start > span.end) {
+      break;
+    }
+    if (run.src === source && run.end <= span.end && blockCommentsIn(run).length > 0) {
+      e.emittedBlockTrivia.add(run);
+    }
+  }
+}
+
 function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e: Emit): MaybePromise<string> | null {
   if (isValueSlotArray(value)) {
     return null;
@@ -5422,12 +5458,12 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
     }
     source = run.src;
     sawComment = true;
-    e.emittedBlockTrivia.add(run);
   }
   if (!sawComment || source === undefined) {
     return null;
   }
   if (value.type === 'Any') {
+    markCustomValueBlockTrivia(source, span, e);
     return source.slice(span.start, span.end);
   }
   if (value.type !== 'Interpolation') {
@@ -5436,8 +5472,14 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
 
   const pieces: Array<MaybePromise<string>> = [];
   let cursor = span.start;
+  let chunkStart = span.start;
   for (const part of value.parts) {
     if ('lit' in part) {
+      const nextCursor = cursorAfterLiteralWithTrivia(source, cursor, span.end, part.lit);
+      if (nextCursor === null) {
+        return null;
+      }
+      cursor = nextCursor;
       continue;
     }
     const variableOpen = source.indexOf('@{', cursor);
@@ -5454,11 +5496,13 @@ function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e:
     if (close < 0 || close >= span.end) {
       return null;
     }
-    pieces.push(source.slice(cursor, open));
+    pieces.push(source.slice(chunkStart, open));
     pieces.push(resolveRefBytes(part, frame, e));
     cursor = close + 1;
+    chunkStart = cursor;
   }
-  pieces.push(source.slice(cursor, span.end));
+  pieces.push(source.slice(chunkStart, span.end));
+  markCustomValueBlockTrivia(source, span, e);
   return combineAll(pieces, values => values.join(''));
 }
 
