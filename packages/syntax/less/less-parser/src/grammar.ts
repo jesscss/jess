@@ -2334,10 +2334,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return url(any(requireTerminalText(body)));
     }
   );
-  const UrlTarget = dispatch(
-    urlFunctionOpen,
-    caseOf('url(', choice(RoutedDynamicUrl, RoutedStaticUrl))
-  );
+  const UrlTarget = choice(g.DynamicUrl, g.StaticUrl);
   const ImportOption = node<Any>(
     'ImportOption',
     importOption,

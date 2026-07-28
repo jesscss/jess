@@ -225,7 +225,9 @@ Every written rule must answer:
    grammar structure, and separator/list helpers. Less inline `:extend(...)` is
    the standing example: it must become a context-owned selector tail that
    collects extend facts while parsing selector branches once, not a second
-   selector parse guarded by broad lookahead.
+   selector parse guarded by broad lookahead. Its `all` and `!all` suffixes are
+   semantic facts, not interchangeable terminator trivia; preserve where those
+   facts attach to the selector/ruleset result before simplifying any guard.
 
 ### Unsupported Syntax Policy
 
