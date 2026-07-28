@@ -233,19 +233,22 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `2271f82309d127d4a44dcebe0acc235a9ebdb037`,
+evidence: branch `less-5-alpha.1` at `e79c34743bbf0201ac43bf9e113488d56bca2239`,
 clean worktree, PR open/non-draft. That head merges `upstream/alpha`
-(`330e9d71`) into the Less 5 alpha branch and resolves the release-automation
+(`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
-candidate behavior. Local verification on `2271f823` passed the Less package
-alpha contract, root `pnpm run test:alpha`, and `pnpm run test:release`.
-GitHub Actions and CodeRabbit are green on the same head, and the PR merge state
-is `CLEAN`.
+candidate behavior, and routes `lessc` parse/eval failures through the generic
+Jess/Linecraft diagnostic renderer. Local verification on `e79c3474` passed the
+Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
+and packed-consumer proof. GitHub Actions and CodeRabbit are green on the same
+head, and the PR merge state is `CLEAN`.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `2271f823`, `pnpm run test:alpha` passes the
+`2.0.0-alpha.10`: on PR head `e79c3474`, `pnpm run test:alpha` passes the
 Less package typecheck, build, `lessc` smoke tests, alpha support contract,
-publish dry-run tests, and packed-consumer proof. The alpha support contract now
+publish dry-run tests, and packed-consumer proof. The `lessc` smoke tests pin
+Linecraft-formatted colored diagnostics by default, source framing, `--silent`
+suppression, and `--no-color` control-sequence stripping. The alpha support contract now
 pins the upstream-sync fixture families that are green for alpha.1:
 `at-rule-variable-interpolation`, `color-functions/modern`, `math-css-vars`,
 `mixins-guards`, and `mixins-named-args`. The packed consumer installs the
