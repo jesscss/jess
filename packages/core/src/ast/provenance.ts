@@ -183,7 +183,7 @@ export function createTriviaMapFromParseman(
         src,
         start,
         end,
-        labeledHasComment
+        labeledHasComment === true ? true : undefined
       );
       byEnd.set(end, run);
     }
@@ -223,10 +223,13 @@ export function createTriviaMapFromParseman(
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
         const seen = new Set<Trivia>();
-        const gaps = hasCommentKind
-          ? index.gapsWithKind?.(COMMENT_TRIVIA_KINDS) ?? index.gaps().filter(gapHasCommentKind)
-          : index.gaps();
-        for (const gap of gaps) {
+        const labeledGaps = hasCommentKind
+          ? new Set(index.gapsWithKind?.(COMMENT_TRIVIA_KINDS) ?? index.gaps().filter(gapHasCommentKind))
+          : undefined;
+        for (const gap of index.gaps()) {
+          if (labeledGaps !== undefined && !labeledGaps.has(gap) && !rangeHasComment(src, gap.start, gap.end)) {
+            continue;
+          }
           const run = triviaForGap(gap);
           if (run?.hasComment === true) {
             if (seen.has(run)) {
