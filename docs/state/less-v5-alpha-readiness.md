@@ -419,7 +419,15 @@ are expressly advertised for a later alpha.
   enforces a timing threshold. Any claimed improvement/regression needs a
   matched rebuilt-artifact A/B with identical output. Less-4.x speed parity (or
   a bounded multiple) remains a future stable/GA gate once the owner sets the
-  numeric bar.
+  numeric bar. Bootstrap import-reuse scout evidence from `512cf7837` found
+  healthy stylesheet import reuse in one compile/render cycle: 88 Less parse
+  calls for 88 unique parsed files, 87 stylesheet imports loaded once each, and
+  no duplicate stylesheet parses. The remaining duplicate signal is
+  script/plugin-side: Bootstrap requested 22 plugin modules for 11 unique
+  resolved modules, while the module cache still performed only 11 actual loads.
+  Next performance work should add a permanent import/plugin reuse probe and
+  investigate why `prepareBodyPlugins()` requests each imported plugin twice
+  before touching stylesheet parse caching.
 - `[~]` **Advertised `lessc` CLI behavior** (alpha gate). The built Less v5
   alpha binary must run safely and correctly for its documented command/options
   set. Unsupported Less 4.x flags or divergent advanced behavior are alpha
