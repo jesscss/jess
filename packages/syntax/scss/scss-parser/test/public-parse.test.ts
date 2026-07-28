@@ -3,6 +3,7 @@ import { parse } from '@jesscss/scss-parser';
 import { parseScssCst, parseScssDoc } from '@jesscss/scss-parser/cst';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
+import { sourceSpanOf, triviaMapOf } from '../../../../core/src/ast/provenance.js';
 import { serialize as serializeMaybeAsync, type SerializeResult } from '../../../../core/src/ast/serialize.js';
 
 /*
@@ -51,6 +52,19 @@ describe('@jesscss/scss-parser public parse API', () => {
       ]
     });
     expect(parseScssDoc(source).tree).not.toBeNull();
+  });
+
+  it('retains root span and public Stylesheet trivia after SCSS lowering', () => {
+    const source = '/* before */ @function double($n) { @return $n * 2; } .card { width: double(2); } /* after */';
+    const root = parse(source);
+    const trivia = triviaMapOf(root);
+
+    expect(sourceSpanOf(root)).toEqual({ start: 0, end: source.length });
+    expect(trivia?.lookup(12, 'after')).toMatchObject({ start: 12, end: 13 });
+    expect(root.children.find(child => child.type === 'Rule')).toMatchObject({
+      type: 'Rule',
+      body: [{ type: 'Declaration', value: { type: 'Reference' } }]
+    });
   });
 
   it('accepts a final SCSS variable declaration without a semicolon through public parse', () => {

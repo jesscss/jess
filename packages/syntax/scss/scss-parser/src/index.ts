@@ -1,5 +1,10 @@
 import { run } from 'parseman';
-import type { Stylesheet } from '@jesscss/core/ast';
+import {
+  createTriviaMapFromRootIndex,
+  withSourceSpan,
+  withTriviaMap,
+  type Stylesheet
+} from '@jesscss/core/ast';
 import { scssAstGrammar } from './grammar.js';
 import { lowerUserFunctionCalls } from './ast/lower-user-function-calls.js';
 
@@ -54,5 +59,9 @@ export function parse(input: string): Stylesheet {
    * no-ops when the parsed document defines no user function; recognition stays
    * in the grammar rather than checking source text here.
    */
-  return lowerUserFunctionCalls(result.value);
+  const document = lowerUserFunctionCalls(result.value);
+  return withTriviaMap(
+    withSourceSpan(document, result.span),
+    createTriviaMapFromRootIndex(input, result.triviaMap)
+  );
 }
