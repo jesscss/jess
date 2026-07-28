@@ -51,6 +51,16 @@ baseline only and never as a performance acceptance claim.
   topological order publishes `@jesscss/compiler` before `@jesscss/plugin-less`
   and `jess`.
 
+  Release-tool dry-run note, verified 2026-07-28 on `dev`: `node
+  scripts/release/publish-alpha.mjs --dry-run --tag alpha` resolves the next
+  lockstep version as **`2.0.0-alpha.10`** because the allowlisted packages are
+  already published through `2.0.0-alpha.9` except the new
+  `@jesscss/compiler` package. The dry-run then correctly refuses the clobbered
+  dev-branch manifest (`2.0.0-alpha.5`) and restores temporary manifest edits.
+  A real release must refresh/sync the `alpha` branch, run the alpha version
+  bump/provenance flow there, and publish the whole allowlist at the resolver's
+  selected version.
+
   Release-chain blocker, verified 2026-07-28: `origin/alpha` is stale. Its
   allowlist does **not** include `@jesscss/compiler`, and
   `packages/compiler/package.json` does not exist on that branch. npm likewise
@@ -249,7 +259,10 @@ Current package-flow blocker, verified 2026-07-28: the local Jess workspace has
 `@jesscss/compiler`, and `pnpm --filter @jesscss/compiler build` plus
 `pnpm run verify:package-exports` pass, but the local package version is
 `2.0.0-alpha.5` while the sibling Less PR branch depends on
-`@jesscss/compiler@2.0.0-alpha.9`. Registry lookup still returns 404 for
+`@jesscss/compiler@2.0.0-alpha.9`. Jess release tooling now resolves the next
+registry-safe lockstep publish to `2.0.0-alpha.10`, so the sibling Less branch
+should be updated to that version after the Jess alpha refresh unless the owner
+chooses a different release path. Registry lookup still returns 404 for
 `@jesscss/compiler`, and the sibling Less lockfile is stale: frozen install
 still sees the old `jess` dependency graph rather than the direct compiler and
 plugin closure. PR #19 cannot prove a fresh consumer install until the compiler
