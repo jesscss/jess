@@ -1758,6 +1758,7 @@ const staticSelectorTrivia = trivia(oneOrMore(choice(
 )));
 const compoundSelectorTrivia = trivia(oneOrMore(triviaComment));
 const atPreludeCommentTrivia = trivia(oneOrMore(blockComment));
+const customValueCommentTrivia = trivia(oneOrMore(blockComment));
 // Outer selector comments are lexical trivia. Render-time body/source spans own
 // whether a trivia-only body remains output-bearing; selectors do not invent
 // comment simple selectors.
@@ -3001,8 +3002,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Less custom properties retain CSS declaration-value text.  The direct
   // route therefore treats every ordinary byte run as literal `Any` content,
   // but lets the shared strict `@{…}` grammar surface interpolation as typed
-  // AST facts.  Delimiters, comments, and strings are grammar children—not a
-  // captured source span—and nested delimiters are balanced before reduction.
+  // AST facts.  Delimiters and strings are grammar children—not a captured
+  // source span—while block comments stay in Parseman's trivia log.
   // Gating note: the static and interpolated `--*` name arms share `-`. Do not
   // left-factor this until the custom-value comment/trivia slice can remove
   // grammar-owned comment text from the same family and bless the CST movement.
@@ -3026,23 +3027,31 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const DirectLessCustomParen = node<readonly CustomValuePart[]>(
     'DirectLessCustomParen',
-    noTrivia(sequence(literal('('), many(g.DirectLessCustomInnerPart), literal(')'))),
+    parser(
+      { trivia: customValueCommentTrivia },
+      sequence(literal('('), many(g.DirectLessCustomInnerPart), literal(')'))
+    ),
     children => customPartsFromChildren(children)
   );
   const DirectLessCustomSquare = node<readonly CustomValuePart[]>(
     'DirectLessCustomSquare',
-    noTrivia(sequence(literal('['), many(g.DirectLessCustomInnerPart), literal(']'))),
+    parser(
+      { trivia: customValueCommentTrivia },
+      sequence(literal('['), many(g.DirectLessCustomInnerPart), literal(']'))
+    ),
     children => customPartsFromChildren(children)
   );
   const DirectLessCustomCurly = node<readonly CustomValuePart[]>(
     'DirectLessCustomCurly',
-    noTrivia(sequence(literal('{'), many(g.DirectLessCustomInnerPart), literal('}'))),
+    parser(
+      { trivia: customValueCommentTrivia },
+      sequence(literal('{'), many(g.DirectLessCustomInnerPart), literal('}'))
+    ),
     children => customPartsFromChildren(children)
   );
   const DirectLessCustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     g.LessSyntaxCustomInnerContent,
-    blockComment,
     g.LessSyntaxCustomSingleQuoted,
     g.LessSyntaxCustomDoubleQuoted,
     g.DirectLessCustomParen,
@@ -3052,7 +3061,6 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessCustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     g.LessSyntaxCustomOuterContent,
-    blockComment,
     g.LessSyntaxCustomSingleQuoted,
     g.LessSyntaxCustomDoubleQuoted,
     g.DirectLessCustomParen,
@@ -3061,8 +3069,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const DirectLessCustomValue = node<ValueNode>(
     'DirectLessCustomValue',
-    noTrivia(many(g.DirectLessCustomPart)),
-    children => customValueFromParts(customPartsFromChildren(children))
+    parser(
+      { trivia: customValueCommentTrivia },
+      many(g.DirectLessCustomPart)
+    ),
+    (children, _fields, span) => withSourceSpan(
+      customValueFromParts(customPartsFromChildren(children)),
+      span
+    )
   );
   // A CSS custom-property token is an ordinary component value in Less
   // functions such as `var(--accent)`. It is not a Less declaration name here.

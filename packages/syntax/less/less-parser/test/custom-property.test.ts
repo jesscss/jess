@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from '@jesscss/less-parser';
+import { serialize } from '../../../../core/src/ast/serialize.js';
+import { triviaMapOf } from '../../../../core/src/ast/provenance.js';
 
 /**
  * A custom property is permissive at the CSS base, and valid CSS must parse in
@@ -82,5 +84,36 @@ describe('Less custom properties', () => {
     expect(parse('a { color: var(--x, blue); }')).toMatchObject({
       children: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
     });
+  });
+
+  it('keeps custom-property block comments as trivia and renders them inline', () => {
+    const source = '@n: blue; .x { --a: red/* c */blue; --b: f(a/* inner */b); --c: [a/* square */b]; --d: { x: 1/* curly */ }; --e: red/* var */@{n}; }';
+    const document = parse(source);
+    const comments = triviaMapOf(document)
+      ?.commentRuns()
+      .map(run => source.slice(run.start, run.end));
+
+    expect(document).toMatchObject({
+      children: [{ type: 'VariableDeclaration', name: 'n' }, {
+        type: 'Rule',
+        body: [
+          { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'redblue' } },
+          { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'f(ab)' } },
+          { type: 'Declaration', name: '--c', value: { type: 'Any', src: '[ab]' } },
+          { type: 'Declaration', name: '--d', value: { type: 'Any', src: '{ x: 1 }' } },
+          { type: 'Declaration', name: '--e', value: { type: 'Interpolation' } }
+        ]
+      }]
+    });
+    expect(comments).toEqual(expect.arrayContaining(['/* c */', '/* inner */', '/* square */', '/* curly */', '/* var */']));
+    expect(serialize(document).css).toBe(
+      '.x {\n'
+      + '  --a: red/* c */blue;\n'
+      + '  --b: f(a/* inner */b);\n'
+      + '  --c: [a/* square */b];\n'
+      + '  --d: { x: 1/* curly */ };\n'
+      + '  --e: red/* var */blue;\n'
+      + '}\n'
+    );
   });
 });

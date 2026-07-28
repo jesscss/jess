@@ -5399,6 +5399,69 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   put(e, source.slice(start, end));
 }
 
+function customPropertyValueWithTrivia(value: ValueSlot, frame: Frame | null, e: Emit): MaybePromise<string> | null {
+  if (isValueSlotArray(value)) {
+    return null;
+  }
+  const trivia = e.trivia;
+  const span = sourceSpanOf(value);
+  if (trivia === undefined || span === undefined) {
+    return null;
+  }
+  let source: string | undefined;
+  let sawComment = false;
+  for (const run of trivia.commentRuns()) {
+    if (run.start < span.start) {
+      continue;
+    }
+    if (run.start > span.end) {
+      break;
+    }
+    if (run.end > span.end || blockCommentsIn(run).length === 0) {
+      continue;
+    }
+    source = run.src;
+    sawComment = true;
+    e.emittedBlockTrivia.add(run);
+  }
+  if (!sawComment || source === undefined) {
+    return null;
+  }
+  if (value.type === 'Any') {
+    return source.slice(span.start, span.end);
+  }
+  if (value.type !== 'Interpolation') {
+    return null;
+  }
+
+  const pieces: Array<MaybePromise<string>> = [];
+  let cursor = span.start;
+  for (const part of value.parts) {
+    if ('lit' in part) {
+      continue;
+    }
+    const variableOpen = source.indexOf('@{', cursor);
+    const propertyOpen = source.indexOf('${', cursor);
+    const open = variableOpen < 0
+      ? propertyOpen
+      : propertyOpen < 0
+        ? variableOpen
+        : Math.min(variableOpen, propertyOpen);
+    if (open < cursor || open >= span.end) {
+      return null;
+    }
+    const close = source.indexOf('}', open + 2);
+    if (close < 0 || close >= span.end) {
+      return null;
+    }
+    pieces.push(source.slice(cursor, open));
+    pieces.push(resolveRefBytes(part, frame, e));
+    cursor = close + 1;
+  }
+  pieces.push(source.slice(cursor, span.end));
+  return combineAll(pieces, values => values.join(''));
+}
+
 function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
   const trivia = e.trivia;
   const span = sourceSpanOf(node);
@@ -9267,15 +9330,34 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
   const idt = atRoot ? INDENT.repeat(e.depth) : e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT;
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
-    if (atRoot && !declName(node, frame, e).startsWith('--')) {
-      throw ERR.propertyInRoot({ node, meta: { what: declName(node, frame, e) } });
+    const name = declName(node, frame, e);
+    if (atRoot && !name.startsWith('--')) {
+      throw ERR.propertyInRoot({ node, meta: { what: name } });
     }
     put(e, idt);
-    put(e, declName(node, frame, e)); // resolve interpolated property name
+    put(e, name); // resolve interpolated property name
     const onNewLine = node.valueOnNewLine === true;
     put(e, onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
-    putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    const customValue = name.startsWith('--')
+      ? customPropertyValueWithTrivia(node.value, frame, e)
+      : null;
+    if (customValue === null) {
+      putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    } else if (isThenable(customValue)) {
+      const i = e.chunks.length;
+      e.chunks.push('');
+      e.pending.push({
+        i,
+        p: Promise.resolve(mapMaybe(customValue, value => important ? normalizeImportant(value) : value))
+      });
+    } else {
+      const valStart = e.off;
+      put(e, important ? normalizeImportant(customValue) : customValue);
+      if (e.positions && !isValueSlotArray(node.value)) {
+        e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });
+      }
+    }
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
