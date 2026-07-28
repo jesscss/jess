@@ -3471,11 +3471,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: mixinSignatureTrivia }, sequence(
       field('open', literal('(')),
       optional(sequence(
-        field('param', mixinParamWithSignatureTrivia),
-        many(sequence(
-          field('separator', mixinParamSeparator),
-          field('param', mixinParamWithSignatureTrivia)
-        )),
+        oneOrMoreSep(
+          field('param', mixinParamWithSignatureTrivia),
+          field('separator', mixinParamSeparator)
+        ),
         optional(field('trailingSeparator', mixinParamTrailingSeparator))
       )),
       field('close', mixinParamClose)
