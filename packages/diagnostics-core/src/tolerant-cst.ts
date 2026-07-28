@@ -1,8 +1,8 @@
-import { parseCssDoc, type CssCstChild, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
+import { parse as parseCssAst, parseCssDoc, type CssCstChild, type CssCstNode, type ParseDoc } from '@jesscss/css-parser';
 import { parseJessDoc } from '@jesscss/jess-parser/cst';
 import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
-import { buildCstIndex } from './cst-analysis.js';
+import { bodySpanOf, sourceSpanOf, type AstSourceSpan } from '@jesscss/core/ast';
 import { defaultCssDiagnosticMetadata } from './metadata.js';
 import type {
   CollectDiagnosticsInput,
@@ -57,8 +57,31 @@ const DIMENSION_TYPES = new Set(['Dimension', 'DirectScssDimension', 'DirectJess
 const FORWARD_AS_PREFIX = /\bas\s+\S+-\*/;
 const FORWARD_VISIBILITY = /\b(show|hide)\b/;
 
+type AstRecord = {
+  readonly type?: unknown;
+  readonly children?: unknown;
+  readonly body?: unknown;
+  readonly name?: unknown;
+  readonly value?: unknown;
+  readonly number?: unknown;
+  readonly unit?: unknown;
+  readonly src?: unknown;
+};
+
 function isCstNode(c: CssCstChild): c is CssCstNode {
   return c._tag === 'node';
+}
+
+function isAstRecord(value: unknown): value is AstRecord & object {
+  return typeof value === 'object' && value !== null;
+}
+
+function astChildrenOf(value: unknown, key: 'children' | 'body'): readonly unknown[] {
+  if (!isAstRecord(value)) {
+    return [];
+  }
+  const child = value[key];
+  return Array.isArray(child) ? child : [];
 }
 
 function forwardPreludeOf(node: CssCstNode, nodeStart: number, src: string): string | null {
@@ -91,6 +114,98 @@ function propNameOf(slice: string): string {
   const colon = slice.indexOf(':');
   const head = colon >= 0 ? slice.slice(0, colon) : slice;
   return head.trim();
+}
+
+function absoluteStart(base: number, node: CssCstNode): number {
+  return base + Number(node.span.start);
+}
+
+function absoluteEnd(base: number, node: CssCstNode): number {
+  return base + Number(node.span.end);
+}
+
+function isWhitespaceOnly(source: string, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    const code = source.charCodeAt(i);
+    if (code !== 9 && code !== 10 && code !== 12 && code !== 13 && code !== 32) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function atRuleNameEnd(source: string, start: number, end: number): number {
+  let i = start + 1;
+  while (i < end) {
+    const code = source.charCodeAt(i);
+    const isNameChar = (code >= 65 && code <= 90)
+      || (code >= 97 && code <= 122)
+      || (code >= 48 && code <= 57)
+      || code === 45
+      || code === 95;
+    if (!isNameChar) {
+      break;
+    }
+    i++;
+  }
+  return i;
+}
+
+function lineCommentStartBetween(source: string, start: number, end: number): number {
+  for (let i = start; i < end - 1; i++) {
+    if (source.charCodeAt(i) === 47 /* / */ && source.charCodeAt(i + 1) === 47 /* / */) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function declarationEnd(source: string, start: number, blockEnd: number): number {
+  const semi = source.indexOf(';', start);
+  if (semi < 0 || semi > blockEnd) {
+    return blockEnd;
+  }
+  return semi + 1;
+}
+
+function locateDeclaration(
+  source: string,
+  name: string,
+  cursor: number,
+  blockEnd: number
+): { nameStart: number; declarationEnd: number; valueStart: number } | null {
+  let search = cursor;
+  while (search < blockEnd) {
+    const nameStart = source.indexOf(name, search);
+    if (nameStart < 0 || nameStart >= blockEnd) {
+      return null;
+    }
+    const colon = source.indexOf(':', nameStart + name.length);
+    if (colon < 0 || colon >= blockEnd) {
+      return null;
+    }
+    const lineComment = lineCommentStartBetween(source, nameStart + name.length, colon);
+    if (lineComment < 0) {
+      return {
+        nameStart,
+        declarationEnd: declarationEnd(source, colon + 1, blockEnd),
+        valueStart: colon + 1
+      };
+    }
+    search = lineComment + 2;
+  }
+  return null;
+}
+
+function findValueSource(source: string, src: string, start: number, end: number): AstSourceSpan | undefined {
+  if (src.length === 0) {
+    return undefined;
+  }
+  const valueStart = source.indexOf(src, start);
+  if (valueStart < 0 || valueStart >= end) {
+    return undefined;
+  }
+  return { start: valueStart, end: valueStart + src.length };
 }
 
 function blankStrings(value: string): string {
@@ -189,9 +304,9 @@ export function cstLintDiagnostics(
   source: string,
   language: JessLanguage,
   metadata?: Partial<CssDiagnosticMetadata>,
-  filePath?: string
+  filePath?: string,
+  tolerantSourceScan = true
 ): SourceDiagnostic[] {
-  const index = buildCstIndex(root);
   const out: SourceDiagnostic[] = [];
   const emitted = new Set<string>();
   const cssData = metadataWithDefaults(metadata);
@@ -211,14 +326,18 @@ export function cstLintDiagnostics(
     out.push(diagnostic(code, severity, message, start, end, filePath));
   };
 
-  for (const { node, start, end } of index.nodes) {
+  const visit = (node: CssCstNode, base: number) => {
+    const start = absoluteStart(base, node);
+    const end = absoluteEnd(base, node);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+      return;
+    }
     const gt = node.grammarType;
 
     if (RULESET_TYPES.has(gt)) {
-      const slice = source.slice(start, end);
-      const open = slice.indexOf('{');
-      const close = slice.lastIndexOf('}');
-      if (open >= 0 && close > open && slice.slice(open + 1, close).trim() === '') {
+      const open = source.indexOf('{', start);
+      const close = source.lastIndexOf('}', end - 1);
+      if (open >= start && close > open && isWhitespaceOnly(source, open + 1, close)) {
         push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', start, end);
       }
     }
@@ -251,12 +370,14 @@ export function cstLintDiagnostics(
     }
 
     if (ATRULE_TYPES.has(gt)) {
-      const slice = source.slice(start, end);
-      const m = /^@([-\w]+)/.exec(slice);
-      if (m) {
-        const name = m[1]!.toLowerCase();
-        if (!cssData.isKnownAtRule(name) && !dialectAtRules.has(name)) {
-          push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${m[1]}`, start, start + m[0].length);
+      if (source.charCodeAt(start) === 64 /* @ */) {
+        const nameEnd = atRuleNameEnd(source, start, end);
+        if (nameEnd > start + 1) {
+          const rawName = source.slice(start + 1, nameEnd);
+          const name = rawName.toLowerCase();
+          if (!cssData.isKnownAtRule(name) && !dialectAtRules.has(name)) {
+            push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${rawName}`, start, nameEnd);
+          }
         }
       }
     }
@@ -304,51 +425,202 @@ export function cstLintDiagnostics(
       }
     }
 
-    const seenProps = new Map<string, boolean>();
+    let seenProps: Map<string, boolean> | undefined;
     for (const child of node.children) {
-      if (!isCstNode(child) || !DECLARATION_TYPES.has(child.grammarType)) {
+      if (!isCstNode(child)) {
         continue;
       }
-      const childSpan = index.spanOf(child);
-      if (!childSpan) {
-        continue;
+      if (DECLARATION_TYPES.has(child.grammarType)) {
+        const childStart = absoluteStart(start, child);
+        const childEnd = absoluteEnd(start, child);
+        const name = propNameOf(source.slice(childStart, childEnd));
+        if (name.length > 0 && !name.includes('#{') && !name.includes('@{') && !name.includes('${')) {
+          const key = name.toLowerCase();
+          seenProps ??= new Map();
+          if (seenProps.has(key)) {
+            push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, childStart, childEnd);
+          } else {
+            seenProps.set(key, true);
+          }
+        }
       }
-      const name = propNameOf(source.slice(childSpan.start, childSpan.end));
-      if (name.length === 0 || name.includes('#{') || name.includes('@{') || name.includes('${')) {
-        continue;
-      }
-      const key = name.toLowerCase();
-      if (seenProps.has(key)) {
-        push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${name}'`, childSpan.start, childSpan.end);
-      } else {
-        seenProps.set(key, true);
-      }
+      visit(child, start);
     }
-  }
+  };
 
-  const sourceForHexScan = blankStringsAndComments(source);
-  const sourceHexRe = /#([0-9a-fA-F]+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = sourceHexRe.exec(sourceForHexScan)) !== null) {
-    const digits = match[1]!.length;
-    if (digits !== 3 && digits !== 4 && digits !== 6 && digits !== 8 && isDeclarationValueContext(sourceForHexScan, match.index)) {
-      push(
-        LINT_CODES.hexColorLength,
-        'error',
-        `Hex color '${match[0]}' does not have 3, 4, 6 or 8 digits`,
-        match.index,
-        match.index + match[0].length
-      );
+  visit(root, 0);
+
+  if (tolerantSourceScan) {
+    const sourceForHexScan = blankStringsAndComments(source);
+    const sourceHexRe = /#([0-9a-fA-F]+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = sourceHexRe.exec(sourceForHexScan)) !== null) {
+      const digits = match[1]!.length;
+      if (digits !== 3 && digits !== 4 && digits !== 6 && digits !== 8 && isDeclarationValueContext(sourceForHexScan, match.index)) {
+        push(
+          LINT_CODES.hexColorLength,
+          'error',
+          `Hex color '${match[0]}' does not have 3, 4, 6 or 8 digits`,
+          match.index,
+          match.index + match[0].length
+        );
+      }
     }
   }
 
   return out;
 }
 
+function visitValueDimensions(
+  value: unknown,
+  source: string,
+  start: number,
+  end: number,
+  visit: (src: string, unit: string, span: AstSourceSpan | undefined) => void
+): void {
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      visitValueDimensions(child, source, start, end, visit);
+    }
+    return;
+  }
+  if (!isAstRecord(value)) {
+    return;
+  }
+  if (value.type === 'Dimension'
+    && value.number === 0
+    && typeof value.unit === 'string'
+    && typeof value.src === 'string') {
+    visit(value.src, value.unit, findValueSource(source, value.src, start, end));
+  }
+  for (const child of Object.values(value)) {
+    if (isAstRecord(child) || Array.isArray(child)) {
+      visitValueDimensions(child, source, start, end, visit);
+    }
+  }
+}
+
+function cssAstLintDiagnostics(
+  source: string,
+  metadata?: Partial<CssDiagnosticMetadata>,
+  filePath?: string
+): SourceDiagnostic[] | null {
+  let root: unknown;
+  try {
+    root = parseCssAst(source);
+  } catch {
+    return null;
+  }
+
+  const out: SourceDiagnostic[] = [];
+  const cssData = metadataWithDefaults(metadata);
+  const push = (
+    code: string,
+    severity: DiagnosticSeverityName,
+    message: string,
+    start: number,
+    end: number
+  ) => {
+    out.push(diagnostic(code, severity, message, start, end, filePath));
+  };
+
+  const visitBody = (children: readonly unknown[], bodySpan: AstSourceSpan | undefined) => {
+    const seenProps = new Map<string, boolean>();
+    let cursor = bodySpan?.start ?? 0;
+    const bodyEnd = bodySpan?.end ?? source.length;
+
+    for (const child of children) {
+      if (!isAstRecord(child)) {
+        continue;
+      }
+      if (child.type === 'Declaration' && typeof child.name === 'string') {
+        const located = locateDeclaration(source, child.name, cursor, bodyEnd);
+        const nameStart = located?.nameStart ?? cursor;
+        const declarationEndValue = located?.declarationEnd ?? nameStart + child.name.length;
+        const key = child.name.toLowerCase();
+        const skip = key.startsWith('--') || key.startsWith('-');
+        if (!skip && !cssData.isKnownProperty(key)) {
+          push(LINT_CODES.unknownProperties, 'warning', `Unknown property: '${child.name}'`, nameStart, nameStart + child.name.length);
+        }
+        if (seenProps.has(key)) {
+          push(LINT_CODES.duplicateProperties, 'warning', `Duplicate property '${child.name}'`, nameStart, declarationEndValue);
+        } else {
+          seenProps.set(key, true);
+        }
+        visitValueDimensions(child.value, source, located?.valueStart ?? nameStart, declarationEndValue, (src, unit, span) => {
+          if (LENGTH_UNITS.has(unit.toLowerCase())) {
+            push(
+              LINT_CODES.zeroUnits,
+              'hint',
+              `The unit "${unit}" is unnecessary for a zero value`,
+              span?.start ?? nameStart,
+              span?.end ?? nameStart + src.length
+            );
+          }
+        });
+        cursor = declarationEndValue;
+      } else {
+        visitAstNode(child);
+        const span = sourceSpanOf(child) ?? bodySpanOf(child);
+        if (span && span.end > cursor) {
+          cursor = span.end;
+        }
+      }
+    }
+  };
+
+  const visitAstNode = (node: unknown): void => {
+    if (!isAstRecord(node)) {
+      return;
+    }
+    if (node.type === 'Rule') {
+      const bodySpan = bodySpanOf(node);
+      const body = astChildrenOf(node, 'body');
+      if (body.length === 0 && bodySpan && isWhitespaceOnly(source, bodySpan.start, bodySpan.end)) {
+        const span = sourceSpanOf(node) ?? bodySpan;
+        push(LINT_CODES.emptyRules, 'warning', 'Do not use empty rulesets', span.start, span.end);
+      }
+      visitBody(body, bodySpan);
+      return;
+    }
+    if ((node.type === 'AtRuleStatement' || node.type === 'AtRuleBlock') && typeof node.name === 'string') {
+      const rawName = node.name.startsWith('@') ? node.name.slice(1) : node.name;
+      const lower = rawName.toLowerCase();
+      const span = sourceSpanOf(node);
+      if (span && !cssData.isKnownAtRule(lower)) {
+        push(LINT_CODES.unknownAtRules, 'warning', `Unknown at-rule @${rawName}`, span.start, span.start + rawName.length + 1);
+      }
+      if (node.type === 'AtRuleBlock') {
+        visitBody(astChildrenOf(node, 'body'), bodySpanOf(node));
+      }
+      return;
+    }
+    visitBody(astChildrenOf(node, 'children'), undefined);
+  };
+
+  visitAstNode(root);
+  return out;
+}
+
 export function collectTolerantDiagnostics(input: CollectDiagnosticsInput): CollectDiagnosticsResult {
+  if (input.language === 'css') {
+    const cssAstDiagnostics = cssAstLintDiagnostics(input.source, input.metadata, input.filePath);
+    if (cssAstDiagnostics !== null) {
+      return { diagnostics: cssAstDiagnostics };
+    }
+  }
+
   const doc = parseDocForLanguage(input.source, input.language);
+  const needsTolerantSourceScan = doc.errors.length > 0 || doc.unconsumedFrom !== null;
   const lintDiagnostics = doc.tree
-    ? cstLintDiagnostics(doc.tree, input.source, input.language, input.metadata, input.filePath)
+    ? cstLintDiagnostics(
+        doc.tree,
+        input.source,
+        input.language,
+        input.metadata,
+        input.filePath,
+        needsTolerantSourceScan
+      )
     : [];
   return {
     diagnostics: [

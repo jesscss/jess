@@ -594,7 +594,8 @@ That ABI is observable and tested by
 cases), by `packages/jess/test/less/wall8-repro.test.ts`, and by the
 `plugin-js` README's typed-bridge guarantee. AST-v2 `@jesscss/core/value` is
 not a 1:1 replacement: it has structural `Dimension`/`Color`/`Quoted`/
-`Keyword`/`List`/`Block`/`Bool`/`Nil`, but no anonymous-vs-keyword `Any`,
+`Keyword`/`List`/`Block`/`Bool`/`Nil`, but no Less-compatible
+`Anonymous`-vs-`Keyword` class identity,
 `Sequence`/Expression value, detached Rules/Declaration map, or class identity;
 it also carries different color source-format metadata. Substituting those
 shapes now would silently break external modules and Less map/plugin behavior.

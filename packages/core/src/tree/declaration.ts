@@ -561,7 +561,6 @@ const maybeDirectSyntheticDeclarationLeafText = (node: DeclarationValue['value']
   }
   if (
     node.type !== 'Any'
-    && node.type !== 'Anonymous'
     && node.type !== 'Keyword'
   ) {
     return undefined;

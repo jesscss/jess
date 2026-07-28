@@ -416,6 +416,34 @@ describe('Diagnostic display tiers', () => {
     });
   });
 
+  it('renderString reports a collected parser diagnostic without a plain duplicate error', async () => {
+    let thrown: unknown;
+    const { err: stderr } = await captureAsync(async () => {
+      try {
+        await new Compiler().renderString('@charset "@{encoding}";', {
+          filePath: '/proj/src/styles.less',
+          extension: '.less'
+        });
+      } catch (error) {
+        thrown = error;
+      }
+    });
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(stderr.match(/parse\/dynamic-charset/g)).toHaveLength(1);
+    expect(stderr).toContain('Interpolation is not valid in @charset.');
+    expect(stderr).not.toContain('LessDynamicCharsetError:');
+    expect(stderr).not.toContain('JessError:');
+    expectLinecraftFrame(stderr, {
+      code: 'parse/dynamic-charset',
+      phase: 'parse',
+      filePath: '/proj/src/styles.less',
+      line: 1,
+      column: 1,
+      sourceLine: '@charset "@{encoding}";'
+    });
+  });
+
   it('colors: false keeps the frame but strips ANSI styles and terminal links', () => {
     const { err: stderr } = capture(() =>
       outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'PLAIN_SRC' })], [], {

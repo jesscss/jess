@@ -7,6 +7,7 @@ import { isThenable } from '@jesscss/awaitable-pipe';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
 import { List, Dimension } from './tree/index.js';
 import type { ConversionPlugin, PreprocessParams } from './conversions.js';
+import { JessError } from './jess-error.js';
 export type PrimitiveType = 'string' | 'number' | 'boolean' | 'null' | 'undefined';
 export type ArgType = PrimitiveType | Class<any> | AbstractClass<any>;
 export type Lazy<T> = () => MaybePromise<T>;
@@ -454,7 +455,7 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
 
   let matchedParams: readonly ParamDefinition[] | undefined;
   let record: any;
-  let lastError: Error | undefined;
+  let lastError: Error | JessError | undefined;
 
   // Try each signature until one matches
   for (const signature of paramSignatures) {
@@ -514,7 +515,9 @@ export async function callWithContext(context: Context, fn: (...args: any[]) => 
         break;
       }
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      lastError = error instanceof JessError || error instanceof Error
+        ? error
+        : new Error(String(error));
       continue;
     }
   }

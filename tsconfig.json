@@ -28,7 +28,7 @@
       "@jesscss/fns/*": ["./packages/fns/src/*.ts"],
       "@jesscss/compiler": ["./packages/compiler/src/index.ts"],
       "@jesscss/compiler/*": ["./packages/compiler/src/*.ts"],
-      "@jesscss/compiler-defaults": ["./packages/compiler-defaults/src/index.ts"],
+      "@jesscss/compiler-preset": ["./packages/compiler-preset/src/index.ts"],
       "@jesscss/diagnostics-core": ["./packages/diagnostics-core/src/index.ts"],
       "@jesscss/lint": ["./packages/lint/src/index.ts"],
       "@jesscss/plugin-node-modules": ["./packages/jess-plugin-node-modules/src/index.ts"],

@@ -8,8 +8,6 @@ import {
   type SourceDiagnostic
 } from '@jesscss/diagnostics-core';
 import {
-  extractRelevantLines,
-  lineColAt,
   type ErrorDiagnostic,
   type WarningDiagnostic
 } from '@jesscss/core';
@@ -47,6 +45,7 @@ export interface LintOptions {
   readonly language?: JessLanguage;
   readonly maxWarnings?: number;
   readonly syntaxOnly?: boolean;
+  readonly includeLegacyDiagnostics?: boolean;
 }
 
 export interface LintTextInput {
@@ -71,6 +70,62 @@ export interface LintRunResult {
   readonly errored: boolean;
   readonly warningCount: number;
   readonly errorCount: number;
+}
+
+interface LinePosition {
+  readonly line: number;
+  readonly column: number;
+}
+
+class SourceLineIndex {
+  readonly #source: string;
+  readonly #lineStarts: number[];
+  readonly #lines: string[];
+
+  constructor(source: string) {
+    this.#source = source;
+    this.#lineStarts = [0];
+    for (let i = 0; i < source.length; i++) {
+      if (source.charCodeAt(i) === 10 /* \n */) {
+        this.#lineStarts.push(i + 1);
+      }
+    }
+    this.#lines = source.split(/\r?\n/);
+  }
+
+  lineColAt(offset: number): LinePosition {
+    const end = Math.min(Math.max(0, offset), this.#source.length);
+    let low = 0;
+    let high = this.#lineStarts.length - 1;
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const start = this.#lineStarts[mid] ?? 0;
+      if (start <= end) {
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    const lineIndex = Math.max(0, high);
+    return {
+      line: lineIndex + 1,
+      column: end - (this.#lineStarts[lineIndex] ?? 0) + 1
+    };
+  }
+
+  extractRelevantLines(line: number, contextLines = 1): Record<number, string> | undefined {
+    if (this.#source.length === 0) {
+      return undefined;
+    }
+    const target = Math.max(1, Math.min(line, this.#lines.length));
+    const start = Math.max(1, target - contextLines);
+    const end = Math.min(this.#lines.length, target + contextLines);
+    const result: Record<number, string> = {};
+    for (let i = start; i <= end; i++) {
+      result[i] = this.#lines[i - 1] ?? '';
+    }
+    return result;
+  }
 }
 
 function lintConfigFromStylesConfig(config: StylesConfig | null | undefined): LintConfig | undefined {
@@ -142,9 +197,9 @@ function applyPolicy(diagnostics: readonly SourceDiagnostic[], config: LintConfi
   return out;
 }
 
-function toErrorDiagnostic(diagnostic: LintDiagnostic, source: string): ErrorDiagnostic {
-  const start = lineColAt(source, diagnostic.start);
-  const end = lineColAt(source, diagnostic.end);
+function toErrorDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): ErrorDiagnostic {
+  const start = lines.lineColAt(diagnostic.start);
+  const end = lines.lineColAt(diagnostic.end);
   return {
     code: diagnostic.code,
     phase: diagnostic.phase,
@@ -156,13 +211,13 @@ function toErrorDiagnostic(diagnostic: LintDiagnostic, source: string): ErrorDia
     column: start.column,
     endLine: end.line,
     endColumn: end.column,
-    lines: extractRelevantLines(source, start.line)
+    lines: lines.extractRelevantLines(start.line)
   };
 }
 
-function toWarningDiagnostic(diagnostic: LintDiagnostic, source: string): WarningDiagnostic {
-  const start = lineColAt(source, diagnostic.start);
-  const end = lineColAt(source, diagnostic.end);
+function toWarningDiagnostic(diagnostic: LintDiagnostic, lines: SourceLineIndex): WarningDiagnostic {
+  const start = lines.lineColAt(diagnostic.start);
+  const end = lines.lineColAt(diagnostic.end);
   return {
     code: diagnostic.code,
     phase: diagnostic.phase,
@@ -174,24 +229,40 @@ function toWarningDiagnostic(diagnostic: LintDiagnostic, source: string): Warnin
     column: start.column,
     endLine: end.line,
     endColumn: end.column,
-    lines: extractRelevantLines(source, start.line)
+    lines: lines.extractRelevantLines(start.line)
   };
 }
 
 function toLintResult(
   source: string,
   filePath: string | undefined,
-  diagnostics: readonly LintDiagnostic[]
+  diagnostics: readonly LintDiagnostic[],
+  includeLegacyDiagnostics: boolean
 ): LintResult {
+  if (!includeLegacyDiagnostics) {
+    return {
+      filePath,
+      diagnostics,
+      errors: [],
+      warnings: []
+    };
+  }
+
+  const lines = new SourceLineIndex(source);
+  const errors: ErrorDiagnostic[] = [];
+  const warnings: WarningDiagnostic[] = [];
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.severity === 'error') {
+      errors.push(toErrorDiagnostic(diagnostic, lines));
+    } else {
+      warnings.push(toWarningDiagnostic(diagnostic, lines));
+    }
+  }
   return {
     filePath,
     diagnostics,
-    errors: diagnostics
-      .filter(diagnostic => diagnostic.severity === 'error')
-      .map(diagnostic => toErrorDiagnostic(diagnostic, source)),
-    warnings: diagnostics
-      .filter(diagnostic => diagnostic.severity !== 'error')
-      .map(diagnostic => toWarningDiagnostic(diagnostic, source))
+    errors,
+    warnings
   };
 }
 
@@ -203,7 +274,12 @@ export async function lintText(input: LintTextInput, options: LintOptions = {}):
     filePath: input.filePath,
     language
   });
-  return toLintResult(input.source, input.filePath, applyPolicy(collected.diagnostics, lintConfig, options));
+  return toLintResult(
+    input.source,
+    input.filePath,
+    applyPolicy(collected.diagnostics, lintConfig, options),
+    options.includeLegacyDiagnostics === true
+  );
 }
 
 function patternsOf(value: string | readonly string[] | undefined): string[] {
@@ -236,11 +312,22 @@ export async function lintFiles(patterns: string | readonly string[], options: L
     const source = await readFile(filePath, 'utf8');
     const language = languageFromPath(filePath, options.language);
     const collected = collectTolerantDiagnostics({ source, filePath, language });
-    results.push(toLintResult(source, filePath, applyPolicy(collected.diagnostics, lintConfig, options)));
+    results.push(toLintResult(
+      source,
+      filePath,
+      applyPolicy(collected.diagnostics, lintConfig, options),
+      options.includeLegacyDiagnostics === true
+    ));
   }
 
-  const errorCount = results.reduce((sum, result) => sum + result.errors.length, 0);
-  const warningCount = results.reduce((sum, result) => sum + result.warnings.length, 0);
+  const errorCount = results.reduce(
+    (sum, result) => sum + result.diagnostics.filter(diagnostic => diagnostic.severity === 'error').length,
+    0
+  );
+  const warningCount = results.reduce(
+    (sum, result) => sum + result.diagnostics.filter(diagnostic => diagnostic.severity !== 'error').length,
+    0
+  );
   return {
     results,
     errorCount,

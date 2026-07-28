@@ -224,9 +224,9 @@ under-trims large ones.
 
 ## B. Evaluation semantics
 
-### B1 · Escaped `~"..."` = opaque Anonymous (never numeric-sniffed)
+### B1 · Escaped `~"..."` = opaque Any (never numeric-sniffed)
 
-**Rule.** An escaped string `~"..."` is an **opaque Anonymous** value — never
+**Rule.** An escaped string `~"..."` is an **opaque Any** value — never
 parsed as a number for comparison.
 
 - `=` cross-compares by **content**: `3 = ~"3"` → **true**.

@@ -4,7 +4,7 @@ import {
   vardecl, ref, mixin, call, list, op,
   num, dimension, amp,
   F_STATIC, paren, query, seq, comment, nil, quoted, color, co, interpolated,
-  keyword, Anonymous
+  keyword, Any
 } from '../index.js';
 import { Context } from '../../context.js';
 import {
@@ -1824,7 +1824,7 @@ describe('AtRule', () => {
     expect(node.render(context)).toBe('@impor "impor-typo-dont-parse-as-@import.less";');
   });
 
-  it('renders keyword and anonymous leaf at-rule preludes without syntax rollback', () => {
+  it('renders keyword and any leaf at-rule preludes without syntax rollback', () => {
     const writer = new CountingWriter();
     const first = atrulestatement({
       name: '@namespace',
@@ -1832,7 +1832,7 @@ describe('AtRule', () => {
     });
     const second = atrulestatement({
       name: '@namespace',
-      prelude: new Anonymous('html')
+      prelude: new Any('html')
     });
     first.removeFlag(F_STATIC);
     second.removeFlag(F_STATIC);

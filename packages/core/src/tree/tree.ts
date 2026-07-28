@@ -1,5 +1,5 @@
 import type { Ampersand } from './ampersand.js';
-import type { Any, Anonymous, Keyword } from './any.js';
+import type { Any, Keyword } from './any.js';
 import type { AtRule } from './at-rule.js';
 import type { AtRuleStatement } from './at-rule-statement.js';
 import type { Call } from './call.js';
@@ -83,7 +83,6 @@ export interface NToNode {
 export type Nodes = {
   Ampersand: typeof Ampersand;
   Any: typeof Any;
-  Anonymous: typeof Anonymous;
   Keyword: typeof Keyword;
   AtRule: typeof AtRule;
   AtRuleStatement: typeof AtRuleStatement;

@@ -1,7 +1,7 @@
 {
   "name": "jess",
   "type": "module",
-  "version": "2.0.0-alpha.10",
+  "version": "2.0.0-alpha.11",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index.cjs",
   "types": "lib/index-public.d.ts",
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@jesscss/compiler": "workspace:*",
-    "@jesscss/compiler-defaults": "workspace:*",
+    "@jesscss/compiler-preset": "workspace:*",
     "@jesscss/core": "workspace:*",
     "@jesscss/lint": "workspace:*",
     "@jesscss/patch-css": "workspace:*",
