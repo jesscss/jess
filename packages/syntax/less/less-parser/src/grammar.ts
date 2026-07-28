@@ -372,6 +372,43 @@ function staticText(value: unknown): string {
   throw new TypeError('Direct Less AST grammar produced a non-static import fragment.');
 }
 
+function semanticGapText(text: string): string {
+  let out = '';
+  let inGap = false;
+  for (const char of text) {
+    if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === '\f') {
+      if (!inGap) {
+        out += ' ';
+        inGap = true;
+      }
+    } else {
+      out += char;
+      inGap = false;
+    }
+  }
+  return out;
+}
+
+function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
+  const gapBefore = new Set<number>();
+  for (let index = 2; index < triviaLog.length; index += 3) {
+    gapBefore.add(triviaLog[index] ?? 0);
+  }
+
+  let text = '';
+  for (let index = 0; index < children.length; index++) {
+    if (gapBefore.has(index)) {
+      text += ' ';
+    }
+    text += staticText(children[index]);
+  }
+  if (gapBefore.has(children.length)) {
+    text += ' ';
+  }
+
+  return semanticGapText(text);
+}
+
 function isQuoted(value: unknown): value is Quoted {
   return typeof value === 'object'
     && value !== null
@@ -1720,6 +1757,7 @@ const staticSelectorTrivia = trivia(oneOrMore(choice(
   triviaComment
 )));
 const compoundSelectorTrivia = trivia(oneOrMore(triviaComment));
+const atPreludeCommentTrivia = trivia(oneOrMore(blockComment));
 // Outer selector comments are lexical trivia. Render-time body/source spans own
 // whether a trivia-only body remains output-bearing; selectors do not invent
 // comment simple selectors.
@@ -4534,17 +4572,19 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const directLessAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/));
   const CssAtRulePrelude = node<ValueNode | null>(
     'CssAtRulePrelude',
-    noTrivia(many(choice(
-      directLessAtPreludeWhitespace,
-      directLessAtPreludeComment,
-      directLessAtPreludeComma,
-      directLessAtPreludeGroup,
-      directLessAtPreludeQuoted,
-      BareVariableInterpolation,
-      directLessAtPreludeText
-    ))),
-    (children) => {
-      const text = staticText(children).trim();
+    parser(
+      { trivia: atPreludeCommentTrivia },
+      many(choice(
+        directLessAtPreludeWhitespace,
+        directLessAtPreludeComma,
+        directLessAtPreludeGroup,
+        directLessAtPreludeQuoted,
+        BareVariableInterpolation,
+        directLessAtPreludeText
+      ))
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog) => {
+      const text = staticTextWithTriviaGaps(children, triviaLog).trim();
       return text === '' ? null : any(text);
     }
   );

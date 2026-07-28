@@ -3797,6 +3797,17 @@ describe("Less AST grammar facts", () => {
     );
   });
 
+  it('keeps fallback CSS at-rule prelude comments in trivia, not semantic bytes', () => {
+    const result = run(lessAstGrammar.CssAtRulePrelude, 'a/* note */b', {
+      trivia: lessAstGrammar.whitespace
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({ type: 'Any', src: 'a b' });
+    expect(JSON.stringify(result.value)).not.toContain('/* note */');
+  });
+
   it("constructs Less declaration merge and importance modifiers without flattening them into value text", () => {
     const source =
       "@accent: navy !important; .card { box-shadow+: @accent; box-shadow+: white; font+_: serif !important; }";
