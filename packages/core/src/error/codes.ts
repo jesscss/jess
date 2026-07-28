@@ -6,6 +6,7 @@ export type Phase =
   | 'import'
   | 'eval'
   | 'extend'
+  | 'lint'
   | 'plugin';
 export type Severity = 'error' | 'warn';
 
