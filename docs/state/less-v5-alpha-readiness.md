@@ -265,44 +265,41 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are PR-review/status
-blockers, not Jess registry availability. The missing
+Current package-flow blockers, verified 2026-07-28, are owner/release decisions,
+not Jess registry availability or an unclassified upstream fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
-alpha gate passes. GitHub Actions are green on `6399232b`; the only live GitHub
-status blocker is the pending CodeRabbit context, which leaves the PR merge
-state `UNSTABLE`. Greptile did not review because the PR exceeds its file limit,
-and Bugbot is not enabled; those are bot-capability notes rather than code
-findings. The old no-control-regex review thread and both container fixture
-threads are resolved/outdated. The intentional custom-unit note in
+alpha gate passes. GitHub Actions and CodeRabbit are green on `6399232b`, and
+the PR merge state is `CLEAN`. Greptile did not review because the PR exceeds
+its file limit, and Bugbot is not enabled; those are bot-capability notes rather
+than code findings. The old no-control-regex review thread and both container
+fixture threads are resolved/outdated. The intentional custom-unit note in
 `variables/legacy/variable-advanced.css` remains a review disposition item
 rather than a code fix: this branch has no Stylelint config, no Stylelint script,
 and the file states that it is a historical Less 4.x output record that no test
 reads. Do not add suppression comments there unless a real lint gate appears.
 
-Before treating PR #19 as alpha.1-mergeable, the upstream fixture/test-data gap
-from `upstream/master` must be replayed into the Less 5 alpha branch as v5/Jess
-fixtures or explicitly classified. Do not copy upstream expected CSS blindly:
-upstream `master` is the Less 4.x line; the Less 5 alpha branch succeeds that
-line and owns the Less 5 nesting, deprecation, parser, and output semantics. The
-current exact upstream semantic delta is:
+The upstream fixture/test-data gap from `upstream/master` is classified in the
+external branch at `packages/test-data/UPSTREAM-FIXTURE-SYNC.md`. Replay upstream
+changes into the Less 5 alpha branch as v5/Jess fixtures; do not copy upstream
+expected CSS blindly. Upstream `master` is the Less 4.x line; the Less 5 alpha
+branch succeeds that line and owns the Less 5 nesting, deprecation, parser, and
+output semantics. Current classification:
 
-- **Already represented on the PR branch:** the CSS-`var()` math fixture family
-  `tests-unit/math-css-vars/*` from upstream #4479 is present; the container
-  expected-CSS review comments are fixed by `6399232b`.
-- **Still missing as named fixture families:** upstream #4462/#4469's
-  `tests-unit/at-rule-variable-deprecated/*` and upstream #4479's
-  `tests-error/eval/percentage-css-var.*`. These should either be ported to the
-  external alpha branch or documented as intentionally covered by Jess-side
-  diagnostics/tests.
-- **Port or consciously classify before alpha.1:** selectors with nested
-  `:has()` inside `:is()`/`:matches()`/`:where()` (#4422), media-query
-  parentheses (#4427), condition/function parsing for `not` and inline
-  comparisons (#4421/#4472), container query regressions including parameter
-  variables and `style()` comparison/range syntax (#4420/#4461), color `calc()`
-  behavior (#4434), named-argument mixins (#4473), and unset variadic defaults
-  (#4477). Each port needs the v5 expected output, not necessarily upstream
-  Less 4.x bytes.
+- **Ported or represented for alpha.1:** selector regressions (#4422),
+  media-query parentheses (#4427), `not`/condition regressions (#4421),
+  container mixin parameter variables (#4420), simple container name/spacing
+  coverage (#4441), color `calc()` (#4434), bare `@var`
+  deprecation/migration via Less 5 interpolation-positive coverage
+  (#4462/#4469), named-argument mixin arity (#4473), and CSS-`var()` math with
+  Less 5 expected output (#4479).
+- **Intentionally out of scope for alpha.1:** inline condition-expression
+  comparison (#4472), container `style()` comparison/range syntax (#4461),
+  broader container comma-list/custom-ident/escaped-name/style-function coverage
+  from #4441, unset variadic forwarding to callee defaults (#4477), upstream
+  Less 4 bare-at-rule-variable warning matrix, and upstream Less 4
+  `percentage(var(--x))` eval-error behavior. These are classified limitations
+  or follow-up work, not unreviewed fixture gaps.
 - **Classify separately from fixture sync:** upstream `alpha` drift is release
   automation only (`330e9d71`); CJS/browser export tests (#4424/#4444), debug
   line-number crash coverage (#4446), dependency/security churn, and release
