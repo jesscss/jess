@@ -12,6 +12,7 @@ export class OutputCollector {
 
   add(str: string, originalLocation?: OptionalLocation) {
     this.strings.push(str);
+
     /**
      * @todo
      * @see https://hacks.mozilla.org/2013/05/compiling-to-javascript-and-debugging-with-source-maps/

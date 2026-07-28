@@ -105,13 +105,16 @@ describe('parser runtime boundary', () => {
       'function scan(source: string) { source.indexOf("@{"); }',
       'function scanRaw(raw: string) { raw.startsWith("@"); }',
       'function scanValue(value: string, i: number) { return value[i]; }',
+      'function scanTokenParam(token: { value: string }) { token.value.startsWith("@"); }',
       'const token: { value: string } = getLeaf(); token.value.startsWith("@");',
       'const alias = token.value; alias.includes("@{");',
+      'let declaredToken: { value: string }; declaredToken.value.endsWith("@");',
       'const raw = children; raw[0]; const value = children; value[0];'
     ].join('\n'));
     assert.deepEqual(findings.map(finding => finding.kind), [
       'runtime-indexOf', 'runtime-startsWith', 'runtime-string-index',
-      'runtime-startsWith', 'runtime-includes'
+      'runtime-startsWith', 'runtime-startsWith', 'runtime-includes',
+      'runtime-endsWith'
     ]);
   });
 

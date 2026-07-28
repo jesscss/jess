@@ -29,6 +29,7 @@ interface SweepRecord {
   own: string;
   status: 'own-pass' | 'unsupported' | 'not-found-both' | 'divergence';
   count: number;
+
   /** Best-effort originating test (file basename ± test name) — distinguishes render vs unit-call. */
   origin: string;
 }
@@ -91,9 +92,12 @@ function snapshotParents(v: unknown, out: Array<[NodeLike, unknown]>, seen: Set<
   if ('parent' in v) {
     out.push([v, v.parent]);
   }
-  // Follow every object-valued own property (bounded by `seen`) so container references the own
-  // engine may reparent through — e.g. an Ampersand's `_selectorContainer.selector` graft parent —
-  // are also snapshotted. `parent` itself is skipped to avoid walking back UP the tree.
+
+  /*
+   * Follow every object-valued own property (bounded by `seen`) so container references the own
+   * engine may reparent through — e.g. an Ampersand's `_selectorContainer.selector` graft parent —
+   * are also snapshotted. `parent` itself is skipped to avoid walking back UP the tree.
+   */
   for (const key of Object.keys(v)) {
     if (key === 'parent') {
       continue;
@@ -109,11 +113,13 @@ const sink = (
   partial: boolean,
   oracleThunk: () => unknown
 ): unknown => {
-  // Own engine runs FIRST on the live pristine nodes. It is STRING-pure but constructs output by
-  // reusing/reparenting input atom nodes, which would perturb `.parent` pointers the oracle's
-  // node-identity tests assert on. So snapshot every input node's `.parent` before the run and
-  // RESTORE after — the own run becomes fully transparent to the oracle. Its output string is
-  // captured EAGERLY (immune to the oracle's subsequent mutation of shared nodes anyway).
+  /*
+   * Own engine runs FIRST on the live pristine nodes. It is STRING-pure but constructs output by
+   * reusing/reparenting input atom nodes, which would perturb `.parent` pointers the oracle's
+   * node-identity tests assert on. So snapshot every input node's `.parent` before the run and
+   * RESTORE after — the own run becomes fully transparent to the oracle. Its output string is
+   * captured EAGERLY (immune to the oracle's subsequent mutation of shared nodes anyway).
+   */
   const parentSnap: Array<[NodeLike, unknown]> = [];
   const seen = new Set<unknown>();
   snapshotParents(target, parentSnap, seen);
@@ -152,8 +158,11 @@ const sink = (
       origin: currentOrigin()
     };
     records.set(key, rec);
-    // Append the NEW distinct tuple immediately (JSONL) — vitest fork workers do not reliably fire
-    // 'exit'/'beforeExit', so we never rely on a final flush. `count` is 1 here (re-hits skipped).
+
+    /*
+     * Append the NEW distinct tuple immediately (JSONL) — vitest fork workers do not reliably fire
+     * 'exit'/'beforeExit', so we never rely on a final flush. `count` is 1 here (re-hits skipped).
+     */
     appendRecord(rec);
   }
   return oracleResult;
@@ -162,8 +171,11 @@ const sink = (
 Object.assign(globalThis, { ['__EXTEND_INDEX_SWEEP__']: sink });
 
 const outFile = process.env.SWEEP_OUT;
-// NOTE: do NOT truncate on module load — vitest reloads setup files per test file, which would
-// wipe earlier files' records. The runner truncates SWEEP_OUT once before the run; we only append.
+
+/*
+ * NOTE: do NOT truncate on module load — vitest reloads setup files per test file, which would
+ * wipe earlier files' records. The runner truncates SWEEP_OUT once before the run; we only append.
+ */
 function appendRecord(rec: SweepRecord): void {
   if (outFile) {
     appendFileSync(outFile, JSON.stringify(rec) + '\n');

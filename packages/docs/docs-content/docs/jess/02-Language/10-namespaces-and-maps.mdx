@@ -1,0 +1,245 @@
+---
+title: Lists, maps, and collections
+audiences:
+  - jess
+origin: jess
+---
+Probably the best reason to convert your Sass and Less to Jess today is to use its elegant syntax that unifies the concepts of namespaces, collections, maps, and objects.
+
+## A Jess collection
+
+```less
+// theme.jess
+$colors: {
+  primary: #06c;
+  secondary: #e00;
+  tertiary: #000;
+}
+```
+
+```less
+// app.jess
+@-compose "./theme.jess";
+
+.box {
+  color: $theme.colors.primary;
+}
+```
+
+You'll notice that the assigned namespace `theme` acts as a collection of values, and the `colors` variable is just another collection of values. Just like JavaScript objects, you can access the values in the collection using the dot (`.`) syntax.
+
+Note that there is no `;` after the collection's closing brace. A block-valued
+assignment ends at its closing brace, so the semicolon is optional and the next token
+begins a new statement. See
+[block-valued assignments](./variables#block-valued-assignments-auto-terminate) for
+the full rule, including why nothing may appear before the block.
+
+Speaking of JavaScript objects... did you know you can use them in Jess?
+```js
+// tokens.js
+export const sizes = {
+  small: '10px',
+  medium: '20px',
+  large: '30px'
+}
+```
+
+```less
+@-use "./tokens.js";
+
+.box {
+  padding: $tokens.sizes.small;
+}
+```
+
+### Sub-collections
+
+Collections can contain other collections.
+
+```less
+// theme.jess
+$colors: {
+  primary: #06c;
+  secondary: #e00;
+  tertiary: {
+    light: #06c;
+    dark: #e00;
+  }
+}
+```
+
+```less
+// app.jess
+@-compose "./theme.jess";
+
+.box {
+  color: $theme.colors.tertiary.light;
+}
+```
+
+:::warning[Collections are not anonymous mixins]
+
+You may notice that collections look very similar to anonymous mixins without parameters, which can look like:
+
+```less
+$mixin: @{
+  color: red;
+}
+```
+
+This similarity is on purpose! And, in fact, you can access mixins and rulesets as collections, if you wish. But, the important difference is that
+
+**a collection is data; an anonymous mixin is code.**
+
+That split is the whole rule, and everything else follows from it:
+
+1. a collection cannot contain rulesets, mixin definitions, or at-rules,
+2. a collection cannot contain **variable declarations** either — a binding inside
+   a block is scope machinery, so a block that declares variables is an anonymous
+   mixin, not a collection, and
+3. a collection is for arbitrary key/value pairs, not CSS properties & values.
+
+Rule 2 is what keeps map functions honest: if `$a: 1` could sit inside a
+collection, every one of them would first have to decide whether `$a` is a key or
+a binding. Nothing is lost by the split — a Less detached ruleset that declares
+variables simply *is* an anonymous mixin, and you can still read its members.
+
+:::
+
+## Collection keys are values
+
+A collection key is a **value**, not a property name, and lookups match by value
+equality:
+
+```less
+// the key here is the STRING "small"
+$m: {
+  small: 4px;
+}
+```
+
+A bare name is unambiguous because `$` is what marks a variable: `small` is the
+string key, `$small` is the variable. So `$m[small]`, `$m["small"]` and
+`$m[$k]` (where `$k` holds `small`) all reach the same entry.
+
+## Subscripts: the key's type decides
+
+Jess also uses `[…]` for positional access into a list, so one rule settles which
+you get — **the subscript's own type, never the receiver's**:
+
+| Subscript | Meaning |
+| --- | --- |
+| a **number** — `$x[1]`, `$x[-1]` | **positional index**; negative counts from the end |
+| **anything else** — `$x[small]`, `$x[$k]`, `$x[red]`, `$x["a"]` | **key lookup** by value equality |
+
+`$x[1]` is positional whether `$x` turns out to be a list or a collection. A
+subscript whose meaning shifted with the receiver's runtime type would be a
+footgun; this way you can read the source and know.
+
+:::caution[Numeric keys are not reachable by bracket]
+
+The trade-off is deliberate: if you use numbers as collection keys, `[…]` will
+not reach them, because a numeric subscript is always a position. Use
+`map.get($m, 1px)` for those. Positional indexing is the common case and numeric
+keys are rare, so the rare case is the one that takes a function.
+
+:::
+
+
+## Lists and arrays
+
+Jess also borrows the concept of lists and array access from JavaScript.
+
+```less
+// theme.jess
+$sizes: 10px, 20px, 30px;
+
+.box {
+  padding: $sizes[0]; // 10px
+}
+```
+Jess also borrows a convenient syntax some languages use for accessing items from the end of the list, which is to use a negative index.
+
+```less
+.box {
+  padding: $sizes[-1]; // 30px
+}
+```
+
+:::info
+
+You may never need to use it, but Jess also allows numeric indexed access to values of a ruleset or mixin.
+
+```less
+.mixin() {
+  color: #06c;
+  color: #e00;
+}
+
+// Might be useful to access two values with the same key,
+// since `$ > .mixin().color` would return the final value.
+.box {
+  color-1: $ > .mixin[0]; // #06c
+  color-2: $ > .mixin[1]; // #e00
+}
+```
+
+:::
+
+## Other language approaches
+
+### Less's approach to maps
+
+Less's innovation is that it allows you to use rulesets and mixins as maps, and Jess takes a lot of inspiration from Less's syntax. Here's a Less example:
+
+```less
+.mixin() {
+  color: #06c;
+  color: #e00;
+}
+
+.box {
+  color: .mixin[primary];
+  color: .mixin[secondary];
+}
+```
+→
+```css
+.box {
+  color: #06c;
+  color: #e00;
+}
+```
+
+There are a few downsides of Less's syntax for maps.
+
+1. There is semantic confusion between a map / collection and a "set of rules". An anonymous ruleset, for example, could contain real CSS properties, or it could contain arbitrary keys the developer has assigned. This makes it impossible for an IDE, for example, to give feedback to the developer about the contents of the ruleset. Is it a mis-typed CSS property? Or is it just a key in a map?
+2. Accessing variables in a map can look unintuitive e.g. `@map[@my-var]`. JavaScript developers may interpret this as saying the _property name_ is variable, and not that it is literally a variable named `@my-var`.
+
+
+### Sass's approach to maps
+
+Sass's approach to maps is a bit of a syntactic mess. Even though CSS has a clearly-defined syntax for assigning values to properties, it opts to a) use quoted strings as property names, and b) separate property / value pairs with commas instead of CSS's standard semi-colon.
+
+```scss
+$font-weights: ("regular": 400, "medium": 500, "bold": 700);
+```
+
+Simiarly, even though Sass added the concept of namespaces, it doesn't use it for maps, instead using the `map-get` (or `map.get`) function.
+
+```scss
+value: map.get($font-weights, "medium"); // 500
+value: map.get($font-weights, "bold"); // 700
+```
+
+Jess's approach makes this much cleaner and look more intuitive to a web developer familiar with CSS and JavaScript.
+```scss
+$font-weights: {
+  regular: 400;
+  medium: 500;
+  bold: 700;
+}
+
+value: $font-weights.regular; // 400
+value: $font-weights.bold; // 700
+```

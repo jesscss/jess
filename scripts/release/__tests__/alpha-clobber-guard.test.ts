@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 // The release tooling is plain ESM (.mjs); import it directly.
 import { computeMinAlphaTag, isAlphaClobber } from '../release-utils.mjs';
 
@@ -15,29 +16,25 @@ const pkgs = ['@scope/a', '@scope/b', '@scope/c'];
 
 describe('computeMinAlphaTag (laggard across the publish set)', () => {
   it('returns the minimum alpha number, comparing numerically', () => {
-    expect(
-      computeMinAlphaTag(
-        pkgs,
-        taggedFrom({
-          ['@scope/a']: '2.0.0-alpha.8',
-          ['@scope/b']: '2.0.0-alpha.10',
-          ['@scope/c']: '2.0.0-alpha.9'
-        })
-      )
-    ).toBe('2.0.0-alpha.8');
+    expect(computeMinAlphaTag(
+      pkgs,
+      taggedFrom({
+        ['@scope/a']: '2.0.0-alpha.8',
+        ['@scope/b']: '2.0.0-alpha.10',
+        ['@scope/c']: '2.0.0-alpha.9'
+      })
+    )).toBe('2.0.0-alpha.8');
   });
 
   it('ignores packages with no alpha tag (they do not drag the min down)', () => {
-    expect(
-      computeMinAlphaTag(
-        pkgs,
-        taggedFrom({
-          ['@scope/a']: '2.0.0-alpha.8',
-          ['@scope/b']: null,
-          ['@scope/c']: '2.0.0-alpha.9'
-        })
-      )
-    ).toBe('2.0.0-alpha.8');
+    expect(computeMinAlphaTag(
+      pkgs,
+      taggedFrom({
+        ['@scope/a']: '2.0.0-alpha.8',
+        ['@scope/b']: null,
+        ['@scope/c']: '2.0.0-alpha.9'
+      })
+    )).toBe('2.0.0-alpha.8');
   });
 
   it('returns null when NO package has an alpha tag', () => {
@@ -46,8 +43,10 @@ describe('computeMinAlphaTag (laggard across the publish set)', () => {
 });
 
 describe('isAlphaClobber (dev->alpha squash guard)', () => {
-  // Helper mirroring the publish-alpha.mjs call site: compute minTag from the
-  // per-package tags, then run the guard against the branch manifest version.
+  /*
+   * Helper mirroring the publish-alpha.mjs call site: compute minTag from the
+   * per-package tags, then run the guard against the branch manifest version.
+   */
   function guard(manifestVersion: string, tags: Record<string, string | null>) {
     const minTag = computeMinAlphaTag(pkgs, taggedFrom(tags));
     return isAlphaClobber({ manifestVersion, minTag });
@@ -68,13 +67,11 @@ describe('isAlphaClobber (dev->alpha squash guard)', () => {
   });
 
   it('(c) manifest alpha.8, tags {alpha.8, alpha.8, alpha.7 laggard} -> ALLOW (resume)', () => {
-    expect(
-      guard('2.0.0-alpha.8', {
-        ['@scope/a']: '2.0.0-alpha.8',
-        ['@scope/b']: '2.0.0-alpha.8',
-        ['@scope/c']: '2.0.0-alpha.7'
-      })
-    ).toBe(false);
+    expect(guard('2.0.0-alpha.8', {
+      ['@scope/a']: '2.0.0-alpha.8',
+      ['@scope/b']: '2.0.0-alpha.8',
+      ['@scope/c']: '2.0.0-alpha.7'
+    })).toBe(false);
   });
 
   it('(d) preflight candidate alpha.9, all tags alpha.8 -> ALLOW (fresh bump ahead)', () => {
@@ -90,13 +87,11 @@ describe('isAlphaClobber (dev->alpha squash guard)', () => {
   });
 
   it('numeric (not lexical) alpha comparison: manifest alpha.10 vs tags alpha.9 -> ALLOW', () => {
-    expect(
-      guard('2.0.0-alpha.10', {
-        ['@scope/a']: '2.0.0-alpha.9',
-        ['@scope/b']: '2.0.0-alpha.9',
-        ['@scope/c']: '2.0.0-alpha.9'
-      })
-    ).toBe(false);
+    expect(guard('2.0.0-alpha.10', {
+      ['@scope/a']: '2.0.0-alpha.9',
+      ['@scope/b']: '2.0.0-alpha.9',
+      ['@scope/c']: '2.0.0-alpha.9'
+    })).toBe(false);
   });
 
   it('a stable (non-alpha) manifest version never flags', () => {

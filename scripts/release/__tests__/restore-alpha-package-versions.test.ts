@@ -48,8 +48,7 @@ describe('preserveRecoveryManifestVersion', () => {
 
   it('rejects recovery manifests without a usable version', () => {
     expect(() =>
-      preserveRecoveryManifestVersion({ name: 'x' }, { name: 'x' })
-    ).toThrow(/non-empty string version/);
+      preserveRecoveryManifestVersion({ name: 'x' }, { name: 'x' })).toThrow(/non-empty string version/);
   });
 
   it('requires --stage so restored versions cannot be left outside the snapshot index', () => {

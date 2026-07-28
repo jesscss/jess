@@ -30,6 +30,7 @@ export function atIndex<T>(array: readonly T[], index: number = -1): T | undefin
   if (index >= 0) {
     return array[index];
   }
+
   /** Use a negative index to access from the last element */
   return array[array.length + index];
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeDimension } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import percentage from '../percentage.js';
+import { lessFns } from '../registry.js';
+import { percentage } from '../percentage.js';
 
 describe('percentage()', () => {
   it('converts numbers and dimensions to percent dimensions', () => {
@@ -15,6 +15,6 @@ describe('percentage()', () => {
   });
 
   it('is the same canonical function registered for the Less evaluator', () => {
-    expect(builtinLessFns.find(fn => fn.name === 'percentage')).toBe(percentage);
+    expect(lessFns.find(fn => fn.name === 'percentage')).toBe(percentage);
   });
 });

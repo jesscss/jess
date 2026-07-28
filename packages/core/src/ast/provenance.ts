@@ -1,3 +1,5 @@
+import type { Trivia, TriviaMap } from '../types/index.js';
+
 /**
  * Parser-authored source spans for canonical AST nodes.
  *
@@ -6,6 +8,39 @@
  * the exact span; evaluation reads it only when constructing a diagnostic.
  */
 export type AstSourceSpan = Readonly<{ start: number; end: number }>;
+export type AstTriviaRange = AstSourceSpan;
+export interface ParserTriviaEntriesView {
+  readonly length: number;
+  start(index: number): number;
+  end(index: number): number;
+}
+export interface ParserRootTriviaGap {
+  readonly start: number;
+  readonly end: number;
+  hasKind?(kind: string): boolean;
+}
+export interface ParserRootTriviaIndex {
+  readonly labels?: readonly string[];
+  readonly entries: ParserTriviaEntriesView;
+  gapBefore(offset: number): ParserRootTriviaGap | undefined;
+  gapAfter(offset: number): ParserRootTriviaGap | undefined;
+  gaps(): readonly ParserRootTriviaGap[];
+  gapsWithKind?(kind: string | readonly string[]): readonly ParserRootTriviaGap[];
+}
+
+const COMMENT_TRIVIA_KINDS = ['comment', 'blockComment', 'lineComment'] as const;
+type CommentTriviaKind = typeof COMMENT_TRIVIA_KINDS[number];
+
+function isCommentTriviaKind(label: string): label is CommentTriviaKind {
+  return label === 'comment' || label === 'blockComment' || label === 'lineComment';
+}
+
+function gapHasCommentKind(gap: ParserRootTriviaGap): boolean {
+  if (typeof gap.hasKind !== 'function') {
+    return true;
+  }
+  return COMMENT_TRIVIA_KINDS.some(kind => gap.hasKind?.(kind) === true);
+}
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
  *
@@ -17,11 +52,13 @@ export type AstSourceSpan = Readonly<{ start: number; end: number }>;
  */
 export type ValueLayout = readonly string[];
 
-// Parser packages consume the public `@jesscss/core/ast` subpath while core
-// evaluation is also loaded through the package root. Build tools may therefore
-// materialize more than one copy of this small module. A process-global symbol
-// keeps the one parser-authored side table shared across those module identities
-// without adding properties to AST nodes or creating a test-only metadata path.
+/*
+ * Parser packages consume the public `@jesscss/core/ast` subpath while core
+ * evaluation is also loaded through the package root. Build tools may therefore
+ * materialize more than one copy of this small module. A process-global symbol
+ * keeps the one parser-authored side table shared across those module identities
+ * without adding properties to AST nodes or creating a test-only metadata path.
+ */
 const spanStoreKey = Symbol.for('jess.ast.source-span-store');
 const globalStore = globalThis as typeof globalThis & {
   [spanStoreKey]?: WeakMap<object, AstSourceSpan>;
@@ -34,6 +71,185 @@ const layoutGlobal = globalThis as typeof globalThis & {
 };
 const layouts = layoutGlobal[layoutStoreKey] ??= new WeakMap<object, ValueLayout>();
 
+const triviaStoreKey = Symbol.for('jess.ast.trivia-map-store');
+const triviaGlobal = globalThis as typeof globalThis & {
+  [triviaStoreKey]?: WeakMap<object, TriviaMap>;
+};
+const triviaMaps = triviaGlobal[triviaStoreKey] ??= new WeakMap<object, TriviaMap>();
+
+const bodySpanStoreKey = Symbol.for('jess.ast.body-span-store');
+const bodySpanGlobal = globalThis as typeof globalThis & {
+  [bodySpanStoreKey]?: WeakMap<object, AstSourceSpan>;
+};
+const bodySpans = bodySpanGlobal[bodySpanStoreKey] ??= new WeakMap<object, AstSourceSpan>();
+
+function rangeHasComment(src: string, start: number, end: number): boolean {
+  for (let i = start; i < end; i++) {
+    const c = src.charCodeAt(i);
+    if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function makeAstTrivia(src: string, start: number, end: number, hasComment = rangeHasComment(src, start, end)): Trivia {
+  return { start, end, src, hasComment };
+}
+
+/** Build the sparse renderer-facing trivia lookup from parser-owned source ranges. */
+export function createTriviaMapFromRanges(
+  src: string,
+  ranges: Iterable<AstTriviaRange>
+): TriviaMap {
+  const before = new Map<number, Trivia>();
+  const after = new Map<number, Trivia>();
+  let sortedComments: readonly Trivia[] | undefined;
+  for (const range of ranges) {
+    if (range.end <= range.start) {
+      continue;
+    }
+    const run = makeAstTrivia(src, range.start, range.end);
+    after.set(range.start, run);
+    before.set(range.end, run);
+  }
+  return {
+    lookup(offset, direction) {
+      if (offset === undefined) {
+        return undefined;
+      }
+      return direction === 'before'
+        ? before.get(offset)
+        : after.get(offset);
+    },
+    entries(direction) {
+      return direction === 'before'
+        ? before.entries()
+        : after.entries();
+    },
+    has(offset, direction) {
+      if (offset === undefined) {
+        return false;
+      }
+      return direction === 'before'
+        ? before.has(offset)
+        : after.has(offset);
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        const runs: Trivia[] = [];
+        for (const run of after.values()) {
+          if (run.hasComment) {
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
+    }
+  };
+}
+
+/** Adapt Parseman's lazy root trivia index without rebuilding intermediate ranges. */
+export function createTriviaMapFromParseman(
+  src: string,
+  index: ParserRootTriviaIndex
+): TriviaMap {
+  const canonicalByStart = new Map<number, Map<number, Trivia>>();
+  const hasCommentKind = index.labels?.some(isCommentTriviaKind) === true;
+  let sortedComments: readonly Trivia[] | undefined;
+
+  const triviaForGap = (gap: ParserRootTriviaGap | undefined): Trivia | undefined => {
+    if (gap === undefined) {
+      return undefined;
+    }
+    const start = gap.start;
+    const end = gap.end;
+    if (end <= start) {
+      return undefined;
+    }
+    let byEnd = canonicalByStart.get(start);
+    if (byEnd === undefined) {
+      byEnd = new Map<number, Trivia>();
+      canonicalByStart.set(start, byEnd);
+    }
+    let run = byEnd.get(end);
+    if (run === undefined) {
+      const labeledHasComment = hasCommentKind && typeof gap.hasKind === 'function'
+        ? gapHasCommentKind(gap)
+        : undefined;
+      run = makeAstTrivia(
+        src,
+        start,
+        end,
+        labeledHasComment === true ? true : undefined
+      );
+      byEnd.set(end, run);
+    }
+    return run;
+  };
+
+  return {
+    lookup(offset, direction) {
+      if (offset === undefined) {
+        return undefined;
+      }
+      return triviaForGap(direction === 'before'
+        ? index.gapBefore(offset)
+        : index.gapAfter(offset));
+    },
+    * entries(direction) {
+      for (const gap of index.gaps()) {
+        const run = triviaForGap(gap);
+        if (run === undefined) {
+          continue;
+        }
+        yield [
+          direction === 'before' ? run.end : run.start,
+          run
+        ];
+      }
+    },
+    has(offset, direction) {
+      if (offset === undefined) {
+        return false;
+      }
+      return direction === 'before'
+        ? index.gapBefore(offset) !== undefined
+        : index.gapAfter(offset) !== undefined;
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        const runs: Trivia[] = [];
+        const seen = new Set<Trivia>();
+        const labeledGaps = hasCommentKind
+          ? new Set(index.gapsWithKind?.(COMMENT_TRIVIA_KINDS) ?? index.gaps().filter(gapHasCommentKind))
+          : undefined;
+        for (const gap of index.gaps()) {
+          if (labeledGaps !== undefined && !labeledGaps.has(gap) && !rangeHasComment(src, gap.start, gap.end)) {
+            continue;
+          }
+          const run = triviaForGap(gap);
+          if (run?.hasComment === true) {
+            if (seen.has(run)) {
+              continue;
+            }
+            seen.add(run);
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
+    }
+  };
+}
+
+/** @deprecated Use `createTriviaMapFromParseman`. */
+export const createTriviaMapFromRootIndex = createTriviaMapFromParseman;
+
 /** Retain the exact Parseman reduction span for an AST factory result. */
 export function withSourceSpan<T extends object>(node: T, span: AstSourceSpan): T {
   spans.set(node, span);
@@ -43,6 +259,28 @@ export function withSourceSpan<T extends object>(node: T, span: AstSourceSpan): 
 /** Read a parser-authored span, if the AST node originated in source. */
 export function sourceSpanOf(node: object): AstSourceSpan | undefined {
   return spans.get(node);
+}
+
+/** Retain parser-owned document trivia without adding fields to the AST root. */
+export function withTriviaMap<T extends object>(node: T, trivia: TriviaMap): T {
+  triviaMaps.set(node, trivia);
+  return node;
+}
+
+/** Read parser-owned document trivia attached to a canonical AST root. */
+export function triviaMapOf(node: object): TriviaMap | undefined {
+  return triviaMaps.get(node);
+}
+
+/** Retain the exact source span inside a block's braces. */
+export function withBodySpan<T extends object>(node: T, span: AstSourceSpan): T {
+  bodySpans.set(node, span);
+  return node;
+}
+
+/** Read the parser-authored source span inside a block's braces. */
+export function bodySpanOf(node: object): AstSourceSpan | undefined {
+  return bodySpans.get(node);
 }
 
 /** Retain authored separator/trivia runs for a raw ValueSlot array or List fact.

@@ -44,6 +44,7 @@ expect.extend({
       expected
     };
   },
+
   /**
    * Checks if the normalized expected string is contained within the normalized received string.
    *
@@ -92,7 +93,7 @@ expect.extend({
         pass: true,
         message: () => this.utils.matcherHint(`${this.isNot ? '.not' : ''}.toContainString`),
         actual: received,
-        expected: expected
+        expected
       };
     }
 
@@ -103,7 +104,7 @@ expect.extend({
         pass: false,
         message: () => this.utils.matcherHint(`${this.isNot ? '.not' : ''}.toContainString`),
         actual: received,
-        expected: expected
+        expected
       };
     }
 
@@ -122,7 +123,7 @@ expect.extend({
         pass: false,
         message: () => this.utils.matcherHint(`${this.isNot ? '.not' : ''}.toContainString`),
         actual: received,
-        expected: expected
+        expected
       };
     }
 
@@ -161,10 +162,12 @@ expect.extend({
       });
     };
 
-    // Normalize each section:
-    // - before: relative to its own first non-empty line (so first non-empty = 0)
-    // - matching: relative to first matching line (so first matching = 0)
-    // - after: relative to first matching line (maintains relative position)
+    /*
+     * Normalize each section:
+     * - before: relative to its own first non-empty line (so first non-empty = 0)
+     * - matching: relative to first matching line (so first matching = 0)
+     * - after: relative to first matching line (maintains relative position)
+     */
     let beforeRef = 0;
     for (const line of before) {
       if (line.trim().length > 0) {

@@ -8,9 +8,11 @@
  * isNode(x, N.Foo) compiles to: x.nodeType & Foo (one bitwise AND)
  */
 
-// ── Leaf bits (one bit per concrete type) ──────────────────────────
-// These are types that are checked via isNode AND are concrete (not abstract).
-// Sorted roughly by hierarchy grouping.
+/*
+ * ── Leaf bits (one bit per concrete type) ──────────────────────────
+ * These are types that are checked via isNode AND are concrete (not abstract).
+ * Sorted roughly by hierarchy grouping.
+ */
 
 export enum N {
   // Selector subtypes
@@ -49,6 +51,7 @@ export enum N {
   Collection        = 1 << 24,
   Ruleset           = 1 << 25,
   AtRule            = 1 << 26,
+
   /** AtRuleStatement shares the AtRule bit (32-bit mask exhausted). Use instanceof AtRuleStatement for exact identity. */
   AtRuleStatement   = AtRule,
 
@@ -57,11 +60,14 @@ export enum N {
   Comment           = 1 << 28,
   JsFunction        = 1 << 29,
   JsObject          = 1 << 30,
+
   // Note: 1 << 31 is negative in JS (sign bit), so we use it carefully
   JsArray           = 1 << 31,
 
-  // ── Abstract / parent masks ──────────────────────────────────────
-  // These combine child bits so isNode(x, N.Selector) matches any selector.
+  /*
+   * ── Abstract / parent masks ──────────────────────────────────────
+   * These combine child bits so isNode(x, N.Selector) matches any selector.
+   */
 
   SimpleSelector    = BasicSelector | Ampersand | PseudoSelector,
   Selector          = SimpleSelector | CompoundSelector | ComplexSelector | SelectorList | Combinator
@@ -123,8 +129,10 @@ export const nodeTypeBits: Record<string, number> = {
   JsObject: N.JsObject,
   JsArray: N.JsArray,
 
-  // Abstract parent types — 0 because children already have their own bits.
-  // The combined masks (N.Selector, N.SimpleSelector) are for isNode callers only.
+  /*
+   * Abstract parent types — 0 because children already have their own bits.
+   * The combined masks (N.Selector, N.SimpleSelector) are for isNode callers only.
+   */
   Selector: 0,
   SimpleSelector: 0
 };

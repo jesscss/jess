@@ -160,10 +160,13 @@ function withMixinRulesetCallArgsHint<T extends unknown>(name: T, args?: List<No
     && name.options?.type === 'mixin-ruleset'
   ) {
     const hasArgs = Boolean(args?.value.length);
-    // Mark every mixin-ruleset reference reached through a call as an emitting
-    // call (all same-named namespaces on the path contribute), and carry the
-    // args hint. A bare value/index lookup never routes here, so it keeps
-    // override (last-wins) namespace semantics.
+
+    /*
+     * Mark every mixin-ruleset reference reached through a call as an emitting
+     * call (all same-named namespaces on the path contribute), and carry the
+     * args hint. A bare value/index lookup never routes here, so it keeps
+     * override (last-wins) namespace semantics.
+     */
     if (
       name.options.mixinRulesetCall === true
       && name.options.mixinRulesetCallHasArgs === hasArgs
@@ -194,6 +197,7 @@ export type CallValue = {
    */
   name: string | Node;
   args?: List<Node>;
+
   /**
    * Optional content node, used for passing blocks to mixins/functions.
    * This is how Jess represents "call with content block" forms like:
@@ -211,6 +215,7 @@ export type CallOptions = {
    */
   markImportant?: boolean;
   silentFail?: boolean;
+
   /** Parser-provided hint for modern color-call syntax (space/slash form). */
   modernSyntax?: boolean;
 };
@@ -647,8 +652,11 @@ export class Call extends Node<CallValue, CallOptions> {
     const ownResults = options?.ownResults ?? true;
     const source = coerceNodeArray(nodes.value);
     const out = new Array<Node>(source.length);
-    // Coercing raw parser segments to nodes is itself a change — the returned
-    // list must be rebuilt from `out`, not the original raw-valued `nodes`.
+
+    /*
+     * Coercing raw parser segments to nodes is itself a change — the returned
+     * list must be rebuilt from `out`, not the original raw-valued `nodes`.
+     */
     const rawValue: unknown = nodes.value;
     let changed = source !== rawValue;
     const continueAsync = async (startIndex: number, first: Promise<Node>): Promise<List<Node>> => {
@@ -1566,8 +1574,11 @@ export class Call extends Node<CallValue, CallOptions> {
     this.name = value.name;
     this.args = value.args;
     this.contentNode = value.contentNode;
-    // Function calls are always non-static, and always require a semi
-    // separator (was `_requiredSemi = true`; now the F_SEMI_* bits).
+
+    /*
+     * Function calls are always non-static, and always require a semi
+     * separator (was `_requiredSemi = true`; now the F_SEMI_* bits).
+     */
     this.addFlags(F_VISIBLE, F_NON_STATIC, F_SEMI_SET, F_SEMI_VALUE);
   }
 
@@ -1712,8 +1723,11 @@ export class Call extends Node<CallValue, CallOptions> {
       if (typeof this.name !== 'string') {
         return this.renderDynamicFunctionOutput(context, prepared, bufferOrOptions, options);
       }
-      // Plain CSS calls render args/content explicitly so async child failures
-      // keep calc-frame cleanup instead of falling back to source text.
+
+      /*
+       * Plain CSS calls render args/content explicitly so async child failures
+       * keep calc-frame cleanup instead of falling back to source text.
+       */
       const rendered = this.renderPlainFunctionCall(this, context, prepared, { evaluateCalcArgs });
       return sharesWriter
         ? rendered
@@ -1814,8 +1828,11 @@ export class Call extends Node<CallValue, CallOptions> {
   override async evalNode(context: Context): Promise<Node> {
     const state = this.createEvalState();
     const result = await this.evalFromState(context, state);
-    // Mark a Call result as resolved output (render emits it as a plain CSS
-    // call). Replaces the general `evaluated` flag for the call-render path.
+
+    /*
+     * Mark a Call result as resolved output (render emits it as a plain CSS
+     * call). Replaces the general `evaluated` flag for the call-render path.
+     */
     if (isNode(result, N.Call)) {
       result._evaluatedCallOutput = true;
     }
@@ -1836,25 +1853,32 @@ export class Call extends Node<CallValue, CallOptions> {
     } else {
       n = await name.eval(context);
     }
+
     // Resolve mixin reference only at call time (same as variable refs: evaluate when used, not when stored).
     n = withMixinRulesetCallArgsHint(n, args);
     if (isNode(n, N.Reference) && n.options?.type === 'mixin-ruleset') {
       n = await n.eval(context);
     }
-    // Note: Stylesheet-defined functions should be represented as a Reference(type='function')
-    // by parsers that support them. We intentionally avoid implicit string→function lookup here
-    // to prevent surprising behavior for plain CSS function-like calls.
-    // If the evaluated name is a Call node, execute it directly
-    // This handles cases like @alias: .something(foo); @alias();
+
+    /*
+     * Note: Stylesheet-defined functions should be represented as a Reference(type='function')
+     * by parsers that support them. We intentionally avoid implicit string→function lookup here
+     * to prevent surprising behavior for plain CSS function-like calls.
+     * If the evaluated name is a Call node, execute it directly
+     * This handles cases like @alias: .something(foo); @alias();
+     */
     if (isNode(n, N.Call)) {
       // Execute the inner Call node (it will handle its own callStack push/pop)
       const result = await n.eval(context);
+
       // Apply markImportant if needed
       if (markImportant && isNode(result, N.Rules)) {
         this.makeImportant(result);
       }
       return result;
-    } else if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
+    }
+
+    if (isNode(n, N.Mixin) || isNode(n, N.Ruleset) || Array.isArray(n)) {
       n = new MixinCollection(Array.isArray(n) ? n : [n]);
     } else if (n instanceof MixinCollection) {
       // already a MixinCollection from Reference, use as-is
@@ -1864,24 +1888,31 @@ export class Call extends Node<CallValue, CallOptions> {
       const result = await n.evalCall(context, argNodes);
       return result;
     } else if (isNode(n, N.Collection)) {
-      // A no-arg call of a detached collection returns the collection surface
-      // itself (thin: no clone, no callable eval). Its declarations render from
-      // the shared surface. Args are meaningless on a collection.
+      /*
+       * A no-arg call of a detached collection returns the collection surface
+       * itself (thin: no clone, no callable eval). Its declarations render from
+       * the shared surface. Args are meaningless on a collection.
+       */
       if (args && args.value.length > 0) {
         throw new ReferenceError(`Cannot call ${n.type} with arguments`);
       }
       return this.markCallOutput(n);
     } else if (isNode(n, N.Rules) && n instanceof Rules) {
       const rulesNode = n;
-      // PreserveRulesLike variable calls intentionally evaluate from the
-      // detached ruleset's lexical parent. Removing this lets non-leaky calls
-      // see caller variables; see call.test.ts "does not let detached ruleset
-      // calls read caller scope in non-leaky mode".
+
+      /*
+       * PreserveRulesLike variable calls intentionally evaluate from the
+       * detached ruleset's lexical parent. Removing this lets non-leaky calls
+       * see caller variables; see call.test.ts "does not let detached ruleset
+       * calls read caller scope in non-leaky mode".
+       */
       if (state.preservesRulesLikeVariableTarget) {
-        // A detached ruleset resolves free vars up the surface where it was
-        // WRITTEN. Prefer the closure scope captured at arg-binding (the per-call
-        // surface T, which carries param live-slots); fall back to the canonical
-        // lexical parent when there is no closure capture.
+        /*
+         * A detached ruleset resolves free vars up the surface where it was
+         * WRITTEN. Prefer the closure scope captured at arg-binding (the per-call
+         * surface T, which carries param live-slots); fall back to the canonical
+         * lexical parent when there is no closure capture.
+         */
         const closureScope = rulesNode._closureScope;
         const sourceParent = closureScope ?? ('sourceNode' in rulesNode && isNode(rulesNode.sourceNode)
           ? rulesNode.sourceNode.parent
@@ -1890,8 +1921,11 @@ export class Call extends Node<CallValue, CallOptions> {
           rulesNode.parent = sourceParent;
         }
       }
-      // Detached rulesets/collections share the same callable-body path as
-      // anonymous mixin bodies. They still reject explicit arguments.
+
+      /*
+       * Detached rulesets/collections share the same callable-body path as
+       * anonymous mixin bodies. They still reject explicit arguments.
+       */
       if (args && args.value.length > 0) {
         throw new ReferenceError(`Cannot call ${rulesNode.type} with arguments`);
       }
@@ -1962,11 +1996,14 @@ export class Call extends Node<CallValue, CallOptions> {
             }
             throw e;
           }
-          // A registered function matched (isExtendedFn) but couldn't produce a
-          // value. `functionMode: 'error'` throws it; the default 'preserve'
-          // renders the call as-is (like an unknown CSS function) and warns —
-          // but only for an optional (fallback) reference, i.e. a bare/global
-          // call. A non-fallback reference (explicit import) always throws.
+
+          /*
+           * A registered function matched (isExtendedFn) but couldn't produce a
+           * value. `functionMode: 'error'` throws it; the default 'preserve'
+           * renders the call as-is (like an unknown CSS function) and warns —
+           * but only for an optional (fallback) reference, i.e. a bare/global
+           * call. A non-fallback reference (explicit import) always throws.
+           */
           const functionMode = context?.options.functionMode ?? 'preserve';
           if (!this._options?.silentFail || functionMode === 'error') {
             throw e;
@@ -1975,69 +2012,77 @@ export class Call extends Node<CallValue, CallOptions> {
           return this.evalOptionalFallbackCallSyntax(context, state, name, n);
         }
       });
-    } else {
-      // The name resolves to a value (e.g. a Reference → Any 'calc'), so detect
-      // calc by its rendered text rather than string identity.
-      const isCalc = getRenderedCallNameText(n) === 'calc';
-      if (isCalc) {
-        context.calcFrames++;
-      }
-      const evaluatedArgs = await this.evalArgNodes(context, args, {
-        ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
-      })
-        .finally(() => {
-          if (isCalc) {
-            context.calcFrames--;
-          }
-        });
-      if (
-        isCalc && evaluatedArgs && evaluatedArgs.value.length === 1
-      ) {
-        const arg0 = evaluatedArgs.value[0]!;
-        const dim = unwrapToDimension(arg0);
-        if (dim) {
-          return dim;
-        } else if (context.calcFrames !== 0) {
-          return new Paren(arg0);
+    }
+
+    /*
+       * The name resolves to a value (e.g. a Reference → Any 'calc'), so detect
+       * calc by its rendered text rather than string identity.
+       */
+    const isCalc = getRenderedCallNameText(n) === 'calc';
+    if (isCalc) {
+      context.calcFrames++;
+    }
+    const evaluatedArgs = await this.evalArgNodes(context, args, {
+      ownResults: !(this._options?.silentFail && typeof this.name !== 'string')
+    })
+      .finally(() => {
+        if (isCalc) {
+          context.calcFrames--;
         }
-        // Outermost calc wrapping an already-preserved calc — e.g. an explicit
-        // `calc(@x)` where `@x` is `calc(a op b)`. CSS flattens nested calc:
-        // rebuild as a single `calc(...)` around the inner calc's content so we
-        // emit `calc(a op b)` (not `calc((a op b))`) and keep a calc Call (not
-        // an Any), so a further `calc(@x) op Y` still composes.
-        if (isCalcCall(arg0)) {
-          const innerArgs = arg0.args;
-          if (innerArgs && innerArgs.value.length === 1) {
-            const node = new Call(
-              { name: 'calc', args: list([innerArgs.value[0]!]), contentNode: state.contentNode },
-              { silentFail: false },
-              sourceSpanOf(this)
-            );
-            return this.markCallOutput(node);
-          }
+      });
+    if (
+      isCalc && evaluatedArgs?.value.length === 1
+    ) {
+      const arg0 = evaluatedArgs.value[0]!;
+      const dim = unwrapToDimension(arg0);
+      if (dim) {
+        return dim;
+      }
+
+      if (context.calcFrames !== 0) {
+        return new Paren(arg0);
+      }
+
+      /*
+         * Outermost calc wrapping an already-preserved calc — e.g. an explicit
+         * `calc(@x)` where `@x` is `calc(a op b)`. CSS flattens nested calc:
+         * rebuild as a single `calc(...)` around the inner calc's content so we
+         * emit `calc(a op b)` (not `calc((a op b))`) and keep a calc Call (not
+         * an Any), so a further `calc(@x) op Y` still composes.
+         */
+      if (isCalcCall(arg0)) {
+        const innerArgs = arg0.args;
+        if (innerArgs?.value.length === 1) {
+          const node = new Call(
+            { name: 'calc', args: list([innerArgs.value[0]!]), contentNode: state.contentNode },
+            { silentFail: false },
+            sourceSpanOf(this)
+          );
+          return this.markCallOutput(node);
         }
       }
-      const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
-      if (this._options?.silentFail && typeof this.name !== 'string') {
-        const rendered = await state.source.renderFinalizedCallSyntax(finalizedName, state, context, prepareRenderPrintState(context), {
-          args: evaluatedArgs,
-          ...(state.contentNode && { contentNode: state.contentNode })
-        });
-        return this.markCallOutput(new Any(rendered, { role: 'any' }));
-      }
-      const node = new Call(
-        {
-          name: finalizedName,
-          args: evaluatedArgs,
-          contentNode: state.contentNode
-        },
-        this._options
-          ? { ...this._options, silentFail: false }
-          : { silentFail: false },
-        sourceSpanOf(this)
-      );
-      return this.markCallOutput(node);
-    };
+    }
+    const finalizedName = typeof n === 'string' || n instanceof Node ? n : stringifyValueOf(n);
+    if (this._options?.silentFail && typeof this.name !== 'string') {
+      const rendered = await state.source.renderFinalizedCallSyntax(finalizedName, state, context, prepareRenderPrintState(context), {
+        args: evaluatedArgs,
+        ...(state.contentNode && { contentNode: state.contentNode })
+      });
+      return this.markCallOutput(new Any(rendered, { role: 'any' }));
+    }
+    const node = new Call(
+      {
+        name: finalizedName,
+        args: evaluatedArgs,
+        contentNode: state.contentNode
+      },
+      this._options
+        ? { ...this._options, silentFail: false }
+        : { silentFail: false },
+      sourceSpanOf(this)
+    );
+    return this.markCallOutput(node);
+    ;
   }
 }
 

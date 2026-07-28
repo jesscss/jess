@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { Compiler } from '../../src/index.js';
-import cssPlugin from '@jesscss/plugin-css';
 import lessPlugin from '@jesscss/plugin-less';
 
 const invalidCalls = [
@@ -90,23 +89,20 @@ describe('Less built-in argument errors through the public AST route', () => {
     expect(output).not.toContain('hsla(#5F59)');
   });
 
-  it('does not apply the Less call policy to a CSS document', async () => {
-    const strict = new Compiler({
-      output: { collapseNesting: true },
-      compile: { functionMode: 'error', plugins: [cssPlugin()] }
-    });
-    await expect(strict.renderString('.entry { color: rgb(1,2, 3); }', {
-      filePath: 'entry.css',
-      extension: '.css'
-    })).resolves.toContain('color: rgb(1, 2, 3)');
-  });
-
   it.each(['scss', 'jess'] as const)('does not apply the Less call policy to .%s documents', async (extension) => {
     const strict = new Compiler({ output: { collapseNesting: true }, compile: { functionMode: 'error' } });
     await expect(strict.renderString('.entry { color: rgb(1,2, 3); }', {
       filePath: `entry.${extension}`,
       extension: `.${extension}`
     })).resolves.toContain('color: rgb(1, 2, 3)');
+  });
+
+  it('rejects a top-level color constructor result as a statement', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('rgba(0,0,0,0);', {
+      filePath: 'entry.less',
+      extension: '.less'
+    })).rejects.toMatchObject({ code: 'eval/invalid-statement' });
   });
 
   it.each(invalidCalls)('reports %s in functionMode:error', async (_label, call, declarations = '') => {

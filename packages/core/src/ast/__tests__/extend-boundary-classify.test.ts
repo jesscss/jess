@@ -44,8 +44,10 @@ describe('classifyMatchBoundary (bnd origin reader)', () => {
   });
 
   it('classifies a straddling multi-segment match as CROSSING', () => {
-    // `.outer { .mid { & .leaf {} } }` -> `.outer .mid .leaf` (origins 2,1,0); target
-    // `.mid .leaf` spans the ancestor `.mid` and own-local `.leaf`.
+    /*
+     * `.outer { .mid { & .leaf {} } }` -> `.outer .mid .leaf` (origins 2,1,0); target
+     * `.mid .leaf` spans the ancestor `.mid` and own-local `.leaf`.
+     */
     const doc = stylesheet([rule('.outer', [rule('.mid', [rule(complex('&', '.leaf'), [])])])]);
     const b = composedChild(doc, '& .leaf');
     const target = branchFromComplex(complex('.mid', '.leaf'));

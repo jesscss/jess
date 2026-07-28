@@ -1,2 +1,12 @@
-/** Less's public path for the canonical typed `average()` callable. */
-export { average as default, averageBase } from '../builtins/average.js';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+import { colorBlend, requireColor } from './color-helper.js';
+
+/** per-channel `average` blend (non-W3C Less extension). */
+export const averageBase = (cb: number, cs: number): number => (cb + cs) / 2;
+
+/** `average(color1, color2)` — per-channel average blend. Byte-faithful to `less/average`. */
+export const average: Fn = defineFunction('average', {
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
+  body: (c1, c2) => colorBlend(averageBase, requireColor(c1), requireColor(c2))
+});

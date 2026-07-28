@@ -79,9 +79,7 @@ function createRulesetMixinPlacementRecord(
   };
 }
 
-function createSourceIndexByOutput(
-  childSegments: readonly MixinOutputChildSegment[]
-): ReadonlyMap<Node, number> {
+function createSourceIndexByOutput(childSegments: readonly MixinOutputChildSegment[]): ReadonlyMap<Node, number> {
   const out = new Map<Node, number>();
   for (let i = 0; i < childSegments.length; i++) {
     const segment = childSegments[i]!;
@@ -336,9 +334,11 @@ export function canEnterMixinOutputForLookup(
     hasTarget?: boolean;
   }
 ): boolean {
-  // Lookup type visibility is checked by canEnterRulesEntryForLookup() or the
-  // caller's isVisibleRulesEntry() guard. This helper only answers the mixin-output gate:
-  // may this lookup enter generated output ambiently, or does it need a target?
+  /*
+   * Lookup type visibility is checked by canEnterRulesEntryForLookup() or the
+   * caller's isVisibleRulesEntry() guard. This helper only answers the mixin-output gate:
+   * may this lookup enter generated output ambiently, or does it need a target?
+   */
   if (!entry.node.options?.mixinOutputSlot) {
     return true;
   }

@@ -123,6 +123,7 @@ describe('defineFunction - splitSequence', () => {
       const result = await callWithContext(context, func, sequence);
 
       expect(result).toContain('received:');
+
       // The function receives the Sequence directly
       expect(result).toContain('1 2 3');
     });
@@ -244,6 +245,7 @@ describe('defineFunction - splitSequence', () => {
       const result = await callWithContext(context, func, new Num(10), new Num(20));
 
       expect(result).toContain('immediate: 10');
+
       // The lazy parameter is passed as a function, so we expect to see the function representation
       expect(result).toContain('lazy:');
     });
@@ -357,9 +359,7 @@ describe('defineFunction - splitSequence', () => {
         const ctx = new Context();
 
         // This should throw a runtime error (callWithContext is async)
-        await expect(
-          callWithContext(ctx, func, dimension)
-        ).rejects.toThrow('Argument \'a\' must be of type \'Color\'');
+        await expect(callWithContext(ctx, func, dimension)).rejects.toThrow('Argument \'a\' must be of type \'Color\'');
       });
 
       it('should validate lazy parameters when thunks are called', async () => {
@@ -375,8 +375,10 @@ describe('defineFunction - splitSequence', () => {
         // Create a Jess node that evaluates to the wrong type
         const dimensionNode = new Dimension({ number: 10, unit: 'px' });
 
-        // callWithContext should supply a lazy thunk for lazy params;
-        // the thunk then fails type validation when invoked.
+        /*
+         * callWithContext should supply a lazy thunk for lazy params;
+         * the thunk then fails type validation when invoked.
+         */
         const ctx = new Context();
         const result = callWithContext(ctx, func, dimensionNode);
         await expect(result).rejects.toThrow('Argument \'a\' must be of type \'Color\'');

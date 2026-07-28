@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
-const handoffPath = resolve(root, 'docs/future/core-architecture/HANDOFF.md');
-const cuttingReviewPath = resolve(root, 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md');
+const handoffPath = resolve(root, 'docs/architecture/core/HANDOFF.md');
+const cuttingReviewPath = resolve(root, 'docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md');
 const skipExecutableEvidence = process.argv.includes('--skip-executable-evidence');
 const reviewMode = process.argv.includes('--mode=staged')
   ? 'staged'
@@ -21,8 +21,8 @@ const unsupportedAggregateMode = process.argv.includes('--mode=upstream');
 const reviewedSourceRoots = [
   'packages/core/src',
   'packages/jess/src',
-  'packages/less-parser/src',
-  'packages/css-parser/src'
+  'packages/syntax/less/less-parser/src',
+  'packages/syntax/css/css-parser/src'
 ];
 const hotPathRoots = reviewedSourceRoots.map(rootPath => `${rootPath}/`);
 const parserRuntimeDebtPath = 'scripts/parser-runtime-boundary-debt.json';
@@ -95,9 +95,7 @@ function sourceModuleReferences(sourcePath, source, entry) {
       if (!specifier.startsWith('.')) {
         continue;
       }
-      const resolved = modulePathWithoutExtension(
-        relative(root, resolve(dirname(resolve(root, sourcePath)), specifier))
-      );
+      const resolved = modulePathWithoutExtension(relative(root, resolve(dirname(resolve(root, sourcePath)), specifier)));
       if (resolved === entryPath) {
         references.push(kind);
       }
@@ -268,10 +266,12 @@ function reviewBase() {
 
 function scopedChangedPaths(mode, snapshots) {
   if (mode === 'release') {
-    // An alpha branch is a squash snapshot of the validated dev tree. Its
-    // branch-wide diff is historical aggregate, not one bounded optimization
-    // patch, so release mode validates the registry/self-prosecution evidence
-    // without prosecuting every old hunk again.
+    /*
+     * An alpha branch is a squash snapshot of the validated dev tree. Its
+     * branch-wide diff is historical aggregate, not one bounded optimization
+     * patch, so release mode validates the registry/self-prosecution evidence
+     * without prosecuting every old hunk again.
+     */
     return [];
   }
   if (mode === 'staged') {
@@ -323,13 +323,9 @@ function collectScopedDiff(mode, changedPaths) {
 }
 
 function readCostContractRegistry(review) {
-  const match = review.match(
-    /<!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->\s*```json\s*([\s\S]*?)\s*```\s*<!-- END AGGRESSIVE-CUTTING-COST-CONTRACTS -->/
-  );
+  const match = review.match(/<!-- BEGIN AGGRESSIVE-CUTTING-COST-CONTRACTS -->\s*```json\s*([\s\S]*?)\s*```\s*<!-- END AGGRESSIVE-CUTTING-COST-CONTRACTS -->/);
   if (!match) {
-    throw new Error(
-      'AGGRESSIVE-CUTTING-REVIEW.md is missing the machine-readable cost-contract registry.'
-    );
+    throw new Error('AGGRESSIVE-CUTTING-REVIEW.md is missing the machine-readable cost-contract registry.');
   }
   let registry;
   try {
@@ -860,8 +856,7 @@ function validateSemanticPreflightMetadata(contract) {
     || typeof featurePath.minimumCounters !== 'object'
     || Object.keys(featurePath.minimumCounters).length === 0
     || Object.entries(featurePath.minimumCounters).some(([counter, minimum]) =>
-      counter.length === 0 || !Number.isInteger(minimum) || minimum <= 0
-    )
+      counter.length === 0 || !Number.isInteger(minimum) || minimum <= 0)
   ) {
     errors.push(`Semantic-preflight cost contract ${contract.id} must name a feature-path fixture and positive minimumCounters.`);
   }
@@ -1204,10 +1199,13 @@ function validateCostContractRegistry(registry) {
         errors.push(`Cost contract ${contract.id} supportFiles require coverage owner-plus-named-carry-forward-support.`);
       }
     }
-    // The neutral-or-negative auto-pass skips the admission-counter / benchmark-A/B /
-    // executable-evidence / source-guard ceremony entirely: it proves cost-neutrality
-    // through the danger-token scan + a byte-identity + costDelta attestation instead
-    // (see validateNeutralRefactorMetadata). It carries no necessity/admission block.
+
+    /*
+     * The neutral-or-negative auto-pass skips the admission-counter / benchmark-A/B /
+     * executable-evidence / source-guard ceremony entirely: it proves cost-neutrality
+     * through the danger-token scan + a byte-identity + costDelta attestation instead
+     * (see validateNeutralRefactorMetadata). It carries no necessity/admission block.
+     */
     if ((contract.kind ?? 'precise') === 'neutral-or-negative') {
       errors.push(...validateNeutralRefactorMetadata(contract));
       continue;
@@ -1240,22 +1238,27 @@ function validateCostContractRegistry(registry) {
       continue;
     }
     errors.push(...validateNecessityMetadata(contract.necessity, `Cost contract ${contract.id}`));
-    // A redundant-call-elimination contract models a pure work-REMOVAL, not a
-    // per-container admission FILTER, so it carries no admission block and no
-    // admission/feature counters. It instead proves byte-identity + a measured
-    // speedup + a net-removal counter delta + a redundancy argument (see
-    // validateRedundantCallEliminationMetadata). Every OTHER kind keeps the full,
-    // unchanged admission requirement below.
+
+    /*
+     * A redundant-call-elimination contract models a pure work-REMOVAL, not a
+     * per-container admission FILTER, so it carries no admission block and no
+     * admission/feature counters. It instead proves byte-identity + a measured
+     * speedup + a net-removal counter delta + a redundancy argument (see
+     * validateRedundantCallEliminationMetadata). Every OTHER kind keeps the full,
+     * unchanged admission requirement below.
+     */
     const kind = contract.kind ?? 'precise';
     if (kind === 'redundant-call-elimination') {
       errors.push(...validateRedundantCallEliminationMetadata(contract));
     } else if (kind === 'off-benchmark-call-reduction') {
-      // An off-benchmark call-reduction models a byte-identical work REMOVAL whose
-      // benefit is off benchmark.less, so it carries no admission block and no
-      // admission/feature counters. It proves byte-identity + benchmark
-      // non-regression + a net call-count reduction on a NAMED fixture (see
-      // validateOffBenchmarkCallReductionMetadata). The heavy admission ceremony
-      // below is skipped exactly as it is for redundant-call-elimination.
+      /*
+       * An off-benchmark call-reduction models a byte-identical work REMOVAL whose
+       * benefit is off benchmark.less, so it carries no admission block and no
+       * admission/feature counters. It proves byte-identity + benchmark
+       * non-regression + a net call-count reduction on a NAMED fixture (see
+       * validateOffBenchmarkCallReductionMetadata). The heavy admission ceremony
+       * below is skipped exactly as it is for redundant-call-elimination.
+       */
       errors.push(...validateOffBenchmarkCallReductionMetadata(contract));
     } else {
       const admission = contract.admission;
@@ -1286,31 +1289,23 @@ function validateCostContractRegistry(registry) {
           || !/collection/i.test(admission.before)
           || !/allocation/i.test(admission.before)
         ) {
-          errors.push(
-            `Cost contract ${contract.id} must put admission before collection and allocation.`
-          );
+          errors.push(`Cost contract ${contract.id} must put admission before collection and allocation.`);
         }
       }
       if (!Array.isArray(contract.counters) || !requiredCounterNames.every(name => contract.counters.includes(name))) {
-        errors.push(
-          `Cost contract ${contract.id} must list calls, admissionCalls, admissionItemsVisited, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
-        );
+        errors.push(`Cost contract ${contract.id} must list calls, admissionCalls, admissionItemsVisited, itemsVisited, noFeatureAllocations, and noFeatureMisses.`);
       }
     }
     if (kind === 'redundant-call-elimination') {
       const removalCounters = ['callsBefore', 'callsAfter', 'noFeatureAllocations'];
       if (!Array.isArray(contract.counters) || !removalCounters.every(name => contract.counters.includes(name))) {
-        errors.push(
-          `Redundant-call-elimination cost contract ${contract.id} must declare callsBefore, callsAfter, and noFeatureAllocations counters.`
-        );
+        errors.push(`Redundant-call-elimination cost contract ${contract.id} must declare callsBefore, callsAfter, and noFeatureAllocations counters.`);
       }
     }
     if (kind === 'off-benchmark-call-reduction') {
       const reductionCounters = ['callsBefore', 'callsAfter'];
       if (!Array.isArray(contract.counters) || !reductionCounters.every(name => contract.counters.includes(name))) {
-        errors.push(
-          `Off-benchmark call-reduction cost contract ${contract.id} must declare callsBefore and callsAfter counters (measured on the named fixture).`
-        );
+        errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must declare callsBefore and callsAfter counters (measured on the named fixture).`);
       }
     }
     if (typeof contract.commonCaseProof !== 'string' || !/(benchmark|counter|test)/i.test(contract.commonCaseProof)) {
@@ -1327,9 +1322,7 @@ function validateCostContractRegistry(registry) {
       || benchmark.warmup !== 20
       || benchmark.pairs !== 45
     ) {
-      errors.push(
-        `Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`
-      );
+      errors.push(`Cost contract ${contract.id} must require the canonical benchmark.less parse-render/render A/B with 20 warmups and 45 alternating pairs.`);
     }
     if (!['precise', 'conservative-filter', 'redundant-call-elimination', 'neutral-or-negative', 'private-unreachable', 'off-benchmark-call-reduction', 'semantic-preflight', 'semantic-boundary', 'semantic-runtime'].includes(kind)) {
       errors.push(`Cost contract ${contract.id} kind must be "precise", "conservative-filter", "redundant-call-elimination", "neutral-or-negative", "private-unreachable", "off-benchmark-call-reduction", "semantic-preflight", "semantic-boundary", or "semantic-runtime".`);
@@ -1337,9 +1330,11 @@ function validateCostContractRegistry(registry) {
     if (!Array.isArray(contract.relations) || contract.relations.length === 0) {
       errors.push(`Cost contract ${contract.id} must state at least one counter relation.`);
     } else if (kind === 'redundant-call-elimination') {
-      // A removal proves NET REMOVAL, not an admission bound: the eliminated
-      // function must run no more often after the change than before. It must NOT
-      // borrow the admission-filter relations (there is no admittedCalls surface).
+      /*
+       * A removal proves NET REMOVAL, not an admission bound: the eliminated
+       * function must run no more often after the change than before. It must NOT
+       * borrow the admission-filter relations (there is no admittedCalls surface).
+       */
       errors.push(...validateDeclaredCounterRelations(contract));
       if (!contract.relations.includes('callsAfter <= callsBefore')) {
         errors.push(`Redundant-call-elimination cost contract ${contract.id} must bind the eliminated work with callsAfter <= callsBefore.`);
@@ -1348,10 +1343,12 @@ function validateCostContractRegistry(registry) {
         errors.push(`Redundant-call-elimination cost contract ${contract.id} must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.`);
       }
     } else if (kind === 'off-benchmark-call-reduction') {
-      // An off-benchmark reduction proves a STRICT net reduction of the eliminated
-      // work on the named fixture (callsAfter < callsBefore). It must NOT borrow the
-      // admission-filter relation (there is no admittedCalls surface) — the benefit
-      // is a call-count delta, not an admission bound.
+      /*
+       * An off-benchmark reduction proves a STRICT net reduction of the eliminated
+       * work on the named fixture (callsAfter < callsBefore). It must NOT borrow the
+       * admission-filter relation (there is no admittedCalls surface) — the benefit
+       * is a call-count delta, not an admission bound.
+       */
       errors.push(...validateDeclaredCounterRelations(contract));
       if (!contract.relations.includes('callsAfter < callsBefore')) {
         errors.push(`Off-benchmark call-reduction cost contract ${contract.id} must bind the eliminated work with callsAfter < callsBefore.`);
@@ -1364,11 +1361,14 @@ function validateCostContractRegistry(registry) {
       if (!contract.relations.includes('calls <= admittedCalls')) {
         errors.push(`Cost contract ${contract.id} must bind expensive calls to admitted calls with calls <= admittedCalls.`);
       }
-      // Precise admission proves an EXACT feature bit: admittedCalls <= featureBearing*
-      // (combined with the audit-record featureBearing <= calls <= admittedCalls this
-      // forces equality). A conservative-filter instead admits a SUPERSET of the true
-      // matches, so it must state the FLIPPED bound featureBearing* <= admittedCalls and
-      // must NOT claim the precise equality bound.
+
+      /*
+       * Precise admission proves an EXACT feature bit: admittedCalls <= featureBearing*
+       * (combined with the audit-record featureBearing <= calls <= admittedCalls this
+       * forces equality). A conservative-filter instead admits a SUPERSET of the true
+       * matches, so it must state the FLIPPED bound featureBearing* <= admittedCalls and
+       * must NOT claim the precise equality bound.
+       */
       const preciseBound = contract.relations.some((relation) => {
         const parsed = parseCounterRelation(relation);
         return parsed?.left === 'admittedCalls'
@@ -1558,6 +1558,79 @@ function changedHunks(diff) {
   return hunks;
 }
 
+/**
+ * Comments and blank lines that a compiler is free to discard. Anything in
+ * {@link semanticCommentPattern} is EXCLUDED: those comments change emitted
+ * output or type-checking, so they are code as far as this gate is concerned.
+ */
+const commentOnlyLinePattern = /^\s*(?:\/\/|\/\*|\*\/|\*(?!\/))/u;
+const semanticCommentPattern = /@__PURE__|__NO_SIDE_EFFECTS__|__NOINLINE__|@ts-|eslint-|prettier-|@preserve|@license|sourceMappingURL|webpackChunkName|istanbul ignore|c8 ignore|v8 ignore/u;
+
+/**
+ * A hunk whose every added and removed line is blank or a non-semantic comment.
+ *
+ * The gate's GOAL is "no unreviewed cost lands on a hot path". Its old TRIGGER
+ * was "a hot-path FILE changed", which is a different predicate: a comment edit
+ * changes the file and changes no cost, so the gate was a guaranteed false
+ * positive on that whole class — and a gate that always cries wolf on routine
+ * edits is what trains people to reach for `--no-verify` on the gates that
+ * matter. Trigger on "the behavior changed" instead.
+ *
+ * Deliberately CONSERVATIVE: any line this cannot prove is a comment counts as
+ * code, so the gate keeps every tooth it had on real hot-path edits.
+ */
+function isCosmeticHunk(hunkText) {
+  const changed = hunkText
+    .split('\n')
+    .filter(line => (line.startsWith('+') || line.startsWith('-'))
+      && !line.startsWith('+++')
+      && !line.startsWith('---'))
+    .map(line => line.slice(1));
+  if (changed.length === 0) {
+    return false;
+  }
+  return changed.every(line => (
+    (line.trim().length === 0 || commentOnlyLinePattern.test(line))
+    && !semanticCommentPattern.test(line)
+  ));
+}
+
+/**
+ * Rebuild `diff` with every cosmetic hunk removed, keeping the `+++ b/<file>`
+ * headers so {@link changedHunks} still attributes the survivors. A file whose
+ * hunks were ALL cosmetic contributes no hunks, so it drops out of every
+ * changed-surface predicate downstream.
+ */
+function stripCosmeticHunks(diff) {
+  const out = [];
+  let pending = null;
+  const flush = () => {
+    if (pending && !isCosmeticHunk(pending.join('\n'))) {
+      out.push(...pending);
+    }
+    pending = null;
+  };
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('@@')) {
+      flush();
+      pending = [line];
+      continue;
+    }
+    if (pending) {
+      if (line.startsWith('diff --git') || line.startsWith('+++ b/') || line.startsWith('--- a/') || line.startsWith('index ')) {
+        flush();
+        out.push(line);
+        continue;
+      }
+      pending.push(line);
+      continue;
+    }
+    out.push(line);
+  }
+  flush();
+  return out.join('\n');
+}
+
 function contractsForChangedHunk(registry, file, hunk) {
   return registry.filter((contract) => {
     if (!contract.files.includes(file) || !contract.sourceCheck) {
@@ -1600,9 +1673,12 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
     byId.set(record.id, record);
     const contract = registry.find(candidate => candidate.id === record.id);
     const kind = contract?.kind ?? 'precise';
-    // The neutral-or-negative auto-pass record carries no necessity/admission/benchmark
-    // ceremony: it proves cost-neutrality with the danger-token scan + a byte-identity +
-    // costDelta attestation (checkNeutralRefactor). Validate that and skip the rest.
+
+    /*
+     * The neutral-or-negative auto-pass record carries no necessity/admission/benchmark
+     * ceremony: it proves cost-neutrality with the danger-token scan + a byte-identity +
+     * costDelta attestation (checkNeutralRefactor). Validate that and skip the rest.
+     */
     if (kind === 'neutral-or-negative') {
       if (record.verdict !== undefined && !['accepted', 'rejected', 'deferred'].includes(record.verdict)) {
         errors.push(`Hot-path cost audit record ${record.id} must use verdict accepted, rejected, or deferred.`);
@@ -1653,11 +1729,13 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       errors.push(`Hot-path cost audit record ${record.id} cannot change its owner while necessity.status is audit-required; prove the fact flow or remove the action first.`);
     }
     if (kind === 'redundant-call-elimination') {
-      // A removal record carries NO admission surface and no admission/feature
-      // counters — it proves byte-identity + measured speedup + net removal +
-      // redundancy (checkRedundantCallElimination). The allocation rule is NOT
-      // relaxed: a pure removal must not allocate on any path, so noFeatureAllocations
-      // must be present and zero.
+      /*
+       * A removal record carries NO admission surface and no admission/feature
+       * counters — it proves byte-identity + measured speedup + net removal +
+       * redundancy (checkRedundantCallElimination). The allocation rule is NOT
+       * relaxed: a pure removal must not allocate on any path, so noFeatureAllocations
+       * must be present and zero.
+       */
       const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
       if (noFeatureAllocations === null) {
         errors.push(`Redundant-call-elimination record ${record.id} must record integer noFeatureAllocations.`);
@@ -1668,12 +1746,14 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
         checkRedundantCallElimination(record, contract.redundantCallElimination, errors);
       }
     } else if (kind === 'off-benchmark-call-reduction') {
-      // An off-benchmark reduction record carries NO admission surface: it proves
-      // byte-identity + benchmark non-regression + a net call-count reduction on a
-      // NAMED fixture + a bounded-traversal disclosure (checkOffBenchmarkCallReduction).
-      // Its added fallback-chain walk MAY allocate (it replaces a heavier descent),
-      // so noFeatureAllocations is NOT forced to zero here — the allocation is instead
-      // disclosed via the danger-token accounting the rest of the gate enforces.
+      /*
+       * An off-benchmark reduction record carries NO admission surface: it proves
+       * byte-identity + benchmark non-regression + a net call-count reduction on a
+       * NAMED fixture + a bounded-traversal disclosure (checkOffBenchmarkCallReduction).
+       * Its added fallback-chain walk MAY allocate (it replaces a heavier descent),
+       * so noFeatureAllocations is NOT forced to zero here — the allocation is instead
+       * disclosed via the danger-token accounting the rest of the gate enforces.
+       */
       if (contract?.offBenchmarkCallReduction && record.verdict === 'accepted') {
         checkOffBenchmarkCallReduction(record, contract.offBenchmarkCallReduction, errors);
       }
@@ -1702,16 +1782,17 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       const noFeatureAllocations = numberCounter(record, ['noFeatureAllocations']);
       const noFeatureMisses = numberCounter(record, ['noFeatureMisses']);
       if (calls === null || featureBearing === null || admissionCount === null || admissionWork === null || itemsVisited === null || noFeatureAllocations === null || noFeatureMisses === null) {
-        errors.push(
-          `Hot-path cost audit record ${record.id} must include numeric calls, feature-bearing calls/containers, admission calls/work, itemsVisited, noFeatureAllocations, and noFeatureMisses.`
-        );
+        errors.push(`Hot-path cost audit record ${record.id} must include numeric calls, feature-bearing calls/containers, admission calls/work, itemsVisited, noFeatureAllocations, and noFeatureMisses.`);
       } else {
         if (featureBearing > calls) {
           errors.push(`Hot-path cost audit record ${record.id} has more feature-bearing calls than calls.`);
         }
         const filterMeta = kind === 'conservative-filter' ? contract.conservativeFilter : undefined;
-        // A conservative filter must ALWAYS prove byte-identity + speedup when accepted;
-        // its no-feature allocation is only excused once that proof passes.
+
+        /*
+         * A conservative filter must ALWAYS prove byte-identity + speedup when accepted;
+         * its no-feature allocation is only excused once that proof passes.
+         */
         const speedupProven = filterMeta && record.verdict === 'accepted'
           ? checkConservativeFilterSpeedup(record, filterMeta, errors)
           : false;
@@ -1724,9 +1805,7 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
         }
         const maxItemsPerContainer = contract?.admission?.maxItemsPerContainer;
         if (Number.isInteger(maxItemsPerContainer) && admissionWork > admissionCount * maxItemsPerContainer) {
-          errors.push(
-            `Hot-path cost audit record ${record.id} exceeds its admission-work budget: ${admissionWork} > ${admissionCount} * ${maxItemsPerContainer}.`
-          );
+          errors.push(`Hot-path cost audit record ${record.id} exceeds its admission-work budget: ${admissionWork} > ${admissionCount} * ${maxItemsPerContainer}.`);
         }
       }
     }
@@ -1773,9 +1852,11 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
   }
 
   for (const contract of registry) {
-    // A neutral-or-negative contract has no source-guard surface to match, so it owns a
-    // changed file by plain file membership. It still requires an accepted neutral record
-    // (checkNeutralRefactor already ran in the per-record loop); it declares no relations.
+    /*
+     * A neutral-or-negative contract has no source-guard surface to match, so it owns a
+     * changed file by plain file membership. It still requires an accepted neutral record
+     * (checkNeutralRefactor already ran in the per-record loop); it declares no relations.
+     */
     if ((contract.kind ?? 'precise') === 'neutral-or-negative' || contract.kind === 'private-unreachable') {
       if (!contract.files.some(file => changedPaths.includes(file))) {
         continue;
@@ -1788,13 +1869,15 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       }
       continue;
     }
-    // Semantic preflights deliberately have no arithmetic counter relations:
-    // their false/feature-path counters are checked by checkSemanticPreflight.
-    // Do not fall through to the ordinary admission/relation loop below.
+
+    /*
+     * Semantic preflights deliberately have no arithmetic counter relations:
+     * their false/feature-path counters are checked by checkSemanticPreflight.
+     * Do not fall through to the ordinary admission/relation loop below.
+     */
     if (contract.kind === 'semantic-preflight' || contract.kind === 'semantic-boundary') {
       const ownsChangedFile = contract.files.some(file =>
-        changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
-      );
+        changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract));
       if (!ownsChangedFile) {
         continue;
       }
@@ -1820,8 +1903,7 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
       continue;
     }
     const ownsChangedFile = contract.files.some(file =>
-      changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
-    );
+      changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract));
     if (!ownsChangedFile) {
       continue;
     }
@@ -1841,11 +1923,13 @@ function validateCostAuditRecords(records, registry, changedPaths, diff, hasDang
     }
   }
 
-  // A semantic-runtime batch is explicit rather than inferred from danger
-  // tokens. Every changed file that opts into that lane must have exactly one
-  // semantic-runtime owner and a corresponding accepted record; narrow
-  // semantic-preflight/boundary records may still coexist for their separately
-  // named sub-surface.
+  /*
+   * A semantic-runtime batch is explicit rather than inferred from danger
+   * tokens. Every changed file that opts into that lane must have exactly one
+   * semantic-runtime owner and a corresponding accepted record; narrow
+   * semantic-preflight/boundary records may still coexist for their separately
+   * named sub-surface.
+   */
   for (const path of changedPaths) {
     const owners = registry.filter(contract => contract.kind === 'semantic-runtime' && contract.files.includes(path));
     if (owners.length === 0) {
@@ -1883,7 +1967,7 @@ function classifyProductionSurface(path) {
   if (isTestOnlyPath(path) || !hotPathRoots.some(rootPath => path.startsWith(rootPath))) {
     return 'outside-review';
   }
-  if (path.startsWith('packages/css-parser/src/') || path.startsWith('packages/less-parser/src/')) {
+  if (path.startsWith('packages/syntax/css/css-parser/src/') || path.startsWith('packages/syntax/less/less-parser/src/')) {
     return 'frontend';
   }
   if (path.startsWith('packages/jess/src/')) {
@@ -1892,8 +1976,11 @@ function classifyProductionSurface(path) {
   if (!path.startsWith('packages/core/src/')) {
     return 'public-plumbing';
   }
-  // Factories/types/errors are construction or public-boundary surfaces, not
-  // eval/render loops.  Do not force fabricated runtime accounting for them.
+
+  /*
+   * Factories/types/errors are construction or public-boundary surfaces, not
+   * eval/render loops.  Do not force fabricated runtime accounting for them.
+   */
   if (/\/ast\/(?:node|nodes|at-rule|value|selector|declaration|function|types?)\.ts$/.test(path)
     || /\/(?:errors?|types?|config|options)\.ts$/.test(path)) {
     return 'public-plumbing';
@@ -1947,9 +2034,11 @@ function isDocumentSourcePlumbingHunk(hunk) {
     return false;
   }
 
-  // Hunk ownership is deliberately by named source-carrier seams, not a
-  // generic token presence. Thus a Context hunk mentioning DocumentContext in
-  // an evaluator/root/selector method remains strict by default.
+  /*
+   * Hunk ownership is deliberately by named source-carrier seams, not a
+   * generic token presence. Thus a Context hunk mentioning DocumentContext in
+   * an evaluator/root/selector method remains strict by default.
+   */
   const sourceCarrierSeam = /(?:DocumentContextOptions|class DocumentContext|export (?:class TreeContext|interface TreeContextOptions)|(?:get |private )?(?:documentContext|sourceContext|setDocumentContext)|setOption<|documentContexts = new WeakMap|documentBodyContexts = new WeakMap|ImportOptions|rememberDocumentContext|withDocument<|transformUrl\(|withDocumentBody<|currentSourceOwner\(|withSourceOwner<|sourceOwnerForBody\(|private async _getPath\(|async loadImport\(|(?:document|tree)\.file|transform\.call|currentPlugin)/;
   return sourceCarrierSeam.test(hunk.text);
 }
@@ -2100,10 +2189,13 @@ function parserRuntimeDebtDeletionForCurrentDiff(mode, changedPaths, diff, findi
   if (mode !== 'staged') {
     return false;
   }
-  // The staged verifier is a script, not an imported library. Never execute a
-  // worktree-modified copy and pretend its answer proves the index: an
-  // unstaged edit could simply exit zero. The candidate may stage a verifier
-  // update, but its working bytes must still exactly equal the index.
+
+  /*
+   * The staged verifier is a script, not an imported library. Never execute a
+   * worktree-modified copy and pretend its answer proves the index: an
+   * unstaged edit could simply exit zero. The candidate may stage a verifier
+   * update, but its working bytes must still exactly equal the index.
+   */
   try {
     git(['diff', '--quiet', '--', 'scripts/verify-parser-runtime-boundary.mjs']);
   } catch {
@@ -2134,8 +2226,10 @@ function parserRuntimeDebtDeletionForCurrentDiff(mode, changedPaths, diff, findi
     });
     boundaryClean = true;
   } catch {
-    // A debt cleanup never receives the exemption unless the independent
-    // boundary verifier accepts the post-change parser sources.
+    /*
+     * A debt cleanup never receives the exemption unless the independent
+     * boundary verifier accepts the post-change parser sources.
+     */
   }
   return isExactParserRuntimeDebtDeletion({ mode, changedPaths, diff, findings, previousDebt, currentDebt, previousSources, nextSources, boundaryClean });
 }
@@ -2160,9 +2254,11 @@ function validateSourceChecks(registry, changedPaths) {
       continue;
     }
     if (contract.kind === 'semantic-runtime') {
-      // Semantic-runtime owners are file-level records; their behavior/build
-      // evidence and baseline are checked without inventing one guarded-call
-      // source anchor for a multi-helper cutover.
+      /*
+       * Semantic-runtime owners are file-level records; their behavior/build
+       * evidence and baseline are checked without inventing one guarded-call
+       * source anchor for a multi-helper cutover.
+       */
       continue;
     }
     const source = readFileSync(resolve(root, sourceCheck.file), 'utf8');
@@ -2174,18 +2270,22 @@ function validateSourceChecks(registry, changedPaths) {
       : source.slice(callerStart, nextMethod < 0 ? undefined : nextMethod);
     const callOffset = callIndex - callerStart;
     if (contract.kind === 'semantic-boundary') {
-      // This kind owns a typed dispatch/result policy, not an expensive admission.
-      // Its exact source anchors and executable branch tests are checked elsewhere;
-      // requiring a fabricated `if (guard) { call }` enclosure would misdescribe it.
+      /*
+       * This kind owns a typed dispatch/result policy, not an expensive admission.
+       * Its exact source anchors and executable branch tests are checked elsewhere;
+       * requiring a fabricated `if (guard) { call }` enclosure would misdescribe it.
+       */
       continue;
     }
     if ((contract.kind ?? 'precise') === 'off-benchmark-call-reduction') {
-      // The bounded fallback walk is entered under a multiline guard condition
-      // (`if ( ... <guard> ... ) { ... <call> ... }`), so the single-line guarded-call
-      // regex the other kinds use will not match. Require a guard BLOCK — an `if`
-      // whose (possibly multiline) condition contains the guard and whose body still
-      // encloses the call — so the reduction's traversal cannot be moved out from
-      // under its admission guard without the source check noticing.
+      /*
+       * The bounded fallback walk is entered under a multiline guard condition
+       * (`if ( ... <guard> ... ) { ... <call> ... }`), so the single-line guarded-call
+       * regex the other kinds use will not match. Require a guard BLOCK — an `if`
+       * whose (possibly multiline) condition contains the guard and whose body still
+       * encloses the call — so the reduction's traversal cannot be moved out from
+       * under its admission guard without the source check noticing.
+       */
       const enclosed = (() => {
         if (callerStart < 0 || callIndex < 0) {
           return false;
@@ -2229,25 +2329,21 @@ function validateSourceChecks(registry, changedPaths) {
         return false;
       })();
       if (!enclosed) {
-        errors.push(
-          `Off-benchmark call-reduction cost contract ${contract.id} changed its owning file without a guard block (if (... ${sourceCheck.guard} ...) { ... }) enclosing ${sourceCheck.call}.`
-        );
+        errors.push(`Off-benchmark call-reduction cost contract ${contract.id} changed its owning file without a guard block (if (... ${sourceCheck.guard} ...) { ... }) enclosing ${sourceCheck.call}.`);
       }
       continue;
     }
     if ((contract.kind ?? 'precise') === 'redundant-call-elimination') {
-      // A removal has no surviving `if (guard) { call }` enclosure; the call is
-      // ELIMINATED for a subset of inputs by a boolean short-circuit whose guard
-      // operand skips it. Require the guard to short-circuit the SAME expression as
-      // the (still-present, now-guarded) call: `<guard> || <call>` or
-      // `<guard> && <call>` with no statement boundary between them.
-      const shortCircuit = new RegExp(
-        `${escapeRegExp(sourceCheck.guard)}\\s*(?:\\|\\||&&)[^;{}]*${escapeRegExp(sourceCheck.call)}`
-      );
+      /*
+       * A removal has no surviving `if (guard) { call }` enclosure; the call is
+       * ELIMINATED for a subset of inputs by a boolean short-circuit whose guard
+       * operand skips it. Require the guard to short-circuit the SAME expression as
+       * the (still-present, now-guarded) call: `<guard> || <call>` or
+       * `<guard> && <call>` with no statement boundary between them.
+       */
+      const shortCircuit = new RegExp(`${escapeRegExp(sourceCheck.guard)}\\s*(?:\\|\\||&&)[^;{}]*${escapeRegExp(sourceCheck.call)}`);
       if (callerStart < 0 || callIndex < 0 || !shortCircuit.test(callerBody)) {
-        errors.push(
-          `Redundant-call-elimination cost contract ${contract.id} changed its owning file without a short-circuit guard (${sourceCheck.guard} ||/&& ${sourceCheck.call}) eliminating ${sourceCheck.call}.`
-        );
+        errors.push(`Redundant-call-elimination cost contract ${contract.id} changed its owning file without a short-circuit guard (${sourceCheck.guard} ||/&& ${sourceCheck.call}) eliminating ${sourceCheck.call}.`);
       }
       continue;
     }
@@ -2274,9 +2370,7 @@ function validateSourceChecks(registry, changedPaths) {
       return false;
     })();
     if (!guardedCall) {
-      errors.push(
-        `Cost contract ${contract.id} changed its owning file without a conditional admission guard enclosing ${sourceCheck.call}.`
-      );
+      errors.push(`Cost contract ${contract.id} changed its owning file without a conditional admission guard enclosing ${sourceCheck.call}.`);
     }
   }
   return errors;
@@ -2290,18 +2384,24 @@ function validateChangedContractSurface(registry, changedPaths, diff) {
     if (supportOwners.length > 0 && owners.length === 0) {
       continue;
     }
-    // A semantic-runtime owner covers a broad typed cutover whose hunks span
-    // several cooperating helpers. Its machine record owns the file-level
-    // semantic cases and behavior/build/baseline evidence; forcing every hunk
-    // to contain one synthetic source anchor would turn the record into a
-    // fabricated optimization contract. Narrow semantic-preflight/boundary
-    // records remain independently checked by their own source metadata.
+
+    /*
+     * A semantic-runtime owner covers a broad typed cutover whose hunks span
+     * several cooperating helpers. Its machine record owns the file-level
+     * semantic cases and behavior/build/baseline evidence; forcing every hunk
+     * to contain one synthetic source anchor would turn the record into a
+     * fabricated optimization contract. Narrow semantic-preflight/boundary
+     * records remain independently checked by their own source metadata.
+     */
     if (owners.some(owner => owner.kind === 'semantic-runtime')) {
       continue;
     }
-    // Neutral-or-negative owners carry no source-guard surface anchors, so their hunks
-    // cannot (and need not) match a registered source surface — the byte-identity +
-    // danger-token + costDelta attestation covers them instead.
+
+    /*
+     * Neutral-or-negative owners carry no source-guard surface anchors, so their hunks
+     * cannot (and need not) match a registered source surface — the byte-identity +
+     * danger-token + costDelta attestation covers them instead.
+     */
     if (owners.length > 0 && owners.every(owner => (owner.kind ?? 'precise') === 'neutral-or-negative' || owner.kind === 'private-unreachable')) {
       continue;
     }
@@ -2337,8 +2437,7 @@ function validateExecutableEvidence(registry, changedPaths, diff) {
     const ownsChangedSurface = semanticRuntime
       ? contract.files.some(file => changedPaths.includes(file))
       : contract.files.some(file =>
-          changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract)
-        );
+          changedPaths.includes(file) && contractsForChangedSurface(registry, file, diff).includes(contract));
     if (!ownsChangedSurface) {
       continue;
     }
@@ -2437,11 +2536,17 @@ async function runVerifier() {
   if (reviewMode === 'release') {
     console.log('Release snapshot mode: aggregate changed-path, danger-token, and cost/A-B accounting skipped.');
   }
-  // Keep the complete branch aggregate visible. It is historical/audit
-  // inventory, not a pretext for forcing parser/frontend/type edits into an
-  // eval/render cost contract. Strict contract accounting receives only the
-  // runtime-engine subset below.
-  const reviewedDiff = qualityOnlyFix ? '' : diff;
+
+  /*
+   * Keep the complete branch aggregate visible. It is historical/audit
+   * inventory, not a pretext for forcing parser/frontend/type edits into an
+   * eval/render cost contract. Strict contract accounting receives only the
+   * runtime-engine subset below.
+   * Trigger on SEMANTIC change, not on "the file was touched": a comment-only
+   * or whitespace-only hunk cannot change emitted cost, so it must not demand a
+   * cost review. See `isCosmeticHunk`.
+   */
+  const reviewedDiff = qualityOnlyFix ? '' : stripCosmeticHunks(diff);
   const reviewedChangedPaths = qualityOnlyFix ? [] : changedPaths;
   const findings = collectDangerFindings(reviewedDiff, dangerPatterns);
   const strictRuntimePaths = strictRuntimeChangedPaths(reviewedChangedPaths, reviewedDiff);
@@ -2484,7 +2589,7 @@ async function runVerifier() {
 
   if (sectionIndex === -1 || missingLabels.length > 0) {
     failed = true;
-    console.error('Missing required Aggressive Cutting Self-Prosecution block in docs/future/core-architecture/HANDOFF.md.');
+    console.error('Missing required Aggressive Cutting Self-Prosecution block in docs/architecture/core/HANDOFF.md.');
     if (missingLabels.length > 0) {
       console.error(`Missing labels: ${missingLabels.join(', ')}`);
     }
@@ -2509,22 +2614,21 @@ async function runVerifier() {
     const reviewTokenLine = selfProsecutionLine(latestPass, '- Review-flagged diff tokens:');
     if (runtimeFindings.length > 0 && (!reviewTokenLine || /\b(none|no new|n\/a)\b/i.test(reviewTokenLine))) {
       failed = true;
-      console.error(
-        '\nDanger tokens require a non-empty "- Review-flagged diff tokens:" accounting line in the latest self-prosecution block.'
-      );
+      console.error('\nDanger tokens require a non-empty "- Review-flagged diff tokens:" accounting line in the latest self-prosecution block.');
     }
-    // Hand-authored prose often wraps a bracketed category across lines.
-    // Normalize whitespace only for this label-presence check; the raw pass is
-    // still retained for every other evidence/source check.
+
+    /*
+     * Hand-authored prose often wraps a bracketed category across lines.
+     * Normalize whitespace only for this label-presence check; the raw pass is
+     * still retained for every other evidence/source check.
+     */
     const normalizedPass = latestPass.replace(/\s+/g, ' ');
     const missingFindingLabels = runtimeFindings
       .map(finding => finding.label)
       .filter(label => !normalizedPass.includes(`[${label}]`));
     if (missingFindingLabels.length > 0) {
       failed = true;
-      console.error(
-        `\nLatest self-prosecution block must explicitly account for every danger category by label. Missing: ${missingFindingLabels.map(label => `[${label}]`).join(', ')}`
-      );
+      console.error(`\nLatest self-prosecution block must explicitly account for every danger category by label. Missing: ${missingFindingLabels.map(label => `[${label}]`).join(', ')}`);
     }
   }
 

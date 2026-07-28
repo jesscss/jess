@@ -1,71 +1,20 @@
-import { defineFunction, Dimension, Color, ColorFormat } from '@jesscss/core';
-import { normalizeHue, percentOf, alphaToNumber, toNumber, splitSequence } from '@jesscss/core';
+import type { Fn } from '@jesscss/core/value';
+import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
+import { alphaToNumber, hsvToRgb, normalizeHue, percentOf } from './color-ctor-helper.js';
+import { requireDimension } from './math-helper.js';
 
 /**
- * Less `hsva()` — construct a `Color` from hue, saturation, value and alpha,
- * converting HSV to RGB internally.
- * @param h hue in degrees
- * @param s saturation (`0–100%`)
- * @param v value/brightness (`0–100%`)
- * @param a alpha (`0–1` or a percentage)
- * @returns the resulting `Color`
+ * `hsva(h, s, v, a)` — construct an RGB-format color from HSV + alpha. Byte-faithful
+ * to `less/hsva`: hue via `normalizeHue`, s/v via `percentOf(1)`, alpha via
+ * `alphaToNumber` (clamped 0-1). Positional (no context needed).
  */
-const hsva = defineFunction(
-  'hsva',
-  function(this: any, h: number, s: number, v: number, a: number) {
-    // Values are already converted to numbers by the conversion plugins
-    h = ((h % 360) / 360) * 360;
-
-    const i = Math.floor((h / 60) % 6);
-    const f = (h / 60) - i;
-
-    const vs = [
-      v,
-      v * (1 - s),
-      v * (1 - f * s),
-      v * (1 - (1 - f) * s)
-    ];
-
-    const perm = [
-      [0, 3, 1],
-      [2, 0, 1],
-      [1, 0, 3],
-      [1, 2, 0],
-      [3, 1, 0],
-      [0, 1, 2]
-    ];
-
-    return new Color({
-      rgb: [
-        vs[perm[i]![0]!]! * 255,
-        vs[perm[i]![1]!]! * 255,
-        vs[perm[i]![2]!]! * 255
-      ],
-      alpha: a
-    }, {
-      format: ColorFormat.RGB
-    });
-  },
-  {
-    params: [{
-      name: 'h',
-      type: Dimension,
-      convert: [normalizeHue(), toNumber()]
-    }, {
-      name: 's',
-      type: Dimension,
-      convert: [percentOf(1), toNumber()]
-    }, {
-      name: 'v',
-      type: Dimension,
-      convert: [percentOf(1), toNumber()]
-    }, {
-      name: 'a',
-      type: Dimension,
-      convert: [alphaToNumber(), toNumber()]
-    }],
-    preprocessParams: [splitSequence()]
+export const hsva: Fn = defineFunction('hsva', {
+  params: [{ kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }, { kinds: ['Dimension'] }],
+  body: (hD, sD, vD, aD) => {
+    const h = normalizeHue(requireDimension(hD));
+    const s = percentOf(requireDimension(sD), 1);
+    const v = percentOf(requireDimension(vD), 1);
+    const a = alphaToNumber(requireDimension(aD));
+    return makeColorRgb(hsvToRgb(h, s, v), a, RGB);
   }
-);
-
-export default hsva;
+});

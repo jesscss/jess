@@ -74,7 +74,6 @@ describe('callable default guard helpers', () => {
     const seenDefaults: boolean[] = [];
     const dynamicGuard = new Bool(false);
     dynamicGuard.hasFlag = () => false;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     dynamicGuard.eval = (async (evalContext: Context) => {
       seenDefaults.push(Boolean(evalContext.isDefault));
       return new Bool(evalContext.isDefault === true);

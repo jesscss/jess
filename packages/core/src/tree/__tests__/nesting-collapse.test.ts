@@ -60,8 +60,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent .child {
         background: blue;
-      }`
-    );
+      }`);
   });
 
   it('preserves source order when declarations follow nested rules', async () => {
@@ -92,8 +91,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent {
         border: 1px solid black;
-      }`
-    );
+      }`);
   });
 
   it('keeps independent adjacent identical headers separate during serialization', async () => {
@@ -120,8 +118,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .same {
         case: 3;
-      }`
-    );
+      }`);
   });
 
   it('does not coalesce adjacent identical headers across printable trivia', async () => {
@@ -153,8 +150,7 @@ describe('CSS Nesting Collapse', () => {
       /* keep */
       .same {
         case: 3;
-      }`
-    );
+      }`);
   });
 
   it('should collapse multiple nested levels', async () => {
@@ -190,8 +186,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent .child .grandchild {
         border: 1px solid black;
-      }`
-    );
+      }`);
   });
 
   it('should handle compound selectors correctly', async () => {
@@ -218,8 +213,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent.container .child.item {
         background: blue;
-      }`
-    );
+      }`);
   });
 
   it('should handle selector lists correctly', async () => {
@@ -250,8 +244,7 @@ describe('CSS Nesting Collapse', () => {
       }
       :is(.parent, .container) .child {
         background: blue;
-      }`
-    );
+      }`);
   });
 
   it('should handle explicit ampersands correctly', async () => {
@@ -278,8 +271,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent .child {
         background: blue;
-      }`
-    );
+      }`);
   });
 
   it('should handle ampersand with space combinator', async () => {
@@ -306,8 +298,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent-modifier .child {
         background: blue;
-      }`
-    );
+      }`);
   });
 
   it('should handle ampersand without space combinator', async () => {
@@ -334,8 +325,7 @@ describe('CSS Nesting Collapse', () => {
       }
       .parent-modifier.child {
         background: blue;
-      }`
-    );
+      }`);
   });
 
   it('does not insert an extra descendant combinator before relative child selectors', async () => {
@@ -363,8 +353,7 @@ describe('CSS Nesting Collapse', () => {
     expect(css).toBeString(`
       #foo-foo > .bar .baz {
         c: c;
-      }`
-    );
+      }`);
   });
 
   it('keeps sibling nested ampersand frames distinct when they only emit nested descendants', async () => {
@@ -411,8 +400,7 @@ describe('CSS Nesting Collapse', () => {
       }
       mi-test-c-2 .baz {
         c: c;
-      }`
-    );
+      }`);
   });
 
   // At-rule bubbling and collapsing tests
@@ -448,8 +436,7 @@ describe('CSS Nesting Collapse', () => {
         .parent .child {
           background: blue;
         }
-      }`
-    );
+      }`);
   });
 
   it('streams hoisted parent selector headers without capture scaffolding', async () => {
@@ -482,8 +469,7 @@ describe('CSS Nesting Collapse', () => {
           .parent {
             color: red;
           }
-        }`
-      );
+        }`);
       expect(writer.captures).toBe(0);
     } finally {
       parentSelector.constructor.prototype.toString = selectorToString;
@@ -509,8 +495,7 @@ describe('CSS Nesting Collapse', () => {
     expect(css).toBeString(`
       .parent {
         @property --brand-color;
-      }`
-    );
+      }`);
     expect(writer.captures).toBe(0);
     expect(writer.previews).toBe(0);
   });
@@ -557,8 +542,7 @@ describe('CSS Nesting Collapse', () => {
     expect(css).toBeString(`
       .parent {
         /* keep */
-      }`
-    );
+      }`);
   });
 
   it('keeps sibling nested rulesets separate when one body is a plain Rules wrapper', async () => {
@@ -594,8 +578,7 @@ describe('CSS Nesting Collapse', () => {
       }
       show-all-content .something {
         inside: something;
-      }`
-    );
+      }`);
   });
 
   it('keeps sibling nested rulesets separate after a reference-mode child wrapper', async () => {
@@ -639,8 +622,7 @@ describe('CSS Nesting Collapse', () => {
       }
       show-all-content .something {
         inside: something;
-      }`
-    );
+      }`);
   });
 
   it('should bubble @supports rules to root level', async () => {
@@ -675,8 +657,7 @@ describe('CSS Nesting Collapse', () => {
         .parent .child {
           display: grid;
         }
-      }`
-    );
+      }`);
   });
 
   it('should merge multiple hoisted @media rules', async () => {
@@ -723,8 +704,7 @@ describe('CSS Nesting Collapse', () => {
             background: blue;
           }
         }
-      }`
-    );
+      }`);
   });
 
   it('should handle rulesets nested inside at-rules', async () => {
@@ -772,8 +752,7 @@ describe('CSS Nesting Collapse', () => {
         .parent .child .grandchild {
           border: 1px solid;
         }
-      }`
-    );
+      }`);
   });
 
   it('should handle multiple at-rules with nested rulesets', async () => {
@@ -825,8 +804,7 @@ describe('CSS Nesting Collapse', () => {
         .parent .flex-child {
           display: flex;
         }
-      }`
-    );
+      }`);
   });
 
   it('should handle complex nested at-rule scenarios', async () => {
@@ -882,14 +860,15 @@ describe('CSS Nesting Collapse', () => {
         .container .mobile-item {
           margin: 5px;
         }
-      }`
-    );
+      }`);
   });
 
-  // Regression: string-normalized selectors (strings-not-nodes model) through an
-  // at-rule bubble. `getHoistedParent`/`renderHoistedParentHeader` used to call
-  // `parent.selector.writeSyntax` unconditionally — a string selector has no such
-  // method, throwing `parent.selector.writeSyntax is not a function`.
+  /*
+   * Regression: string-normalized selectors (strings-not-nodes model) through an
+   * at-rule bubble. `getHoistedParent`/`renderHoistedParentHeader` used to call
+   * `parent.selector.writeSyntax` unconditionally — a string selector has no such
+   * method, throwing `parent.selector.writeSyntax is not a function`.
+   */
   it('hoists a string-selector parent through a bubbled at-rule', async () => {
     const node = rules([
       ruleset({
@@ -918,14 +897,15 @@ describe('CSS Nesting Collapse', () => {
         .wrapper .mobile-only {
           display: block;
         }
-      }`
-    );
+      }`);
   });
 
-  // Regression: a nested string selector under an at-rule must keep its own header.
-  // `writeHeaderSelector` returned an empty comparable header for a string selector
-  // in the `withoutComments` (comparable) path, so `.child` coalesced into the
-  // `.container` frame instead of emitting `.container .child`.
+  /*
+   * Regression: a nested string selector under an at-rule must keep its own header.
+   * `writeHeaderSelector` returned an empty comparable header for a string selector
+   * in the `withoutComments` (comparable) path, so `.child` coalesced into the
+   * `.container` frame instead of emitting `.container .child`.
+   */
   it('keeps a nested string selector as its own frame under an at-rule', async () => {
     const node = rules([
       ruleset({
@@ -963,7 +943,6 @@ describe('CSS Nesting Collapse', () => {
         .container .child {
           color: blue;
         }
-      }`
-    );
+      }`);
   });
 });

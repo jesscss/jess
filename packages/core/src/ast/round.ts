@@ -1,7 +1,12 @@
 /**
- * Lean number rounding, byte-identical to `tree/util/round.ts` — inlined to keep
- * the value domain boundary-clean (no `../tree` import). Replicates lodash's
- * exponential-shift algorithm exactly. Shared by dimension + color serialization.
+ * Lean number rounding — replicates lodash's exponential-shift algorithm exactly,
+ * minus its generic coercion (our inputs are always finite `number`s with a literal
+ * precision). The SOLE copy: `tree/util/round.ts` re-exports this one, so the
+ * dependency points legacy-tree -> ast and deleting `tree/` leaves the value domain
+ * intact.
+ *
+ * This is the ROUNDING KERNEL, not the output policy — the digits a computed number
+ * is written with are decided by `format-number.ts`.
  */
 export function round(number: number, precision?: number): number {
   if (precision === undefined) {

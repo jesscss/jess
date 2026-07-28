@@ -12,9 +12,11 @@ export function normalizeFilenameToNamespace(filePath: string): string {
   // Get just the filename without extension
   const filename = basename(filePath, extname(filePath));
 
-  // Replace any non-identifier characters with underscores
-  // CSS identifiers can contain: letters, numbers, underscores, hyphens
-  // But can't start with a number or hyphen
+  /*
+   * Replace any non-identifier characters with underscores
+   * CSS identifiers can contain: letters, numbers, underscores, hyphens
+   * But can't start with a number or hyphen
+   */
   let normalized = filename.replace(/[^a-zA-Z0-9_-]/g, '_');
 
   // If it starts with a number, prepend an underscore
@@ -54,6 +56,7 @@ export function normalizeContinuationIndent(text: string, baseIndent: string): s
     }
     const m = line.match(/^[ \t]*/)!;
     const len = m[0].length;
+
     // Count only if the line has non-space content
     if (len < line.length) {
       if (len < min) {

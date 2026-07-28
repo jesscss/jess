@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { defineFunction } from '../value-dispatch.js';
 import { decl, anonymousMixin, funcCall, keyword, mixinCall, mixinDef, quoted, reference, rule, stylesheet, variableDeclaration, variableReference } from '../nodes.js';
 import { atRuleBlock, plugin } from '../at-rule.js';
-import { serialize } from '../serialize.js';
+import { makeFnScope, serialize, type Frame } from '../serialize.js';
 import type { PluginHost } from '../value-eval.js';
 import { makeKeyword } from '../value-factory.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 
 const fn = (name: string, value: string) => defineFunction(name, {
   params: [],
@@ -19,8 +19,64 @@ const asyncFn = (name: string, value: string) => defineFunction(name, {
   body: () => Promise.resolve(makeKeyword(value))
 });
 const target = (specifier: string) => plugin(quoted(`'${specifier}'`, specifier, '\'', false));
+const frame = (parent: Frame | null): Frame => ({
+  parent,
+  mixins: null,
+  declIndex: null,
+  cells: null,
+  reassign: null
+});
 
 describe('typed Plugin lexical body preparation', () => {
+  it('caches the nearest registered function frame without allocating empty local maps', () => {
+    const root = frame(null);
+    const middle = frame(root);
+    const leaf = frame(middle);
+    const rootFn = fn('probe', 'root');
+    const state = { fnScopeVersion: 0 };
+
+    root.fns = new Map([[rootFn.name, rootFn]]);
+    root.fnScope = root;
+    root.fnScopeVersion = state.fnScopeVersion;
+
+    const scope = makeFnScope(leaf, state);
+    expect(scope.lookup('PROBE')).toBe(rootFn);
+    expect(leaf.fnScope).toBe(root);
+    expect(leaf.fns).toBeUndefined();
+    expect(middle.fns).toBeUndefined();
+
+    const localFn = fn('probe', 'middle');
+    middle.fns = new Map([[localFn.name, localFn]]);
+    middle.fnScope = middle;
+    state.fnScopeVersion++;
+    middle.fnScopeVersion = state.fnScopeVersion;
+
+    expect(scope.lookup('probe')).toBe(localFn);
+    expect(leaf.fnScope).toBe(middle);
+    expect(leaf.fns).toBeUndefined();
+  });
+
+  it('does not let an unrelated local scoped function block the requested outer entry', () => {
+    const root = frame(null);
+    const middle = frame(root);
+    const leaf = frame(middle);
+    const rootFn = fn('probe', 'root');
+    const unrelatedFn = fn('other', 'middle');
+    const state = { fnScopeVersion: 0 };
+
+    root.fns = new Map([[rootFn.name, rootFn]]);
+    middle.fns = new Map([[unrelatedFn.name, unrelatedFn]]);
+    root.fnScope = root;
+    middle.fnScope = middle;
+    root.fnScopeVersion = state.fnScopeVersion;
+    middle.fnScopeVersion = state.fnScopeVersion;
+
+    const scope = makeFnScope(leaf, state);
+    expect(scope.lookup('probe')).toBe(rootFn);
+    expect(scope.lookup('other')).toBe(unrelatedFn);
+    expect(scope.lookup('missing')).toBeUndefined();
+  });
+
   it('hoists direct typed Plugins over both earlier and later statements in one body', () => {
     const seen: string[] = [];
     const pluginHost: PluginHost = { loadPlugin: ({ specifier }) => {
@@ -125,14 +181,22 @@ describe('typed Plugin lexical body preparation', () => {
     });
   });
 
-  it('continues to reject an async value in a true at-rule prelude', () => {
+  /*
+   * GRADUATED — an at-rule prelude used to REJECT an awaitable value ("async
+   * value in an at-rule prelude is unsupported"). The prelude builders now
+   * resolve on the MaybePromise lane, so `@media (min-width: @computed)` works.
+   * The prelude is still emitted before the opening brace, so a settled prelude
+   * costs nothing and the header cannot interleave with the body.
+   */
+  it('resolves an async value in a true at-rule prelude', async () => {
     const host: PluginHost = { loadPlugin: () => [asyncFn('probe', 'screen')] };
     const document = stylesheet([
       target('async-prelude'),
-      atRuleBlock('@media', funcCall('probe', []), [rule('.entry', [decl('color', 'red')])])
+      atRuleBlock('@media', funcCall('probe', []), [rule('.entry', [decl('color', keyword('red'))])])
     ]);
 
-    expect(() => serialize(document, { evaluator, pluginHost: host }))
-      .toThrow('async value in an at-rule prelude is unsupported');
+    await expect(Promise.resolve(serialize(document, { evaluator, pluginHost: host }))).resolves.toEqual({
+      css: '@media screen {\n  .entry {\n    color: red;\n  }\n}\n'
+    });
   });
 });

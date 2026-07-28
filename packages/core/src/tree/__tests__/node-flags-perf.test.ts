@@ -36,19 +36,15 @@ function buildDeclTree(count: number, staticRatio: number = 1.0): Node[] {
   const decls: Node[] = [];
   for (let i = 0; i < count; i++) {
     if (i / count < staticRatio) {
-      decls.push(
-        decl({
-          name: `prop-${i}`,
-          value: expr(any(`value-${i}`))
-        })
-      );
+      decls.push(decl({
+        name: `prop-${i}`,
+        value: expr(any(`value-${i}`))
+      }));
     } else {
-      decls.push(
-        decl({
-          name: `prop-${i}`,
-          value: expr(ref({ key: any(`var-${i}`) }))
-        })
-      );
+      decls.push(decl({
+        name: `prop-${i}`,
+        value: expr(ref({ key: any(`var-${i}`) }))
+      }));
     }
   }
   return decls;
@@ -70,6 +66,7 @@ function evalStaticWithRegistrationPrep(node: Node, context: Context): any {
       if (prepared !== node) {
         preparedNode.inherit(node);
       }
+
       // §2.7: nodes always re-evaluate (no `evaluated` gate).
       return preparedNode['evalNode'](context);
     },

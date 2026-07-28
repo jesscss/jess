@@ -7,6 +7,7 @@ export interface Logger {
   warn?(...args: any[]): void;
   error?(...args: any[]): void;
 }
+
 /** Configure with custom behavior */
 export const logger: Required<Logger> = {
   configure(log: Logger) {

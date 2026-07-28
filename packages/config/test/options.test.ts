@@ -65,6 +65,7 @@ describe('getOptions', () => {
           mathMode: 'parens-division',
           unitMode: 'loose',
           equalityMode: 'exact',
+          processImports: false,
           allowExtendSelectors: ['simple']
         }
       };
@@ -72,6 +73,7 @@ describe('getOptions', () => {
       expect(options.mathMode).toBe('parens-division');
       expect(options.unitMode).toBe('loose');
       expect(options.equalityMode).toBe('exact');
+      expect(options.processImports).toBe(false);
       expect(options.allowExtendSelectors).toEqual(['simple']);
     });
 

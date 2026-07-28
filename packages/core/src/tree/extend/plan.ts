@@ -70,13 +70,16 @@ export interface TargetBucket {
 
 export interface ExtendPlan {
   instructions: PlanInstruction[];
+
   /**
    * (A) reachability: per instruction, the set of extend roots whose subjects it may
    * touch. Keyed by instruction identity (the PlanInstruction object).
    */
   reachability: Map<PlanInstruction, Set<Rules>>;
+
   /** (B) target index: (scope, partial, target-value) → bucket of same-target fans. */
   targetIndex: Map<string, TargetBucket>;
+
   /** every extend root the graph knows about (A8 closure domain). */
   allRoots: Set<Rules>;
 }
@@ -221,8 +224,10 @@ export function buildExtendPlan(context: Context, graph: RootGraph = context.ext
   const instructions = decodeInstructions(context);
   const allRoots = graph.getAllRoots();
 
-  // (A) reachability: for each instruction, the roots it reaches (A1–A8). This is the
-  // graph-reachability closure — computed once, off the hot path.
+  /*
+   * (A) reachability: for each instruction, the roots it reaches (A1–A8). This is the
+   * graph-reachability closure — computed once, off the hot path.
+   */
   const reachability = new Map<PlanInstruction, Set<Rules>>();
   for (const inst of instructions) {
     const reachable = new Set<Rules>();

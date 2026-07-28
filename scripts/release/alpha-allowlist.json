@@ -1,8 +1,8 @@
 [
   "@jesscss/awaitable-pipe",
+  "@jesscss/compiler",
   "@jesscss/core",
   "@jesscss/css-parser",
-  "@jesscss/plugin-css",
   "@jesscss/jess-parser",
   "@jesscss/less-parser",
   "@jesscss/scss-parser",

@@ -4,7 +4,7 @@ Remind the user and yourself to update project state so the next session (or a n
 
 ## What to update
 
-1. **`.cursor/PROJECT_STATE.md`** — Current debugging focus:
+1. **`docs/state/PROJECT_STATE.md`** — Current debugging focus:
    - **Area** (if it changed): e.g. extend, mixins, parser.
    - **Relevant plan file** (if any): keep this minimal; prefer Cursor-native rules + canonical package docs.
    - **Last passing baseline** (if known).
@@ -22,7 +22,7 @@ Remind the user and yourself to update project state so the next session (or a n
 
 After updating (or if you cannot update because of missing info), tell the user:
 
-- "State updated in .cursor/PROJECT_STATE.md (and [plan file] if applicable). Next session: read those files and [next step]."
+- "State updated in docs/state/PROJECT_STATE.md (and [plan file] if applicable). Next session: read those files and [next step]."
 - Or: "I couldn't fill in [X]; please add it. Then next session: read state and …"
 
 This keeps debugging continuous across sessions and avoids repeating failed attempts.

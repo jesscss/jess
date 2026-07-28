@@ -25,7 +25,7 @@ describe('reference import in a namespace', () => {
 `);
     const compiler = new Compiler({
       output: { collapseNesting: true },
-      compile: { plugins: [lessPlugin(), lessCompatPlugin()] },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin()] }
     });
 
     const parsed = await compiler.createContext(entry).getTree(entry);
@@ -33,7 +33,7 @@ describe('reference import in a namespace', () => {
 
     await expect(compiler.render(entry, {
       suppressWarnings: true,
-      breakOnError: false,
+      breakOnError: false
     })).resolves.toBe('#used-namespaced-mixin {\n  was: included;\n  shall-see: another property above;\n}\n');
   });
 
@@ -51,7 +51,7 @@ describe('reference import in a namespace', () => {
 `);
     const compiler = new Compiler({
       output: { collapseNesting: true },
-      compile: { plugins: [lessPlugin(), lessCompatPlugin()] },
+      compile: { plugins: [lessPlugin(), lessCompatPlugin()] }
     });
 
     const parsed = await compiler.createContext(entry).getTree(entry);
@@ -59,7 +59,7 @@ describe('reference import in a namespace', () => {
 
     await expect(compiler.render(entry, {
       suppressWarnings: true,
-      breakOnError: false,
+      breakOnError: false
     })).resolves.toBe('.theOnlySelector {\n  shall-have: one selector;\n}\n');
   });
 });

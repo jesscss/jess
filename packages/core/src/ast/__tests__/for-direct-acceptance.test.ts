@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   decl, collection, dimension, forNode, funcCall, interpolation, keyword, list,
-  range, stylesheet, rule, spaced, variableReference, type Stylesheet
+  propertyReference, range, stylesheet, rule, spaced, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
 
 describe('For canonical AST emission', () => {
@@ -68,6 +68,30 @@ describe('For canonical AST emission', () => {
     ]);
 
     expect(render(document)).toBe('.set {\n  one: blue;\n  two: green;\n  three: red;\n}\n');
+  });
+
+  it('evaluates detached-map member values through the map property timeline when bound to @value', () => {
+    const map = collection([
+      decl('background-color', keyword('black')),
+      decl('color', propertyReference('background-color'))
+    ]);
+    const document = stylesheet([
+      variableDeclaration('vars', map, { mode: 'declare' }),
+      rule(':root', [
+        decl('background-color', keyword('red')),
+        forNode(
+          variableReference('vars', 'scoped'),
+          [decl(interpolation([{ lit: '--' }, { ref: variableReference('key', 'scoped'), unquote: true }]), variableReference('value', 'scoped'))],
+          { kind: 'comma', names: ['value', 'key', 'index'] }
+        )
+      ])
+    ]);
+
+    expect(render(document)).toBe(':root {\n'
+      + '  background-color: red;\n'
+      + '  --background-color: black;\n'
+      + '  --color: black;\n'
+      + '}\n');
   });
 
   it('keeps Jess bracket bindings in public key/value order', () => {
@@ -156,8 +180,6 @@ describe('For canonical AST emission', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.n {\n  r-1: 10px 1;\n  r-2: 15px 2;\n  r-1: 20px 1;\n  r-2: 25px 2;\n}\n'
-    );
+    expect(render(document)).toBe('.n {\n  r-1: 10px 1;\n  r-2: 15px 2;\n  r-1: 20px 1;\n  r-2: 25px 2;\n}\n');
   });
 });

@@ -27,8 +27,10 @@ export type SourceSpan = { start: number; end: number };
 type ProvenanceFields = {
   /** Runtime flags bitmask (carries `F_HAS_SPAN`). */
   flags: number;
+
   /** Source start offset. */
   _spanStart: number | undefined;
+
   /** Source end offset. */
   _spanEnd: number | undefined;
 };
@@ -44,6 +46,7 @@ export const F_HAS_SPAN = 0b100000000000000;
  */
 // Bit 16 is F_MERGE_SUPPRESSED (node-base.ts); per-slot span flags take bits 17/18.
 export const F_HAS_VALUESPANS = 0b100000000000000000;
+
 /** Node carries per-slot FIELD spans (e.g. a declaration's `value` field). Sparse; same gating discipline as `F_HAS_VALUESPANS`. */
 export const F_HAS_FIELDSPANS = 0b1000000000000000000;
 
@@ -183,18 +186,20 @@ export function readEvalErrorLocation(err: unknown): EvalErrorLocation | undefin
   return { spanStart, spanEnd: carrier._jessEvalSpanEnd, source: carrier._jessEvalSource };
 }
 
-// Per-slot span arrays (`_valueSpans`/`_fieldSpans`) are SPARSE — they exist
-// only on source-parsed multi-member selector lists / value arrays and on the
-// declaration `value` field. Storing them as Node fields would deoptimize the
-// MILLIONS of source-free eval nodes (every one would carry two `undefined`
-// slots, growing the shared hidden class). So they live OFF the Node shape, in
-// module-level WeakMaps keyed by the node, gated by a flag bit so a non-carrying
-// node pays only a bitwise-and to skip the lookup. Each entry is a FLAT PACKED
-// SMI array `[start0, end0, start1, end1, …]` (V8 PACKED_SMI_ELEMENTS) — no
-// per-slot `{start,end}` objects. A leaner `valueSpanAt`/`fieldSpanAt` reads one
-// slot directly from the flat array; the array-shaped `valueSpansOf`/
-// `fieldSpansOf` reconstruct `{start,end}` objects lazily for the few callers
-// that still want the whole array.
+/*
+ * Per-slot span arrays (`_valueSpans`/`_fieldSpans`) are SPARSE — they exist
+ * only on source-parsed multi-member selector lists / value arrays and on the
+ * declaration `value` field. Storing them as Node fields would deoptimize the
+ * MILLIONS of source-free eval nodes (every one would carry two `undefined`
+ * slots, growing the shared hidden class). So they live OFF the Node shape, in
+ * module-level WeakMaps keyed by the node, gated by a flag bit so a non-carrying
+ * node pays only a bitwise-and to skip the lookup. Each entry is a FLAT PACKED
+ * SMI array `[start0, end0, start1, end1, …]` (V8 PACKED_SMI_ELEMENTS) — no
+ * per-slot `{start,end}` objects. A leaner `valueSpanAt`/`fieldSpanAt` reads one
+ * slot directly from the flat array; the array-shaped `valueSpansOf`/
+ * `fieldSpansOf` reconstruct `{start,end}` objects lazily for the few callers
+ * that still want the whole array.
+ */
 
 const VALUE_SPANS = new WeakMap<object, number[]>();
 const FIELD_SPANS = new WeakMap<object, number[]>();

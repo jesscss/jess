@@ -79,8 +79,11 @@ describe('Comment', () => {
     const hidden = comment('// source-only', { lineComment: true });
     expect(hidden.render(context, hiddenBuffer)).toBe('');
     expect(hiddenBuffer.parts).toEqual([]);
-    // TODO(F_VISIBLE stage 2): the render-ignoring-visibility walker restores the
-    // "shown under full render" case — `fullRender` was deleted from the hot path.
+
+    /*
+     * TODO(F_VISIBLE stage 2): the render-ignoring-visibility walker restores the
+     * "shown under full render" case — `fullRender` was deleted from the hot path.
+     */
   });
 
   it('preserves printable block trivia before invisible nodes', () => {

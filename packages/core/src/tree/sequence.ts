@@ -38,6 +38,7 @@ export type SequenceOptions = {
   // spaced: boolean
   /** Used with custom properties */
   preserveWhitespace?: boolean;
+
   /**
    * A `@container` prelude query whose FIRST term is a container name
    * (`@container sidebar (min-width: 700px)`). The container name is separated
@@ -126,6 +127,7 @@ export class Sequence extends Node<Node[], SequenceOptions> {
 
   constructor(value: Node[], options?: SequenceOptions, location?: NodeLocation) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
     this.preserveWhitespace = options?.preserveWhitespace;
@@ -137,8 +139,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   private withValue(value: Node[]): Sequence {
-    // Preserve the concrete class (e.g. QueryCondition) across eval so its
-    // syntax writer — not the base Sequence one — renders the evaluated value.
+    /*
+     * Preserve the concrete class (e.g. QueryCondition) across eval so its
+     * syntax writer — not the base Sequence one — renders the evaluated value.
+     */
     const Ctor = this.sequenceConstructor();
     return new Ctor(
       value,
@@ -152,9 +156,12 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     for (let i = 0; i < this.value.length; i++) {
       values[i] = this.value[i]!.cloneForPlacement();
     }
-    // Addition output is always a plain space Sequence — no subclass identity to
-    // preserve — so construct the base directly (a subclass ctor here would defeat
-    // the "no source reconstruction" contract; see sequence.test.ts).
+
+    /*
+     * Addition output is always a plain space Sequence — no subclass identity to
+     * preserve — so construct the base directly (a subclass ctor here would defeat
+     * the "no source reconstruction" contract; see sequence.test.ts).
+     */
     return new Sequence(
       values,
       this._options ? { ...this._options } : undefined,
@@ -331,12 +338,10 @@ export class Sequence extends Node<Node[], SequenceOptions> {
     const prevEndsWithSpace = prevLastChar === ' ';
     const prevEnd = spanEndOf(prev);
     const nodeStart = spanStartOf(node);
-    const noSep = Boolean(
-      sourceTrivia
+    const noSep = Boolean(sourceTrivia
       && prevEnd !== undefined
       && nodeStart !== undefined
-      && (prevEnd === nodeStart || prevEnd + 1 === nodeStart)
-    );
+      && (prevEnd === nodeStart || prevEnd + 1 === nodeStart));
     const needsMergeGuard = noSep && isIdentifierChar(prevLastChar);
 
     if (
@@ -443,7 +448,9 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         values[i + 1] = b.value[i]!.cloneForPlacement();
       }
       return new List(values).inherit(this);
-    } else if (isNode(b, N.Sequence)) {
+    }
+
+    if (isNode(b, N.Sequence)) {
       const values = new Array<Node>(newSequence.value.length + b.value.length);
       for (let i = 0; i < newSequence.value.length; i++) {
         values[i] = newSequence.value[i]!;
@@ -456,19 +463,18 @@ export class Sequence extends Node<Node[], SequenceOptions> {
         newSequence._options ? { ...newSequence._options } : undefined,
         sourceSpanOf(newSequence)
       ).inherit(newSequence);
-    } else {
-      b = b.cloneForPlacement();
-      const values = new Array<Node>(newSequence.value.length + 1);
-      for (let i = 0; i < newSequence.value.length; i++) {
-        values[i] = newSequence.value[i]!;
-      }
-      values[newSequence.value.length] = b;
-      return new Sequence(
-        values,
-        newSequence._options ? { ...newSequence._options } : undefined,
-        sourceSpanOf(newSequence)
-      ).inherit(newSequence);
     }
+    b = b.cloneForPlacement();
+    const values = new Array<Node>(newSequence.value.length + 1);
+    for (let i = 0; i < newSequence.value.length; i++) {
+      values[i] = newSequence.value[i]!;
+    }
+    values[newSequence.value.length] = b;
+    return new Sequence(
+      values,
+      newSequence._options ? { ...newSequence._options } : undefined,
+      sourceSpanOf(newSequence)
+    ).inherit(newSequence);
   }
 
   /**
@@ -499,26 +505,30 @@ export class Sequence extends Node<Node[], SequenceOptions> {
   }
 
   /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector): void {
-  //   const cast = context.cast
-  //   this.value.forEach(n => {
-  //     const val = cast(n)
-  //     val.toCSS(context, out)
-  //   })
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector): void {
+   * const cast = context.cast
+   * this.value.forEach(n => {
+   * const val = cast(n)
+   * val.toCSS(context, out)
+   * })
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   const loc = sourceSpanOf(this)
-  //   out.add('$J.expr([', loc)
-  //   const length = this.value.length - 1
-  //   this.value.forEach((n, i) => {
-  //     n.toModule(context, out)
-  //     if (i < length) {
-  //       out.add(', ')
-  //     }
-  //   })
-  //   out.add('])')
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * const loc = sourceSpanOf(this)
+   * out.add('$J.expr([', loc)
+   * const length = this.value.length - 1
+   * this.value.forEach((n, i) => {
+   * n.toModule(context, out)
+   * if (i < length) {
+   * out.add(', ')
+   * }
+   * })
+   * out.add('])')
+   * }
+   */
 }
 
 export const seq = defineType(Sequence, 'Sequence', 'seq');

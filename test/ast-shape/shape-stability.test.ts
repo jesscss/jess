@@ -105,6 +105,53 @@ const corpora: DialectCorpus[] = [
 
 const DISCOVER = process.env.SHAPE_DISCOVER === 'true';
 
+/**
+ * Every AST node type the less/scss/jess corpora below actually construct.
+ * This replaces a bare `shapes.size >= 25` coverage floor: a count could not
+ * distinguish "the corpus still covers everything" from "it lost one type and
+ * picked up another". Run with `SHAPE_DISCOVER=true` to print the inventory.
+ */
+const CORPUS_NODE_TYPES: readonly string[] = [
+  'AnonymousMixin',
+  'Any',
+  'Apply',
+  'AtRuleBlock',
+  'AtRuleStatement',
+  'Block',
+  'BracketLookup',
+  'Call',
+  'Collection',
+  'Color',
+  'Comment',
+  'ComplexSelector',
+  'CompoundSelector',
+  'Declaration',
+  'Dimension',
+  'For',
+  'FunctionCall',
+  'If',
+  'ImportAtRule',
+  'Interpolation',
+  'Keyword',
+  'List',
+  'MixinCall',
+  'MixinDef',
+  'Operation',
+  'PseudoSelector',
+  'Quoted',
+  'Range',
+  'Reference',
+  'Rule',
+  'SelectorList',
+  'SimpleSelector',
+  'SpacedValue',
+  'Stylesheet',
+  'Url',
+  'VarIndirect',
+  'VariableDeclaration',
+  'VariableReference'
+];
+
 describe('AST v2 shape stability', () => {
   if (DISCOVER) {
     it('reports the full per-type shape inventory', () => {
@@ -117,9 +164,16 @@ describe('AST v2 shape stability', () => {
 
   const { shapes } = collectShapes(corpora, false);
 
-  it('parses the whole corpus into typed nodes (coverage floor)', () => {
-    // Guards against a silently-empty corpus masking the assertion below.
-    expect(shapes.size).toBeGreaterThanOrEqual(25);
+  it('parses the whole corpus into exactly the recorded node types', () => {
+    // NAMED, not a count. `shapes.size >= 25` was satisfied by any 25 types, so
+    // losing coverage of one node type while gaining another read as no change.
+    // The set says which type appeared or vanished.
+    //
+    // A type MISSING here means the corpus stopped exercising it — coverage
+    // regressed, and the shape assertions below silently stopped guarding it.
+    // A type EXTRA here is a new node type: add the name in the same commit.
+    const observed = [...shapes.keys()].sort();
+    expect(observed).toEqual([...CORPUS_NODE_TYPES].sort());
   });
 
   it('constructs every node type with exactly one key shape', () => {

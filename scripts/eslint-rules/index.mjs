@@ -37,19 +37,21 @@ function calleeName(callee) {
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Rule 1 — no-serialize-rederivation  (V8-ARCH #2)
-// ---------------------------------------------------------------------------
-//
-// Flags byte-level scanning of a value produced by `serialize()`/`*Canonical()`:
-// re-deriving structure from emitted bytes instead of reading it off the node.
-//
-// LIMITATION (honest): SAME-FUNCTION taint only. It catches a direct
-// `serializeX(v).split(...)` and a local `const s = serializeX(v); s.match(...)`
-// within one function body. It does NOT follow a serialized value across a
-// function boundary or through a data structure — true interprocedural taint
-// needs a typed pass. Documented follow-up; do not treat a clean run as proof
-// there is no cross-function re-derivation.
+/*
+ * ---------------------------------------------------------------------------
+ * Rule 1 — no-serialize-rederivation  (V8-ARCH #2)
+ * ---------------------------------------------------------------------------
+ *
+ * Flags byte-level scanning of a value produced by `serialize()`/`*Canonical()`:
+ * re-deriving structure from emitted bytes instead of reading it off the node.
+ *
+ * LIMITATION (honest): SAME-FUNCTION taint only. It catches a direct
+ * `serializeX(v).split(...)` and a local `const s = serializeX(v); s.match(...)`
+ * within one function body. It does NOT follow a serialized value across a
+ * function boundary or through a data structure — true interprocedural taint
+ * needs a typed pass. Documented follow-up; do not treat a clean run as proof
+ * there is no cross-function re-derivation.
+ */
 
 const SCAN_METHODS = new Set([
   'match', 'matchAll', 'includes', 'indexOf', 'lastIndexOf',
@@ -113,11 +115,13 @@ const noSerializeRederivation = {
           return;
         }
         const method = callee.property.name;
+
         // `s.split(...)`, `s.match(...)`, ...
         if (SCAN_METHODS.has(method) && isTainted(callee.object)) {
           context.report({ node, messageId: 'rederive', data: { method } });
           return;
         }
+
         // `re.test(serializeX(v))` — RegExp scanning a serialized value.
         if (method === 'test' && node.arguments.some(isTainted)) {
           context.report({ node, messageId: 'rederive', data: { method: 'RegExp.test' } });
@@ -134,20 +138,22 @@ const noSerializeRederivation = {
   }
 };
 
-// ---------------------------------------------------------------------------
-// Rule 2 — no-full-tree-walk-hot-path  (V8-ARCH #3)
-// ---------------------------------------------------------------------------
-//
-// Best-effort flag of a self-recursive function that walks a full child
-// collection (`.rules`/`.children`/`.nodes`/`.value`/`.args`/`.body`/…) in an
-// eval/render hot path.
-//
-// PRECISION LIMITATION (honest): recursion over children is LEGITIMATE in
-// serialize/eval. This heuristic cannot distinguish a bounded, guarded descent
-// from an unbounded full-subtree scan, so it WILL fire on some legitimate code.
-// That is exactly why it ships as `warn` (report-only advisory) and is scoped
-// in eslint.config.mjs to a small allowlist of eval/render files — NOT the
-// whole tree. Promotion to `error` requires the measured <5%-FP bake.
+/*
+ * ---------------------------------------------------------------------------
+ * Rule 2 — no-full-tree-walk-hot-path  (V8-ARCH #3)
+ * ---------------------------------------------------------------------------
+ *
+ * Best-effort flag of a self-recursive function that walks a full child
+ * collection (`.rules`/`.children`/`.nodes`/`.value`/`.args`/`.body`/…) in an
+ * eval/render hot path.
+ *
+ * PRECISION LIMITATION (honest): recursion over children is LEGITIMATE in
+ * serialize/eval. This heuristic cannot distinguish a bounded, guarded descent
+ * from an unbounded full-subtree scan, so it WILL fire on some legitimate code.
+ * That is exactly why it ships as `warn` (report-only advisory) and is scoped
+ * in eslint.config.mjs to a small allowlist of eval/render files — NOT the
+ * whole tree. Promotion to `error` requires the measured <5%-FP bake.
+ */
 
 const CHILD_FIELDS = new Set([
   'rules', 'children', 'nodes', 'value', 'values', 'args',
@@ -244,14 +250,16 @@ const noFullTreeWalkHotPath = {
   }
 };
 
-// ---------------------------------------------------------------------------
-// Rule 3 — no-oversized-choice  (V8-ARCH #6)
-// ---------------------------------------------------------------------------
-//
-// Regression pin for grammar `choice(...)` sprawl (the 20×7 duplication):
-//   (a) any `choice(...)` with more than N arms (default 15), and
-//   (b) two `choice(...)` calls in one file with the same large arm signature
-//       (structurally-duplicated choice literals).
+/*
+ * ---------------------------------------------------------------------------
+ * Rule 3 — no-oversized-choice  (V8-ARCH #6)
+ * ---------------------------------------------------------------------------
+ *
+ * Regression pin for grammar `choice(...)` sprawl (the 20×7 duplication):
+ * (a) any `choice(...)` with more than N arms (default 15), and
+ * (b) two `choice(...)` calls in one file with the same large arm signature
+ * (structurally-duplicated choice literals).
+ */
 
 const noOversizedChoice = {
   meta: {
@@ -315,15 +323,17 @@ const noOversizedChoice = {
   }
 };
 
-// ---------------------------------------------------------------------------
-// Rule 4 — no-deprecated-detached-ruleset
-// ---------------------------------------------------------------------------
-//
-// Flags NEW usage of `DetachedRuleset` as an AST node type: a `type:
-// 'DetachedRuleset'` property (object or type literal) or a `=== 'DetachedRuleset'`
-// comparison. The plugin-transport (`serialize.ts` / `value-eval.ts`) and the
-// grammar/CST `DetachedRuleset` production are allowlisted in eslint.config.mjs
-// (via `ignores`) so this does not fire on those legitimate uses.
+/*
+ * ---------------------------------------------------------------------------
+ * Rule 4 — no-deprecated-detached-ruleset
+ * ---------------------------------------------------------------------------
+ *
+ * Flags NEW usage of `DetachedRuleset` as an AST node type: a `type:
+ * 'DetachedRuleset'` property (object or type literal) or a `=== 'DetachedRuleset'`
+ * comparison. The plugin-transport (`serialize.ts` / `value-eval.ts`) and the
+ * grammar/CST `DetachedRuleset` production are allowlisted in eslint.config.mjs
+ * (via `ignores`) so this does not fire on those legitimate uses.
+ */
 
 const noDeprecatedDetachedRuleset = {
   meta: {
@@ -355,6 +365,7 @@ const noDeprecatedDetachedRuleset = {
           report(node.value);
         }
       },
+
       // `type: 'DetachedRuleset'` in a TS type literal / interface
       TSPropertySignature(node) {
         if (isTypeKey(node.key) && node.typeAnnotation
@@ -364,6 +375,7 @@ const noDeprecatedDetachedRuleset = {
           report(node.typeAnnotation.typeAnnotation.literal);
         }
       },
+
       // `x.type === 'DetachedRuleset'`
       BinaryExpression(node) {
         if ((node.operator === '===' || node.operator === '!==' || node.operator === '==' || node.operator === '!=')

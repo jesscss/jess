@@ -42,7 +42,6 @@ describe('callable live slot helper', () => {
       defineArguments: true
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const argumentsValue = getBindingCellValue(liveSlots.get('arguments')!) as unknown as List<Node>;
 
     expect(argumentsValue.value.map((node: any) => node.valueOf())).toEqual(['blue', 'one', 'two']);
@@ -55,7 +54,6 @@ describe('callable live slot helper', () => {
       defineArguments: true
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const argumentsValue = getBindingCellValue(liveSlots.get('arguments')!) as unknown as List<Node>;
 
     expect(argumentsValue.value.map((node: any) => node.valueOf())).toEqual(['left', 'middle', 'right']);

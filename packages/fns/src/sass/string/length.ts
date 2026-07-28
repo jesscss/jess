@@ -1,38 +1,17 @@
-/**
- * Sass string.length() function
- *
- * Returns the length of a string in Unicode code points.
- *
- * @example
- * string.length("hello") // 5
- * string.length("😊")    // 1 (not 2, as it's one code point)
- */
-import { defineFunction, Dimension } from '@jesscss/core';
+import { defineFunction, makeDimension } from '@jesscss/core/value';
+import { STRING_KINDS, codePoints, stringText } from './util.js';
 
 /**
- * Calculate the length of a string in Unicode code points
- * (not UTF-16 code units, which is what JavaScript's .length returns)
+ * Sass `string.length()` — the `str-length()` global.
+ *
+ * Counts UNICODE CODE POINTS, not UTF-16 code units: dart-sass 1.101.0 answers
+ * `string.length("👭")` with `1` and `str-length("a😊b")` with `3`. A combining
+ * sequence still counts each code point separately (`"é"` → `2`).
+ * Non-string arguments error (`str-length(10px)`), enforced by `kinds`.
  */
-function sassLength(str: string): number {
-  // Use Array.from to properly count Unicode code points
-  // This handles multi-byte characters correctly
-  return Array.from(str).length;
-}
-
-const length = defineFunction(
-  'length',
-  function(str: string): Dimension {
-    const len = sassLength(str);
-    return new Dimension({ number: len, unit: undefined });
-  },
-  {
-    params: [
-      {
-        name: 'string',
-        type: 'string'
-      }
-    ]
-  }
-);
+const length = defineFunction('length', {
+  params: [{ name: 'string', kinds: STRING_KINDS }] as const,
+  body: string => makeDimension(codePoints(stringText(string)).length)
+});
 
 export default length;

@@ -7,9 +7,12 @@ function configSyntaxKind(path) {
   if (/(^|\/)tsconfig(?:\.[^/]+)?\.json$/u.test(path)) {
     return 'jsonc';
   }
-  // VS Code reads workspace settings, launch, and task files as JSON with
-  // comments. Keep this narrow: extension manifests and grammar data remain
-  // strict JSON because their consumers require strict JSON.
+
+  /*
+   * VS Code reads workspace settings, launch, and task files as JSON with
+   * comments. Keep this narrow: extension manifests and grammar data remain
+   * strict JSON because their consumers require strict JSON.
+   */
   if (/(^|\/)\.vscode\/(?:launch|settings|tasks)\.json$/u.test(path)) {
     return 'jsonc';
   }

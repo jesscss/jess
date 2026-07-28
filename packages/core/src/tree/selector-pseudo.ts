@@ -41,9 +41,11 @@ type GeneratedPseudoPlacementOverrideState = {
 const F_PSEUDO_PLACEMENT_OVERRIDE = 0b1;
 const F_PSEUDO_OMIT_WRAPPER = 0b10;
 
-// The override object held exactly one boolean and was never mutated after
-// creation, so two frozen singletons cover every value — the getter hands one
-// back instead of allocating a fresh object per generated `:is()`.
+/*
+ * The override object held exactly one boolean and was never mutated after
+ * creation, so two frozen singletons cover every value — the getter hands one
+ * back instead of allocating a fresh object per generated `:is()`.
+ */
 const PLACEMENT_OVERRIDE_OMIT: GeneratedPseudoPlacementOverrideState = Object.freeze({ omitWrapperForSingleSelectorList: true });
 const PLACEMENT_OVERRIDE_KEEP: GeneratedPseudoPlacementOverrideState = Object.freeze({ omitWrapperForSingleSelectorList: false });
 
@@ -92,6 +94,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   readonly name: string;
   arg: Node | undefined;
   declare protected _valueOf: string | undefined;
+
   /**
    * Rare: only set on generated `:is()` wrappers (see `setGeneratedPseudoPlacementOverride`).
    * `declare` + conditional ctor assignment so the common pseudo shape (`:hover`,
@@ -161,11 +164,13 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (arg) {
       w.add('(');
       if (Array.isArray(arg)) {
-        // Generic (unknown-pseudo) argument: a raw component array. String
-        // components carry no own source span, so authored inter-component
-        // whitespace is normalized; COMMENTS in those gaps still round-trip.
-        // Pull the in-span comment runs in source order and place one at each
-        // gap (combinator or adjacent-part boundary), mirroring ComplexSelector.
+        /*
+         * Generic (unknown-pseudo) argument: a raw component array. String
+         * components carry no own source span, so authored inter-component
+         * whitespace is normalized; COMMENTS in those gaps still round-trip.
+         * Pull the in-span comment runs in source order and place one at each
+         * gap (combinator or adjacent-part boundary), mirroring ComplexSelector.
+         */
         const spanComments = options.trivia
           ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
           : [];
@@ -180,8 +185,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
             }
             continue;
           }
-          // Emit a comment authored before this part — unless the previous part
-          // was a ' ' combinator, which already emitted the gap comment.
+
+          /*
+           * Emit a comment authored before this part — unless the previous part
+           * was a ' ' combinator, which already emitted the gap comment.
+           */
           if (i > 0 && arg[i - 1] !== ' ' && cursor < spanComments.length) {
             cursor = emitNextSpanComment(spanComments, cursor, options);
           }
@@ -194,9 +202,11 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
           }
         }
       } else if (isNode(arg, N.Sequence)) {
-        // Unknown-pseudo arg stored as Sequence for AST serialization.
-        // Render each Any item inline; comments between items round-trip via the
-        // in-span comment runs, inter-item whitespace is normalized.
+        /*
+         * Unknown-pseudo arg stored as Sequence for AST serialization.
+         * Render each Any item inline; comments between items round-trip via the
+         * in-span comment runs, inter-item whitespace is normalized.
+         */
         const seqItems = arg.value;
         const spanComments = options.trivia
           ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
@@ -247,6 +257,7 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
     if (!valueOf) {
       const { name } = this;
       const { arg } = this;
+
       // For :is() with SelectorList, use valueOf() to avoid newlines
 
       /**
@@ -339,33 +350,43 @@ export class PseudoSelector extends SimpleSelector<PseudoSelectorValue> {
   }
 }
 
-// Some experiments with type narrowing
-// type SelectorValue = {
-//   value: ':is' | ':where'
-//   arg: Selector
-// }
+/*
+ * Some experiments with type narrowing
+ * type SelectorValue = {
+ * value: ':is' | ':where'
+ * arg: Selector
+ * }
+ */
 
-// type PseudoFunctionValue = {
-//   value: string
-//   arg: Node
-// }
+/*
+ * type PseudoFunctionValue = {
+ * value: string
+ * arg: Node
+ * }
+ */
 
-// type GetType<T extends Array<[string, any]>> = TupleToUnion<{
-//   [K in keyof T]: T[K][0] extends 'arg'
-//     ? T[K][1]
-//     : never
-// }>
+/*
+ * type GetType<T extends Array<[string, any]>> = TupleToUnion<{
+ * [K in keyof T]: T[K][0] extends 'arg'
+ * ? T[K][1]
+ * : never
+ * }>
+ */
 
-// type PseudoFunctionClass<T extends PseudoFunctionValue = PseudoFunctionValue> =
-//   Class<PseudoSelector<T>, ConstructorParameters<typeof PseudoSelector<T>>>
+/*
+ * type PseudoFunctionClass<T extends PseudoFunctionValue = PseudoFunctionValue> =
+ * Class<PseudoSelector<T>, ConstructorParameters<typeof PseudoSelector<T>>>
+ */
 
 // export const PseudoFunction = PseudoSelector as unknown as (new<const T extends Array<[string, any]>>(value: T, opts?: NodeOptions) => Omit<PseudoFunctionClass, 'arg'> & { arg: GetType<T> }) // Omit<PseudoFunctionClass, 'arg'> & GetType<T>)
 
-// const foo = new PseudoFunction([
-//   ['value', ':is'],
-//   ['arg', new BasicSelector([['value', 'div']])]
-// ])
-// foo.arg
+/*
+ * const foo = new PseudoFunction([
+ * ['value', ':is'],
+ * ['arg', new BasicSelector([['value', 'div']])]
+ * ])
+ * foo.arg
+ */
 
 export const pseudo = defineType<PseudoSelectorValue, typeof PseudoSelector>(PseudoSelector, 'PseudoSelector', 'pseudo');
 
@@ -392,6 +413,6 @@ export function createGeneratedIsPseudo(
 export function is(arg: Selector): PseudoSelector {
   return pseudo({
     name: ':is',
-    arg: arg
+    arg
   });
 }

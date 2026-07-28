@@ -8,7 +8,7 @@
 > Status: **Invariants locked by owner (2026-06-29). §3 primitive shape pending
 > the DRY-audit collapse list.**
 >
-> ⚠️ **Active queue: [`../../../../docs/future/core-architecture/CORE-CLEANUP.md`](../../../../docs/future/core-architecture/CORE-CLEANUP.md)**
+> ⚠️ **Active queue: [`../../../../docs/architecture/core/CORE-CLEANUP.md`](../../../../docs/architecture/core/CORE-CLEANUP.md)**
 > (Focus B). The single-frame migration has largely landed; this doc's invariants
 > now describe CURRENT reality, not just the target. Status of the three original
 > divergences:

@@ -1,21 +1,39 @@
-@import styles from './imports/rule.jess';
+@-compose "./imports/rule.jess";
 
 *, *::before, *::after {
   box-sizing: inherit;
 }
 
-.nested {
-  @include styles();
+@media all {
+  a {
+    b {
+      color: rebeccapurple;
+    }
+  }
 }
 
-a, b {
-  &:hover {
-    background: blue;
+a {
+  color: blue;
+  @media all {
+    color: rebeccapurple;
+  }
+}
+
+a {
+  b {
+    one: 1;
+  }
+  c {
+    three: 3;
+    d {
+      five: 5;
+    }
+    four: 4;
   }
 }
 
 a, b {
-  + c {
+  &:hover {
     background: blue;
   }
 }
@@ -32,37 +50,32 @@ a, b {
   }
 }
 
-@media all {
-  a {
-    b {
-      color: rebeccapurple;
-    }
+.parent {
+  & .child {
+    color: blue;
+  }
+  & > .direct {
+    color: red;
+  }
+  .outer & {
+    color: green;
+  }
+  :not(&) {
+    color: teal;
   }
 }
 
-a {
-  color: blue;
-  @media all { 
-    color: rebeccapurple;
+.block {
+  &__el {
+    color: blue;
+  }
+  &--mod {
+    color: red;
+  }
+  &-suffix {
+    color: green;
+  }
+  &(-1) {
+    color: teal;
   }
 }
-
-a {
-  b {
-    one: 1;
-    &:hover {
-      two: 2;
-    }
-  }
-  c {
-    three: 3;
-    d {
-      five: 5;
-    }
-    four: 4;
-  }
-}
-
-& { .box { a: b; } }
-
-&, & { .box { a: b; } }

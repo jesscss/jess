@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, dimension, generalEnclosed, interpolation, keyword, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
+  block, decl, dimension, generalEnclosed, interpolation, keyword, operation, reference, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
 
@@ -20,13 +20,31 @@ describe('At-rule canonical AST emission', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '@media 48rem {\n'
+    expect(render(document)).toBe('@media 48rem {\n'
       + '  .card {\n'
       + '    display: grid;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
+  });
+
+  it('preserves media feature parens when a prelude reference resolves to a block value', () => {
+    const document = stylesheet([
+      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'))), { mode: 'declare' }),
+      atRuleBlock('@media', spaced([
+        keyword('not'),
+        keyword('all'),
+        keyword('and'),
+        reference(variableReference('feature', 'scoped'), [], '@feature')
+      ]), [
+        rule('.card', [decl('display', keyword('grid'))])
+      ])
+    ]);
+
+    expect(render(document)).toBe('@media not all and (min-width: 480px) {\n'
+      + '  .card {\n'
+      + '    display: grid;\n'
+      + '  }\n'
+      + '}\n');
   });
 
   it('projects the enclosing selector through a nested conditional at-rule', () => {
@@ -38,13 +56,11 @@ describe('At-rule canonical AST emission', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '@media screen {\n'
+    expect(render(document)).toBe('@media screen {\n'
       + '  .card.wide {\n'
       + '    columns: 2;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('resolves only structured interpolation in a statement prelude', () => {
@@ -68,13 +84,11 @@ describe('At-rule canonical AST emission', () => {
       ]), [rule('.card', [decl('display', keyword('grid'))])])
     ]);
 
-    expect(render(document)).toBe(
-      '@supports selector(  .card /* keep  */ ) and ( font-tech(  color-COLRv1  ) ) {\n'
+    expect(render(document)).toBe('@supports selector(  .card /* keep  */ ) and ( font-tech(  color-COLRv1  ) ) {\n'
       + '  .card {\n'
       + '    display: grid;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('preserves authored private-use bytes inside general-enclosed content', () => {

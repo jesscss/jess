@@ -14,8 +14,10 @@ async function expectRejects<T>(
   let error: unknown;
   try {
     await Promise.resolve(promiseOrValue);
+
     // Create error that will point to the call site
     const err = new Error('Expected promise to reject, but it resolved');
+
     // Remove this function from the stack trace so it points to the call site
     if (Error.captureStackTrace) {
       Error.captureStackTrace(err, expectRejects);
@@ -136,14 +138,16 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should be able to call a nested mixin', async () => {
-      // .foo {
-      //   .bar {
-      //     color: red;
-      //   }
-      // }
-      // .output {
-      //   .foo.bar();
-      // }
+      /*
+       * .foo {
+       * .bar {
+       * color: red;
+       * }
+       * }
+       * .output {
+       * .foo.bar();
+       * }
+       */
       const fooRuleset = ruleset({
         selector: el('.foo'),
         rules: [
@@ -177,12 +181,14 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should be able to match a compound selector', async () => {
-      // .foo.bar {
-      //   color: red;
-      // }
-      // .output {
-      //   .foo.bar();
-      // }
+      /*
+       * .foo.bar {
+       * color: red;
+       * }
+       * .output {
+       * .foo.bar();
+       * }
+       */
       const fooRuleset = ruleset({
         selector: compound([el('.foo'), el('.bar')]),
         rules: [decl({ name: 'color', value: any('red') })]
@@ -211,14 +217,16 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should be able to call nested mixin from within container #1', async () => {
-      // .container {
-      //   .foo {
-      //     .bar {
-      //       color: blue;
-      //     }
-      //   }
-      //   .foo.bar();
-      // }
+      /*
+       * .container {
+       * .foo {
+       * .bar {
+       * color: blue;
+       * }
+       * }
+       * .foo.bar();
+       * }
+       */
       const containerRuleset = ruleset({
         selector: el('.container'),
         rules: [
@@ -252,14 +260,16 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should be able to call nested mixin from within container #2', async () => {
-      // .container {
-      //   .foo {
-      //     .bar {
-      //       color: blue;
-      //     }
-      //   }
-      //   .container.foo.bar();
-      // }
+      /*
+       * .container {
+       * .foo {
+       * .bar {
+       * color: blue;
+       * }
+       * }
+       * .container.foo.bar();
+       * }
+       */
       const containerRuleset = ruleset({
         selector: el('.container'),
         rules: [
@@ -293,14 +303,16 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should be able to call nested mixin from outside container', async () => {
-      // .container {
-      //   .foo {
-      //     .bar {
-      //       color: blue;
-      //     }
-      //   }
-      // }
-      // .container.foo();
+      /*
+       * .container {
+       * .foo {
+       * .bar {
+       * color: blue;
+       * }
+       * }
+       * }
+       * .container.foo();
+       */
       const containerRuleset = ruleset({
         selector: el('.container'),
         rules: [
@@ -336,12 +348,14 @@ describe('Mixin Recursion Detection', () => {
 
   describe('recursive mixin calls that should fail', () => {
     it.skip('should fail when calling .foo.bar() from within .foo .bar (would cause recursion)', async () => {
-      // .foo {
-      //   .bar {
-      //     .foo.bar();
-      //     color: red;
-      //   }
-      // }
+      /*
+       * .foo {
+       * .bar {
+       * .foo.bar();
+       * color: red;
+       * }
+       * }
+       */
       const fooRuleset = ruleset({
         selector: el('.foo'),
         rules: [
@@ -366,12 +380,14 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should fail when calling .foo() from within .foo .bar (would cause recursion)', async () => {
-      // .foo {
-      //   .bar {
-      //     .foo();
-      //     color: red;
-      //   }
-      // }
+      /*
+       * .foo {
+       * .bar {
+       * .foo();
+       * color: red;
+       * }
+       * }
+       */
       const fooRuleset = ruleset({
         selector: el('.foo'),
         rules: [
@@ -392,9 +408,11 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should fail when calling .clearfix() from within .clearfix (direct self-reference)', async () => {
-      // .clearfix {
-      //   .clearfix();
-      // }
+      /*
+       * .clearfix {
+       * .clearfix();
+       * }
+       */
       const clearfixRuleset = ruleset({
         selector: el('.clearfix'),
         rules: [
@@ -409,18 +427,20 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should fail when duplicate .foo .bar blocks both call .foo.bar() (would cause mutual recursion)', async () => {
-      // .foo {
-      //   .bar {
-      //     .foo.bar();
-      //     color: red;
-      //   }
-      // }
-      // .foo {
-      //   .bar {
-      //     .foo.bar();
-      //     color: red;
-      //   }
-      // }
+      /*
+       * .foo {
+       * .bar {
+       * .foo.bar();
+       * color: red;
+       * }
+       * }
+       * .foo {
+       * .bar {
+       * .foo.bar();
+       * color: red;
+       * }
+       * }
+       */
       const fooRuleset1 = ruleset({
         selector: el('.foo'),
         rules: [
@@ -454,12 +474,14 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should fail when mixin A calls mixin B, and mixin B would call mixin A (mutual recursion)', async () => {
-      // .a {
-      //   .b();
-      // }
-      // .b {
-      //   .a();
-      // }
+      /*
+       * .a {
+       * .b();
+       * }
+       * .b {
+       * .a();
+       * }
+       */
       const aRuleset = ruleset({
         selector: el('.a'),
         rules: [
@@ -494,15 +516,17 @@ describe('Mixin Recursion Detection', () => {
 
   describe('non-recursive mixin calls that should succeed', () => {
     it('should succeed when calling .foo.foo() from within .foo .bar if .foo .foo exists (no recursion)', async () => {
-      // .foo {
-      //   .bar {
-      //     .foo.foo();
-      //     color: red;
-      //   }
-      //   .foo {
-      //     color: blue;
-      //   }
-      // }
+      /*
+       * .foo {
+       * .bar {
+       * .foo.foo();
+       * color: red;
+       * }
+       * .foo {
+       * color: blue;
+       * }
+       * }
+       */
       const fooRuleset = ruleset({
         selector: el('.foo'),
         rules: [
@@ -538,12 +562,14 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should succeed when calling a mixin from a different ruleset (no recursion)', async () => {
-      // .foo {
-      //   .bar();
-      // }
-      // .bar {
-      //   color: blue;
-      // }
+      /*
+       * .foo {
+       * .bar();
+       * }
+       * .bar {
+       * color: blue;
+       * }
+       */
       const fooRuleset = ruleset({
         selector: el('.foo'),
         rules: [
@@ -573,19 +599,21 @@ describe('Mixin Recursion Detection', () => {
     });
 
     it('should succeed when multiple .clearfix rulesets call .clearfix() mixin (no recursion)', async () => {
-      // .clearfix {
-      //   zoom: 1;
-      // }
-      // .clearfix {
-      //   .clearfix();
-      // }
-      // .clearfix {
-      //   .clearfix();
-      // }
-      // .clearfix {
-      //   .clearfix();
-      // }
-      // The first .clearfix ruleset is the mixin definition that can be called
+      /*
+       * .clearfix {
+       * zoom: 1;
+       * }
+       * .clearfix {
+       * .clearfix();
+       * }
+       * .clearfix {
+       * .clearfix();
+       * }
+       * .clearfix {
+       * .clearfix();
+       * }
+       * The first .clearfix ruleset is the mixin definition that can be called
+       */
       const clearfixMixin = ruleset({
         selector: el('.clearfix'),
         rules: [
@@ -621,6 +649,7 @@ describe('Mixin Recursion Detection', () => {
 
       // Each .clearfix ruleset should have called the first .clearfix() mixin
       expect(css).toBeString(``);
+
       // Should not throw recursion error
     });
   });

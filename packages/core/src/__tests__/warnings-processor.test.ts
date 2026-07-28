@@ -96,6 +96,7 @@ describe('context.warn de-duplication', () => {
     for (let i = 0; i < 200; i++) {
       context.warn(diag('selector/duplicate', { line: 7 }));
     }
+
     // Before finalize: exactly one real warning surfaces.
     expect(context.warnings.filter(w => w.code === 'selector/duplicate')).toHaveLength(1);
 
@@ -110,6 +111,7 @@ describe('context.warn de-duplication', () => {
     for (let line = 1; line <= 8; line++) {
       context.warn(diag('selector/duplicate', { line }));
     }
+
     // Default cap is 5 distinct sites.
     expect(context.warnings.filter(w => w.code === 'selector/duplicate')).toHaveLength(5);
 
@@ -165,17 +167,14 @@ describe('context.warn silencing', () => {
 describe('context.warn fatal promotion', () => {
   it('throws with the fatal-explanation message on an exact code', () => {
     const context = makeContext({ warnings: { fatal: ['extend/not-found'] } });
-    expect(() => context.warn(diag('extend/not-found'))).toThrow(
-      /only an error because you've set extend\/not-found to be fatal/
-    );
+    expect(() => context.warn(diag('extend/not-found'))).toThrow(/only an error because you've set extend\/not-found to be fatal/);
   });
 
   it('throws on a category wildcard', () => {
     const context = makeContext({ warnings: { fatal: ['deprecation/*'] } });
     const dep = Deprecation.fromId('dot-slash-operator')!;
     expect(() =>
-      context.warnDeprecation(dep, diag('eval/deprecated'))
-    ).toThrow(/deprecation\/dot-slash-operator to be fatal/);
+      context.warnDeprecation(dep, diag('eval/deprecated'))).toThrow(/deprecation\/dot-slash-operator to be fatal/);
   });
 });
 
@@ -216,9 +215,7 @@ describe('context.warn accepts a JessError from WARN.*', () => {
     expect(kept).toHaveLength(1);
     expect(kept[0]!.line).toBe(2);
     context.finalizeWarnings();
-    expect(
-      context.warnings.find(w => w.message.includes('suppressed'))!.message
-    ).toContain('2 warnings suppressed across 1 sites');
+    expect(context.warnings.find(w => w.message.includes('suppressed'))!.message).toContain('2 warnings suppressed across 1 sites');
   });
 
   it('deprecation routing stamps deprecation/<id> and surfaces the single site', () => {

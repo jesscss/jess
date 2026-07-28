@@ -78,6 +78,16 @@ export interface LessOptions {
   paths?: string[];
 
   /**
+   * Controls whether Less imports are loaded and emitted.
+   *
+   * Less's `processImports: false` path skips import processing; imported
+   * stylesheets are neither loaded nor preserved as CSS `@import` statements.
+   *
+   * @default true
+   */
+  processImports?: boolean;
+
+  /**
    * Color output in the terminal
    * @default true
    */
@@ -329,8 +339,10 @@ export interface InputOptions extends FileMatchOptions {
   equalityMode?: EqualityMode;
   strict?: boolean;
   allowOverloadedImport?: boolean;
+  processImports?: boolean;
   allowExtendSelectors?: ExtendSelectorKind[];
   disableScriptModules?: boolean;
+
   /**
    * @deprecated Use `disableScriptModules` instead.
    */
@@ -391,18 +403,26 @@ export interface StylesConfig {
     unitMode?: UnitMode;
     functionMode?: FunctionMode;
     equalityMode?: EqualityMode;
+
     /** See {@link LessOptions.strict}. Expanded onto the other compile modes. */
     strict?: boolean;
+
     /** See {@link LessOptions.allowOverloadedImport}. */
     allowOverloadedImport?: boolean;
+
     /** See {@link LessOptions.leakyScope}. */
     leakyScope?: boolean;
+
+    /** See {@link LessOptions.processImports}. */
+    processImports?: boolean;
     allowExtendSelectors?: ExtendSelectorKind[];
     disableScriptModules?: boolean;
+
     /**
      * @deprecated Use `disableScriptModules` instead.
      */
     disablePluginRule?: boolean;
+
     /**
      * Filesystem root that Less `@plugin` / script-module scripts are allowed to
      * be read from. When set, it overrides the default (the entry file's
@@ -410,12 +430,14 @@ export interface StylesConfig {
      */
     jsReadRoot?: string;
   };
+
   /**
    * Input file options. Can be a single object for defaults, or an array
    * where entries can have a `file` property (path or glob) to match specific inputs.
    * Entries without a `file` property serve as defaults.
    */
   input?: InputOptions | InputOptions[];
+
   /**
    * Output file options. Can be a single object for defaults, or an array
    * where entries can have a `file` property (path or glob) to match specific outputs.

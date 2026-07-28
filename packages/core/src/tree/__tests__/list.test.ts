@@ -125,9 +125,7 @@ describe('List', () => {
       ])
     }) satisfies TriviaMap;
 
-    expect(list([first, second, third]).toString({ trivia, writer })).toBe(
-      'the,\n            great,\n            wall'
-    );
+    expect(list([first, second, third]).toString({ trivia, writer })).toBe('the,\n            great,\n            wall');
     expect(writer.captures).toBe(0);
   });
 
@@ -455,8 +453,11 @@ describe('List', () => {
 
     const leftChild = any('left');
     const rightChild = any('right');
-    // Invariant 7: raw `new` shares; parent canonically via the explicit primitive
-    // (as the `list` factory does) so operate() has real source parentage.
+
+    /*
+     * Invariant 7: raw `new` shares; parent canonically via the explicit primitive
+     * (as the `list` factory does) so operate() has real source parentage.
+     */
     const left = new CountingList([leftChild]).parentChildren();
     const right = list([rightChild]);
 
@@ -500,11 +501,14 @@ describe('List', () => {
     let rule = list([spaced([num(1), any('2'), any('3')]), any('four')]);
     expect(rule.toTrimmedString()).toBe('1 2 3, four');
   });
-  // it('should serialize to a module', () => {
-  //   let rule = list([spaced([any('1'), any('2'), any('3')]), any('four')])
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     '$J.list([\n  $J.spaced([$J.any("1"), $J.any("2"), $J.any("3")]),\n  "four"\n])'
-  //   )
-  // })
+
+  /*
+   * it('should serialize to a module', () => {
+   * let rule = list([spaced([any('1'), any('2'), any('3')]), any('four')])
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe(
+   * '$J.list([\n  $J.spaced([$J.any("1"), $J.any("2"), $J.any("3")]),\n  "four"\n])'
+   * )
+   * })
+   */
 });

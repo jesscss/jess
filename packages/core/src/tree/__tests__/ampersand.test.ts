@@ -90,8 +90,7 @@ describe('Ampersand', () => {
         & {
           inner: one two;
         }
-      }`
-    );
+      }`);
   });
 
   it('keeps composed selector stack render-local when serializing bare ampersands', () => {
@@ -150,7 +149,6 @@ describe('Ampersand', () => {
       rules: []
     });
     context.rulesetFrames.push(frame);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     (frame.selector as Selector).toTrimmedString = () => {
       throw new Error('Ampersand append placement should not snapshot selector text');
     };
@@ -174,9 +172,7 @@ describe('Ampersand', () => {
     }
     const originalClone = sourceSelector.clone;
     let clonedSourceSelectors = 0;
-    sourceSelector.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
+    sourceSelector.clone = function cloneForCounting(...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
       clonedSourceSelectors++;
       return originalClone.apply(this, args);
     };
@@ -293,7 +289,6 @@ describe('Ampersand', () => {
     if (!(sourceSelector instanceof Selector)) {
       throw new Error(`Expected Selector, got ${String(sourceSelector)}`);
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const sourceChildren = [...(sourceSelector.value as unknown as Iterable<unknown>)];
 
     const resolved = await amp('-baz').resolve(context);
@@ -302,7 +297,6 @@ describe('Ampersand', () => {
     expect(resolved).not.toBe(sourceSelector);
     expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.foo .bar');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(sourceChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
@@ -334,9 +328,7 @@ describe('Ampersand', () => {
     `);
     expect(parentSelector.value).toEqual(sourceParentChildren);
     expect(nestedSelector.value).toEqual(sourceNestedChildren);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(sourceParentChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceParentChildren.map(() => parentSelector));
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(sourceNestedChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
@@ -378,9 +370,7 @@ describe('Ampersand', () => {
     `);
     expect(parentSelector.value).toEqual(sourceParentChildren);
     expect(nestedSelector.value).toEqual(sourceNestedChildren);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(sourceParentChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceParentChildren.map(() => parentSelector));
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(sourceNestedChildren.map(child => (child as SimpleSelector).parent)).toEqual(sourceNestedChildren.map(() => nestedSelector));
   });
 
@@ -451,13 +441,13 @@ describe('Ampersand', () => {
     let node = wrapAmp([amp()]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one.two) is unwrapped to .one.two; same selector as outer so one block
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when in collapsing mode #2', async () => {
@@ -466,14 +456,14 @@ describe('Ampersand', () => {
     context = new Context({ output: { collapseNesting: true } });
 
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one,.two) is unwrapped to .one,.two; same selector as outer so one block
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should order value when collapsing', async () => {
@@ -486,35 +476,34 @@ describe('Ampersand', () => {
       }
       h2.one.two {
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand is set to hoist #1', async () => {
     let node = wrapAmp([amp('')]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one.two) unwraps to .one.two; same selector so one block
     expect(css).toBeString(`
       .one.two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand is set to hoist #2', async () => {
     let node = wrapAmpList([sel([amp('')])]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // Generated :is(.one,.two) unwraps to .one,.two; same selector so one block
     expect(css).toBeString(`
       .one,
       .two {
         chungus: foo bar;
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand has an appended value #1', async () => {
@@ -527,8 +516,7 @@ describe('Ampersand', () => {
       }
       .one.two-1 {
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('should collapse value when ampersand has an appended value #2', async () => {
@@ -543,8 +531,7 @@ describe('Ampersand', () => {
       .one-1,
       .two-1 {
         inner: one two;
-      }`
-    );
+      }`);
   });
 
   it('derives complex selector-list merge templates with hoist and selector metadata', async () => {
@@ -562,7 +549,6 @@ describe('Ampersand', () => {
 
     const originals = new Array<Selector['toTrimmedString']>(sourceSelector.value.length);
     for (let index = 0; index < sourceSelector.value.length; index++) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const selector = sourceSelector.value[index]! as Selector;
       originals[index] = selector.toTrimmedString;
       selector.toTrimmedString = function countPublicStringTransport(
@@ -576,7 +562,6 @@ describe('Ampersand', () => {
 
     const resolved = await amp('-theme').resolve(context);
     for (let index = 0; index < sourceSelector.value.length; index++) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (sourceSelector.value[index]! as Selector).toTrimmedString = originals[index]!;
     }
 
@@ -599,7 +584,6 @@ describe('Ampersand', () => {
     expect(frame.selector).toBe(sourceSelector);
     expect(sourceSelector.toTrimmedString()).toBe('.one > .child,\n.two .child');
     expect(sourceSelector.value).toEqual(sourceChildren);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect(sourceChildren.map(child => (child as Selector).parent)).toEqual(sourceChildren.map(() => sourceSelector));
   });
 
@@ -607,6 +591,7 @@ describe('Ampersand', () => {
     let node = wrapAmpList([sel([amp()]), sel([el('.three')])]);
     context = new Context({ output: { collapseNesting: true } });
     const css = await renderNodeToString(node, context, { collapseNesting: true });
+
     // First item is generated :is(.one,.two) and unwraps to .one,.two; second stays :is(.one,.two) .three
     expect(css).toBeString(`
       .one,
@@ -617,8 +602,7 @@ describe('Ampersand', () => {
       .two,
       :is(.one, .two) .three {
         inner: one two;
-      }`
-    );
+      }`);
     node = wrapAmpList([compound([amp(), el('.three')])]);
     const css2 = await renderNodeToString(node, context, { collapseNesting: true });
     expect(css2).toBeString(`
@@ -628,7 +612,6 @@ describe('Ampersand', () => {
       }
       :is(.one, .two).three {
         inner: one two;
-      }`
-    );
+      }`);
   });
 });

@@ -1,4 +1,5 @@
 import { setSourceSpan, sourceSpanOf } from '../util/provenance.js';
+
 // import { Selector } from '../selector-sequence'
 import { sel, el, co, pseudo, any, sellist, compound } from '../index.js';
 import { Context } from '../../context.js';
@@ -7,8 +8,11 @@ import { isNode } from '../util/is-node.js';
 import type { TriviaMap } from '../../types/index.js';
 import { createTriviaMap, makeTrivia } from '../util/trivia.js';
 import { OutputWriter } from '../util/print.js';
-// import type { Class } from 'type-fest'
-// import type { Node } from '../node.js'
+
+/*
+ * import type { Class } from 'type-fest'
+ * import type { Node } from '../node.js'
+ */
 
 let context: Context;
 
@@ -25,9 +29,11 @@ class CountingWriter extends OutputWriter {
 }
 
 /** @todo - move to https://github.com/SamVerschueren/tsd */
-// test('Test types', () => {
-//   expectTypeOf(Selector).toMatchTypeOf<Class<Node>>()
-// })
+/*
+ * test('Test types', () => {
+ * expectTypeOf(Selector).toMatchTypeOf<Class<Node>>()
+ * })
+ */
 
 describe('Selector', () => {
   beforeEach(() => {
@@ -126,6 +132,7 @@ describe('Selector', () => {
       setSourceSpan(first, { start: 0, end: 8 });
       const second = el('.comments');
       setSourceSpan(second, { start: 35, end: 43 });
+
       // The SAME run object indexed from both sides — emitted once by identity.
       const shared = run(' /* boo *//* boo again*/');
       const trivia = createTriviaMap({
@@ -193,8 +200,10 @@ describe('Selector', () => {
     });
 
     test(':is() should match w/o :is()', () => {
-      // .foo {}
-      // :is(.foo) {}
+      /*
+       * .foo {}
+       * :is(.foo) {}
+       */
       const sel1 = el('.foo');
       const sel2 = pseudo({
         name: ':is',
@@ -206,11 +215,13 @@ describe('Selector', () => {
     test(':is() should match w/o :is()', () => {
       // .foo, .bar {}
       const sel1 = sellist([el('.foo'), el('.bar')]);
+
       // :is(.foo, .bar) {}
       const sel2 = pseudo({
         name: ':is',
         arg: sellist([el('.foo'), el('.bar')])
       });
+
       // :is(.foo), .bar {}
       const sel3 = sellist([
         pseudo({
@@ -220,15 +231,17 @@ describe('Selector', () => {
         el('.bar')
       ]);
 
-      // .foo, .bar {}
-      // :is(.foo, .bar) {}
-      // match .foo w/ .foo
-      // .bar {}
-      // :is(.bar) {}
-      // match .bar w/ .bar
-      // {}
-      // :is() {} is reduced to {}
-      // matches are exhausted, so the selectors are equal
+      /*
+       * .foo, .bar {}
+       * :is(.foo, .bar) {}
+       * match .foo w/ .foo
+       * .bar {}
+       * :is(.bar) {}
+       * match .bar w/ .bar
+       * {}
+       * :is() {} is reduced to {}
+       * matches are exhausted, so the selectors are equal
+       */
       expect(sel1.compare(sel2)).toBe(0);
       expect(sel1.compare(sel3)).toBe(0);
       expect(sel2.compare(sel3)).toBe(0);
@@ -240,6 +253,7 @@ describe('Selector', () => {
         sel([el('a'), co(' '), el('b')]),
         sel([el('a'), co(' '), el('c')])
       ]);
+
       // a :is(b, c) {}
       const sel2 = sel([
         el('a'),

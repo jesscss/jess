@@ -19,11 +19,11 @@ const CHANGED_ONLY = process.argv.includes('--changed');
 
 const BASELINE_PACKAGE_DIRS = new Set([
   'packages/core',
-  'packages/less-parser',
-  'packages/css-parser',
+  'packages/syntax/less/less-parser',
+  'packages/syntax/css/css-parser',
   'packages/jess',
-  'packages/jess-plugin-less',
-  'packages/jess-plugin-less-compat'
+  'packages/syntax/less/jess-plugin-less',
+  'packages/syntax/less/jess-plugin-less-compat'
 ]);
 
 const NON_SOURCE_PATH_PATTERNS = [
@@ -149,18 +149,14 @@ function changedFilesAgainstUpstream() {
 }
 
 function uniqueLines(outputs) {
-  return [...new Set(
-    outputs
-      .flatMap(output => output.split('\n'))
-      .map(line => line.trim())
-      .filter(Boolean)
-  )];
+  return [...new Set(outputs
+    .flatMap(output => output.split('\n'))
+    .map(line => line.trim())
+    .filter(Boolean))];
 }
 
 function packageDirsFromFiles(files) {
-  const filtered = files.filter(
-    file => !NON_SOURCE_PATH_PATTERNS.some(pattern => pattern.test(file))
-  );
+  const filtered = files.filter(file => !NON_SOURCE_PATH_PATTERNS.some(pattern => pattern.test(file)));
   const dirs = new Set();
   for (const file of filtered) {
     const match = file.match(/^packages\/[^/]+/);
@@ -230,23 +226,23 @@ if (CHANGED_ONLY) {
     console.log('\n>>> Verify baseline passed (parser boundary + frontier checks only).');
     process.exit(0);
   }
-  console.log(
-    `Verify baseline (--changed): ${packagesToCheck.length} package(s) to check: ${packagesToCheck.join(', ')}`
-  );
+  console.log(`Verify baseline (--changed): ${packagesToCheck.length} package(s) to check: ${packagesToCheck.join(', ')}`);
 } else {
   console.log('Verify baseline: core + parsers + Less fixture and compatibility suites');
 }
 
 const runCore = packagesToCheck.includes('packages/core');
-const runLessParser = packagesToCheck.includes('packages/less-parser');
-const runCssParser = packagesToCheck.includes('packages/css-parser');
+const runLessParser = packagesToCheck.includes('packages/syntax/less/less-parser');
+const runCssParser = packagesToCheck.includes('packages/syntax/css/css-parser');
 const runJess = packagesToCheck.includes('packages/jess');
 const runLessPlugin = packagesToCheck.includes('packages/jess-plugin-less');
 const runLessCompat = packagesToCheck.includes('packages/jess-plugin-less-compat');
 
-// Build the complete runtime chain before any baseline/profile consumer runs.
-// The generated package outputs are ignored by Git, so rebuilding only core
-// can leave jess/plugins pointed at a different source revision.
+/*
+ * Build the complete runtime chain before any baseline/profile consumer runs.
+ * The generated package outputs are ignored by Git, so rebuilding only core
+ * can leave jess/plugins pointed at a different source revision.
+ */
 const needsRuntimeBuild = runCore || runLessParser || runCssParser || runJess || runLessPlugin || runLessCompat;
 const runtimeBuildOrder = [
   '@jesscss/core',

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import { decl, important, keyword, stylesheet, rule, variableDeclaration, variableReference, type Stylesheet } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
 
 describe('direct canonical declaration merge', () => {
@@ -17,11 +17,9 @@ describe('direct canonical declaration merge', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  box-shadow: navy, white !important;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('resets an important merge member before later merge groups and plain declarations', () => {
@@ -36,12 +34,10 @@ describe('direct canonical declaration merge', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  box-shadow: navy, white !important;\n'
       + '  background: black, gray;\n'
       + '  color: teal;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 });

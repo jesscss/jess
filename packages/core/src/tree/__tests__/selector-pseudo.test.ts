@@ -63,12 +63,8 @@ describe('PseudoSelector', () => {
   });
 
   it('omits generated :is() wrappers only for single-selector-list placement output', () => {
-    const generatedSingle = createGeneratedIsPseudo(
-      sellist([sel([el('.a'), co(' '), el('.b')])])
-    );
-    const generatedMulti = createGeneratedIsPseudo(
-      sellist([el('.a'), el('.b')])
-    );
+    const generatedSingle = createGeneratedIsPseudo(sellist([sel([el('.a'), co(' '), el('.b')])]));
+    const generatedMulti = createGeneratedIsPseudo(sellist([el('.a'), el('.b')]));
     const authoredSingle = pseudo({
       name: ':is',
       arg: sellist([sel([el('.a'), co(' '), el('.b')])])
@@ -84,9 +80,7 @@ describe('PseudoSelector', () => {
 
   it('keeps generated :is() placement output aligned between string and buffer render', () => {
     const buffer = createRenderBuffer('segmented');
-    const node = createGeneratedIsPseudo(
-      sellist([sel([el('.a'), co(' '), el('.b')])])
-    );
+    const node = createGeneratedIsPseudo(sellist([sel([el('.a'), co(' '), el('.b')])]));
 
     expect(node.render(context)).toBe('.a .b');
     expect(node.render(context, buffer)).toBe('.a .b');

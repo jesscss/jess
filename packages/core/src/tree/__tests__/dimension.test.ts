@@ -41,15 +41,17 @@ describe('Dimension', () => {
 
   describe('serialization', () => {
     /** @todo? */
-    // it.only('should make a dimension from a string', () => {
-    //   let rule = dimension('10px');
-    //   let clone = rule.clone();
-    //   expect(rule.number).toBe(10);
-    //   expect(clone.number).toBe(10);
-    //   expect(rule.unit).toBe('px');
-    //   expect(rule.value).not.toBe(clone.value);
-    //   expect(rule.toString()).toBe('10px');
-    // });
+    /*
+     * it.only('should make a dimension from a string', () => {
+     * let rule = dimension('10px');
+     * let clone = rule.clone();
+     * expect(rule.number).toBe(10);
+     * expect(clone.number).toBe(10);
+     * expect(rule.unit).toBe('px');
+     * expect(rule.value).not.toBe(clone.value);
+     * expect(rule.toString()).toBe('10px');
+     * });
+     */
     it('should make a dimension from a number', () => {
       let rule = num(10);
       expect(rule.number).toBe(10);
@@ -71,8 +73,10 @@ describe('Dimension', () => {
     });
 
     it('serializes degenerate numeric constants per CSS Values 4', () => {
-      // CSS Values & Units 4 §10.7.2/§10.13: infinity/-infinity are lowercase
-      // keywords, NaN is mixed case.
+      /*
+       * CSS Values & Units 4 §10.7.2/§10.13: infinity/-infinity are lowercase
+       * keywords, NaN is mixed case.
+       */
       expect(num(Infinity).toTrimmedString()).toBe('infinity');
       expect(num(-Infinity).toTrimmedString()).toBe('-infinity');
       expect(num(NaN).toTrimmedString()).toBe('NaN');
@@ -142,9 +146,11 @@ describe('Dimension', () => {
     });
 
     it('defaults arithmetic to preserve mode', async () => {
-      // Incompatible units under preserve mode keep the operation intact: the
-      // Operation node catches operate()'s TypeError and renders `calc(l - r)`
-      // with the original operands (no fabricated fused unit).
+      /*
+       * Incompatible units under preserve mode keep the operation intact: the
+       * Operation node catches operate()'s TypeError and renders `calc(l - r)`
+       * with the original operands (no fabricated fused unit).
+       */
       const operation = op([dimension([10, 'px']), '-', dimension([20, 'rem'])]);
       expect(await operation.render(context)).toBe('calc(10px - 20rem)');
     });
@@ -251,8 +257,9 @@ describe('Dimension', () => {
     it('should convert angle', async () => {
       let left = dimension([1, 'rad']);
       let right = dimension([1, 'deg']);
-      // I assume this is correct
-      await expect(renderOperate(left, right, '+')).resolves.toBe('1.01745329rad');
+
+      // 1rad + 1deg = 1 + pi/180, under the shared number policy (DD F6).
+      await expect(renderOperate(left, right, '+')).resolves.toBe('1.0174532925rad');
     });
   });
 
@@ -291,11 +298,14 @@ describe('Dimension', () => {
     beforeEach(() => {
       context.setOption('unitMode', 'preserve');
     });
-    // In preserve mode, `operate()` does NOT fuse operands into a fabricated
-    // compound-unit Dimension. It throws TypeError so the caller (Operation)
-    // preserves the arithmetic un-collapsed as `calc(l op r)` with the original
-    // operands. These assert the throw contract; calc preservation itself is
-    // covered by the Operation tests and the all-less calc fixture.
+
+    /*
+     * In preserve mode, `operate()` does NOT fuse operands into a fabricated
+     * compound-unit Dimension. It throws TypeError so the caller (Operation)
+     * preserves the arithmetic un-collapsed as `calc(l op r)` with the original
+     * operands. These assert the throw contract; calc preservation itself is
+     * covered by the Operation tests and the all-less calc fixture.
+     */
     it('throws when adding incompatible units', () => {
       let left = dimension([10, 'px']);
       let right = dimension([2, 'rem']);
@@ -347,9 +357,12 @@ describe('Dimension', () => {
       expect(() => left.operate(right, '/', context)).toThrow(TypeError);
     });
   });
-  // it('should serialize to a module', () => {
-  //   let rule = dimension('10px')
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe('$J.num({\n  value: 10,\n  unit: "px"\n})')
-  // })
+
+  /*
+   * it('should serialize to a module', () => {
+   * let rule = dimension('10px')
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe('$J.num({\n  value: 10,\n  unit: "px"\n})')
+   * })
+   */
 });

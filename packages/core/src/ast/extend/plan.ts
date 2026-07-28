@@ -32,9 +32,11 @@ export interface PlanInstruction {
   extenderPath: Level[];
   scope: number[];
   order: number;
+
   /** [import:reference] The extender rule came from a `(reference)` import — its
    * folded-in branches are HIDDEN. False for the ordinary (visible) extend. */
   extenderHidden: boolean;
+
   /** Reference-import boundary. Extends never escape the imported document that
    * defined them, even though its typed facts share the planner's root view. */
   referenceBoundary: object | null;
@@ -44,17 +46,23 @@ export interface PlanSubject {
   rule: Rule;
   path: Level[];
   scope: number[];
+
   /** The authored own-local selector level (last entry of `path`). */
   ownLocal: Level;
+
   /** The enclosing authored subject rule, or null at the top level. */
   parent: PlanSubject | null;
+
   /** [import:reference] The subject rule came from a `(reference)` import — its own
    * seed branches are HIDDEN (emit nothing unless a visible extender folds in). */
   hidden: boolean;
+
   /** See {@link PlanInstruction.referenceBoundary}. */
   referenceBoundary: object | null;
+
   /** Concrete render placement for a repeated canonical body (`$for`/`each`). */
   placement?: object;
+
   /**
    * FAST-REJECT: true when some level on this subject's ancestor path (own-local ∪
    * ancestors) contains an atom that is also an instruction-target atom. Computed
@@ -70,6 +78,7 @@ export interface PlanSubject {
 export interface Plan {
   subjects: PlanSubject[];
   instructions: PlanInstruction[];
+
   /**
    * The UNION of every instruction target's individual simple atoms (graft-
    * recursive; see `collectBranchAtoms`), across ALL instructions and ALL branches
@@ -126,10 +135,12 @@ export function collectPlan(
         subjects.push(subject);
         if (rule.extendInstructions) {
           for (const inst of rule.extendInstructions) {
-            // [extend] An INLINE extend binds to its own complex (`inst.subject`), not
-            // the whole rule selector — its extender path narrows the own-local level to
-            // that one branch so a comma-sibling is never folded into the target. A
-            // body-form `&:extend` (no subject) keeps the whole rule selector.
+            /*
+             * [extend] An INLINE extend binds to its own complex (`inst.subject`), not
+             * the whole rule selector — its extender path narrows the own-local level to
+             * that one branch so a comma-sibling is never folded into the target. A
+             * body-form `&:extend` (no subject) keeps the whole rule selector.
+             */
             const extenderPath = inst.subject
               ? [...path, levelFromSelectorList(inst.subject)]
               : rulePath;
@@ -152,6 +163,7 @@ export function collectPlan(
         const inner = [...scope, scopeCounter++];
         walk(st.body, path, inner, parent);
       }
+
       // MixinDef / MixinCall / declarations / at-rule statements: no extend surface.
     }
   };
@@ -159,9 +171,11 @@ export function collectPlan(
   walk(root.children, [], [], null);
 
   if (overlay) {
-    // Do not spread planner overlays: a large, finite imported-loop overlay
-    // becomes call arguments and hits V8's stack/argument limit before solving.
-    // Indexed append preserves source order without a temporary copy.
+    /*
+     * Do not spread planner overlays: a large, finite imported-loop overlay
+     * becomes call arguments and hits V8's stack/argument limit before solving.
+     * Indexed append preserves source order without a temporary copy.
+     */
     for (let index = 0; index < overlay.subjects.length; index++) {
       subjects.push(overlay.subjects[index]!);
     }
@@ -175,9 +189,11 @@ export function collectPlan(
     recordAstExtendProfile?.('astExtend.plan.overlayInstructions', overlay.instructions.length);
   }
 
-  // FAST-REJECT boolean, computed as an inherited flag over subjects in document
-  // (pre-)order — a parent always precedes its descendants, so one forward pass
-  // suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms).
+  /*
+   * FAST-REJECT boolean, computed as an inherited flag over subjects in document
+   * (pre-)order — a parent always precedes its descendants, so one forward pass
+   * suffices. `own || parent.mayMatch`: no `composePath`, O(own-local atoms).
+   */
   for (const s of subjects) {
     s.mayMatch =
       (s.parent?.mayMatch === true)

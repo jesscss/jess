@@ -18,6 +18,9 @@ export { default as remove } from './remove.js';
 export { default as keys } from './keys.js';
 export { default as values } from './values.js';
 export { default as hasKey } from './has-key.js';
-// TODO: Implement remaining map module functions
-// - map.deep-merge()
-// - map.deep-remove()
+
+/*
+ * TODO: Implement remaining map module functions
+ * - map.deep-merge()
+ * - map.deep-remove()
+ */

@@ -1,0 +1,28 @@
+@-from "./something.ts" import foo;
+@-from "./something.ts" import * as foo;
+@-from "./something.ts" import foo, (named);
+@-from "./something.ts" import foo, (named, zecond);
+@-from "./something.ts" import foo, (named as other);
+
+@-compose './something.less';
+@-compose './mixins.scss';
+@-from '#jess/fns' import (rgb);
+@-compose './uses-rgb.less';
+@-compose "someurl.css";
+@import "someurl.css";
+
+my-mixin($unit: ~"keyword", $foo) {
+  $ > something > less-mixin > thing($unit);
+
+  $if ($foo = bar) { foo: one; } $else { foo: two; }
+
+  $if (true) {
+    $foo := $($unit + 1);
+  }
+  color: black;
+  color: $foo;
+}
+
+.rule {
+  $ > my-mixin(1px, 2px);
+}

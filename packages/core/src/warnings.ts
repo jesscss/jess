@@ -21,17 +21,22 @@ export type DiagnosticDisplay = 'summary' | 'line' | 'frame';
 export interface WarningsConfig {
   /** Presentation tier for warnings. Default `line`. */
   display?: DiagnosticDisplay;
+
   /** Codes (or `cat/*` wildcards) whose warnings are dropped silently. */
   silence?: string[];
+
   /** Codes (or `cat/*` wildcards) whose warnings are thrown as errors. */
   fatal?: string[];
+
   /**
    * Codes (or `cat/*` wildcards) the author opts into early — reserved for
    * surfacing warnings that will become fatal at the next major version.
    */
   future?: string[];
+
   /** Cap repeated warnings per code/site. Default `true`. */
   limitRepetition?: boolean;
+
   /** Distinct sites emitted per code before the rest are summarized. Default `5`. */
   maxSitesPerCode?: number;
 }
@@ -123,11 +128,14 @@ export function warnCodeMatchesAny(code: string, patterns: readonly string[]): b
  */
 export interface WarningsConfigInputs {
   warnings?: WarningsConfigInput;
+
   /** Legacy Less option — silences everything. */
   suppressWarnings?: boolean;
   verbose?: boolean;
+
   /** Legacy deprecation ids to make fatal (mapped onto `deprecation/<id>`). */
   fatalDeprecations?: string[];
+
   /** Legacy deprecation ids to opt into early (mapped onto `deprecation/<id>`). */
   futureDeprecations?: string[];
 }
@@ -181,10 +189,13 @@ export function resolveErrorsConfig(errors?: ErrorsConfigInput): ResolvedErrorsC
 export interface CodeWarnStats {
   /** Phase captured from the first diagnostic (for the summary diagnostic). */
   phase: WarningDiagnostic['phase'];
+
   /** Distinct site keys that were emitted (used for dedup + the site cap). */
   readonly emittedSites: Set<string>;
+
   /** Distinct site keys that had at least one suppressed warning. */
   readonly suppressedSites: Set<string>;
+
   /** Total number of suppressed warning occurrences. */
   suppressedCount: number;
 }

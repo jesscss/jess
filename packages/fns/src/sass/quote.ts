@@ -15,6 +15,7 @@ const quote = defineFunction(
     if (string.quote) {
       return string;
     }
+
     // Create new Quoted with quote option (quoted)
     const value = String(typeof string.value === 'string' ? string.value : string.valueOf());
     return new Quoted(value, { quote: '"' });

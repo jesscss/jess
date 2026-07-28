@@ -4,10 +4,30 @@ globs:
   - "packages/css-parser/**"
   - "packages/less-parser/**"
   - "packages/scss-parser/**"
-  - "packages/parser/**"
+  - "packages/jess-parser/**"
+  - "packages/parser-shared/**"
 ---
 
 # Parsers
+
+## ⛔ BEFORE EDITING ANY OF THE EIGHT GRAMMAR FILES
+
+`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md` is the standing brief:
+14 checklist items applied to **every `const` in the file** (not sampled), the
+hard constraints, the oracle verification loop, and the definition of done
+(diagnostic clean, lint clean, oracle byte-identical, macro-buildable clean —
+not "tests pass"). Use the `grammar-reviewer` agent before landing; it returns
+evidence per const, not a verdict.
+
+Item 14 is the naming law: **a dialect prefix (`css…`/`less…`/`scss…`/`jess…`)
+or an `Ast`/`Cst` in a rule name is a claim of genuine divergence and must be
+earned.** Default to the plain name (`declaration`, `selector`, `atRule`); never
+prefix a shared rule; when divergence is real, name the divergence, not the
+owner (`declarationWithInterpolatedName`, not `lessDeclaration`). This is a
+*duplication* rule with a stated cause — the prefix makes two identical rules
+look different, so nobody ever diffs them — and **not** a style guide. The
+mechanism and its standing evidence live in the standard's *naming is a
+duplication mechanism* section; do not restate them here.
 
 ## ⛔ SOURCE OF TRUTH FOR NODE SHAPES — READ THIS BEFORE TOUCHING A BUILDER
 
@@ -39,7 +59,11 @@ These productions contain the real node-construction logic. Examples:
 - `packages/css-parser`: base CSS parsing
 - `packages/less-parser`: LESS parsing
 - `packages/scss-parser`: SCSS parsing (includes sass-spec cache scripts)
-- `packages/parser`: Jess CST parser/orchestrator
+- `packages/jess-parser`: `.jess` parsing
+- `packages/parser-shared`: material shared by all four (recognition maps,
+  pseudo consts, opaque at-rules) — renamed from `internal-css-recognition` at
+  `a74131e8f`. A rule that lives here is by definition shared: item 14 applies
+  with full force.
 
 ## Typical hotspots
 

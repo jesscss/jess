@@ -79,7 +79,7 @@ describe('spine loop-fold via import splice', () => {
     expect(css).toContain('.item-secondary');
     expect(css).toContain('color: primary');
     expect(css).toContain('color: secondary');
-    expect(css).not.toContain("is not defined");
+    expect(css).not.toContain('is not defined');
   });
 });
 

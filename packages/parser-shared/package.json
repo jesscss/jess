@@ -1,0 +1,34 @@
+{
+  "name": "@jesscss/parser-shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./recognition": {
+      "types": "./lib/recognition.d.ts",
+      "import": "./lib/recognition.js",
+      "require": "./lib/recognition.cjs"
+    },
+    "./opaque-at-rule": {
+      "types": "./lib/opaque-at-rule.d.ts",
+      "import": "./lib/opaque-at-rule.js",
+      "require": "./lib/opaque-at-rule.cjs"
+    },
+    "./pseudo-consts": {
+      "types": "./lib/pseudo-consts.d.ts",
+      "import": "./lib/pseudo-consts.js",
+      "require": "./lib/pseudo-consts.cjs"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "build": "pnpm compile",
+    "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly --noCheck"
+  },
+  "devDependencies": {
+    "parseman": "^0.41.0",
+    "tsdown": "~0.21.7"
+  }
+}

@@ -88,10 +88,13 @@ const PROPERTY_LOOKUP: DeclarationLookupStrategy = {
   includeLiveBindings: false,
   includeFallbackFrames: true,
   prepareScopeFrame: false,
-  // A property lookup must match a plain Declaration only. VarDeclaration extends
-  // Declaration (its nodeType carries BOTH bits), so an `N.Declaration` mask alone
-  // would also accept `@foo` — exclude it so `#ns[foo]` resolves the property, not
-  // a same-named variable.
+
+  /*
+   * A property lookup must match a plain Declaration only. VarDeclaration extends
+   * Declaration (its nodeType carries BOTH bits), so an `N.Declaration` mask alone
+   * would also accept `@foo` — exclude it so `#ns[foo]` resolves the property, not
+   * a same-named variable.
+   */
   acceptsNode: (node): node is Declaration => isNode(node, N.Declaration) && !isNode(node, N.VarDeclaration),
   scopeMayContainFamily: scope => scope.hasDeclarationChildSurface || scope.hasReferenceImportChildSurface,
   childEntryMayContainFamily: entry => (
@@ -281,9 +284,7 @@ function createDeclarationOccurrence(
   };
 }
 
-export function isDirectDeclarationOccurrenceCurrent(
-  occurrence: DirectDeclarationOccurrence
-): boolean {
+export function isDirectDeclarationOccurrenceCurrent(occurrence: DirectDeclarationOccurrence): boolean {
   return (
     occurrence.node.parent === occurrence.ownerRules
     && occurrence.ownerRules?.getDeclarationLookupVersion(String(occurrence.node.name.valueOf())) === occurrence.ownerLookupVersion
@@ -708,11 +709,14 @@ function findDeclarationLookupWithStrategy(
   let start = lookupOptions.start;
   let rules: Rules | undefined = startRules;
   let searchingFallback = false;
-  // Reference/inline imports link their evaluated member surface as a scope
-  // fallback frame on the *enclosing* scope (see rules.ts registration). The
-  // AST parent walk only sees `startRules`'s own fallback, so an import placed
-  // on an ancestor scope is missed — capture the deepest ancestor fallback
-  // entry so we descend into it once the primary chain exhausts.
+
+  /*
+   * Reference/inline imports link their evaluated member surface as a scope
+   * fallback frame on the *enclosing* scope (see rules.ts registration). The
+   * AST parent walk only sees `startRules`'s own fallback, so an import placed
+   * on an ancestor scope is missed — capture the deepest ancestor fallback
+   * entry so we descend into it once the primary chain exhausts.
+   */
   let ancestorFallback: Rules | undefined;
   let optionalMatch = chooseCandidateMatch(undefined, lookupOptions.optionalCandidates, key, strategy, lookupOptions);
   let publicMatch = chooseCandidateMatch(undefined, lookupOptions.candidates, key, strategy, lookupOptions);

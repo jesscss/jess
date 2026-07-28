@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { Dimension } from '@jesscss/core';
-import mod from '../mod.js';
+import { makeDimension } from '@jesscss/core/value';
+import { mod } from '../mod.js';
 
 describe('mod()', () => {
   it('returns modulo result and preserves first unit', () => {
     const result = mod(
-      new Dimension({ number: 10, unit: 'px' }),
-      new Dimension({ number: 4, unit: 'em' })
+      makeDimension(10, 'px'),
+      makeDimension(4, 'em')
     );
     expect(result.number).toBe(2);
     expect(result.unit).toBe('px');

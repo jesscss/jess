@@ -1,0 +1,52 @@
+$value: something;
+
+$collection: {
+  foo: {
+    bar: {
+      deeper: collection;
+    };
+  };
+  sibling: declaration;
+};
+
+.${value} {}
+.class${value} {}
+
+$one: 1;
+$two: 2;
+$foo: $($one = 1);
+$bar: $($two = 2);
+$compare: $($one > $two);
+
+// Logical operators are condition-position forms
+$if (($one = 1) and ($two = 2)) { .and-branch {} }
+$if (($one = 1) or ($two = 3)) { .or-branch {} }
+
+.box {
+  one: $collection.foo.bar.deeper;
+  three: $(
+    $one
+  ) four;
+  four: url("${value}");
+  width: $(20px);
+  width: $(1px + 1px);
+
+  $values: 1px 2px 3px;
+  $value1: $values[0]; // 1px
+  $doublelist: 1px 2px, 3px 4px;
+  $item: $doublelist[0][0];
+}
+
+// Braced references
+.braced {
+  // ${myVar} — braced variable reference
+  var: $collection[foo];
+  // ${['prop']} — braced property reference (quoted key)
+  prop: $collection['sibling'];
+  // ${[$var]} — variable member name lookup
+  dynamic: $collection[$value];
+}
+
+.box {
+  area: area(5);
+}

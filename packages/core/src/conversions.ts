@@ -124,10 +124,14 @@ export const splitSequence = (): PreprocessParams => {
       // Check if this is the last item and it's an Operation (likely a slash)
       if (i === sequence.value.length - 1 && item instanceof Operation) {
         const { left, right } = item;
+
         // Add the left operand
         splitArgs.push(left);
-        // Add the right operand if it exists and is not a placeholder (Num with value 0)
-        // This handles test cases where Num(0) is used as a placeholder for undefined
+
+        /*
+         * Add the right operand if it exists and is not a placeholder (Num with value 0)
+         * This handles test cases where Num(0) is used as a placeholder for undefined
+         */
         if (right) {
           const isPlaceholder = right instanceof Num && right.number === 0;
           if (!isPlaceholder) {

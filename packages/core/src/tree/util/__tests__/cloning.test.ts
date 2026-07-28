@@ -14,12 +14,10 @@ describe('placement cloning', () => {
   it('copies optionless containers without allocating source options', () => {
     const source = quoted(any('red'));
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((source as unknown as { _options: unknown })._options).toBeUndefined();
     const copied = source.cloneForPlacement();
 
     expect(copied).not.toBe(source);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((source as unknown as { _options: unknown })._options).toBeUndefined();
   });
 

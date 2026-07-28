@@ -14,7 +14,7 @@
  *   - The parent frame chain is the call-site lexical chain, not the
  *     node .parent chain.
  *
- * @see docs/future/core-architecture/CORE-CLEANUP.md
+ * @see docs/architecture/core/CORE-CLEANUP.md
  */
 
 import { Node } from './node.js';
@@ -31,14 +31,18 @@ import type { CallableLookupEntry } from './util/callable-entry.js';
 export interface BindingCell {
   value?: Node;
   prepareValue?: (value: Node | undefined) => Node;
+
   /** Stable identity for cached reference handles; value writes do not change it. */
   lookupIdentity?: number;
+
   /** Back-pointer to the canonical AST node, used for recursion detection. */
   sourceNode?: Node;
+
   /** Runtime rules frame that owns this live binding. */
   rulesContext?: object;
   readonly?: boolean;
   live?: boolean;
+
   /**
    * Leaky Less mode: a mixin-call output declaration injected into the caller
    * frame. Unlike ordinary current bindings, a leak binding is source-order
@@ -67,16 +71,20 @@ export function getBindingCellValue(cell: BindingCell): Node {
  */
 export interface BindingEntry {
   cell: BindingCell;
+
   /** The AST node that owns this binding. */
   sourceNode: Node;
 }
 
 export function createVarDeclarationBindingEntry(decl: VarDeclaration): BindingEntry {
   const declValue = decl.value;
-  // A parser may deliver a multi-part value as a flat segment array (or a bare
-  // string) rather than a single Node — e.g. Less `@sizes: small 1, large 2`.
-  // Coalesce it to its structured node lazily on first read so the cell always
-  // materializes a value instead of staying value-less.
+
+  /*
+   * A parser may deliver a multi-part value as a flat segment array (or a bare
+   * string) rather than a single Node — e.g. Less `@sizes: small 1, large 2`.
+   * Coalesce it to its structured node lazily on first read so the cell always
+   * materializes a value instead of staying value-less.
+   */
   return {
     cell: {
       value: declValue instanceof Node ? declValue : undefined,
@@ -347,17 +355,21 @@ export function buildScopeFrame(
   mixinCallableMissCoverageKnown = callableMissCoverageKnown,
   hasReferenceImports = false
 ): ScopeFrame {
-  // Step 1 (frame identity): the declaration index is immutable/canonical per
-  // Rules — `varsByName` IS that index. Share it by reference instead of copying
-  // it into a fresh per-frame Map (the registration sites in rules.ts/reference.ts
-  // mutate the shared index; a body decl is canonical, so this is correct and
-  // saves one Map allocation + full copy per frame build). Live-slot-only frames
-  // (varsByName undefined) still get their own empty map.
+  /*
+   * Step 1 (frame identity): the declaration index is immutable/canonical per
+   * Rules — `varsByName` IS that index. Share it by reference instead of copying
+   * it into a fresh per-frame Map (the registration sites in rules.ts/reference.ts
+   * mutate the shared index; a body decl is canonical, so this is correct and
+   * saves one Map allocation + full copy per frame build). Live-slot-only frames
+   * (varsByName undefined) still get their own empty map.
+   */
   const declarationBucketsByName = varsByName ?? new Map<string, BindingEntry[]>();
 
-  // Bindings maps start at the shared frozen empty sentinel; the common case
-  // (a static ruleset with no vars and no live slots) never allocates one.
-  // Materialize a real mutable Map only on the first write below.
+  /*
+   * Bindings maps start at the shared frozen empty sentinel; the common case
+   * (a static ruleset with no vars and no live slots) never allocates one.
+   * Materialize a real mutable Map only on the first write below.
+   */
   let currentBindingsByName: Map<string, BindingCell> = EMPTY_BINDINGS;
 
   if (varsByName) {
@@ -375,8 +387,10 @@ export function buildScopeFrame(
     }
   }
 
-  // A live-slot-only frame reuses the caller-supplied map by reference; an
-  // absent one stays the frozen empty sentinel (never grown here).
+  /*
+   * A live-slot-only frame reuses the caller-supplied map by reference; an
+   * absent one stays the frozen empty sentinel (never grown here).
+   */
   const liveSlotsByName: Map<string, BindingCell> = liveSlots ?? EMPTY_BINDINGS;
   let hasLiveBindings = false;
   for (const [name, cell] of liveSlotsByName) {
@@ -411,9 +425,7 @@ export function buildScopeFrame(
   };
 }
 
-export function copyScopeFrameLiveBindingSlots(
-  frame: ScopeFrame | undefined
-): Map<string, BindingCell> {
+export function copyScopeFrameLiveBindingSlots(frame: ScopeFrame | undefined): Map<string, BindingCell> {
   return new Map(frame?.liveSlotsByName);
 }
 
@@ -577,10 +589,13 @@ export function lookupScopeFrameVariable(
   let leakStart = options?.leakStart;
   const searchParents = options?.searchParents !== false;
   const includeFallbackFrames = options?.includeFallbackFrames !== false;
-  // Every frame in the parent walk can carry its own import fallback (an inner
-  // mixin-body frame AND the root that holds the `@import`ed decls). Queue each
-  // one — an inner frame's fallback must not shadow an outer frame's, so a single
-  // first-wins slot dropped every import fallback above the innermost placement.
+
+  /*
+   * Every frame in the parent walk can carry its own import fallback (an inner
+   * mixin-body frame AND the root that holds the `@import`ed decls). Queue each
+   * one — an inner frame's fallback must not shadow an outer frame's, so a single
+   * first-wins slot dropped every import fallback above the innermost placement.
+   */
   let fallbackQueue: ScopeFrame[] | undefined;
   if (includeFallbackFrames && frame?.fallbackFrame) {
     (fallbackQueue ??= []).push(frame.fallbackFrame);
@@ -589,21 +604,22 @@ export function lookupScopeFrameVariable(
   while (true) {
     while (f) {
       if (visitedFallbackFrames?.has(f)) {
-        // Already searched this frame on an earlier fallback/parent walk. Stop
-        // walking THIS branch's parents, but keep consulting remaining fallback
-        // frames — a later fallback (e.g. an earlier top-level `@import`) may
-        // still hold the symbol. A nested import's placement frame lexically
-        // parents back to the import site, so its parent walk re-enters an
-        // already-visited frame; aborting the whole search here would drop every
-        // fallback queued past it. The fallback chain is finite and acyclic, so
-        // breaking (not returning) still terminates.
+        /*
+         * Already searched this frame on an earlier fallback/parent walk. Stop
+         * walking THIS branch's parents, but keep consulting remaining fallback
+         * frames — a later fallback (e.g. an earlier top-level `@import`) may
+         * still hold the symbol. A nested import's placement frame lexically
+         * parents back to the import site, so its parent walk re-enters an
+         * already-visited frame; aborting the whole search here would drop every
+         * fallback queued past it. The fallback chain is finite and acyclic, so
+         * breaking (not returning) still terminates.
+         */
         break;
       }
       visitedFallbackFrames?.add(f);
       const currentCell = f.currentBindingsByName.get(name);
       if (
-        currentCell
-        && currentCell.live === true
+        currentCell?.live === true
         && options?.includeLive !== false
       ) {
         const sourceNode = currentCell.sourceNode;
@@ -716,10 +732,13 @@ export function lookupScopeFrameVariable(
         (fallbackQueue ??= []).push(f.fallbackFrame);
       }
       start = undefined;
-      // A leak binding on the parent frame is source-order gated against where
-      // THIS frame's subtree is anchored in the parent, not the reader's inner
-      // index — a descendant reader is structurally after a parent-level call
-      // iff its enclosing block sits after that call.
+
+      /*
+       * A leak binding on the parent frame is source-order gated against where
+       * THIS frame's subtree is anchored in the parent, not the reader's inner
+       * index — a descendant reader is structurally after a parent-level call
+       * iff its enclosing block sits after that call.
+       */
       if (leakStart !== undefined) {
         const rulesNode = f.rulesNode as { index?: number } | undefined;
         leakStart = rulesNode?.index;
@@ -727,10 +746,12 @@ export function lookupScopeFrameVariable(
       f = f.parent;
     }
 
-    // Dequeue the next unvisited fallback head. A head already searched (its
-    // chain cycled back, or two frames shared a fallback) is skipped, not spun
-    // on — the `visitedFallbackFrames` set makes each parent walk total. When the
-    // queue drains, the symbol is genuinely absent.
+    /*
+     * Dequeue the next unvisited fallback head. A head already searched (its
+     * chain cycled back, or two frames shared a fallback) is skipped, not spun
+     * on — the `visitedFallbackFrames` set makes each parent walk total. When the
+     * queue drains, the symbol is genuinely absent.
+     */
     let nextFallback: ScopeFrame | undefined;
     while (fallbackQueue?.length) {
       const candidate = fallbackQueue.shift()!;
@@ -812,6 +833,7 @@ export function lookupScopeFrameCallable(
   options?: {
     includeRulesets?: boolean;
     searchParents?: boolean;
+
     /**
      * Rules-side hook to materialize a frame's callable coverage before it is
      * probed. Callable coverage is prepared lazily per-(frame,key) by
@@ -833,10 +855,12 @@ export function lookupScopeFrameCallable(
       return result;
     }
     if (result.kind === 'uncovered') {
-      // A frame whose only obstruction is an imported child surface can still be
-      // answered authoritatively by walking that import's fallback frame chain,
-      // provided the caller supplied a preparation hook. This is what retires the
-      // `findMixinsFastForUncoveredCallable` descent for imported-module mixins.
+      /*
+       * A frame whose only obstruction is an imported child surface can still be
+       * answered authoritatively by walking that import's fallback frame chain,
+       * provided the caller supplied a preparation hook. This is what retires the
+       * `findMixinsFastForUncoveredCallable` descent for imported-module mixins.
+       */
       if (
         prepareFrame
         && (result.reason === 'child-surface' || result.reason === 'reference-import')
@@ -849,6 +873,7 @@ export function lookupScopeFrameCallable(
       }
       return result;
     }
+
     // result.kind === 'miss': this frame is covered but does not define `name`.
     if (options?.searchParents === false) {
       break;

@@ -6,7 +6,7 @@
  *   - `extendByIndex`   (the prototype under test)
  * on IDENTICAL inputs and assert their stringified results are equal.
  *
- * See docs/future/core-architecture/EXTEND-INDEX-DESIGN.md §Build plan (case ladder).
+ * See docs/architecture/core/archive/EXTEND-INDEX-DESIGN.md §Build plan (case ladder).
  * Add cases ONE rung at a time; each new case tells you which layer is missing.
  */
 import { describe, it, expect } from 'vitest';
@@ -48,9 +48,7 @@ function str(v: Result): string {
  * and the two engines must NOT share input nodes (the oracle run would perturb the
  * index run). Each case supplies a THUNK returning fresh (target, find, extendWith).
  */
-function assertSame(
-  make: () => { target: Input; find: Selector; extendWith: Selector; partial: boolean }
-): void {
+function assertSame(make: () => { target: Input; find: Selector; extendWith: Selector; partial: boolean }): void {
   const a = make();
   const oracle = extendSelector(a.target, a.find, a.extendWith, a.partial);
   const b = make();
@@ -105,10 +103,12 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
     });
   });
 
-  // ── Case 1c: DUPLICATES — a FULL match must consume ALL target atoms ──
-  // A full (exact) compound match is MULTISET-equal: every target atom is consumed by the
-  // find. A stranded duplicate (the extra `.b` in `.b.b.c` find `.b.c`) is NOT a full match.
-  // Partial mode is still set-CONTAINMENT (`.b.b.c` contains `.b.c`).
+  /*
+   * ── Case 1c: DUPLICATES — a FULL match must consume ALL target atoms ──
+   * A full (exact) compound match is MULTISET-equal: every target atom is consumed by the
+   * find. A stranded duplicate (the extra `.b` in `.b.b.c` find `.b.c`) is NOT a full match.
+   * Partial mode is still set-CONTAINMENT (`.b.b.c` contains `.b.c`).
+   */
   describe('1c. duplicate atoms (full match consumes all target atoms)', () => {
     it('(no full match) .b.b.c find .b.c full → unchanged (stranded .b → not full)', () => {
       assertSame(() => ({
@@ -264,10 +264,12 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
     });
   });
 
-  // ── Case 6: & seams (child-only / crossing→hoist / parent-only→drop) ────
-  // extendByIndex OWNS the classification: a two-probe IR differential (find matches the
-  // parent-grafted RESOLVED form ∧ NOT the amp-dropped EMPTY form ⇒ crossing) plus the
-  // decision gates surfaced by PROBE (see extend-index.ts §`&` SEAM and the report).
+  /*
+   * ── Case 6: & seams (child-only / crossing→hoist / parent-only→drop) ────
+   * extendByIndex OWNS the classification: a two-probe IR differential (find matches the
+   * parent-grafted RESOLVED form ∧ NOT the amp-dropped EMPTY form ⇒ crossing) plus the
+   * decision gates surfaced by PROBE (see extend-index.ts §`&` SEAM and the report).
+   */
   describe('6. ampersand seam', () => {
     it('.a > .b > .c find .a > .c NOT contiguous → :is span or NOT_FOUND (oracle-defined)', () => {
       assertSame(() => ({
@@ -278,8 +280,10 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
       }));
     });
 
-    // CROSSING → HOIST: &.bar (parent .foo), find .foo.bar → the find matches only the
-    // parent-grafted form ⇒ hoist to root: `.foo.bar,\n.a`.
+    /*
+     * CROSSING → HOIST: &.bar (parent .foo), find .foo.bar → the find matches only the
+     * parent-grafted form ⇒ hoist to root: `.foo.bar,\n.a`.
+     */
     it('(cross) &.bar[.foo] find .foo.bar partial → hoist', () => {
       assertSame(() => ({
         target: compound([ampWith(el('.foo')), el('.bar')]),
@@ -297,8 +301,10 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
       }));
     });
 
-    // CHILD-ONLY → in-place: find matches the amp-dropped form (.bar) ⇒ extend the child
-    // material only, amp preserved: `.foo:is(.bar, .a)` (amp renders as its resolved value).
+    /*
+     * CHILD-ONLY → in-place: find matches the amp-dropped form (.bar) ⇒ extend the child
+     * material only, amp preserved: `.foo:is(.bar, .a)` (amp renders as its resolved value).
+     */
     it('(child) &.bar[.foo] find .bar partial → in-place :is()', () => {
       assertSame(() => ({
         target: compound([ampWith(el('.foo')), el('.bar')]),
@@ -308,11 +314,13 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
       }));
     });
 
-    // NOTE: the former "relative-partial gate" cases (a hand-built `> &.child` subject — a
-    // root-level leading-`>` ComplexSelector) were PURGED: that is not a reachable/well-formed
-    // input (a real `.parent { > &.child }` composes to `.parent > .parent.child` or lives
-    // nested; a dangling-`>` standalone never reaches extend). See EXTEND-INDEX-DESIGN.md
-    // "Gate 1 (WITHDRAWN)" + the reachable-inputs METHODOLOGY note.
+    /*
+     * NOTE: the former "relative-partial gate" cases (a hand-built `> &.child` subject — a
+     * root-level leading-`>` ComplexSelector) were PURGED: that is not a reachable/well-formed
+     * input (a real `.parent { > &.child }` composes to `.parent > .parent.child` or lives
+     * nested; a dangling-`>` standalone never reaches extend). See EXTEND-INDEX-DESIGN.md
+     * "Gate 1 (WITHDRAWN)" + the reachable-inputs METHODOLOGY note.
+     */
 
     // IMPLICIT `& .b` (parent .a): crossing (find .a .b matches only grafted form) → hoist.
     it('(cross) implicit & .b[.a] find .a .b partial → hoist', () => {
@@ -331,6 +339,7 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
         partial: false
       }));
     });
+
     // IMPLICIT `& .b` child-only: find .b matches the amp-dropped form → in-place: `.a :is(.b, .ext)`.
     it('(child) implicit & .b[.a] find .b partial → in-place', () => {
       assertSame(() => ({
@@ -341,8 +350,10 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
       }));
     });
 
-    // PARENT-ONLY GATE: &.bar[.foo] find .foo — find matches ONLY the parent, not child .bar.
-    // Simple-find full & partial-no-whole-location both collapse to NOT_FOUND (parent carries it).
+    /*
+     * PARENT-ONLY GATE: &.bar[.foo] find .foo — find matches ONLY the parent, not child .bar.
+     * Simple-find full & partial-no-whole-location both collapse to NOT_FOUND (parent carries it).
+     */
     it('(parent-only) &.bar[.foo] find .foo full → NOT_FOUND', () => {
       assertSame(() => ({
         target: compound([ampWith(el('.foo')), el('.bar')]),
@@ -381,15 +392,15 @@ describe('extend-index differential (vs extendSelector oracle)', () => {
     });
   });
 
-  // ── Case 8: chained fixpoint (target→ext→target) ───────────────────────
-  // extendByIndex is the single-shot primitive; chain it manually and compare to the
-  // oracle chained the same way. (Full worklist fixpoint lives in applyExtendsToSelector;
-  // here we prove the primitive composes identically step-for-step.)
+  /*
+   * ── Case 8: chained fixpoint (target→ext→target) ───────────────────────
+   * extendByIndex is the single-shot primitive; chain it manually and compare to the
+   * oracle chained the same way. (Full worklist fixpoint lives in applyExtendsToSelector;
+   * here we prove the primitive composes identically step-for-step.)
+   */
   describe('8. chained fixpoint (manual composition)', () => {
     it('.a →(.a→.b) →(.b→.c)', () => {
-      const step = (
-        engine: (t: Input, f: Selector, e: Selector, p: boolean) => Result
-      ): string => {
+      const step = (engine: (t: Input, f: Selector, e: Selector, p: boolean) => Result): string => {
         const r1 = engine(sellist([el('.a')]), el('.a'), el('.b'), false);
         const t1: Input = typeof r1 === 'string'
           ? sellist([el('.a')])

@@ -117,8 +117,10 @@ describe('ExtendLocation API Tests', () => {
 
   describe('applyExtensionAtLocation', () => {
     it('should apply extension in pseudo-selector argument', () => {
-      // Selector: :where(.a), Target: .a, Extend with: .b
-      // Expected: :where(.a, .b)
+      /*
+       * Selector: :where(.a), Target: .a, Extend with: .b
+       * Expected: :where(.a, .b)
+       */
       const sourceArg = el('.a');
       const selector = pseudo({
         name: ':where',
@@ -137,8 +139,10 @@ describe('ExtendLocation API Tests', () => {
     });
 
     it('should apply extension in selector list within pseudo-selector', () => {
-      // Selector: :where(.a, .b), Target: .a, Extend with: .c
-      // Expected: :where(.a, .b, .c)
+      /*
+       * Selector: :where(.a, .b), Target: .a, Extend with: .c
+       * Expected: :where(.a, .b, .c)
+       */
       const sourceList = sellist([el('.a'), el('.b')]);
       const sourceItems = [...sourceList.value];
       const selector = pseudo({
@@ -152,18 +156,20 @@ describe('ExtendLocation API Tests', () => {
       expect(result.hasMatches).toBe(true);
 
       const extended = applyExtensionAtLocation(selector, result.locations[0]!, extendWith);
+
       // Just check that it contains the expected selectors, ignore formatting
       const extendedStr = extended.valueOf().replace(/\s+/g, '');
       expect(extendedStr).toBe(':where(.a,.b,.c)');
       expect(selector.arg).toBe(sourceList);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect(sourceItems.map(item => (item as Node).parent)).toEqual(sourceItems.map(() => sourceList));
       expect(extendWith.parent).toBeUndefined();
     });
 
     it('should apply extension in compound selector', () => {
-      // Selector: .foo:where(.a), Target: .a, Extend with: .b
-      // Expected: .foo:where(.a, .b)
+      /*
+       * Selector: .foo:where(.a), Target: .a, Extend with: .b
+       * Expected: .foo:where(.a, .b)
+       */
       const selector = compound([
         el('.foo'),
         pseudo({ name: ':where', arg: el('.a') })
@@ -179,8 +185,10 @@ describe('ExtendLocation API Tests', () => {
     });
 
     it('should replace at root level', () => {
-      // Selector: .a, Target: .a, Extend with: .b
-      // Expected: .b (replace mode)
+      /*
+       * Selector: .a, Target: .a, Extend with: .b
+       * Expected: .b (replace mode)
+       */
       const selector = el('.a');
       const target = el('.a');
       const extendWith = el('.b');
@@ -195,8 +203,10 @@ describe('ExtendLocation API Tests', () => {
 
   describe('ExtendLocation integration scenarios', () => {
     it('should handle :is() selectors correctly', () => {
-      // Selector: :is(.a), Target: .a, Extend with: .b
-      // Expected: :is(.a, .b)
+      /*
+       * Selector: :is(.a), Target: .a, Extend with: .b
+       * Expected: :is(.a, .b)
+       */
       const selector = pseudo({
         name: ':is',
         arg: el('.a')
@@ -230,9 +240,11 @@ describe('ExtendLocation API Tests', () => {
     });
 
     it('tolerates a string-normalized leaf target (no WeakMap key crash)', () => {
-      // The public matcher accepts Selector nodes; raw strings occur as leaves
-      // inside selector-list nodes. The identity caches key on node identity,
-      // while those string leaves bypass the cache without becoming WeakMap keys.
+      /*
+       * The public matcher accepts Selector nodes; raw strings occur as leaves
+       * inside selector-list nodes. The identity caches key on node identity,
+       * while those string leaves bypass the cache without becoming WeakMap keys.
+       */
       const selector = el('.a');
       const target = sellist(['.a']);
       const result = findExtendableLocations(selector, target);

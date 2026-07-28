@@ -5,7 +5,7 @@ import '@ungap/set-methods';
  * tree barrel; everything else is exported explicitly from the modules below.
  * Core-internal helpers (print state, trivia emission, compare/cast/lookup
  * machinery) are intentionally NOT exported — import them relatively inside
- * core. See docs/future/core-architecture/CORE-CLEANUP.md.
+ * core. See docs/architecture/core/CORE-CLEANUP.md.
  */
 export * from './tree/index.js';
 
@@ -39,10 +39,13 @@ export * from './deprecation.js';
 export * from './define-function.js';
 
 export { isNode } from './tree/util/is-node.js';
-// Single-pass spine (cutover P1/P2): the pass-count RATCHET counter + the static
-// eligibility predicate. Exported so PRODUCTION-path tests (the jess Compiler)
-// can assert real spine routing (≥N corpus roots) and that the eval two-walk is
-// not entered for a wired extend-free eligible root.
+
+/*
+ * Single-pass spine (cutover P1/P2): the pass-count RATCHET counter + the static
+ * eligibility predicate. Exported so PRODUCTION-path tests (the jess Compiler)
+ * can assert real spine routing (≥N corpus roots) and that the eval two-walk is
+ * not entered for a wired extend-free eligible root.
+ */
 export { spineRenderCounter, isSpineEligibleRoot } from './tree/util/emit-walk.js';
 export { engageExtendLayer, isSpineExtendTopology, treeHasExtend, extendLayerCounter } from './tree/extend/spine-extend.js';
 export { type Operator } from './tree/util/calculate.js';
@@ -74,9 +77,11 @@ export {
   type ListItems
 } from './tree/util/list-like.js';
 export { serializeTypes, type SerializeTypesOptions } from './tree/util/serialize-types.js';
+
 /** Canonical AST-v2 stylesheet execution. Parser construction stays under `./ast`. */
-export { serialize } from './ast/serialize.js';
-export type { SerializeOptions } from './ast/serialize.js';
+export { prepareStaticImports, serialize } from './ast/serialize.js';
+export type { PreparedImports, PrepareStaticImportsOptions, SerializeOptions } from './ast/serialize.js';
+
 /** Construct the typed value evaluator used by the canonical AST-v2 execution path. */
 export { buildEvaluator } from './ast/evaluator.js';
 export {

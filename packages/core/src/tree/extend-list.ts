@@ -25,6 +25,7 @@ export class ExtendList extends Node<Extend[], NodeOptions> {
 
   constructor(value: Extend[], options?: NodeOptions, location?: NodeLocation) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
     this.removeFlag(F_VISIBLE);
@@ -34,6 +35,7 @@ export class ExtendList extends Node<Extend[], NodeOptions> {
   /** @internal */
   override writeSyntax(options: FinalPrintOptions): void {
     super.writeSyntax(options);
+
     // writeSyntax side effect is already emitted to writer. Add ';'.
     options.writer.add(';');
   }

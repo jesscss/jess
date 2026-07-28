@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   compoundSelectorOf, complexSelector, decl, dimension, funcCall, interpolatedSimpleSelector, interpolation, keyword, operation, quoted, selist, spaced, stylesheet, rule, variableDeclaration, variableReference,
@@ -8,7 +8,7 @@ import {
 import { serialize } from '../serialize.js';
 import { Context } from '../../context.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet, collapseNesting = true): string | undefined =>
   serialize(document, { evaluator, collapseNesting }).css;
 
@@ -32,6 +32,16 @@ describe('Mixin canonical AST emission', () => {
       .toThrow(/Name not found/);
   });
 
+  it('errors when visible mixin definitions cannot bind the call arguments', () => {
+    const document = stylesheet([
+      mixin('.m', [{ pattern: keyword('saxofon') }], []),
+      rule('.out', [call('.m', [{ value: keyword('trumpete') }])])
+    ]);
+
+    expect(() => serialize(document, { evaluator, collapseNesting: true }))
+      .toThrow(/Name not found/);
+  });
+
   it('deduplicates exact declarations from matching overloads and repeated calls', () => {
     const first = mixin('.same', [], [decl('color', keyword('red'))]);
     const second = mixin('.same', [], [decl('color', keyword('red'))]);
@@ -41,9 +51,11 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.same'), call('.same')])
     ]);
 
-    // The canonical engine keeps one exact declaration even when it was
-    // contributed by several matching definitions and several calls. Authored
-    // and expanded output share the same declaration-dedup rule.
+    /*
+     * The canonical engine keeps one exact declaration even when it was
+     * contributed by several matching definitions and several calls. Authored
+     * and expanded output share the same declaration-dedup rule.
+     */
     expect(render(document)).toBe('.out {\n  color: red;\n}\n');
   });
 
@@ -67,6 +79,17 @@ describe('Mixin canonical AST emission', () => {
     expect(render(document)).toBe('.out {\n  step: 3;\n  step: 2;\n  step: 1;\n}\n');
   });
 
+  it('continues past an enclosing same-name ruleset mixin to an outer mixin definition', () => {
+    const document = stylesheet([
+      mixin('.recursion', [], [decl('color', keyword('black'))]),
+      rule('.test-rule-rec', [
+        rule('.recursion', [call('.recursion')])
+      ])
+    ]);
+
+    expect(render(document)).toBe('.test-rule-rec .recursion {\n  color: black;\n}\n');
+  });
+
   it('selects an overload while evaluating a default in the callee closure', () => {
     const small = mixin('.space', [{ name: 'n' }, { name: 'gap', default: operation('+', variableReference('n', 'scoped'), dimension(1)) }], [
       decl('kind', { type: 'Keyword', src: 'small' }),
@@ -83,10 +106,8 @@ describe('Mixin canonical AST emission', () => {
       rule('.large', [call('.space', [{ value: dimension(12) }])])
     ]);
 
-    expect(render(document)).toBe(
-      '.small {\n  kind: small;\n  gap: 5;\n}\n'
-      + '.large {\n  kind: large;\n  gap: 99;\n}\n'
-    );
+    expect(render(document)).toBe('.small {\n  kind: small;\n  gap: 5;\n}\n'
+      + '.large {\n  kind: large;\n  gap: 99;\n}\n');
   });
 
   it('compares a false parameter against default() as the typed Less keyword', () => {
@@ -151,10 +172,8 @@ describe('Mixin canonical AST emission', () => {
       rule('.out', [call('.base'), decl('box-shadow', keyword('second'), ',')])
     ]);
 
-    expect(render(document, false)).toBe(
-      '.base {\n  box-shadow: first;\n}\n'
-      + '.out {\n  box-shadow: first, second;\n}\n'
-    );
+    expect(render(document, false)).toBe('.base {\n  box-shadow: first;\n}\n'
+      + '.out {\n  box-shadow: first, second;\n}\n');
   });
 
   it('keeps an escaped quoted guard operand typed instead of re-materializing its bytes', () => {
@@ -255,13 +274,9 @@ describe('Mixin canonical AST emission', () => {
     ]);
     const document = stylesheet([box, rule('.outer', [call('.box')])]);
 
-    expect(render(document)).toBe(
-      '.outer {\n  color: red;\n}\n'
-      + '.outer .inner {\n  width: 1px;\n}\n'
-    );
-    expect(render(document, false)).toBe(
-      '.outer {\n  color: red;\n  .inner {\n    width: 1px;\n  }\n}\n'
-    );
+    expect(render(document)).toBe('.outer {\n  color: red;\n}\n'
+      + '.outer .inner {\n  width: 1px;\n}\n');
+    expect(render(document, false)).toBe('.outer {\n  color: red;\n  .inner {\n    width: 1px;\n  }\n}\n');
   });
 
   it('projects only a selected ruleset-mixin ampersand header in nested output', () => {
@@ -276,8 +291,7 @@ describe('Mixin canonical AST emission', () => {
       rule('.authored', [rule('&-local', [decl('state', keyword('literal'))])])
     ]);
 
-    expect(render(document, false)).toBe(
-      '.shell {\n'
+    expect(render(document, false)).toBe('.shell {\n'
       + '  .ordinary {\n'
       + '    state: literal;\n'
       + '  }\n'
@@ -303,8 +317,7 @@ describe('Mixin canonical AST emission', () => {
       + '  &-local {\n'
       + '    state: literal;\n'
       + '  }\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('groups only adjacent equal evaluated root headers in nested output', () => {
@@ -322,11 +335,9 @@ describe('Mixin canonical AST emission', () => {
       rule('.other', [decl('fourth', dimension(4))])
     ]);
 
-    expect(render(document, false)).toBe(
-      '.same {\n  first: 1;\n  second: 2;\n}\n'
+    expect(render(document, false)).toBe('.same {\n  first: 1;\n  second: 2;\n}\n'
       + '.same {\n  third: 3;\n}\n'
-      + '.other {\n  fourth: 4;\n}\n'
-    );
+      + '.other {\n  fourth: 4;\n}\n');
   });
 
   it('publishes an explicit mixin ruleset placement for a later namespaced call', () => {

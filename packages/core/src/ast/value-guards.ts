@@ -23,9 +23,11 @@ const numericCompare = (a: number, b: number): -1 | 0 | 1 =>
  * `50% = 50` is true).
  */
 function dimensionCompare(a: Dimension, b: Dimension, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
-  // Less alone treats a unitless number as equivalent to the same magnitude
-  // with a unit. Sass and exact retain the unit distinction while still
-  // reconciling two compatible explicit units (1in = 96px).
+  /*
+   * Less alone treats a unitless number as equivalent to the same magnitude
+   * with a unit. Sass and exact retain the unit distinction while still
+   * reconciling two compatible explicit units (1in = 96px).
+   */
   if (!a.unit || !b.unit) {
     if (equalityMode !== 'less' && a.unit !== b.unit) {
       return undefined;
@@ -72,8 +74,10 @@ function selfCompare(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 |
         ? 0
         : undefined;
     case 'Quoted':
-      // Two unescaped quoted strings compare LEXICALLY by contents (quote char
-      // ignored); otherwise fall back to a symmetric `toCSS` equality.
+      /*
+       * Two unescaped quoted strings compare LEXICALLY by contents (quote char
+       * ignored); otherwise fall back to a symmetric `toCSS` equality.
+       */
       return b.type === 'Quoted' && !a.escaped && !b.escaped
         ? primCompare(a.value, b.value)
         : toCssStr(a) === toCssStr(b) ? 0 : undefined;
@@ -98,11 +102,13 @@ const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined => {
  *    element-wise (same separator, length, and recursively-equal items).
  */
 function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
-  // Less compares an escaped quote (and e("…"), both materialized as a
-  // Keyword) against a typed comparable by its emitted CSS bytes. Thus
-  // `3 = ~"3"` is true even though the operands have different value kinds.
-  // Keep this narrow to Keyword cross-kind equality; ordinary quoted strings
-  // retain their quote bytes and therefore remain unequal.
+  /*
+   * Less compares an escaped quote (and e("…"), both materialized as a
+   * Keyword) against a typed comparable by its emitted CSS bytes. Thus
+   * `3 = ~"3"` is true even though the operands have different value kinds.
+   * Keep this narrow to Keyword cross-kind equality; ordinary quoted strings
+   * retain their quote bytes and therefore remain unequal.
+   */
   if (equalityMode === 'sass') {
     const quoted = a.type === 'Quoted' ? a : b.type === 'Quoted' ? b : null;
     const keyword = a.type === 'Keyword' ? a : b.type === 'Keyword' ? b : null;
@@ -124,6 +130,24 @@ function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 
   }
   if (a.type !== b.type) {
     return undefined;
+  }
+  if (a.type === 'Collection' && b.type === 'Collection') {
+    /*
+     * Two maps are equal when they hold the same key→value pairs. Order is NOT
+     * part of map identity (Sass: `(a: 1, b: 2) == (b: 2, a: 1)`), even though the
+     * entries stay ordered for iteration and emit — so this cannot be the default
+     * `bytes` equality, which would call those two unequal.
+     */
+    if (a.entries.length !== b.entries.length) {
+      return undefined;
+    }
+    for (const entry of a.entries) {
+      const other = b.entries.find(candidate => compareGroups(candidate.key, entry.key, equalityMode) === 0);
+      if (other === undefined || compareGroups(other.value, entry.value, equalityMode) !== 0) {
+        return undefined;
+      }
+    }
+    return 0;
   }
   if (a.type === 'List' && b.type === 'List') {
     if (a.sep !== b.sep || a.value.length !== b.value.length) {

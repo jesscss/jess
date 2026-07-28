@@ -18,6 +18,7 @@ const strSlice = defineFunction(
 
     // Track whether endAt was explicitly provided (not just the default)
     const endAtProvided = endAt !== undefined;
+
     // Default end is -1 (end of string)
     const endValue = endAt ? endAt.number : -1;
     const endInt = Math.floor(endValue);
@@ -27,8 +28,10 @@ const strSlice = defineFunction(
       return new Quoted('', string.options);
     }
 
-    // Convert 1-based to 0-based codepoint index using _codepointForIndex logic
-    // For start: allowNegative = false
+    /*
+     * Convert 1-based to 0-based codepoint index using _codepointForIndex logic
+     * For start: allowNegative = false
+     */
     let start: number;
     if (startInt === 0) {
       start = 0;
@@ -40,8 +43,10 @@ const strSlice = defineFunction(
       start = result < 0 ? 0 : result;
     }
 
-    // For end: allowNegative = true
-    // Convert end index using _codepointForIndex with allowNegative=true
+    /*
+     * For end: allowNegative = true
+     * Convert end index using _codepointForIndex with allowNegative=true
+     */
     let endCodepoint: number;
     if (endInt === 0) {
       endCodepoint = 0; // Already handled above
@@ -51,16 +56,21 @@ const strSlice = defineFunction(
     } else {
       // Negative: length + index (allow negative, no clamping to 0)
       endCodepoint = strValue.length + endInt;
-      // Special case: when endInt is -1 AND explicitly provided, it should point to the character before the last
-      // This matches the test expectation where explicitly providing -1 means "up to but not including the last character"
-      // When -1 is the default (not provided), it means "to the end of the string" (including the last character)
+
+      /*
+       * Special case: when endInt is -1 AND explicitly provided, it should point to the character before the last
+       * This matches the test expectation where explicitly providing -1 means "up to but not including the last character"
+       * When -1 is the default (not provided), it means "to the end of the string" (including the last character)
+       */
       if (endInt === -1 && endAtProvided) {
         endCodepoint = Math.max(0, endCodepoint - 1);
       }
     }
 
-    // Sass behavior: if endCodepoint equals length, subtract 1
-    // This happens when endInt is -1 (points to last character)
+    /*
+     * Sass behavior: if endCodepoint equals length, subtract 1
+     * This happens when endInt is -1 (points to last character)
+     */
     if (endCodepoint === strValue.length) {
       endCodepoint -= 1;
     }
@@ -72,10 +82,12 @@ const strSlice = defineFunction(
       return new Quoted('', string.options);
     }
 
-    // Extract substring
-    // start and endCodepoint are 0-based codepoint indices
-    // endCodepoint is inclusive, so slice(start, endCodepoint + 1)
-    // But JavaScript slice is end-exclusive, so we use endCodepoint + 1
+    /*
+     * Extract substring
+     * start and endCodepoint are 0-based codepoint indices
+     * endCodepoint is inclusive, so slice(start, endCodepoint + 1)
+     * But JavaScript slice is end-exclusive, so we use endCodepoint + 1
+     */
     const result = strValue.slice(start, endCodepoint + 1);
     return new Quoted(result, string.options);
   },

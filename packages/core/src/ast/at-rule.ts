@@ -71,12 +71,16 @@ export interface OpaqueAtRuleBlock {
 export interface ImportAtRule {
   readonly type: 'ImportAtRule';
   readonly name: string;
+
   /** Grammar-owned comma list inside the parenthesized option clause. */
   readonly options: List | null;
+
   /** A quoted path, `url(…)`, or interpolated quoted template. */
   readonly target: Quoted | Url | Interpolation;
+
   /** Grammar-owned `as …` clause, if the dialect admits one. */
   readonly alias: ValueNode | null;
+
   /** Grammar-owned media/layer/supports tail, if present. */
   readonly tail: ValueNode | null;
 }
@@ -92,8 +96,10 @@ export interface ImportAtRule {
  */
 export interface Plugin {
   readonly type: 'Plugin';
+
   /** Quoted/URL/template target, matching the typed import-target family. */
   readonly target: Quoted | Url | Interpolation;
+
   /** Inner text of the parenthesized option clause, retained as structured segments. */
   readonly options: Interpolation | null;
 }

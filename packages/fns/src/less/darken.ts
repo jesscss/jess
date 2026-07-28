@@ -1,52 +1,9 @@
-import {
-  defineFunction,
-  type Context,
-  Any,
-  Color,
-  Dimension,
-  Quoted,
-  ColorFormat
-} from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
+import { hslAdjust } from './color-helper.js';
+import type { Fn } from '@jesscss/core/value';
 
-/**
- * Less `darken()` — decrease a color's HSL lightness by `amount` (a percentage).
- * With `method: relative`, the decrease is relative to the current lightness.
- * @param color the input `Color`
- * @param amount lightness decrease as a `Dimension` percentage
- * @param method optional `relative` keyword
- * @returns the darkened `Color`, preserving the input's output format
- */
-export default defineFunction(
-  'darken',
-  function(this: Context, color: Color, amount: Dimension, method?: Any<'keyword'> | Quoted) {
-    const [h, s, l] = color._hsl;
-    let adjustAmount = amount.number / 100;
-
-    if (method?.valueOf() === 'relative') {
-      adjustAmount = l * adjustAmount;
-    }
-
-    const newLightness = l - adjustAmount;
-
-    // Create new color with adjusted lightness, preserving original format
-    return new Color({
-      hsl: [h, s, newLightness],
-      alpha: color._alpha
-    }, {
-      format: color.options.format
-    }).inherit(color);
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }, {
-      name: 'amount',
-      type: Dimension
-    }, {
-      name: 'method',
-      type: [Any, Quoted],
-      optional: true
-    }]
-  }
-);
+/** `darken(color, amount, method?)` — bump HSL lightness DOWN. Byte-faithful to `less/darken`. */
+export const darken: Fn = defineFunction('darken', {
+  params: [{ kinds: ['Color'] }, { kinds: ['Dimension'] }, { kinds: ['Keyword', 'Quoted'], optional: true }],
+  body: hslAdjust(2, -1)
+});

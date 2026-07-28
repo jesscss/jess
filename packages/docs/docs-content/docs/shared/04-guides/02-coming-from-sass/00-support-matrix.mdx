@@ -1,0 +1,488 @@
+---
+title: Sass+ support matrix
+sidebar_label: Sass+ Support Matrix
+audiences:
+  - jess
+  - sass
+origin: jess
+---
+Jess compiles SCSS. It does not compile *all* of SCSS — it supports a dialect of
+Sass we call **Sass+**, and this page is the canonical statement of where that
+line falls. One row per Sass feature, status at a glance.
+
+Every ✅ row below was produced by compiling the sample through Jess's shipping
+SCSS pipeline. The CSS shown is the real output, not a sketch.
+
+## Why Sass+ is a subset
+
+Sass spent two decades solving problems CSS could not solve on its own. Nesting,
+named values, arithmetic, color manipulation, selector reuse, responsive
+breakpoint abstractions — Sass made the case that stylesheets needed these, and
+it made the case so well that CSS eventually absorbed a large part of it. Native
+nesting, custom properties, `calc()`, `color-mix()`, `:is()` and `:where()`,
+container queries, and media-query range syntax are all in the platform now, and
+they are there in no small part because Sass demonstrated they were worth having.
+
+Jess is the spiritual successor to Sass and Less. It picks up the thread those
+languages started — and it starts on ground they already won. A preprocessor
+designed today does not need to reimplement the parts of Sass that CSS now ships
+natively, and it does not need two of anything: Sass carries both `@import` and
+`@use`/`@forward`, and both `map-get` and `map.get`, because it grew those
+systems in sequence across many years rather than choosing once at the start.
+Sass+ chooses once.
+
+So Sass+ is deliberately smaller than Sass, and feature-completeness with Sass is
+an explicit non-goal. What is in scope is the part of Sass that still earns its
+keep on top of modern CSS: named values, mixins, functions, control flow, maps,
+`@extend`, and interpolation. The rows marked ❌ below are decisions about where
+Jess spends its complexity budget — not a verdict on Sass's design.
+
+## Status legend
+
+| Mark | Meaning |
+| --- | --- |
+| ✅ | **Supported.** Works today; verified by an executed sample below. |
+| ❌ | **Excluded by design.** Sass+ will not implement this. Notes say why. |
+| ⏳ | **Not yet.** Intended, tracked as a gap, does not work today. |
+| ❓ | **Undecided.** Does not work today; whether it is ever in scope is an open question. |
+
+## The matrix
+
+| Sass feature | Status | Notes |
+| --- | :---: | --- |
+| Variables — `$x: value` | ✅ | |
+| `!default` | ✅ | |
+| `!important` on a declaration | ✅ | |
+| `!important` on a variable — `$x: 1px !important` | ❓ | |
+| `!global` | ⏳ | Parses, but currently leaves the outer binding unchanged. |
+| Nesting | ✅ | |
+| Parent selector `&` | ✅ | `&:hover`, `&.mod`, `& > .b`, `&-suffix`, `&__el`, `&_el`. |
+| `&--modifier` | ❓ | Rejected when written literally; `&--#{$name}` is accepted. CSS reserves the bare `--` name, so whether the literal spelling should be admissible is unresolved. |
+| Leading-combinator shorthand — `> .b`, `+ .b` | ⏳ | Write `& > .b`, which is the spelling CSS Nesting standardized. |
+| `@mixin` / `@include` | ✅ | Positional, default, keyword, and variadic parameters. |
+| `@content`, and `@include` with a block | ⏳ | `@include m { … }`, `@include m() { … }`, and `@include m using () { … }` are all rejected today. The largest single gap in Sass+. |
+| `@extend` | ✅ | Extend chains resolve transitively. |
+| Placeholder selectors — `%p` | ⏳ | `@extend %p` works, but `%p` is not yet silent — it reaches the CSS output. |
+| `@if` / `@else` / `@else if` | ✅ | Conditions are comparisons, `and`/`or` of comparisons, or boolean literals. Parentheses are allowed. |
+| Bare-truthy `@if $x`, `not $x`, `@if fn($x)` | ⏳ | Write the comparison — `@if $x == true`, `@if $x != null`. |
+| `@if` inside `@function` | ⏳ | `@if` works at stylesheet, rule, and mixin level. |
+| `@each` over a list | ✅ | |
+| `@each` with `$k, $v` destructuring | ⏳ | Parses, then fails to bind during evaluation. |
+| `@for … from … through` / `… to` | ✅ | |
+| `@while` | ⏳ | Neither `@while $i > 0` nor `@while ($i > 0)` is accepted. |
+| `@function` / `@return` | ✅ | Including default parameters and nested calls. |
+| Map literals + `map-get` | ✅ | Quoted keys in a literal are normalized to plain keys, so `("bold": 700)` is read back as `map-get($m, bold)`. |
+| `map-get` with a quoted or variable key | ⏳ | `map-get($m, "bold")` does not resolve — use the unquoted key. `map-get($m, $k)` does not resolve — `map-get($m, #{$k})` does. |
+| `map-keys` / `map-values` / `map-merge` / `map-has-key` | ⏳ | |
+| `@import` | ✅ | Partials, `_`-prefixed files, and cross-file variables and mixins. A plain-CSS `@import url(…)` passes through untouched. |
+| `@use` / `@forward` | ⏳ | Both parse, but module resolution is not wired up: the at-rule reaches the CSS output instead of loading the module. |
+| `@use … with (…)` configuration | ⏳ | The configuration clause is not in the grammar. |
+| Namespaced access — `ns.$var`, `ns.fn()` | ⏳ | Rejected with and without an explicit `as` alias. |
+| `@forward … show` / `hide` | ❌ | Visibility belongs to the module that defines a name, not to a module that re-exports it. A module declares its own public surface, and an importer does not get to re-filter it. |
+| `@forward … as prefix-*` | ❌ | Automatic prefixing makes the forwarding module the owner of names it did not define, which makes a call site hard to trace back to its definition. Use an explicit namespace. |
+| `@at-root` | ❌ | `@at-root` exists to relocate a rule after the fact. Jess owns a real AST and controls evaluation order, so a rule can be written where it belongs from the start — at the root, or in its own module. |
+| Interpolation — `#{…}` | ✅ | Selectors, property names, values, strings, media queries, custom-property names, and whole `var()` names. |
+| `#{…}` as a whole selector compound | ⏳ | Interpolation glued to a selector — `.#{$x}`, `a#{$x}`, `&-#{$x}` — works; `#{$x} .b` does not. |
+| `#{…}` inside a `var()` name | ⏳ | `var(--#{$p}o)` does not parse; `var(#{$name})` does. |
+| Interpolated pseudo-element — `&::#{$x}` | ⏳ | |
+| Arithmetic — `+` `-` `*` | ✅ | Numbers, lengths, and percentages. |
+| Parenthesized division — `($a / $b)` | ✅ | |
+| Bare `/` as division in value position | ❌ | `/` is a real CSS value separator — `font: 12px/1.5`, `grid-area`, `rgb()`. Sass+ does not guess which one you meant: a bare slash stays a separator, and division is parenthesized. Sass reached the same conclusion when it introduced `math.div`. |
+| `math.div` | ⏳ | Use `($a / $b)` today. |
+| String concatenation — `"a" + "b"` | ❓ | Renders as a `calc()` expression rather than a joined string. Interpolation — `"#{$a}#{$b}"` — is the working spelling. |
+| `@media` bubbling, nested `@supports` | ✅ | Including a `@media` block written inside a mixin. |
+| `@debug` / `@warn` / `@error` | ⏳ | |
+| `sass:` built-in modules — `sass:math`, `sass:map`, `sass:string`, `sass:list` | ⏳ | `@use "sass:math"` parses; the module is not loaded and its members are unreachable. |
+| Color functions — `rgba`, `darken`, `lighten` | ✅ | |
+| `if()`, `length()`, `percentage()` | ✅ | |
+| `mix()` | ⏳ | Warns, then passes through unevaluated. |
+| List, string, and introspection functions — `nth`, `append`, `join`, `index`, `quote`, `unquote`, `str-length`, `to-upper-case`, `type-of` | ❓ | Passed through to the CSS output unevaluated. How much of this surface Sass+ should carry is unresolved. |
+| Property nesting — `font: { family: … }` | ❓ | Not implemented, and currently emits an empty declaration rather than reporting an error. |
+| `null` values | ❓ | Sass drops a declaration whose value is `null`; Sass+ emits the word. |
+| Comments — `//` and `/* */` | ✅ | `//` is build-time only; `/* */` is emitted. |
+| Invalid CSS that Sass tolerates | ❌ | Doubled or dangling combinators and escaped at-rule keywords are parse errors. See [Stricter than Sass](./stricter-than-sass). |
+
+## Verified samples
+
+Each sample below was compiled with Jess's SCSS pipeline and the CSS is copied
+from the run. Jess preserves nesting in its output by default; samples where
+nesting is the point are shown with `collapseNesting: true`, which produces the
+flat CSS a Sass user expects.
+
+### Variables, `!default`, `!important`
+
+```scss
+$radius: 8px;
+$radius: 4px !default;
+.a { border-radius: $radius; }
+```
+
+```css
+.a {
+  border-radius: 8px;
+}
+```
+
+```scss
+.a { color: red !important; }
+```
+
+```css
+.a {
+  color: red !important;
+}
+```
+
+### Nesting and `&`
+
+```scss
+.menu { color: red; .item { color: blue; &:hover { color: green; } } }
+```
+
+```css
+.menu {
+  color: red;
+}
+.menu .item {
+  color: blue;
+}
+.menu .item:hover {
+  color: green;
+}
+```
+
+```scss
+.a { color: red; &:hover { color: blue; } &__el { w: 1px; } }
+```
+
+```css
+.a {
+  color: red;
+}
+.a:hover {
+  color: blue;
+}
+.a__el {
+  w: 1px;
+}
+```
+
+### `@mixin` and `@include`
+
+```scss
+@mixin pad($x: 1px, $y: 2px) { padding: $x $y; }
+.a { @include pad($y: 9px); }
+```
+
+```css
+.a {
+  padding: 1px 9px;
+}
+```
+
+```scss
+@mixin shadow($shadows...) { box-shadow: $shadows; }
+.a { @include shadow(0 0 2px red); }
+```
+
+```css
+.a {
+  box-shadow: 0 0 2px red;
+}
+```
+
+### `@extend`
+
+```scss
+.a { color: red; }
+.b { @extend .a; }
+.c { @extend .b; }
+```
+
+```css
+.a,
+.b,
+.c {
+  color: red;
+}
+```
+
+### `@if` / `@else`
+
+```scss
+$dark: true;
+.a { @if $dark == true { color: black; } @else { color: white; } }
+```
+
+```css
+.a {
+  color: black;
+}
+```
+
+### `@each` and `@for`
+
+```scss
+@each $n in a, b { .#{$n} { color: red; } }
+```
+
+```css
+.a {
+  color: red;
+}
+.b {
+  color: red;
+}
+```
+
+```scss
+@for $i from 1 through 3 { .col-#{$i} { width: $i * 10%; } }
+```
+
+```css
+.col-1 {
+  width: 10%;
+}
+.col-2 {
+  width: 20%;
+}
+.col-3 {
+  width: 30%;
+}
+```
+
+### `@function` / `@return`
+
+```scss
+@function double($n) { @return $n * 2; }
+.a { width: double(8px); }
+```
+
+```css
+.a {
+  width: 16px;
+}
+```
+
+### Maps
+
+```scss
+$weights: (regular: 400, bold: 700);
+.a { font-weight: map-get($weights, bold); }
+```
+
+A quoted key in the literal is normalized, so the unquoted spelling reads it back:
+
+```scss
+$weights: ("bold": 700);
+.a { font-weight: map-get($weights, bold); }
+```
+
+Both produce:
+
+```css
+.a {
+  font-weight: 700;
+}
+```
+
+### `@import`
+
+Given `_theme.scss`:
+
+```scss
+$primary: #06c;
+@mixin brand { color: $primary; }
+.shared { padding: 1px; }
+```
+
+then:
+
+```scss
+@import "./theme";
+.a { @include brand; }
+```
+
+```css
+.shared {
+  padding: 1px;
+}
+.a {
+  color: #06c;
+}
+```
+
+A plain-CSS import is left alone:
+
+```scss
+@import url("theme.css");
+.a { color: red; }
+```
+
+```css
+@import url("theme.css");
+.a {
+  color: red;
+}
+```
+
+### Interpolation
+
+```scss
+$side: top;
+$name: alert;
+.#{$name} { margin-#{$side}: 1px; content: "#{$name}"; }
+```
+
+```css
+.alert {
+  margin-top: 1px;
+  content: "alert";
+}
+```
+
+A whole `var()` name interpolates:
+
+```scss
+$n: --foo;
+.a { color: var(#{$n}); }
+```
+
+```css
+.a {
+  color: var(--foo);
+}
+```
+
+### Arithmetic and division
+
+```scss
+$base: 16px;
+.a { font-size: $base * 1.5; padding: $base + 4px; width: 100% - 20%; }
+```
+
+```css
+.a {
+  font-size: 24px;
+  padding: 20px;
+  width: 80%;
+}
+```
+
+```scss
+$gutter: 30px;
+.a { margin: ($gutter / 2); }
+```
+
+```css
+.a {
+  margin: 15px;
+}
+```
+
+A bare slash stays a separator:
+
+```scss
+.a { font: 12px/1.5 serif; }
+```
+
+```css
+.a {
+  font: 12px/1.5 serif;
+}
+```
+
+### `@media` bubbling and `@supports`
+
+```scss
+.card { padding: 1rem; @media (min-width: 40em) { padding: 2rem; } }
+```
+
+```css
+.card {
+  padding: 1rem;
+}
+@media (min-width: 40em) {
+  .card {
+    padding: 2rem;
+  }
+}
+```
+
+A `@media` block inside a mixin bubbles the same way:
+
+```scss
+@mixin resp { @media (min-width: 100px) { color: red; } }
+.a { padding: 0; @include resp; }
+```
+
+```css
+.a {
+  padding: 0;
+}
+@media (min-width: 100px) {
+  .a {
+    color: red;
+  }
+}
+```
+
+```scss
+.a { @supports (display: grid) { display: grid; } }
+```
+
+```css
+@supports (display: grid) {
+  .a {
+    display: grid;
+  }
+}
+```
+
+### Color functions
+
+```scss
+.a { color: darken(#0066cc, 10%); border-color: rgba(0, 0, 0, 0.5); }
+```
+
+```css
+.a {
+  color: #004c99;
+  border-color: rgba(0, 0, 0, 0.5);
+}
+```
+
+### Comments
+
+```scss
+// build-time only
+.a { color: red; /* shipped */ }
+```
+
+```css
+.a {
+  color: red;
+  /* shipped */
+}
+```
+
+## How much of a real codebase this covers
+
+The gaps are measured, not estimated. Bootstrap 5.3.8's SCSS source is compiled
+as a reporting-only corpus in the Jess repository: **29 of 92 files parse**, and
+none of the four entry points compiles end to end. The failures concentrate in a
+handful of the ⏳ rows above — interpolation as a standalone selector compound,
+interpolation inside a `var()` name, bare-truthy `@if`, the leading-combinator
+shorthand, and `@include` with a content block.
+
+That corpus is an inventory, not a target. Sass+ is not trying to become a
+drop-in Sass replacement, and a file failing there is often failing for one
+upstream reason rather than for every construct it happens to contain. Read the
+row above, not the file count.
+
+## Related
+
+- [Sass (SCSS) compatibility](./scss-compatibility) — how SCSS constructs map into Jess.
+- [Unsupported Sass+ features](./unsupported-sass-features) — the long-form reasoning behind the ❌ rows.
+- [Stricter than Sass](./stricter-than-sass) — invalid CSS that Sass+ rejects at parse time.
+- [Migrating to Jess](/docs/guides/migrating-to-jess) — converting a Sass codebase to native Jess.

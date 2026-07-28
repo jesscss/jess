@@ -24,6 +24,7 @@ export class Comment extends Node<string, CommentOptions> {
 
   constructor(value: string, options?: CommentOptions, location?: LocationInfo) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
     this.lineComment = options?.lineComment === true || value.startsWith('//');

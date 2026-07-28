@@ -5,9 +5,9 @@ import {
   rule, sel, selist, simpleSelector, stylesheet, type ComplexSelector, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const flat = (document: Stylesheet): string | undefined =>
   serialize(document, { evaluator, collapseNesting: true }).css;
 
@@ -17,8 +17,10 @@ const nest = (parents: string[], child: ComplexSelector): string | undefined =>
     rule(selist(...parents.map(sel)), [rule(child, [decl('color', keyword('red'))])])
   ]));
 
-// A multi-branch top-level rule renders one branch per line (`.a,\n.b`); normalize
-// the comma-newline back to `, ` so an inline `.a, .b` target reads cleanly.
+/*
+ * A multi-branch top-level rule renders one branch per line (`.a,\n.b`); normalize
+ * the comma-newline back to `, ` so an inline `.a, .b` target reads cleanly.
+ */
 const header = (css: string | undefined): string =>
   (css ?? '').split('{')[0]!.trim().replace(/,\s+/g, ', ');
 

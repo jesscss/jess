@@ -44,8 +44,11 @@ describe('Let', () => {
         value: any('#eee')
       });
       expect(rule.toTrimmedString()).toBe('$brandColor: #eee');
-    // rule.toModule(context, out)
-    // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+
+    /*
+     * rule.toModule(context, out)
+     * expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+     */
     });
 
     it('captures var declaration syntax without outer whole-buffer readback', () => {
@@ -79,10 +82,12 @@ describe('Let', () => {
         dark: #222;
         light: #eee;
       }
-      `
-      );
-    // rule.toModule(context, out)
-    // expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+      `);
+
+    /*
+     * rule.toModule(context, out)
+     * expect(out.toString()).toBe('let brandColor = $J.expr([$J.any("#eee")])')
+     */
     });
 
     it('serializes parameter vars without nil defaults as bare bindings', () => {
@@ -112,8 +117,11 @@ describe('Let', () => {
 
     it('writes bare parameter var names without public string transport', () => {
       const writer = new CountingWriter();
-      // The name is a bare string, so there is no node whose public toString
-      // could be invoked as a transport — writeSyntax emits `$tone` directly.
+
+      /*
+       * The name is a bare string, so there is no node whose public toString
+       * could be invoked as a transport — writeSyntax emits `$tone` directly.
+       */
       const rule = vardecl({
         name: 'tone',
         value: nil()
@@ -177,37 +185,39 @@ describe('Let', () => {
     });
   });
 
-  // it('should serialize a @let collection', () => {
-  //   let rule = set(
-  //     keyval({
-  //       name: 'brand',
-  //       value: coll([
-  //         keyval({
-  //           name: 'global',
-  //           value: coll([
-  //             keyval({
-  //               name: 'dark',
-  //               value: any('#000')
-  //             })
-  //           ])
-  //         }),
-  //         keyval({
-  //           name: 'dark',
-  //           value: any('#222')
-  //         }),
-  //         keyval({
-  //           name: 'light',
-  //           value: any('#eee')
-  //         })
-  //       ])
-  //     })
-  //   )
-  //   expect(`${rule}`).toBe(
-  //     '@let brand {\n  global {\n    dark: #000;\n  }\n  dark: #222;\n  light: #eee;\n}'
-  //   )
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     'brand = $J.merge({}, $J.get($VARS, \'brand\'))\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.any("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.any("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.any("#eee"))\n'
-  //   )
-  // })
+  /*
+   * it('should serialize a @let collection', () => {
+   * let rule = set(
+   * keyval({
+   * name: 'brand',
+   * value: coll([
+   * keyval({
+   * name: 'global',
+   * value: coll([
+   * keyval({
+   * name: 'dark',
+   * value: any('#000')
+   * })
+   * ])
+   * }),
+   * keyval({
+   * name: 'dark',
+   * value: any('#222')
+   * }),
+   * keyval({
+   * name: 'light',
+   * value: any('#eee')
+   * })
+   * ])
+   * })
+   * )
+   * expect(`${rule}`).toBe(
+   * '@let brand {\n  global {\n    dark: #000;\n  }\n  dark: #222;\n  light: #eee;\n}'
+   * )
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe(
+   * 'brand = $J.merge({}, $J.get($VARS, \'brand\'))\nbrand.global = {}\nbrand.global.dark = $J.get($VARS, \'brand.global.dark\', $J.any("#000"))\nbrand.dark = $J.get($VARS, \'brand.dark\', $J.any("#222"))\nbrand.light = $J.get($VARS, \'brand.light\', $J.any("#eee"))\n'
+   * )
+   * })
+   */
 });

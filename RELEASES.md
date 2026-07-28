@@ -2,7 +2,7 @@
 
 This file is the practical release guide for Jess package publishing.
 
-For alpha publishing details and package scope, see `docs/releasing-alpha.md`.
+For alpha publishing details and package scope, see `docs/process/releasing-alpha.md`.
 
 ## Alpha release quick start
 
@@ -10,7 +10,7 @@ An alpha is first cut as a **squash snapshot of validated `dev` on `alpha`**;
 it is not an ordinary merge or rebase of `dev` into the release branch. Include
 the owner-reviewed user-facing changelog/release notes in that squash commit.
 The detailed cut procedure and its version-resolver caveat are in
-[`docs/releasing-alpha.md`](./docs/releasing-alpha.md#cut-the-alpha-snapshot-from-dev).
+[`docs/process/releasing-alpha.md`](./docs/process/releasing-alpha.md#cut-the-alpha-snapshot-from-dev).
 
 Only after that committed snapshot is checked out on `alpha`, run from repo root:
 

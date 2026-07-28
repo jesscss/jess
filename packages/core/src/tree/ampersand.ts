@@ -139,11 +139,13 @@ function createAmpersandWithSelectorContainer(
 }
 
 function ownSelectorForAppend(selector: Selector): Selector {
-  // Shared-source sibling in a `&`-append: the appended part is freshly built,
-  // but the OTHER parts are shared source selectors copied only to dodge the
-  // reparent into the new Compound/Complex container. Share them frozen (B3):
-  // the new top-level wrapper is still allocated, but child containers stay at
-  // their canonical parent and `inherit`/`adopt` skips the reparent.
+  /*
+   * Shared-source sibling in a `&`-append: the appended part is freshly built,
+   * but the OTHER parts are shared source selectors copied only to dodge the
+   * reparent into the new Compound/Complex container. Share them frozen (B3):
+   * the new top-level wrapper is still allocated, but child containers stay at
+   * their canonical parent and `inherit`/`adopt` skips the reparent.
+   */
   const owned = selector.cloneForPlacement({ reuseLeaves: false, shareChildren: true });
   if (!(owned instanceof Selector)) {
     throw new TypeError('Expected selector copy');
@@ -178,6 +180,7 @@ function ownComplexComponentForAppend(component: ComplexSelectorComponent): Comp
   if (typeof component === 'string') {
     return component;
   }
+
   // Shared-source complex component (see ownSelectorForAppend): share frozen.
   return expectComplexAppendComponent(component.cloneForPlacement({ reuseLeaves: false, shareChildren: true }));
 }
@@ -347,10 +350,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
    * Returns the current selector from the selector container (live when container is ruleset value).
    * Used by extend, serialization, and matching so nested rules see the parent after extend.
    */
-  // The raw container selector used for key-set analysis: only a concrete parent
-  // Selector contributes keys (a bare `&`, a string, or Nil contributes none).
-  // Unlike getResolvedSelector this does NOT wrap a list in `:is()` — key-set
-  // computation unions the list's keys directly. Used by SelectorAnalysis.
+  /*
+   * The raw container selector used for key-set analysis: only a concrete parent
+   * Selector contributes keys (a bare `&`, a string, or Nil contributes none).
+   * Unlike getResolvedSelector this does NOT wrap a list in `:is()` — key-set
+   * computation unions the list's keys directly. Used by SelectorAnalysis.
+   */
   getKeySetContainerSelector(): SelectorLike | undefined {
     const current = this._selectorContainer?.selector;
     if (!current || typeof current === 'string' || isNode(current, N.Nil)) {
@@ -367,10 +372,12 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         ? SelectorList.create(rawSelector)
         : rawSelector;
     if (selector && isNode(selector, N.SelectorList) && this.hasFlag(F_IMPLICIT_AMPERSAND)) {
-      // Wrapping the container SelectorList in a generated `:is()`: the list's
-      // child selectors are shared SOURCE nodes, wrapped (not owned) — share them
-      // frozen (B3) so the wrapper's `inherit`/`adopt` skips the reparent and the
-      // source container is never mutated.
+      /*
+       * Wrapping the container SelectorList in a generated `:is()`: the list's
+       * child selectors are shared SOURCE nodes, wrapped (not owned) — share them
+       * frozen (B3) so the wrapper's `inherit`/`adopt` skips the reparent and the
+       * source container is never mutated.
+       */
       const arg = selector.cloneForPlacement({ shareChildren: true });
       if (!(arg instanceof Selector)) {
         throw new TypeError('Expected selector copy');
@@ -404,8 +411,10 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
       w.add(appendValue, this);
       w.add(')');
     } else if (options.collapseNesting && options.composedSelectorStack?.length) {
-      // Temporarily pop the top so any nested Ampersand inside the parent
-      // resolves to the grandparent, then restore it after rendering.
+      /*
+       * Temporarily pop the top so any nested Ampersand inside the parent
+       * resolves to the grandparent, then restore it after rendering.
+       */
       const parent = options.composedSelectorStack.pop()!;
       if (options.ampersandFirst !== false) {
         parent.writeSyntax(options);
@@ -427,14 +436,16 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
     const selectorContainer = this._selectorContainer;
     const storedSelector = selectorContainer?.selector;
     if (appendValue !== undefined || this.hoistToRoot) {
-      // Use the stored selector if available, otherwise fall back to frame selector.
-      // In spine mode the parent frame's `frame.selector` is the RAW authored selector
-      // (a nested `&-b`), so prefer the spine-resolved concrete selector for the frame
-      // (`.a-b`) when present — nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`)
-      // must append against the RESOLVED parent, not the raw `&-b` (which would throw
-      // `Cannot append`). The eval pass gets this for free by pushing the resolved
-      // OUTPUT node; the spine uses the `spineResolvedFrameSelector` side-channel to
-      // avoid mutating the shared canonical source node.
+      /*
+       * Use the stored selector if available, otherwise fall back to frame selector.
+       * In spine mode the parent frame's `frame.selector` is the RAW authored selector
+       * (a nested `&-b`), so prefer the spine-resolved concrete selector for the frame
+       * (`.a-b`) when present — nested append (`.a { &-b { &-c {…} } }` → `.a-b-c`)
+       * must append against the RESOLVED parent, not the raw `&-b` (which would throw
+       * `Cannot append`). The eval pass gets this for free by pushing the resolved
+       * OUTPUT node; the spine uses the `spineResolvedFrameSelector` side-channel to
+       * avoid mutating the shared canonical source node.
+       */
       let frame = atIndex(context.rulesetFrames, -1);
       const resolvedFrameSelector = frame ? context.spineResolvedFrameSelector?.get(frame) : undefined;
       let selectorRaw = storedSelector ?? resolvedFrameSelector ?? frame?.selector;
@@ -448,9 +459,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
           : selectorRaw;
       const placement = createAmpersandAppendPlacementState(this, selector, context, appendValue);
       if (appendValue && !isNode(selector, N.Nil)) {
-        // `&` is always leading, so `appendValue` is a plain suffix (`&-bar` → `-bar`,
-        // `&1` → `1`, `&(-foo)` → `-foo`) — never an embedded-`&` template. Just append
-        // it to the parent's trailing selector.
+        /*
+         * `&` is always leading, so `appendValue` is a plain suffix (`&-bar` → `-bar`,
+         * `&1` → `1`, `&(-foo)` → `-foo`) — never an embedded-`&` template. Just append
+         * it to the parent's trailing selector.
+         */
         const result = appendSelector(selector, appendValue);
         if (!result.appended) {
           throwCannotAppendSelector(appendValue);
@@ -458,22 +471,25 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
         selector = result.selector;
       }
 
-      // No `:is()` wrapping here: for the append/hoist case, the result is
-      // the new top-level selector (marked hoistToRoot so composeSelector
-      // won't re-prepend the parent). A SelectorList or ComplexSelector
-      // result renders correctly on its own at the top level.
+      /*
+       * No `:is()` wrapping here: for the append/hoist case, the result is
+       * the new top-level selector (marked hoistToRoot so composeSelector
+       * won't re-prepend the parent). A SelectorList or ComplexSelector
+       * result renders correctly on its own at the top level.
+       */
       return finishAmpersandAppendPlacement(placement, selector);
     }
 
     let frame = atIndex(context.rulesetFrames, -1);
     let amp: Ampersand = this;
+
     /**
      * Attach the current context selector if we need it later, for extends and such.
      * The frame is constant, so we can use the selector directly.
      * If the ampersand already has a stored selector (from getImplicitSelector),
      * preserve it instead of overwriting with the frame selector.
      */
-    if (!amp._selectorContainer && frame && frame.selector) {
+    if (!amp._selectorContainer && frame?.selector) {
       const frameSelector = frame.selector;
       const container: { selector?: SelectorLike | Nil | undefined } = typeof frameSelector === 'string'
         ? { selector: frameSelector }
@@ -530,9 +546,11 @@ export class Ampersand extends SimpleSelector<{ appendValue?: string }> {
   }
 
   /** @todo - move to ToModuleVisitor */
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.amp()', sourceSpanOf(this))
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * out.add('$J.amp()', sourceSpanOf(this))
+   * }
+   */
 }
 
 export const amp = defineType(Ampersand, 'Ampersand', 'amp');

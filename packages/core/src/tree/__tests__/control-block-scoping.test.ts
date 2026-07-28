@@ -52,8 +52,11 @@ describe('control-flow block scoping', () => {
       })
     ]);
     node = await node.eval(context);
-    // The `:` decl declared in the $if's own frame and shadowed there; the
-    // enclosing binding is untouched.
+
+    /*
+     * The `:` decl declared in the $if's own frame and shadowed there; the
+     * enclosing binding is untouched.
+     */
     expect(frameValue(node, 'x')).toBe('outer');
   });
 
@@ -63,7 +66,6 @@ describe('control-flow block scoping', () => {
       new If({
         condition: bool(false),
         rules: [vardecl({ name: 'x', value: any('then') })],
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test-only Rules else branch
         else: rules([vardecl({ name: 'x', value: any('elsebody') })]) as unknown as Rules
       })
     ]);
@@ -97,8 +99,10 @@ describe('control-flow block scoping', () => {
   });
 
   it('$for `:=` reassigns the enclosing binding across iterations', async () => {
-    // `:=` targets the nearest existing binding (the root `total`); each
-    // iteration writes it, so after the loop the root reads the last value.
+    /*
+     * `:=` targets the nearest existing binding (the root `total`); each
+     * iteration writes it, so after the loop the root reads the last value.
+     */
     let node = rules([
       vardecl({ name: 'total', value: num(0) }),
       new For({

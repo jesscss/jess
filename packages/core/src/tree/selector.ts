@@ -75,6 +75,7 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
 
   constructor(value: IfAny<T, NodeValue, T>, options?: O, location?: NodeLocation) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
   }
@@ -139,12 +140,15 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
   override clone(cloneFn?: (n: Node) => Node): this {
     const cloned = super.clone(cloneFn);
     cloned.keySetLibrary = this.keySetLibrary;
-    // `F_AMPERSAND` is a selector-scoped structural flag (see
-    // `propagateFlagsFrom`), NOT part of the generic `F_CHILD_DERIVED` set that
-    // `Node.clone` preserves. A faithful selector copy has the same `&`
-    // containment as its source, so carry it here — otherwise a cloned
-    // `.inside &` render selector loses the flag and `composeSelector` prepends
-    // the parent instead of substituting it (`.top .inside :is(.top)` doubling).
+
+    /*
+     * `F_AMPERSAND` is a selector-scoped structural flag (see
+     * `propagateFlagsFrom`), NOT part of the generic `F_CHILD_DERIVED` set that
+     * `Node.clone` preserves. A faithful selector copy has the same `&`
+     * containment as its source, so carry it here — otherwise a cloned
+     * `.inside &` render selector loses the flag and `composeSelector` prepends
+     * the parent instead of substituting it (`.top .inside :is(.top)` doubling).
+     */
     if (this.hasFlag(F_AMPERSAND)) {
       cloned.addFlag(F_AMPERSAND);
     }
@@ -192,10 +196,12 @@ export abstract class Selector<T = any, O extends NodeOptions = NodeOptions> ext
       : this.renderOutput(context, node as Node, bufferOrOptions, options);
   }
 
-  // Selector key-sets (keySet / visibleKeySet / requiredKeySet) are owned entirely by
-  // the SelectorAnalysis service — see util/selector-analysis.ts and its keySetOf /
-  // visibleKeySetOf / requiredKeySetOf free helpers. The node holds no key-set getters
-  // or fields; it only carries `keySetLibrary` so the service instance can be found.
+  /*
+   * Selector key-sets (keySet / visibleKeySet / requiredKeySet) are owned entirely by
+   * the SelectorAnalysis service — see util/selector-analysis.ts and its keySetOf /
+   * visibleKeySetOf / requiredKeySetOf free helpers. The node holds no key-set getters
+   * or fields; it only carries `keySetLibrary` so the service instance can be found.
+   */
   invalidateCache(): void {
     // Selector families with a valueOf() cache override this method.
   }

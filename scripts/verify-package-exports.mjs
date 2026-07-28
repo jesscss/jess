@@ -60,21 +60,34 @@ if (fs.existsSync(coreIndexPath)) {
   }
 }
 
-for (const dirent of fs.readdirSync(packagesDir, { withFileTypes: true })) {
-  if (!dirent.isDirectory()) {
-    continue;
+function findPackageJsonFiles(dir) {
+  const packageJsonFiles = [];
+  for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!dirent.isDirectory()) {
+      continue;
+    }
+    if (dirent.name === 'node_modules' || dirent.name === 'lib' || dirent.name === 'dist') {
+      continue;
+    }
+    const packageJsonPath = path.join(dir, dirent.name, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      packageJsonFiles.push(packageJsonPath);
+      continue;
+    }
+    packageJsonFiles.push(...findPackageJsonFiles(path.join(dir, dirent.name)));
   }
-  const packageJsonPath = path.join(packagesDir, dirent.name, 'package.json');
-  if (!fs.existsSync(packageJsonPath)) {
-    continue;
-  }
+  return packageJsonFiles;
+}
+
+for (const packageJsonPath of findPackageJsonFiles(packagesDir)) {
+  const dirName = path.basename(path.dirname(packageJsonPath));
   const pkg = readJson(packageJsonPath);
   const exports = pkg.exports;
   if (!exports || typeof exports !== 'object') {
     continue;
   }
   for (const [exportPath, value] of Object.entries(exports)) {
-    checkExportConditions(pkg.name ?? dirent.name, exportPath, value, failures);
+    checkExportConditions(pkg.name ?? dirName, exportPath, value, failures);
   }
 }
 

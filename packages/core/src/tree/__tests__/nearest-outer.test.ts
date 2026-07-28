@@ -52,31 +52,41 @@ describe('nearestOuter (Jess `:=`)', () => {
   });
 
   it('targets the NEAREST enclosing binding, not a farther (global) one', async () => {
-    // @x: outerA; .b { @x: innerB; .c { @x := reassigned; } }
-    // The `:=` in `.c` must stop at `.b`'s binding (nearest), NOT reach the root.
+    /*
+     * @x: outerA; .b { @x: innerB; .c { @x := reassigned; } }
+     * The `:=` in `.c` must stop at `.b`'s binding (nearest), NOT reach the root.
+     */
     let node = rules([
       vardecl({ name: 'x', value: any('outerA') }),
-      box('.b',
+      box(
+        '.b',
         vardecl({ name: 'x', value: any('innerB') }),
-        box('.c', vardecl({ name: 'x', value: any('reassigned') }, { nearestOuter: true })))
+        box('.c', vardecl({ name: 'x', value: any('reassigned') }, { nearestOuter: true }))
+      )
     ]);
 
     node = await node.eval(context);
 
-    // The root/global binding is left untouched — the discriminator vs Sass
-    // `!global` (setDefined), which targets the outermost binding. If `:=` had
-    // walked to global, the root cell would read `reassigned`.
+    /*
+     * The root/global binding is left untouched — the discriminator vs Sass
+     * `!global` (setDefined), which targets the outermost binding. If `:=` had
+     * walked to global, the root cell would read `reassigned`.
+     */
     expect(frameValue(node, 'x')).toBe('outerA');
     expect(frameValue(node, 'x')).not.toContain('reassigned');
   });
 
   it('reaches the root binding when NO intermediate scope binds the name', async () => {
-    // Control for the nearest-vs-global test: with no `.b`-level binding, the
-    // nearest enclosing binding IS the root, so `:=` writes it.
+    /*
+     * Control for the nearest-vs-global test: with no `.b`-level binding, the
+     * nearest enclosing binding IS the root, so `:=` writes it.
+     */
     let node = rules([
       vardecl({ name: 'x', value: any('outerA') }),
-      box('.b',
-        box('.c', vardecl({ name: 'x', value: any('reassigned') }, { nearestOuter: true })))
+      box(
+        '.b',
+        box('.c', vardecl({ name: 'x', value: any('reassigned') }, { nearestOuter: true }))
+      )
     ]);
 
     node = await node.eval(context);
@@ -109,8 +119,11 @@ describe('nearestOuter (Jess `:=`)', () => {
     if (!isNode(inner, N.Rules)) {
       throw new Error('expected inner Rules');
     }
-    // The inner scope registers no local binding cell for `x` — only the outer
-    // scope binds it. A plain `@x: v` would create a shadow here; `:=` must not.
+
+    /*
+     * The inner scope registers no local binding cell for `x` — only the outer
+     * scope binds it. A plain `@x: v` would create a shadow here; `:=` must not.
+     */
     const innerFrame = inner.getScopeFrame();
     const innerCell = innerFrame.currentBindingsByName.get('x');
     expect(innerCell).toBeUndefined();

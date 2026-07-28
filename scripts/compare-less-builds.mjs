@@ -46,8 +46,8 @@ async function loadBuild(root) {
   const module = relative => import(pathToFileURL(path.resolve(root, relative)).href);
   const [{ Context, createRenderBuffer, finalizeFlatRenderBuffer }, { default: lessPlugin }, { lessCompatPlugin }] = await Promise.all([
     module('packages/core/lib/index.js'),
-    module('packages/jess-plugin-less/lib/index.js'),
-    module('packages/jess-plugin-less-compat/lib/index.js')
+    module('packages/syntax/less/jess-plugin-less/lib/index.js'),
+    module('packages/syntax/less/jess-plugin-less-compat/lib/index.js')
   ]);
   return { Context, createRenderBuffer, finalizeFlatRenderBuffer, lessPlugin, lessCompatPlugin };
 }
@@ -130,8 +130,7 @@ const deltas = summarize(pairs.map(pair => pair.deltaMs));
 const wins = pairs.filter(pair => pair.afterMs < pair.beforeMs).length;
 const byteIdentical = pairs.every(pair =>
   pair.beforeOutput.bytes === pair.afterOutput.bytes
-  && pair.beforeOutput.sha256 === pair.afterOutput.sha256
-);
+  && pair.beforeOutput.sha256 === pair.afterOutput.sha256);
 const result = {
   fixture,
   phase: options.phase,

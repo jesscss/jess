@@ -1,77 +1,36 @@
-import {
-  Color,
-  ColorFormat,
-  type Context,
-  Dimension,
-  defineFunction
-} from '@jesscss/core';
-import { percentOf, toNumber } from '@jesscss/core';
-import { getLuma } from '../util/get-luma.js';
+import type { Fn } from '@jesscss/core/value';
+import { makeColorRgb, defineFunction, RGB } from '@jesscss/core/value';
+import { getLuma, reformatColor, requireColor } from './color-helper.js';
+import { requireDimension } from './math-helper.js';
 
 /**
- * Less `contrast()` — pick whichever of two colors (`dark`/`light`, defaulting to
- * black/white) contrasts more with `color`, based on its luma versus `threshold`.
- * The `dark`/`light` pair is auto-ordered by luma.
- * @param color the color to contrast against
- * @param dark optional dark option (default black)
- * @param light optional light option (default white)
- * @param threshold optional luma threshold `Dimension` (default `0.43`)
- * @returns `dark` or `light`
+ * `contrast(color, dark?, light?, threshold?)` — pick `dark` or `light` by whether
+ * `color`'s luma is below `threshold` (default 0.43; a `%` threshold is a fraction
+ * of 1). Defaults: dark = black, light = white; they're swapped if `dark` is
+ * actually lighter. The result inherits `color`'s output format. Byte-faithful to
+ * `less/contrast`.
  */
-const contrast = defineFunction(
-  'contrast',
-  function(this: Context, color: Color, dark?: Color, light?: Color, threshold?: number) {
-    if (!light) {
-      light = new Color({
-        rgb: [255, 255, 255],
-        alpha: 1
-      }, {
-        format: ColorFormat.RGB
-      });
+export const contrast: Fn = defineFunction('contrast', {
+  params: [
+    { kinds: ['Color'] },
+    { kinds: ['Color'], optional: true },
+    { kinds: ['Color'], optional: true },
+    { kinds: ['Dimension'], optional: true }
+  ],
+  body: (c, dark, light, threshold) => {
+    const color = requireColor(c);
+    let lightC = light === undefined ? makeColorRgb([255, 255, 255], 1, RGB) : requireColor(light);
+    let darkC = dark === undefined ? makeColorRgb([0, 0, 0], 1, RGB) : requireColor(dark);
+    if (getLuma(darkC) > getLuma(lightC)) {
+      const t = lightC;
+      lightC = darkC;
+      darkC = t;
     }
-    if (!dark) {
-      dark = new Color({
-        rgb: [0, 0, 0],
-        alpha: 1
-      }, {
-        format: ColorFormat.RGB
-      });
+    let thr = 0.43;
+    if (threshold !== undefined) {
+      const d = requireDimension(threshold);
+      thr = d.unit === '%' ? d.number / 100 : d.number;
     }
-    // Figure out which is actually light and dark:
-    if (getLuma(dark!) > getLuma(light!)) {
-      const t = light;
-      light = dark;
-      dark = t;
-    }
-    let thresholdNum: number;
-    if (!threshold) {
-      thresholdNum = 0.43;
-    } else {
-      thresholdNum = threshold;
-    }
-    const out = getLuma(color) < thresholdNum ? light : dark;
-    out!.options.format = color.options.format;
-    return out;
-  },
-  {
-    params: [{
-      name: 'color',
-      type: Color
-    }, {
-      name: 'dark',
-      type: Color,
-      optional: true
-    }, {
-      name: 'light',
-      type: Color,
-      optional: true
-    }, {
-      name: 'threshold',
-      type: Dimension,
-      convert: [percentOf(1), toNumber()],
-      optional: true
-    }]
+    return reformatColor(getLuma(color) < thr ? lightC : darkC, color.format);
   }
-);
-
-export default contrast;
+});

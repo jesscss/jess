@@ -19,6 +19,7 @@ import {
 } from './util/render-buffer.js';
 
 export type { Operator };
+
 /** Operation is always a tuple */
 export type OperationValue = [
   left: string | Node,
@@ -73,30 +74,34 @@ export class Operation extends Node<OperationValue> {
     return isNode(node, N.List) && (node as Node & { options?: { sep?: string } }).options?.sep === '/';
   }
 
-  // A Paren operand that survives eval (e.g. `(25vh - 20px)`, incompatible
-  // units under calc/preserve) is not a single operable terminal — its inner
-  // expression stays parenthesized on output. Treat it like a nested Operation:
-  // preserve the operation rather than trying to operate on the Paren.
+  /*
+   * A Paren operand that survives eval (e.g. `(25vh - 20px)`, incompatible
+   * units under calc/preserve) is not a single operable terminal — its inner
+   * expression stays parenthesized on output. Treat it like a nested Operation:
+   * preserve the operation rather than trying to operate on the Paren.
+   */
   private static isUnoperable(node: Node): boolean {
     return isNode(node, N.Operation) || isNode(node, N.Paren);
   }
 
-  // A preserved calc holds a single inner value as its only arg (`calc(l op r)`
-  // or, for an explicit `calc(@x)` wrapping an already-preserved calc,
-  // `calc((l op r))`). CSS flattens nested calc, so when this operand is such a
-  // calc we splice its inner value directly into the composing operation —
-  // yielding one flat `calc(...)` instead of `calc(calc(...) op Y)` (which
-  // renders with a redundant paren and, when the calc Call stayed as the
-  // operand, mis-serialized the wrapping operation).
-  //
-  // A bare inner Operation is spliced in directly. A Paren-wrapped inner
-  // expression keeps its Paren (precedence-safe) — `calc((a - b)) + 1`
-  // composes to `calc((a - b) + 1)`, never dropping the paren and changing
-  // meaning. A nested calc Call is unwrapped recursively.
+  /*
+   * A preserved calc holds a single inner value as its only arg (`calc(l op r)`
+   * or, for an explicit `calc(@x)` wrapping an already-preserved calc,
+   * `calc((l op r))`). CSS flattens nested calc, so when this operand is such a
+   * calc we splice its inner value directly into the composing operation —
+   * yielding one flat `calc(...)` instead of `calc(calc(...) op Y)` (which
+   * renders with a redundant paren and, when the calc Call stayed as the
+   * operand, mis-serialized the wrapping operation).
+   *
+   * A bare inner Operation is spliced in directly. A Paren-wrapped inner
+   * expression keeps its Paren (precedence-safe) — `calc((a - b)) + 1`
+   * composes to `calc((a - b) + 1)`, never dropping the paren and changing
+   * meaning. A nested calc Call is unwrapped recursively.
+   */
   private static unwrapCalcOperand(node: Node): Node {
     if (isCalcCall(node)) {
       const args = (node as Call).args;
-      if (args && args.value.length === 1) {
+      if (args?.value.length === 1) {
         const inner = args.value[0]!;
         if (isNode(inner, N.Operation)) {
           return inner;
@@ -136,9 +141,12 @@ export class Operation extends Node<OperationValue> {
     this.left = value[0];
     this.operator = value[1];
     this.right = value[2];
-    // Operations are always non-static, but inherit may_async from their
-    // operands so an operation wrapping an async child (e.g. a nested `calc()`
-    // Call) is itself scheduled on the async path.
+
+    /*
+     * Operations are always non-static, but inherit may_async from their
+     * operands so an operation wrapping an async child (e.g. a nested `calc()`
+     * Call) is itself scheduled on the async path.
+     */
     this.addFlags(F_VISIBLE, F_NON_STATIC);
     if (this.left instanceof Node) {
       this.propagateFlagsFrom(this.left);
@@ -152,8 +160,10 @@ export class Operation extends Node<OperationValue> {
     return F_NON_STATIC;
   }
 
-  // Operation's value is a positional `[left, op, right]` tuple, so the base's
-  // childKeys object-rebuild doesn't fit — own the clone (invariant 7).
+  /*
+   * Operation's value is a positional `[left, op, right]` tuple, so the base's
+   * childKeys object-rebuild doesn't fit — own the clone (invariant 7).
+   */
   override clone(cloneFn?: (n: Node) => Node): this {
     const left = cloneFn && this.left instanceof Node ? cloneFn(this.left) : this.left;
     const right = cloneFn && this.right instanceof Node ? cloneFn(this.right) : this.right;
@@ -171,8 +181,11 @@ export class Operation extends Node<OperationValue> {
   override writeSyntax(options: FinalPrintOptions): void {
     const w = options.writer!;
     const { left, operator: op, right } = this;
-    // String operands are adjacent already-final terminals (e.g. `U+??????`
-    // unicode-range segments) — serialize verbatim with no math spacing.
+
+    /*
+     * String operands are adjacent already-final terminals (e.g. `U+??????`
+     * unicode-range segments) — serialize verbatim with no math spacing.
+     */
     const terminal = typeof left === 'string' || typeof right === 'string';
     const leftMark = w.mark();
     if (typeof left === 'string') {
@@ -296,6 +309,7 @@ export class Operation extends Node<OperationValue> {
       return this.renderOutput(context, output, bufferOrOptions, options);
     }
     const renderBuffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+
     // bufferOrOptions is PrintOptions | undefined when not a RenderBuffer
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const printOptionsArg = bufferOrOptions as PrintOptions | undefined;
@@ -338,17 +352,22 @@ export class Operation extends Node<OperationValue> {
   private evaluateOperands(context: Context): MaybePromise<Node> {
     let n = this;
     const { left, operator: op, right } = n;
-    // A string operand is an already-final terminal (e.g. a `U+??????`
-    // unicode-range segment). Math never applies — keep the operation as
-    // authored so it serializes verbatim.
+
+    /*
+     * A string operand is an already-final terminal (e.g. a `U+??????`
+     * unicode-range segment). Math never applies — keep the operation as
+     * authored so it serializes verbatim.
+     */
     if (typeof left === 'string' || typeof right === 'string') {
       return n;
     }
     const maybeLeft = left.eval(context);
     const finalize = (rawL: Node, rawR: Node): MaybePromise<Node> => {
-      // The parser may deliver a numeric value terminal (`1px`) as a Keyword.
-      // Recast numeric-text keyword operands to their operable value node so
-      // math applies instead of throwing "Cannot operate on Keyword".
+      /*
+       * The parser may deliver a numeric value terminal (`1px`) as a Keyword.
+       * Recast numeric-text keyword operands to their operable value node so
+       * math applies instead of throwing "Cannot operate on Keyword".
+       */
       const l = recastNumericOperand(rawL);
       const r = recastNumericOperand(rawR);
       if (Operation.isPreservedSlashList(l) || Operation.isPreservedSlashList(r)) {
@@ -358,9 +377,11 @@ export class Operation extends Node<OperationValue> {
         return n.withOperands(l, r);
       }
       if (context.shouldOperate(op, l, r)) {
-        // A preserved `calc(...)` operand must compose INTO a calc — nest and
-        // flatten to a single `calc(l op r)`, not a bare operation with a calc
-        // operand (which would stringify to an Any on the next operation).
+        /*
+         * A preserved `calc(...)` operand must compose INTO a calc — nest and
+         * flatten to a single `calc(l op r)`, not a bare operation with a calc
+         * operand (which would stringify to an Any on the next operation).
+         */
         if (isCalcCall(l) || isCalcCall(r)) {
           return n.createCalcFallback(
             Operation.unwrapCalcOperand(l),
@@ -368,9 +389,11 @@ export class Operation extends Node<OperationValue> {
           );
         }
         if (Operation.isUnoperable(l) || Operation.isUnoperable(r)) {
-          // Preserve composite expressions such as `10px / 2 * 2` when a nested
-          // operation intentionally remains unevaluated under current math mode,
-          // or a surviving Paren operand like `(25vh - 20px)`.
+          /*
+           * Preserve composite expressions such as `10px / 2 * 2` when a nested
+           * operation intentionally remains unevaluated under current math mode,
+           * or a surviving Paren operand like `(25vh - 20px)`.
+           */
           if (l === left && r === right) {
             return n;
           }
@@ -390,6 +413,7 @@ export class Operation extends Node<OperationValue> {
             if (error instanceof TypeError) {
               return n.createCalcFallback(l, r);
             }
+
             // Re-throw non-unit errors
             throw error;
           }

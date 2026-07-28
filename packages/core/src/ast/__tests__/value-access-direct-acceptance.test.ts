@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeBuiltinRegistry } from '@jesscss/fns';
+import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   decl, collection, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
@@ -7,7 +7,7 @@ import {
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
-const evaluator = buildEvaluator(makeBuiltinRegistry());
+const evaluator = buildEvaluator(makeLessRegistry());
 const render = (document: Stylesheet): string | undefined => serialize(document, { evaluator }).css;
 
 describe('direct canonical value access', () => {
@@ -29,14 +29,32 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  width: 12px;\n'
       + '  gap: 8px;\n'
       + '  color: navy;\n'
       + '  min-width: 12px;\n'
-      + '}\n'
-    );
+      + '}\n');
+  });
+
+  it('errors for missing property and map accessors', () => {
+    const tokens = collection([
+      decl('gap', dimension(8, 'px')),
+      variableDeclaration('tone', keyword('navy'), { mode: 'declare' })
+    ]);
+
+    expect(() => render(stylesheet([
+      variableDeclaration('tokens', tokens, { mode: 'declare' }),
+      rule('.card', [decl('gap', reference(
+        variableReference('tokens', 'scoped'),
+        [{ type: 'BracketLookup', key: keyword('missing'), keyKind: 'prop' }],
+        '@tokens[missing]'
+      ))])
+    ]))).toThrow(/Name not found/);
+
+    expect(() => render(stylesheet([
+      rule('.card', [decl('min-width', propertyReference('width'))])
+    ]))).toThrow(/Name not found/);
   });
 
   it('follows ordered dot then bracket reference steps without byte recovery', () => {
@@ -180,14 +198,12 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  background-color: red, black;\n'
       + '}\n'
       + '.card .child {\n'
       + '  background: red, black;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('resets a property-accessor importance signal before a later merge group and plain declaration', () => {
@@ -202,19 +218,19 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  tone: navy !important;\n'
       + '  shadow: navy, black !important;\n'
       + '  outline: solid, transparent;\n'
       + '  background: white;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('uses a mixin-spliced declaration as the final enclosing property value', () => {
-    // The property lookup sees the mixin-spliced value, while the nested child
-    // remains a cascade boundary in the authored enclosing declaration order.
+    /*
+     * The property lookup sees the mixin-spliced value, while the nested child
+     * remains a cascade boundary in the authored enclosing declaration order.
+     */
     const setLateColor = {
       type: 'MixinDef' as const,
       name: '.set-late-color',
@@ -231,8 +247,7 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.block {\n'
+    expect(render(document)).toBe('.block {\n'
       + '  color: red;\n'
       + '}\n'
       + '.block .child {\n'
@@ -241,8 +256,7 @@ describe('direct canonical value access', () => {
       + '.block {\n'
       + '  color: blue;\n'
       + '  color: yellow;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 
   it('resolves a mixin property read after the caller timeline has spliced later declarations', () => {
@@ -261,12 +275,10 @@ describe('direct canonical value access', () => {
       ])
     ]);
 
-    expect(render(document)).toBe(
-      '.card {\n'
+    expect(render(document)).toBe('.card {\n'
       + '  color: red;\n'
       + '  from-mixin: blue;\n'
       + '  color: blue;\n'
-      + '}\n'
-    );
+      + '}\n');
   });
 });

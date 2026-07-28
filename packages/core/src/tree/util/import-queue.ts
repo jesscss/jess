@@ -11,7 +11,7 @@ function locationsEqual(
   if (a === b) {
     return true;
   }
-  return a !== undefined && b !== undefined && a.start === b.start && a.end === b.end;
+  return a !== undefined && a.start === b?.start && a.end === b.end;
 }
 
 function importSyntaxMatches(a: AtRuleStatement, b: AtRuleStatement): boolean {

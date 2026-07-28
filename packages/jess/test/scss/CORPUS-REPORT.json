@@ -1,0 +1,939 @@
+{
+  "generated": "2026-07-25T01:11:31.396Z",
+  "bootstrap": "5.3.8",
+  "node": "v24.11.1",
+  "platform": "darwin/arm64",
+  "parse": {
+    "total": 92,
+    "pass": 29,
+    "blockerCounts": [
+      {
+        "name": "interpolation as a standalone selector compound",
+        "files": 42
+      },
+      {
+        "name": "interpolation inside a var() name",
+        "files": 41
+      },
+      {
+        "name": "bare-truthy @if condition",
+        "files": 29
+      },
+      {
+        "name": "leading combinator (implicit &)",
+        "files": 22
+      },
+      {
+        "name": "@include with a trailing content block",
+        "files": 20
+      },
+      {
+        "name": "@content",
+        "files": 5
+      },
+      {
+        "name": "@warn / @error / @debug",
+        "files": 5
+      },
+      {
+        "name": "multiline nested paren list",
+        "files": 4
+      },
+      {
+        "name": "interpolated pseudo-element",
+        "files": 3
+      },
+      {
+        "name": "@while",
+        "files": 2
+      },
+      {
+        "name": "line comment inside a paren list",
+        "files": 1
+      }
+    ],
+    "results": [
+      {
+        "file": "_accordion.scss",
+        "outcome": "fail",
+        "at": "31:0",
+        "source": ".accordion-button {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_alert.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".alert {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_badge.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".badge {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_breadcrumb.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".breadcrumb {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_button-group.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": ".btn-group,",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_buttons.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".btn {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_card.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".card {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_carousel.scss",
+        "outcome": "fail",
+        "at": "87:0",
+        "source": ".carousel-control-prev,",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_close.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".btn-close {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_containers.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": "@if $enable-container-classes {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_dropdown.scss",
+        "outcome": "fail",
+        "at": "19:0",
+        "source": ".dropdown-menu {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_forms.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_functions.scss",
+        "outcome": "fail",
+        "at": "7:0",
+        "source": "@mixin _assert-ascending($map, $map-name) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@warn / @error / @debug",
+          "@while"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_grid.scss",
+        "outcome": "fail",
+        "at": "11:0",
+        "source": "@if $enable-grid-classes {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_helpers.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_images.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_list-group.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".list-group {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_maps.scss",
+        "outcome": "fail",
+        "at": "52:0",
+        "source": "@if $enable-dark-mode {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation inside a var() name",
+          "multiline nested paren list"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_mixins.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_modal.scss",
+        "outcome": "fail",
+        "at": "10:0",
+        "source": ".modal {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_nav.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".nav {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_navbar.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".navbar {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_offcanvas.scss",
+        "outcome": "fail",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "Direct SCSS AST grammar produced a non-value child."
+      },
+      {
+        "file": "_pagination.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".pagination {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_placeholders.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_popover.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".popover {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_progress.scss",
+        "outcome": "fail",
+        "at": "4:0",
+        "source": "@if $enable-transitions {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_reboot.scss",
+        "outcome": "fail",
+        "at": "28:0",
+        "source": ":root {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_root.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ":root,",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_spinners.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".spinner-grow,",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_tables.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".table {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_toasts.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".toast {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_tooltip.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": ".tooltip {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_transitions.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_type.scss",
+        "outcome": "fail",
+        "at": "88:0",
+        "source": ".blockquote {",
+        "blockers": [
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_utilities.scss",
+        "outcome": "fail",
+        "at": "5:21",
+        "source": "$utilities: map-merge(",
+        "blockers": [
+          "interpolation inside a var() name",
+          "multiline nested paren list",
+          "line comment inside a paren list"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "_variables-dark.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "_variables.scss",
+        "outcome": "fail",
+        "at": "358:0",
+        "source": "$escaped-characters: (",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "multiline nested paren list"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "bootstrap-grid.scss",
+        "outcome": "fail",
+        "at": "24:28",
+        "source": "$utilities: map-get-multiple(",
+        "blockers": [
+          "multiline nested paren list"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "bootstrap-reboot.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "bootstrap-utilities.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "bootstrap.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_floating-labels.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".form-floating {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "forms/_form-check.scss",
+        "outcome": "fail",
+        "at": "29:0",
+        "source": ".form-check-input {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "forms/_form-control.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".form-control {",
+        "blockers": [
+          "bare-truthy @if condition"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "forms/_form-range.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_form-select.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": ".form-select {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "forms/_form-text.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_input-group.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".input-group {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "forms/_labels.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "forms/_validation.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_clearfix.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_color-bg.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": "@each $color, $value in $theme-colors {",
+        "blockers": [
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "helpers/_colored-links.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": "@each $color, $value in $theme-colors {",
+        "blockers": [
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "helpers/_focus-ring.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".focus-ring:focus {",
+        "blockers": [
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "helpers/_icon-link.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": ".icon-link {",
+        "blockers": [
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "helpers/_position.scss",
+        "outcome": "fail",
+        "at": "20:0",
+        "source": "@each $breakpoint in map-keys($grid-breakpoints) {",
+        "blockers": [
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "helpers/_ratio.scss",
+        "outcome": "fail",
+        "at": "3:0",
+        "source": ".ratio {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "helpers/_stacks.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_stretched-link.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": ".stretched-link {",
+        "blockers": [
+          "interpolated pseudo-element"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "helpers/_text-truncation.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_visually-hidden.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "helpers/_vr.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_alert.scss",
+        "outcome": "fail",
+        "at": "4:0",
+        "source": "@mixin alert-variant($background, $border, $color) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_backdrop.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_banner.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_border-radius.scss",
+        "outcome": "fail",
+        "at": "18:0",
+        "source": "@mixin border-radius($radius: $border-radius, $fallback-border-radius: false) {",
+        "blockers": [
+          "bare-truthy @if condition"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_box-shadow.scss",
+        "outcome": "fail",
+        "at": "1:0",
+        "source": "@mixin box-shadow($shadow...) {",
+        "blockers": [
+          "bare-truthy @if condition"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_breakpoints.scss",
+        "outcome": "fail",
+        "at": "17:0",
+        "source": "@function breakpoint-next($name, $breakpoints: $grid-breakpoints, $breakpoint-names: map-keys($breakpoints)) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "@include with a trailing content block",
+          "@content",
+          "@warn / @error / @debug"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_buttons.scss",
+        "outcome": "fail",
+        "at": "7:0",
+        "source": "@mixin button-variant(",
+        "blockers": [
+          "interpolation as a standalone selector compound"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_caret.scss",
+        "outcome": "fail",
+        "at": "29:0",
+        "source": "@mixin caret(",
+        "blockers": [
+          "bare-truthy @if condition"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_clearfix.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_color-mode.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": "@mixin color-mode($mode: light, $root: false) {",
+        "blockers": [
+          "@content"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_color-scheme.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": "@mixin color-scheme($name) {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "@content"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_container.scss",
+        "outcome": "fail",
+        "at": "3:0",
+        "source": "@mixin make-container($gutter: $container-padding-x) {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_deprecate.scss",
+        "outcome": "fail",
+        "at": "6:0",
+        "source": "@mixin deprecate($name, $deprecate-version, $remove-version, $ignore-warning: false) {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "@warn / @error / @debug"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_forms.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": "@mixin form-validation-state-selector($state) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "@include with a trailing content block",
+          "@content",
+          "leading combinator (implicit &)",
+          "interpolated pseudo-element"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_gradients.scss",
+        "outcome": "fail",
+        "at": "4:0",
+        "source": "@mixin gradient-bg($color: null) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_grid.scss",
+        "outcome": "fail",
+        "at": "5:0",
+        "source": "@mixin make-row($gutter: $grid-gutter-width) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name",
+          "@include with a trailing content block",
+          "leading combinator (implicit &)"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_image.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_list-group.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_lists.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_pagination.scss",
+        "outcome": "fail",
+        "at": "4:0",
+        "source": "@mixin pagination-size($padding-y, $padding-x, $font-size, $border-radius) {",
+        "blockers": [
+          "interpolation as a standalone selector compound"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_reset-text.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_resize.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_table-variants.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": "@mixin table-variant($state, $background) {",
+        "blockers": [
+          "interpolation as a standalone selector compound",
+          "interpolation inside a var() name"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_text-truncate.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "mixins/_transition.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": "@mixin transition($transition...) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "@warn / @error / @debug"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_utilities.scss",
+        "outcome": "fail",
+        "at": "3:0",
+        "source": "@mixin generate-utility($utility, $infix: \"\", $is-rfs-media-query: false) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "interpolated pseudo-element"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "mixins/_visually-hidden.scss",
+        "outcome": "pass"
+      },
+      {
+        "file": "utilities/_api.scss",
+        "outcome": "fail",
+        "at": "2:0",
+        "source": "@each $breakpoint in map-keys($grid-breakpoints) {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "@include with a trailing content block"
+        ],
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "vendor/_rfs.scss",
+        "outcome": "fail",
+        "at": "15:0",
+        "source": "@if $rfs-unit != rem and $rfs-unit != px {",
+        "blockers": [
+          "bare-truthy @if condition",
+          "interpolation as a standalone selector compound",
+          "@include with a trailing content block",
+          "@content",
+          "@warn / @error / @debug",
+          "@while"
+        ],
+        "detail": "SCSS parser error."
+      }
+    ]
+  },
+  "eval": {
+    "total": 4,
+    "pass": 0,
+    "results": [
+      {
+        "file": "bootstrap.scss",
+        "outcome": "fail",
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "bootstrap-grid.scss",
+        "outcome": "fail",
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "bootstrap-reboot.scss",
+        "outcome": "fail",
+        "detail": "SCSS parser error."
+      },
+      {
+        "file": "bootstrap-utilities.scss",
+        "outcome": "fail",
+        "detail": "SCSS parser error."
+      }
+    ]
+  }
+}

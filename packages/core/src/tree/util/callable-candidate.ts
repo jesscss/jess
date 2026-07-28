@@ -140,10 +140,13 @@ export function prepareCallableEvalCandidates({
     const candidate = mixinCandidates[i]!;
     const candidateRules = getMixinEntryRules(candidate);
     const sourceRules = candidateRules.sourceNode;
-    // A guarded candidate opts into termination-by-guard: structural
-    // (rulesEvalStack) recursion blocking would wrongly drop a valid guarded
-    // countdown (e.g. `.generate(@i) when (@i > 0) { ... .generate(@i - 1); }`).
-    // The call-map arg-signature check still stops same-signature infinite loops.
+
+    /*
+     * A guarded candidate opts into termination-by-guard: structural
+     * (rulesEvalStack) recursion blocking would wrongly drop a valid guarded
+     * countdown (e.g. `.generate(@i) when (@i > 0) { ... .generate(@i - 1); }`).
+     * The call-map arg-signature check still stops same-signature infinite loops.
+     */
     const guarded = getMixinEntryGuard(candidate) !== undefined;
     let inStack = false;
     if (!guarded) {

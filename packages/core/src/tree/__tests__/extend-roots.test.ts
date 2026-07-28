@@ -409,6 +409,7 @@ describe('Extend Roots Registry', () => {
       const node = rules([
         atrule({
           name: '@layer',
+
           // No prelude = anonymous
           rules: [
             ruleset({
@@ -422,6 +423,7 @@ describe('Extend Roots Registry', () => {
         comment('/* second anonymous layer */'),
         atrule({
           name: '@layer',
+
           // No prelude = anonymous
           rules: [
             ruleset({

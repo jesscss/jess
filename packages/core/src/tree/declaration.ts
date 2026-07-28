@@ -47,26 +47,34 @@ function isIdentifierChar(value: string | undefined): boolean {
 
 export const enum AssignmentType {
   Default = ':',
-  // `+:` — used for the Less PROPERTY merge on a plain `Declaration`
-  // (`background +: …`; the comma-merge `List` path, guarded by
-  // `this.type === 'Declaration'`). The Jess VARIABLE `$foo +: v` operator was
-  // REMOVED — the jess-parser no longer emits `Add` for a `VarDeclaration`;
-  // variable compound-add is written explicitly (`$foo: $foo + v`). The non-
-  // Declaration `else` branch of `case AssignmentType.Add` (a `+` Operation) stays
-  // for any other caller that constructs a var-typed `Add`. See NOTES for the
-  // deferred property-merge `legacyMerge` design.
+
+  /*
+   * `+:` — used for the Less PROPERTY merge on a plain `Declaration`
+   * (`background +: …`; the comma-merge `List` path, guarded by
+   * `this.type === 'Declaration'`). The Jess VARIABLE `$foo +: v` operator was
+   * REMOVED — the jess-parser no longer emits `Add` for a `VarDeclaration`;
+   * variable compound-add is written explicitly (`$foo: $foo + v`). The non-
+   * Declaration `else` branch of `case AssignmentType.Add` (a `+` Operation) stays
+   * for any other caller that constructs a var-typed `Add`. See NOTES for the
+   * deferred property-merge `legacyMerge` design.
+   */
   Add = '+:',
-  // Subtract = '-:',      // math subtraction, like -= in JS
-  // Multiply = '*:',      // math multiplication, like *= in JS
-  // Divide = '/:',        // math division, like /= in JS
+
+  /*
+   * Subtract = '-:',      // math subtraction, like -= in JS
+   * Multiply = '*:',      // math multiplication, like *= in JS
+   * Divide = '/:',        // math division, like /= in JS
+   */
   CondAssign = '?:',       // assign only when no value is already defined
-  // Note: `$foo := bar` (global/non-shadowing assign) is NOT an AssignmentType —
-  // it's core's `setDefined` option on the VarDeclaration (`:=` is synthesized in
-  // serialization from `setDefined && assign === ':'`).
-  // CondAdd = '?+:',      // add if defined, otherwise assign
-  // CondSubtract = '?-:', // subtract if defined, otherwise assign
-  // CondMultiply = '?*:', // multiply if defined, otherwise assign
-  // CondDivide = '?/:',   // divide if defined, otherwise assign
+  /*
+   * Note: `$foo := bar` (global/non-shadowing assign) is NOT an AssignmentType —
+   * it's core's `setDefined` option on the VarDeclaration (`:=` is synthesized in
+   * serialization from `setDefined && assign === ':'`).
+   * CondAdd = '?+:',      // add if defined, otherwise assign
+   * CondSubtract = '?-:', // subtract if defined, otherwise assign
+   * CondMultiply = '?*:', // multiply if defined, otherwise assign
+   * CondDivide = '?/:',   // divide if defined, otherwise assign
+   */
 
   /** Legacy Less flags */
   MergeList = '&,:',    // merge into a list if another prop exists with this flag
@@ -105,9 +113,11 @@ export function declarationOptionsMerge(options: DeclarationOptions | undefined)
 
 export type DeclarationOptions = {
   assign?: AssignmentType;
+
   /** Tracks that this declaration was created via assignment normalization (e.g. +:, +_:). */
   normalizedFromAssign?: AssignmentType;
   semi?: boolean;
+
   /**
    * This doesn't prevent shadowing; it prevents declarations like:
    *   ^$overwrite: foo;
@@ -115,6 +125,7 @@ export type DeclarationOptions = {
    * Written as `!$foo:` in Jess or imported from a readonly context
    */
   readonly?: boolean;
+
   /**
    * Instead of implicitly declaring or overriding, requires a variable to
    * previously be explicitly declared within scope, and assigns THAT binding
@@ -142,10 +153,12 @@ export type DeclarationOptions = {
    */
   throwIfDefined?: boolean;
 };
+
 /** Declaration / VarDeclaration names are plain strings or interpolated templates. */
 export type DeclarationValue<T extends AnyRole = 'property'> = {
   name: string | Interpolated<T>;
   value: Node | string | DeclarationValueSegment[];
+
   /** The actual string representation of important, if it exists */
   important?: Any<'flag'> | string | boolean;
 };
@@ -326,9 +339,7 @@ const getSingleInterpolatedCustomValue = (node: Node): Interpolated | undefined 
       : undefined
 );
 
-const getSingleInterpolatedDeclarationValue = (
-  value: DeclarationValue['value']
-): Interpolated | undefined => (
+const getSingleInterpolatedDeclarationValue = (value: DeclarationValue['value']): Interpolated | undefined => (
   value instanceof Node ? getSingleInterpolatedCustomValue(value) : undefined
 );
 
@@ -361,9 +372,12 @@ const emitLeadingTriviaForCustomValue = (
   if (!trivia) {
     return;
   }
-  // Evaluated values (e.g. an rgba() Call) are re-created without a source span,
-  // so fall back to the authored value's original span start — the offset the
-  // leading-whitespace run (the space after `:`) is keyed on.
+
+  /*
+   * Evaluated values (e.g. an rgba() Call) are re-created without a source span,
+   * so fall back to the authored value's original span start — the offset the
+   * leading-whitespace run (the space after `:`) is keyed on.
+   */
   const offset = spanStartOf(value) ?? fallbackSpanStart;
   emitTriviaTokens(consumeTrivia(trivia, offset, 'before', options), options);
 };
@@ -622,11 +636,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return;
     }
     const value = this.value;
-    // Upper bound of the name→`:` gap. Prefer the per-slot `value` fieldSpan
-    // start: the value *node*'s own span can be over-broad (a coerced List gets
-    // stamped with the whole declaration span, so its start collides with the
-    // name and the gap collapses to empty). The fieldSpan pins the authored
-    // value start. Fall back to the node's span start when no fieldSpan exists.
+
+    /*
+     * Upper bound of the name→`:` gap. Prefer the per-slot `value` fieldSpan
+     * start: the value *node*'s own span can be over-broad (a coerced List gets
+     * stamped with the whole declaration span, so its start collides with the
+     * name and the gap collapses to empty). The fieldSpan pins the authored
+     * value start. Fall back to the node's span start when no fieldSpan exists.
+     */
     const valueStart = this._valueFieldSpanStart()
       ?? (value instanceof Node ? spanStartOf(value) : undefined);
     const runs = commentRunsWithinSpan(options.trivia, spanStartOf(this), valueStart);
@@ -649,16 +666,21 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     super();
     setSourceSpan(this, location);
     this._options = options;
+
     // Invariant 7: store, don't adopt. `parentChildren()` (factory) parents.
     this.name = value.name;
     this.value = value.value;
     this.important = value.important;
+
     // Declarations (and Custom/VarDeclaration subclasses) are valid statements.
     this.addFlag(F_ALLOW_ROOT);
-    // A merge declaration (`+:` / `&,:` / `&_:` or normalized-from-assign) needs
-    // structural coalescing during eval before it is renderable, so it is never
-    // render-direct. Mark it non-static up front: F_NON_STATIC is sticky, so no
-    // later static child can bubble F_STATIC onto this decl (or its container).
+
+    /*
+     * A merge declaration (`+:` / `&,:` / `&_:` or normalized-from-assign) needs
+     * structural coalescing during eval before it is renderable, so it is never
+     * render-direct. Mark it non-static up front: F_NON_STATIC is sticky, so no
+     * later static child can bubble F_STATIC onto this decl (or its container).
+     */
     if (declarationOptionsMerge(options)) {
       this.addFlag(F_NON_STATIC);
     }
@@ -834,8 +856,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   private derive(): this {
-    // Share the parts (immutable templates); the derived node differs only in
-    // identity/options/metadata, never in its part values.
+    /*
+     * Share the parts (immutable templates); the derived node differs only in
+     * identity/options/metadata, never in its part values.
+     */
     return this.withParts({
       name: this.name,
       value: this.value,
@@ -850,8 +874,10 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   deriveWithParts(parts: Partial<DeclarationValue>): this {
-    // Share unchanged parts (immutable templates); only substitute what changed.
-    // No defensive copy of name/value/important the caller didn't touch.
+    /*
+     * Share unchanged parts (immutable templates); only substitute what changed.
+     * No defensive copy of name/value/important the caller didn't touch.
+     */
     const node = this.withParts({
       name: parts.name === undefined ? this.name : parts.name,
       value: parts.value === undefined ? this.value : parts.value,
@@ -873,8 +899,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (start === undefined) {
       return 0;
     }
-    // The source text lives on the trivia runs (the render context is not
-    // file-bearing). Any run keyed near this declaration carries the full `src`.
+
+    /*
+     * The source text lives on the trivia runs (the render context is not
+     * file-bearing). Any run keyed near this declaration carries the full `src`.
+     */
     const trivia = options.trivia ?? undefined;
     const src = trivia?.lookup(start, 'before')?.src
       ?? trivia?.entries('before').next().value?.[1]?.src;
@@ -898,17 +927,23 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (!trivia) {
       return undefined;
     }
-    // Descend to the value's first authored token: a List/Sequence carries the
-    // whole declaration-value span, so its own span start would pick up the
-    // declaration's leading trivia instead of the value's.
+
+    /*
+     * Descend to the value's first authored token: a List/Sequence carries the
+     * whole declaration-value span, so its own span start would pick up the
+     * declaration's leading trivia instead of the value's.
+     */
     let first: Node | string | undefined = Array.isArray(value) ? value[0] : value;
     while (first instanceof List || first instanceof Sequence) {
       first = first.value[0];
     }
     const start = first instanceof Node ? spanStartOf(first) : undefined;
-    // Only trust the value's leading trivia when the value token is authored
-    // inside this declaration. A resolved value (e.g. a variable lookup) carries
-    // its definition-site span, whose leading trivia belongs to another line.
+
+    /*
+     * Only trust the value's leading trivia when the value token is authored
+     * inside this declaration. A resolved value (e.g. a variable lookup) carries
+     * its definition-site span, whose leading trivia belongs to another line.
+     */
     const declStart = spanStartOf(this);
     const declEnd = spanEndOf(this);
     if (
@@ -942,9 +977,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       return ` ${trimmedEnd.replace(/^[ \t]+/g, '')}`;
     }
 
-    // Authored multiline declaration values keep their line breaks. We normalize
-    // only the minimum continuation indent rather than emulating historical
-    // Less fixture cases that collapsed some unindented continuations.
+    /*
+     * Authored multiline declaration values keep their line breaks. We normalize
+     * only the minimum continuation indent rather than emulating historical
+     * Less fixture cases that collapsed some unindented continuations.
+     */
     const continuationIndent = '  ';
     const propertyIndent = this.authoredPropertyIndent(options);
     const lines = trimmedEnd.split('\n');
@@ -954,12 +991,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
 
     if (firstContent) {
       if (leadIndent !== undefined) {
-        // A value authored on the line after `:` keeps that break AND its first
-        // token's authored indent, re-based relative to the property line and
-        // floored at the minimum continuation indent — the same treatment the
-        // subsequent continuation lines get (the leaf adds the property indent
-        // back). A fixed continuation indent here under-indented the first line
-        // whenever the authored continuation delta exceeded two spaces.
+        /*
+         * A value authored on the line after `:` keeps that break AND its first
+         * token's authored indent, re-based relative to the property line and
+         * floored at the minimum continuation indent — the same treatment the
+         * subsequent continuation lines get (the leaf adds the property indent
+         * back). A fixed continuation indent here under-indented the first line
+         * whenever the authored continuation delta exceeded two spaces.
+         */
         const relativeIndent = Math.max(0, leadIndent - propertyIndent);
         const normalizedIndent = ' '.repeat(Math.max(continuationIndent.length, relativeIndent));
         out = `\n${normalizedIndent}${firstContent}`;
@@ -977,13 +1016,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const lineIndent = line.match(/^[ \t]*/)?.[0].length ?? 0;
       const content = line.replace(/^[ \t]+/g, '').trimEnd();
       const isClosingLine = /^[}\])]([,;])?$/.test(content);
-      // Continuations are re-based relative to the property line (subtract its
-      // authored indent), then floored at the minimum continuation indent. The
-      // leaf serializer adds the render-time property indent back on top.
+
+      /*
+       * Continuations are re-based relative to the property line (subtract its
+       * authored indent), then floored at the minimum continuation indent. The
+       * leaf serializer adds the render-time property indent back on top.
+       */
       const relativeIndent = Math.max(0, lineIndent - propertyIndent);
-      const normalizedIndent = ' '.repeat(
-        isClosingLine ? lineIndent : Math.max(continuationIndent.length, relativeIndent)
-      );
+      const normalizedIndent = ' '.repeat(isClosingLine ? lineIndent : Math.max(continuationIndent.length, relativeIndent));
       out += `\n${normalizedIndent}${content}`;
     }
 
@@ -1055,22 +1095,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         return;
       }
     }
-    // Two adjacent value nodes (neither a verbatim string fragment) are
-    // space-separated by construction — the boundary whitespace lives in
-    // neither term, so emit it here regardless of the surrounding chars
-    // (e.g. `"A" "B"`, `"x" counter(page)`, `1px 2px`).
+
+    /*
+     * Two adjacent value nodes (neither a verbatim string fragment) are
+     * space-separated by construction — the boundary whitespace lives in
+     * neither term, so emit it here regardless of the surrounding chars
+     * (e.g. `"A" "B"`, `"x" counter(page)`, `1px 2px`).
+     */
     if (prev instanceof Node && node instanceof Node) {
       if (w.lastChar() !== ' ') {
         w.queueSpacer(' ');
       }
       return;
     }
-    // Merge guard: a space only when the previous output ends identifier-like
-    // and the next term would begin identifier-like, keeping tokens distinct.
-    // A following value Node (e.g. the Quoted in `is "theme1"`) is a real,
-    // space-separated term — its leading whitespace lived in neither side, and a
-    // quote can never token-merge with a preceding identifier — so include the
-    // quote characters in the predicate to keep that authored space.
+
+    /*
+     * Merge guard: a space only when the previous output ends identifier-like
+     * and the next term would begin identifier-like, keeping tokens distinct.
+     * A following value Node (e.g. the Quoted in `is "theme1"`) is a real,
+     * space-separated term — its leading whitespace lived in neither side, and a
+     * quote can never token-merge with a preceding identifier — so include the
+     * quote characters in the predicate to keep that authored space.
+     */
     if (isIdentifierChar(w.lastChar())) {
       w.queueSpacer(' ', nextText => /^[A-Za-z0-9_.#'"-]/u.test(nextText));
     }
@@ -1118,23 +1164,28 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const { name, value, important } = valueParts;
     const { mergeAdapter, importantText } = renderState ?? {};
     const customInterpolatedSource = renderState?.customInterpolatedValue?.source;
-    const hasCustomInterpolatedRender = Boolean(
-      customInterpolatedSource
-      && getSingleInterpolatedDeclarationValue(value) === customInterpolatedSource
-    );
+    const hasCustomInterpolatedRender = Boolean(customInterpolatedSource
+      && getSingleInterpolatedDeclarationValue(value) === customInterpolatedSource);
     const { assign = ':', normalizedFromAssign, setDefined, nearestOuter } = this._options ?? {};
-    // `:=` renders for both Sass `!global` (setDefined) and Jess nearest-outer
-    // (nearestOuter) — same surface, distinct semantics — with default spacing.
+
+    /*
+     * `:=` renders for both Sass `!global` (setDefined) and Jess nearest-outer
+     * (nearestOuter) — same surface, distinct semantics — with default spacing.
+     */
     const printedAssign = (normalizedFromAssign || renderState?.normalizedFromAssign)
       ? AssignmentType.Default
       : assign;
     const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
-    // Jess name-glued assignment ops (`$foo?:`, `$list+:`) render with NO space
-    // before the operator — the canonical authored form. `:` and the Less forms
-    // (`:=`, `&,:`, `&_:`) keep their existing spacing.
+
+    /*
+     * Jess name-glued assignment ops (`$foo?:`, `$list+:`) render with NO space
+     * before the operator — the canonical authored form. `:` and the Less forms
+     * (`:=`, `&,:`, `&_:`) keep their existing spacing.
+     */
     let a = effAssign === ':'
       ? ':'
       : isJessGluedAssign(effAssign) ? effAssign : ` ${effAssign}`;
+
     // Normalize property name by trimming trailing whitespace
     const nameText = nodeValueText(name);
     if (typeof name === 'string') {
@@ -1149,24 +1200,33 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (name instanceof Node) {
       emitCommentTriviaAfterNode(name, options);
     } else {
-      // String name: emit any comment authored between the name and the
-      // `:`/assign (scanned from this declaration's span, before the value).
+      /*
+       * String name: emit any comment authored between the name and the
+       * `:`/assign (scanned from this declaration's span, before the value).
+       */
       this._emitNameBoundaryComment(options);
     }
     w.add(a);
+
     // Custom properties must preserve value text exactly as provided.
     const isCustomProperty = nameText?.startsWith('--') === true;
     if (isCustomProperty) {
       const saved = savePrintState(options, ['inCustom']);
       options.inCustom = true;
-      // Authored start of the value (before eval re-created it span-less), used
-      // to recover the leading-whitespace trivia keyed on that source offset.
+
+      /*
+       * Authored start of the value (before eval re-created it span-less), used
+       * to recover the leading-whitespace trivia keyed on that source offset.
+       */
       const originalValueSpanStart = this.value instanceof Node
         ? spanStartOf(this.value)
         : undefined;
-      // Preserve custom value text, but normalize boundary artifacts:
-      // - if capture ended with a line break before declaration termination,
-      //   drop that trailing line break so semicolon insertion stays inline.
+
+      /*
+       * Preserve custom value text, but normalize boundary artifacts:
+       * - if capture ended with a line break before declaration termination,
+       * drop that trailing line break so semicolon insertion stays inline.
+       */
       const customValueText = nodeValueText(value);
       const fallbackOut = !(value instanceof Node)
         ? undefined
@@ -1182,9 +1242,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         this.writeDeclarationFieldValueSyntax(value, options);
       } else if (fallbackOut !== undefined) {
-        // Emit the authored leading whitespace from trivia (the value node keeps
-        // its source span here), falling back to the captured text's leading
-        // whitespace when no trivia is available (synthetic values).
+        /*
+         * Emit the authored leading whitespace from trivia (the value node keeps
+         * its source span here), falling back to the captured text's leading
+         * whitespace when no trivia is available (synthetic values).
+         */
         const mark = w.mark();
         if (value instanceof Node) {
           emitLeadingTriviaForCustomValue(value, options, originalValueSpanStart);
@@ -1229,11 +1291,14 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         this.renderCommaValueSyntax(mergeAdapter.value, options);
       } else {
         const valueMark = w.mark();
-        // The value's own leading whitespace is decided by `valueLeadsWithNewline`
-        // (guarded to authored, in-declaration spans) and re-materialized by
-        // `formatNonCustomValue`. Suppress the value node's boundary `before`
-        // trivia so a relocated value (e.g. a variable lookup) cannot bleed its
-        // definition-site leading newline into this declaration.
+
+        /*
+         * The value's own leading whitespace is decided by `valueLeadsWithNewline`
+         * (guarded to authored, in-declaration spans) and re-materialized by
+         * `formatNonCustomValue`. Suppress the value node's boundary `before`
+         * trivia so a relocated value (e.g. a variable lookup) cannot bleed its
+         * definition-site leading newline into this declaration.
+         */
         const leadIndent = this.valueLeadingNewlineIndent(value, options);
         const savedBoundary = savePrintState(options, ['suppressBoundaryTrivia']);
         options.suppressBoundaryTrivia = 'pre';
@@ -1271,9 +1336,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       if (triviaSource instanceof Node) {
         emitCommentTriviaAfterNode(triviaSource, options);
       } else if (!important && typeof value === 'string') {
-        // Bare-string keyword value (`a: yes /* comment */`) carries no node
-        // identity, so recover its authored end from the per-slot `value`
-        // fieldSpan and emit any comment run keyed after it.
+        /*
+         * Bare-string keyword value (`a: yes /* comment *\/`) carries no node
+         * identity, so recover its authored end from the per-slot `value`
+         * fieldSpan and emit any comment run keyed after it.
+         */
         emitCommentTriviaAfterOffset(options.trivia, this._valueFieldSpanEnd(), options);
       }
     }
@@ -1321,9 +1388,12 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     if (nameText === undefined || valueText === undefined || nameText.startsWith('--')) {
       return false;
     }
-    // A bare-string value with a per-slot fieldSpan may carry an authored
-    // trailing comment (`a: yes /* comment */`); that lives in the trivia map,
-    // which this synthetic fast path does not consult — defer to the full path.
+
+    /*
+     * A bare-string value with a per-slot fieldSpan may carry an authored
+     * trailing comment (`a: yes /* comment *\/`); that lives in the trivia map,
+     * which this synthetic fast path does not consult — defer to the full path.
+     */
     if (options.trivia && typeof this.value === 'string' && this._valueFieldSpanEnd() !== undefined) {
       return false;
     }
@@ -1338,6 +1408,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     const effAssign = ((setDefined || nearestOuter) && printedAssign === ':') ? ':=' : printedAssign;
     const w = options.writer!;
     w.add(nameText, this.name instanceof Node ? this.name : this);
+
     // Jess name-glued ops (`$foo?:`, `$list+:`) omit the leading space.
     w.add(effAssign === ':'
       ? ': '
@@ -1752,9 +1823,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       : this.materializeRegistrationState(state, options);
   }
 
-  private createRegistrationState(
-    options: DeclarationRegistrationOptions = {}
-  ): DeclarationRegistrationState {
+  private createRegistrationState(options: DeclarationRegistrationOptions = {}): DeclarationRegistrationState {
     if (options.reuseCanonical === true) {
       return {
         name: this.name,
@@ -1828,9 +1897,11 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
     state: DeclarationRegistrationState,
     name: string
   ): DeclarationRegistrationState {
-    // Value is consumed as delivered by the parser (Node | string | array); no
-    // lazy string->node materialization. Only assignment composition (below)
-    // coerces to a Node where structurally required.
+    /*
+     * Value is consumed as delivered by the parser (Node | string | array); no
+     * lazy string->node materialization. Only assignment composition (below)
+     * coerces to a Node where structurally required.
+     */
     this._normalizeAssignmentValue(state, name);
     return state;
   }
@@ -1841,6 +1912,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       state.value = newValue;
       value = newValue;
     };
+
     /** Normalize assignment types */
     let assign = this.options?.assign;
     const rawAssign = assign as string | undefined;
@@ -1859,6 +1931,7 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
       const inputValue = state.renderOnly
         ? this.ownRenderAssignmentInput(this.toAssignmentInputNode(value))
         : this.toAssignmentInputNode(value);
+
       /** Reference type */
       let type: 'declaration' | 'variable' =
         this.type === 'VarDeclaration' ? 'variable' : 'declaration';
@@ -1890,13 +1963,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               '+_:'
             ]
           }, undefined);
-          // Positional bound for the prior-value lookup: eval-time nodes don't
-          // parent (invariant 7), so carry the referring decl's index directly.
+
+          /*
+           * Positional bound for the prior-value lookup: eval-time nodes don't
+           * parent (invariant 7), so carry the referring decl's index directly.
+           */
           ref.index = this.index;
           state.bindOutput = (node: Declaration) => {
             outputNode = node;
             excludedDeclarations[1] = node;
           };
+
           /**
            * @note - It's up to Sequence and List to handle
            *         the merging of the values, if Nil()
@@ -1919,14 +1996,17 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         }
         case AssignmentType.Add: {
           if (this.type === 'Declaration') {
-            // Less property `+:` appends comma-separated items.
-            // Use list composition (not generic `Operation +`) so scalar previous values
-            // remain distinct list members rather than string-concatenating.
+            /*
+             * Less property `+:` appends comma-separated items.
+             * Use list composition (not generic `Operation +`) so scalar previous values
+             * remain distinct list members rather than string-concatenating.
+             */
             const excludedDeclarations: Declaration[] = [this];
             const ref = new Reference({ key: referenceKey }, {
               type,
               fallbackValue: new Nil(),
               excludedDeclarations,
+
               // Prevent self-referential reads while normalizing copied/prepared nodes.
               filter: (n) => {
                 const source = n.sourceNode ?? n;
@@ -1938,10 +2018,13 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
                   && !sameConcreteLocation(sourceSpanOf(n), sourceSpanOf(this));
               }
             }, undefined);
-            // The merge ref reads the PRIOR value of this property. Its lookup
-            // start comes from `getLookupStartIndex(ref)`, which walks the parent
-            // chain — but eval-time nodes don't parent (invariant 7), so carry the
-            // referring declaration's source index directly for the positional bound.
+
+            /*
+             * The merge ref reads the PRIOR value of this property. Its lookup
+             * start comes from `getLookupStartIndex(ref)`, which walks the parent
+             * chain — but eval-time nodes don't parent (invariant 7), so carry the
+             * referring declaration's source index directly for the positional bound.
+             */
             ref.index = this.index;
             state.bindOutput = (node: Declaration) => {
               outputNode = node;
@@ -1957,23 +2040,19 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
               setValue(new List([ref, inputValue]));
             }
           } else {
-            setValue(
-              new Operation([
-                new Reference({ key: referenceKey }, { type }, undefined),
-                '+',
-                inputValue
-              ])
-            );
+            setValue(new Operation([
+              new Reference({ key: referenceKey }, { type }, undefined),
+              '+',
+              inputValue
+            ]));
           }
           break;
         }
         case AssignmentType.CondAssign: {
-          setValue(
-            new Reference({ key: referenceKey }, {
-              type,
-              fallbackValue: inputValue
-            }, undefined)
-          );
+          setValue(new Reference({ key: referenceKey }, {
+            type,
+            fallbackValue: inputValue
+          }, undefined));
           break;
         }
       }
@@ -2060,12 +2139,15 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
             normalizedAssign === AssignmentType.Add
             || normalizedAssign === AssignmentType.MergeList;
         const isSpaceMergedAssign = normalizedAssign === AssignmentType.MergeSequence;
-        // Space merge (`+_:` / `&_:`) needs the same leading-placeholder normalize as
-        // the comma path: keep the merge value in its own container (a `Sequence`) so
-        // the declaration stays merge-identified for lookup. Without this a `$prop`
-        // read of a space-merged property collapses to the last sibling's own value
-        // (dropping the accumulated chain), where the comma path would normalize the
-        // full merged value against its siblings.
+
+        /*
+         * Space merge (`+_:` / `&_:`) needs the same leading-placeholder normalize as
+         * the comma path: keep the merge value in its own container (a `Sequence`) so
+         * the declaration stays merge-identified for lookup. Without this a `$prop`
+         * read of a space-merged property collapses to the last sibling's own value
+         * (dropping the accumulated chain), where the comma path would normalize the
+         * full merged value against its siblings.
+         */
         if (
           !(isListMergedAssign || isSpaceMergedAssign)
           || !isNode(state.value, isSpaceMergedAssign ? N.Sequence : N.List)
@@ -2088,24 +2170,30 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
         for (let i = 0; i < mergedItems.length; i++) {
           outputItems[i] = this.ownMergedAssignmentOutputItem(mergedItems[i]!);
         }
-        // Eval-time derived container: SHARE the items (no reparent), but crawl
-        // them to bubble child flags (F_STATIC/F_NON_STATIC/…) so the merged value
-        // is classified correctly — a raw container derives none on its own.
+
+        /*
+         * Eval-time derived container: SHARE the items (no reparent), but crawl
+         * them to bubble child flags (F_STATIC/F_NON_STATIC/…) so the merged value
+         * is classified correctly — a raw container derives none on its own.
+         */
         const merged = isSpaceMergedAssign ? spaced(outputItems) : new List(outputItems);
         for (let i = 0; i < outputItems.length; i++) {
           merged.propagateFlagsFrom(outputItems[i]!);
         }
         setVal(merged);
       };
-        /** Registration prep already stabilized the name; eval handles the value. */
+
+      /** Registration prep already stabilized the name; eval handles the value. */
       if (node.type === 'VarDeclaration') {
         return state;
       }
       const { name, value } = node;
       if (Array.isArray(value)) {
-        // A flat value array mixes verbatim string fragments (kept as-is) with
-        // typed value nodes that must be evaluated so e.g. a fallback function
-        // Call prints its CSS form rather than its `$name?(...)` source sigil.
+        /*
+         * A flat value array mixes verbatim string fragments (kept as-is) with
+         * typed value nodes that must be evaluated so e.g. a fallback function
+         * Call prints its CSS form rather than its `$name?(...)` source sigil.
+         */
         const finalize = (evaluated: Array<Node | string>, changed: boolean) => {
           if (changed) {
             setVal(evaluated);
@@ -2276,32 +2364,36 @@ export class Declaration<Opts extends DeclarationOptions = DeclarationOptions> e
   }
 
   /** @todo - move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   this.name.toCSS(context, out)
-  //   out.add(': ')
-  //   context.cast(this.value).toCSS(context, out)
-  //   if (this.important) {
-  //     out.add(' ')
-  //     this.important.toCSS(context, out)
-  //   }
-  //   out.add(';')
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * this.name.toCSS(context, out)
+   * out.add(': ')
+   * context.cast(this.value).toCSS(context, out)
+   * if (this.important) {
+   * out.add(' ')
+   * this.important.toCSS(context, out)
+   * }
+   * out.add(';')
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   const loc = sourceSpanOf(this)
-  //   out.add('$J.decl({\n', loc)
-  //   context.indent++
-  //   out.add(`  name: `)
-  //   this.name.toModule(context, out)
-  //   out.add(`,\n  value: `)
-  //   this.value.toModule(context, out)
-  //   if (this.important) {
-  //     out.add(`,\n  important: `)
-  //     this.important.toModule(context, out)
-  //   }
-  //   context.indent--
-  //   out.add(`\n})`)
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * const loc = sourceSpanOf(this)
+   * out.add('$J.decl({\n', loc)
+   * context.indent++
+   * out.add(`  name: `)
+   * this.name.toModule(context, out)
+   * out.add(`,\n  value: `)
+   * this.value.toModule(context, out)
+   * if (this.important) {
+   * out.add(`,\n  important: `)
+   * this.important.toModule(context, out)
+   * }
+   * context.indent--
+   * out.add(`\n})`)
+   * }
+   */
 }
 
 export type DeclarationParams = ConstructorParameters<typeof Declaration>;

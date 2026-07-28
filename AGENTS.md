@@ -1,8 +1,130 @@
 # Agent Guidelines
 
-This file is the stable cross-tool contract for working in this repo.
+This file is the stable cross-tool contract for working in this repo. **It is
+the front door.** It assumes you have the repository, a shell, and nothing else
+— no conversation history, no memory of prior sessions, no access to the owner.
 
-Use it as the default guidance for Codex, Cursor, Claude, and any other agent system. Tool-specific rules may add workflow details, but they should not duplicate volatile project state here.
+Use it as the default guidance for any agent system. Tool-specific rule
+directories (`.cursor/`, `CLAUDE.md`) are one system's routing layer and may add
+workflow details; **nothing load-bearing lives only there**, and you are not
+required to read them.
+
+---
+
+## Start Here — the largest active project
+
+**The four-grammar rewrite.** Each of the four dialect parsers (`css`, `less`,
+`scss`, `jess`) started with two hand-maintained grammars — `src/grammar.ts`
+(positioned CST, consumed by the language service) and `src/ast/grammar.ts` (the
+shipping compile path). **The physical eight-to-four fold has landed:** each
+dialect now ships AST and CST from one host-mode grammar source. The active work
+is polishing the surviving grammars so they are small, readable, spec-shaped,
+well documented, and idiomatic Parseman 0.41.
+
+**The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
+Read its §0 first** — it states the goal in the owner's own words, the current
+status, the plan, what gates what, and how to re-verify every time-sensitive
+claim in it. The per-`const` review checklist that governs any grammar edit is
+[`docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`](docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md).
+
+Two things to know before you plan anything:
+
+- **The parseman hostMode floor is paid.** The mechanism that lets one grammar
+  file serve both the AST and the CST is parseman's `hostMode`, and the repo now
+  resolves registry `parseman@0.41.0` through `^0.41.0` ranges. Publishing
+  future parseman releases is still owner-only. Spec §0.2 says exactly what to
+  check and how.
+- **Order is `css` → `less` → `scss` → `jess`.** CSS is the base; the dialects
+  link back to it rather than restating it; no copy-paste from the old grammars.
+- **Use Parseman `dispatch(...)` narrowly and deliberately.** It is the right
+  shape when one routed same-family opener has already been consumed, such as
+  `url(`/generic `name(`, pseudo-functions, or known/generic at-keywords. Keep
+  `choice(...)` for body/list item families, closed keyword/operator tables,
+  and context decisions whose delimiter has not been consumed yet. The quick
+  reference is
+  [`docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`](docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md).
+- **Comments are trivia.** Do not preserve grammar-level `Comment` nodes,
+  value-comment leaves, or repeated `many(blockComment)` plumbing as the target
+  parser architecture. Those shapes are migration debt unless a scanner-local
+  `scanTo(...)` / `balanced(...)` skip needs to avoid terminating inside a
+  comment. Opaque unknown at-rules and custom-property values still should not
+  capture comments as semantic bytes; the parser should extract comment trivia
+  once into the source/document trivia index, and render/language-service
+  consumers should query that index by source offsets. Less's block-comment-only
+  rulesets still need to render; implement that as a trivia-backed
+  empty/renderability check, not by keeping `Comment` children in grammar
+  bodies.
+
+A **separate, parallel track** is the deletion of `packages/core/src/tree/` —
+inventory in [`docs/architecture/core/TREE-CUTOVER-SURFACE.md`](docs/architecture/core/TREE-CUTOVER-SURFACE.md).
+It neither blocks nor is blocked by the grammar work.
+
+## The Failure Class This Repo Pays For
+
+**A check that reports success because it cannot see the failure mode.** Nearly
+every expensive defect in this repo's history is an instance. Each rule below has
+its reason attached, because a prohibition without one gets optimised away.
+
+- **Build in dependency order, `parser-shared` FIRST**, before trusting any test
+  number. All four parsers depend on it; build them first and they link against a
+  stale recognition library and **the suite goes green** while masking real
+  failures. Order: `parser-shared` → parsers → `awaitable-pipe` → `core` →
+  `fns` → `styles-config` → `style-resolver` → plugins → `jess`.
+  `pnpm run build:release` does the whole thing.
+- **The config package is named `styles-config`, not `@jesscss/config`.** A
+  `pnpm --filter` on the wrong name matches nothing — **and a filter that matches
+  nothing exits 0.** Check what a filter actually selected before trusting a
+  count taken through it.
+- **Tests run from `lib/`, not `src/`.** A stale build silently measures an older
+  commit and reports it as today's number. A fresh worktree has no
+  `node_modules` at all.
+- **Stale artifacts fail silently and cleanly** — stale `dist/`, stale `lib/`,
+  stale `.cache/` worktrees, and `link:` overrides that dangle and resolve *up*
+  into a parent checkout's `node_modules`. **Report the resolved path and
+  resolved version per package as evidence, ahead of any numbers. If a run
+  cannot show what it loaded, its numbers are unfalsifiable.**
+- **Capture baselines as NAMED SETS before changing anything, and compare names,
+  not counts.** A matching count hides "one fixed and one broken" perfectly.
+- **`git grep` cannot see every file.** `scripts/lint-violation-report.mjs`
+  contains literal NUL bytes, so git treats it as binary and `git grep -I` skips
+  it — while it holds the grammar-lint scope list. Use `grep -r` when a negative
+  result is load-bearing.
+- **Perf harnesses are not verdicts.** The grammar/workload perf gates (which
+  live in the **parseman** repo, not here) have produced confident FAILs on
+  byte-identical inputs. Noise floor ≈ ±1.9%. Treat a perf run as
+  confirmation-only **in both directions** — a PASS certifies nothing.
+- **`check:macro` and `verify:compose-integrity` are CORRECTNESS gates, not perf
+  gates.** A build that degrades to the parseman interpreter **emits a different
+  tree**. They must show **0 interpreter fallbacks**. A green test suite does not
+  clear a fallback — the suite can pass on the interpreted tree while the shipped
+  compiled tree differs, and a red run invalidates any differential taken on that
+  build.
+
+## Hard Prohibitions
+
+- **Never `git stash`, `git restore`, `git checkout -- .`, or `git reset --hard`
+  without explicit permission.** `git stash` has silently destroyed work here.
+  Back up first (`git diff > /tmp/backup.patch`) and record where. **Commit
+  before measuring** — that is the supported way to compare two states.
+- **Never `as any`, `: any`, `@ts-ignore`, or `@ts-nocheck`.** `pnpm
+  lint:absolute` detects these. It reports **hundreds of pre-existing violations
+  and is deliberately not wired to a blocking gate** — that is a backlog, not a
+  dead rule. Do not add to it.
+- **Never add `await` to a test assertion to silence a lint warning.** Hundreds
+  of assertions deliberately omit `await` on `MaybePromise`-returning calls;
+  `Node.eval()` and `Node.render()` are not `async`, and the omission is what
+  pins the synchronous fast path under test. Adding `await` silently deletes that
+  coverage and the suite still passes. Use `test/expect-sync.ts` where synchrony
+  should be asserted explicitly.
+- **`.css` fixtures are Less v5 alpha expected output and are owner-maintained.**
+  A top-level diff against one is **a jess bug by default**, not a fixture to
+  update.
+- **Agents never merge or release parseman PRs.** That is the owner's, always.
+
+Tests are imperfect encodings of the documented design, and the design is the
+source of truth — but the less-compat bridge is a real external contract.
+
+---
 
 ## Canonical Sources
 
@@ -38,13 +160,18 @@ For AST construction, do not introduce a replacement `BuilderHost`,
 reduction in each parser owns construction and calls parser-local AST factory
 functions directly. Move shared syntax only into explicit shared grammar
 combinators or core node factories; never into a new runtime construction host.
+This prohibition is about AST construction hosts. It does not ban a Parseman
+grammar-level routing combinator such as `dispatch(combinator, when(...),
+otherwise(...))`, whose job is recognition and macro-compilable branch
+selection.
 
 ## Parser Runtime Boundary
 
-In `packages/css-parser`, `packages/less-parser`, `packages/scss-parser`, and
-`packages/jess-parser`, runtime recognition belongs exclusively to Parseman
-grammar combinators and their macro-compiled output. No handwritten runtime
-`RegExp`, regex literal, `.exec`/`.test`/`.match`, `charCodeAt` scanner,
+In `packages/syntax/css/css-parser`, `packages/syntax/less/less-parser`,
+`packages/syntax/scss/scss-parser`, and
+`packages/syntax/jess/jess-parser`, runtime recognition belongs exclusively to
+Parseman grammar combinators and their macro-compiled output. No handwritten
+runtime `RegExp`, regex literal, `.exec`/`.test`/`.match`, `charCodeAt` scanner,
 character-by-character recognizer, or recovery re-parser may survive in parser
 package source. Move the recognition into Parseman grammar structure, or delete
 it. This does not prohibit generated macro output or Parseman internals; it
@@ -63,6 +190,30 @@ combinators, normally `many(choice(literalChunk, interpolation))`, or a
 strictly better equivalent that retains the same typed segments. Do not scan,
 sniff, regex-match, split, or re-parse text to find `@{…}`, `${…}`, `#{…}`, or
 their exact-shape variants after grammar recognition.
+
+Reparsing is rejected parser architecture. A grammar may recurse through its own
+Parseman rules, but it must not recognize a broad source region and then parse
+that same region again through a second rule, helper, lookahead route, or
+post-processing pass. Broad lookahead is also a finding by default; keep
+lookahead as small and local as possible, and require a const-level review to
+prove that no clearer Parseman structure (`dispatch`, `routed`,
+context-parameterized rules, separator helpers, or explicit recursion) can own
+the same language. In particular, Less `:extend(...)` must be collected as a
+contextual selector tail while parsing the selector once, not by reparsing
+selector branches through an inline-extend route.
+
+When sibling arms re-recognize the same broad token family, and the
+already-consumed routed value itself decides exact known cases plus a same-family
+generic fallback, use Parseman's `dispatch(combinator, when(...),
+otherwise(...))` shape. The first combinator parses once; `when()` handles exact
+or matcher cases; `otherwise()` owns the generic continuation; `routed()` lets
+the selected branch place the already-consumed value/span inside its CST/AST
+node. Keep `choice(...)` or left-factor/context-helper shapes when the real
+decision is a later delimiter, caller context, closed table, or body/list
+construct family.
+Use one `makeWhen(...)` / `makeWord(...)` helper per real matching policy in the
+actual grammars; avoid separate helper names for pseudos, functions, at-rules, or
+words when the case-sensitivity and boundary policy are the same.
 
 ## Keep Guidance Durable
 
@@ -166,7 +317,7 @@ checklist:
   compose-integrity / stale-build degrade). Each invariant is backed by a
   mechanical gate where one exists; the gates run in
   `.github/workflows/pr-quality-gate.yml`.
-- `docs/future/llm-quality-enforcement-design.md` — design of the enforcement
+- `docs/architecture/llm-quality-enforcement-design.md` — design of the enforcement
   layer (the `perf-architecture` skill, the `perf-architecture-reviewer` agent,
   and this cross-tool contract).
 
@@ -176,13 +327,33 @@ invariant** from it — a bare "Approved" is not a valid review result. These
 docs are the single source of truth; do not restate the invariant list in
 tool-specific rules — point at `docs/perf/V8-ARCHITECTURE.md`.
 
+## Semantics Architecture
+
+Before deciding or changing **what Jess emits** — value serialization, selector
+composition, dialect recognition, or any behavior visible in output CSS — work
+from the canonical semantics checklist:
+
+- `docs/architecture/SEMANTIC-INVARIANTS.md` — the **8 invariants** plus the
+  incident catalogue (`emitValueInterp` precision split, the merge anchor
+  flipped to less.js 4.x, parser-side selector joins, SCSS text-valued pseudo
+  arguments). Each invariant carries a STATUS saying whether it is a gate, a
+  buildable detector, a migration, or a reviewer obligation.
+- `docs/architecture/core/DESIGN-DECISIONS.md` — the owner decision
+  ledger. **A behavior with no ledger row is not a decided behavior.** Cite the
+  SETTLED row a change relies on, or add an OPEN row.
+
+Dispatch the `semantics-reviewer` before landing and require **evidence per
+invariant**. A bare "Approved", "tests pass", or "matches less.js" is not a
+valid review result — the last is forbidden as a justification by ledger rows
+E1/E2/E5.
+
 ## Core Architecture Handoff
 
 When working on the active evaluation-model refactor, use these docs as the canonical source:
 
-- `docs/future/core-architecture/HANDOFF.md` for current architecture lanes,
+- `docs/architecture/core/HANDOFF.md` for current architecture lanes,
   completion gates, the active queue, and verification
-- `docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md` and
+- `docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md` and
   `pnpm run verify:aggressive-cutting-review` before committing queue passes
   that touch eval/render/lookup/traversal/copying paths
 
@@ -207,27 +378,3 @@ Tool-specific rule systems should stay thin:
 - avoid copying branch summaries, active stage snapshots, or large architectural explanations
 
 When a tool-specific rule becomes stale, replace it with a pointer to the canonical source instead of refreshing a duplicate summary.
-
-<!-- BEGIN Guildhall MCP bridge -->
-## Guildhall MCP Bridge
-
-Jess is a Guildhall project. When Guildhall MCP tools are available, use them as the first source of project context before reading raw `.guildhall/` files.
-
-Start with these MCP resources:
-
-- `guildhall://project`
-- `guildhall://project/tasks`
-- `guildhall://project/artifacts`
-- `guildhall://project/decisions`
-- `guildhall://project/memory`
-
-For artifact-scoped work, resolve IDs through `guildhall://project/artifacts` and prefer `guildhall.read_artifact` over guessing paths. If the task changes project state, use `guildhall.append_task_evidence` for audit notes when there is an active Guildhall task. If an external agent needs permission, tools, or host access it does not have, use `guildhall.create_capability_request` instead of silently working around the missing capability.
-
-To start the local MCP server from this project root:
-
-```sh
-guildhall mcp serve .
-```
-
-If Guildhall MCP tools are not configured in the current agent session, say so explicitly and fall back to normal repository inspection. Do not imply that filesystem reads came from Guildhall MCP.
-<!-- END Guildhall MCP bridge -->

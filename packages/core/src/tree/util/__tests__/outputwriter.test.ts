@@ -21,7 +21,6 @@ function isNumberArray(value: unknown): value is number[] {
 }
 
 function writerField(writer: OutputWriter, key: string): unknown {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return (writer as unknown as Record<string, unknown>)[key];
 }
 
@@ -781,6 +780,7 @@ describe('OutputWriter', () => {
 
       // @ts-ignore - testing edge case
       w.add(null);
+
       // @ts-ignore - testing edge case
       w.add(undefined);
       w.add('');

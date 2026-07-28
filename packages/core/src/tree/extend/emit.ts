@@ -66,6 +66,7 @@ export type BucketPath = readonly Selector[];
 export interface EmitContribution {
   /** the extender's ancestor selector chain (outermost → own local). Never empty. */
   path: BucketPath;
+
   /** document order for the confluence sort (EMIT sorts Or-branches by order). */
   order: number;
 }
@@ -77,8 +78,10 @@ export interface EmitContribution {
 export interface EmitSubject {
   /** the target's ancestor selector chain (outermost → own local). Never empty. */
   path: BucketPath;
+
   /** document order of the subject's authored selector. */
   order: number;
+
   /** contributions the fixpoint routed to this subject (each is an extender bucket path). */
   contributions: readonly EmitContribution[];
 }
@@ -87,6 +90,7 @@ export interface EmitSubject {
 export interface EmitProjection {
   /** the ordered Or-branch selectors: authored own form first (by order), then composed contributions. */
   branches: Selector[];
+
   /**
    * true when ANY branch crosses the target's parent boundary (`&`-hoist): the whole subject header
    * must emit at ROOT placement, not nested. Mirrors `ruleset.hoistToRoot`.
@@ -160,8 +164,11 @@ export function composeContribution(
     throw new TypeError('EMIT contribution path is empty');
   }
   const ancestorKeys = targetAncestorKeys(targetPath);
-  // Collect the extender path levels from its own local outward, stopping at the first level that is
-  // a target ancestor (that level and everything above it is shared and elided).
+
+  /*
+   * Collect the extender path levels from its own local outward, stopping at the first level that is
+   * a target ancestor (that level and everything above it is shared and elided).
+   */
   const levels: Selector[] = [];
   let sharedAncestorFound = false;
   for (let i = path.length - 1; i >= 0; i--) {
@@ -175,15 +182,19 @@ export function composeContribution(
   if (levels.length === 0) {
     throw new TypeError('EMIT contribution collapsed to empty (extender IS a target ancestor)');
   }
+
   // Compose outermost → innermost.
   let result: Selector = levels[0]!;
   for (let i = 1; i < levels.length; i++) {
     const child = wrapIsIfMultiList(levels[i]!);
     result = asSelector(Ruleset.composeSelector(child, result));
   }
-  // Crossing: the extender did not share the target's parent AND it has an ancestor level of its own
-  // (a nested extender that reaches OUT of the target's parent). A root-level or same-parent
-  // contribution does not cross.
+
+  /*
+   * Crossing: the extender did not share the target's parent AND it has an ancestor level of its own
+   * (a nested extender that reaches OUT of the target's parent). A root-level or same-parent
+   * contribution does not cross.
+   */
   const targetHasParent = targetPath.length > 1;
   const crossesParentBoundary = targetHasParent && !sharedAncestorFound && levels.length >= 1
     ? selectorKey(levels[0]!) !== selectorKey(targetPath[0]!)
@@ -228,6 +239,7 @@ export function projectSubject(subject: EmitSubject): EmitProjection {
       hoistToRoot = true;
     }
   }
+
   // Dedup by selector text, preserving append order (target-own first).
   const seen = new Set<string>();
   const branches: Selector[] = [];

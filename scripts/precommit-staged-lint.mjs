@@ -42,8 +42,10 @@ try {
   const { lintStagedFiles } = await import('./staged-eslint.mjs');
   reports = await lintStagedFiles(files, { cwd: ROOT });
 } catch (error) {
-  // A broken ESLint invocation/config means no complete diagnostic result was
-  // available, so it must block rather than be silently skipped.
+  /*
+   * A broken ESLint invocation/config means no complete diagnostic result was
+   * available, so it must block rather than be silently skipped.
+   */
   const output = error instanceof Error ? (error.stack ?? error.message) : String(error);
   console.error('ESLint staged API failed before diagnostics could be collected.');
   console.error(output);

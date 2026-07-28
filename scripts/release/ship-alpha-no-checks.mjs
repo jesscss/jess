@@ -14,8 +14,11 @@ import path from 'node:path';
 import { getAlphaPublishStatus, getAlphaReleasePlan, incrementAlphaVersions } from './release-utils.mjs';
 
 const DRY_RUN = process.argv.includes('--dry-run');
-// On an already-published manifest version: default is to error; --bump opts
-// into auto-incrementing to the next unused -alpha.N instead.
+
+/*
+ * On an already-published manifest version: default is to error; --bump opts
+ * into auto-incrementing to the next unused -alpha.N instead.
+ */
 const BUMP = process.argv.includes('--bump');
 
 function run(command, args, cwd = process.cwd()) {
@@ -123,9 +126,11 @@ if (!DRY_RUN) {
   }
 }
 
-// 1. Resolve the alpha version: respect the manifest version when it is not yet
-// published; only bump/error when it is already fully published. (No heavy
-// checks — this stays the no-checks fast path.)
+/*
+ * 1. Resolve the alpha version: respect the manifest version when it is not yet
+ * published; only bump/error when it is already fully published. (No heavy
+ * checks — this stays the no-checks fast path.)
+ */
 const manifestVersion = plan.packages[0]?.manifest.version ?? '';
 if (!manifestVersion.includes('-alpha.')) {
   console.error(`Alpha release requires '-alpha.' version suffix. Current allowlist version: ${manifestVersion}`);
@@ -138,10 +143,8 @@ console.log(`  npm status: state=${status.state} (published ${status.published.l
 let TARGET_VERSION;
 if (status.state === 'all') {
   if (!BUMP) {
-    console.error(
-      `\nManifest version ${manifestVersion} is already published to npm for all allowlisted packages.\n`
-      + `Set a new '-alpha.N' version in the allowlisted manifests, or re-run with --bump to auto-increment.`
-    );
+    console.error(`\nManifest version ${manifestVersion} is already published to npm for all allowlisted packages.\n`
+      + `Set a new '-alpha.N' version in the allowlisted manifests, or re-run with --bump to auto-increment.`);
     process.exit(1);
   }
   if (DRY_RUN) {

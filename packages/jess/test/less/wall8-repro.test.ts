@@ -28,19 +28,21 @@ describe('wall8: multi-slot interpolation loop var after async plugin slot', () 
   // the async + nested-scope descent that leaks rulesContext.
   const bpPlugin = {
     install(less: any) {
-      const evalMap = function (this: any, map: any) {
+      const evalMap = function(this: any, map: any) {
         const rules = map?.ruleset?.rules ?? map?.rules ?? [];
         for (const r of rules) {
           if (typeof r?.eval === 'function') {
-            try { r.eval(this); } catch { /* ignore */ }
+            try {
+              r.eval(this);
+            } catch { /* ignore */ }
           }
         }
       };
-      less.functions.functionRegistry.add('bpmin', function (this: any, name: any, map: any) {
+      less.functions.functionRegistry.add('bpmin', function(this: any, name: any, map: any) {
         evalMap.call(this, map);
         return new less.tree.Dimension(100, 'px');
       });
-      less.functions.functionRegistry.add('bpinfix', async function (this: any, name: any, map: any) {
+      less.functions.functionRegistry.add('bpinfix', async function(this: any, name: any, map: any) {
         await Promise.resolve();
         evalMap.call(this, map);
         const raw = String(name?.value ?? name?.valueOf?.() ?? name);

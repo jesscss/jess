@@ -1,11 +1,14 @@
 import { Color } from '@jesscss/core';
 
-// Color Blending
-// ref: http://www.w3.org/TR/compositing-1
+/*
+ * Color Blending
+ * ref: http://www.w3.org/TR/compositing-1
+ */
 export function colorBlend(mode: (c1: number, c2: number) => number, color1: Color, color2: Color) {
   if (!(color1 instanceof Color) || !(color2 instanceof Color)) {
     throw new Error('Both arguments must be colors.');
   }
+
   // result
   const ab = color1.alpha;
 
@@ -30,6 +33,7 @@ export function colorBlend(mode: (c1: number, c2: number) => number, color1: Col
   rgba[3] = ar;
 
   const out = new Color(rgba);
+
   // Preserve color1 style for blend outputs (Less-like form continuity).
   out.options.format = color1.options.format;
   return out;

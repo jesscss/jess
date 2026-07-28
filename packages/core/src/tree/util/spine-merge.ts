@@ -38,6 +38,7 @@ export type SpineMergePlanEntry =
   | {
     kind: 'anchor';
     value: Node;
+
     /**
        * The `!important` the COMBINED value carries, propagated from ANY member
        * of the merge chain (Less: `a; b !important; c` → `a, b, c !important`).
@@ -73,7 +74,7 @@ function declImportantOf(decl: Node): DeclImportant | undefined {
     return undefined;
   }
   const important = decl.important;
-  return important ? important : undefined;
+  return important || undefined;
 }
 
 /** Flatten a comma-list value into its member items (a non-list is one item). */
@@ -144,6 +145,7 @@ export function planBodyMerges(
  */
 export type SpineMergeEntry = {
   node: Node;
+
   /**
    * VESTIGIAL (retained for caller-population compatibility; no longer read).
    * Formerly the merge decl's owner scope, used to gate cross-owner accumulation.
@@ -181,6 +183,7 @@ export function planEntrySequenceMerges(
   resolveValue: (decl: Node) => MaybePromise<Node | undefined>
 ): MaybePromise<SpineMergePlan | undefined> {
   const children = entries;
+
   // Fast path: no merge decls → no plan, no work.
   let hasMerge = false;
   for (let i = 0; i < children.length; i++) {
@@ -194,15 +197,21 @@ export function planEntrySequenceMerges(
   }
 
   const plan: SpineMergePlan = new WeakMap();
-  // Per property name: the anchor decl so far and its accumulated combined value.
-  // A merge run accumulates across ALL contributors (mixin-injected + caller-body);
-  // a plain `:` decl of the property resets it.
+
+  /*
+   * Per property name: the anchor decl so far and its accumulated combined value.
+   * A merge run accumulates across ALL contributors (mixin-injected + caller-body);
+   * a plain `:` decl of the property resets it.
+   */
   const anchorByName = new Map<string, Node>();
   const accumulatedByName = new Map<string, Node>();
-  // The `!important` the accumulated chain carries so far (propagated from ANY
-  // member); parallel to `accumulatedByName`. Cleared when a plain `:` decl breaks
-  // the run. A member without `!important` does NOT clear it — once any chain
-  // member is important, the combined value stays important (the Less oracle).
+
+  /*
+   * The `!important` the accumulated chain carries so far (propagated from ANY
+   * member); parallel to `accumulatedByName`. Cleared when a plain `:` decl breaks
+   * the run. A member without `!important` does NOT clear it — once any chain
+   * member is important, the combined value stays important (the Less oracle).
+   */
   const importantByName = new Map<string, DeclImportant>();
 
   const step = (index: number): MaybePromise<SpineMergePlan> => {
@@ -247,19 +256,27 @@ function applyMerge(
 ): void {
   const resolvedValue = value ?? new Nil();
   const priorAnchor = anchorByName.get(name);
-  // Add-pull-prior: this occurrence combines with the accumulated same-property
-  // merge value (whatever prior merge decls — mixin-injected or caller-body —
-  // contributed), matching the Less oracle. No owner boundary.
+
+  /*
+   * Add-pull-prior: this occurrence combines with the accumulated same-property
+   * merge value (whatever prior merge decls — mixin-injected or caller-body —
+   * contributed), matching the Less oracle. No owner boundary.
+   */
   const combined = combineMergeValue(accumulatedByName.get(name), resolvedValue, assign);
-  // `!important` propagates from ANY chain member to the whole combined value
-  // (`a; b !important; c` → `a, b, c !important`). This member's own `!important`
-  // takes precedence; otherwise the already-accumulated chain `!important` carries
-  // forward. The anchor is the LAST member, so without this an `!important` on a
-  // first/middle member would be dropped.
+
+  /*
+   * `!important` propagates from ANY chain member to the whole combined value
+   * (`a; b !important; c` → `a, b, c !important`). This member's own `!important`
+   * takes precedence; otherwise the already-accumulated chain `!important` carries
+   * forward. The anchor is the LAST member, so without this an `!important` on a
+   * first/middle member would be dropped.
+   */
   const important = declImportantOf(decl) ?? importantByName.get(name);
   if (priorAnchor) {
-    // The prior anchor is superseded as the emit position by this later occurrence
-    // (jess anchors the combined value at the LAST occurrence) — suppress it.
+    /*
+     * The prior anchor is superseded as the emit position by this later occurrence
+     * (jess anchors the combined value at the LAST occurrence) — suppress it.
+     */
     plan.set(priorAnchor, { kind: 'suppress' });
   }
   plan.set(decl, important !== undefined ? { kind: 'anchor', value: combined, important } : { kind: 'anchor', value: combined });

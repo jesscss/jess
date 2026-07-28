@@ -1,0 +1,2855 @@
+{
+  "format": 1,
+  "harness": "e542b69ede393b0c90021c7c5710e3eab01a86f451fbd7124158f26e3721c0f0",
+  "entries": 709,
+  "surfaces": [
+    {
+      "name": "ast",
+      "aggregate": "309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929",
+      "threw": 120
+    },
+    {
+      "name": "cst",
+      "aggregate": "7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4",
+      "threw": 0
+    }
+  ],
+  "perEntry": {
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_alert.less": {
+      "ast": "cb6de24795f4ea35",
+      "cst": "b77665b258eca730"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_badge.less": {
+      "ast": "2ea3e911eb141345",
+      "cst": "7ad304cb2fa4bbe0"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_breadcrumb.less": {
+      "ast": "403ad04e7338f9e5",
+      "cst": "d3e6adaf535a7722"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_button-group.less": {
+      "ast": "1d2fdbfce799c45f",
+      "cst": "0a4d47d9c5a393ea"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_buttons.less": {
+      "ast": "787266a9844ef20e",
+      "cst": "c53d232a1571bf6c"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_card.less": {
+      "ast": "deffdc7416080957",
+      "cst": "41f242ff5805154e"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_carousel.less": {
+      "ast": "11cd434512838e95",
+      "cst": "0438245ff31f7422"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_close.less": {
+      "ast": "e1b70f87ffae25a8",
+      "cst": "58ef474aa90bb66f"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_code.less": {
+      "ast": "18bf2b8f0c552ca9",
+      "cst": "bf6d05f414aeaded"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_custom-forms.less": {
+      "ast": "78a65c2867c95776",
+      "cst": "416d3846894be1ea"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_dropdown.less": {
+      "ast": "46e90630f11f9b75",
+      "cst": "2d0806dfb0c94dca"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_forms.less": {
+      "ast": "99ea2a3ca1d60903",
+      "cst": "546ae0be180eac70"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_functions.less": {
+      "ast": "c2c81439ba28f9a5",
+      "cst": "f9e1cf486c3b5df1"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_grid.less": {
+      "ast": "05056b47e54f5a30",
+      "cst": "97039dcb1a3fb2e8"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_images.less": {
+      "ast": "2325f12ef6ceeebc",
+      "cst": "376aa2b7864bad28"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_input-group.less": {
+      "ast": "d100fd079232b632",
+      "cst": "99433927bbdb986c"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_jumbotron.less": {
+      "ast": "179da7f384450d7e",
+      "cst": "60a6ad6499778082"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_list-group.less": {
+      "ast": "a9cf6889ebc77e4b",
+      "cst": "fb6392c2c4cae655"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_media.less": {
+      "ast": "5f0f98cac7af3d4f",
+      "cst": "47cf568301753755"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_mixins.less": {
+      "ast": "43f11f65af7effb1",
+      "cst": "a5f60c84ca1d0ef0"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_modal.less": {
+      "ast": "3f34089ae10c9228",
+      "cst": "a203463fa7fd152f"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_nav.less": {
+      "ast": "73b4c629d5b742b5",
+      "cst": "94742f37f4136bd6"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_navbar.less": {
+      "ast": "8e2386f35d0ff0b9",
+      "cst": "a2ac098e199de257"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_pagination.less": {
+      "ast": "c5d27713434bfb20",
+      "cst": "1b528385a00f4b6e"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_popover.less": {
+      "ast": "74bbbc34ac40a5fd",
+      "cst": "7062eadaddde5fc4"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_print.less": {
+      "ast": "0809d06de7d02396",
+      "cst": "b912606205419adc"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_progress.less": {
+      "ast": "53a286183e220cf1",
+      "cst": "50096974b7454ad3"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_reboot.less": {
+      "ast": "27c53f9cd24d0e00",
+      "cst": "b292285fdc86afdd"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_root.less": {
+      "ast": "06c2f80559dd3bcd",
+      "cst": "02311e64d82627e9"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_spinners.less": {
+      "ast": "dfe5dbacf96e8a86",
+      "cst": "00d1e2388ff892d0"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_tables.less": {
+      "ast": "eb825bc9a8cf5c75",
+      "cst": "e9ceacd360d3d43d"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_toasts.less": {
+      "ast": "b4943eb15bbaec8c",
+      "cst": "8624c122c5be8c90"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_tooltip.less": {
+      "ast": "1f610858f4493cdc",
+      "cst": "cb6c87b2d1d96d0d"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_transitions.less": {
+      "ast": "b0a6c486ac564827",
+      "cst": "4954c30d9734627e"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_type.less": {
+      "ast": "a3bd85f97ad5aeee",
+      "cst": "5437141be7403441"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_utilities.less": {
+      "ast": "2960d56ae686c619",
+      "cst": "e455d48ca2f6a060"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/_variables.less": {
+      "ast": "2712f086ee1fb153",
+      "cst": "46750ab244c9977d"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/bootstrap-grid.less": {
+      "ast": "2d2d0e1ade427903",
+      "cst": "278d0e0963eac9f3"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/bootstrap-reboot.less": {
+      "ast": "fe5bac119c833ead",
+      "cst": "45530392724eec8c"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/bootstrap.less": {
+      "ast": "741446cbc1fcb5a0",
+      "cst": "c559ad177647b9a2"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_alert.less": {
+      "ast": "22b5cb0024b79005",
+      "cst": "7c92f7fb90be01e7"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_background-variant.less": {
+      "ast": "671c72b8eaf26c32",
+      "cst": "6f2e4c1964f5be28"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_badge.less": {
+      "ast": "99073baadae6a3d1",
+      "cst": "823843dd22c91370"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_border-radius.less": {
+      "ast": "3a71639a18db4446",
+      "cst": "7e88088b26ba448a"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_box-shadow.less": {
+      "ast": "f988193c0f29c5c2",
+      "cst": "330b26433f221005"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_breakpoints.less": {
+      "ast": "aff079d7cfd8802b",
+      "cst": "90e81b948edb31e0"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_buttons.less": {
+      "ast": "47df403a63f0ddad",
+      "cst": "e9a48425838f3135"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_caret.less": {
+      "ast": "877c96665e197188",
+      "cst": "995ebf103d63a4a3"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_clearfix.less": {
+      "ast": "0d617699f872c99e",
+      "cst": "217693aef75db522"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_deprecate.less": {
+      "ast": "4abf435fc452ceb4",
+      "cst": "aeecdc4e30ab0bb7"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_float.less": {
+      "ast": "2e1b34c2fc0c5089",
+      "cst": "051ae9751b65c69b"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_forms.less": {
+      "ast": "2e87e07434acf6b0",
+      "cst": "b0c0d5375a272184"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_gradients.less": {
+      "ast": "5bdce2e6137c74bf",
+      "cst": "1e772421370268d4"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_grid-framework.less": {
+      "ast": "30b84f67feee68fc",
+      "cst": "799fd6e0a9fce58c"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_grid.less": {
+      "ast": "735c923717d031db",
+      "cst": "d2d1766cffd37e91"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_hover.less": {
+      "ast": "a97283d36a24e2dc",
+      "cst": "311f4869199f8f6e"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_image.less": {
+      "ast": "03e7bc2f3258e05f",
+      "cst": "ce0a9d99f2121a6d"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_list-group.less": {
+      "ast": "31543437576d6a23",
+      "cst": "0e39045840acb6b7"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_lists.less": {
+      "ast": "0384d1dc2d76f18f",
+      "cst": "ba6ce4500a8be3c6"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_nav-divider.less": {
+      "ast": "0790f976c7fefb87",
+      "cst": "e48c6a239460d807"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_pagination.less": {
+      "ast": "1aa0011d68945840",
+      "cst": "1732f43ee7a7c347"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_reset-text.less": {
+      "ast": "b7f9d09721cedd70",
+      "cst": "13a1b464af795b49"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_resize.less": {
+      "ast": "7b0a0358cb74dcd1",
+      "cst": "04e521b383ef5f9d"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_screen-reader.less": {
+      "ast": "dc7c25831878b594",
+      "cst": "bf771acac5d5e70f"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_size.less": {
+      "ast": "43d1036c9a525299",
+      "cst": "3460f004906bec5e"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_table-row.less": {
+      "ast": "7544cb92e015c9d2",
+      "cst": "afb661753190fb99"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_text-emphasis.less": {
+      "ast": "56899902c0e2d3da",
+      "cst": "84e3ffbde2346c14"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_text-hide.less": {
+      "ast": "99329318f338813c",
+      "cst": "a008c9a43ca915d9"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_text-truncate.less": {
+      "ast": "25dcbce82d996b07",
+      "cst": "d890e150d2ab1da2"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_transition.less": {
+      "ast": "cce8ea3c96efefed",
+      "cst": "9fec075442c0eb6a"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/mixins/_visibility.less": {
+      "ast": "6fa3eaa6b2cba8ee",
+      "cst": "d90639f17dd8f38e"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_align.less": {
+      "ast": "2269d2bff5d830f1",
+      "cst": "e4c64e590b7c44a3"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_background.less": {
+      "ast": "7c6f08b56a058483",
+      "cst": "0650d90e2e595ec2"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_borders.less": {
+      "ast": "bfddaa41dc6d23c3",
+      "cst": "1e11d64bd17c1e9d"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_clearfix.less": {
+      "ast": "bbbe7cb985bc4430",
+      "cst": "b0ae3becf8db63b1"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_display.less": {
+      "ast": "b7818401b461bd83",
+      "cst": "fe9b2e199f9eed96"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_embed.less": {
+      "ast": "2040dc5ad163b330",
+      "cst": "0dcd03927d5b1e32"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_flex.less": {
+      "ast": "1f9185fd98c4adb0",
+      "cst": "b225a6408008ddf5"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_float.less": {
+      "ast": "200b8bd5156390fc",
+      "cst": "ac59d31b8744443c"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_interactions.less": {
+      "ast": "7d5a590c5e5547e2",
+      "cst": "e628cbdb9777d4c1"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_overflow.less": {
+      "ast": "edfb994722772be3",
+      "cst": "f405a78547738e66"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_position.less": {
+      "ast": "14945f28c1331791",
+      "cst": "3f49c955925a4562"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_screenreaders.less": {
+      "ast": "3c0573ceb25b3b58",
+      "cst": "43e6e72f89901530"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_shadows.less": {
+      "ast": "3230ee991a483c97",
+      "cst": "a9dcc00e21e75d1c"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_sizing.less": {
+      "ast": "2a874ef397bb5f1d",
+      "cst": "9cf4868ea84786a0"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_spacing.less": {
+      "ast": "2e5c8c96591a1962",
+      "cst": "c88c41e31e8cd02d"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_stretched-link.less": {
+      "ast": "ddbf2bba7c6b519f",
+      "cst": "57f4df34f73ca029"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_text.less": {
+      "ast": "24f5bbfdc8ba7555",
+      "cst": "e2b9a712d75a8e7f"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/utilities/_visibility.less": {
+      "ast": "19a32e9b43bfe69a",
+      "cst": "cfa04c59ab97c6d5"
+    },
+    "node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less/vendor/_rfs.less": {
+      "ast": "4ffb6b114ed1ad53",
+      "cst": "2030c49b14c5969d"
+    },
+    "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.css": {
+      "ast": "39263e855e7a207a",
+      "cst": "65421255f5595ca8"
+    },
+    "node_modules/@less/test-data/tests-config/3rd-party/bootstrap4.less": {
+      "ast": "43c5940ed7f1883d",
+      "cst": "5612aeb1df9b8917"
+    },
+    "node_modules/@less/test-data/tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.css": {
+      "ast": "785526d4571947bc",
+      "cst": "5849c60a6ff9979a"
+    },
+    "node_modules/@less/test-data/tests-config/at-rules-compressed-evaluation/at-rules-compressed-evaluation.less": {
+      "ast": "9a98f24b63928437",
+      "cst": "959950c482eda919"
+    },
+    "node_modules/@less/test-data/tests-config/at-rules-compressed/at-rules-compressed.css": {
+      "ast": "33bd0f6cfe118ccd",
+      "cst": "3620bdfa4462fcae"
+    },
+    "node_modules/@less/test-data/tests-config/at-rules-compressed/at-rules-compressed.less": {
+      "ast": "33bd0f6cfe118ccd",
+      "cst": "e10229c9ffeaead3"
+    },
+    "node_modules/@less/test-data/tests-config/compression/compression.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "7768c602e4f3df91"
+    },
+    "node_modules/@less/test-data/tests-config/compression/compression.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "fc8e3f904190c51a"
+    },
+    "node_modules/@less/test-data/tests-config/debug/all/linenumbers-all.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "2ad68895128a77fe"
+    },
+    "node_modules/@less/test-data/tests-config/debug/all/linenumbers-all.less": {
+      "ast": "212c8b83aee9dcf0",
+      "cst": "b4e6e02ffbeb8313"
+    },
+    "node_modules/@less/test-data/tests-config/debug/comments/linenumbers-comments.css": {
+      "ast": "3224a144ab747421",
+      "cst": "7094e98f79f74343"
+    },
+    "node_modules/@less/test-data/tests-config/debug/comments/linenumbers-comments.less": {
+      "ast": "212c8b83aee9dcf0",
+      "cst": "6e6b57a3d2be52c3"
+    },
+    "node_modules/@less/test-data/tests-config/debug/import/test.less": {
+      "ast": "a9dec857e897e76e",
+      "cst": "48013f752701a2c3"
+    },
+    "node_modules/@less/test-data/tests-config/debug/linenumbers.less": {
+      "ast": "1f470dd2c8e4a34e",
+      "cst": "5bb1535d07caa2c5"
+    },
+    "node_modules/@less/test-data/tests-config/debug/mediaquery/linenumbers-mediaquery.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "a4ffa43232ecfcf7"
+    },
+    "node_modules/@less/test-data/tests-config/debug/mediaquery/linenumbers-mediaquery.less": {
+      "ast": "212c8b83aee9dcf0",
+      "cst": "19df98b84bf4ca17"
+    },
+    "node_modules/@less/test-data/tests-config/filemanagerPlugin/filemanager.css": {
+      "ast": "cd54d751fa0bf771",
+      "cst": "5c5703eecd9bacd7"
+    },
+    "node_modules/@less/test-data/tests-config/filemanagerPlugin/filemanager.less": {
+      "ast": "f13e563e7476ce14",
+      "cst": "1e4743830d4bb667"
+    },
+    "node_modules/@less/test-data/tests-config/functions-harness/functions-harness.css": {
+      "ast": "289379e47ebc0c7a",
+      "cst": "72283ff40e6efb19"
+    },
+    "node_modules/@less/test-data/tests-config/functions-harness/functions-harness.less": {
+      "ast": "6fc479472a456941",
+      "cst": "27bc75a65a3a2d4a"
+    },
+    "node_modules/@less/test-data/tests-config/globalVars/extended.css": {
+      "ast": "6318db67ad5b0932",
+      "cst": "d5f98a6e8cbb70bf"
+    },
+    "node_modules/@less/test-data/tests-config/globalVars/extended.less": {
+      "ast": "fe4870fdb13e3553",
+      "cst": "44379e712699d65d"
+    },
+    "node_modules/@less/test-data/tests-config/globalVars/simple.css": {
+      "ast": "fb30d9a6f7208441",
+      "cst": "3a5e51caa330fa7e"
+    },
+    "node_modules/@less/test-data/tests-config/globalVars/simple.less": {
+      "ast": "630ee95e820286ce",
+      "cst": "d5fb96796c351106"
+    },
+    "node_modules/@less/test-data/tests-config/import-redirect/import-redirect.less": {
+      "ast": "63e6f9503981b0a8",
+      "cst": "d695a5cf454883a0"
+    },
+    "node_modules/@less/test-data/tests-config/include-path-string/include-path-string.css": {
+      "ast": "0ae4c22c722512f0",
+      "cst": "a02ed14a8f0dd4bd"
+    },
+    "node_modules/@less/test-data/tests-config/include-path-string/include-path-string.less": {
+      "ast": "b04b4a03257b4ab8",
+      "cst": "6a8bcad15bf51661"
+    },
+    "node_modules/@less/test-data/tests-config/include-path/import-test-e.less": {
+      "ast": "d1b4ff3364335a0a",
+      "cst": "d7040e6e75e72bed"
+    },
+    "node_modules/@less/test-data/tests-config/include-path/include-path.css": {
+      "ast": "8e03772ab3547e63",
+      "cst": "6681956cdb91d04e"
+    },
+    "node_modules/@less/test-data/tests-config/include-path/include-path.less": {
+      "ast": "2513ecd4e4534c88",
+      "cst": "78eb9351031dc0de"
+    },
+    "node_modules/@less/test-data/tests-config/js-type-errors/js-type-error.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-config/math-always/mixins-guards.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "b25b83cb59d4b0cd"
+    },
+    "node_modules/@less/test-data/tests-config/math-always/no-sm-operations.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "49944bf1c8777087"
+    },
+    "node_modules/@less/test-data/tests-config/math-parens-division/media-math.less": {
+      "ast": "d0ddfcb573617cf4",
+      "cst": "fef899e36f21403f"
+    },
+    "node_modules/@less/test-data/tests-config/math-parens-division/mixins-args.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "179e5d81d9cd0861"
+    },
+    "node_modules/@less/test-data/tests-config/math-parens-division/new-division.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "aa92fc9ce73a6224"
+    },
+    "node_modules/@less/test-data/tests-config/math-parens-division/parens.less": {
+      "ast": "72cee8641fbfd17e",
+      "cst": "7e8914a947a0b963"
+    },
+    "node_modules/@less/test-data/tests-config/math-strict/css.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "bd553dd25930ea84"
+    },
+    "node_modules/@less/test-data/tests-config/math-strict/media-math.less": {
+      "ast": "ae28a437bbcacb90",
+      "cst": "fd56b9fd1d2e11e3"
+    },
+    "node_modules/@less/test-data/tests-config/math-strict/mixins-args.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "179e5d81d9cd0861"
+    },
+    "node_modules/@less/test-data/tests-config/math-strict/parens.less": {
+      "ast": "72cee8641fbfd17e",
+      "cst": "7e8914a947a0b963"
+    },
+    "node_modules/@less/test-data/tests-config/math/always/mixins-guards.css": {
+      "ast": "6c642b91a6c5460d",
+      "cst": "35913ed26c001ed1"
+    },
+    "node_modules/@less/test-data/tests-config/math/always/no-sm-operations.css": {
+      "ast": "be5424a32cd2f2ec",
+      "cst": "cf76905c8b2db127"
+    },
+    "node_modules/@less/test-data/tests-config/math/parens-division/media-math.css": {
+      "ast": "ac0c01a49a2748ca",
+      "cst": "2659fadc1d3a0649"
+    },
+    "node_modules/@less/test-data/tests-config/math/parens-division/mixins-args.css": {
+      "ast": "e12f2f349f735a02",
+      "cst": "40c5fa1be92a05d2"
+    },
+    "node_modules/@less/test-data/tests-config/math/parens-division/new-division.css": {
+      "ast": "38a5983b7154a2af",
+      "cst": "5d5cbd842b120697"
+    },
+    "node_modules/@less/test-data/tests-config/math/parens-division/parens.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "c5c383bfdadd161a"
+    },
+    "node_modules/@less/test-data/tests-config/math/strict/css.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "ce34d104a5304990"
+    },
+    "node_modules/@less/test-data/tests-config/math/strict/media-math.css": {
+      "ast": "46c0d7638654c6b8",
+      "cst": "e7f700e7dcb64a89"
+    },
+    "node_modules/@less/test-data/tests-config/math/strict/mixins-args.css": {
+      "ast": "b4af0582cb650ad2",
+      "cst": "7cfb57a20b209abf"
+    },
+    "node_modules/@less/test-data/tests-config/math/strict/parens.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "206af0bbc20a834b"
+    },
+    "node_modules/@less/test-data/tests-config/modifyVars/extended.css": {
+      "ast": "950a154ea8edf65e",
+      "cst": "5d5ce25e3b435cb3"
+    },
+    "node_modules/@less/test-data/tests-config/modifyVars/extended.less": {
+      "ast": "c75163264f37ae36",
+      "cst": "337fb79c0754a8d5"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/imports/a-better-bootstrap.less": {
+      "ast": "bc729d8f639d85b9",
+      "cst": "d9ff1b6d7479b447"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/imports/library.less": {
+      "ast": "bc17a58eb6eb4c20",
+      "cst": "c3b6c36f79cf7c12"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/legacy/namespacing-7.css": {
+      "ast": "cafb24c20a925ffe",
+      "cst": "43d44fc0646ba585"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-1.css": {
+      "ast": "23a63536a9b15b71",
+      "cst": "d0b45611c82656c6"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-1.less": {
+      "ast": "54eeabe00a5ad487",
+      "cst": "47cd8436b7eede08"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-2.css": {
+      "ast": "057a49f7822cf5b9",
+      "cst": "c52a4e3ede7f384e"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-2.less": {
+      "ast": "de0c3d08a26e7a91",
+      "cst": "03d3f7fe1e241a31"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-3.css": {
+      "ast": "520d6bba8654cebc",
+      "cst": "a5c5f650d5301896"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-3.less": {
+      "ast": "45d5c180a9432541",
+      "cst": "16a5f669b8908de5"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-4.css": {
+      "ast": "ae31dcc883e6f010",
+      "cst": "d43c0f6eddd532a1"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-4.less": {
+      "ast": "1b6cb702e720ebca",
+      "cst": "70ecc6a1a334884c"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-5.css": {
+      "ast": "7b40c528645655cd",
+      "cst": "e319b73e0d9c5cd6"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-5.less": {
+      "ast": "025548c1c76a204a",
+      "cst": "88e2c18cc678596a"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-6.css": {
+      "ast": "fec4e6cf4f4dafb0",
+      "cst": "0fa41d9c104c5a79"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-6.less": {
+      "ast": "da0a013dc1047dd7",
+      "cst": "b0268b06e4d86b53"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-7.css": {
+      "ast": "93a3a68a0b938322",
+      "cst": "fdcb56025ee94139"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-7.less": {
+      "ast": "2c60567de376555e",
+      "cst": "807c9afa41975c8f"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.css": {
+      "ast": "a6b4580f33ea8d02",
+      "cst": "2e5573dec72b68cd"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-8.less": {
+      "ast": "05a116103da9d92a",
+      "cst": "fddf203a1174fda2"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.css": {
+      "ast": "3164a0424ebec43c",
+      "cst": "014fa6515e2daf51"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-functions.less": {
+      "ast": "07e10d08848dee09",
+      "cst": "4cbf34c247120660"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.css": {
+      "ast": "e096f9f1d4519ee4",
+      "cst": "65f934419ac26e6c"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-media.less": {
+      "ast": "8f6cdde1f23f57a5",
+      "cst": "a1fedefaccb96d26"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-operations.css": {
+      "ast": "d5f979ed874b87dd",
+      "cst": "13d96942a312df5e"
+    },
+    "node_modules/@less/test-data/tests-config/namespacing/namespacing-operations.less": {
+      "ast": "e2ec512d756dfa11",
+      "cst": "4d4a6d04bd334ad5"
+    },
+    "node_modules/@less/test-data/tests-config/no-js-errors/no-js-errors.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-config/postProcessorPlugin/postProcessor.css": {
+      "ast": "2f6848e2171da07a",
+      "cst": "5aac60a8deae2bf4"
+    },
+    "node_modules/@less/test-data/tests-config/postProcessorPlugin/postProcessor.less": {
+      "ast": "139bca025cc3651a",
+      "cst": "3cea9bff815bc557"
+    },
+    "node_modules/@less/test-data/tests-config/preProcessorPlugin/preProcessor.css": {
+      "ast": "cd54d751fa0bf771",
+      "cst": "5c5703eecd9bacd7"
+    },
+    "node_modules/@less/test-data/tests-config/preProcessorPlugin/preProcessor.less": {
+      "ast": "f0d1414f8c884fd4",
+      "cst": "dd0ccf86fe7ec086"
+    },
+    "node_modules/@less/test-data/tests-config/process-imports/google.css": {
+      "ast": "abed295ba8404c6a",
+      "cst": "b9d15101e32c4ae0"
+    },
+    "node_modules/@less/test-data/tests-config/process-imports/google.less": {
+      "ast": "242578fbc1ff1842",
+      "cst": "75b2f971d0a4513b"
+    },
+    "node_modules/@less/test-data/tests-config/rewrite-urls-all/folder/file.less": {
+      "ast": "f59557fbfdff7508",
+      "cst": "b5c8034164ca129a"
+    },
+    "node_modules/@less/test-data/tests-config/rewrite-urls-all/rewrite-urls-all.css": {
+      "ast": "4c6cdf7eb99bd60f",
+      "cst": "d634b6e578b4ce14"
+    },
+    "node_modules/@less/test-data/tests-config/rewrite-urls-all/rewrite-urls-all.less": {
+      "ast": "e68f56607b71469c",
+      "cst": "9f6f4302c0b4c00a"
+    },
+    "node_modules/@less/test-data/tests-config/rewrite-urls-local/folder/file.less": {
+      "ast": "f59557fbfdff7508",
+      "cst": "b5c8034164ca129a"
+    },
+    "node_modules/@less/test-data/tests-config/rewrite-urls-local/rewrite-urls-local.css": {
+      "ast": "35dc39777138429a",
+      "cst": "9bc98e055e7cf8ea"
+    },
+    "node_modules/@less/test-data/tests-config/rewrite-urls-local/rewrite-urls-local.less": {
+      "ast": "d3b34328330aa96e",
+      "cst": "eb90529e241099cf"
+    },
+    "node_modules/@less/test-data/tests-config/root-registry/file.less": {
+      "ast": "e2b2b028787bb952",
+      "cst": "d9b73ebf9a05b907"
+    },
+    "node_modules/@less/test-data/tests-config/root-registry/root.less": {
+      "ast": "cc8a965ffe7b0593",
+      "cst": "27714877fec09672"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/folder/file.less": {
+      "ast": "f59557fbfdff7508",
+      "cst": "b5c8034164ca129a"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.css": {
+      "ast": "2cc944b3aa9dc684",
+      "cst": "a1ac28040dfb5827"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-all/rootpath-rewrite-urls-all.less": {
+      "ast": "a2a890813a21d8c5",
+      "cst": "f5926b2bb107a128"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-local/folder/file.less": {
+      "ast": "f59557fbfdff7508",
+      "cst": "b5c8034164ca129a"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-local/rootpath-rewrite-urls-local.css": {
+      "ast": "f9c8687c4e982704",
+      "cst": "d5c58804f6c794f1"
+    },
+    "node_modules/@less/test-data/tests-config/rootpath-rewrite-urls-local/rootpath-rewrite-urls-local.less": {
+      "ast": "4396d0a8a902f06a",
+      "cst": "a023bb4192cde256"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-basepath/sourcemaps-basepath.css": {
+      "ast": "db19f453b37aed91",
+      "cst": "01dc86b3cde5e322"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-basepath/sourcemaps-basepath.less": {
+      "ast": "5086b41a01c4fb84",
+      "cst": "657221886b388c1a"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-disable-annotation/basic.less": {
+      "ast": "495348370aa15bfc",
+      "cst": "1d4df13e860f8898"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-empty/empty.less": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "aca51345c271e5f2"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-empty/var-defs.less": {
+      "ast": "b256c1c2f3f8df4c",
+      "cst": "9a4b0d0f7914f8d6"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-include-source/sourcemaps-include-source.css": {
+      "ast": "afd65ce771fdc45e",
+      "cst": "60fa4ab6042bf6b6"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-include-source/sourcemaps-include-source.less": {
+      "ast": "82918ab56d1729cd",
+      "cst": "8153aa7aebac43f1"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-rootpath/sourcemaps-rootpath.css": {
+      "ast": "973a6468a7803735",
+      "cst": "f67bb5fea47a4203"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-rootpath/sourcemaps-rootpath.less": {
+      "ast": "215d97e5bd55c56f",
+      "cst": "7249461af4b146e0"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-url/sourcemaps-url.css": {
+      "ast": "63fc8ba4d70cc27c",
+      "cst": "2dbe5a6ed852e1e1"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-url/sourcemaps-url.less": {
+      "ast": "a4345c3ccfbe16c9",
+      "cst": "05fd21d0903a47af"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-variable-selector/basic.less": {
+      "ast": "de8d68f64f5bac50",
+      "cst": "67b3e603bdc81c38"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps-variable-selector/vars.less": {
+      "ast": "6eb56b02039090b3",
+      "cst": "5c6d2f6201226228"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps/basic.less": {
+      "ast": "76424727a58b919d",
+      "cst": "02783e3ecea1ef92"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps/comprehensive/comprehensive.css": {
+      "ast": "be407a8e1c19a271",
+      "cst": "d1af8e1fed7c0ad6"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps/comprehensive/comprehensive.less": {
+      "ast": "c682216bdd531c03",
+      "cst": "b0d99bf848477558"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps/custom-props.less": {
+      "ast": "484e4019db295c17",
+      "cst": "d6463711236469c2"
+    },
+    "node_modules/@less/test-data/tests-config/sourcemaps/imported.css": {
+      "ast": "7e46702c23819385",
+      "cst": "aa3be06747a7473a"
+    },
+    "node_modules/@less/test-data/tests-config/static-urls/urls.css": {
+      "ast": "8e4048e288f9443c",
+      "cst": "d0b971eb9f617841"
+    },
+    "node_modules/@less/test-data/tests-config/static-urls/urls.less": {
+      "ast": "f724e72f14cbc999",
+      "cst": "f68fb76e0641cbd5"
+    },
+    "node_modules/@less/test-data/tests-config/strict-imports/imported.less": {
+      "ast": "3993e86bc006982c",
+      "cst": "44b460228814e310"
+    },
+    "node_modules/@less/test-data/tests-config/strict-imports/legacy/strict-imports.css": {
+      "ast": "d7f29debb5632244",
+      "cst": "6cdf443aa74e1430"
+    },
+    "node_modules/@less/test-data/tests-config/strict-imports/strict-imports.css": {
+      "ast": "c5d6eb726ce21aea",
+      "cst": "13bf328de901c038"
+    },
+    "node_modules/@less/test-data/tests-config/strict-imports/strict-imports.less": {
+      "ast": "37e4220647300013",
+      "cst": "0a640c9a748a42dd"
+    },
+    "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.css": {
+      "ast": "6867028de62ad956",
+      "cst": "3f12e4e1d3c75471"
+    },
+    "node_modules/@less/test-data/tests-config/units/no-strict/no-strict.less": {
+      "ast": "0ab8631985258933",
+      "cst": "815b12b547d1fe23"
+    },
+    "node_modules/@less/test-data/tests-config/units/strict/strict-units.css": {
+      "ast": "4f93f1b034d9b89c",
+      "cst": "2ba04b78b69dde42"
+    },
+    "node_modules/@less/test-data/tests-config/units/strict/strict-units.less": {
+      "ast": "b3bd9ef2ec94569b",
+      "cst": "0e368d39c8cc54ee"
+    },
+    "node_modules/@less/test-data/tests-config/url-args/urls.css": {
+      "ast": "a9680df30881425c",
+      "cst": "8999970b1ba7cc5d"
+    },
+    "node_modules/@less/test-data/tests-config/url-args/urls.less": {
+      "ast": "9e30162a486f0cee",
+      "cst": "e0fcf6b912c7ff89"
+    },
+    "node_modules/@less/test-data/tests-config/visitorPlugin/visitor.css": {
+      "ast": "cd54d751fa0bf771",
+      "cst": "5c5703eecd9bacd7"
+    },
+    "node_modules/@less/test-data/tests-config/visitorPlugin/visitor.less": {
+      "ast": "f6ab9f817071f6d4",
+      "cst": "2c639ef0338f377d"
+    },
+    "node_modules/@less/test-data/tests-error/eval/add-mixed-units.less": {
+      "ast": "e682351e56f65e68",
+      "cst": "10e97c9169652f88"
+    },
+    "node_modules/@less/test-data/tests-error/eval/add-mixed-units2.less": {
+      "ast": "a58b89dd1f0b5214",
+      "cst": "6dfbd1e4512abdf2"
+    },
+    "node_modules/@less/test-data/tests-error/eval/ampersand-merge-template-invalid.less": {
+      "ast": "81eec1fd2f422d11",
+      "cst": "a43deb6c64cc03ce"
+    },
+    "node_modules/@less/test-data/tests-error/eval/at-rules-undefined-var.less": {
+      "ast": "80d501958b03db28",
+      "cst": "5a5501ffefaddd34"
+    },
+    "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color-2.less": {
+      "ast": "3bfa7d4f2902c7c4",
+      "cst": "fe5a4db99ae1c439"
+    },
+    "node_modules/@less/test-data/tests-error/eval/color-func-invalid-color.less": {
+      "ast": "8adf8785560deaf2",
+      "cst": "94a5bf1e59512f4c"
+    },
+    "node_modules/@less/test-data/tests-error/eval/css-guard-default-func.less": {
+      "ast": "73928d190f9e860e",
+      "cst": "57471819abcdda13"
+    },
+    "node_modules/@less/test-data/tests-error/eval/detached-ruleset-1.less": {
+      "ast": "dd77d61c154af7c4",
+      "cst": "40d5fb7b2a90aa87"
+    },
+    "node_modules/@less/test-data/tests-error/eval/detached-ruleset-2.less": {
+      "ast": "26892c923fd733a9",
+      "cst": "c19197a0e1627c30"
+    },
+    "node_modules/@less/test-data/tests-error/eval/detached-ruleset-3.less": {
+      "ast": "59c3da868efefddb",
+      "cst": "7708e893f8bc5df1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/detached-ruleset-5.less": {
+      "ast": "e1eb451e6012e9e5",
+      "cst": "29f61e8da3418d27"
+    },
+    "node_modules/@less/test-data/tests-error/eval/divide-mixed-units.less": {
+      "ast": "4b9a488f715140d6",
+      "cst": "35ef61dde6c991b8"
+    },
+    "node_modules/@less/test-data/tests-error/eval/extend-no-selector.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-1.less": {
+      "ast": "089ff11e0a2649ef",
+      "cst": "85cf998de4104ef1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-10-keyword.less": {
+      "ast": "cbf1c37a9e1157e8",
+      "cst": "e855d152c6b344c1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-11-operation.less": {
+      "ast": "e8bd7b53b48a9d28",
+      "cst": "d621958c61e9a9dd"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-12-quoted.less": {
+      "ast": "10bb71d06d7bb267",
+      "cst": "19c3a5d9fb8480a1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-13-selector.less": {
+      "ast": "04125e80ef95121e",
+      "cst": "1e180f8055f1fd47"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-14-url.less": {
+      "ast": "e1d311b11b1e32cb",
+      "cst": "64e2fe6b2aba0253"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-15-value.less": {
+      "ast": "627ba2167e296204",
+      "cst": "219a6447cf243726"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-3-assignment.less": {
+      "ast": "e96d73f5e680f339",
+      "cst": "eec098ba772bc4b4"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-4-call.less": {
+      "ast": "f87b159be9822a5f",
+      "cst": "bc16267e4f81ccc1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-5-color-2.less": {
+      "ast": "7dc10c26f6416a33",
+      "cst": "1938bacceee58592"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-5-color.less": {
+      "ast": "ce34fe5ec88beeee",
+      "cst": "68060ad9e0a66875"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-6-condition.less": {
+      "ast": "6bee95aa6efa78f0",
+      "cst": "567b835973649865"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-7-dimension.less": {
+      "ast": "0c0e81ba2fde3eb7",
+      "cst": "32843105f25d74b3"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-8-element.less": {
+      "ast": "7a7a3c119fb6bbed",
+      "cst": "751361c00e748814"
+    },
+    "node_modules/@less/test-data/tests-error/eval/functions-9-expression.less": {
+      "ast": "c62cc3347941caf1",
+      "cst": "a4ffd1914ac14915"
+    },
+    "node_modules/@less/test-data/tests-error/eval/import-missing.less": {
+      "ast": "3097a89e427f57e4",
+      "cst": "d90697c1324408ed"
+    },
+    "node_modules/@less/test-data/tests-error/eval/import-subfolder1.less": {
+      "ast": "0a5ea0b950f116ba",
+      "cst": "204c0acf98cb1acb"
+    },
+    "node_modules/@less/test-data/tests-error/eval/imports/import-subfolder1.less": {
+      "ast": "6cee6b4ef7a8d49b",
+      "cst": "5d2f2570d440c039"
+    },
+    "node_modules/@less/test-data/tests-error/eval/imports/import-test.less": {
+      "ast": "9bc771d25e148590",
+      "cst": "e8fbe4de14ca85fb"
+    },
+    "node_modules/@less/test-data/tests-error/eval/imports/subfolder/mixin-not-defined.less": {
+      "ast": "00090ea4a9f37202",
+      "cst": "f5164825cec0b9de"
+    },
+    "node_modules/@less/test-data/tests-error/eval/javascript-undefined-var.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixin-not-defined-2.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "3f91b278b3987286"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixin-not-defined.less": {
+      "ast": "a571ec5e75d819df",
+      "cst": "8e2ab186df88c66e"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixin-not-matched.less": {
+      "ast": "81aadf5634a39c6e",
+      "cst": "46e22b8511a23ce1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixin-not-matched2.less": {
+      "ast": "5a6fd4911e915a80",
+      "cst": "e22244f351588d8c"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixin-not-visible-in-scope-1.less": {
+      "ast": "17cd7f8a5db858a6",
+      "cst": "6d72464c9429ff05"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixins-guards-default-func-1.less": {
+      "ast": "bec4f9dac59c0af8",
+      "cst": "2a20d7d2c181353f"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixins-guards-default-func-2.less": {
+      "ast": "712508e2008cd446",
+      "cst": "319548ea920016df"
+    },
+    "node_modules/@less/test-data/tests-error/eval/mixins-guards-default-func-3.less": {
+      "ast": "b03cf9ba351fa7c0",
+      "cst": "553172ca59c5e563"
+    },
+    "node_modules/@less/test-data/tests-error/eval/multiple-guards-on-css-selectors.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "6fe6b89a11699ff9"
+    },
+    "node_modules/@less/test-data/tests-error/eval/multiple-guards-on-css-selectors2.less": {
+      "ast": "1e97ba94bb3e9a55",
+      "cst": "a94fa22d3a98cd32"
+    },
+    "node_modules/@less/test-data/tests-error/eval/multiply-mixed-units.less": {
+      "ast": "8aff75bebb174394",
+      "cst": "531351cf6281b189"
+    },
+    "node_modules/@less/test-data/tests-error/eval/namespace-property-not-found.less": {
+      "ast": "4030bb0dde28e67f",
+      "cst": "8fed3b6044243540"
+    },
+    "node_modules/@less/test-data/tests-error/eval/namespace-variable-not-found.less": {
+      "ast": "a0e5043008ffebe7",
+      "cst": "44bfaebcd7bdfe1a"
+    },
+    "node_modules/@less/test-data/tests-error/eval/namespacing-2.less": {
+      "ast": "47a7c4e20d5f7cc2",
+      "cst": "560d2cae79b29cc8"
+    },
+    "node_modules/@less/test-data/tests-error/eval/namespacing-3.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "68990f945735587e"
+    },
+    "node_modules/@less/test-data/tests-error/eval/namespacing-4.less": {
+      "ast": "e80ef611114e5c0f",
+      "cst": "03826680eba4e9c1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/percentage-non-number-argument.less": {
+      "ast": "e0ef21bf676542d1",
+      "cst": "44b1a4f627866621"
+    },
+    "node_modules/@less/test-data/tests-error/eval/plugin-1.less": {
+      "ast": "41845076d63a34e8",
+      "cst": "1dbc3bebd895b83b"
+    },
+    "node_modules/@less/test-data/tests-error/eval/plugin-2.less": {
+      "ast": "cd7b5941ca9a752a",
+      "cst": "31f504cf181ecbe6"
+    },
+    "node_modules/@less/test-data/tests-error/eval/plugin-3.less": {
+      "ast": "ab2ee618da19a858",
+      "cst": "b4d9d05bd4dab305"
+    },
+    "node_modules/@less/test-data/tests-error/eval/property-in-root.less": {
+      "ast": "39adfd7b3bacf2c1",
+      "cst": "20261884a991e564"
+    },
+    "node_modules/@less/test-data/tests-error/eval/property-in-root2.less": {
+      "ast": "c26bc4a3836244c1",
+      "cst": "6002095168a16e3c"
+    },
+    "node_modules/@less/test-data/tests-error/eval/property-in-root3.less": {
+      "ast": "b8949afc7101c886",
+      "cst": "4f045f7a959c774c"
+    },
+    "node_modules/@less/test-data/tests-error/eval/property-interp-not-defined.less": {
+      "ast": "00e81ab5e6478c80",
+      "cst": "0a9d98e5f7080b0c"
+    },
+    "node_modules/@less/test-data/tests-error/eval/property-undefined.less": {
+      "ast": "1fea8caaf0d8db26",
+      "cst": "ff1214534b0df4df"
+    },
+    "node_modules/@less/test-data/tests-error/eval/recursive-property.less": {
+      "ast": "a7a2b3d8d7926c10",
+      "cst": "af1ff1b1003c2fd1"
+    },
+    "node_modules/@less/test-data/tests-error/eval/recursive-variable.less": {
+      "ast": "013ccb0f53f54458",
+      "cst": "f8dc9bd433206429"
+    },
+    "node_modules/@less/test-data/tests-error/eval/root-func-undefined-1.less": {
+      "ast": "efb4592c95b58094",
+      "cst": "9155b84feb3b5ca3"
+    },
+    "node_modules/@less/test-data/tests-error/eval/root-func-undefined-2.less": {
+      "ast": "a32054ac48cbcfab",
+      "cst": "b89f4d49915cc7dc"
+    },
+    "node_modules/@less/test-data/tests-error/eval/svg-gradient1.less": {
+      "ast": "76345245d11c148a",
+      "cst": "4eb19d344694a798"
+    },
+    "node_modules/@less/test-data/tests-error/eval/svg-gradient2.less": {
+      "ast": "2d685c469b300dd1",
+      "cst": "8a6fae46381b29f9"
+    },
+    "node_modules/@less/test-data/tests-error/eval/svg-gradient3.less": {
+      "ast": "63999c923d841e08",
+      "cst": "1f81bf073d5f7bfc"
+    },
+    "node_modules/@less/test-data/tests-error/eval/svg-gradient4.less": {
+      "ast": "742c605052124b64",
+      "cst": "c47f9a7426fe54cb"
+    },
+    "node_modules/@less/test-data/tests-error/eval/svg-gradient5.less": {
+      "ast": "66e08db7338da9ba",
+      "cst": "95a384e1b054ceed"
+    },
+    "node_modules/@less/test-data/tests-error/eval/svg-gradient6.less": {
+      "ast": "5d4d5de224db9923",
+      "cst": "745daa2fd8063211"
+    },
+    "node_modules/@less/test-data/tests-error/eval/unit-function.less": {
+      "ast": "ef7a041b6e43aea7",
+      "cst": "af45ce16ee24dad3"
+    },
+    "node_modules/@less/test-data/tests-error/parse/at-rules-unmatching-block.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "bbfec72f3968109d"
+    },
+    "node_modules/@less/test-data/tests-error/parse/bad-variable-declaration1.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-1.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-2.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/custom-property-unmatched-block-3.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/detached-ruleset-6.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/extend-not-at-end.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/import-malformed.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/import-no-semi.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/import-subfolder2.less": {
+      "ast": "d44cc45917532986",
+      "cst": "39531185d543597b"
+    },
+    "node_modules/@less/test-data/tests-error/parse/imports/import-subfolder2.less": {
+      "ast": "228a9ec907fb61f1",
+      "cst": "0796860967b95c49"
+    },
+    "node_modules/@less/test-data/tests-error/parse/imports/subfolder/parse-error-curly-bracket.less": {
+      "ast": "76a6a72be7cd55fa",
+      "cst": "26055f46e2f61408"
+    },
+    "node_modules/@less/test-data/tests-error/parse/invalid-color-with-comment.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/mixed-mixin-definition-args-1.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "250c3636537706be"
+    },
+    "node_modules/@less/test-data/tests-error/parse/mixed-mixin-definition-args-2.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "250c3636537706be"
+    },
+    "node_modules/@less/test-data/tests-error/parse/mixins-guards-cond-expected.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parens-error-1.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parens-error-2.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parens-error-3.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parse-error-curly-bracket.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "8ec7d67bb7df8995"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-1.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-2.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parse-error-media-no-block-3.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parse-error-missing-bracket.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parse-error-missing-parens.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/parse-error-with-import.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "5c67c29e2199505e"
+    },
+    "node_modules/@less/test-data/tests-error/parse/percentage-missing-space.less": {
+      "ast": "48de200bfa6697b3",
+      "cst": "638241cbcc03de70"
+    },
+    "node_modules/@less/test-data/tests-error/parse/property-asterisk-only-name.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-error/parse/single-character.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rule-variable-interpolation/at-rule-variable-interpolation.css": {
+      "ast": "21df85570dec48e5",
+      "cst": "4099b5cd8f95c316"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rule-variable-interpolation/at-rule-variable-interpolation.less": {
+      "ast": "660e36607555c2a2",
+      "cst": "9f73a445ee489616"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-bubbling/at-rules-bubbling.css": {
+      "ast": "6ec5618f893303bc",
+      "cst": "74747bc39bdbb843"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-bubbling/at-rules-bubbling.less": {
+      "ast": "20d1a6a23e59bc7f",
+      "cst": "e8fe0101d235d2aa"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-bubbling/legacy/at-rules-bubbling.css": {
+      "ast": "7f6a723143de8329",
+      "cst": "3e82a023aa58b571"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-declarations/at-rules-declarations.css": {
+      "ast": "dd641cf846d88c81",
+      "cst": "3de546ca7a3cadcc"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-declarations/at-rules-declarations.less": {
+      "ast": "dd641cf846d88c81",
+      "cst": "c2b74a3373a49a22"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-empty-block/at-rules-empty-block.css": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "aca51345c271e5f2"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-empty-block/at-rules-empty-block.less": {
+      "ast": "29ade626ca1e7f49",
+      "cst": "1b999d8bc09cce26"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-empty/at-rules-empty.css": {
+      "ast": "5049a497f55adf4d",
+      "cst": "55175313751ecd66"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-empty/at-rules-empty.less": {
+      "ast": "5049a497f55adf4d",
+      "cst": "e3354834820751fd"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.css": {
+      "ast": "7bfd23be217ebd2d",
+      "cst": "cd865b82354553e5"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/at-rules-keyword-comments.less": {
+      "ast": "ba2d1379d2b14ea1",
+      "cst": "2388f53182af09b4"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-keyword-comments/legacy/at-rules-keyword-comments.css": {
+      "ast": "6a09c2402a3efb98",
+      "cst": "f9e241ecd815ff7d"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-targeted/at-rules-targeted.css": {
+      "ast": "c6473e98a9640589",
+      "cst": "3b435b51a1f6f9d5"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-targeted/at-rules-targeted.less": {
+      "ast": "ad0f1e64e63e5609",
+      "cst": "41684c6a92e6d6b1"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules-targeted/legacy/at-rules-targeted.css": {
+      "ast": "2e726fdc612a89a1",
+      "cst": "e8f32ba15440b773"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules/at-rules.css": {
+      "ast": "33f2e0b1ea9bbe91",
+      "cst": "681de87fa14af990"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules/at-rules.less": {
+      "ast": "11e4846b04a913c0",
+      "cst": "6eb2600b80a46053"
+    },
+    "node_modules/@less/test-data/tests-unit/at-rules/legacy/at-rules.css": {
+      "ast": "3343940a57261235",
+      "cst": "82300491605ecfa6"
+    },
+    "node_modules/@less/test-data/tests-unit/calc/calc.css": {
+      "ast": "0bf2fb517f860dfb",
+      "cst": "48d9c0d6532e4513"
+    },
+    "node_modules/@less/test-data/tests-unit/calc/calc.less": {
+      "ast": "3ac7d28e40612f57",
+      "cst": "0dbce1fe350840e5"
+    },
+    "node_modules/@less/test-data/tests-unit/calc/legacy/calc.css": {
+      "ast": "f17f68f81b84fe34",
+      "cst": "dbc16402989a8b07"
+    },
+    "node_modules/@less/test-data/tests-unit/charsets/charsets.css": {
+      "ast": "3f52593529603a9e",
+      "cst": "a824d9932ef6fc20"
+    },
+    "node_modules/@less/test-data/tests-unit/charsets/charsets.less": {
+      "ast": "f06d164ee307d815",
+      "cst": "0e13f1d2aaa85b9e"
+    },
+    "node_modules/@less/test-data/tests-unit/charsets/import/import-charset-test.less": {
+      "ast": "2e8fc3cc64fb78f2",
+      "cst": "b745e96bc7f1f217"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/alpha.css": {
+      "ast": "9aa1c1d07d46f277",
+      "cst": "95e5ac052c14a8e2"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/alpha.less": {
+      "ast": "432626744eaf22f7",
+      "cst": "ebd903c5c88b1440"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/basic.css": {
+      "ast": "e8c5a82cbf842b20",
+      "cst": "4cee3d431e91e4f9"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/basic.less": {
+      "ast": "9b4770a61288f79d",
+      "cst": "42ebaaf433f43ffa"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/comprehensive.css": {
+      "ast": "33e7ff8909fe9546",
+      "cst": "4dfc575d74fb669d"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/comprehensive.less": {
+      "ast": "3d4cc2955182a646",
+      "cst": "8b3fd9969b491656"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/formats.css": {
+      "ast": "4245bf1ccbb20c60",
+      "cst": "d49c61fabe6abe85"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/formats.less": {
+      "ast": "6789c647a90f194f",
+      "cst": "1e8f0e2a36074d2a"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/legacy/basic.css": {
+      "ast": "b11e0d4ab1697bb5",
+      "cst": "4d2ae2da3c870441"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/legacy/comprehensive.css": {
+      "ast": "3d08662e43bc0fcb",
+      "cst": "57dfc259f4001fb2"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/legacy/modern-syntax.css": {
+      "ast": "c01cd584af8ac31d",
+      "cst": "75574cd741f5a459"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/legacy/operations.css": {
+      "ast": "28ea9a3672e59618",
+      "cst": "b4c51a6d4b71d30e"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/legacy/rgba.css": {
+      "ast": "d5d13fc20ad99e96",
+      "cst": "315dfac0d8447c25"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/modern-syntax.css": {
+      "ast": "36d0ee60e6499961",
+      "cst": "23c495c7e2f04f42"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/modern-syntax.less": {
+      "ast": "36d0ee60e6499961",
+      "cst": "2bdbda60b44ca871"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/modern.css": {
+      "ast": "ae11ec72e3a30143",
+      "cst": "5e0b9e8026391c87"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/modern.less": {
+      "ast": "ae11ec72e3a30143",
+      "cst": "48bb99a09137a2a9"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/operations.css": {
+      "ast": "be44c46622173055",
+      "cst": "b117fe429e0603ea"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/operations.less": {
+      "ast": "ac5bb24a96d6305c",
+      "cst": "08c3a83752d10cba"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/rgba.css": {
+      "ast": "e6740af7e2f38ca6",
+      "cst": "3e95fc7c49030909"
+    },
+    "node_modules/@less/test-data/tests-unit/color-functions/rgba.less": {
+      "ast": "6f5985d2b4f2b7f6",
+      "cst": "6616af493493c6fb"
+    },
+    "node_modules/@less/test-data/tests-unit/comments/comments.css": {
+      "ast": "9a0339f000607bed",
+      "cst": "1dafb5882e3fbbd4"
+    },
+    "node_modules/@less/test-data/tests-unit/comments/comments.less": {
+      "ast": "ccbdda58451f702d",
+      "cst": "28389e607b217979"
+    },
+    "node_modules/@less/test-data/tests-unit/comments/comments2.css": {
+      "ast": "5ca71ff685f64421",
+      "cst": "764c3ee072a6b452"
+    },
+    "node_modules/@less/test-data/tests-unit/comments/comments2.less": {
+      "ast": "9bf7441619b68cc2",
+      "cst": "20ecbbf14cfbcad6"
+    },
+    "node_modules/@less/test-data/tests-unit/comments/legacy/comments.css": {
+      "ast": "17f0a9b4a521d934",
+      "cst": "be8a8c6fde712b8c"
+    },
+    "node_modules/@less/test-data/tests-unit/comments/legacy/comments2.css": {
+      "ast": "f2bb52ee252d9eb0",
+      "cst": "0fed9235ce3914ca"
+    },
+    "node_modules/@less/test-data/tests-unit/container/container.css": {
+      "ast": "7422b631dff96c03",
+      "cst": "f426cb524691f9be"
+    },
+    "node_modules/@less/test-data/tests-unit/container/container.less": {
+      "ast": "1904d7a586d525b8",
+      "cst": "6c22459d974a2304"
+    },
+    "node_modules/@less/test-data/tests-unit/container/legacy/container.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "254f00f08fc26187"
+    },
+    "node_modules/@less/test-data/tests-unit/css-3/css-3.css": {
+      "ast": "b763f3ad46ad12d4",
+      "cst": "26bf0e313390d599"
+    },
+    "node_modules/@less/test-data/tests-unit/css-3/css-3.less": {
+      "ast": "4001565ce96f425a",
+      "cst": "d3c7ad520340dfae"
+    },
+    "node_modules/@less/test-data/tests-unit/css-3/legacy/css-3.css": {
+      "ast": "82ea1e655d8f3626",
+      "cst": "f862d17859738444"
+    },
+    "node_modules/@less/test-data/tests-unit/css-escapes/css-escapes.css": {
+      "ast": "0913db1deb9c7e48",
+      "cst": "4a66cb8f55ca3a8f"
+    },
+    "node_modules/@less/test-data/tests-unit/css-escapes/css-escapes.less": {
+      "ast": "b2837f4a7192fc12",
+      "cst": "308485d3008d075e"
+    },
+    "node_modules/@less/test-data/tests-unit/css-escapes/legacy/css-escapes.css": {
+      "ast": "0894d3484c554ad8",
+      "cst": "e16dbe6e6dbb2396"
+    },
+    "node_modules/@less/test-data/tests-unit/css-grid/css-grid.css": {
+      "ast": "5fb71f8ba1c9eb3b",
+      "cst": "d39ac50e86575a47"
+    },
+    "node_modules/@less/test-data/tests-unit/css-grid/css-grid.less": {
+      "ast": "5fb71f8ba1c9eb3b",
+      "cst": "341ebab0a9a9728f"
+    },
+    "node_modules/@less/test-data/tests-unit/css-grid/legacy/css-grid.css": {
+      "ast": "3f38035808e2e7e0",
+      "cst": "4ebed50f8be4d246"
+    },
+    "node_modules/@less/test-data/tests-unit/css-guards/css-guards.css": {
+      "ast": "d970c0b8a81cc895",
+      "cst": "91429accb5c26031"
+    },
+    "node_modules/@less/test-data/tests-unit/css-guards/css-guards.less": {
+      "ast": "561d10ceac5d3fa0",
+      "cst": "08bc4ada243ff530"
+    },
+    "node_modules/@less/test-data/tests-unit/detached-rulesets/detached-rulesets.css": {
+      "ast": "fdfe47145100836d",
+      "cst": "4d1e14de132ecdc3"
+    },
+    "node_modules/@less/test-data/tests-unit/detached-rulesets/detached-rulesets.less": {
+      "ast": "23ed8b5753ca6368",
+      "cst": "c340856ed3c7b9ff"
+    },
+    "node_modules/@less/test-data/tests-unit/detached-rulesets/legacy/detached-rulesets.css": {
+      "ast": "4d4937ea50ccdadc",
+      "cst": "51f09df230055e90"
+    },
+    "node_modules/@less/test-data/tests-unit/directives-bubbling/directives-bubbling.css": {
+      "ast": "6ec5618f893303bc",
+      "cst": "74747bc39bdbb843"
+    },
+    "node_modules/@less/test-data/tests-unit/empty/empty.css": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "aca51345c271e5f2"
+    },
+    "node_modules/@less/test-data/tests-unit/empty/empty.less": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "13b1d86875b3ad3a"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-chaining/extend-chaining.css": {
+      "ast": "74d45d55059cfc65",
+      "cst": "33bddcbadf619259"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-chaining/extend-chaining.less": {
+      "ast": "3c960f406045117a",
+      "cst": "7fd71ce98945cab9"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-chaining/legacy/extend-chaining.css": {
+      "ast": "a5fffb012745d13b",
+      "cst": "7151fc4e1121fdbb"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-clearfix/extend-clearfix.css": {
+      "ast": "89992b51663613df",
+      "cst": "f88daf06fb1629c8"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-clearfix/extend-clearfix.less": {
+      "ast": "0552a74585e92a38",
+      "cst": "77a523df5261ac2d"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-clearfix/legacy/extend-clearfix.css": {
+      "ast": "b172168cb23d3b7d",
+      "cst": "534785b79b3a99df"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-exact/extend-exact.css": {
+      "ast": "b4913a759f9d3546",
+      "cst": "f3776b38307b6de0"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-exact/extend-exact.less": {
+      "ast": "3e4acf570ebd712b",
+      "cst": "f48f9834100940d5"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-exact/legacy/extend-exact.css": {
+      "ast": "1d66aba21c7839f6",
+      "cst": "7102809bcf97add2"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-media/extend-media.css": {
+      "ast": "6bbc99abcdbbdd4f",
+      "cst": "137984feff78f0c6"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-media/extend-media.less": {
+      "ast": "3d208a48e39c96d1",
+      "cst": "74cadc4cc8924bac"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-media/legacy/extend-media.css": {
+      "ast": "7b11504678d60bc1",
+      "cst": "e4a4411dbf8f6e77"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-nest/extend-nest.css": {
+      "ast": "0ed0da1100fe6f7b",
+      "cst": "e1a4ac877dbd7005"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-nest/extend-nest.less": {
+      "ast": "4647a12dcf5fc97f",
+      "cst": "dcc51409009ca5c8"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-nest/legacy/extend-nest.css": {
+      "ast": "77e25905ad71c54d",
+      "cst": "ebbab2c4b3814c48"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-selector/extend-selector.css": {
+      "ast": "2cf7b2e57b4da674",
+      "cst": "e6009e81c8d6b679"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-selector/extend-selector.less": {
+      "ast": "de9ed468e052ae8c",
+      "cst": "bf411d5c69cd9e30"
+    },
+    "node_modules/@less/test-data/tests-unit/extend-selector/legacy/extend-selector.css": {
+      "ast": "e5669131a8cee1d8",
+      "cst": "d88a054dcdf91696"
+    },
+    "node_modules/@less/test-data/tests-unit/extend/extend.css": {
+      "ast": "655c1af14e7303fa",
+      "cst": "beb795d15d9aa577"
+    },
+    "node_modules/@less/test-data/tests-unit/extend/extend.less": {
+      "ast": "98326e548626bc13",
+      "cst": "e935d4f174ee45e6"
+    },
+    "node_modules/@less/test-data/tests-unit/extend/legacy/extend.css": {
+      "ast": "83abbe94da19dabd",
+      "cst": "b8bead6d2899bae6"
+    },
+    "node_modules/@less/test-data/tests-unit/extract-and-length/extract-and-length.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "5948bad88eb5ae67"
+    },
+    "node_modules/@less/test-data/tests-unit/extract-and-length/extract-and-length.less": {
+      "ast": "06b07a60ca6ca92f",
+      "cst": "9f8512a18c69b726"
+    },
+    "node_modules/@less/test-data/tests-unit/extract-and-length/legacy/extract-and-length.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "83e39a4ff902547f"
+    },
+    "node_modules/@less/test-data/tests-unit/functions-each/functions-each.css": {
+      "ast": "0529c0e4e5ca0e83",
+      "cst": "31b6db59fcf76ef9"
+    },
+    "node_modules/@less/test-data/tests-unit/functions-each/functions-each.less": {
+      "ast": "874f4f83ac7f7495",
+      "cst": "a104ca1e89640aa0"
+    },
+    "node_modules/@less/test-data/tests-unit/functions/functions.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-unit/functions/functions.less": {
+      "ast": "73822def233a6261",
+      "cst": "f7d804c07718c5ac"
+    },
+    "node_modules/@less/test-data/tests-unit/functions/legacy/functions.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-unit/functions/legacy/functions.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "f55c3293a1adaf82"
+    },
+    "node_modules/@less/test-data/tests-unit/ie-filters-REMOVED/legacy/ie-filters.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-unit/ie-filters-REMOVED/legacy/ie-filters.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "4723f1504447579b"
+    },
+    "node_modules/@less/test-data/tests-unit/impor/impor.css": {
+      "ast": "6f9f349d8cc276b6",
+      "cst": "6c45012dd3ebd5a9"
+    },
+    "node_modules/@less/test-data/tests-unit/impor/impor.less": {
+      "ast": "6f9f349d8cc276b6",
+      "cst": "f438c4e8616bb045"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-inline.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "12199c52799af0f0"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-inline.less": {
+      "ast": "4a95e04e1a5efda1",
+      "cst": "c876199386910249"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-interpolation.css": {
+      "ast": "e7f0247589f8139e",
+      "cst": "ae5786d9c2f86c7e"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-interpolation.less": {
+      "ast": "f57a1bfaf9e98ef7",
+      "cst": "0345a68e9762b092"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-module.css": {
+      "ast": "b3cc80894c171ada",
+      "cst": "9990aca77de28b76"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-module.less": {
+      "ast": "d57734acaa3b417d",
+      "cst": "0e363c8dd52baefb"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-once.css": {
+      "ast": "5580c625a9f0052c",
+      "cst": "a18d56cf8ad0fbb0"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-once.less": {
+      "ast": "50e17202f249f2e6",
+      "cst": "c12a33bd10d2c85c"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues.css": {
+      "ast": "ace571db1fb2e706",
+      "cst": "a51d4e348560bcea"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues.less": {
+      "ast": "b5f96d04bea0f0b1",
+      "cst": "d14462ba3f88dfb3"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/appender-reference-1968.less": {
+      "ast": "b4cffea6aca92ebf",
+      "cst": "f44d9051d7f8ffb7"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/comments-2991.less": {
+      "ast": "30b561a7b3623c9e",
+      "cst": "25eed1c27509ee08"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/global-scope-import.less": {
+      "ast": "785605bb85111193",
+      "cst": "75b594bbcc21323c"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/global-scope-nested.less": {
+      "ast": "be191e94e39aebf7",
+      "cst": "1d77570fc4d09efc"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/mixin-1968.less": {
+      "ast": "e29ec2db218c975c",
+      "cst": "fd539a73fef00605"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/multiple-import-nested.less": {
+      "ast": "a6bad91e705489f4",
+      "cst": "47dafeb52d81f4f4"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/multiple-import.less": {
+      "ast": "3a560333bf23ad35",
+      "cst": "0070265ec27a32ff"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/simple-mixin.css": {
+      "ast": "b114f3eb360cf54e",
+      "cst": "703fb5e3f4228bc9"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference-issues/simple-ruleset-2162.less": {
+      "ast": "021afe3a2a927fee",
+      "cst": "dd3f1272b1563801"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "8872a2c55d9c7a8b"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-reference.less": {
+      "ast": "73c2b0fd2b60d1df",
+      "cst": "cf9c290cd256f888"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-remote.css": {
+      "ast": "f2d34f898fabbc8c",
+      "cst": "b96f4abd806ba091"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import-remote.less": {
+      "ast": "fecf0adce2075de6",
+      "cst": "b59a53c0814e414a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import.css": {
+      "ast": "47809c8b04af7e77",
+      "cst": "7cb5d21715e5df69"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import.less": {
+      "ast": "23ca3db8a8c95998",
+      "cst": "42cae8ba3804559a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/css-import.less": {
+      "ast": "fa65f250055930fd",
+      "cst": "7d5d95dcc9dc64a0"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/deeper/deeper-2/url-import-2.less": {
+      "ast": "bdd32bfbc4353a26",
+      "cst": "3dc1684a41b4efa1"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/deeper/deeper-2/url-import.less": {
+      "ast": "ad388b9c2760345f",
+      "cst": "8ce1a01df4f91073"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/deeper/import-once-test-a.less": {
+      "ast": "a2d5f6677546d091",
+      "cst": "408b7531e9a7c14a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/deeper/url-import.less": {
+      "ast": "52f342725df6827f",
+      "cst": "39df11d836ad7079"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-and-relative-paths-test.less": {
+      "ast": "d2c4150cb00409be",
+      "cst": "9569350db170855b"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-charset-test.less": {
+      "ast": "2e8fc3cc64fb78f2",
+      "cst": "4857383cfb08c70c"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-inline-invalid-css.less": {
+      "ast": "5cfe5ca77f352ad6",
+      "cst": "fd7466683c7b1157"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-interpolation.less": {
+      "ast": "fefe571f8e4114a3",
+      "cst": "58e39df436a57217"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-interpolation2.less": {
+      "ast": "5a7b5a96c909c0f0",
+      "cst": "bb43623750f32a4d"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-once-test-c.less": {
+      "ast": "17d2b29f81ebe4d6",
+      "cst": "513f53634cc21dbd"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-reference.less": {
+      "ast": "0f04b22eb372309d",
+      "cst": "4477de3c90dcf73d"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-test-a.less": {
+      "ast": "eb95d64f75251ed1",
+      "cst": "273edcde73bb626b"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-test-b.less": {
+      "ast": "47340e92c18855ef",
+      "cst": "ec24a72f55fb39a2"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-test-c.less": {
+      "ast": "17d2b29f81ebe4d6",
+      "cst": "513f53634cc21dbd"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-test-d.css": {
+      "ast": "c1c6e6a715a6be66",
+      "cst": "f363fee45a02a14b"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-test-e.less": {
+      "ast": "d1b4ff3364335a0a",
+      "cst": "d7040e6e75e72bed"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/import-test-f.less": {
+      "ast": "8714f793a1e52eca",
+      "cst": "0bb3feecd418eff3"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/imports/font.less": {
+      "ast": "f2462f7233923654",
+      "cst": "f17f6a32bebf6a11"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/imports/logo.less": {
+      "ast": "1547fc860a7cbdcd",
+      "cst": "576b8def419daa7f"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/interpolation-vars.less": {
+      "ast": "735ebb704fcdeff6",
+      "cst": "107ae3b04c40683a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/invalid-css.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/json/index.less": {
+      "ast": "36fa2df6457047a3",
+      "cst": "ea5211303b585d70"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/layer-import-2.css": {
+      "ast": "a0e6be23cc07e9a3",
+      "cst": "9c12e4251992556a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/layer-import-3.css": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "aca51345c271e5f2"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/layer-import-4.css": {
+      "ast": "a0e6be23cc07e9a3",
+      "cst": "9c12e4251992556a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/layer-import-5.css": {
+      "ast": "a0e6be23cc07e9a3",
+      "cst": "9c12e4251992556a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/layer-import.less": {
+      "ast": "a0e6be23cc07e9a3",
+      "cst": "9c12e4251992556a"
+    },
+    "node_modules/@less/test-data/tests-unit/import/import/urls.less": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "7ae895a10b00a852"
+    },
+    "node_modules/@less/test-data/tests-unit/import/legacy/import-reference-issues.css": {
+      "ast": "ced469ad4e9a9148",
+      "cst": "bc25439d3aad5851"
+    },
+    "node_modules/@less/test-data/tests-unit/import/legacy/import-reference.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "c3a172fedec38c9a"
+    },
+    "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "2eee671716daf609"
+    },
+    "node_modules/@less/test-data/tests-unit/javascript-REMOVED/legacy/javascript.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "a57153eeda962ff7"
+    },
+    "node_modules/@less/test-data/tests-unit/layer/assets/import/layer-import.less": {
+      "ast": "9dcd9ef56eaf67e8",
+      "cst": "54be5e0d969efe27"
+    },
+    "node_modules/@less/test-data/tests-unit/layer/import/layer-import.less": {
+      "ast": "a0e6be23cc07e9a3",
+      "cst": "9c12e4251992556a"
+    },
+    "node_modules/@less/test-data/tests-unit/layer/layer.css": {
+      "ast": "312297bb5f41b806",
+      "cst": "d9200bcc4493d595"
+    },
+    "node_modules/@less/test-data/tests-unit/layer/layer.less": {
+      "ast": "197b783f8c7dac4d",
+      "cst": "f17a54bff9bf8606"
+    },
+    "node_modules/@less/test-data/tests-unit/layer/legacy/layer.css": {
+      "ast": "1e6d9c6ed5f6171f",
+      "cst": "8670061f8a8c7d23"
+    },
+    "node_modules/@less/test-data/tests-unit/lazy-eval/lazy-eval.css": {
+      "ast": "0373fbbffd4b1ab2",
+      "cst": "34acdd07c7eb3ae7"
+    },
+    "node_modules/@less/test-data/tests-unit/lazy-eval/lazy-eval.less": {
+      "ast": "026d66c3f91fe156",
+      "cst": "4434613722c57c8e"
+    },
+    "node_modules/@less/test-data/tests-unit/media/legacy/media.css": {
+      "ast": "efa5579b4d87fda2",
+      "cst": "ecb230e8123870bc"
+    },
+    "node_modules/@less/test-data/tests-unit/media/media.css": {
+      "ast": "160848582d8b99da",
+      "cst": "30f47382057ee23c"
+    },
+    "node_modules/@less/test-data/tests-unit/media/media.less": {
+      "ast": "6f3b3610ad579d5f",
+      "cst": "f4e5b60e0168f49e"
+    },
+    "node_modules/@less/test-data/tests-unit/merge/merge.css": {
+      "ast": "1c31063febacc6d4",
+      "cst": "562aede09c31dd77"
+    },
+    "node_modules/@less/test-data/tests-unit/merge/merge.less": {
+      "ast": "6566666eb35cd07c",
+      "cst": "1244ba6ce8262b1a"
+    },
+    "node_modules/@less/test-data/tests-unit/mixin-noparens/legacy/mixin-noparens.css": {
+      "ast": "d8007e725f1e8cfd",
+      "cst": "fa6e854180e32a77"
+    },
+    "node_modules/@less/test-data/tests-unit/mixin-noparens/mixin-noparens.css": {
+      "ast": "5f32a964221c355a",
+      "cst": "f0e6e1f231e612fc"
+    },
+    "node_modules/@less/test-data/tests-unit/mixin-noparens/mixin-noparens.less": {
+      "ast": "e1c68ec39f745ea1",
+      "cst": "6375867a3244e7e1"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-closure/legacy/mixins-closure.css": {
+      "ast": "066371f4557f3449",
+      "cst": "551a548934fb2db0"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-closure/mixins-closure.css": {
+      "ast": "6cd982e3ea09750b",
+      "cst": "ca5d77ed14e4c04c"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-closure/mixins-closure.less": {
+      "ast": "f57d31e6b22d9747",
+      "cst": "c18562c4547f7fcd"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/legacy/mixins-guards-default-func.css": {
+      "ast": "fb1b112e01c5088c",
+      "cst": "c2d87c4da46f76ec"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/mixins-guards-default-func.css": {
+      "ast": "21605fe5fd526b47",
+      "cst": "f1da568a7f65cce1"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-guards-default-func/mixins-guards-default-func.less": {
+      "ast": "505fcdde4dc8dcbe",
+      "cst": "0ea71bbfdf2d9cd4"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-guards/legacy/mixins-guards.css": {
+      "ast": "f67f2b223bff2305",
+      "cst": "bffdc2921b42b7b6"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-guards/mixins-guards.css": {
+      "ast": "2a3afbaa8211c18b",
+      "cst": "f2a8a31015fe16da"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-guards/mixins-guards.less": {
+      "ast": "3ee823d87f06a4b6",
+      "cst": "af2276964a586c8a"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-important/mixins-important.css": {
+      "ast": "470c62036a8059d8",
+      "cst": "26f7bb261bd58688"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-important/mixins-important.less": {
+      "ast": "cebfebc95b0d4424",
+      "cst": "42795ae21834c912"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-interpolated/legacy/mixins-interpolated.css": {
+      "ast": "eccff3390a0b5195",
+      "cst": "cb407df623f868c3"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-interpolated/mixins-interpolated.css": {
+      "ast": "f9e112b7f0730cc9",
+      "cst": "834878eeb1160550"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-interpolated/mixins-interpolated.less": {
+      "ast": "85c7481a17d5b5a7",
+      "cst": "94221fa6d0a475da"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-named-args/mixins-named-args.css": {
+      "ast": "9db6292243b453e1",
+      "cst": "7b124de6f1751939"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-named-args/mixins-named-args.less": {
+      "ast": "93153610d3ac7c3d",
+      "cst": "9b40f5cf58bc2b83"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-nested/legacy/mixins-nested.css": {
+      "ast": "7cc8ea511d7c4463",
+      "cst": "b1d13d6ee17a114f"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-nested/mixins-nested.css": {
+      "ast": "77e736aed7f3cccd",
+      "cst": "1bf21e270d4c3ff9"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-nested/mixins-nested.less": {
+      "ast": "edecfe643ebe6449",
+      "cst": "66b17a8f7224975c"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-pattern/mixins-pattern.css": {
+      "ast": "91917d54532c4aa2",
+      "cst": "376525fa23e28e3e"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins-pattern/mixins-pattern.less": {
+      "ast": "2a198b25ba2ae8be",
+      "cst": "90ccfaac33ef5e23"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/legacy/maps.css": {
+      "ast": "d4bd0cdfbb167e9b",
+      "cst": "bcfcc5897c951a8a"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/legacy/mixins.css": {
+      "ast": "a1f6bb90585ecb25",
+      "cst": "2a2d98e3ddd888c4"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/maps.css": {
+      "ast": "7428092f4cd22729",
+      "cst": "babdd1189635bc7b"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/maps.less": {
+      "ast": "082c878bcda64a91",
+      "cst": "8db5ebd398e0f64a"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/mixins-advanced.css": {
+      "ast": "60befa2971c4d444",
+      "cst": "841520fcde813410"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/mixins-advanced.less": {
+      "ast": "f32c90a80c0165e9",
+      "cst": "cfbfa3552e480004"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/mixins.css": {
+      "ast": "0fbfd6ae95fb4ba2",
+      "cst": "4be6b9766a9a54e4"
+    },
+    "node_modules/@less/test-data/tests-unit/mixins/mixins.less": {
+      "ast": "16dd9cdfef3ae6d9",
+      "cst": "bac2599a10c3862c"
+    },
+    "node_modules/@less/test-data/tests-unit/namespace-targeted/namespace-targeted.css": {
+      "ast": "2e1a43cf299c5a0f",
+      "cst": "c0d033bcc229b50d"
+    },
+    "node_modules/@less/test-data/tests-unit/namespace-targeted/namespace-targeted.less": {
+      "ast": "7330ba9dd33ea9eb",
+      "cst": "8ad7020e17ed1ede"
+    },
+    "node_modules/@less/test-data/tests-unit/nesting/legacy/nesting.css": {
+      "ast": "544e99cd5866e920",
+      "cst": "0d0d8f198fe50df5"
+    },
+    "node_modules/@less/test-data/tests-unit/nesting/nesting-uncollapsed.css": {
+      "ast": "2bb49738f5dcad4b",
+      "cst": "2ed525ef91ae063a"
+    },
+    "node_modules/@less/test-data/tests-unit/nesting/nesting.css": {
+      "ast": "7573da6b689e85b2",
+      "cst": "8fd1e561fe3618b5"
+    },
+    "node_modules/@less/test-data/tests-unit/nesting/nesting.less": {
+      "ast": "73ff7f5a8b168716",
+      "cst": "e3ac526528de7dc4"
+    },
+    "node_modules/@less/test-data/tests-unit/no-output/no-output.css": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "aca51345c271e5f2"
+    },
+    "node_modules/@less/test-data/tests-unit/no-output/no-output.less": {
+      "ast": "648ab657c30fc7ed",
+      "cst": "768fb479d7d33181"
+    },
+    "node_modules/@less/test-data/tests-unit/operations/operations-advanced.css": {
+      "ast": "efdb1c10cf25260c",
+      "cst": "1c84e1b6379b3015"
+    },
+    "node_modules/@less/test-data/tests-unit/operations/operations-advanced.less": {
+      "ast": "9461c86506cbf18c",
+      "cst": "a19c89fadc9d9afc"
+    },
+    "node_modules/@less/test-data/tests-unit/operations/operations.css": {
+      "ast": "0b1b524d0d60050d",
+      "cst": "b9436691e8670cea"
+    },
+    "node_modules/@less/test-data/tests-unit/operations/operations.less": {
+      "ast": "1fe3b3351dc1a7ec",
+      "cst": "8c4ca8235ea9c650"
+    },
+    "node_modules/@less/test-data/tests-unit/parse-interpolation/legacy/parse-interpolation.css": {
+      "ast": "cc0cf64b37975367",
+      "cst": "870608f5a0e259a4"
+    },
+    "node_modules/@less/test-data/tests-unit/parse-interpolation/parse-interpolation.css": {
+      "ast": "33015ae59fb87027",
+      "cst": "9193cbd0a21f1f4e"
+    },
+    "node_modules/@less/test-data/tests-unit/parse-interpolation/parse-interpolation.less": {
+      "ast": "3a3652972d468263",
+      "cst": "aed6952328723929"
+    },
+    "node_modules/@less/test-data/tests-unit/parser-property-interp/parser-property-interp.css": {
+      "ast": "bbbac9f185f383a1",
+      "cst": "ec15dfb5ae3e9f83"
+    },
+    "node_modules/@less/test-data/tests-unit/parser-property-interp/parser-property-interp.less": {
+      "ast": "1ef6c9db44a38cd2",
+      "cst": "1ef62af0a8e42f9e"
+    },
+    "node_modules/@less/test-data/tests-unit/parser-slashed-combinator/parser-slashed-combinator.css": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "0a63495a13784163"
+    },
+    "node_modules/@less/test-data/tests-unit/parser-slashed-combinator/parser-slashed-combinator.less": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "478674530a5d86ce"
+    },
+    "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "37a28f1833889ecd"
+    },
+    "node_modules/@less/test-data/tests-unit/permissive-parse/permissive-parse.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "3bfdfbf544a6aeb0"
+    },
+    "node_modules/@less/test-data/tests-unit/plugi/plugi.css": {
+      "ast": "f5abfaf98304b639",
+      "cst": "3dd8124d68e755eb"
+    },
+    "node_modules/@less/test-data/tests-unit/plugi/plugi.less": {
+      "ast": "f5abfaf98304b639",
+      "cst": "afa31e574b57e03b"
+    },
+    "node_modules/@less/test-data/tests-unit/plugin-module/plugin-module.css": {
+      "ast": "40670974751a13ea",
+      "cst": "4b8a059078a36813"
+    },
+    "node_modules/@less/test-data/tests-unit/plugin-module/plugin-module.less": {
+      "ast": "31506901b9a5f382",
+      "cst": "96912e8666a9e2e9"
+    },
+    "node_modules/@less/test-data/tests-unit/plugin-preeval/plugin-preeval.css": {
+      "ast": "9e0415e649b61c41",
+      "cst": "184d736305072487"
+    },
+    "node_modules/@less/test-data/tests-unit/plugin-preeval/plugin-preeval.less": {
+      "ast": "e6985b3fec90d61d",
+      "cst": "ab90c5121e2942ef"
+    },
+    "node_modules/@less/test-data/tests-unit/plugin/plugin.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "d3bf7735a41c5518"
+    },
+    "node_modules/@less/test-data/tests-unit/plugin/plugin.less": {
+      "ast": "9c8e373ccb1cdc72",
+      "cst": "808a8fed1caa4794"
+    },
+    "node_modules/@less/test-data/tests-unit/property-accessors/legacy/property-accessors.css": {
+      "ast": "071c65cd6b0f4089",
+      "cst": "21fbe6ada4ca2444"
+    },
+    "node_modules/@less/test-data/tests-unit/property-accessors/property-accessors.css": {
+      "ast": "d23aecabd33ab097",
+      "cst": "c195d1bc94105ea1"
+    },
+    "node_modules/@less/test-data/tests-unit/property-accessors/property-accessors.less": {
+      "ast": "e063c2a6108ff925",
+      "cst": "3c51e49df55ac349"
+    },
+    "node_modules/@less/test-data/tests-unit/property-name-interp/legacy/property-name-interp.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "f70bb45dba098624"
+    },
+    "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "30427ac2b964cb77"
+    },
+    "node_modules/@less/test-data/tests-unit/property-name-interp/property-name-interp.less": {
+      "ast": "eee650e1b95b6be3",
+      "cst": "8a2de366adf21e22"
+    },
+    "node_modules/@less/test-data/tests-unit/property-targeted/legacy/property-targeted.css": {
+      "ast": "f77bc99fd9ec1351",
+      "cst": "a0c95b8ea4638d86"
+    },
+    "node_modules/@less/test-data/tests-unit/property-targeted/property-targeted.css": {
+      "ast": "b5b1fb187203fcea",
+      "cst": "d2e6884f95fd1e5a"
+    },
+    "node_modules/@less/test-data/tests-unit/property-targeted/property-targeted.less": {
+      "ast": "703a89cb358d48ec",
+      "cst": "2a14d94742cb3fea"
+    },
+    "node_modules/@less/test-data/tests-unit/rulesets/legacy/rulesets.css": {
+      "ast": "80d0002faca12833",
+      "cst": "b9112bec16f3e0d9"
+    },
+    "node_modules/@less/test-data/tests-unit/rulesets/rulesets.css": {
+      "ast": "b801fd7568f506d7",
+      "cst": "7fc556a1948738de"
+    },
+    "node_modules/@less/test-data/tests-unit/rulesets/rulesets.less": {
+      "ast": "b801fd7568f506d7",
+      "cst": "105a874210b8ec6d"
+    },
+    "node_modules/@less/test-data/tests-unit/scope/legacy/scope.css": {
+      "ast": "6b41b0a3804c8130",
+      "cst": "96893813802bbae2"
+    },
+    "node_modules/@less/test-data/tests-unit/scope/scope.css": {
+      "ast": "2d580eeb95e728ed",
+      "cst": "cfdd2cb7d819f7f3"
+    },
+    "node_modules/@less/test-data/tests-unit/scope/scope.less": {
+      "ast": "edeebd620a67a748",
+      "cst": "4f9331032b486f89"
+    },
+    "node_modules/@less/test-data/tests-unit/selectors/selectors.css": {
+      "ast": "d6de6abe1db71d2d",
+      "cst": "2481cc898ac9a176"
+    },
+    "node_modules/@less/test-data/tests-unit/selectors/selectors.less": {
+      "ast": "4645e7b4a3a9edcd",
+      "cst": "5dfba000dea9ca98"
+    },
+    "node_modules/@less/test-data/tests-unit/starting-style/starting-style.css": {
+      "ast": "120f13e720e261fb",
+      "cst": "e97e0da9d5266fd9"
+    },
+    "node_modules/@less/test-data/tests-unit/starting-style/starting-style.less": {
+      "ast": "a73503e7a07a9040",
+      "cst": "a6d516beb1bd0a36"
+    },
+    "node_modules/@less/test-data/tests-unit/strings/strings.css": {
+      "ast": "7342e10e5e0a307d",
+      "cst": "a836616584492608"
+    },
+    "node_modules/@less/test-data/tests-unit/strings/strings.less": {
+      "ast": "afc98d961b27ffa0",
+      "cst": "4190e4c6bd8ebff5"
+    },
+    "node_modules/@less/test-data/tests-unit/tailwind/tailwind.css": {
+      "ast": "cf63ab71c0d58769",
+      "cst": "2dc1de625aa737be"
+    },
+    "node_modules/@less/test-data/tests-unit/tailwind/tailwind.less": {
+      "ast": "cf63ab71c0d58769",
+      "cst": "2dc1de625aa737be"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/actual.css": {
+      "ast": "a3dbdbf90151b7cd",
+      "cst": "bfb68db52125c6fe"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/assets/nested-gradient-with-svg-gradient/mixin-consumer.less": {
+      "ast": "082307bc1134e513",
+      "cst": "72413bc2fc0a66b2"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/assets/nested-gradient-with-svg-gradient/svg-gradient-mixin.less": {
+      "ast": "c545196cb54aa9ff",
+      "cst": "f83e165d63286cec"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/css/background.css": {
+      "ast": "cc93056aa03d41d0",
+      "cst": "f77f748d30ba714f"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/import/import-and-relative-paths-test.less": {
+      "ast": "900623bdfeedc205",
+      "cst": "6d156d8fdc377803"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/import/import-test-d.css": {
+      "ast": "c1c6e6a715a6be66",
+      "cst": "f363fee45a02a14b"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/import/imports/font.less": {
+      "ast": "f2462f7233923654",
+      "cst": "f17f6a32bebf6a11"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/import/imports/logo.less": {
+      "ast": "8ad4754512167032",
+      "cst": "9170448d9225b3d5"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/nested-gradient-with-svg-gradient/mixin-consumer.less": {
+      "ast": "03f114bc465ba050",
+      "cst": "191cefab4bd78dca"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/nested-gradient-with-svg-gradient/svg-gradient-mixin.less": {
+      "ast": "c545196cb54aa9ff",
+      "cst": "f83e165d63286cec"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/urls.css": {
+      "ast": "71476579db4ac3d6",
+      "cst": "d987c6976a297b07"
+    },
+    "node_modules/@less/test-data/tests-unit/urls/urls.less": {
+      "ast": "12a22de5b9ead437",
+      "cst": "d3e159760068d781"
+    },
+    "node_modules/@less/test-data/tests-unit/variables-in-at-rules/variables-in-at-rules.css": {
+      "ast": "5eb48dcde21533fa",
+      "cst": "c752a56f623de702"
+    },
+    "node_modules/@less/test-data/tests-unit/variables-in-at-rules/variables-in-at-rules.less": {
+      "ast": "da6390bf6bba3c35",
+      "cst": "c01737410fe4f40b"
+    },
+    "node_modules/@less/test-data/tests-unit/variables/legacy/variable-advanced.css": {
+      "ast": "2bb960e92c6ee758",
+      "cst": "3beeefc9a4d85099"
+    },
+    "node_modules/@less/test-data/tests-unit/variables/variable-advanced.css": {
+      "ast": "e92acab1c56ef32c",
+      "cst": "a546462e1b62821a"
+    },
+    "node_modules/@less/test-data/tests-unit/variables/variable-advanced.less": {
+      "ast": "ad94365a6c977919",
+      "cst": "b661a0bf4dbec180"
+    },
+    "node_modules/@less/test-data/tests-unit/variables/variables.css": {
+      "ast": "d68071617e9f2592",
+      "cst": "144ac1086dfd3315"
+    },
+    "node_modules/@less/test-data/tests-unit/variables/variables.less": {
+      "ast": "cd453b66bb877ed1",
+      "cst": "ff6d10d5c8de7b67"
+    },
+    "node_modules/@less/test-data/tests-unit/whitespace/legacy/whitespace.css": {
+      "ast": "4931fdd90e8ac233",
+      "cst": "2ee1a1ff1db02a52"
+    },
+    "node_modules/@less/test-data/tests-unit/whitespace/whitespace.css": {
+      "ast": "92d72dbf73d976dd",
+      "cst": "b4a8bf7cdffbdca9"
+    },
+    "node_modules/@less/test-data/tests-unit/whitespace/whitespace.less": {
+      "ast": "1cee087e75338381",
+      "cst": "cdde08b9b5cb55df"
+    },
+    "packages/jess/test/files/import-func.css": {
+      "ast": "54e838e78c04de7c",
+      "cst": "7c9fd90226096a3f"
+    },
+    "packages/jess/test/files/include.css": {
+      "ast": "cb0ff98c70822692",
+      "cst": "fa88bef03b6a5da2"
+    },
+    "packages/jess/test/files/mixin.css": {
+      "ast": "c76fce5a8ec1d693",
+      "cst": "e98ffb27ad632ea9"
+    },
+    "packages/jess/test/files/nested.css": {
+      "ast": "261f43c2638a07e6",
+      "cst": "2784783ddfb11eaa"
+    },
+    "packages/jess/test/files/simple.css": {
+      "ast": "54001f7f3486ff7a",
+      "cst": "85c5ecb893b42d1b"
+    },
+    "packages/jess/test/fixtures/invalid.less": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/jess/test/fixtures/warning.less": {
+      "ast": "df242571c1125410",
+      "cst": "4b7017af04361689"
+    },
+    "packages/jess/test/less/fixtures/extend-cross-import/base.less": {
+      "ast": "a00d691ba68f0457",
+      "cst": "aacc576e169d4189"
+    },
+    "packages/jess/test/less/fixtures/extend-cross-import/main.less": {
+      "ast": "61e9fd2fc69bb1c0",
+      "cst": "eb55e51448267e56"
+    },
+    "packages/jess/test/less/fixtures/extend-cross-import/ref-base.less": {
+      "ast": "769ddc07f85a214e",
+      "cst": "622ef1eb9829bef2"
+    },
+    "packages/jess/test/less/fixtures/extend-cross-import/ref-main.less": {
+      "ast": "0b8961e38e87709c",
+      "cst": "e33f78b7b8135e1b"
+    },
+    "packages/jess/test/less/fixtures/import-media-query/imported.less": {
+      "ast": "d1b4ff3364335a0a",
+      "cst": "4671d2cccd13e331"
+    },
+    "packages/jess/test/less/fixtures/import-media-query/interpolated-main.less": {
+      "ast": "f3335de5ec9ed70a",
+      "cst": "61c4b5dfcf92b665"
+    },
+    "packages/jess/test/less/fixtures/import-media-query/interpolated-media.less": {
+      "ast": "54bac2e6d0c553f6",
+      "cst": "b74585e74c0131b6"
+    },
+    "packages/jess/test/less/fixtures/import-media-query/main.less": {
+      "ast": "547a524ff386c0b9",
+      "cst": "33523830cf9aaf27"
+    },
+    "packages/jess/test/less/fixtures/merge-fallback-important.css": {
+      "ast": "fce8a19c8370495a",
+      "cst": "596d49494bebfadf"
+    },
+    "packages/jess/test/less/fixtures/merge-fallback-important.less": {
+      "ast": "9b0e241e6b962a9e",
+      "cst": "dc2ecbc936c56ce3"
+    },
+    "packages/jess/test/less/test-import.less": {
+      "ast": "e403f2789abe4df8",
+      "cst": "9075eb1a99c7fe23"
+    },
+    "packages/jess/test/less/test.css": {
+      "ast": "f5c0781caff58599",
+      "cst": "6815ab4c338dc043"
+    },
+    "packages/jess/test/less/test.less": {
+      "ast": "f084d14fff2b7ec8",
+      "cst": "72043a96c18f5fae"
+    },
+    "packages/syntax/css/css-parser/test/css/apply.css": {
+      "ast": "f2ff0661887390f5",
+      "cst": "801b630bcabe86e4"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-decls.css": {
+      "ast": "5fe206e15022f8c6",
+      "cst": "88a299318a708ebb"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-empty.css": {
+      "ast": "3f52593529603a9e",
+      "cst": "a824d9932ef6fc20"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-inside.css": {
+      "ast": "c1d3c971fbc10102",
+      "cst": "1dda9632904ddbb5"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-no-params.css": {
+      "ast": "16700c46933109f8",
+      "cst": "9e4c3db90f3d2743"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-no-space.css": {
+      "ast": "2adb2c98ea723e37",
+      "cst": "85b2fd29d0314998"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-params.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-rules.css": {
+      "ast": "52258b48178a9618",
+      "cst": "c86ea1207c99875e"
+    },
+    "packages/syntax/css/css-parser/test/css/atrule-unknown.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/between.css": {
+      "ast": "15ededb243efd4ee",
+      "cst": "7ae84516df3e15fc"
+    },
+    "packages/syntax/css/css-parser/test/css/colon-selector.css": {
+      "ast": "0db05ccf9c01d30b",
+      "cst": "64c8a37f6b96d500"
+    },
+    "packages/syntax/css/css-parser/test/css/comments.css": {
+      "ast": "bde00fa03b765fb3",
+      "cst": "c1d9b8ef5e747dcb"
+    },
+    "packages/syntax/css/css-parser/test/css/custom-properties.css": {
+      "ast": "99a63da4f741d3ee",
+      "cst": "5febac1349f30893"
+    },
+    "packages/syntax/css/css-parser/test/css/decls.css": {
+      "ast": "af5823da09a01e35",
+      "cst": "39e0fbf26e740c33"
+    },
+    "packages/syntax/css/css-parser/test/css/empty.css": {
+      "ast": "5037b9712f99a5d1",
+      "cst": "aca51345c271e5f2"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/atrule-no-semicolon.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "287505d2bb584a77"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/atrule-numeric-name.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/calc-empty.css": {
+      "ast": "ccd58bf135399364",
+      "cst": "f108ba3d5965b39c"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/calc-lone-operator.css": {
+      "ast": "d341682ff0aed9d3",
+      "cst": "86065bad2c2eade4"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/charset.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "c99bca53da4d0590"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/comment-eof-unclosed.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af0c4dfe2e18ea03"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/declaration-empty-value.css": {
+      "ast": "75d0865e0cb1ae63",
+      "cst": "b0d4a7cf8adae1e4"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/declaration-missing-colon.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/declaration-numeric-name.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/declaration-star-property.css": {
+      "ast": "2552beb7159d681d",
+      "cst": "aeb0e6c29ee75ec8"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/declaration-starts-colon.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/import-empty.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/important-boundary.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/important-doubled.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/important-lone.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/important-misplaced.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/invalid-selector.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/keyframes-bad-ident-selector.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/keyframes-block-no-selector.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/keyframes-dimension-selector.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/keyframes-number-selector.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/media-decl.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/media-empty.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/media-no-selector.css": {
+      "ast": "fff140ae2aa26271",
+      "cst": "8b731ce2cbc5557d"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/media-unclosed-block.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/no-selector.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/root-declaration.css": {
+      "ast": "d185a46d7e788f8d",
+      "cst": "a6a85755087f7211"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/ruleset-unclosed.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-anb-dangling-sign.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-anb-noninteger.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-attribute-numeric-name.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-bare-colon.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-class-numeric.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-double-combinator.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-double-comma.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-leading.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-empty-slot-trailing.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-hash-noname.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-leading-combinator.css": {
+      "ast": "7084a672bcb6bcd3",
+      "cst": "d695531f52ae6eea"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-pseudo-element-noname.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-trailing-combinator.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-type-numeric.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/selector-unclosed-attribute.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/supports-bare-ident.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/supports-no-condition.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/url-interior-whitespace.css": {
+      "ast": "a3dbdbf90151b7cd",
+      "cst": "5c2b05dddc4304a6"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/url-token-bare-quote.css": {
+      "ast": "a3dbdbf90151b7cd",
+      "cst": "5c2b05dddc4304a6"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/url-token-open-paren.css": {
+      "ast": "a3dbdbf90151b7cd",
+      "cst": "5c2b05dddc4304a6"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/value-stray-close-bracket.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/value-stray-close-paren.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/value-unclosed-bracket.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/value-unclosed-function.css": {
+      "ast": "48de200bfa6697b3",
+      "cst": "b2ae4afbbba144c6"
+    },
+    "packages/syntax/css/css-parser/test/css/errors/value-unterminated-string.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/escape.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/expressions.css": {
+      "ast": "a0e780ece3180c91",
+      "cst": "d1e9123361783bd4"
+    },
+    "packages/syntax/css/css-parser/test/css/font-face.css": {
+      "ast": "cf77d53cbd609e03",
+      "cst": "92869a04c167f9f0"
+    },
+    "packages/syntax/css/css-parser/test/css/function.css": {
+      "ast": "9e13538d1c39d12d",
+      "cst": "6b7284b12a908b8d"
+    },
+    "packages/syntax/css/css-parser/test/css/ie-progid.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/important.css": {
+      "ast": "17b885488164fc29",
+      "cst": "3e23befa6af3dca1"
+    },
+    "packages/syntax/css/css-parser/test/css/legacy-prop.css": {
+      "ast": "23a89b6eff095e67",
+      "cst": "e98551becc695fc2"
+    },
+    "packages/syntax/css/css-parser/test/css/nesting-ident.css": {
+      "ast": "8725dbd5b148b785",
+      "cst": "cebcb36af84897ae"
+    },
+    "packages/syntax/css/css-parser/test/css/nesting.css": {
+      "ast": "2ea387a08eca34e2",
+      "cst": "ba44f91dbb4562ff"
+    },
+    "packages/syntax/css/css-parser/test/css/prop.css": {
+      "ast": "23a89b6eff095e67",
+      "cst": "e98551becc695fc2"
+    },
+    "packages/syntax/css/css-parser/test/css/pseudo-selectors.css": {
+      "ast": "87e09e7eafea6373",
+      "cst": "bef84e696a3b6343"
+    },
+    "packages/syntax/css/css-parser/test/css/quotes.css": {
+      "ast": "936a4a3564570e60",
+      "cst": "5048ed7e8705f9bf"
+    },
+    "packages/syntax/css/css-parser/test/css/raw-decl.css": {
+      "ast": "fa8b583ea350fbff",
+      "cst": "af55acb1c6befe06"
+    },
+    "packages/syntax/css/css-parser/test/css/rule-no-semicolon.css": {
+      "ast": "d851e4feee8571c9",
+      "cst": "79a67008d5460047"
+    },
+    "packages/syntax/css/css-parser/test/css/selector.css": {
+      "ast": "ba5919cee60f9cc1",
+      "cst": "d06e3cb676b92741"
+    },
+    "packages/syntax/css/css-parser/test/css/semicolons.css": {
+      "ast": "d851e4feee8571c9",
+      "cst": "150e5f61c2e38660"
+    },
+    "packages/syntax/css/css-parser/test/css/star.css": {
+      "ast": "1bbcf13c5bdfbc7f",
+      "cst": "c11d9255b6b0ec2d"
+    },
+    "packages/syntax/css/css-parser/test/css/tab.css": {
+      "ast": "d851e4feee8571c9",
+      "cst": "3d040eb89efc05b0"
+    }
+  }
+}

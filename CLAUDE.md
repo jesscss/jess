@@ -6,12 +6,12 @@
 @.cursor/rules/30-tests.mdc
 
 ## 🎯 Auto-Select Rules (File-Specific)
-@.cursor/rules/debugging-state.mdc <!-- Applies to: .cursor/** -->
+@.cursor/rules/debugging-state.mdc <!-- Applies to: .cursor/**, docs/state/** -->
 @.cursor/rules/domains/cli_app.mdc <!-- Applies to: packages/jess/** -->
 @.cursor/rules/domains/core_ast_eval.mdc <!-- Applies to: packages/core/src/tree/**, packages/core/src/define-function.ts, packages/core/src/**/__tests__/** -->
 @.cursor/rules/domains/docs.mdc <!-- Applies to: docs/**, packages/docs/**, README.md -->
 @.cursor/rules/domains/language_tooling.mdc <!-- Applies to: packages/language-service/**, packages/vscode/**, packages/language-service-tests/** -->
-@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/css-parser/**, packages/less-parser/**, packages/scss-parser/**, packages/parser/** -->
+@.cursor/rules/domains/parsers.mdc <!-- Applies to: packages/css-parser/**, packages/less-parser/**, packages/scss-parser/**, packages/jess-parser/**, packages/parser-shared/** -->
 @.cursor/rules/main.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/package-scripts.mdc <!-- Applies to: .cursor/** -->
 @.cursor/rules/packages/awaitable-pipe.mdc <!-- Applies to: packages/awaitable-pipe/** -->
@@ -24,7 +24,6 @@
 @.cursor/rules/packages/jess.mdc <!-- Applies to: packages/jess/** -->
 @.cursor/rules/packages/language-service.mdc <!-- Applies to: packages/language-service/** -->
 @.cursor/rules/packages/less-parser.mdc <!-- Applies to: packages/less-parser/** -->
-@.cursor/rules/packages/parser.mdc <!-- Applies to: packages/parser/** -->
 @.cursor/rules/packages/patch-css.mdc <!-- Applies to: packages/patch-css/** -->
 @.cursor/rules/packages/plugin-less-compat.mdc <!-- Applies to: packages/jess-plugin-less-compat/** -->
 @.cursor/rules/packages/plugin-less.mdc <!-- Applies to: packages/jess-plugin-less/** -->
@@ -53,14 +52,35 @@ For hot-path perf work (core tree/eval/render, grammar/parser, extend/selector):
 
 - the canonical checklist is `docs/perf/V8-ARCHITECTURE.md` (9 invariants +
   regression-fixture catalogue); enforcement design is
-  `docs/future/llm-quality-enforcement-design.md`
+  `docs/architecture/llm-quality-enforcement-design.md`
 - load the `perf-architecture` skill before editing; use the
   `perf-architecture-reviewer` (evidence per invariant, not a verdict) before landing
 
+For semantics work (anything that changes emitted CSS — value serialization,
+selector composition, dialect recognition):
+
+- the canonical checklist is `docs/architecture/SEMANTIC-INVARIANTS.md`
+  (8 invariants + incident catalogue, each with a STATUS)
+- the owner decision ledger is
+  `docs/architecture/core/DESIGN-DECISIONS.md`; cite the SETTLED row a
+  change relies on, or add an OPEN row
+- use the `semantics-reviewer` (evidence per invariant); "matches less.js" is
+  not a valid justification
+
+For grammar work (any of the eight `*-parser/src/{,ast/}grammar.ts` files):
+
+- the rebuild spec — goal, current status, plan, gating, dispatchable units — is
+  `docs/design/GRAMMAR-REBUILD-SPEC.md`; **start at its §0**
+- the standing brief is `docs/architecture/parser/GRAMMAR-REVIEW-STANDARD.md`
+  (14 checklist items applied to **every `const`**, hard constraints, oracle
+  verification loop, definition of done)
+- use the `grammar-reviewer` (evidence per const, not a verdict); "tests pass"
+  and a sampled review are both invalid results
+
 For the core architecture/eval-render work:
 
-- treat `docs/future/core-architecture/HANDOFF.md` as the active entry point
+- treat `docs/architecture/core/HANDOFF.md` as the active entry point
 - do not add broad status trackers or stale architecture documents that mostly describe machinery the repo does not currently have
-- use `.cursor/PROJECT_STATE.md` for transient debugging state and latest baseline notes
+- use `docs/state/PROJECT_STATE.md` for transient debugging state and latest baseline notes
 
 Keep this file stable by pointing to canonical sources instead of duplicating fast-changing project status.

@@ -82,12 +82,10 @@ export function prepareCallableGuardState({
   rulesContextParent
 }: PrepareCallableGuardStateOptions): PrepareCallableGuardStateResult {
   const guard: Node | undefined = candidateGuard;
-  const usesPreboundCallerGuardOuterRules = Boolean(
-    guard
+  const usesPreboundCallerGuardOuterRules = Boolean(guard
     && !isConstantGuard(guard)
     && !candidateParams
-    && paramBindingsLength === 0
-  );
+    && paramBindingsLength === 0);
   if (usesPreboundCallerGuardOuterRules && !outerRules) {
     outerRules = ensureCallableOuterRulesSurface({
       currentOuterRules: outerRules,
@@ -222,9 +220,11 @@ export async function evaluateCallableGuard({
     if (guard instanceof Condition) {
       passes = await guard.evaluateBoolean(context);
     } else {
-      // A bare (non-Condition) guard body — `when ((@value))`, `when (#ns[flag])` —
-      // resolves to a Bool or a keyword `true`/`false`; Less honours both, so use
-      // the canonical truth check rather than a strict `instanceof Bool`.
+      /*
+       * A bare (non-Condition) guard body — `when ((@value))`, `when (#ns[flag])` —
+       * resolves to a Bool or a keyword `true`/`false`; Less honours both, so use
+       * the canonical truth check rather than a strict `instanceof Bool`.
+       */
       const resolvedGuard = await guard.eval(context);
       passes = Condition.resultPasses(resolvedGuard);
     }

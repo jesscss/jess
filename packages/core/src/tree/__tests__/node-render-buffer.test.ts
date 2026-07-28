@@ -448,7 +448,6 @@ describe('renderNodeToBuffer', () => {
       { surface: 'List', node: list([any('one'), new AsyncValueNode('two')]), expected: 'one, two' },
       { surface: 'Paren', node: paren(new AsyncValueNode('value')), expected: '(value)' },
       { surface: 'Condition', node: condition([new AsyncValueNode('truthy', bool(true))]), expected: 'true' },
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       { surface: 'Quoted', node: quoted(new AsyncValueNode('asset') as unknown as Any<AnyRole>), expected: '"asset"' }
     ];
 

@@ -149,8 +149,10 @@ describe('AtRule', () => {
   });
 
   it('compares at-rule names without public string transport', () => {
-    // The name is a bare string, so identity/compare cannot route through a name
-    // node's public toString — there is no such node.
+    /*
+     * The name is a bare string, so identity/compare cannot route through a name
+     * node's public toString — there is no such node.
+     */
     const node = atrulestatement({
       name: '@media',
       prelude: seq([any('screen', { role: 'keyword' })])
@@ -527,12 +529,14 @@ describe('AtRule', () => {
     expect(node.registrationPrepared).toBe(false);
   });
 
-  // Layer-NAME registration is an EVAL-PASS concern: it feeds the extend-roots
-  // graph so an `:extend` inside a layer reaches only same-layer subjects. A
-  // no-extend `@layer` now folds onto the render spine (which skips registration —
-  // nothing consumes it), so these tests drive the registration machinery via the
-  // eval pass directly (`root.eval`), the path a real extend-under-`@layer` takes
-  // (see the spine ratchet asserting extend-bearing `@layer` stays on eval).
+  /*
+   * Layer-NAME registration is an EVAL-PASS concern: it feeds the extend-roots
+   * graph so an `:extend` inside a layer reaches only same-layer subjects. A
+   * no-extend `@layer` now folds onto the render spine (which skips registration —
+   * nothing consumes it), so these tests drive the registration machinery via the
+   * eval pass directly (`root.eval`), the path a real extend-under-`@layer` takes
+   * (see the spine ratchet asserting extend-bearing `@layer` stays on eval).
+   */
   it('registers nested layer names from invocation records without mutating source children', async () => {
     const nestedBody = rules([
       ruleset({
@@ -553,9 +557,7 @@ describe('AtRule', () => {
     });
     const registeredLayers: Array<string | undefined> = [];
     const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
-    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
-      ...args: Parameters<typeof originalRegisterRoot>
-    ): ReturnType<typeof originalRegisterRoot> {
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };
@@ -596,15 +598,16 @@ describe('AtRule', () => {
     });
     const registeredLayers: Array<string | undefined> = [];
     const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
-    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
-      ...args: Parameters<typeof originalRegisterRoot>
-    ): ReturnType<typeof originalRegisterRoot> {
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };
-    // At-rule names are bare strings now, so there is no name node whose public
-    // toString/toTrimmedString could be used as a transport — only the prelude
-    // (still a node) is guarded below.
+
+    /*
+     * At-rule names are bare strings now, so there is no name node whose public
+     * toString/toTrimmedString could be used as a transport — only the prelude
+     * (still a node) is guarded below.
+     */
     nestedPrelude.toTrimmedString = () => {
       throw new Error('layer extraction should not use public toTrimmedString for layer preludes');
     };
@@ -645,9 +648,7 @@ describe('AtRule', () => {
     });
     const registeredLayers: Array<string | undefined> = [];
     const originalRegisterRoot = context.extendRoots.registerRoot.bind(context.extendRoots);
-    context.extendRoots.registerRoot = function registerRootWithLayerCapture(
-      ...args: Parameters<typeof originalRegisterRoot>
-    ): ReturnType<typeof originalRegisterRoot> {
+    context.extendRoots.registerRoot = function registerRootWithLayerCapture(...args: Parameters<typeof originalRegisterRoot>): ReturnType<typeof originalRegisterRoot> {
       registeredLayers.push(args[2]?.layerName);
       return originalRegisterRoot(...args);
     };
@@ -772,9 +773,12 @@ describe('AtRule', () => {
     const originalNamespaceValueWriteSyntax = namespaceValue.writeSyntax;
     let preludeStringCalls = 0;
     let namespaceValueWriteSyntaxCalls = 0;
-    // The at-rule name is a bare string ('@namespace'); there is no name node
-    // whose public toString/writeSyntax could be invoked, so only the prelude
-    // and namespace value (still nodes) are guarded here.
+
+    /*
+     * The at-rule name is a bare string ('@namespace'); there is no name node
+     * whose public toString/writeSyntax could be invoked, so only the prelude
+     * and namespace value (still nodes) are guarded here.
+     */
     namespaceValue.writeSyntax = function countNamespaceValueWriteSyntax(
       this: typeof namespaceValue,
       ...args: Parameters<typeof originalNamespaceValueWriteSyntax>
@@ -1102,9 +1106,12 @@ describe('AtRule', () => {
     if (!(evaluated instanceof AtRule)) {
       throw new Error('Expected AtRule eval result');
     }
-    // Hoisting is a render decision now (no eval-captured frame snapshot on the
-    // node): the at-rule is hoisted only under collapseNesting; the severed
-    // parent selector is recovered from the live render walk, not `frames`.
+
+    /*
+     * Hoisting is a render decision now (no eval-captured frame snapshot on the
+     * node): the at-rule is hoisted only under collapseNesting; the severed
+     * parent selector is recovered from the live render walk, not `frames`.
+     */
     expect(evaluated.hoistToRoot).toBeUndefined();
     expect(evaluated.isHoisted({ collapseNesting: false })).toBe(false);
     expect(evaluated.isHoisted({ collapseNesting: true })).toBe(true);
@@ -1119,9 +1126,12 @@ describe('AtRule', () => {
         decl({ name: 'color', value: any('red') })
       ]
     });
-    // The render walk descends through `.parent` before reaching the hoisted
-    // @media, composing `.parent` into the live selector stack — that IS the
-    // severed ancestor the flattened @media recovers (no eval-captured frames).
+
+    /*
+     * The render walk descends through `.parent` before reaching the hoisted
+     * @media, composing `.parent` into the live selector stack — that IS the
+     * severed ancestor the flattened @media recovers (no eval-captured frames).
+     */
     const root = rules([ruleset({ selector: el('.parent'), rules: [node] })]);
     const evaluated = await root.eval(context);
     context.root = evaluated;
@@ -1152,10 +1162,12 @@ describe('AtRule', () => {
       ]
     });
 
-    // Evaluate first, then forbid re-derivation at render time: an already-owned
-    // evaluated at-rule renders in place. (The severed parent selector is
-    // recovered from the render walk; a bare standalone render — no enclosing
-    // walk — emits the flattened at-rule directly.)
+    /*
+     * Evaluate first, then forbid re-derivation at render time: an already-owned
+     * evaluated at-rule renders in place. (The severed parent selector is
+     * recovered from the render walk; a bare standalone render — no enclosing
+     * walk — emits the flattened at-rule directly.)
+     */
     const evaluated = await Promise.resolve(node.eval(context));
     expect(evaluated).toBeInstanceOf(AtRule);
     if (!(evaluated instanceof AtRule)) {
@@ -1621,19 +1633,24 @@ describe('AtRule', () => {
   });
 
   it('serializes comment trivia between at-rule preludes and blocks', () => {
-    // Source layout ("|" = offset):
-    //   @-webkit-keyframes /* Safari */ hover /* and Chrome */ {
-    //   0                18            32    37                55
-    // The name is a bare STRING with no span of its own; its end offset is the
-    // AtRule's own span start plus the name length (0 + 18 = 18). The prelude
-    // node carries [32,37]. A comment authored in the [nameEnd, preludeStart) gap
-    // round-trips via the node-span comment scan; whitespace there is normalized.
+    /*
+     * Source layout ("|" = offset):
+     * @-webkit-keyframes /* Safari *\/ hover /* and Chrome *\/ {
+     * 0                18            32    37                55
+     * The name is a bare STRING with no span of its own; its end offset is the
+     * AtRule's own span start plus the name length (0 + 18 = 18). The prelude
+     * node carries [32,37]. A comment authored in the [nameEnd, preludeStart) gap
+     * round-trips via the node-span comment scan; whitespace there is normalized.
+     */
     const src = '@-webkit-keyframes /* Safari */ hover /* and Chrome */ { }';
     const name = '@-webkit-keyframes';
     const prelude = any('hover', { role: 'keyword' });
     setSourceSpan(prelude, { start: 32, end: 37 });
-    // Runs carry their REAL source spans — the scan validates that a comment run
-    // actually sits in the [nameEnd, preludeStart) gap.
+
+    /*
+     * Runs carry their REAL source spans — the scan validates that a comment run
+     * actually sits in the [nameEnd, preludeStart) gap.
+     */
     const interstitial = makeTrivia(src, 18, 32); // " /* Safari */ "
     const trailing = makeTrivia(src, 37, 55); // " /* and Chrome */ "
     const trivia = createTriviaMap({
@@ -1658,6 +1675,7 @@ describe('AtRule', () => {
         })
       ]
     });
+
     // The AtRule's own span starts at 0, so the bare-string name ends at 0+18=18.
     setSourceSpan(node, { start: 0, end: 57 });
 
@@ -1672,14 +1690,15 @@ describe('AtRule', () => {
       rules: []
     });
     const options = getPrintOptions({ writer });
-    // The name is a bare string; only the prelude (still a node) can have its
-    // public toString invoked, so just it is guarded.
+
+    /*
+     * The name is a bare string; only the prelude (still a node) can have its
+     * public toString invoked, so just it is guarded.
+     */
     const prelude = node.prelude!;
     const originalPreludeToString = prelude.toString;
     let preludeToStringCalls = 0;
-    prelude.toString = function toStringWithWriterCheck(
-      this: typeof prelude
-    ): string {
+    prelude.toString = function toStringWithWriterCheck(this: typeof prelude): string {
       preludeToStringCalls++;
       return originalPreludeToString.call(this);
     };
@@ -1833,9 +1852,7 @@ describe('AtRule', () => {
     const preludeLeaf = any('screen', { role: 'keyword' });
     const originalClone = preludeLeaf.clone;
     let preludeLeafClones = 0;
-    preludeLeaf.clone = function cloneForCounting(
-      ...args: Parameters<typeof originalClone>
-    ): ReturnType<typeof originalClone> {
+    preludeLeaf.clone = function cloneForCounting(...args: Parameters<typeof originalClone>): ReturnType<typeof originalClone> {
       preludeLeafClones++;
       return originalClone.apply(this, args);
     };
@@ -1932,8 +1949,7 @@ describe('AtRule', () => {
         }
         @media screen {
           case: 2;
-        }`
-      );
+        }`);
       expect(withoutCommentsHeaderCalls).toBe(0);
       expect(comparableHeaderCalls).toBeGreaterThan(0);
     } finally {
@@ -2022,15 +2038,17 @@ describe('AtRule', () => {
      * that add to the inherited selector.
      */
     it('should collapse ampersands when we need to', async () => {
-      // Represents:
-      // .body {
-      //   @media print {
-      //     padding: 20px;
-      //     &-1 {
-      //       color: black;
-      //     }
-      //   }
-      // }
+      /*
+       * Represents:
+       * .body {
+       * @media print {
+       * padding: 20px;
+       * &-1 {
+       * color: black;
+       * }
+       * }
+       * }
+       */
       const node = rules([
         ruleset({
           selector: sel([el('.body')]),
@@ -2069,19 +2087,21 @@ describe('AtRule', () => {
     });
 
     it('should collapse ampersands when we need to #2', async () => {
-      // Represents:
-      // .body {
-      //   @media print {
-      //     padding: 20px;
-      //     &-1 {
-      //       color: black;
-      //     }
-      //     background-color: white;
-      //     &-2 {
-      //       color: blue;
-      //     }
-      //   }
-      // }
+      /*
+       * Represents:
+       * .body {
+       * @media print {
+       * padding: 20px;
+       * &-1 {
+       * color: black;
+       * }
+       * background-color: white;
+       * &-2 {
+       * color: blue;
+       * }
+       * }
+       * }
+       */
       const node = rules([
         ruleset({
           selector: sel([el('.body')]),
@@ -2496,19 +2516,21 @@ describe('AtRule', () => {
 
   describe('@media with mixins and parameters', () => {
     it('should handle mixin with nested @media using parameter', async () => {
-      // Represents:
-      // .mediaMixin(@fallback: 200px) {
-      //   background: black;
-      //   @media handheld {
-      //     background: white;
-      //     @media (max-width: @fallback) {
-      //       background: red;
-      //     }
-      //   }
-      // }
-      // .a {
-      //   .mediaMixin(100px);
-      // }
+      /*
+       * Represents:
+       * .mediaMixin(@fallback: 200px) {
+       * background: black;
+       * @media handheld {
+       * background: white;
+       * @media (max-width: @fallback) {
+       * background: red;
+       * }
+       * }
+       * }
+       * .a {
+       * .mediaMixin(100px);
+       * }
+       */
       const mixinDef = mixin({
         name: '.mediaMixin',
         params: list([
@@ -2811,19 +2833,21 @@ describe('AtRule', () => {
 
   describe('nested @media in mixin calls', () => {
     it('should handle mixin call with nested @media', async () => {
-      // Represents:
-      // .nav-justified() {
-      //   @media (min-width: 480px) {
-      //     > li {
-      //       display: table-cell;
-      //     }
-      //   }
-      // }
-      // .menu {
-      //   @media (min-width: 768px) {
-      //     .nav-justified();
-      //   }
-      // }
+      /*
+       * Represents:
+       * .nav-justified() {
+       * @media (min-width: 480px) {
+       * > li {
+       * display: table-cell;
+       * }
+       * }
+       * }
+       * .menu {
+       * @media (min-width: 768px) {
+       * .nav-justified();
+       * }
+       * }
+       */
       const navJustifiedMixin = mixin({
         name: '.nav-justified',
         rules: [
@@ -2945,6 +2969,7 @@ describe('AtRule', () => {
   describe('serialization test for media.less AST', () => {
     it('should serialize the exact AST structure from media.less.s-expr.txt', async () => {
       context.opts.output = { ...context.opts.output, collapseNesting: true };
+
       // Build the AST exactly as represented in media.less.s-expr.txt
       const node = rules([
         comment('// For now, variables can\'t be declared…', { lineComment: true }),

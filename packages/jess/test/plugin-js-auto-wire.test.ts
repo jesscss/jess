@@ -8,7 +8,8 @@ import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
 import type { PluginInterface } from '@jesscss/core';
 
 /**
- * `@jesscss/plugin-js` is an OPTIONAL dependency of `jess`. When it is
+ * `@jesscss/plugin-js` is an end-user installed plugin package, not a `jess`
+ * dependency: it embeds a Deno runtime and must not ship by default. When it is
  * resolvable it must auto-wire (Less `@plugin` / script-module imports "just
  * work" without listing it in `plugins`); when it is absent `jess` must gate
  * gracefully rather than hard-break. These tests exercise both sides of that

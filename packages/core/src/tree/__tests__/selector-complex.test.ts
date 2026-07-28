@@ -262,6 +262,7 @@ describe('Complex selector', () => {
       ]);
       await sel1.eval(context);
       expect(keySetOf(sel1).equals(context.selectorBits.getBitset(['.one', '.two', '>', '.three']))).toBe(true);
+
       // visibleKeySet excludes combinators
       expect(visibleKeySetOf(sel1).equals(context.selectorBits.getBitset(['.one', '.two', '.three']))).toBe(true);
     });
@@ -285,6 +286,7 @@ describe('Complex selector', () => {
       ]);
       await sel2.eval(context);
       expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '>', '.two', '.one']))).toBe(true);
+
       // visibleKeySet excludes combinators (even those inside :is() complex args)
       expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', '#id', '.two', '.one']))).toBe(true);
     });
@@ -329,6 +331,7 @@ describe('Complex selector', () => {
       ]);
       await sel2.eval(context);
       expect(keySetOf(sel2).equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '>', '.two', '.one']))).toBe(true);
+
       // visibleKeySet excludes combinators (including those inside :is() complex args)
       expect(visibleKeySetOf(sel2).equals(context.selectorBits.getBitset(['a', 'b', 'c', 'd', '#id', '.two', '.one']))).toBe(true);
     });

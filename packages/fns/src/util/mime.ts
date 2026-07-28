@@ -1,8 +1,7 @@
 /**
  * Pure MIME lookup for the file/`data-uri` built-ins — the extension→mimetype +
- * charset decision, with NO file-system or compiler-`Context` dependency (so both
- * the legacy `less/` fn set and the boundary-clean ast/ `builtins/` set can share
- * one source of truth). `ascii: true` means the format is text (US-ASCII / UTF-8),
+ * charset decision, with NO file-system or compiler-`Context` dependency, so every
+ * dialect fn set can share one source of truth. `ascii: true` means the format is text (US-ASCII / UTF-8),
  * so `data-uri` percent-encodes it; `ascii: false` means binary → base64. Mirrors
  * Less 4.x `environment.mimeLookup` + `charsetLookup`.
  */
@@ -11,6 +10,7 @@ import path from 'node:path';
 export interface MimeInfo {
   /** The mimetype string (e.g. `image/jpeg`). */
   readonly type: string;
+
   /** True when the payload is text (percent-encode); false → binary (base64). */
   readonly ascii: boolean;
 }

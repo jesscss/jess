@@ -18,9 +18,11 @@ import {
   type ExtendInstruction
 } from '../extend.js';
 
-// ─────────────────────────────────────────────────
-// applyExtendsToSelector
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * applyExtendsToSelector
+ * ─────────────────────────────────────────────────
+ */
 describe('applyExtendsToSelector', () => {
   it('returns original when no instructions', () => {
     const s = el('.a');
@@ -68,9 +70,11 @@ describe('applyExtendsToSelector', () => {
   });
 
   it('handles chain effects (instruction B targets result of instruction A)', () => {
-    // Selector: [.a]
-    // Instruction A: .a → .b (produces [.a, .b])
-    // Instruction B: .b → .c (produces [.a, .b, .c])
+    /*
+     * Selector: [.a]
+     * Instruction A: .a → .b (produces [.a, .b])
+     * Instruction B: .b → .c (produces [.a, .b, .c])
+     */
     const target = sellist([el('.a')]);
     const instructions: ExtendInstruction[] = [
       { target: el('.a'), extendWith: el('.b'), partial: false },
@@ -93,9 +97,11 @@ describe('applyExtendsToSelector', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// tryExtendSelector
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * tryExtendSelector
+ * ─────────────────────────────────────────────────
+ */
 describe('tryExtendSelector', () => {
   it('returns success result for a matching extend', () => {
     const target = el('.a');
@@ -123,9 +129,11 @@ describe('tryExtendSelector', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// createProcessedSelector
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * createProcessedSelector
+ * ─────────────────────────────────────────────────
+ */
 describe('createProcessedSelector', () => {
   it('deduplicates value at root level', () => {
     const result = createProcessedSelector([el('.a'), el('.a'), el('.b')], true);
@@ -161,9 +169,11 @@ describe('createProcessedSelector', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// findChainedExtends
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * findChainedExtends
+ * ─────────────────────────────────────────────────
+ */
 describe('findChainedExtends', () => {
   it('returns empty when the result introduces no new selector subtree', () => {
     const extended = el('.base');
@@ -175,9 +185,11 @@ describe('findChainedExtends', () => {
   });
 
   it('finds chained extends from newly added value', () => {
-    // Original: .base
-    // After extending .base with .middle → SelectorList([.base, .middle])
-    // Another extend targets .middle → should chain
+    /*
+     * Original: .base
+     * After extending .base with .middle → SelectorList([.base, .middle])
+     * Another extend targets .middle → should chain
+     */
     const extended = sellist([el('.base'), el('.middle')]);
     const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
       [el('.base'), el('.src1'), false, null, null],
@@ -190,9 +202,11 @@ describe('findChainedExtends', () => {
   });
 
   it('does NOT chain on value that were in the original', () => {
-    // Original: SelectorList([.base, .existing])
-    // After extending .base with .child → SelectorList([.base, .existing, .child])
-    // Another extend targets .existing → should NOT chain (it was original)
+    /*
+     * Original: SelectorList([.base, .existing])
+     * After extending .base with .child → SelectorList([.base, .existing, .child])
+     * Another extend targets .existing → should NOT chain (it was original)
+     */
     const extended = sellist([el('.base'), el('.existing'), el('.child')]);
     const original = sellist([el('.base'), el('.existing')]);
     const allExtends: Array<[Selector, Selector, boolean, any, any]> = [
@@ -200,6 +214,7 @@ describe('findChainedExtends', () => {
       [el('.existing'), el('.src2'), false, null, null]
     ];
     const result = findChainedExtends(extended, allExtends, el('.base'), el('.src1'), original);
+
     // .existing was in original → not chained. Only .child could chain but nothing targets it.
     expect(result).toHaveLength(0);
   });
@@ -221,9 +236,11 @@ describe('findChainedExtends', () => {
   });
 });
 
-// ─────────────────────────────────────────────────
-// extendSelector — integration-level pins
-// ─────────────────────────────────────────────────
+/*
+ * ─────────────────────────────────────────────────
+ * extendSelector — integration-level pins
+ * ─────────────────────────────────────────────────
+ */
 describe('extendSelector integration pins', () => {
   it('non-partial: .a extending .a with .b → SelectorList(.a, .b)', () => {
     const result = extendSelector(el('.a'), el('.a'), el('.b'), false);
@@ -245,6 +262,7 @@ describe('extendSelector integration pins', () => {
     const target = sel([el('.a'), co(' '), el('.b')]);
     const result = extendSelector(target, el('.b'), el('.c'), true);
     const val = result.valueOf();
+
     // Partial mode wraps the matched component in :is()
     expect(val).toContain(':is');
     expect(val).toContain('.c');
@@ -253,6 +271,7 @@ describe('extendSelector integration pins', () => {
   it('non-partial: compound .a.b extending .a with .c → unchanged (non-partial requires whole match)', () => {
     const target = compound([el('.a'), el('.b')]);
     const result = extendSelector(target, el('.a'), el('.c'), false);
+
     // Non-partial extend requires whole-selector match; .a.b ≠ .a
     expect(result.valueOf()).toBe('.a.b');
   });

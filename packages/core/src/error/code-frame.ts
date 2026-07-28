@@ -63,7 +63,7 @@ export interface EvalErrorFrame {
  */
 export function evalErrorFrameFrom(err: unknown): EvalErrorFrame | undefined {
   const loc = readEvalErrorLocation(err);
-  if (!loc || loc.source === undefined) {
+  if (loc?.source === undefined) {
     return undefined;
   }
   const { line, column } = lineColAt(loc.source, loc.spanStart);

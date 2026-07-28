@@ -19,12 +19,13 @@ import type { ValueObj } from './value-eval.js';
 import { HEX } from './color.js';
 import { makeColorRgb, makeKeyword } from './value-factory.js';
 import { namedColor } from './color-names.js';
-import { round } from './round.js';
 
-// SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
-// PARSED literal reaches materialize already typed (its node), so it never touches
-// these; classifying a genuinely-synthetic string here is not re-deriving parser
-// output (the parser never saw it).
+/*
+ * SYNTHETIC-ONLY classifiers, used solely by the `Any` / computed-string sniff. A
+ * PARSED literal reaches materialize already typed (its node), so it never touches
+ * these; classifying a genuinely-synthetic string here is not re-deriving parser
+ * output (the parser never saw it).
+ */
 const NUM_RE = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?([a-zA-Z%]*)$/;
 const HEX_RE = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
@@ -96,20 +97,26 @@ export function colorFromSrc(src: string): ValueObj {
 /**
  * A parsed `Dimension` leaf → value `Dimension`, reading the pre-split
  * `number`/`unit` (never re-splitting `src`). Un-operated dimensions preserve their
- * SOURCE spelling verbatim (`1.0px`→`1.0px`, `2PX`→`2PX`). The ONE exception is
- * sub-precision float noise: a source whose value cannot be represented at the 8-dp
- * canonical floor (`-0.0000000001` rounds to `0`) is DENOISED to the canonical
- * rounded form; a value that round-trips unchanged at 8 dp keeps its exact `src`.
+ * SOURCE spelling verbatim (`1.0px`→`1.0px`, `2PX`→`2PX`).
+ *
+ * The ONE rewrite is a SPELLING rule, not a precision one: Less serializes a
+ * leading-decimal dimension canonically (`.3s` → `0.3s`, `-.3s` → `-0.3s`) even when
+ * it has not participated in arithmetic. It is applied by INSERTING the `0`, not by
+ * reformatting the number — so the authored digits survive it (`.50000px` →
+ * `0.50000px`, never `0.5px`). Running the source through the number policy here
+ * would make an un-operated literal answer to a rule that governs computed values.
+ *
+ * There used to be a second rewrite — a source whose value could not survive the 8-dp
+ * canonical floor was DENOISED to the rounded form, which silently turned an authored
+ * `0.00000000123456789` into `0`. Its only justification was matching a serializer
+ * floor that no longer exists, and it contradicted verbatim preservation outright, so
+ * it is gone: an un-operated literal now keeps its exact value.
  */
 export function dimensionFromFields(number: number, unit: string, src: string): ValueObj {
-  const r = round(number, 8);
-  // Less serializes a leading-decimal dimension canonically (`.3s` → `0.3s`,
-  // `-.3s` → `-0.3s`) even when it has not participated in arithmetic. This is
-  // still a typed numeric decision from the parsed fields, not a rendered-CSS
-  // rewrite; retain other source spelling policy below.
   const numericStart = src.charCodeAt(0) === 0x2d /* - */ ? 1 : 0;
-  if (Number.isFinite(number) && (r !== number || src.charCodeAt(numericStart) === 0x2e /* . */)) {
-    return { type: 'Dimension', number: r, unit, bytes: `${r}${unit}` };
+  if (Number.isFinite(number) && src.charCodeAt(numericStart) === 0x2e /* . */) {
+    const bytes = numericStart === 0 ? `0${src}` : `-0${src.slice(1)}`;
+    return { type: 'Dimension', number, unit, bytes };
   }
   return { type: 'Dimension', number, unit, bytes: src };
 }
@@ -134,6 +141,7 @@ function sniffBuild(text: string): ValueObj {
     const { rgb, alpha } = parseHex(text);
     return makeColorRgb(rgb, alpha, HEX, { node: text });
   }
+
   // Numeric: ONE family (united or unitless — no split).
   if ((c0 >= 48 && c0 <= 57) || c0 === 43 || c0 === 45 || c0 === 46) {
     if (NUM_RE.test(text)) {
@@ -143,6 +151,7 @@ function sniffBuild(text: string): ValueObj {
   if (text === 'true' || text === 'false') {
     return { type: 'Bool', value: text === 'true', bytes: text };
   }
+
   // A bare identifier that names a CSS color materializes as a Color.
   if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(text)) {
     const named = namedColor(text);

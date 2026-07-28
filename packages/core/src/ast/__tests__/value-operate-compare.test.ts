@@ -47,8 +47,11 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
     expect(compare('>', dim(3, 'px'), dim(2, 'px'))).toBe(true);
     expect(compare('>', dim(2), dim(1))).toBe(true);
     expect(compare('>=', dim(5, 'px'), dim(5, 'px'))).toBe(true);
-    // Less accepts the historical `=<` spelling as the same inclusive
-    // less-than comparison; the AST intentionally retains that authored token.
+
+    /*
+     * Less accepts the historical `=<` spelling as the same inclusive
+     * less-than comparison; the AST intentionally retains that authored token.
+     */
     expect(compare('=<', dim(5, 'px'), dim(5, 'px'))).toBe(true);
     expect(compare('=<', dim(4, 'px'), dim(5, 'px'))).toBe(true);
     expect(compare('=<', dim(6, 'px'), dim(5, 'px'))).toBe(false);
@@ -59,6 +62,7 @@ describe('compare — dimension unit reconciliation (vs less@4.6.3)', () => {
     expect(compare('>', makeKeyword('foo'), makeKeyword('bar'))).toBe(false);
     expect(compare('<', makeKeyword('foo'), makeKeyword('bar'))).toBe(false);
     expect(compare('>', makeQuoted('abc', '"', false), makeQuoted('abd', '"', false))).toBe(false);
+
     // equality on non-dimensions still holds (byte match), and self-order is reflexive.
     expect(compare('=', makeKeyword('foo'), makeKeyword('foo'))).toBe(true);
     expect(compare('=', makeKeyword('foo'), makeKeyword('bar'))).toBe(false);

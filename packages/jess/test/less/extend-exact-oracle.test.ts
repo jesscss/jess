@@ -23,7 +23,8 @@ describe('Less exact-extend oracle routing', () => {
 
   for (const rel of [
     'tests-unit/extend/extend.less',
-    'tests-unit/extend-exact/extend-exact.less'
+    'tests-unit/extend-exact/extend-exact.less',
+    'tests-unit/extend-selector/extend-selector.less'
   ]) {
     it(`renders ${rel} byte-identically through the public AST-v2 route`, async () => {
       const lessPath = path.join(testData, rel);

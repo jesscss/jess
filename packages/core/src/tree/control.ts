@@ -50,12 +50,14 @@ function makeDirectiveRulesPublic(rules: Rules<any>) {
   };
 }
 
-// The control node IS its own body (like the canonical Mixin/Ruleset): parent its
-// body children to `this`. `new If/For/While` (parser + `makeLoop`) does not run
-// the factory `parentChildren`, so without this the children stay parented to the
-// discarded `value.rules` wrapper. Owning them is what lets a per-iteration THIN
-// surface (`sourceNode` → the control node) recognize the shared children as reused
-// source children and skip re-adopting them (rules.ts `_storePreparedRegistrationNode`).
+/*
+ * The control node IS its own body (like the canonical Mixin/Ruleset): parent its
+ * body children to `this`. `new If/For/While` (parser + `makeLoop`) does not run
+ * the factory `parentChildren`, so without this the children stay parented to the
+ * discarded `value.rules` wrapper. Owning them is what lets a per-iteration THIN
+ * surface (`sourceNode` → the control node) recognize the shared children as reused
+ * source children and skip re-adopting them (rules.ts `_storePreparedRegistrationNode`).
+ */
 function ownControlBodyChildren(owner: Rules<any>): void {
   const children = owner.rules;
   for (let i = 0; i < children.length; i++) {
@@ -132,11 +134,13 @@ function createDerivedIterationRulesSurface(
   output.scopeFrame = undefined;
   if (childNodes) {
     if (shareChildren) {
-      // THIN SURFACE: share the canonical body children WITHOUT adopting them
-      // (direct array push, like `Rules.derive`) so their `.parent` is never
-      // rewritten to this ephemeral per-iteration surface. The caller sets
-      // `output.sourceNode` to the loop body so shared children re-point their
-      // scope frame to this surface via §4. Flags come from `.inherit()` above.
+      /*
+       * THIN SURFACE: share the canonical body children WITHOUT adopting them
+       * (direct array push, like `Rules.derive`) so their `.parent` is never
+       * rewritten to this ephemeral per-iteration surface. The caller sets
+       * `output.sourceNode` to the loop body so shared children re-point their
+       * scope frame to this surface via §4. Flags come from `.inherit()` above.
+       */
       for (const childNode of childNodes) {
         output.rules.push(childNode);
         if (hasCarriedMergeOutputSurface(childNode)) {
@@ -144,8 +148,10 @@ function createDerivedIterationRulesSurface(
         }
       }
     } else {
-      // COPY path ($while): the children are per-iteration COPIES owned by this
-      // surface — adopt + register them normally.
+      /*
+       * COPY path ($while): the children are per-iteration COPIES owned by this
+       * surface — adopt + register them normally.
+       */
       for (const childNode of childNodes) {
         output.push(childNode);
       }
@@ -206,18 +212,20 @@ function cloneForIterable(iterable: ForIterable, cloneFn: (n: Node) => Node): Fo
   };
 }
 
-// `share` = THIN surface: share the canonical body children (a per-iteration
-// surface with `sourceNode` → the loop body, so shared children re-point their
-// scope frame via §4). Used by `$for`/`$if`, where each iteration/branch is an
-// independent evaluation — no intra-loop state carried on the body.
-//
-// `share=false` = COPY per iteration. Used by `$while`, which carries mutable
-// state ACROSS iterations (`$while` body reads and writes the same vars, e.g.
-// `i = i + 1` + `tick: @i`). A stateful iteration genuinely needs an isolated body
-// so one iteration's evaluated-reference/value state cannot leak into the next;
-// sharing the body would make the counter read a stale value. The per-iteration
-// copy already reuses scalar leaves (copyWithReusableLeaves only shallow-copies
-// containers), so its cost is bounded.
+/*
+ * `share` = THIN surface: share the canonical body children (a per-iteration
+ * surface with `sourceNode` → the loop body, so shared children re-point their
+ * scope frame via §4). Used by `$for`/`$if`, where each iteration/branch is an
+ * independent evaluation — no intra-loop state carried on the body.
+ *
+ * `share=false` = COPY per iteration. Used by `$while`, which carries mutable
+ * state ACROSS iterations (`$while` body reads and writes the same vars, e.g.
+ * `i = i + 1` + `tick: @i`). A stateful iteration genuinely needs an isolated body
+ * so one iteration's evaluated-reference/value state cannot leak into the next;
+ * sharing the body would make the counter read a stale value. The per-iteration
+ * copy already reuses scalar leaves (copyWithReusableLeaves only shallow-copies
+ * containers), so its cost is bounded.
+ */
 function createIterationEvalSurface(sourceRules: Rules<any>, share = true): Rules {
   const iterationRules = createDerivedIterationRulesSurface(
     sourceRules,
@@ -235,31 +243,34 @@ function createIterationEvalSurface(sourceRules: Rules<any>, share = true): Rule
 }
 
 function createWhileStateSurface(sourceRules: Rules<any>, context: Context): Rules {
-  const stateRules = createDerivedIterationRulesSurface(
-    sourceRules
-  );
+  const stateRules = createDerivedIterationRulesSurface(sourceRules);
   const parentFrame: ScopeFrame | undefined = isNode(context.rulesContext, N.Rules)
     ? context.rulesContext.getScopeFrame()
     : undefined;
-  // Stage 3 / R3: build a COVERED frame (declarationsCovered=true) like the $for
-  // iteration surface. State + iteration frames are the ONLY remaining
-  // `declarationsCovered=false` scopes in the suite; an uncovered frame forces
-  // variable lookup down the `direct-rules-lookup` fallback (which drops the owner
-  // frame). The state surface carries live loop state (synced via syncWhileState)
-  // and body vardecls register during eval, so a covered empty index is correct —
-  // exactly as $for already does (createForIterationSurface passes `true`).
+
+  /*
+   * Stage 3 / R3: build a COVERED frame (declarationsCovered=true) like the $for
+   * iteration surface. State + iteration frames are the ONLY remaining
+   * `declarationsCovered=false` scopes in the suite; an uncovered frame forces
+   * variable lookup down the `direct-rules-lookup` fallback (which drops the owner
+   * frame). The state surface carries live loop state (synced via syncWhileState)
+   * and body vardecls register during eval, so a covered empty index is correct —
+   * exactly as $for already does (createForIterationSurface passes `true`).
+   */
   stateRules.scopeFrame = buildScopeFrame(undefined, stateRules, parentFrame, new Map(), undefined, true);
   return stateRules;
 }
 
 function createWhileIterationSurface(sourceRules: Rules<any>, stateRules: Rules): Rules {
-  // THIN surface (share the body, like $for/$if). Iteration frame's parent is the
-  // state frame; the body's `i: i+1` SHADOWS the incoming state `i` and its RHS `@i`
-  // reads the parent (previous) value. A later body reference (`tick: @i`) resolves
-  // to the shadowing body vardecl (nearest scope, last-wins) = this iteration's new
-  // value. syncWhileState commits the body vardecl into the state slot at iteration
-  // end; the slot is anchored on the state surface (not the vardecl) so the recursion
-  // guard never blocks it while the body vardecl is mid-evaluation.
+  /*
+   * THIN surface (share the body, like $for/$if). Iteration frame's parent is the
+   * state frame; the body's `i: i+1` SHADOWS the incoming state `i` and its RHS `@i`
+   * reads the parent (previous) value. A later body reference (`tick: @i`) resolves
+   * to the shadowing body vardecl (nearest scope, last-wins) = this iteration's new
+   * value. syncWhileState commits the body vardecl into the state slot at iteration
+   * end; the slot is anchored on the state surface (not the vardecl) so the recursion
+   * guard never blocks it while the body vardecl is mid-evaluation.
+   */
   const stateFrame = stateRules.getScopeFrame();
   const iterationRules = createIterationEvalSurface(sourceRules, true);
   iterationRules.scopeFrame = buildScopeFrame(undefined, iterationRules, stateFrame, undefined, undefined, true);
@@ -283,16 +294,19 @@ async function syncWhileState(
       continue;
     }
     const value = await getBindingCellValue(last.cell).eval(context);
-    // The state live slot's `sourceNode` MUST be distinct from the body vardecl
-    // (`last.sourceNode`). A self-referential counter (`i: i + 1`) evaluates the
-    // body vardecl with that vardecl in `context.searchScope` (the recursion
-    // guard). When a later body reference (`tick: @i`) resolves to the vardecl
-    // and re-evaluates `i + 1`, the inner `@i` walks up to this state slot for the
-    // PREVIOUS value — if the slot carried the vardecl as its sourceNode the guard
-    // would block it too, sending the read past the state to the root (rendering a
-    // stale `1,1,1`). Anchoring the slot on the state surface keeps it always
-    // readable while the body vardecl is being evaluated. The value is already
-    // fully evaluated, so it can never itself recurse.
+
+    /*
+     * The state live slot's `sourceNode` MUST be distinct from the body vardecl
+     * (`last.sourceNode`). A self-referential counter (`i: i + 1`) evaluates the
+     * body vardecl with that vardecl in `context.searchScope` (the recursion
+     * guard). When a later body reference (`tick: @i`) resolves to the vardecl
+     * and re-evaluates `i + 1`, the inner `@i` walks up to this state slot for the
+     * PREVIOUS value — if the slot carried the vardecl as its sourceNode the guard
+     * would block it too, sending the read past the state to the root (rendering a
+     * stale `1,1,1`). Anchoring the slot on the state surface keeps it always
+     * readable while the body vardecl is being evaluated. The value is already
+     * fully evaluated, so it can never itself recurse.
+     */
     setScopeFrameLiveBinding(stateFrame, name, {
       value,
       sourceNode: stateRules,
@@ -496,7 +510,6 @@ export class If extends Rules<IfValue> {
   declare readonly rules: Node[];
 
   constructor(value: IfValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
     super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
     this.else = value.else;
@@ -507,8 +520,11 @@ export class If extends Rules<IfValue> {
       makeDirectiveRulesPublic(this.else);
     }
     makeDirectiveRulesPublic(this);
-    // R2 single-frame: the If IS its own body (no `_passedRulesWrapper`) — own the
-    // body children so per-iteration thin surfaces recognize them as reused.
+
+    /*
+     * R2 single-frame: the If IS its own body (no `_passedRulesWrapper`) — own the
+     * body children so per-iteration thin surfaces recognize them as reused.
+     */
     ownControlBodyChildren(this);
   }
 
@@ -621,7 +637,6 @@ export class For extends Rules<StructuredLoopValue> {
   declare readonly rules: Node[];
 
   constructor(value: StructuredLoopValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
     super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.pattern = value.pattern;
     this.iterable = value.iterable;
@@ -639,12 +654,18 @@ export class For extends Rules<StructuredLoopValue> {
       }
     }
     makeDirectiveRulesPublic(this);
-    // R2 single-frame: the For IS its own body (no `_passedRulesWrapper`) — own the
-    // body children so per-iteration thin surfaces recognize them as reused.
+
+    /*
+     * R2 single-frame: the For IS its own body (no `_passedRulesWrapper`) — own the
+     * body children so per-iteration thin surfaces recognize them as reused.
+     */
     ownControlBodyChildren(this);
-    // Carry function bindings from a factory-passed rules wrapper so iteration
-    // surfaces can look them up during eval (createIterationEvalSurface reads
-    // this.functionsByName).
+
+    /*
+     * Carry function bindings from a factory-passed rules wrapper so iteration
+     * surfaces can look them up during eval (createIterationEvalSurface reads
+     * this.functionsByName).
+     */
     if (value.rules instanceof Rules && value.rules.functionsByName) {
       for (const [name, fn] of value.rules.functionsByName) {
         this.setFunctionBinding(name, fn);
@@ -652,14 +673,18 @@ export class For extends Rules<StructuredLoopValue> {
     }
   }
 
-  // For carries a structured value (pattern + iterable + body), so the base
-  // Rules.clone — which reconstructs from a bare Node[] — cannot rebuild it.
-  // Clone the structured parts too so the source loop template is not mutated
-  // when a placement clone re-adopts shared binding/iterable nodes.
+  /*
+   * For carries a structured value (pattern + iterable + body), so the base
+   * Rules.clone — which reconstructs from a bare Node[] — cannot rebuild it.
+   * Clone the structured parts too so the source loop template is not mutated
+   * when a placement clone re-adopts shared binding/iterable nodes.
+   */
   override clone(cloneFn?: (n: Node) => Node): this {
-    // Shallow: share the body children; the pattern's binding decls and the
-    // iterable are shallow-cloned (one node each, shared value) because the For
-    // constructor adopts them and must not reparent the source template's nodes.
+    /*
+     * Shallow: share the body children; the pattern's binding decls and the
+     * iterable are shallow-cloned (one node each, shared value) because the For
+     * constructor adopts them and must not reparent the source template's nodes.
+     */
     const mapPart = cloneFn ?? ((n: Node) => n.clone());
     const rules = cloneFn ? this.rules.map(cloneFn) : [...this.rules];
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -863,14 +888,17 @@ export class For extends Rules<StructuredLoopValue> {
           readonly: bindingDecl.options?.readonly
         });
       }
-      // COPY the body children per iteration (reusing scalar leaves —
-      // `copyWithReusableLeaves` only deep-copies containers). Distinct nodes per
-      // iteration are required so the spine's node-keyed resolution (the merge
-      // re-plan's `frameByDecl` WeakMap, the dedup `computeDeclKey`) binds each
-      // iteration's decl to ITS OWN frame — a SHARED node would collapse to one
-      // (last-wins) frame and every iteration would resolve the last binding
-      // (`each(1 2 3, {p+_: @value})` → `1 2 3`, not `3 3 3`). Same discipline as the
-      // eval path's `$while` copy; the reused-leaf copy keeps the cost bounded.
+
+      /*
+       * COPY the body children per iteration (reusing scalar leaves —
+       * `copyWithReusableLeaves` only deep-copies containers). Distinct nodes per
+       * iteration are required so the spine's node-keyed resolution (the merge
+       * re-plan's `frameByDecl` WeakMap, the dedup `computeDeclKey`) binds each
+       * iteration's decl to ITS OWN frame — a SHARED node would collapse to one
+       * (last-wins) frame and every iteration would resolve the last binding
+       * (`each(1 2 3, {p+_: @value})` → `1 2 3`, not `3 3 3`). Same discipline as the
+       * eval path's `$while` copy; the reused-leaf copy keeps the cost bounded.
+       */
       const surface = new Rules(
         this.rules.map(child => copyWithReusableLeaves(child)),
         { ...this.options },
@@ -880,11 +908,14 @@ export class For extends Rules<StructuredLoopValue> {
       surface.sourceNode = this.sourceNode ?? this;
       makeDirectiveRulesPublic(surface);
       surface.scopeFrame = buildScopeFrame(undefined, surface, parentFrame, liveSlots, undefined, true);
-      // Prepare registration so an INTERPOLATED declaration NAME (`item-@{value}:`)
-      // resolves against this iteration's frame — the name identity is resolved in
-      // `prepareRegistration` (`_prepareDeclarationNameIdentity`), NOT in `Declaration.
-      // evalNode` (value-only), so the spine leaf emit alone leaves it a placeholder.
-      // Mirrors the eval path's `createForIterationSurface` (which also prepares).
+
+      /*
+       * Prepare registration so an INTERPOLATED declaration NAME (`item-@{value}:`)
+       * resolves against this iteration's frame — the name identity is resolved in
+       * `prepareRegistration` (`_prepareDeclarationNameIdentity`), NOT in `Declaration.
+       * evalNode` (value-only), so the spine leaf emit alone leaves it a placeholder.
+       * Mirrors the eval path's `createForIterationSurface` (which also prepares).
+       */
       const prepared = await surface.prepareRegistration(context);
       surfaces.push(prepared);
       counter++;
@@ -908,14 +939,16 @@ export class While extends Rules<WhileValue> {
   declare readonly rules: Node[];
 
   constructor(value: WhileValue, options?: NodeOptions, location?: NodeLocation, treeContext?: Context['treeContext']) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- NodeLocation is LocationInfo | []; parsers always pass a full 6-element tuple or undefined.
     super(value.rules, options, location as LocationInfo | undefined, treeContext);
     this.condition = value.condition;
     this.addFlags(F_VISIBLE, F_NON_STATIC);
     this.adopt(this.condition);
     makeDirectiveRulesPublic(this);
-    // R2 single-frame: the While IS its own body (no `_passedRulesWrapper`) — own the
-    // body children so per-iteration thin surfaces recognize them as reused.
+
+    /*
+     * R2 single-frame: the While IS its own body (no `_passedRulesWrapper`) — own the
+     * body children so per-iteration thin surfaces recognize them as reused.
+     */
     ownControlBodyChildren(this);
   }
 
@@ -1009,9 +1042,11 @@ export class While extends Rules<WhileValue> {
         }
         let iterationRules = createWhileIterationSurface(originalRules, stateRules);
         if (hasIterationStateMutation(originalRules)) {
-          // Source-order EVAL (not prepareRegistration): a self-referential state
-          // vardecl (`i: i + 1`) must resolve its RHS `@i` to the incoming state
-          // (live slot) BEFORE the decl registers, matching evalNode.
+          /*
+           * Source-order EVAL (not prepareRegistration): a self-referential state
+           * vardecl (`i: i + 1`) must resolve its RHS `@i` to the incoming state
+           * (live slot) BEFORE the decl registers, matching evalNode.
+           */
           const evaluated = await iterationRules.eval(context);
           if (!(evaluated instanceof Rules)) {
             throwInvalidWhileIterationRegistrationPrep();

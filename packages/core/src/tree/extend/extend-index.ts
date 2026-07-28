@@ -3,7 +3,7 @@
  * ============================================================
  *
  * Built PARALLEL to `extendSelector` (extend.ts) and validated against it as an
- * ORACLE by a differential test. See `docs/future/core-architecture/EXTEND-INDEX-DESIGN.md`.
+ * ORACLE by a differential test. See `docs/architecture/core/archive/EXTEND-INDEX-DESIGN.md`.
  *
  * THESIS: extend is a term-rewriting system `find → extendWith` over a selector IR.
  * The walk (`extendSelector`) is subject-driven (N×M: for each subject test each target).
@@ -55,10 +55,13 @@ type ExtendOutput = ReturnType<typeof extendSelector>;
 
 type Atom =
   | { kind: 'id'; sym: number; node: Selector | string; raw: string }
-  // A pseudo carrying a selector argument: `:is(...)`, `:not(...)`, `:where(...)`, `:has(...)`.
-  // `pseudoName` distinguishes `:is` (the ONLY graft that boundary-crosses into an outer compound
-  // match — design line 94) from the rest (recursion-only). `kind:'is'` is kept as the tag for
-  // back-compat with the delegating engine's discovery paths (reachableSyms/matchSeqInSeq).
+
+  /*
+   * A pseudo carrying a selector argument: `:is(...)`, `:not(...)`, `:where(...)`, `:has(...)`.
+   * `pseudoName` distinguishes `:is` (the ONLY graft that boundary-crosses into an outer compound
+   * match — design line 94) from the rest (recursion-only). `kind:'is'` is kept as the tag for
+   * back-compat with the delegating engine's discovery paths (reachableSyms/matchSeqInSeq).
+   */
   | { kind: 'is'; sel: IrSel; node: PseudoSelector; pseudoName: string }
   | { kind: 'amp'; node: Ampersand; resolved: IrSel | null };
 
@@ -74,6 +77,7 @@ function isSelectorNode(value: unknown): value is Selector {
 
 interface IrCompound {
   atoms: Atom[];
+
   /** interned simple-id symbols present in this compound (excludes Is/amp constructor atoms) */
   syms: Set<number>;
   node: CompoundSelector | Selector | string;
@@ -174,6 +178,7 @@ function liftSeq(node: Selector, syms: SymbolTable): IrSeq {
     }
     return steps;
   }
+
   // single compound / simple selector => one-step seq
   return [{ comb: '', compound: liftCompound(node, syms) }];
 }
@@ -238,9 +243,11 @@ class CompoundSetTrie {
 function reachableSyms(c: IrCompound): Set<number> {
   const out = new Set<number>(c.syms);
   for (const a of c.atoms) {
-    // Only `:is()` boundary-crosses — a find can match THROUGH an `:is` graft into an outer
-    // compound match. `:not`/`:where`/`:has` are recursion-only (extend recurses INTO their arg
-    // but a find does not "reach through" them), so they must NOT contribute reachable syms.
+    /*
+     * Only `:is()` boundary-crosses — a find can match THROUGH an `:is` graft into an outer
+     * compound match. `:not`/`:where`/`:has` are recursion-only (extend recurses INTO their arg
+     * but a find does not "reach through" them), so they must NOT contribute reachable syms.
+     */
     if (a.kind === 'is' && a.pseudoName === ':is') {
       for (const branch of a.sel.branches) {
         if (branch.length >= 1) {
@@ -360,8 +367,10 @@ function matchSeqInSeq(targetSeq: IrSeq, findSeq: IrSeq): boolean {
     return false;
   }
 
-  // Seed candidate positions via the Set-Trie: index the find head compound, then query
-  // every target compound for a subset hit. For P===1 the seeded positions ARE the answer.
+  /*
+   * Seed candidate positions via the Set-Trie: index the find head compound, then query
+   * every target compound for a subset hit. For P===1 the seeded positions ARE the answer.
+   */
   const headTrie = new CompoundSetTrie();
   headTrie.add(findSeq[0]!.compound.syms, 0);
   if (compoundHasConstructorAtom(findSeq[0]!.compound)) {
@@ -377,9 +386,11 @@ function matchSeqInSeq(targetSeq: IrSeq, findSeq: IrSeq): boolean {
     return seedPositions.length > 0;
   }
 
-  // P >= 2: from each seeded start offset, extend the match rightward, aligning
-  // combinators. Require each find step's compound ⊆ target compound and the find step's
-  // combinator to equal the target step's combinator (for steps > 0).
+  /*
+   * P >= 2: from each seeded start offset, extend the match rightward, aligning
+   * combinators. Require each find step's compound ⊆ target compound and the find step's
+   * combinator to equal the target step's combinator (for steps > 0).
+   */
   for (const start of seedPositions) {
     let ok = true;
     for (let k = 0; k < P; k++) {
@@ -413,15 +424,20 @@ function matchSeqInSeq(targetSeq: IrSeq, findSeq: IrSeq): boolean {
  * this is the exact "subset in a compound" test.
  */
 function compoundSubset(find: IrCompound, target: IrCompound): boolean {
-  // A find with its own constructor atom (:is / &) is not decided by the pure symbol
-  // path — the caller routes it to the reused oracle rewrite.
+  /*
+   * A find with its own constructor atom (:is / &) is not decided by the pure symbol
+   * path — the caller routes it to the reused oracle rewrite.
+   */
   if (compoundHasConstructorAtom(find)) {
     return false;
   }
-  // When BOTH compounds are plain (no `:is`/`&` graft), containment is MULTISET: a find atom that
-  // repeats (`.e.e`) needs the target to carry it at least as many times. The oracle treats an
-  // internal find duplicate as multiset (`.e` find `.e.e` → NOT_FOUND; `.e.e` find `.e.e` → match).
-  // A pure set test would let `.e.e` "match" `.e`, producing a spurious location.
+
+  /*
+   * When BOTH compounds are plain (no `:is`/`&` graft), containment is MULTISET: a find atom that
+   * repeats (`.e.e`) needs the target to carry it at least as many times. The oracle treats an
+   * internal find duplicate as multiset (`.e` find `.e.e` → NOT_FOUND; `.e.e` find `.e.e` → match).
+   * A pure set test would let `.e.e` "match" `.e`, producing a spurious location.
+   */
   if (!compoundHasConstructorAtom(target)) {
     const targetCounts = new Map<number, number>();
     for (const a of target.atoms) {
@@ -442,6 +458,7 @@ function compoundSubset(find: IrCompound, target: IrCompound): boolean {
     }
     return true;
   }
+
   // Target-side `:is()`/`&` are grafted via reachableSyms (the :is() seam) — set-based reach.
   const available = reachableSyms(target);
   for (const s of find.syms) {
@@ -496,6 +513,7 @@ type AmpClass = 'crossing' | 'child-only' | 'none';
 
 interface AmpVerdict {
   cls: AmpClass;
+
   /** true when a detected crossing collapses to NOT_FOUND (parent-only / whole-location gate). */
   gatedNotFound: boolean;
 }
@@ -525,6 +543,7 @@ function resolvedFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq 
     return null;
   }
   const parentBranches = ampAtom.resolved.branches;
+
   // The single-parent common case (a resolved parent that is not itself an OR).
   if (parentBranches.length !== 1) {
     return null; // list-parent grafts are constructed by the reused oracle path
@@ -538,15 +557,19 @@ function resolvedFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq 
     }
     const otherAtoms = seq[i]!.compound.atoms.filter((_, j) => j !== at.atom);
     if (otherAtoms.length === 0) {
-      // amp is its OWN step (implicit `& .b`): splice parent's steps in at this position,
-      // dropping the amp step's own leading combinator; parent keeps its head-comb.
+      /*
+       * amp is its OWN step (implicit `& .b`): splice parent's steps in at this position,
+       * dropping the amp step's own leading combinator; parent keeps its head-comb.
+       */
       for (let p = 0; p < parent.length; p++) {
         const ps = parent[p]!;
         out.push(p === 0 ? { comb: seq[i]!.comb, compound: ps.compound } : ps);
       }
     } else {
-      // amp embedded in a compound: prepend parent's earlier steps, then a merged compound
-      // (parent's LAST compound's syms ∪ the compound's other atoms) at this position.
+      /*
+       * amp embedded in a compound: prepend parent's earlier steps, then a merged compound
+       * (parent's LAST compound's syms ∪ the compound's other atoms) at this position.
+       */
       for (let p = 0; p < parent.length - 1; p++) {
         out.push(p === 0 ? { comb: seq[i]!.comb, compound: parent[p]!.compound } : parent[p]!);
       }
@@ -557,10 +580,13 @@ function resolvedFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq 
           mergedSyms.add(a.sym);
         }
       }
-      // Splice the parent-tail atoms AT the amp's original position (not prepended): the atoms
-      // written LEFT of `&` stay left, those written RIGHT stay right. This keeps distinct-parent
-      // `&&` order faithful (`&(.foo.bar)&(.baz).suffix` → `.foo.bar` then `.baz` then `.suffix`,
-      // NOT `.baz.foo.bar…`). syms are order-free so they're unaffected by the splice position.
+
+      /*
+       * Splice the parent-tail atoms AT the amp's original position (not prepended): the atoms
+       * written LEFT of `&` stay left, those written RIGHT stay right. This keeps distinct-parent
+       * `&&` order faithful (`&(.foo.bar)&(.baz).suffix` → `.foo.bar` then `.baz` then `.suffix`,
+       * NOT `.baz.foo.bar…`). syms are order-free so they're unaffected by the splice position.
+       */
       const before = seq[i]!.compound.atoms.slice(0, at.atom);
       const after = seq[i]!.compound.atoms.slice(at.atom + 1);
       const merged: IrCompound = {
@@ -592,8 +618,10 @@ function emptyFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq {
     }
     const otherAtoms = seq[i]!.compound.atoms.filter((_, j) => j !== at.atom);
     if (otherAtoms.length === 0) {
-      // Whole step was the amp: drop it entirely. When the dropped amp was the head, the new
-      // head step must lose its leading (implicit-space) combinator — fixed up after the loop.
+      /*
+       * Whole step was the amp: drop it entirely. When the dropped amp was the head, the new
+       * head step must lose its leading (implicit-space) combinator — fixed up after the loop.
+       */
       continue;
     }
     const otherSyms = new Set<number>();
@@ -607,6 +635,7 @@ function emptyFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq {
       compound: { atoms: otherAtoms, syms: otherSyms, node: seq[i]!.compound.node, raw: seq[i]!.compound.raw }
     });
   }
+
   // If the head step was a lone amp we dropped, the new head step must lose its leading combinator.
   if (out.length > 0 && at.step === 0 && seq[0]!.compound.atoms.length === 1) {
     out[0] = { comb: '', compound: out[0]!.compound };
@@ -637,8 +666,10 @@ function classifyAmpersand(
   const irSubject = liftSel(subject, syms);
   const irFind = liftSel(find, syms);
 
-  // Only the single-branch subject/find common case is modeled here; OR-subjects with amp
-  // are deferred (cls 'none').
+  /*
+   * Only the single-branch subject/find common case is modeled here; OR-subjects with amp
+   * are deferred (cls 'none').
+   */
   if (irSubject.branches.length !== 1) {
     return { cls: 'none', gatedNotFound: false };
   }
@@ -662,10 +693,12 @@ function classifyAmpersand(
   const emptyMatch = seqMatchesFind(empty, irFind);
 
   if (resolvedMatch && !emptyMatch) {
-    // Crossing detected. One decision gate stands (Gate 2, doc-verified): a SIMPLE find that
-    // matches only the parent-grafted (RESOLVED) form collapses to NOT_FOUND — "parent-only".
-    // (The former Gate 1 "relative-partial downgrade" was WITHDRAWN as an invalid-input artifact
-    // — a root-level leading-`>` subject is not a reachable shape; see EXTEND-INDEX-DESIGN.md.)
+    /*
+     * Crossing detected. One decision gate stands (Gate 2, doc-verified): a SIMPLE find that
+     * matches only the parent-grafted (RESOLVED) form collapses to NOT_FOUND — "parent-only".
+     * (The former Gate 1 "relative-partial downgrade" was WITHDRAWN as an invalid-input artifact
+     * — a root-level leading-`>` subject is not a reachable shape; see EXTEND-INDEX-DESIGN.md.)
+     */
     const findIsSimple = isNode(find, N.SimpleSelector);
     if (!partial && findIsSimple) {
       return { cls: 'crossing', gatedNotFound: true };
@@ -699,31 +732,40 @@ export function extendByIndex(
     return targetSel;
   }
 
-  // `&` SEAM: discovery OWNS the classification. When the subject carries a resolved amp we
-  // reproduce the oracle's two-probe differential + decision gates HERE; a misclassification
-  // diverges from the oracle. Construction (hoist / in-place fold) is reused from extend.ts.
+  /*
+   * `&` SEAM: discovery OWNS the classification. When the subject carries a resolved amp we
+   * reproduce the oracle's two-probe differential + decision gates HERE; a misclassification
+   * diverges from the oracle. Construction (hoist / in-place fold) is reused from extend.ts.
+   */
   if (hasAmpersand(targetSel)) {
     const verdict = classifyAmpersand(targetSel, find, partial);
     if (verdict.cls === 'crossing' || verdict.cls === 'child-only') {
       if (verdict.gatedNotFound) {
         return 'NOT_FOUND';
       }
-      // crossing (→ hoist), gated-in-place, and child-only all resolve to a real extend; the
-      // reused fold + `handleAmpersandBoundaryCrossing` build the exact (hoisted/in-place) output.
+
+      /*
+       * crossing (→ hoist), gated-in-place, and child-only all resolve to a real extend; the
+       * reused fold + `handleAmpersandBoundaryCrossing` build the exact (hoisted/in-place) output.
+       */
       return extendSelector(target, find, extendWith, partial);
     }
     if (verdict.cls === 'none') {
-      // We could not authoritatively classify (list-parent graft, amp-in-`:is()`, unmodeled
-      // shape). Fall back to the oracle for BOTH the decision and construction.
+      /*
+       * We could not authoritatively classify (list-parent graft, amp-in-`:is()`, unmodeled
+       * shape). Fall back to the oracle for BOTH the decision and construction.
+       */
       return extendSelector(target, find, extendWith, partial);
     }
   }
 
   const discovery = discover(targetSel, find, partial);
   if (!discovery.matched) {
-    // Discovery says no match. With no `&` in play the index is AUTHORITATIVE: `:is()`
-    // grafting is modeled soundly in reachableSyms. A find carrying its own constructor
-    // atom is delegated (extendWith `:is()` extraction lives in the oracle fold).
+    /*
+     * Discovery says no match. With no `&` in play the index is AUTHORITATIVE: `:is()`
+     * grafting is modeled soundly in reachableSyms. A find carrying its own constructor
+     * atom is delegated (extendWith `:is()` extraction lives in the oracle fold).
+     */
     if (!hasConstructorAtoms(find)) {
       return 'NOT_FOUND';
     }
@@ -821,11 +863,15 @@ function partialWrapMayConflict(target: Selector, find: Selector, extendWith: Se
   if (extTags.size === 0 && extIds.size === 0) {
     return false; // extendWith has no element/id → no conflict possible (matches oracle precondition)
   }
-  // Combined element/id set across the whole target + extendWith. If wrapping would place >1
-  // distinct element or >1 distinct id into one compound context, the oracle refuses.
+
+  /*
+   * Combined element/id set across the whole target + extendWith. If wrapping would place >1
+   * distinct element or >1 distinct id into one compound context, the oracle refuses.
+   */
   const tags = new Set(extTags);
   const ids = new Set(extIds);
   collectTagsAndIds(target, tags, ids);
+
   // Conservative gate: conflict when the combined context would hold >1 distinct element type or id.
   void find;
   return tags.size > 1 || ids.size > 1;
@@ -911,6 +957,7 @@ function extendFindSideGraftWholeMatch(
   for (const b of branches) {
     if (String(b.valueOf()) === findStr) {
       anyMatch = true;
+
       // The matched branch would need the oracle's single-arm-`:is` unwrap on output → not built.
       if (nodeHasSingleArmIs(b)) {
         return UNSUPPORTED;
@@ -918,8 +965,10 @@ function extendFindSideGraftWholeMatch(
     }
   }
   if (!anyMatch) {
-    // Not a whole-branch match (proper subset / partial-wrap / wholly absent) — defer to the caller's
-    // UNSUPPORTED gate rather than guess NOT_FOUND vs a subset-wrap the own engine does not build.
+    /*
+     * Not a whole-branch match (proper subset / partial-wrap / wholly absent) — defer to the caller's
+     * UNSUPPORTED gate rather than guess NOT_FOUND vs a subset-wrap the own engine does not build.
+     */
     return null;
   }
   const extendBranches = extendWithBranches(extendWith);
@@ -988,10 +1037,13 @@ type MatchedFullAppend = typeof MATCHED_FULL_APPEND;
 interface OwnMatch {
   /** whole branch matched exactly (set-equal AND ordered-count-equal, full span, combinators aligned) */
   full: boolean;
+
   /** start compound indices of every matched span within the target seq */
   starts: number[];
+
   /** number of compounds the find spans (P) */
   span: number;
+
   /**
    * Set when a multi-compound span leaves an unmatched atom remainder in some spanned compound.
    * `wholeSpan` = the span covers positions `0..T-1` (the ENTIRE target seq); then the oracle emits
@@ -1002,8 +1054,10 @@ interface OwnMatch {
    */
   remainderSplit?: {
     wholeSpan: boolean;
+
     /** index in the target seq of the last spanned compound carrying a remainder */
     remStart: number;
+
     /** the first matched span start (span occupies [spanStart .. spanStart+span-1]) */
     spanStart: number;
   };
@@ -1043,10 +1097,13 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
       return UNSUPPORTED;
     }
   }
-  // Any target compound carrying a constructor atom (`:is`/`&`) whose GRAFT the find could
-  // reach needs graft-aware construction the own engine does not build yet. When the find's
-  // symbols only exist inside such a target compound's :is()/graft, or when a matched target
-  // compound has one, we must not silently mis-decide — route to UNSUPPORTED.
+
+  /*
+   * Any target compound carrying a constructor atom (`:is`/`&`) whose GRAFT the find could
+   * reach needs graft-aware construction the own engine does not build yet. When the find's
+   * symbols only exist inside such a target compound's :is()/graft, or when a matched target
+   * compound has one, we must not silently mis-decide — route to UNSUPPORTED.
+   */
   const starts: number[] = [];
   let full = false;
   let unsupported = false;
@@ -1054,6 +1111,7 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
   for (let start = 0; start + P <= T; start++) {
     let ok = true;
     let allFull = true;
+
     // index (in target seq) of the LAST spanned compound with a non-empty atom remainder.
     let lastRemStart = -1;
     for (let k = 0; k < P; k++) {
@@ -1071,8 +1129,11 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
       if (!compoundFullEligible(fs.compound, ts.compound)) {
         allFull = false;
       }
-      // A spanned compound that is a proper SUBSET (deduped syms differ) leaves a remainder —
-      // the oracle's remainder-splitting shape (multi-compound only).
+
+      /*
+       * A spanned compound that is a proper SUBSET (deduped syms differ) leaves a remainder —
+       * the oracle's remainder-splitting shape (multi-compound only).
+       */
       if (fs.compound.syms.size !== ts.compound.syms.size) {
         lastRemStart = start + k;
       }
@@ -1086,13 +1147,15 @@ function locateFind(targetSeq: IrSeq, findSeq: IrSeq): OwnMatch | null | Unsuppo
       }
     }
     if (ok) {
-      // A multi-compound span where a spanned compound is only a PROPER SUBSET of its target
-      // compound triggers the oracle's remainder-splitting shape. Two sub-cases, discriminated by
-      // whether the span is the WHOLE target seq (sibling-split) or a proper substring (`:is`-wrap):
-      //   whole span   `.a>.b.c` f `.a>.b`         → `.a>.b.c,.c.d`         (SIBLING-SPLIT)
-      //   substring    `div+.a.c.b>.y.x` f `.a.b>.x` → `div+:is(.a.c.b>.y.x,.q)` (existing `:is`-wrap)
-      // Both are now built (was UNSUPPORTED). Only the FIRST span is remainder-split; if a later
-      // span also matches we keep the first (the oracle rewrites the first location).
+      /*
+       * A multi-compound span where a spanned compound is only a PROPER SUBSET of its target
+       * compound triggers the oracle's remainder-splitting shape. Two sub-cases, discriminated by
+       * whether the span is the WHOLE target seq (sibling-split) or a proper substring (`:is`-wrap):
+       * whole span   `.a>.b.c` f `.a>.b`         → `.a>.b.c,.c.d`         (SIBLING-SPLIT)
+       * substring    `div+.a.c.b>.y.x` f `.a.b>.x` → `div+:is(.a.c.b>.y.x,.q)` (existing `:is`-wrap)
+       * Both are now built (was UNSUPPORTED). Only the FIRST span is remainder-split; if a later
+       * span also matches we keep the first (the oracle rewrites the first location).
+       */
       if (P >= 2 && lastRemStart !== -1 && !remainderSplit) {
         remainderSplit = { wholeSpan: start === 0 && P === T, remStart: lastRemStart, spanStart: start };
       }
@@ -1193,16 +1256,21 @@ function buildPartialBranch(
 ): Selector | UnsupportedResult {
   const parts: (Selector | string)[] = [];
   if (m.span === 1) {
-    // Single-compound find: wrap the matched atom-slots in EVERY matched compound (`.z + .z`
-    // find `.z` → both `.z` compounds become `:is(.z, …)`; `.foo.foo` find `.foo` → each `.foo`
-    // atom slot wrapped).
+    /*
+     * Single-compound find: wrap the matched atom-slots in EVERY matched compound (`.z + .z`
+     * find `.z` → both `.z` compounds become `:is(.z, …)`; `.foo.foo` find `.foo` → each `.foo`
+     * atom slot wrapped).
+     */
     const matchStarts = new Set(m.starts);
     const findCompound = find[0]!.compound;
     const findSyms = findCompound.syms;
-    // A find compound with an INTERNAL duplicate atom (`.e.e`: 2 atoms, 1 sym) must wrap the two
-    // matched slots as ONE `:is(.e.e, ext)` (oracle: `.e.e.x` f `.e.e` → `:is(.e.e,.dbl).x`), not
-    // one `:is` per slot. The own engine doesn't build the contiguous multi-occurrence wrap — gate
-    // to UNSUPPORTED (fail-loud). Unreached by the real corpus; a wrong per-slot wrap would be worse.
+
+    /*
+     * A find compound with an INTERNAL duplicate atom (`.e.e`: 2 atoms, 1 sym) must wrap the two
+     * matched slots as ONE `:is(.e.e, ext)` (oracle: `.e.e.x` f `.e.e` → `:is(.e.e,.dbl).x`), not
+     * one `:is` per slot. The own engine doesn't build the contiguous multi-occurrence wrap — gate
+     * to UNSUPPORTED (fail-loud). Unreached by the real corpus; a wrong per-slot wrap would be worse.
+     */
     if (findCompound.atoms.length > findSyms.size) {
       return UNSUPPORTED;
     }
@@ -1223,8 +1291,11 @@ function buildPartialBranch(
           wrapAt.add(j);
         }
       }
-      // Multi-atom find (e.g. .a.b within .a.c.b): matched atoms collapse into a SINGLE
-      // :is(<matched-as-compound>, ext); single-atom find wraps each occurrence in place.
+
+      /*
+       * Multi-atom find (e.g. .a.b within .a.c.b): matched atoms collapse into a SINGLE
+       * :is(<matched-as-compound>, ext); single-atom find wraps each occurrence in place.
+       */
       if (findSyms.size > 1) {
         parts.push(buildContiguousWrap(step.compound.atoms, wrapAt, extendBranches));
       } else {
@@ -1233,6 +1304,7 @@ function buildPartialBranch(
     }
     return sel(parts as ComplexSelectorComponent[]);
   }
+
   // Multi-compound span: collapse compounds [start..start+span) into one :is(span, ext).
   const mStart = m.starts[0]!;
   const spanSel = spanSelector(targetSeq, mStart, m.span);
@@ -1253,6 +1325,7 @@ function buildPartialBranch(
       }
       parts.push(isSel);
     }
+
     // compounds inside the span (i>start) are subsumed by the :is()
   }
   return sel(parts as ComplexSelectorComponent[]);
@@ -1298,6 +1371,7 @@ function buildRemainderSiblings(
 ): Selector[] {
   const rs = m.remainderSplit!;
   const remStep = targetSeq[rs.remStart]!;
+
   // Atoms of the remainder compound the aligned find compound did NOT consume.
   const findCompound = findSeq[rs.remStart - rs.spanStart]!.compound;
   const remainderNodes: (Selector | string)[] = [];
@@ -1316,6 +1390,7 @@ function buildRemainderSiblings(
       continue;
     }
     const steps = branchSteps(branches[bi]!);
+
     // Merge the remainder atoms into the HEAD compound of this branch, keeping the rest of the seq.
     const parts: (Selector | string)[] = [];
     for (let i = 0; i < steps.length; i++) {
@@ -1328,21 +1403,17 @@ function buildRemainderSiblings(
         for (const a of step.compound.atoms) {
           headAtoms.push(a.node);
         }
-        parts.push(
-          headAtoms.length === 1 && typeof headAtoms[0] !== 'string'
-            ? headAtoms[0]!
-            : compound(headAtoms as Parameters<typeof compound>[0])
-        );
+        parts.push(headAtoms.length === 1 && typeof headAtoms[0] !== 'string'
+          ? headAtoms[0]!
+          : compound(headAtoms as Parameters<typeof compound>[0]));
       } else {
         const n = compoundNodeOf(step);
         parts.push(typeof n === 'string' ? n : n);
       }
     }
-    out.push(
-      parts.length === 1 && typeof parts[0] !== 'string'
-        ? parts[0]!
-        : sel(parts as ComplexSelectorComponent[])
-    );
+    out.push(parts.length === 1 && typeof parts[0] !== 'string'
+      ? parts[0]!
+      : sel(parts as ComplexSelectorComponent[]));
   }
   return out;
 }
@@ -1482,8 +1553,11 @@ function tryBoundaryFlatten(
   if (!partial) {
     return null; // flatten is a PARTIAL-mode outcome; full mode appends via graftFullCompoundConsume
   }
-  // Lift the find in a FRESH symbol table (its syms are NOT comparable to the target atoms' syms,
-  // which were interned in the caller's table) — so alignment matches by the atom's raw string.
+
+  /*
+   * Lift the find in a FRESH symbol table (its syms are NOT comparable to the target atoms' syms,
+   * which were interned in the caller's table) — so alignment matches by the atom's raw string.
+   */
   const findSeq = liftSeq(find, new SymbolTable());
   if (findSeq.length !== 1) {
     return null;
@@ -1493,8 +1567,10 @@ function tryBoundaryFlatten(
     return null; // a constructor atom on the find side is not this rung
   }
 
-  // Align each find atom (in order) to an increasing target position; a find atom is consumed by a
-  // plain atom (equal raw) or an `:is` graft whose branch head carries that raw. Track the crossing.
+  /*
+   * Align each find atom (in order) to an increasing target position; a find atom is consumed by a
+   * plain atom (equal raw) or an `:is` graft whose branch head carries that raw. Track the crossing.
+   */
   const matchedTargetIdx = new Set<number>();
   let cursor = 0;
   let touchedGraft = false;
@@ -1521,9 +1597,12 @@ function tryBoundaryFlatten(
     matchedTargetIdx.add(placed);
     cursor = placed + 1;
   }
-  // Must genuinely cross an `:is` boundary and span ≥2 distinct target positions (a single-position
-  // match is an ordinary in-graft or plain match handled elsewhere). The crossing may be plain+graft
-  // (`:is(.a,.b).c` f `.a.c`) OR graft+graft (`:is(.a,.b):is(.x,.y)` f `.a.x`).
+
+  /*
+   * Must genuinely cross an `:is` boundary and span ≥2 distinct target positions (a single-position
+   * match is an ordinary in-graft or plain match handled elsewhere). The crossing may be plain+graft
+   * (`:is(.a,.b).c` f `.a.c`) OR graft+graft (`:is(.a,.b):is(.x,.y)` f `.a.x`).
+   */
   if (!touchedGraft || matchedTargetIdx.size < 2) {
     return null;
   }
@@ -1583,9 +1662,11 @@ function buildGraftCompound(
   }
   const isBareCompound = atoms.length === 1;
 
-  // `:is` BOUNDARY-CROSS FLATTEN (partial): a multi-atom find that aligns positionally across the
-  // compound, crossing at least one `:is` graft (plain+graft OR graft+graft). Try first — it wins
-  // over both the plain-wrap and single-graft-host paths when it applies.
+  /*
+   * `:is` BOUNDARY-CROSS FLATTEN (partial): a multi-atom find that aligns positionally across the
+   * compound, crossing at least one `:is` graft (plain+graft OR graft+graft). Try first — it wins
+   * over both the plain-wrap and single-graft-host paths when it applies.
+   */
   if (partial && findSyms.size > 1) {
     const flat = tryBoundaryFlatten(atoms, find, extendWith, partial);
     if (flat !== null) {
@@ -1595,11 +1676,15 @@ function buildGraftCompound(
 
   const findInPlain = [...findSyms].every(s => plainSyms.has(s));
   if (findInPlain) {
-    // Grafts are passengers; the plain atoms carry the match. FULL of the whole compound is the
-    // caller's append job; here we only build the PARTIAL wrap of plain atoms (grafts untouched).
+    /*
+     * Grafts are passengers; the plain atoms carry the match. FULL of the whole compound is the
+     * caller's append job; here we only build the PARTIAL wrap of plain atoms (grafts untouched).
+     */
     if (!partial) {
-      // Full mode: `.info` in `:is(a).info` is a proper SUBSET of the compound → matched but not
-      // extended → the compound stays UNCHANGED (distinct from no-match).
+      /*
+       * Full mode: `.info` in `:is(a).info` is a proper SUBSET of the compound → matched but not
+       * extended → the compound stays UNCHANGED (distinct from no-match).
+       */
       return MATCHED_UNCHANGED;
     }
     const wrapAt = new Set<number>();
@@ -1616,25 +1701,30 @@ function buildGraftCompound(
     return buildCompoundWithWraps(atoms, wrapAt, extendBranches);
   }
 
-  // find reaches into a graft AND requires some plain atom, but did NOT align as a positional
-  // boundary-cross flatten above (e.g. `:is(.a,.b).c` f `.c.a` — the find atoms are out of target
-  // position order). Two outcomes:
-  //   • whole-compound consume (every target atom consumed, order-free) → the compound stays
-  //     unchanged and the caller APPENDS extendWith as a sibling (`:is(.a,.b).c,.d`), full or partial;
-  //   • anything else → not built → UNSUPPORTED.
-  // (The POSITIONAL boundary-cross flatten `:is(.a.c,.d)` was handled by `tryBoundaryFlatten` above.)
+  /*
+   * find reaches into a graft AND requires some plain atom, but did NOT align as a positional
+   * boundary-cross flatten above (e.g. `:is(.a,.b).c` f `.c.a` — the find atoms are out of target
+   * position order). Two outcomes:
+   * • whole-compound consume (every target atom consumed, order-free) → the compound stays
+   * unchanged and the caller APPENDS extendWith as a sibling (`:is(.a,.b).c,.d`), full or partial;
+   * • anything else → not built → UNSUPPORTED.
+   * (The POSITIONAL boundary-cross flatten `:is(.a.c,.d)` was handled by `tryBoundaryFlatten` above.)
+   */
   const needsPlain = [...findSyms].some(s => plainSyms.has(s));
   if (needsPlain) {
     if (graftFullCompoundConsume(atoms, plainSyms, findSyms)) {
       return MATCHED_FULL_APPEND; // whole-compound consume, non-positional → caller appends
     }
-    // Not a whole-compound consume. Two oracle-verified outcomes (probe-derived):
-    //   • the find is NOT satisfiable as a subset (a find sym reaches only a MULTI-atom `:is` branch
-    //     head — `.a` in `.a.z` — or is absent) → the find never matches → NOT_FOUND (return null; the
-    //     caller reports NOT_FOUND when no branch matched). e.g. `:is(.a.z,.b).c` f `.a.c`, `.a.z.c`.
-    //   • the find IS satisfiable as a subset but the compound has leftover atoms (`:is(.a,.b).c.x`
-    //     f `.a.c` → `.x` stranded): FULL mode → subset match, not full → UNCHANGED. (PARTIAL mode
-    //     with a stranded remainder is a remainder-split-through-graft — not built here → UNSUPPORTED.)
+
+    /*
+     * Not a whole-compound consume. Two oracle-verified outcomes (probe-derived):
+     * • the find is NOT satisfiable as a subset (a find sym reaches only a MULTI-atom `:is` branch
+     * head — `.a` in `.a.z` — or is absent) → the find never matches → NOT_FOUND (return null; the
+     * caller reports NOT_FOUND when no branch matched). e.g. `:is(.a.z,.b).c` f `.a.c`, `.a.z.c`.
+     * • the find IS satisfiable as a subset but the compound has leftover atoms (`:is(.a,.b).c.x`
+     * f `.a.c` → `.x` stranded): FULL mode → subset match, not full → UNCHANGED. (PARTIAL mode
+     * with a stranded remainder is a remainder-split-through-graft — not built here → UNSUPPORTED.)
+     */
     if (!graftCompoundSubsetSatisfiable(atoms, findSyms)) {
       return null; // partial-of-branch / absent find sym → NOT_FOUND at the caller
     }
@@ -1645,9 +1735,11 @@ function buildGraftCompound(
   }
   let hostIdx = -1;
   if (isBareCompound && graftAtomIdx.length === 1) {
-    // The whole compound IS a single graft (`:is(...)`, `:not(...)`): recurse into it and let the
-    // recursion decide match — the find may live anywhere inside (not just a branch head), so we
-    // do NOT gate on head-reachableSyms here.
+    /*
+     * The whole compound IS a single graft (`:is(...)`, `:not(...)`): recurse into it and let the
+     * recursion decide match — the find may live anywhere inside (not just a branch head), so we
+     * do NOT gate on head-reachableSyms here.
+     */
     hostIdx = graftAtomIdx[0]!;
   } else {
     for (const gi of graftAtomIdx) {
@@ -1668,9 +1760,11 @@ function buildGraftCompound(
     return null; // no graft hosts the find
   }
 
-  // FULL mode, find reaches a graft INSIDE a larger compound (`.x:is(.a,.b)` find `.a`) → the graft
-  // reach was verified above (hostIdx via reachableSymsOfGraft), so this is a genuine subset match,
-  // not full → the compound stays unchanged.
+  /*
+   * FULL mode, find reaches a graft INSIDE a larger compound (`.x:is(.a,.b)` find `.a`) → the graft
+   * reach was verified above (hostIdx via reachableSymsOfGraft), so this is a genuine subset match,
+   * not full → the compound stays unchanged.
+   */
   if (!partial && !isBareCompound) {
     return MATCHED_UNCHANGED;
   }
@@ -1686,13 +1780,17 @@ function buildGraftCompound(
   if (rebuilt === null) {
     return null; // the find does not actually match inside the bare graft → no match
   }
-  // FULL mode, bare `:is` graft that is only ONE compound of a MULTI-compound seq (`.aa :is(.dd,.ee)`
-  // / `.aa>:is(.dd,.ee)` find `.dd`): the find reaches the graft (rebuilt is non-null) but it is NOT
-  // the whole selector, so a FULL match cannot fire — the compound stays unchanged; only PARTIAL
-  // wraps it in place. A bare `:is` that IS the whole selector (`:is(.dd,.ee)` f `.dd`) appends below.
+
+  /*
+   * FULL mode, bare `:is` graft that is only ONE compound of a MULTI-compound seq (`.aa :is(.dd,.ee)`
+   * / `.aa>:is(.dd,.ee)` find `.dd`): the find reaches the graft (rebuilt is non-null) but it is NOT
+   * the whole selector, so a FULL match cannot fire — the compound stays unchanged; only PARTIAL
+   * wraps it in place. A bare `:is` that IS the whole selector (`:is(.dd,.ee)` f `.dd`) appends below.
+   */
   if (!partial && !wholeSelector) {
     return MATCHED_UNCHANGED;
   }
+
   // Reassemble the compound with the rewritten graft in place.
   if (isBareCompound) {
     return rebuilt;
@@ -1751,9 +1849,11 @@ function wholeBranchSymsOfGraft(g: Extract<Atom, { kind: 'is' }>): Set<number> {
 function reachableSymsOfGraft(g: Extract<Atom, { kind: 'is' }>): Set<number> {
   const out = new Set<number>();
   if (g.pseudoName !== ':is') {
-    // :not/:where/:has do not reach for OUTER matching, but the find can still be extended INTO
-    // them (recursion). For hosting decisions we still need to know if the find lives inside, so
-    // union the inner branch head syms here (used only to route recursion, not outer reachability).
+    /*
+     * :not/:where/:has do not reach for OUTER matching, but the find can still be extended INTO
+     * them (recursion). For hosting decisions we still need to know if the find lives inside, so
+     * union the inner branch head syms here (used only to route recursion, not outer reachability).
+     */
     for (const branch of g.sel.branches) {
       if (branch.length >= 1) {
         for (const s of reachableSyms(branch[0]!.compound)) {
@@ -1796,8 +1896,10 @@ function graftFullCompoundConsume(
         return false;
       }
     } else if (a.kind === 'is' && a.pseudoName === ':is') {
-      // A whole-compound consume through `:is` requires the find sym to equal a COMPLETE single-atom
-      // `:is` branch (not a partial-of-a-branch — `.a` inside branch `.a.z` does NOT consume).
+      /*
+       * A whole-compound consume through `:is` requires the find sym to equal a COMPLETE single-atom
+       * `:is` branch (not a partial-of-a-branch — `.a` inside branch `.a.z` does NOT consume).
+       */
       const wholeBranchSyms = wholeBranchSymsOfGraft(a);
       let consumed = -1;
       for (const s of remaining) {
@@ -1853,10 +1955,13 @@ function graftCompoundSubsetSatisfiable(atoms: Atom[], findSyms: Set<number>): b
  */
 interface GraftBranchResult {
   node: Selector;
+
   /** an extend was actually applied (rewrite produced) */
   effective: boolean;
+
   /** a match location was found (even if full-mode-subset → unchanged) */
   found: boolean;
+
   /** a whole-compound full match through an `:is` boundary → caller appends extendWith */
   appendFull: boolean;
 }
@@ -1881,8 +1986,10 @@ function multiCompoundGraftWholeSpanFull(targetSeq: IrSeq, findSeq: IrSeq): bool
       return false;
     }
     if (compoundHasGraftAtom(tc.compound)) {
-      // The find compound must be a single plain atom equal to a WHOLE bare `:is` branch, consuming
-      // the entire target compound (so the compound stays unchanged and we merely append).
+      /*
+       * The find compound must be a single plain atom equal to a WHOLE bare `:is` branch, consuming
+       * the entire target compound (so the compound stays unchanged and we merely append).
+       */
       const fa = fc.compound.atoms;
       if (fa.length !== 1 || fa[0]!.kind !== 'id') {
         return false;
@@ -1908,15 +2015,17 @@ function buildGraftBranch(
   partial: boolean
 ): GraftBranchResult | UnsupportedResult {
   if (findSeq.length !== 1) {
-    // MULTI-COMPOUND find against a graft-bearing target branch. The own engine builds ONLY the
-    // clean whole-span side-by-side match (rung 4, class 4): the find spans the WHOLE target seq,
-    // each find compound FULLY consumes its aligned target compound (a plain compound multiset-equal,
-    // or a BARE `:is` graft compound whose whole branch the single find atom equals), and combinators
-    // match. That is a whole-branch match → the target branch is UNCHANGED and extendWith is APPENDED
-    // as a sibling (probe-verified: `:is(.a,.b) .c` f `.a .c` → `:is(.a,.b) .c,.d`, both modes).
-    // Anything else (substring match, a compound remainder, a non-bare graft compound, a multi-atom
-    // find compound landing on a graft) needs the full multi-compound boundary-cross machinery →
-    // UNSUPPORTED (fail-loud; never a wrong NOT_FOUND).
+    /*
+     * MULTI-COMPOUND find against a graft-bearing target branch. The own engine builds ONLY the
+     * clean whole-span side-by-side match (rung 4, class 4): the find spans the WHOLE target seq,
+     * each find compound FULLY consumes its aligned target compound (a plain compound multiset-equal,
+     * or a BARE `:is` graft compound whose whole branch the single find atom equals), and combinators
+     * match. That is a whole-branch match → the target branch is UNCHANGED and extendWith is APPENDED
+     * as a sibling (probe-verified: `:is(.a,.b) .c` f `.a .c` → `:is(.a,.b) .c,.d`, both modes).
+     * Anything else (substring match, a compound remainder, a non-bare graft compound, a multi-atom
+     * find compound landing on a graft) needs the full multi-compound boundary-cross machinery →
+     * UNSUPPORTED (fail-loud; never a wrong NOT_FOUND).
+     */
     if (multiCompoundGraftWholeSpanFull(targetSeq, findSeq)) {
       return { node: seqToSelector(targetSeq), effective: true, found: true, appendFull: true };
     }
@@ -1989,9 +2098,11 @@ function matchPlainCompound(
     return null;
   }
   if (!partial) {
-    // Full match of a whole plain compound only when multiset-equal; a graft-bearing branch is
-    // never a whole-branch full match for a single-compound find, so full-mode plain compounds
-    // in this path are subset matches → unchanged (found, but not extended).
+    /*
+     * Full match of a whole plain compound only when multiset-equal; a graft-bearing branch is
+     * never a whole-branch full match for a single-compound find, so full-mode plain compounds
+     * in this path are subset matches → unchanged (found, but not extended).
+     */
     return MATCHED_UNCHANGED;
   }
   const atoms = step.compound.atoms;
@@ -2066,8 +2177,11 @@ function expandBareIsStep(seq: IrSeq, isStep: number): IrSeq[] {
         expanded.push(seq[i]!);
         continue;
       }
-      // Splice the arm's compounds in at the graft slot; the slot's leading combinator prefixes
-      // the arm's head, the arm's own internal combinators follow.
+
+      /*
+       * Splice the arm's compounds in at the graft slot; the slot's leading combinator prefixes
+       * the arm's head, the arm's own internal combinators follow.
+       */
       for (let a = 0; a < arm.length; a++) {
         const armStep = arm[a]!;
         expanded.push(a === 0 ? { comb: seq[isStep]!.comb, compound: armStep.compound } : armStep);
@@ -2102,11 +2216,13 @@ function tryMultiGraftExpand(
     return null; // single-compound find is not this rung
   }
 
-  // DEFINITE NOT_FOUND: if any find sym is absent from the target's FULL sym superset (everything,
-  // including inside every graft arg), the find cannot match ANYWHERE — return NOT_FOUND soundly
-  // instead of the multi-graft fail-loud below. This turns the multi-graft-both-slots absent-find
-  // shape (`:is(.foo,…) :is(.bar,…)` f `.ext8 .ext9`, oracle NOT_FOUND) from UNSUPPORTED into the
-  // correct NOT_FOUND, WITHOUT needing the expand-then-fail machinery (the find isn't in the corpus).
+  /*
+   * DEFINITE NOT_FOUND: if any find sym is absent from the target's FULL sym superset (everything,
+   * including inside every graft arg), the find cannot match ANYWHERE — return NOT_FOUND soundly
+   * instead of the multi-graft fail-loud below. This turns the multi-graft-both-slots absent-find
+   * shape (`:is(.foo,…) :is(.bar,…)` f `.ext8 .ext9`, oracle NOT_FOUND) from UNSUPPORTED into the
+   * correct NOT_FOUND, WITHOUT needing the expand-then-fail machinery (the find isn't in the corpus).
+   */
   const targetAllSyms = new Set<number>();
   for (const tb of irTarget.branches) {
     allSymsInSeq(tb, targetAllSyms);
@@ -2119,12 +2235,17 @@ function tryMultiGraftExpand(
     }
   }
 
-  // Decide whether ANY branch needs expansion. A branch qualifies when it carries a bare-`:is`
-  // compound AND the find does not clean-whole-span-full match it (rung 4 owns that shape).
+  /*
+   * Decide whether ANY branch needs expansion. A branch qualifies when it carries a bare-`:is`
+   * compound AND the find does not clean-whole-span-full match it (rung 4 owns that shape).
+   */
   let anyExpand = false;
-  // A MULTI-arm `:is` expansion marks the match as a "through-graft" match: FULL mode appends
-  // extendWith once (like rung 4). A SINGLE-arm `:is(.a)` expands to one plain branch and behaves
-  // exactly like plain `.a` — no through-graft append (`.x :is(.a) .c` f `.a .c` FULL → `.x .a .c`).
+
+  /*
+   * A MULTI-arm `:is` expansion marks the match as a "through-graft" match: FULL mode appends
+   * extendWith once (like rung 4). A SINGLE-arm `:is(.a)` expands to one plain branch and behaves
+   * exactly like plain `.a` — no through-graft append (`.x :is(.a) .c` f `.a .c` FULL → `.x .a .c`).
+   */
   let anyMultiArmGraft = false;
   let anyMultiCompoundArm = false;
   const expandedBranches: IrSeq[] = [];
@@ -2137,10 +2258,13 @@ function tryMultiGraftExpand(
       continue;
     }
     if (bareIs.length !== 1) {
-      // >1 bare-`:is` in the branch: the oracle expands only the first and then fails to align the
-      // rest (NOT_FOUND). Fail-loud rather than guess.
+      /*
+       * >1 bare-`:is` in the branch: the oracle expands only the first and then fails to align the
+       * rest (NOT_FOUND). Fail-loud rather than guess.
+       */
       return UNSUPPORTED;
     }
+
     // A non-bare graft compound (`:is(.a,.b).q`) elsewhere in the branch is not expandable here.
     for (let i = 0; i < tb.length; i++) {
       if (i !== bareIs[0] && compoundHasGraftAtom(tb[i]!.compound)) {
@@ -2152,11 +2276,14 @@ function tryMultiGraftExpand(
     if (!isIsAtom(graftAtom)) {
       return UNSUPPORTED;
     }
-    // A graft arm with an INTERNAL non-space combinator (`.c.replace+.replace`, `a>.foo`) is not
-    // spliced correctly by the own expand+flatten machinery (rung 5 handles only space-combinator
-    // arms). The oracle produces a full boundary-cross flatten (`:is(.replace.replace,.c.replace+
-    // .replace) .replace` f `.replace.replace .replace` → nested `:is`); the own engine over-expands.
-    // Gate to UNSUPPORTED (fail-loud) — this is a reachable residual (extend-exact fixture).
+
+    /*
+     * A graft arm with an INTERNAL non-space combinator (`.c.replace+.replace`, `a>.foo`) is not
+     * spliced correctly by the own expand+flatten machinery (rung 5 handles only space-combinator
+     * arms). The oracle produces a full boundary-cross flatten (`:is(.replace.replace,.c.replace+
+     * .replace) .replace` f `.replace.replace .replace` → nested `:is`); the own engine over-expands.
+     * Gate to UNSUPPORTED (fail-loud) — this is a reachable residual (extend-exact fixture).
+     */
     for (const br of graftAtom.sel.branches) {
       for (let bi = 1; bi < br.length; bi++) {
         const c = br[bi]!.comb;
@@ -2168,9 +2295,12 @@ function tryMultiGraftExpand(
     if (graftAtom.sel.branches.length >= 2) {
       anyMultiArmGraft = true;
     }
-    // A single-arm `:is` whose sole arm is a MULTI-compound complex selector (`:is(.b .c)`) is NOT
-    // unwrapped by the oracle on a full through-match (`d :is(.b .c)` f `.b .c` FULL → unchanged),
-    // unlike a single-compound arm (`:is(.a)` → plain `.a`, which the oracle unwraps).
+
+    /*
+     * A single-arm `:is` whose sole arm is a MULTI-compound complex selector (`:is(.b .c)`) is NOT
+     * unwrapped by the oracle on a full through-match (`d :is(.b .c)` f `.b .c` FULL → unchanged),
+     * unlike a single-compound arm (`:is(.a)` → plain `.a`, which the oracle unwraps).
+     */
     if (graftAtom.sel.branches.some(br => br.length >= 2)) {
       anyMultiCompoundArm = true;
     }
@@ -2182,8 +2312,10 @@ function tryMultiGraftExpand(
     return null; // no graft the find crosses → per-branch graft path handles it
   }
 
-  // Any expanded branch still carrying a graft means a 2nd graft the find would have to cross —
-  // the oracle NOT_FOUND shape. Fail-loud.
+  /*
+   * Any expanded branch still carrying a graft means a 2nd graft the find would have to cross —
+   * the oracle NOT_FOUND shape. Fail-loud.
+   */
   for (const eb of expandedBranches) {
     if (branchHasGraft(eb)) {
       return UNSUPPORTED;
@@ -2193,14 +2325,18 @@ function tryMultiGraftExpand(
   const expandedList = sellist(expandedBranches.map(seqToSelector));
 
   if (partial) {
-    // Plain multi-branch target reproduces every per-arm partial shape byte-identically (substring
-    // `:is`-wrap in place, whole-span remainder sibling-split hoisted to the tail, unchanged arms).
+    /*
+     * Plain multi-branch target reproduces every per-arm partial shape byte-identically (substring
+     * `:is`-wrap in place, whole-span remainder sibling-split hoisted to the tail, unchanged arms).
+     */
     return extendByIndexOwn(expandedList, find, extendWith, partial);
   }
 
-  // FULL mode: expanded branches never whole-selector-full-match (proper substring), so emit them
-  // unchanged and append extendWith ONCE iff the find matched through a MULTI-arm graft. Detect the
-  // match by whether the plain engine found anything (NOT_FOUND ⟺ no match anywhere).
+  /*
+   * FULL mode: expanded branches never whole-selector-full-match (proper substring), so emit them
+   * unchanged and append extendWith ONCE iff the find matched through a MULTI-arm graft. Detect the
+   * match by whether the plain engine found anything (NOT_FOUND ⟺ no match anywhere).
+   */
   const probe = extendByIndexOwn(expandedList, find, extendWith, false);
   if (probe === UNSUPPORTED) {
     return UNSUPPORTED;
@@ -2208,15 +2344,20 @@ function tryMultiGraftExpand(
   if (probe === 'NOT_FOUND') {
     return 'NOT_FOUND';
   }
-  // A single-arm `:is(.a)` expansion is plain `.a`: full mode leaves it unchanged (no through-graft
-  // append). Only a multi-arm graft crossing yields the append. If the probe produced NO effective
-  // change (the expanded form is byte-identical to itself, i.e. the find matched only a proper
-  // suffix/substring), return the ORIGINAL target — the oracle keeps the authored `:is` wrapper
-  // (`d :is(.b .c)` f `.b .c` FULL → `d :is(.b .c)`, NOT the unwrapped `d .b .c`).
+
+  /*
+   * A single-arm `:is(.a)` expansion is plain `.a`: full mode leaves it unchanged (no through-graft
+   * append). Only a multi-arm graft crossing yields the append. If the probe produced NO effective
+   * change (the expanded form is byte-identical to itself, i.e. the find matched only a proper
+   * suffix/substring), return the ORIGINAL target — the oracle keeps the authored `:is` wrapper
+   * (`d :is(.b .c)` f `.b .c` FULL → `d :is(.b .c)`, NOT the unwrapped `d .b .c`).
+   */
   if (!anyMultiArmGraft) {
-    // A single-arm `:is` with a MULTI-compound arm (`d :is(.b .c)`) is kept wrapped when the find
-    // matched only a proper suffix/substring (no effective rewrite) — the oracle does not unwrap it.
-    // A single-COMPOUND arm (`.x :is(.a) .c`) IS unwrapped to plain (`.x .a .c`) — return the probe.
+    /*
+     * A single-arm `:is` with a MULTI-compound arm (`d :is(.b .c)`) is kept wrapped when the find
+     * matched only a proper suffix/substring (no effective rewrite) — the oracle does not unwrap it.
+     * A single-COMPOUND arm (`.x :is(.a) .c`) IS unwrapped to plain (`.x .a .c`) — return the probe.
+     */
     if (anyMultiCompoundArm) {
       const probeStr = Array.isArray(probe)
         ? probe.map(p => String(p.valueOf())).join(',')
@@ -2285,6 +2426,7 @@ function extendGraftTarget(
       }
       continue;
     }
+
     // Plain branch inside a graft-bearing target list (e.g. `:is(.a), .z`): use the plain locate.
     const loc = locateFind(tb, findSeq);
     if (loc === UNSUPPORTED) {
@@ -2404,12 +2546,15 @@ function compoundFromAtoms(atoms: Atom[]): Selector {
  */
 function parentAloneFormSeq(seq: IrSeq, at: { step: number; atom: number }): IrSeq | null {
   const ampAtom = seq[at.step]!.compound.atoms[at.atom]!;
-  if (ampAtom.kind !== 'amp' || !ampAtom.resolved || ampAtom.resolved.branches.length !== 1) {
+  if (ampAtom.kind !== 'amp' || ampAtom.resolved?.branches.length !== 1) {
     return null;
   }
   const parent = ampAtom.resolved.branches[0]!;
-  // The parent's OWN content, with no child/sibling material — a find matching this alone is
-  // parent-only. The parent seq is used verbatim (its head loses any leading combinator).
+
+  /*
+   * The parent's OWN content, with no child/sibling material — a find matching this alone is
+   * parent-only. The parent seq is used verbatim (its head loses any leading combinator).
+   */
   return parent.map((ps, p) => (p === 0 ? { comb: '', compound: ps.compound } : ps));
 }
 
@@ -2509,20 +2654,23 @@ function resolvedRelSeq(
   at: { step: number; atom: number }
 ): ResolvedRelStep[] | null {
   const ampAtom = subjectSeq[at.step]!.compound.atoms[at.atom]!;
-  if (ampAtom.kind !== 'amp' || !ampAtom.resolved || ampAtom.resolved.branches.length !== 1) {
+  if (ampAtom.kind !== 'amp' || ampAtom.resolved?.branches.length !== 1) {
     return null;
   }
+
   // The amp must be in the HEAD step of a leading-combinator subject (`> &.child` / `> & .b`).
   if (at.step !== 0) {
     return null;
   }
   const ampCompound = subjectSeq[0]!.compound;
   const otherAtoms = ampCompound.atoms.filter((_, j) => j !== at.atom);
+
   // Only plain-id child atoms are modeled (no nested graft fused with the amp).
   if (otherAtoms.some(a => a.kind !== 'id')) {
     return null;
   }
   const parent = ampAtom.resolved.branches[0]!;
+
   // The parent itself must be graft-free (plain compounds/combinators) to reason about origins.
   for (const ps of parent) {
     if (ps.compound.atoms.some(a => a.kind !== 'id')) {
@@ -2541,8 +2689,10 @@ function resolvedRelSeq(
       });
     }
   } else {
-    // Embedded amp: parent's earlier steps prepend (leadComb on the very first); the parent's
-    // LAST compound merges with the amp compound's OWN atoms (parent-origin first, child after).
+    /*
+     * Embedded amp: parent's earlier steps prepend (leadComb on the very first); the parent's
+     * LAST compound merges with the amp compound's OWN atoms (parent-origin first, child after).
+     */
     for (let p = 0; p < parent.length - 1; p++) {
       const ps = parent[p]!;
       out.push({
@@ -2557,6 +2707,7 @@ function resolvedRelSeq(
     ];
     out.push({ comb: parent.length === 1 ? leadComb : parentTail.comb, atoms: mergedAtoms });
   }
+
   // The remaining subject steps (after the amp head step) are all child material.
   for (let i = 1; i < subjectSeq.length; i++) {
     const step = subjectSeq[i]!;
@@ -2585,8 +2736,7 @@ function relSeqToSelector(steps: ResolvedRelStep[]): Selector {
 /** A compound Selector rebuilt from resolved atoms (reused nodes); single atom stays bare. */
 function relCompoundNode(atoms: ResolvedAtom[]): Selector | string {
   const parts: (Selector | string)[] = atoms.map(ra =>
-    ra.atom.kind === 'id' ? ra.atom.node : (ra.atom.node as Selector)
-  );
+    ra.atom.kind === 'id' ? ra.atom.node : (ra.atom.node as Selector));
   if (parts.length === 1) {
     return parts[0]!;
   }
@@ -2640,8 +2790,10 @@ function extendRelativeAmpersandTarget(
     }
   }
 
-  // Parent gate: only for the EMBEDDED amp head step (parent+child fused in one compound). Find the
-  // head step's parent atoms + whether the head step carries child atoms.
+  /*
+   * Parent gate: only for the EMBEDDED amp head step (parent+child fused in one compound). Find the
+   * head step's parent atoms + whether the head step carries child atoms.
+   */
   const headStep = resolved[embeddedHeadIndex(resolved)];
   if (headStep) {
     const parentSyms = new Set<number>();
@@ -2659,10 +2811,12 @@ function extendRelativeAmpersandTarget(
       const touched = [...parentSyms].filter(s => findSyms.has(s));
       const touchesSome = touched.length > 0;
       const touchesAll = touched.length === parentSyms.size;
+
       // find cuts into parent partially → parent-only / partial-parent → NOT_FOUND.
       if (touchesSome && !touchesAll) {
         return 'NOT_FOUND';
       }
+
       // simple find consuming exactly all parent atoms, no child → parent-only → NOT_FOUND.
       const childSymsInFind = [...findSyms].some(s => !parentSyms.has(s));
       if (findIsSimple && touchesAll && !childSymsInFind) {
@@ -2708,9 +2862,11 @@ function buildRelativeWrap(
   const extendBranches = extendWithBranches(extendWith);
   const P = findSeq.length;
 
-  // MULTI-STEP WHOLE-SELECTOR span: a multi-compound find spanning EVERY resolved step → wrap the
-  // whole seq (minus leading comb). A single-compound seq never takes this path (it uses the
-  // per-compound wrap-kind logic below, which distinguishes atom-in-place from whole-compound).
+  /*
+   * MULTI-STEP WHOLE-SELECTOR span: a multi-compound find spanning EVERY resolved step → wrap the
+   * whole seq (minus leading comb). A single-compound seq never takes this path (it uses the
+   * per-compound wrap-kind logic below, which distinguishes atom-in-place from whole-compound).
+   */
   if (P >= 2 && P === resolvedIr.length && matchSeqInSeq(resolvedIr, findSeq)) {
     const whole = relSeqToSelectorNoLead(resolved);
     const wrapped = is(sellist([whole, ...extendBranches]));
@@ -2720,12 +2876,14 @@ function buildRelativeWrap(
   // SINGLE-COMPOUND find: locate the compound it matches, wrap by kind.
   if (P === 1) {
     const findComp = findSeq[0]!.compound;
+
     // Find the resolved step whose compound the find is a subset of.
     for (let i = 0; i < resolvedIr.length; i++) {
       if (!compoundSubset(findComp, resolvedIr[i]!.compound)) {
         continue;
       }
       const step = resolved[i]!;
+
       // find EQUALS the amp's parent value → wrap the parent atoms in place.
       const parentAtoms = step.atoms.filter(ra => ra.origin === 'parent');
       const parentSyms = new Set(parentAtoms
@@ -2742,6 +2900,7 @@ function buildRelativeWrap(
         // Wrap the parent atoms in place, keep child atoms outside.
         return buildRelStepWrapAtoms(resolved, i, ra => ra.origin === 'parent', extendBranches);
       }
+
       // Otherwise wrap the WHOLE compound in place.
       return buildRelStepWrapAtoms(resolved, i, () => true, extendBranches);
     }
@@ -2815,6 +2974,7 @@ function relWrapCompound(
   if (rest.length === 0) {
     return wrap;
   }
+
   // Place the `:is` at the FIRST selected slot; keep unselected atoms in original order.
   const parts: (Selector | string)[] = [];
   let placed = false;
@@ -2859,27 +3019,36 @@ function extendAmpersandTarget(
   if (!at) {
     return UNSUPPORTED;
   }
-  // More than one amp atom is fine ONLY when they share the same resolved parent (`&&`); a second
-  // amp with a different parent, or amps at different steps, is not modeled → UNSUPPORTED.
+
+  /*
+   * More than one amp atom is fine ONLY when they share the same resolved parent (`&&`); a second
+   * amp with a different parent, or amps at different steps, is not modeled → UNSUPPORTED.
+   */
   const ampAtom = subjectSeq[at.step]!.compound.atoms[at.atom]!;
   if (ampAtom.kind !== 'amp' || !ampAtom.resolved) {
     return UNSUPPORTED;
   }
-  // Leading-combinator relative subject (`> &.child`) → oracle's in-place `:is`-wrap path (rung 7):
-  // re-target on the amp-RESOLVED form KEEPING the leading combinator, then in-place wrap.
+
+  /*
+   * Leading-combinator relative subject (`> &.child`) → oracle's in-place `:is`-wrap path (rung 7):
+   * re-target on the amp-RESOLVED form KEEPING the leading combinator, then in-place wrap.
+   */
   if (subjectLeadsWithCombinator(subject)) {
     return extendRelativeAmpersandTarget(subjectSeq, at, find, extendWith, partial, syms);
   }
-  // Multiple amps with DIFFERENT resolved parents (`&&` where each `&` has a distinct parent, e.g.
-  // `&(.foo.bar)&(.baz).suffix`). The iterative resolution's merge ORDER of distinct parents is not
-  // modeled, so a match that touches ANY parent atom (crossing / parent-only) is not decidable here.
-  // But a CHILD-ONLY match (find confined to the compound's genuinely-child atoms, disjoint from every
-  // resolved parent) is order-independent: the parents ride along as fixed passengers and the resolved
-  // form's in-place `:is`-wrap of the child atom(s) is byte-identical to the oracle regardless of amp
-  // order (`&(.foo.bar)&(.baz).suffix` f `.suffix` → `.foo.bar.baz:is(.suffix,.extended)`). So:
-  // child-only → recurse the resolved form; any parent contact → NOT_FOUND (the oracle's answer on the
-  // reachable distinct-parent tuples: parent-only baz/foo and crossing `.foo.suffix` are all NOT_FOUND).
-  // Same-parent repeats (`&&` → `.e.e`) resolve identically regardless of order and take the shared path.
+
+  /*
+   * Multiple amps with DIFFERENT resolved parents (`&&` where each `&` has a distinct parent, e.g.
+   * `&(.foo.bar)&(.baz).suffix`). The iterative resolution's merge ORDER of distinct parents is not
+   * modeled, so a match that touches ANY parent atom (crossing / parent-only) is not decidable here.
+   * But a CHILD-ONLY match (find confined to the compound's genuinely-child atoms, disjoint from every
+   * resolved parent) is order-independent: the parents ride along as fixed passengers and the resolved
+   * form's in-place `:is`-wrap of the child atom(s) is byte-identical to the oracle regardless of amp
+   * order (`&(.foo.bar)&(.baz).suffix` f `.suffix` → `.foo.bar.baz:is(.suffix,.extended)`). So:
+   * child-only → recurse the resolved form; any parent contact → NOT_FOUND (the oracle's answer on the
+   * reachable distinct-parent tuples: parent-only baz/foo and crossing `.foo.suffix` are all NOT_FOUND).
+   * Same-parent repeats (`&&` → `.e.e`) resolve identically regardless of order and take the shared path.
+   */
   const ampResolvedValues = new Set<string>();
   for (const step of subjectSeq) {
     for (const a of step.compound.atoms) {
@@ -2896,6 +3065,7 @@ function extendAmpersandTarget(
     if (!seqMatchesFind(resolvedDistinct, irFind)) {
       return 'NOT_FOUND';
     }
+
     // Child atoms = every non-amp id sym in the subject; parent atoms = every amp's resolved id syms.
     const childSyms = new Set<number>();
     const parentSyms = new Set<number>();
@@ -2951,12 +3121,16 @@ function extendAmpersandTarget(
     // child-only → in-place extend on the resolved form (byte-identical to the oracle).
     return extendByIndexOwn(irSeqToSelectorReusing(resolvedSeq), find, extendWith, partial);
   }
+
   // crossing vs parent-only: a find matching the PARENT-alone form (child dropped) is parent-only.
   if (parentAloneSeq && seqMatchesFind(parentAloneSeq, irFind)) {
     return 'NOT_FOUND';
   }
-  // crossing → hoist (append). The resolved-form recursion produces the append shape; the
-  // hoistToRoot placement flag does not affect the byte output the differential compares.
+
+  /*
+   * crossing → hoist (append). The resolved-form recursion produces the append shape; the
+   * hoistToRoot placement flag does not affect the byte output the differential compares.
+   */
   return extendByIndexOwn(irSeqToSelectorReusing(resolvedSeq), find, extendWith, partial);
 }
 
@@ -2987,8 +3161,10 @@ function extendAmpersandFind(
   }
   const resolvedFind = resolveAllAmps(irFind.branches[0]!);
   if (!resolvedFind) {
-    // The amp could not be resolved to a concrete parent (unresolved bare `&`, or a list-parent
-    // graft). An unresolved amp atom matches no concrete target → the oracle's NOT_FOUND.
+    /*
+     * The amp could not be resolved to a concrete parent (unresolved bare `&`, or a list-parent
+     * graft). An unresolved amp atom matches no concrete target → the oracle's NOT_FOUND.
+     */
     return 'NOT_FOUND';
   }
   const plainFind = irSeqToSelectorReusing(resolvedFind);
@@ -3073,13 +3249,15 @@ export function extendByIndexOwn(
     return targetSel;
   }
 
-  // FIND-SIDE GRAFT, WHOLE-SELECTOR match: a find carrying a `:where`/`:not`/`:has`/`:is` graft that
-  // EQUALS the whole target selector (structurally) → append extendWith as a sibling (deduped). This
-  // is the only find-side graft shape the sweep reaches (`:where(.a)` f `:where(.a)` e `.b` →
-  // `:where(.a),.b`); it works in BOTH modes (partial + full behave the same on a whole-selector
-  // match — an append). Handled here before the blanket find-graft gate below. `:is` grafts that
-  // would need the single-arm-unwrap on the appended-alongside original branch (`.a:is(.b)` →
-  // oracle `.a.b`) stay UNSUPPORTED (see helper) — never a wrong non-unwrapped output.
+  /*
+   * FIND-SIDE GRAFT, WHOLE-SELECTOR match: a find carrying a `:where`/`:not`/`:has`/`:is` graft that
+   * EQUALS the whole target selector (structurally) → append extendWith as a sibling (deduped). This
+   * is the only find-side graft shape the sweep reaches (`:where(.a)` f `:where(.a)` e `.b` →
+   * `:where(.a),.b`); it works in BOTH modes (partial + full behave the same on a whole-selector
+   * match — an append). Handled here before the blanket find-graft gate below. `:is` grafts that
+   * would need the single-arm-unwrap on the appended-alongside original branch (`.a:is(.b)` →
+   * oracle `.a.b`) stay UNSUPPORTED (see helper) — never a wrong non-unwrapped output.
+   */
   if ((hasConstructorAtoms(find) || nodeHasPseudoWithSelectorArg(find)) && !hasAmpersand(find)) {
     const fg = extendFindSideGraftWholeMatch(targetSel, find, extendWith);
     if (fg !== null) {
@@ -3087,16 +3265,20 @@ export function extendByIndexOwn(
     }
   }
 
-  // `&` FIND: resolve the find's amp to its parent and recurse on the plain find (rung 6, find side).
-  // An unresolved amp → NOT_FOUND; a resolved amp → the amp-free recursion builds the oracle output
-  // (a residual `:is`/`:not` graft after resolution is caught by the recursion's own gates → UNSUPPORTED).
+  /*
+   * `&` FIND: resolve the find's amp to its parent and recurse on the plain find (rung 6, find side).
+   * An unresolved amp → NOT_FOUND; a resolved amp → the amp-free recursion builds the oracle output
+   * (a residual `:is`/`:not` graft after resolution is caught by the recursion's own gates → UNSUPPORTED).
+   */
   if (hasAmpersand(find)) {
     return extendAmpersandFind(targetSel, find, extendWith, partial);
   }
 
-  // Constructor-atom FINDS (non-amp) are not built by the own engine yet. Gate to UNSUPPORTED
-  // (never a wrong/NOT_FOUND answer). A `:not`/`:where`/`:has` FIND (pseudo-arg on the find side)
-  // is caught by the node-level `nodeHasPseudoWithSelectorArg` guard below.
+  /*
+   * Constructor-atom FINDS (non-amp) are not built by the own engine yet. Gate to UNSUPPORTED
+   * (never a wrong/NOT_FOUND answer). A `:not`/`:where`/`:has` FIND (pseudo-arg on the find side)
+   * is caught by the node-level `nodeHasPseudoWithSelectorArg` guard below.
+   */
   if (hasConstructorAtoms(find)) {
     return UNSUPPORTED;
   }
@@ -3104,23 +3286,29 @@ export function extendByIndexOwn(
     return UNSUPPORTED; // find is/contains a `:is`/`:not`/pseudo-arg graft — not built yet
   }
 
-  // `&` TARGET: own construction reproduces the crossing/child/parent-only classification in-IR and
-  // recurses on the cloning-free resolved form (rung 6). Unmodeled amp shapes → UNSUPPORTED.
+  /*
+   * `&` TARGET: own construction reproduces the crossing/child/parent-only classification in-IR and
+   * recurses on the cloning-free resolved form (rung 6). Unmodeled amp shapes → UNSUPPORTED.
+   */
   if (hasAmpersand(targetSel)) {
     return extendAmpersandTarget(targetSel, find, extendWith, partial);
   }
 
-  // GRAFT-INTO-TARGET: the target is or contains a `:is(...)`/`:not(...)`/pseudo-with-selector-arg.
-  // Extend recurses INTO the graft (own construction), byte-identical to the oracle on the covered
-  // shapes; boundary-cross flatten (`:is(.a,.b).c` find `.a.c` partial) stays UNSUPPORTED.
+  /*
+   * GRAFT-INTO-TARGET: the target is or contains a `:is(...)`/`:not(...)`/pseudo-with-selector-arg.
+   * Extend recurses INTO the graft (own construction), byte-identical to the oracle on the covered
+   * shapes; boundary-cross flatten (`:is(.a,.b).c` find `.a.c` partial) stays UNSUPPORTED.
+   */
   if (hasGraftTarget(targetSel, find)) {
     return extendGraftTarget(targetSel, find, extendWith, partial);
   }
 
-  // PARTIAL element/id CONFLICT: a partial `:is`-wrap that would combine the matched compound's
-  // element/id with a DIFFERENT element/id from extendWith is an ELEMENT_CONFLICT/ID_CONFLICT the
-  // oracle refuses (returns a conflict sentinel, `a.info` f `.info` e `div.foo` → ELEMENT_CONFLICT).
-  // The own engine does not build the conflict-validated output — gate to UNSUPPORTED (fail-loud).
+  /*
+   * PARTIAL element/id CONFLICT: a partial `:is`-wrap that would combine the matched compound's
+   * element/id with a DIFFERENT element/id from extendWith is an ELEMENT_CONFLICT/ID_CONFLICT the
+   * oracle refuses (returns a conflict sentinel, `a.info` f `.info` e `div.foo` → ELEMENT_CONFLICT).
+   * The own engine does not build the conflict-validated output — gate to UNSUPPORTED (fail-loud).
+   */
   if (partial && partialWrapMayConflict(targetSel, find, extendWith)) {
     return UNSUPPORTED;
   }
@@ -3137,15 +3325,18 @@ export function extendByIndexOwn(
     node: Selector;
     matchedFull: boolean;
     matchedPartial: boolean;
+
     /** SIBLING-SPLIT: siblings appended after all original branches (branch node stays unchanged). */
     siblings?: Selector[];
   }> = [];
   let anyMatch = false;
   for (const tb of irTarget.branches) {
-    // OR-find: a target branch matches if it matches ANY find branch. The oracle uses the FIRST
-    // find branch that matches this target branch (probe-verified: `.a.b` f `(.a,.b)` → `:is(.a,.d).b`
-    // — only `.a` fires; and per-target-branch application `.a.x,.b.y` f `(.a,.b)` → both wrap).
-    // extendWith is still appended ONCE overall for full matches (anyFull below), never per branch.
+    /*
+     * OR-find: a target branch matches if it matches ANY find branch. The oracle uses the FIRST
+     * find branch that matches this target branch (probe-verified: `.a.b` f `(.a,.b)` → `:is(.a,.d).b`
+     * — only `.a` fires; and per-target-branch application `.a.x,.b.y` f `(.a,.b)` → both wrap).
+     * extendWith is still appended ONCE overall for full matches (anyFull below), never per branch.
+     */
     let loc: OwnMatch | null = null;
     let matchedFindSeq = findSeqs[0]!;
     for (const fs of findSeqs) {
@@ -3172,22 +3363,22 @@ export function extendByIndexOwn(
         continue;
       }
       branchResults.push({ node: seqToSelector(tb), matchedFull: true, matchedPartial: false });
+    } else if (loc.full) {
+      // Partial + full-branch match: still an append (whole selector equals find).
+      branchResults.push({ node: seqToSelector(tb), matchedFull: true, matchedPartial: false });
+    } else if (loc.remainderSplit?.wholeSpan) {
+      /*
+         * WHOLE-span multi-compound partial with a remainder → SIBLING-SPLIT: original branch
+         * stays unchanged, one sibling (+ extendWith list tail) is appended after all branches.
+         */
+      const siblings = buildRemainderSiblings(tb, loc, findSeq, extendWith);
+      branchResults.push({ node: seqToSelector(tb), matchedFull: false, matchedPartial: true, siblings });
     } else {
-      if (loc.full) {
-        // Partial + full-branch match: still an append (whole selector equals find).
-        branchResults.push({ node: seqToSelector(tb), matchedFull: true, matchedPartial: false });
-      } else if (loc.remainderSplit?.wholeSpan) {
-        // WHOLE-span multi-compound partial with a remainder → SIBLING-SPLIT: original branch
-        // stays unchanged, one sibling (+ extendWith list tail) is appended after all branches.
-        const siblings = buildRemainderSiblings(tb, loc, findSeq, extendWith);
-        branchResults.push({ node: seqToSelector(tb), matchedFull: false, matchedPartial: true, siblings });
-      } else {
-        const built = buildPartialBranch(tb, loc, findSeq, extendBranches);
-        if (built === UNSUPPORTED) {
-          return UNSUPPORTED;
-        }
-        branchResults.push({ node: built, matchedPartial: true, matchedFull: false });
+      const built = buildPartialBranch(tb, loc, findSeq, extendBranches);
+      if (built === UNSUPPORTED) {
+        return UNSUPPORTED;
       }
+      branchResults.push({ node: built, matchedPartial: true, matchedFull: false });
     }
   }
 
@@ -3195,9 +3386,11 @@ export function extendByIndexOwn(
     return 'NOT_FOUND';
   }
 
-  // Assemble output. Partial rewrites are IN PLACE (matched branch replaced by its rewrite);
-  // full matches APPEND extendWith branches after all original branches; sibling-splits append
-  // their sibling branch(es) after all original branches (branch node itself unchanged).
+  /*
+   * Assemble output. Partial rewrites are IN PLACE (matched branch replaced by its rewrite);
+   * full matches APPEND extendWith branches after all original branches; sibling-splits append
+   * their sibling branch(es) after all original branches (branch node itself unchanged).
+   */
   const outBranches: Selector[] = [];
   const siblingBranches: Selector[] = [];
   let anyFull = false;
@@ -3218,9 +3411,11 @@ export function extendByIndexOwn(
     }
   }
   if (anyFull) {
-    // FULL-mode append DEDUPES against branches already present in the target list: the oracle does
-    // not emit a duplicate OR-branch when the appended extendWith selector is already a branch
-    // (`.base,.child` f `.base` e `.child` → `.base,.child`, and self-extend `.w` f `.w` e `.w` → `.w`).
+    /*
+     * FULL-mode append DEDUPES against branches already present in the target list: the oracle does
+     * not emit a duplicate OR-branch when the appended extendWith selector is already a branch
+     * (`.base,.child` f `.base` e `.child` → `.base,.child`, and self-extend `.w` f `.w` e `.w` → `.w`).
+     */
     const present = new Set(outBranches.map(b => String(b.valueOf())));
     for (const eb of extendBranches) {
       if (!present.has(String(eb.valueOf()))) {
@@ -3240,10 +3435,13 @@ export function extendByIndexOwn(
   if (outBranches.length === 1) {
     return outBranches[0]!;
   }
-  // EXACT-MODE CARTESIAN DE-DISTRIBUTION: in FULL mode the oracle collapses a complete cross-product
-  // of `left <comb> right` branches into `:is(left...) <comb> :is(right...)` (`.a .b,.a .d,.c .b` f
-  // `.c .b` e `.c .d` → `:is(.a,.c) :is(.b,.d)`). The own engine emits the flat list. Not built —
-  // gate to UNSUPPORTED (fail-loud) when the assembled branches contain such a full cross-product.
+
+  /*
+   * EXACT-MODE CARTESIAN DE-DISTRIBUTION: in FULL mode the oracle collapses a complete cross-product
+   * of `left <comb> right` branches into `:is(left...) <comb> :is(right...)` (`.a .b,.a .d,.c .b` f
+   * `.c .b` e `.c .d` → `:is(.a,.c) :is(.b,.d)`). The own engine emits the flat list. Not built —
+   * gate to UNSUPPORTED (fail-loud) when the assembled branches contain such a full cross-product.
+   */
   if (anyFull && hasExactCartesianProduct(outBranches)) {
     return UNSUPPORTED;
   }
@@ -3271,8 +3469,11 @@ function hasExactCartesianProduct(branches: Selector[]): boolean {
     if (!isSelectorNode(first) || !isCombinator(second) || !isSelectorNode(third)) {
       continue;
     }
-    // `second` is a Combinator (guarded above); its `.valueOf()` is the combinator string — mirrors
-    // the oracle's grouping key (`second.valueOf()`), avoiding a non-narrowing `combinatorValue` call.
+
+    /*
+     * `second` is a Combinator (guarded above); its `.valueOf()` is the combinator string — mirrors
+     * the oracle's grouping key (`second.valueOf()`), avoiding a non-narrowing `combinatorValue` call.
+     */
     const key = String((second as { valueOf(): unknown }).valueOf());
     if (!byComb.has(key)) {
       byComb.set(key, []);

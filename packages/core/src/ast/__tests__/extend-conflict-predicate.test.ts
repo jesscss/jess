@@ -22,6 +22,7 @@ describe('wouldConflict predicate', () => {
 
   it('type + class → no conflict', () => {
     expect(wouldConflict(['div'], ['.b'])).toBe(false);
+
     // `.a` (surrounding) + `div` (extender): only one distinct type → no conflict.
     expect(wouldConflict(['.a'], ['div'])).toBe(false);
   });
@@ -39,8 +40,10 @@ describe('wouldConflict predicate', () => {
   });
 
   it('extender with no type/id → never a conflict (precondition)', () => {
-    // Even a surrounding with a type — an extender that adds only classes cannot
-    // introduce a second distinct type/id.
+    /*
+     * Even a surrounding with a type — an extender that adds only classes cannot
+     * introduce a second distinct type/id.
+     */
     expect(wouldConflict(['a', '#x'], ['.only', '.classes'])).toBe(false);
   });
 

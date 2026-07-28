@@ -1,7 +1,7 @@
 {
   "name": "jess",
   "type": "module",
-  "version": "2.0.0-alpha.9",
+  "version": "2.0.0-alpha.10",
   "description": "JavaScript Enhanced Style Sheets",
   "main": "lib/index.cjs",
   "types": "lib/index-public.d.ts",
@@ -21,11 +21,11 @@
     "bin"
   ],
   "engines": {
-    "node": ">=18"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "dependencies": {
+    "@jesscss/compiler": "workspace:*",
     "@jesscss/core": "workspace:*",
-    "@jesscss/fns": "workspace:*",
     "@jesscss/patch-css": "workspace:*",
     "@jesscss/plugin-jess": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
@@ -35,12 +35,17 @@
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "@jesscss/plugin-js": "workspace:*"
   },
+  "peerDependenciesMeta": {
+    "@jesscss/plugin-js": {
+      "optional": true
+    }
+  },
   "scripts": {
-    "ci": "pnpm build && pnpm test",
-    "prepublishOnly": "pnpm build && pnpm test",
+    "ci": "pnpm build && pnpm run test:ratchet",
+    "prepublishOnly": "pnpm build && pnpm run test:ratchet",
     "benchmark": "node bin/cli.mjs benchmark/benchmark.jess",
     "build": "pnpm compile && pnpm api-extractor",
     "compile": "tsdown --tsconfig tsconfig.build.json --no-dts && tsc -p tsconfig.build.json --emitDeclarationOnly",
@@ -50,7 +55,8 @@
     "test": "cross-env TEST=true vitest --watch=false",
     "test:all": "pnpm benchmark && pnpm test",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
-    "lint": "eslint '**/*.{js,ts}'"
+    "lint": "eslint '**/*.{js,ts}'",
+    "test:ratchet": "node ../../scripts/vitest-ratchet.mjs --package . --baseline test/known-failures.json"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",
   "license": "MIT",
@@ -59,11 +65,16 @@
   },
   "homepage": "https://github.com/jesscss/jess#readme",
   "devDependencies": {
+    "@jesscss/css-parser": "workspace:*",
+    "@jesscss/fns": "workspace:*",
     "@jesscss/plugin-js": "workspace:*",
-    "@jesscss/plugin-css": "workspace:*",
     "@jesscss/plugin-less-compat": "workspace:*",
     "@jesscss/shared": "workspace:*",
+    "@jesscss/jess-parser": "workspace:*",
+    "@jesscss/less-parser": "workspace:*",
+    "@jesscss/scss-parser": "workspace:*",
     "@types/lodash-es": "^4.17.8",
+    "bootstrap": "~5.3.8",
     "bootstrap-less-port": "~2.5.1",
     "clinic": "~13.0.0",
     "sass": "~1.101.0"

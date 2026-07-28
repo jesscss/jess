@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./lib",
+    "rootDir": "./src",
+    "noEmit": false,
+    "paths": {
+      "@jesscss/css-parser": ["./node_modules/@jesscss/css-parser/lib/index.d.ts"],
+      "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
+    }
+  },
+  "include": ["src/grammar.ts", "src/index.ts", "src/cst.ts"],
+  "exclude": []
+}

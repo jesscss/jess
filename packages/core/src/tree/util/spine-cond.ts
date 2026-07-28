@@ -101,24 +101,33 @@ export function planBodyConditionals(
   const step = (index: number): MaybePromise<SpineCondPlan> => {
     for (let i = index; i < children.length; i++) {
       const child = children[i]!;
-      // `conditionalAssignOf` admits only a `VarDeclaration` `?:`; re-narrow so
-      // `.name` / `.valueNode()` resolve without a cast.
+
+      /*
+       * `conditionalAssignOf` admits only a `VarDeclaration` `?:`; re-narrow so
+       * `.name` / `.valueNode()` resolve without a cast.
+       */
       if (!isNode(child, N.VarDeclaration) || conditionalAssignOf(child) === undefined) {
         continue;
       }
-      // Build the EXACT self-reference the eval path constructs
-      // (`_normalizeAssignmentValue`, CondAssign case): a `variable` reference on
-      // this name, with the authored value as `fallbackValue`. The position bound
-      // is the `?:` node's own index (eval-time nodes don't parent — carry it
-      // directly, exactly as the `+:`/merge path does).
+
+      /*
+       * Build the EXACT self-reference the eval path constructs
+       * (`_normalizeAssignmentValue`, CondAssign case): a `variable` reference on
+       * this name, with the authored value as `fallbackValue`. The position bound
+       * is the `?:` node's own index (eval-time nodes don't parent — carry it
+       * directly, exactly as the `+:`/merge path does).
+       */
       const key = String(child.name);
       const type = 'variable' as const;
       const fallbackValue = child.valueNode();
-      // A `snapshot` read applies the position gate (`ref.index` → `start`), so the
-      // lookup sees only bindings BEFORE the `?:` node — the prior `@x: red` or, on
-      // a miss, the reference's `fallbackValue`. A default (non-snapshot) contextual
-      // read is last-wins (would read the `?:` node's OWN cell), so snapshot is
-      // REQUIRED here to reproduce assign-if-undefined.
+
+      /*
+       * A `snapshot` read applies the position gate (`ref.index` → `start`), so the
+       * lookup sees only bindings BEFORE the `?:` node — the prior `@x: red` or, on
+       * a miss, the reference's `fallbackValue`. A default (non-snapshot) contextual
+       * read is last-wins (would read the `?:` node's OWN cell), so snapshot is
+       * REQUIRED here to reproduce assign-if-undefined.
+       */
       const ref = new Reference({ key }, { type, fallbackValue, readMode: 'snapshot' }, undefined);
       ref.index = child.index;
       const resolved = resolveReference(ref);
@@ -146,11 +155,14 @@ function applyConditional(
     return;
   }
   plan.set(decl, { kind: 'anchor', value });
-  // Write forward: overwrite the `?:` node's OWN binding cell so a LATER read of
-  // this name (position past the `?:`) dereferences the resolved value. The cell
-  // is already in the frame (the `?:` VarDeclaration was NOT skipped by
-  // `prepareScopeFrameDeclarationIndex` — only `setDefined` is), so this is a
-  // single in-place write on the node's own entry, no outer-scope machinery.
+
+  /*
+   * Write forward: overwrite the `?:` node's OWN binding cell so a LATER read of
+   * this name (position past the `?:`) dereferences the resolved value. The cell
+   * is already in the frame (the `?:` VarDeclaration was NOT skipped by
+   * `prepareScopeFrameDeclarationIndex` — only `setDefined` is), so this is a
+   * single in-place write on the node's own entry, no outer-scope machinery.
+   */
   const bucket = frame?.declarationBucketsByName.get(key);
   if (!bucket) {
     return;

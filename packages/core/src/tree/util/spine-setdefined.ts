@@ -77,9 +77,12 @@ export function applyBodySetDefined(
         continue;
       }
       const key = child.name.toString();
-      // EXACT eval frame-path (`Rules.evalNode` setDefined branch): resolve the
-      // existing binding (searching parents by default), including assignment
-      // targets, blocking/filtering this node itself.
+
+      /*
+       * EXACT eval frame-path (`Rules.evalNode` setDefined branch): resolve the
+       * existing binding (searching parents by default), including assignment
+       * targets, blocking/filtering this node itself.
+       */
       const variableHit = lookupScopeFrameVariable(frame, key, {
         bailOnPendingDeclarations: true,
         blockedSource: source => source === child,
@@ -93,15 +96,18 @@ export function applyBodySetDefined(
       if (variableHit.kind === 'miss') {
         throw new ReferenceError(`"${key}" is not defined`);
       }
-      // live | declaration hit.
-      // CROSS-SCOPE SEQUENCED: when the resolved binding lives in an OUTER frame
-      // (the parent search left this body's frame), the eval two-pass does NOT
-      // leak the write to a later SAME-scope read of the outer binding the way a
-      // direct in-descent cell write would — spine and eval diverge on that shape
-      // (`.a{@x:red; .inner{@x:blue !global} color:@x}` → eval `red`, a direct
-      // write → `blue`). Byte-identical only holds for a SAME-frame target, so an
-      // outer-frame target is routed to eval (transitional gate, ratcheted + spec'd
-      // — NOT abandonment; a faithful cross-scope write is a later increment).
+
+      /*
+       * live | declaration hit.
+       * CROSS-SCOPE SEQUENCED: when the resolved binding lives in an OUTER frame
+       * (the parent search left this body's frame), the eval two-pass does NOT
+       * leak the write to a later SAME-scope read of the outer binding the way a
+       * direct in-descent cell write would — spine and eval diverge on that shape
+       * (`.a{@x:red; .inner{@x:blue !global} color:@x}` → eval `red`, a direct
+       * write → `blue`). Byte-identical only holds for a SAME-frame target, so an
+       * outer-frame target is routed to eval (transitional gate, ratcheted + spec'd
+       * — NOT abandonment; a faithful cross-scope write is a later increment).
+       */
       if (variableHit.frame !== frame) {
         return 'uncovered';
       }
@@ -109,8 +115,11 @@ export function applyBodySetDefined(
         throw new ReferenceError(`"${key}" is readonly`);
       }
       const cell = variableHit.cell;
-      // Resolve the RHS against the live frame, matching `evalSetDefinedAssignedValue`
-      // (`rules.ts`): eval the value node; a thenable is awaited on the async path.
+
+      /*
+       * Resolve the RHS against the live frame, matching `evalSetDefinedAssignedValue`
+       * (`rules.ts`): eval the value node; a thenable is awaited on the async path.
+       */
       const resolved = child.valueNode().eval(context);
       if (isThenable(resolved)) {
         return resolved.then((value: Node) => {

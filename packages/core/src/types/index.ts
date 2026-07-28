@@ -16,10 +16,13 @@ export type TriviaLookup = 'before' | 'after';
 export interface Trivia {
   /** Inclusive source offset where the run begins. */
   readonly start: number;
+
   /** Exclusive source offset where the run ends. */
   readonly end: number;
+
   /** True if the run contains any comment (block or line) — not pure whitespace. */
   readonly hasComment: boolean;
+
   /** The source text the run was sliced from (shared reference, not a copy). */
   readonly src: string;
 }
@@ -31,9 +34,11 @@ export interface TriviaMap {
    * needed side directly instead of rediscovering the opposite key by scanning.
    */
   lookup(offset: number | undefined, direction: TriviaLookup): Trivia | undefined;
+
   /** Iterate one lookup index for public inspection and diagnostics. */
   entries(direction: TriviaLookup): IterableIterator<[number, Trivia]>;
   has(offset: number | undefined, direction: TriviaLookup): boolean;
+
   /**
    * All comment-bearing runs, deduped by identity and sorted ascending by
    * `start`. Built once (lazily) and cached, so in-span comment lookups can

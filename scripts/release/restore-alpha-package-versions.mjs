@@ -5,7 +5,7 @@
  * dev manifests in every other field.
  *
  * Usage:
- *   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage
+ *   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-refresh --stage
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -56,11 +56,9 @@ function gitShow(rootDir, ref, relativePath) {
     shell: process.platform === 'win32'
   });
   if (result.status !== 0) {
-    throw new Error(
-      `Could not read ${relativePath} from recovery ref '${ref}': ${
-        result.stderr.trim() || 'git show failed'
-      }`
-    );
+    throw new Error(`Could not read ${relativePath} from recovery ref '${ref}': ${
+      result.stderr.trim() || 'git show failed'
+    }`);
   }
   return result.stdout;
 }
@@ -83,9 +81,7 @@ function gitAdd(rootDir, paths) {
 function main() {
   const { help, from } = parseArgs(process.argv);
   if (help) {
-    console.log(
-      'Usage: node scripts/release/restore-alpha-package-versions.mjs --from <recovery-ref> --stage'
-    );
+    console.log('Usage: node scripts/release/restore-alpha-package-versions.mjs --from <recovery-ref> --stage');
     return;
   }
 
@@ -113,16 +109,12 @@ function main() {
     );
     changed += 1;
     changedPaths.push(relativePath);
-    console.log(
-      `${relativePath}: ${importedManifest.version ?? '(missing)'} -> ${
-        restoredManifest.version
-      }`
-    );
+    console.log(`${relativePath}: ${importedManifest.version ?? '(missing)'} -> ${
+      restoredManifest.version
+    }`);
   }
   gitAdd(rootDir, changedPaths);
-  console.log(
-    `Preserved and staged recovery alpha versions in ${changed} package manifest(s); all other fields remain imported.`
-  );
+  console.log(`Preserved and staged recovery alpha versions in ${changed} package manifest(s); all other fields remain imported.`);
 }
 
 try {

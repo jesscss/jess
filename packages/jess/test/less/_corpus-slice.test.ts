@@ -70,11 +70,17 @@ async function withTimeout<T>(work: () => Promise<T>, timeoutMs = PER_FIXTURE_TI
   });
   try {
     const res = await Promise.race([work().then(v => ({ v }), e => ({ e })), t]);
-    if (res === '__t__') return { timedOut: true } as const;
-    if ('e' in res) return { error: res.e } as const;
+    if (res === '__t__') {
+      return { timedOut: true } as const;
+    }
+    if ('e' in res) {
+      return { error: res.e } as const;
+    }
     return { value: res.v } as const;
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -120,8 +126,12 @@ function discover(): Job[] {
 async function runJob(job: Job): Promise<{ file: string; kind: string; outcome: string; detail?: string }> {
   if (job.kind === 'error') {
     const res = await withTimeout(() => makeTestCompiler({}).renderToResult(job.lessPath, { breakOnError: true } as any));
-    if ('timedOut' in res) return { file: job.file, kind: 'error', outcome: 'timeout' };
-    if ('error' in res) return { file: job.file, kind: 'error', outcome: 'errored', detail: firstLine(res.error) };
+    if ('timedOut' in res) {
+      return { file: job.file, kind: 'error', outcome: 'timeout' };
+    }
+    if ('error' in res) {
+      return { file: job.file, kind: 'error', outcome: 'errored', detail: firstLine(res.error) };
+    }
     const r: any = res.value;
     const errored = Array.isArray(r?.errors) && r.errors.length > 0;
     return { file: job.file, kind: 'error', outcome: errored ? 'errored' : 'accepted', detail: errored ? firstLine(r.errors[0]?.message ?? r.errors[0]) : undefined };
@@ -130,8 +140,12 @@ async function runJob(job: Job): Promise<{ file: string; kind: string; outcome: 
     const r = await makeTestCompiler(job.config).renderToResult(job.lessPath, { outputFile: job.expectedFile });
     return classifyRenderResult(r, readFileSync(job.expectedFile!, 'utf8'));
   });
-  if ('timedOut' in res) return { file: job.file, kind: 'render', outcome: 'timeout' };
-  if ('error' in res) return { file: job.file, kind: 'render', outcome: 'error', detail: firstLine(res.error) };
+  if ('timedOut' in res) {
+    return { file: job.file, kind: 'render', outcome: 'timeout' };
+  }
+  if ('error' in res) {
+    return { file: job.file, kind: 'render', outcome: 'error', detail: firstLine(res.error) };
+  }
   return { file: job.file, kind: 'render', ...res.value };
 }
 

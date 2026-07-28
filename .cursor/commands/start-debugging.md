@@ -1,10 +1,10 @@
 # Start Debugging
 
-You are starting a focused debugging session. Follow these steps. The **area** (extend, mixins, parser, core, jess, etc.) comes from the user or from the current-focus block in `.cursor/PROJECT_STATE.md`. This workflow is generic so it works for any bug, not just extend.
+You are starting a focused debugging session. Follow these steps. The **area** (extend, mixins, parser, core, jess, etc.) comes from the user or from the current-focus block in `docs/state/PROJECT_STATE.md`. This workflow is generic so it works for any bug, not just extend.
 
 ## 1. Load state (do not skip)
 
-- Read `.cursor/PROJECT_STATE.md` (build shape, verification commands, and current debugging focus if one is active).
+- Read `docs/state/PROJECT_STATE.md` (build shape, verification commands, and current debugging focus if one is active).
 - If the state file or the user mentions a relevant active plan file, read that too so you know baseline and order of attack.
 - For extend, prefer the canonical pointers:
   - `.cursor/rules/subtrees/core__extend.mdc`
@@ -37,6 +37,6 @@ If the area involves packages that depend on another (e.g. jess tests that use c
 
 ## 5. Before ending session
 
-Update `.cursor/PROJECT_STATE.md` (and the area’s active plan file, if any) with: what you tried, result, next step. Remove any `.only` before committing.
+Update `docs/state/PROJECT_STATE.md` (and the area’s active plan file, if any) with: what you tried, result, next step. Remove any `.only` before committing.
 
 If the user provided context after the command (e.g. "focus on nested & extend all"), use that to choose the focus in step 3.

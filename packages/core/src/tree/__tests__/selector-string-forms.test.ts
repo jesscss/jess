@@ -60,6 +60,7 @@ describe('lean selector string forms', () => {
     it('renders an array list byte-identical to a SelectorList node', async () => {
       const arrayForm = await renderNodeToString(new RulesClass([box(['.a', '.b'])]), context);
       const nodeForm = await renderNodeToString(new RulesClass([box(sel(['.a'])), box(sel(['.b']))]), context);
+
       // Both must resolve `.a` and `.b` with `color: red`.
       expect(arrayForm).toContain('.a');
       expect(arrayForm).toContain('.b');
@@ -97,15 +98,20 @@ describe('lean selector string forms', () => {
     it('serializes each combinator-leading form byte-identical to the node form', () => {
       expect(rel(['+', '.b']).toTrimmedString()).toBe('+ .b');
       expect(rel(['~', '.b']).toTrimmedString()).toBe('~ .b');
-      // A leading descendant combinator keeps its space, exactly as the node form
-      // `sel([co(' '), el('.b')])` renders — the string-by-position path matches it.
+
+      /*
+       * A leading descendant combinator keeps its space, exactly as the node form
+       * `sel([co(' '), el('.b')])` renders — the string-by-position path matches it.
+       */
       expect(rel([' ', '.b']).toTrimmedString()).toBe(' .b');
     });
 
     it('reads role by POSITION, trusting the parser (leading combinator ⇒ relative)', () => {
-      // The parser guarantees well-formed parity; consumers iterate by position and
-      // trust it. A leading combinator classifies as RelativeSelector; a leading
-      // selector classifies as ComplexSelector. No runtime parity validation.
+      /*
+       * The parser guarantees well-formed parity; consumers iterate by position and
+       * trust it. A leading combinator classifies as RelativeSelector; a leading
+       * selector classifies as ComplexSelector. No runtime parity validation.
+       */
       expect(rel(['>', '.b'])).toBeInstanceOf(RelativeSelector);
       expect(sel(['.a', '>', '.b'])).not.toBeInstanceOf(RelativeSelector);
       expect(sel(['.a', '>', '.b'])).toBeInstanceOf(ComplexSelector);
@@ -113,9 +119,11 @@ describe('lean selector string forms', () => {
   });
 
   describe('extend flows a string target through eval/match (consumer string-branch)', () => {
-    // `Extend.target` is `SelectorLike`; a bare-string target must serialize
-    // (`Extend.writeSyntax` string branch) and register/match (`runEffect` lifts via
-    // `asExtendSelectorNode`) byte-identical to the `el(...)` node target.
+    /*
+     * `Extend.target` is `SelectorLike`; a bare-string target must serialize
+     * (`Extend.writeSyntax` string branch) and register/match (`runEffect` lifts via
+     * `asExtendSelectorNode`) byte-identical to the `el(...)` node target.
+     */
     const makeRoot = (target: SelectorLike) => rules([
       ruleset({
         selector: el('.replace'),
@@ -131,6 +139,7 @@ describe('lean selector string forms', () => {
       const stringCss = await renderNodeToString(makeRoot('.replace'), new Context(), { context: new Context() });
       const nodeCss = await renderNodeToString(makeRoot(el('.replace')), new Context(), { context: new Context() });
       expect(stringCss).toBe(nodeCss);
+
       // and the extend actually applied (`.rep_ace` joins `.replace`).
       expect(stringCss).toContain('.rep_ace');
     });
@@ -142,16 +151,18 @@ describe('lean selector string forms', () => {
   });
 
   describe('extend × string-form matrix (SPINE engine, byte-identical)', () => {
-    // Extend is the heaviest selector consumer. Prove every string form flows
-    // through the LIVE spine extend engine (collapseNesting:true → renderRootViaSpine
-    // → extendByIndexOwn / extend-index liftSeq) as a TARGET / a SELECTOR / an
-    // EXTENDER, without crashing and byte-identical to the node form. The spine
-    // matcher classifies selector-vs-combinator by POSITION (a string `'>'` is read
-    // as a combinator by `liftSeq`), trusting the parser — no defensive validation.
-    //
-    // The eval-path extend engine (extend-roots / util/extend walk) is being DELETED
-    // at P4 and keeps receiving NODES (producer change deferred), so it is
-    // deliberately NOT part of this string-form matrix.
+    /*
+     * Extend is the heaviest selector consumer. Prove every string form flows
+     * through the LIVE spine extend engine (collapseNesting:true → renderRootViaSpine
+     * → extendByIndexOwn / extend-index liftSeq) as a TARGET / a SELECTOR / an
+     * EXTENDER, without crashing and byte-identical to the node form. The spine
+     * matcher classifies selector-vs-combinator by POSITION (a string `'>'` is read
+     * as a combinator by `liftSeq`), trusting the parser — no defensive validation.
+     *
+     * The eval-path extend engine (extend-roots / util/extend walk) is being DELETED
+     * at P4 and keeps receiving NODES (producer change deferred), so it is
+     * deliberately NOT part of this string-form matrix.
+     */
     const engines = [
       ['spine', true]
     ] as const;
@@ -182,8 +193,10 @@ describe('lean selector string forms', () => {
         });
 
         it('string-part complex TARGET matches by positional combinator', async () => {
-          // The target `.a > .b` (string parts + string combinator) must match a
-          // `.a > .b` ruleset — the matcher reads `'>'` as a combinator by position.
+          /*
+           * The target `.a > .b` (string parts + string combinator) must match a
+           * `.a > .b` ruleset — the matcher reads `'>'` as a combinator by position.
+           */
           const css = await renderRoot(rules([
             ruleset({ selector: sel(['.a', '>', '.b']), rules: [decl({ name: 'p', value: any('1') })] }),
             ruleset({ selector: el('.ext'), rules: [extend({ target: sel(['.a', '>', '.b']), flag: ExtendFlag.All })] })

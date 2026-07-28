@@ -16,7 +16,6 @@ import { describe, it, expect } from 'vitest';
 import { Compiler } from '../../src/index.js';
 
 describe('Less at-rules through the public AST route', () => {
-
   it('renders CSS-valid @property through the public Less compiler route', async () => {
     const css = await new Compiler({ output: { collapseNesting: true } }).renderString(
       '@property --accent { syntax: "<color>"; inherits: false; initial-value: red; }',

@@ -26,6 +26,7 @@ describe('render trivia consumption', () => {
     const context = new Context();
     const writer = new OutputWriter();
     const options = getPrintOptions({ context, writer });
+
     // The SAME run object indexed from both sides — emitted once by identity.
     const shared = run('/* before */');
     const trivia = createTriviaMap({

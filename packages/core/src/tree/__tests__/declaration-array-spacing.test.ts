@@ -32,8 +32,10 @@ describe('declaration flat-array value spacing', () => {
   });
 
   it('emits authored trivia (newline + indent) before a source-backed term', () => {
-    // "border: 2px\n          solid\n          black": the newline before `black`
-    // is a trivia run keyed at its span start; it must survive, not collapse.
+    /*
+     * "border: 2px\n          solid\n          black": the newline before `black`
+     * is a trivia run keyed at its span start; it must survive, not collapse.
+     */
     const src = 'border: 2px\n          solid\n          black';
     const beforeBlack = makeTrivia(src, 27, 38);
     const trivia = createTriviaMap({
@@ -51,8 +53,10 @@ describe('declaration flat-array value spacing', () => {
   });
 
   it('keeps the space before a quoted term following a string fragment', () => {
-    // `content: is "theme1"` — `is` is a bare string term, `"theme1"` a Quoted
-    // Node. The merge guard must not drop the authored space before the quote.
+    /*
+     * `content: is "theme1"` — `is` is a bare string term, `"theme1"` a Quoted
+     * Node. The merge guard must not drop the authored space before the quote.
+     */
     const q = quoted('theme1', { quote: '"' });
     const d = decl({ name: 'content', value: ['is', q] });
     expect(d.toTrimmedString()).toBe('content: is "theme1"');

@@ -18,9 +18,11 @@ describe('root-position call whose eval yields a value', () => {
   });
 
   it('renders the evaluated value instead of throwing eval/invalid-statement', async () => {
-    // A Call at root position whose name resolves to a function returning a bare
-    // value node (an `Any`, no F_ALLOW_ROOT) — the shape Less produces for
-    // `e('/* anything to unquote */');` at the top level.
+    /*
+     * A Call at root position whose name resolves to a function returning a bare
+     * value node (an `Any`, no F_ALLOW_ROOT) — the shape Less produces for
+     * `e('/* anything to unquote *\/');` at the top level.
+     */
     const root = rules([
       call({
         name: jsfunc({

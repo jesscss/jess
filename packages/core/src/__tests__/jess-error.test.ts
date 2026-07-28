@@ -3,6 +3,7 @@ import { createToken, createTokenInstance, NoViableAltException } from 'chevrota
 import {
   getErrorFromParser,
   makeJessErrorFromDiagnostic,
+  parserDiagnostic,
   toDiagnostic,
   type ErrorDiagnostic
 } from '../jess-error.js';
@@ -56,6 +57,8 @@ describe('JessError diagnostics', () => {
       filePath: '/tmp/input.less',
       line: 2,
       column: 10,
+      endLine: 2,
+      endColumn: 11,
       errors: [],
       lexerErrors: []
     };
@@ -67,8 +70,15 @@ describe('JessError diagnostics', () => {
     expect(error.source).toBe('.a {\n  color: ;\n}');
     expect(error.line).toBe(2);
     expect(error.column).toBe(10);
+    expect(error.endLine).toBe(2);
+    expect(error.endColumn).toBe(11);
     expect(error.errors).toBe(diagnostic.errors);
     expect(error.lexerErrors).toBe(diagnostic.lexerErrors);
+
+    expect(toDiagnostic(error)).toMatchObject({
+      endLine: 2,
+      endColumn: 11
+    });
   });
 
   it('normalizes non-finite Chevrotain parse positions before diagnostics', () => {
@@ -101,5 +111,66 @@ describe('JessError diagnostics', () => {
     });
     expect(Number.isFinite(diagnostic.line)).toBe(true);
     expect(Number.isFinite(diagnostic.column)).toBe(true);
+  });
+
+  it('summarizes value-production expected sets without leaking parser internals', () => {
+    const source = '.entry {\n  value: .bad;\n}';
+    const error = {
+      code: 'parse/syntax-error',
+      offset: source.indexOf('.bad'),
+      expected: [
+        '"\\""',
+        'CssSyntaxNumber',
+        'CssSyntaxDimensionUnit',
+        'LessSyntaxKeyword',
+        '/-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*/',
+        'not(peek)'
+      ]
+    };
+
+    const diagnostic = parserDiagnostic({
+      dialect: 'Less',
+      error,
+      filePath: 'entry.less',
+      source
+    });
+
+    expect(diagnostic).toMatchObject({
+      code: 'parse/invalid-value',
+      phase: 'parse',
+      message: 'Invalid value.',
+      reason: 'Less expected a value here, but this token cannot start one.',
+      fix: 'Rewrite this position as a valid value or move the syntax into a statement position.',
+      line: 2,
+      column: 10
+    });
+    expect(diagnostic.reason).not.toContain('CssSyntaxNumber');
+    expect(diagnostic.reason).not.toContain('not(peek)');
+  });
+
+  it('deduplicates expected tokens before summarizing parser diagnostics', () => {
+    const source = '@unknown url( {\n  width: 20px;\n}';
+    const diagnostic = parserDiagnostic({
+      dialect: 'Less',
+      error: {
+        code: 'parse/syntax-error',
+        offset: source.indexOf('url'),
+        expected: ['";"', '";"']
+      },
+      filePath: 'entry.less',
+      source
+    });
+
+    expect(diagnostic).toMatchObject({
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: 'Missing semicolon.',
+      reason: 'Less expected \';\' before this token.',
+      fix: 'Add the missing \';\' or rewrite the statement.',
+      line: 1,
+      column: 10
+    });
+    expect(diagnostic.message).not.toContain('Expected:');
+    expect(diagnostic.reason).not.toContain('";", ";"');
   });
 });

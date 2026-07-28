@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { Dimension as LegacyDimension } from '@jesscss/core';
-import { builtinLessFns } from '../../builtins/index.js';
-import { cos as builtinCos } from '../../builtins/cos.js';
-import { sin as builtinSin } from '../../builtins/sin.js';
+import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core/value';
-import cos, { cos as namedCos } from '../cos.js';
-import sin, { sin as namedSin } from '../sin.js';
+import { cos } from '../cos.js';
+import { sin } from '../sin.js';
 
 type LegacyDimensionOracle = {
   number: number;
@@ -66,12 +64,8 @@ describe('Less sin/cos canonical cutover', () => {
     }
   });
 
-  it('uses one canonical callable at every Less entrypoint and registry slot', () => {
-    expect(sin).toBe(namedSin);
-    expect(sin).toBe(builtinSin);
-    expect(cos).toBe(namedCos);
-    expect(cos).toBe(builtinCos);
-    expect(builtinLessFns.find(fn => fn.name === 'sin')).toBe(builtinSin);
-    expect(builtinLessFns.find(fn => fn.name === 'cos')).toBe(builtinCos);
+  it('registers the one canonical callable in the Less registry', () => {
+    expect(lessFns.find(fn => fn.name === 'sin')).toBe(sin);
+    expect(lessFns.find(fn => fn.name === 'cos')).toBe(cos);
   });
 });

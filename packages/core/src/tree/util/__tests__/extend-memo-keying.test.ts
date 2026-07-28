@@ -28,10 +28,12 @@ import {
 
 describe('extend-matcher memo keying (no under-keying collisions)', () => {
   it('extendWith is keyed: self-extend (false) vs real extend (true) do not collide', () => {
-    // Same (partial=false, target=.base, find=.base, parent=undefined); only
-    // extendWith differs. Self-extend (extendWith===find) short-circuits to
-    // false; a real extendWith (.other) yields true. Shared key terms + live
-    // cache => a key missing extendWith returns the cached false for both.
+    /*
+     * Same (partial=false, target=.base, find=.base, parent=undefined); only
+     * extendWith differs. Self-extend (extendWith===find) short-circuits to
+     * false; a real extendWith (.other) yields true. Shared key terms + live
+     * cache => a key missing extendWith returns the cached false for both.
+     */
     beginExtendMatchPass();
     try {
       const selfExtend = wouldExtendChange(el('.base'), el('.base'), el('.base'), false);
@@ -44,9 +46,11 @@ describe('extend-matcher memo keying (no under-keying collisions)', () => {
   });
 
   it('extendWith is keyed: order-independent (real first, then self-extend)', () => {
-    // Reverse issue order: the real extend (true) is computed first, then the
-    // self-extend (false). A key missing extendWith would return cached true for
-    // the self-extend probe (an EXTRA/incorrect extend).
+    /*
+     * Reverse issue order: the real extend (true) is computed first, then the
+     * self-extend (false). A key missing extendWith would return cached true for
+     * the self-extend probe (an EXTRA/incorrect extend).
+     */
     beginExtendMatchPass();
     try {
       const realExtend = wouldExtendChange(el('.base'), el('.base'), el('.other'), false);
@@ -59,10 +63,12 @@ describe('extend-matcher memo keying (no under-keying collisions)', () => {
   });
 
   it('partial is keyed: whole vs partial of a compound target differ', () => {
-    // target `.a.b`, find `.a`. Whole (partial=false) does NOT match a component
-    // of a multi-part compound (find is only a COMPONENT, not the whole node);
-    // partial (partial=true) matches the component. Same target/find/extendWith/
-    // parent; only `partial` differs.
+    /*
+     * target `.a.b`, find `.a`. Whole (partial=false) does NOT match a component
+     * of a multi-part compound (find is only a COMPONENT, not the whole node);
+     * partial (partial=true) matches the component. Same target/find/extendWith/
+     * parent; only `partial` differs.
+     */
     const target = sel([el('.a'), el('.b')]); // compound-ish local via sel
     beginExtendMatchPass();
     try {
@@ -76,11 +82,13 @@ describe('extend-matcher memo keying (no under-keying collisions)', () => {
   });
 
   it('parentSelector is keyed: root-exact suppressed with parent, allowed without', () => {
-    // Exact (partial=false) extend of `.child` against local `.child`. Without a
-    // parentSelector it's a plain root exact match (true). With a parentSelector
-    // present (an ancestor `&`-context), the fully-composed selector is longer
-    // than the local node, so an exact local hit is invalid at the root (false).
-    // Same target/find/extendWith/partial; only parentSelector differs.
+    /*
+     * Exact (partial=false) extend of `.child` against local `.child`. Without a
+     * parentSelector it's a plain root exact match (true). With a parentSelector
+     * present (an ancestor `&`-context), the fully-composed selector is longer
+     * than the local node, so an exact local hit is invalid at the root (false).
+     * Same target/find/extendWith/partial; only parentSelector differs.
+     */
     beginExtendMatchPass();
     try {
       const noParent = wouldExtendChange(el('.child'), el('.child'), el('.x'), false);
@@ -92,8 +100,10 @@ describe('extend-matcher memo keying (no under-keying collisions)', () => {
   });
 
   it('target is keyed: different targets under shared find/extendWith/partial differ', () => {
-    // Sanity: matching target (.hit) vs non-matching (.miss). Trivially different
-    // results; guards against a key that omits the target entirely.
+    /*
+     * Sanity: matching target (.hit) vs non-matching (.miss). Trivially different
+     * results; guards against a key that omits the target entirely.
+     */
     beginExtendMatchPass();
     try {
       const hit = wouldExtendChange(el('.hit'), el('.hit'), el('.x'), false);
@@ -118,9 +128,11 @@ describe('extend-matcher memo keying (no under-keying collisions)', () => {
   });
 
   it('complex-target component match holds under the memo (subsequence descent)', () => {
-    // `.foo .bar` (complex) partial-matched by find `.bar` — a structural descent
-    // a string leaf with the same valueOf could not do. Confirms the memoized
-    // path returns the descent result, and re-issuing collapses to the same.
+    /*
+     * `.foo .bar` (complex) partial-matched by find `.bar` — a structural descent
+     * a string leaf with the same valueOf could not do. Confirms the memoized
+     * path returns the descent result, and re-issuing collapses to the same.
+     */
     const target = sel([el('.foo'), co(' '), el('.bar')]);
     beginExtendMatchPass();
     try {

@@ -27,8 +27,11 @@ describe('serializeTypes', () => {
     const node = ruleset({ selector: el('.a'), rules: body });
 
     expect(isNode(node, N.Ruleset)).toBe(true);
-    // N.Rules is an abstract container mask — it matches Ruleset and AtRule too,
-    // not only concrete Rules instances.
+
+    /*
+     * N.Rules is an abstract container mask — it matches Ruleset and AtRule too,
+     * not only concrete Rules instances.
+     */
     expect(isNode(node, N.Rules)).toBe(true);
   });
 });

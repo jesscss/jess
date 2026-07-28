@@ -1,10 +1,129 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { atRuleBlock, importAtRule } from '../at-rule.js';
 import { any, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, spaced, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
-import { serialize } from '../serialize.js';
+import { createTriviaMapFromRanges, withTriviaMap } from '../provenance.js';
+import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
+import { AbstractPlugin } from '../../plugin.js';
 
 describe('ImportAtRule', () => {
+  it('reuses loaded imports for repeated renders of the same source document', async () => {
+    const entryPath = '/virtual/entry.less';
+    const tokensPath = '/virtual/tokens.less';
+    const entry = stylesheet([
+      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      rule('.entry', [decl('color', keyword('red'))])
+    ]);
+    const tokens = stylesheet([
+      rule('.tokens', [decl('color', keyword('blue'))])
+    ]);
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'memory-less';
+      supportedExtensions = ['.less'];
+      locateCalls = 0;
+      parseCalls = 0;
+      private readonly documents = new Map([
+        [entryPath, entry],
+        [tokensPath, tokens]
+      ]);
+
+      override locate(paths: string[]) {
+        this.locateCalls++;
+        return paths.find(candidate => this.documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath === entryPath ? '@import "tokens.less";\n.entry { color: red; }\n' : '.tokens { color: blue; }\n';
+      }
+
+      safeParse(filePath: string) {
+        this.parseCalls++;
+        const document = this.documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+    }
+
+    const plugin = new MemoryLessPlugin();
+    const context = new Context({}, [plugin]);
+    const loadedEntry = await context.getTree(entryPath);
+    expect(loadedEntry.node).toBe(entry);
+    expect(plugin.locateCalls).toBe(1);
+    expect(plugin.parseCalls).toBe(1);
+
+    const render = () => Promise.resolve(context.withDocument(entry, () => serialize(entry, { context })));
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+  });
+
+  it('uses prepared static imports without reloading during render', async () => {
+    const entryPath = '/virtual/entry.less';
+    const tokensPath = '/virtual/tokens.less';
+    const entry = stylesheet([
+      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      rule('.entry', [decl('color', keyword('red'))])
+    ]);
+    const tokens = stylesheet([
+      rule('.tokens', [decl('color', keyword('blue'))])
+    ]);
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'memory-less';
+      supportedExtensions = ['.less'];
+      locateCalls = 0;
+      parseCalls = 0;
+      private readonly documents = new Map([
+        [entryPath, entry],
+        [tokensPath, tokens]
+      ]);
+
+      override locate(paths: string[]) {
+        this.locateCalls++;
+        return paths.find(candidate => this.documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath === entryPath ? '@import "tokens.less";\n.entry { color: red; }\n' : '.tokens { color: blue; }\n';
+      }
+
+      safeParse(filePath: string) {
+        this.parseCalls++;
+        const document = this.documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+    }
+
+    const plugin = new MemoryLessPlugin();
+    const context = new Context({}, [plugin]);
+    const loadedEntry = await context.getTree(entryPath);
+    expect(loadedEntry.node).toBe(entry);
+    expect(plugin.locateCalls).toBe(1);
+    expect(plugin.parseCalls).toBe(1);
+
+    const preparedImports = await context.withDocument(entry, () => prepareStaticImports(entry, { context }));
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+
+    const render = () => Promise.resolve(context.withDocument(entry, () => serialize(entry, { context, preparedImports })));
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+  });
+
   it('loads a claimed external import through Context without a core network resolver', async () => {
     const remoteSpecifier = 'https://styles.example.test/tokens.less';
     const mappedPath = '/virtual/tokens.less';
@@ -47,6 +166,20 @@ describe('ImportAtRule', () => {
     });
   });
 
+  it('keeps optional imports off Context resolution', async () => {
+    const context = new Context({}, [{
+      name: 'must-not-resolve',
+      resolve: () => {
+        throw new Error('optional import should not resolve');
+      }
+    }]);
+    const document = stylesheet([
+      importAtRule('@import', quoted('"missing.less"', 'missing.less', '"', false), list([keyword('optional')], ','))
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({ css: '@import (optional) "missing.less";\n' });
+  });
+
   it('keeps imported loop extend placements isolated per concrete iteration', async () => {
     const loopSelector = complexSelector([{
       compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
@@ -62,8 +195,11 @@ describe('ImportAtRule', () => {
     ]);
     const document = stylesheet([
       importAtRule('@import', quoted('"loop.less"', 'loop.less', '"', false)),
-      // The root's unrelated extend engages the imported-fact preflight without
-      // changing this target's output; the imported loop supplies its extenders.
+
+      /*
+       * The root's unrelated extend engages the imported-fact preflight without
+       * changing this target's output; the imported loop supplies its extenders.
+       */
       rule('.target', [decl('color', color('red'))], [{ target: selist(sel('.does-not-match')), partial: true }])
     ]);
 
@@ -97,9 +233,7 @@ describe('ImportAtRule', () => {
 
     await expect(serialize(document, {
       collapseNesting: false,
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'imported.less' ? { document: imported, key: 'imported.less' } : undefined)
     })).resolves.toEqual({
       css: '.imported {\n  background: green;\n}\n'
         + '@media (max-width: 768px) {\n  .mobile {\n    color: red;\n  }\n}\n'
@@ -248,9 +382,7 @@ describe('ImportAtRule', () => {
 
     const result = await serialize(document, {
       collapseNesting: false,
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'tokens.less' ? { document: imported } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'tokens.less' ? { document: imported } : undefined)
     });
 
     expect(result).toEqual({
@@ -277,9 +409,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'tokens.less' ? { document: imported } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'tokens.less' ? { document: imported } : undefined)
     })).resolves.toEqual({
       css: '.card {\n  color: red;\n  border-color: red;\n}\n'
     });
@@ -290,10 +420,13 @@ describe('ImportAtRule', () => {
       rule('.unusedAndReference', [decl('unused-and', keyword('reference'))], [{
         target: selist(sel('.theOnlySelector')),
         partial: false,
-        // This is the parser shape for `.unusedAndReference:extend(...)`.
-        // The imported-fact planner must retain its `Level[]` ancestor path,
-        // rather than passing this one selector-list Level directly to
-        // composePath().
+
+        /*
+         * This is the parser shape for `.unusedAndReference:extend(...)`.
+         * The imported-fact planner must retain its `Level[]` ancestor path,
+         * rather than passing this one selector-list Level directly to
+         * composePath().
+         */
         subject: selist(sel('.unusedAndReference'))
       }])
     ]);
@@ -307,9 +440,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'reference.less' ? { document: imported, key: 'reference.less' } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'reference.less' ? { document: imported, key: 'reference.less' } : undefined)
     })).resolves.toEqual({
       css: '.theOnlySelector {\n  shall-have: one selector;\n}\n'
     });
@@ -336,9 +467,7 @@ describe('ImportAtRule', () => {
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'nested.less' ? { document: imported } : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'nested.less' ? { document: imported } : undefined)
     })).resolves.toEqual({
       css: '#used-namespaced-mixin {\n  was: included;\n  shall-see-was: included;\n}\n'
     });
@@ -362,15 +491,37 @@ describe('ImportAtRule', () => {
 
     await expect(serialize(document, {
       collapseNesting: false,
-      importDocument: ({ specifier }) => Promise.resolve(
-        specifier === 'multiple.less'
-          ? { document: multiple, key: 'multiple.less' }
-          : specifier === 'hidden.less'
-            ? { document: hidden, key: 'hidden.less' }
-            : undefined
-      )
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'multiple.less'
+        ? { document: multiple, key: 'multiple.less' }
+        : specifier === 'hidden.less'
+          ? { document: hidden, key: 'hidden.less' }
+          : undefined)
     })).resolves.toEqual({
       css: 'show-all-content {\n  /* tralala */\n  .fix {\n    fix: fix;\n  }\n  .something {\n    inside: something;\n  }\n}\n'
+    });
+  });
+
+  it('emits leading imported block comments from document trivia at the import site', async () => {
+    const importedSource = '/* tralala */\n.fix { fix: fix; }\n';
+    const imported = withTriviaMap(
+      stylesheet([
+        rule('.fix', [decl('fix', keyword('fix'))])
+      ]),
+      createTriviaMapFromRanges(importedSource, [{ start: 0, end: '/* tralala */\n'.length }])
+    );
+    const document = stylesheet([
+      rule('show-all-content', [
+        importAtRule('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], ','))
+      ])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: false,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'multiple.less'
+        ? { document: imported, key: 'multiple.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: 'show-all-content {\n  /* tralala */\n  .fix {\n    fix: fix;\n  }\n}\n'
     });
   });
 
@@ -398,13 +549,11 @@ describe('ImportAtRule', () => {
     await expect(serialize(document, {
       importDocument: ({ specifier }) => {
         calls.push(specifier);
-        return Promise.resolve(
-          specifier === 'providers.less'
-            ? { document: providers }
-            : specifier === 'target-ready.less'
-              ? { document: deferred }
-              : undefined
-        );
+        return Promise.resolve(specifier === 'providers.less'
+          ? { document: providers }
+          : specifier === 'target-ready.less'
+            ? { document: deferred }
+            : undefined);
       }
     })).resolves.toEqual({ css: '.card {\n  color: blue;\n}\n' });
     expect(calls).toEqual(['providers.less', 'target-ready.less']);
@@ -419,6 +568,36 @@ describe('ImportAtRule', () => {
       ]))
     ]);
     let loads = 0;
+
+    await expect(Promise.resolve(serialize(document, {
+      importDocument: () => {
+        loads++;
+        return { document: null };
+      }
+    }))).rejects.toMatchObject({
+      code: 'resolve/name-not-found',
+      reason: 'Symbol "@never" is undefined in this scope.'
+    });
+    expect(loads).toBe(0);
+  });
+
+  it('leaves unresolved dynamic import targets for render-time handling during static prep', async () => {
+    const document = stylesheet([
+      importAtRule('@import', interpolation([
+        { lit: '"target-' },
+        { ref: variableReference('never', 'scoped'), unquote: true },
+        { lit: '.less"' }
+      ]))
+    ]);
+    let loads = 0;
+
+    await expect(Promise.resolve(prepareStaticImports(document, {
+      importDocument: () => {
+        loads++;
+        return { document: null };
+      }
+    }))).resolves.toBeTruthy();
+    expect(loads).toBe(0);
 
     await expect(Promise.resolve(serialize(document, {
       importDocument: () => {
@@ -500,15 +679,40 @@ describe('ImportAtRule', () => {
     })).resolves.toEqual({ css: '@import "theme.css";\n' });
   });
 
+  it('suppresses imports when processImports is false', () => {
+    const document = stylesheet([
+      importAtRule('@import', url(quoted('"https://fonts.example.test/css?family=Open+Sans"', 'https://fonts.example.test/css?family=Open+Sans', '"', false))),
+      rule('.a', [decl('b', keyword('c'))])
+    ]);
+
+    expect(serialize(document, {
+      context: new Context({ processImports: false })
+    })).toEqual({ css: '.a {\n  b: c;\n}\n' });
+  });
+
+  it('does not load Less imports when processImports is false', () => {
+    const document = stylesheet([
+      importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
+      rule('.a', [decl('b', keyword('c'))])
+    ]);
+    const importDocument = vi.fn(() => Promise.resolve({
+      document: stylesheet([rule('.from-import', [decl('color', keyword('red'))])])
+    }));
+
+    expect(serialize(document, {
+      context: new Context({ processImports: false }),
+      importDocument
+    })).toEqual({ css: '.a {\n  b: c;\n}\n' });
+    expect(importDocument).not.toHaveBeenCalled();
+  });
+
   it('emits a driver-provided inline import raw, with its typed media tail', async () => {
     const document = stylesheet([
       importAtRule('@import', url(quoted('"raw.css"', 'raw.css', '"', false)), list([keyword('inline')]), null, any('(min-width:600px)'))
     ]);
 
     await expect(serialize(document, {
-      importDocument: ({ specifier, tail }) => Promise.resolve(
-        specifier === 'raw.css' ? { inline: '#raw { color: yellow; }', media: tail } : undefined
-      )
+      importDocument: ({ specifier, tail }) => Promise.resolve(specifier === 'raw.css' ? { inline: '#raw { color: yellow; }', media: tail } : undefined)
     })).resolves.toEqual({
       css: '@media (min-width: 600px) {\n  #raw { color: yellow; }\n}\n'
     });

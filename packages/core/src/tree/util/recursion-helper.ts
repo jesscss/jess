@@ -3,6 +3,7 @@ import type { List } from '../list.js';
 
 type CallItem = List | string | undefined;
 export type CallSignature = List | string | undefined;
+
 /**
  * This memoizes arguments for a call and returns true
  * if the call has called itself with the same arguments.

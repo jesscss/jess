@@ -463,10 +463,8 @@ describe('reference', () => {
     });
 
     it('resolves fallback-frame declarations without Rules.find fallback', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'tone') {
@@ -490,7 +488,6 @@ describe('reference', () => {
         expect(resolved.toTrimmedString()).toBe('blue');
         expect(declarationHits).toHaveLength(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
@@ -2393,18 +2390,17 @@ describe('reference', () => {
         const resolved = await ref({ key: '.fast-mixin' }, { type: 'mixin-ruleset' }).resolve(context);
 
         expect(resolved.type).toBe('MixinCollection');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const resolvedColl = resolved as MixinCollection;
         expect(resolvedColl.entries).toHaveLength(1);
         expect(resolvedColl.entries[0]).not.toBe(mixinDef);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         expect((resolvedColl.entries[0] as Mixin | undefined)?.type).toBe('Mixin');
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         expect((resolvedColl.entries[0] as Mixin | undefined)?.sourceNode).toBe(mixinDef);
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         expect((resolvedColl.entries[0] as Mixin | undefined)?.rules).toBe(mixinDef.rules);
-        // rules is Node[]; the mixin body is owned by the mixin node itself,
-        // so each body child is parented to the mixin.
+
+        /*
+         * rules is Node[]; the mixin body is owned by the mixin node itself,
+         * so each body child is parented to the mixin.
+         */
         expect(mixinDef.rules[0]?.parent).toBe(mixinDef);
         expect(inheritedMixins).toBe(0);
 
@@ -2435,10 +2431,13 @@ describe('reference', () => {
           }, { type: 'index' })
         })
       ]);
-      // New model: the mixin IS its own body container. Materializing a mixin
-      // index-reference evaluates the mixin in place (Mixin.evalNode returns
-      // `this`) and looks the key up directly in the mixin's own rules — the
-      // canonical mixin body is never re-inherited into a separate surface.
+
+      /*
+       * New model: the mixin IS its own body container. Materializing a mixin
+       * index-reference evaluates the mixin in place (Mixin.evalNode returns
+       * `this`) and looks the key up directly in the mixin's own rules — the
+       * canonical mixin body is never re-inherited into a separate surface.
+       */
       const originalInherit = MixinClass.prototype.inherit;
       let inheritedFromMixinRules = 0;
       MixinClass.prototype.inherit = function inheritForCounting(
@@ -2476,6 +2475,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
+
       /** The var declaration will be removed when going to CSS */
       expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
@@ -2638,6 +2638,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
+
       /** The var declaration will be removed when going to CSS */
       expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
@@ -2722,7 +2723,6 @@ describe('reference', () => {
       };
       try {
         const evald = setRulesContext(await node.eval(context));
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         const evaluatedDecl = evald.rules[0] as Declaration | undefined;
         expect(evaluatedDecl?.type).toBe('Declaration');
         if (evaluatedDecl?.type !== 'Declaration') {
@@ -2815,10 +2815,14 @@ describe('reference', () => {
 
         expect(resolved.toTrimmedString()).toBe('red, foo');
         expect(valueCopyCount).toBe(0);
+
         // Declaration eval flattens the nested list into a fresh normalized list.
         expect(latestCopiedList).toBeDefined();
-        // That result is already flat + static, so the public resolve REUSES it
-        // (invariants 2/3) rather than re-normalizing and inheriting onto the ref.
+
+        /*
+         * That result is already flat + static, so the public resolve REUSES it
+         * (invariants 2/3) rather than re-normalizing and inheriting onto the ref.
+         */
         expect(finalizedList).toBeUndefined();
       } finally {
         Any.prototype.cloneForPlacement = originalCopy;
@@ -2838,6 +2842,7 @@ describe('reference', () => {
         })
       ]);
       let evald = await node.eval(context);
+
       /** The var declaration will be removed when going to CSS */
       expect(await renderNodeToString(evald, context)).toBeString(`
         bar: red;
@@ -2971,10 +2976,8 @@ describe('reference', () => {
     });
 
     it('plain lexical misses do not fall back to broad declaration find when no child scopes are searchable', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
@@ -2993,16 +2996,13 @@ describe('reference', () => {
         await expect(async () => await node.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('snapshot reads avoid broad declaration find for covered same-frame source-order lookup', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       let declarationHits = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
@@ -3023,7 +3023,6 @@ describe('reference', () => {
 
       const css = await renderNodeToString(node, context);
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = originalFind;
       expect(css).toBeString(`
         seen: red;
@@ -3036,10 +3035,8 @@ describe('reference', () => {
     });
 
     it('static variable hits avoid Rules.find for covered binding-frame lookup', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       let declarationHits = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
@@ -3064,7 +3061,6 @@ describe('reference', () => {
         `);
         expect(declarationHits).toBe(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
@@ -3168,8 +3164,10 @@ describe('reference', () => {
       };
 
       try {
-        // New model: nested scope Rules parented directly under root (the passed
-        // `rules:` wrapper is unwrapped + discarded, which would orphan childRules).
+        /*
+         * New model: nested scope Rules parented directly under root (the passed
+         * `rules:` wrapper is unwrapped + discarded, which would orphan childRules).
+         */
         const colorRef = ref({ key: 'color' }, { type: 'variable' });
         const childRules = rules([
           decl({
@@ -3323,7 +3321,6 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         value: liveSource.value as Node,
         sourceNode: liveSource
       });
@@ -3349,7 +3346,6 @@ describe('reference', () => {
       await node.eval(context);
       const frame = node.getScopeFrame();
       setScopeFrameLiveBinding(frame, 'color', {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         value: liveSource.value as Node,
         sourceNode: liveSource
       });
@@ -3379,8 +3375,10 @@ describe('reference', () => {
     });
 
     it('property lookup ignores a same-named VarDeclaration (Less #ns[foo] vs @foo)', async () => {
-      // Mirrors `#ns { foo: bar; @foo: baz; }` accessed as `#ns[foo]` — the
-      // index/property lane must return the property `foo`, never the variable.
+      /*
+       * Mirrors `#ns { foo: bar; @foo: baz; }` accessed as `#ns[foo]` — the
+       * index/property lane must return the property `foo`, never the variable.
+       */
       const node = rules([
         decl({ name: 'foo', value: any('bar') }),
         vardecl({ name: 'foo', value: any('baz') })
@@ -3408,9 +3406,7 @@ describe('reference', () => {
         'background-color',
         { searchParents: false }
       )?.node;
-      const cachedSlot = getDirectDeclarationSlot(
-        directLookupNode.directDeclarationLookupCache?.values().next().value?.publicMatch
-      );
+      const cachedSlot = getDirectDeclarationSlot(directLookupNode.directDeclarationLookupCache?.values().next().value?.publicMatch);
 
       const renderNode = rules([
         decl({
@@ -3466,15 +3462,9 @@ describe('reference', () => {
 
       expect(node.directDeclarationsByName).toBe(buckets);
       expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('color\u001f')
-      )).toEqual(colorCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('missing\u001f')
-      )).toEqual(missingCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('unrelated\u001f')
-      )).toEqual([]);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('color\u001f'))).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('missing\u001f'))).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('unrelated\u001f'))).toEqual([]);
       expect(findPropertyDeclarationOccurrence(node, 'color')?.node.value.valueOf()).toBe('blue');
       expect(findPropertyDeclarationOccurrence(node, 'unrelated')?.node.value.valueOf()).toBe('1');
     });
@@ -3508,15 +3498,9 @@ describe('reference', () => {
       expect(node.getDeclarationLookupVersion('child-color')).toBeGreaterThan(childColorLookupVersion);
       expect(node.directDeclarationsByName).toBe(buckets);
       expect(node.directDeclarationsByName?.get('color')).toBe(colorBucket);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('color\u001f')
-      )).toEqual(colorCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('missing\u001f')
-      )).toEqual(missingCacheKeys);
-      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(
-        key => key.startsWith('child-color\u001f')
-      )).toEqual([]);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('color\u001f'))).toEqual(colorCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('missing\u001f'))).toEqual(missingCacheKeys);
+      expect([...((node.directDeclarationLookupCache ?? new Map()).keys())].filter(key => key.startsWith('child-color\u001f'))).toEqual([]);
       expect(findPropertyDeclarationOccurrence(node, 'child-color', { searchParents: false })?.node.value.valueOf()).toBe('green');
     });
 
@@ -4104,10 +4088,8 @@ describe('reference', () => {
     });
 
     it('nested static variable hits build parent scope frames without Rules.find fallback', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       let declarationHits = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'color') {
@@ -4117,9 +4099,11 @@ describe('reference', () => {
       };
 
       try {
-        // New model: the nested scope is a Rules parented directly under root (the
-        // old `ruleset({ rules: childRules })` unwrapped + discarded the wrapper, so
-        // `childRules` would be orphaned and `color` would miss the parent frame).
+        /*
+         * New model: the nested scope is a Rules parented directly under root (the
+         * old `ruleset({ rules: childRules })` unwrapped + discarded the wrapper, so
+         * `childRules` would be orphaned and `color` would miss the parent frame).
+         */
         const childRules = rules([
           decl({
             name: 'seen',
@@ -4141,16 +4125,13 @@ describe('reference', () => {
         `);
         expect(declarationHits).toBe(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('plain lexical misses do not fall back when only later child rules could match', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
@@ -4179,16 +4160,13 @@ describe('reference', () => {
         await expect(async () => await node.eval(new Context({ leakyScope: true }))).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('plain lexical misses ignore unresolved dynamic declaration names', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'missing') {
@@ -4214,16 +4192,13 @@ describe('reference', () => {
         await expect(async () => await node.eval(context)).rejects.toThrow();
         expect(declarationHits).toHaveLength(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('same-scope unresolved dynamic names before a static winner stay on direct lookup', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
@@ -4256,16 +4231,13 @@ describe('reference', () => {
         `);
         expect(declarationHits).toHaveLength(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('same-scope unresolved dynamic names after a static winner stay on direct lookup', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
@@ -4298,7 +4270,6 @@ describe('reference', () => {
         `);
         expect(declarationHits).toHaveLength(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
@@ -4345,10 +4316,8 @@ describe('reference', () => {
     });
 
     it('prunes stale pendingDeclarationNames entries when a dynamic name resolves after ScopeFrame creation', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
@@ -4385,7 +4354,6 @@ describe('reference', () => {
         `);
         expect(declarationHits).toHaveLength(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
@@ -4498,10 +4466,8 @@ describe('reference', () => {
     });
 
     it('promotes pending dynamic declarations that have already become static before lookup', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
@@ -4553,16 +4519,13 @@ describe('reference', () => {
         expect(promotedHit.kind).toBe('declaration');
         expect(promotedHit.kind === 'declaration' && promotedHit.sourceNode).toBe(dynamicDecl);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('ignores still-dynamic pending names even when they would be synchronously computable', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
@@ -4597,16 +4560,13 @@ describe('reference', () => {
         expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
 
     it('rejects when pending dynamic names are still asynchronously unresolved', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key, filterType] = args;
         if (type === 'declaration' && filterType === 'VarDeclaration' && key === 'x') {
@@ -4641,7 +4601,6 @@ describe('reference', () => {
         expect(frame.pendingDeclarationNames).toHaveLength(1);
       } finally {
         context.rulesContext = undefined;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
@@ -4772,19 +4731,21 @@ describe('reference', () => {
     });
 
     it('should resolve nested References: #theme → .dark → .navbar → .colors', async () => {
-      // #theme {
-      //   .dark {
-      //     .navbar {
-      //       .colors() {
-      //         primary: red;
-      //       }
-      //     }
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
+      /*
+       * #theme {
+       * .dark {
+       * .navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       */
       const node = rules([
         ruleset({
           selector: el('#theme'),
@@ -4844,15 +4805,17 @@ describe('reference', () => {
     });
 
     it('should resolve compound selector as single Reference: #theme.dark.navbar.colors', async () => {
-      // #theme.dark.navbar {
-      //   .colors() {
-      //     primary: red;
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
+      /*
+       * #theme.dark.navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       */
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
@@ -4895,15 +4858,17 @@ describe('reference', () => {
     });
 
     it('should resolve string array as key: [\'#theme\', \'.dark\', \'.navbar\', \'.colors\']', async () => {
-      // #theme.dark.navbar {
-      //   .colors() {
-      //     primary: red;
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
+      /*
+       * #theme.dark.navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       */
       const node = rules([
         ruleset({
           selector: compound([el('#theme'), el('.dark'), el('.navbar')]),
@@ -5182,11 +5147,9 @@ describe('reference', () => {
     });
 
     it('keeps static compound reference path arrays as binding identity', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const path = ['.a', '.b', '.c'];
       const pathIdentityHits: boolean[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (
@@ -5230,17 +5193,14 @@ describe('reference', () => {
         expect(pathIdentityHits).toContain(true);
         expect(pathIdentityHits).not.toContain(false);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('reuses static callable binding handles across unrelated target rules version changes', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixin = (RulesClass.prototype as any).findMixin;
       const path = ['.a', '.b', '.c'];
       let pathLookups = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === path) {
@@ -5283,7 +5243,6 @@ describe('reference', () => {
         }
         expect(pathLookups).toBe(1);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
@@ -5298,7 +5257,6 @@ describe('reference', () => {
       setRulesContext(await node.eval(context));
       const lookupRef = ref({ key: '.paint' }, { type: 'mixin' });
       const originalGetScopeFrame = RulesClass.prototype.getScopeFrame;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const framePreparations: string[] = [];
       const broadCallableLookups: string[] = [];
@@ -5306,7 +5264,6 @@ describe('reference', () => {
         framePreparations.push(this.toTrimmedString());
         return originalGetScopeFrame.apply(this, args);
       };
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.paint') {
@@ -5326,16 +5283,13 @@ describe('reference', () => {
         expect(broadCallableLookups).toEqual([]);
       } finally {
         RulesClass.prototype.getScopeFrame = originalGetScopeFrame;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('reuses static function binding handles until the function key version changes', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindFunction = (RulesClass.prototype as any).findFunction;
       let functionLookups = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findFunction = function(...args: Parameters<typeof originalFindFunction>) {
         const [key] = args;
         if (key === 'paint') {
@@ -5413,7 +5367,6 @@ describe('reference', () => {
         }
         expect(functionLookups).toBe(2);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findFunction = originalFindFunction;
       }
     });
@@ -5920,10 +5873,8 @@ describe('reference', () => {
       const propertyRef = ref({ key: 'color' }, { type: 'property' });
       const declarationRef = ref({ key: 'border' }, { type: 'declaration' });
       const refs = [variableRef, propertyRef, declarationRef];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationBridgeHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key] = args;
         if (type === 'declaration') {
@@ -5954,7 +5905,6 @@ describe('reference', () => {
         }
         expect(declarationBridgeHits).toEqual([]);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
         context.searchScope.delete(ignoredDeclaration);
       }
@@ -5980,10 +5930,8 @@ describe('reference', () => {
       const mixinRef = ref({ key: '.paint-mixin' }, { type: 'mixin' });
       const rulesetRef = ref({ key: '.paint-ruleset' }, { type: 'mixin-ruleset' });
       const refs = [mixinRef, rulesetRef];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       const broadCallableLookups: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.paint-mixin' || key === '.paint-ruleset') {
@@ -6014,7 +5962,6 @@ describe('reference', () => {
         }
         expect(broadCallableLookups).toEqual([]);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
         context.searchScope.delete(ignoredDeclaration);
       }
@@ -6023,7 +5970,6 @@ describe('reference', () => {
     it('static property handles reuse source-static declaration assignment constraints', async () => {
       const node = rules([
         decl({ name: 'background-color', value: any('red') }),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: '+,:' as AssignmentType })
       ]);
       setRulesContext(await node.eval(context));
@@ -6131,12 +6077,10 @@ describe('reference', () => {
       expect(firstHandle?.returnVal).toMatchObject({
         kind: 'direct-declaration-occurrence'
       });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       if (!firstHandle || (firstHandle.returnVal as unknown) === 'cached-rules-lookup-miss' || !('node' in (firstHandle.returnVal as object))) {
         expect.fail('Expected direct declaration occurrence handle');
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       excludedDeclarations[1] = (firstHandle.returnVal as { node: Node }).node;
 
       expect(lookupRef.eval(context).valueOf()).toBe('fallback');
@@ -6151,10 +6095,8 @@ describe('reference', () => {
         normalizedFromAssign: AssignmentType.MergeList
       });
       const node = rules([source, output]);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFind = (RulesClass.prototype as any).find;
       const declarationBridgeHits: string[] = [];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).find = function(...args: Parameters<typeof originalFind>) {
         const [type, key] = args;
         if (type === 'declaration') {
@@ -6171,9 +6113,11 @@ describe('reference', () => {
           requiredDeclarationAssignments: [AssignmentType.MergeList]
         });
 
-        // The merge-chain anchor holds the COALESCED value (`red, blue`), not the
-        // last member's own value — a `+:` read sees the full combined chain. (The
-        // internal `List` valueOf joins with `;`.)
+        /*
+         * The merge-chain anchor holds the COALESCED value (`red, blue`), not the
+         * last member's own value — a `+:` read sees the full combined chain. (The
+         * internal `List` valueOf joins with `;`.)
+         */
         expect(lookupRef.eval(context).valueOf()).toBe('red;blue');
         const firstHandle = lookupRef._rulesLookupHandle;
         expect(firstHandle?.returnVal).toMatchObject({
@@ -6191,13 +6135,14 @@ describe('reference', () => {
           normalizedFromAssign: AssignmentType.MergeList
         }));
 
-        // A freshly PUSHED merge decl (post-coalesce, no leading ref, no re-coalesce)
-        // holds only its own value; the invalidated handle now resolves to it.
+        /*
+         * A freshly PUSHED merge decl (post-coalesce, no leading ref, no re-coalesce)
+         * holds only its own value; the invalidated handle now resolves to it.
+         */
         expect(lookupRef.eval(context).valueOf()).toBe('green');
         expect(lookupRef._rulesLookupHandle).not.toBe(firstHandle);
         expect(declarationBridgeHits).toEqual([]);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).find = originalFind;
       }
     });
@@ -6241,7 +6186,6 @@ describe('reference', () => {
       const node = rules([
         decl({ name: 'background-color', value: any('red') }),
         decl({ name: 'background-color', value: any('blue') }, { normalizedFromAssign: AssignmentType.MergeList }),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         decl({ name: 'background-color', value: any('green') }, { normalizedFromAssign: '+,:' as AssignmentType })
       ]);
       setRulesContext(await node.eval(context));
@@ -6281,10 +6225,8 @@ describe('reference', () => {
     });
 
     it('callable handles reject stale terminal mixin-only mode', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let callableLookups = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.parameterized-handle') {
@@ -6320,19 +6262,15 @@ describe('reference', () => {
         expect(callableLookups).toBe(2);
         expect(lookupRef._rulesLookupHandle?.terminalMixinOnly).toBe(true);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
 
     it('callable handles survive unrelated declaration and function writes', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixin = (RulesClass.prototype as any).findMixin;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       let callableLookups = 0;
       let broadCallableLookups = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.callable-handle') {
@@ -6340,7 +6278,6 @@ describe('reference', () => {
         }
         return originalFindMixin.apply(this, args);
       };
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.callable-handle') {
@@ -6400,21 +6337,16 @@ describe('reference', () => {
         expect(callableLookups).toBe(1);
         expect(broadCallableLookups).toBe(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = originalFindMixin;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('mixin-ruleset handles use frame lookup and skip broad callable lookup after cache write', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixin = (RulesClass.prototype as any).findMixin;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixinsFast = (RulesClass.prototype as any).findMixinsFast;
       let callableLookups = 0;
       let broadCallableLookups = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.ruleset-handle') {
@@ -6422,7 +6354,6 @@ describe('reference', () => {
         }
         return originalFindMixin.apply(this, args);
       };
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixinsFast = function(...args: Parameters<typeof originalFindMixinsFast>) {
         const [key] = args;
         if (key === '.ruleset-handle') {
@@ -6453,18 +6384,14 @@ describe('reference', () => {
         expect(callableLookups).toBe(1);
         expect(broadCallableLookups).toBe(0);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = originalFindMixin;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixinsFast = originalFindMixinsFast;
       }
     });
 
     it('callable handles invalidate when callable surfaces change', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const originalFindMixin = (RulesClass.prototype as any).findMixin;
       let callableLookups = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       (RulesClass.prototype as any).findMixin = function(...args: Parameters<typeof originalFindMixin>) {
         const [key] = args;
         if (key === '.callable-handle') {
@@ -6495,7 +6422,6 @@ describe('reference', () => {
         expect(second).toBeDefined();
         expect(callableLookups).toBe(2);
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         (RulesClass.prototype as any).findMixin = originalFindMixin;
       }
     });
@@ -6558,9 +6484,7 @@ describe('reference', () => {
       });
 
       expect(found).toHaveLength(1);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((found?.[0] as Ruleset | undefined)?.type).toBe('Ruleset');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((found?.[0] as Ruleset | undefined)?.selector?.valueOf()).toBe('>.bar.baz');
     });
 
@@ -6603,26 +6527,28 @@ describe('reference', () => {
     });
 
     it('should resolve nested mixin-ruleset reference chains through nested mixins', async () => {
-      // #theme {
-      //   .dark {
-      //     .navbar() {
-      //       .colors() {
-      //         primary: cyan;
-      //       }
-      //     }
-      //   }
-      // }
-      // #theme.dark.navbar {
-      //   .colors() {
-      //     primary: red;
-      //   }
-      // }
-      // .output {
-      //   @colors: #theme.dark.navbar.colors();
-      //   background: @colors[primary];
-      // }
-      // Because this is a nested reference chain, it should keep traversing the
-      // nested mixin namespace and resolve primary: cyan.
+      /*
+       * #theme {
+       * .dark {
+       * .navbar() {
+       * .colors() {
+       * primary: cyan;
+       * }
+       * }
+       * }
+       * }
+       * #theme.dark.navbar {
+       * .colors() {
+       * primary: red;
+       * }
+       * }
+       * .output {
+       * @colors: #theme.dark.navbar.colors();
+       * background: @colors[primary];
+       * }
+       * Because this is a nested reference chain, it should keep traversing the
+       * nested mixin namespace and resolve primary: cyan.
+       */
       const node = rules([
         mixin({
           name: '#theme',

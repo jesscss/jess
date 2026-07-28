@@ -64,16 +64,20 @@ export interface SolveSubject {
 /** The per-subject SOLVE outcome. */
 export interface SolveSubjectResult {
   id: string;
+
   /** the subject's final selector after the fixpoint (own-built), or the input when UNSUPPORTED. */
   selector: Selector;
+
   /** true when every fired instruction built on the own engine (no UNSUPPORTED for this subject). */
   ownBuilt: boolean;
+
   /** instructions whose per-match shape the own engine cannot build yet (known-fallback frontier). */
   unsupported: PlanInstruction[];
 }
 
 export interface SolveResult {
   subjects: SolveSubjectResult[];
+
   /** true when NO subject hit an UNSUPPORTED per-match shape (whole document own-built). */
   fullyOwnBuilt: boolean;
 }
@@ -131,21 +135,27 @@ function solveSubject(
   let ownBuilt = true;
 
   let current = subject.selector;
-  // Fire-once GLOBALLY on (branch value, instruction). A branch value is the serialized form of
-  // the current subject selector; an instruction is keyed by (partial, target, extendWith). Once a
-  // pair fires we never re-fire it — but a produced (new) branch value re-opens every instruction
-  // against the fresh value, which is the transitive closure (a chained target only reachable after
-  // an earlier apply still fires). Value-dedupe: a fire that does not change the value is recorded
-  // as fired-inert and never retried.
+
+  /*
+   * Fire-once GLOBALLY on (branch value, instruction). A branch value is the serialized form of
+   * the current subject selector; an instruction is keyed by (partial, target, extendWith). Once a
+   * pair fires we never re-fire it — but a produced (new) branch value re-opens every instruction
+   * against the fresh value, which is the transitive closure (a chained target only reachable after
+   * an earlier apply still fires). Value-dedupe: a fire that does not change the value is recorded
+   * as fired-inert and never retried.
+   */
   const fired = new Set<string>();
   const fireKey = (branchValue: string, inst: PlanInstruction): string =>
     `${branchValue}|${instructionKey(inst)}`;
 
   let changed = true;
-  // Bound: each (branch-value, instruction) fires at most once, and each fire that changes the
-  // value produces at most one new branch value; the total fires are bounded by
-  // subjects×instructions per distinct value. This guard is a belt-and-suspenders cap that can
-  // never be reached under the fire-once set, but keeps a divergent rewrite from looping.
+
+  /*
+   * Bound: each (branch-value, instruction) fires at most once, and each fire that changes the
+   * value produces at most one new branch value; the total fires are bounded by
+   * subjects×instructions per distinct value. This guard is a belt-and-suspenders cap that can
+   * never be reached under the fire-once set, but keeps a divergent rewrite from looping.
+   */
   const totalFans = reachableBuckets.reduce((n, b) => n + b.fans.length, 0);
   const guardMax = (totalFans + 2) * (totalFans + 2);
   let rounds = 0;
@@ -153,12 +163,15 @@ function solveSubject(
     changed = false;
     rounds++;
     const branchValue = String(current.valueOf());
-    // CHEAP SOUND PRE-REJECT: a plain-token find can only match a subject that textually carries
-    // all its tokens. Computing the subject's present-token set ONCE per branch value lets the
-    // inner loop skip the (dominant) majority of fans whose target token is absent — without
-    // paying the full matcher's per-fan selector re-parse. `undefined` (non-plain subject) disables
-    // the filter (always run the matcher), preserving byte-identical output. Attacks the O(subjects²)
-    // fire explosion that the coarse root-scope reachability leaves in a flat document.
+
+    /*
+     * CHEAP SOUND PRE-REJECT: a plain-token find can only match a subject that textually carries
+     * all its tokens. Computing the subject's present-token set ONCE per branch value lets the
+     * inner loop skip the (dominant) majority of fans whose target token is absent — without
+     * paying the full matcher's per-fan selector re-parse. `undefined` (non-plain subject) disables
+     * the filter (always run the matcher), preserving byte-identical output. Attacks the O(subjects²)
+     * fire explosion that the coarse root-scope reachability leaves in a flat document.
+     */
     const subjectTokens = subjectPresentTokens(current);
     for (const bucket of reachableBuckets) {
       for (const fan of bucket.fans) {
@@ -177,8 +190,10 @@ function solveSubject(
               }
             }
             if (missing) {
-              // Definitely NOT_FOUND in the current value. Leave UNFIRED (like the matcher's
-              // NOT_FOUND) so a later chained change re-opens it — the transitive-closure re-enqueue.
+              /*
+               * Definitely NOT_FOUND in the current value. Leave UNFIRED (like the matcher's
+               * NOT_FOUND) so a later chained change re-opens it — the transitive-closure re-enqueue.
+               */
               continue;
             }
           }
@@ -192,8 +207,10 @@ function solveSubject(
           continue;
         }
         if (result === 'NOT_FOUND') {
-          // Not reachable in the CURRENT branch value. Leave unfired so a later chained change
-          // (a new branch value) re-opens it — the transitive-closure re-enqueue.
+          /*
+           * Not reachable in the CURRENT branch value. Leave unfired so a later chained change
+           * (a new branch value) re-opens it — the transitive-closure re-enqueue.
+           */
           continue;
         }
         const next = asSelector(result);
@@ -203,6 +220,7 @@ function solveSubject(
           changed = true;
           break; // new branch value → restart the sweep so fire-once keys off the fresh value
         }
+
         // Matched but no net change (self-extend / value-dedupe) → fired-inert, no re-fire.
       }
       if (changed) {

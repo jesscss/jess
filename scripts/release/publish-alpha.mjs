@@ -14,11 +14,14 @@ function parseArgs(argv) {
   const parsed = {
     dryRun: false,
     tag: 'alpha',
-    // GATED: also move the npm `latest` dist-tag to the just-published version.
-    // OFF by default; opt in with `--set-latest` or `ALPHA_SET_LATEST=1`. This
-    // deliberately relaxes the "non-alpha tags only from `main`" guardrail for
-    // the pre-stable alpha phase, so `npm install <pkg>` resolves to the current
-    // alpha instead of an ancient `latest`. Owner policy call — keep it explicit.
+
+    /*
+     * GATED: also move the npm `latest` dist-tag to the just-published version.
+     * OFF by default; opt in with `--set-latest` or `ALPHA_SET_LATEST=1`. This
+     * deliberately relaxes the "non-alpha tags only from `main`" guardrail for
+     * the pre-stable alpha phase, so `npm install <pkg>` resolves to the current
+     * alpha instead of an ancient `latest`. Owner policy call — keep it explicit.
+     */
     setLatest: process.env.ALPHA_SET_LATEST === '1'
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -170,9 +173,7 @@ const branch = currentBranch();
 const preflightVersion = process.env.ALPHA_PREFLIGHT_VERSION?.trim() || null;
 
 if (preflightVersion && !/^\d+\.\d+\.\d+-alpha\.\d+$/.test(preflightVersion)) {
-  console.error(
-    `Refusing preflight: ALPHA_PREFLIGHT_VERSION '${preflightVersion}' is not an alpha semver.`
-  );
+  console.error(`Refusing preflight: ALPHA_PREFLIGHT_VERSION '${preflightVersion}' is not an alpha semver.`);
   process.exit(1);
 }
 
@@ -183,9 +184,7 @@ if (!options.dryRun) {
 if (options.tag === 'alpha') {
   if (branch !== 'alpha') {
     if (!options.dryRun) {
-      console.error(
-        `Refusing publish: npm tag 'alpha' can only be published from branch 'alpha' (current: '${branch}').`
-      );
+      console.error(`Refusing publish: npm tag 'alpha' can only be published from branch 'alpha' (current: '${branch}').`);
       process.exit(1);
     }
     console.log(`Dry-run note: alpha publish policy requires branch 'alpha' (current: '${branch}').`);
@@ -193,9 +192,7 @@ if (options.tag === 'alpha') {
 }
 
 if (options.tag !== 'alpha' && !options.dryRun && branch !== 'main') {
-  console.error(
-    `Refusing publish: non-alpha npm tags can only be published from branch 'main' (current: '${branch}').`
-  );
+  console.error(`Refusing publish: non-alpha npm tags can only be published from branch 'main' (current: '${branch}').`);
   process.exit(1);
 }
 
@@ -208,61 +205,59 @@ if (plan.errors.length > 0) {
   process.exit(1);
 }
 
-// Resolve the ONE lockstep version to publish. For the alpha tag this is
-// intent-first + registry-guarded (never the raw, possibly-stale manifest
-// version), guaranteeing a fresh version for every allowlisted package. For a
-// non-alpha tag we publish the manifest version as-is (stable releases from
-// `main`), keeping the existing behavior.
+/*
+ * Resolve the ONE lockstep version to publish. For the alpha tag this is
+ * intent-first + registry-guarded (never the raw, possibly-stale manifest
+ * version), guaranteeing a fresh version for every allowlisted package. For a
+ * non-alpha tag we publish the manifest version as-is (stable releases from
+ * `main`), keeping the existing behavior.
+ */
 let publishVersion;
 let restoreVersions = null;
 if (options.tag === 'alpha') {
   const resolution = resolveAlphaPublishVersion({ rootDir, allowlistPath, plan });
   publishVersion = resolution.resolved;
   if (preflightVersion && preflightVersion !== resolution.resolved) {
-    console.error(
-      `Refusing preflight: candidate ${preflightVersion} is stale; registry resolution now selects `
-      + `${resolution.resolved}. Re-run the release preflight.`
-    );
+    console.error(`Refusing preflight: candidate ${preflightVersion} is stale; registry resolution now selects `
+      + `${resolution.resolved}. Re-run the release preflight.`);
     finish(1);
   }
-  console.log(
-    `Resolved lockstep alpha version: ${publishVersion} `
-    + `(intended ${resolution.intended}, publishedMax ${resolution.publishedMax ?? '(none)'}, ${resolution.reason}).`
-  );
+  console.log(`Resolved lockstep alpha version: ${publishVersion} `
+    + `(intended ${resolution.intended}, publishedMax ${resolution.publishedMax ?? '(none)'}, ${resolution.reason}).`);
   const applied = applyLockstepVersion(rootDir, publishVersion);
   if (applied.changed.length > 0) {
     console.log(`Applied version ${publishVersion} to ${applied.changed.length} workspace manifest(s).`);
   }
+
   // A dry-run must never leave the working tree mutated.
   if (options.dryRun) {
     restoreVersions = applied.restore;
   }
 
-  // Alpha-clobber guard. A dev->alpha squash that skips the version bump resets
-  // the alpha branch manifest back to dev's placeholder, silently landing the
-  // release manifest BELOW the alpha dist-tag already live on npm. This has
-  // slipped through 3x, so turn it into a loud, actionable error. The guard runs
-  // on BOTH --dry-run and real publish, so `release:alpha:check` (which invokes
-  // this script with --dry-run) catches it before anything is published.
-  //
-  // We compare the branch candidate against `minTag`, the MINIMUM (laggard)
-  // `alpha` dist-tag across the allowlisted publish set. During the orchestrated
-  // preflight the candidate is passed through ALPHA_PREFLIGHT_VERSION because
-  // the snapshot still has the previous manifest version until checks pass.
-  // Using the min keeps a partially-completed publish resumable, while
-  // `isAlphaClobber`'s `<=` also refuses an already-published equal version (a
-  // code refresh must bump above it). A matching-base check leaves legitimate
-  // minor/major bumps alone.
+  /*
+   * Alpha-clobber guard. A dev->alpha squash that skips the version bump resets
+   * the alpha branch manifest back to dev's placeholder, silently landing the
+   * release manifest BELOW the alpha dist-tag already live on npm. This has
+   * slipped through 3x, so turn it into a loud, actionable error. The guard runs
+   * on BOTH --dry-run and real publish, so `release:alpha:check` (which invokes
+   * this script with --dry-run) catches it before anything is published.
+   *
+   * We compare the branch candidate against `minTag`, the MINIMUM (laggard)
+   * `alpha` dist-tag across the allowlisted publish set. During the orchestrated
+   * preflight the candidate is passed through ALPHA_PREFLIGHT_VERSION because
+   * the snapshot still has the previous manifest version until checks pass.
+   * Using the min keeps a partially-completed publish resumable, while
+   * `isAlphaClobber`'s `<=` also refuses an already-published equal version (a
+   * code refresh must bump above it). A matching-base check leaves legitimate
+   * minor/major bumps alone.
+   */
   const minAlphaTag = computeMinAlphaTag(plan.publishOrder, pkgName =>
-    getTaggedVersion(pkgName, 'alpha')
-  );
+    getTaggedVersion(pkgName, 'alpha'));
   const manifestVersion = preflightVersion ?? resolution.intended;
   if (isAlphaClobber({ manifestVersion, minTag: minAlphaTag })) {
-    console.error(
-      `Refusing: alpha branch manifest is ${manifestVersion} but the npm 'alpha' tag already `
+    console.error(`Refusing: alpha branch manifest is ${manifestVersion} but the npm 'alpha' tag already `
       + `publishes ${minAlphaTag}. That version is already released -- a dev->alpha refresh must `
-      + `bump above it. Run 'node scripts/release/increment-alpha.mjs'.`
-    );
+      + `bump above it. Run 'node scripts/release/increment-alpha.mjs'.`);
     finish(1);
   }
 } else {
@@ -270,16 +265,12 @@ if (options.tag === 'alpha') {
 }
 
 if (options.tag === 'alpha' && publishVersion && !publishVersion.includes('-alpha.')) {
-  console.error(
-    `Refusing publish: resolved version '${publishVersion}' does not include '-alpha.' while publishing with --tag alpha.`
-  );
+  console.error(`Refusing publish: resolved version '${publishVersion}' does not include '-alpha.' while publishing with --tag alpha.`);
   process.exit(1);
 }
 
 if (options.tag !== 'alpha' && publishVersion.includes('-alpha.')) {
-  console.error(
-    `Refusing publish: version '${publishVersion}' includes '-alpha.' and cannot be published with non-alpha tag '${options.tag}'.`
-  );
+  console.error(`Refusing publish: version '${publishVersion}' includes '-alpha.' and cannot be published with non-alpha tag '${options.tag}'.`);
   process.exit(1);
 }
 
@@ -291,17 +282,13 @@ function finish(code) {
   process.exit(code);
 }
 
-console.log(
-  `${options.dryRun ? 'Dry-run' : 'Publishing'} ${plan.publishOrder.length} allowlisted package(s) `
-  + `at ${publishVersion} with npm tag '${options.tag}'.`
-);
+console.log(`${options.dryRun ? 'Dry-run' : 'Publishing'} ${plan.publishOrder.length} allowlisted package(s) `
+  + `at ${publishVersion} with npm tag '${options.tag}'.`);
 
 if (options.setLatest) {
-  console.log(
-    `\nNote: --set-latest is ON. After publishing, the npm 'latest' dist-tag will be moved to `
+  console.log(`\nNote: --set-latest is ON. After publishing, the npm 'latest' dist-tag will be moved to `
     + `${publishVersion} for every allowlisted package. This deliberately relaxes the `
-    + `"non-alpha tags only from main" policy for the pre-stable alpha phase.`
-  );
+    + `"non-alpha tags only from main" policy for the pre-stable alpha phase.`);
 }
 
 try {
@@ -333,30 +320,31 @@ try {
     if (versionExists) {
       if (taggedVersion === version) {
         console.log(`\nSkipping ${pkgName}@${version}: ${options.tag} already points to that version.`);
-        // Still reconcile `latest` when requested: the alpha tag may already be
-        // correct while `latest` lags on this pre-existing package.
+
+        /*
+         * Still reconcile `latest` when requested: the alpha tag may already be
+         * correct while `latest` lags on this pre-existing package.
+         */
         if (options.setLatest) {
           setLatestTag(pkgName, version, options.dryRun);
         }
         continue;
       }
 
-      // Never move the dist-tag BACKWARD (to a lower semver than where it
-      // currently points). With the resolver this branch should not trigger for
-      // alpha (resolved is always fresh), but the guard protects any path that
-      // would otherwise silently regress the tag.
+      /*
+       * Never move the dist-tag BACKWARD (to a lower semver than where it
+       * currently points). With the resolver this branch should not trigger for
+       * alpha (resolved is always fresh), but the guard protects any path that
+       * would otherwise silently regress the tag.
+       */
       if (taggedVersion && compareSemver(version, taggedVersion) < 0) {
-        console.error(
-          `\nRefusing to move npm '${options.tag}' tag BACKWARD for ${pkgName}: `
-          + `currently points to ${taggedVersion}, refusing to retag to lower version ${version}.`
-        );
+        console.error(`\nRefusing to move npm '${options.tag}' tag BACKWARD for ${pkgName}: `
+          + `currently points to ${taggedVersion}, refusing to retag to lower version ${version}.`);
         finish(1);
       }
 
-      console.log(
-        `\n${options.dryRun ? 'Dry-run note' : 'Retagging'} ${pkgName}@${version}: `
-        + `${options.tag} currently points to ${taggedVersion ?? '(not found)'}`
-      );
+      console.log(`\n${options.dryRun ? 'Dry-run note' : 'Retagging'} ${pkgName}@${version}: `
+        + `${options.tag} currently points to ${taggedVersion ?? '(not found)'}`);
 
       if (!options.dryRun) {
         run('npm', ['dist-tag', 'add', `${pkgName}@${version}`, options.tag], rootDir);

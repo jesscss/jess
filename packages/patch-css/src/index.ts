@@ -2,6 +2,7 @@
 const isBrowser = new Function('try { return this===window } catch(e) { return false }')();
 
 const sheetMap: Record<string, string> = {};
+
 /**
  * Insert a stylesheet by id
  */

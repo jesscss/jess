@@ -6,7 +6,9 @@
  *
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
-import type { Block, Bool, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueGroup } from './value-eval.js';
+import type {
+  Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueGroup
+} from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
 
@@ -143,6 +145,21 @@ export function makeList(
   const l: Mutable<List> = { type: 'List', value, sep, bytes: '' };
   l.bytes = serializeValue(l);
   return l;
+}
+
+/**
+ * Build a value-domain map. `entries` keep their AUTHORED order — Sass maps are
+ * ordered, and a key-rewriting function (`map.set`) replaces in place rather than
+ * appending. De-duplication is the CALLER's policy (the evaluator preserves what
+ * the author wrote; `map.merge` collapses), so this never silently drops a pair.
+ */
+export function makeCollection(entries: readonly CollectionEntry[], base?: ValueGroup): Collection {
+  const c: Mutable<Collection> = { type: 'Collection', entries, bytes: '' };
+  if (base !== undefined) {
+    c.base = base;
+  }
+  c.bytes = serializeValue(c);
+  return c;
 }
 
 /** Wrap a value in an explicit paren/square delimiter fact. */

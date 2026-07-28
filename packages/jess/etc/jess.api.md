@@ -4,80 +4,19 @@
 
 ```ts
 
-import { Context } from '@jesscss/core';
-import { Deprecation } from '@jesscss/core';
-import { ErrorDiagnostic } from '@jesscss/core';
-import { ErrorsConfigInput } from '@jesscss/core';
-import { StylesConfig } from 'styles-config';
-import type { Stylesheet } from '@jesscss/core/ast';
-import { WarningDiagnostic } from '@jesscss/core';
-import { WarningsConfigInput } from '@jesscss/core';
+import { Compiler as Compiler_2 } from '@jesscss/compiler';
+import { ConfigOptions } from '@jesscss/compiler';
 
-// @public (undocumented)
-export class Compiler {
+// @public
+export class Compiler extends Compiler_2 {
     constructor(opts?: ConfigOptions);
-    // @internal
-    compile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-        document: Stylesheet;
-        context: Context;
-    }>;
-    // @internal
-    createContext(filePath?: string, renderOptions?: Partial<ConfigOptions>): Context;
     // (undocumented)
     dispose(): void;
     // @internal (undocumented)
     opts: ConfigOptions;
-    // (undocumented)
-    render(filePath: string, options?: Partial<ConfigOptions>): Promise<string>;
-    // (undocumented)
-    renderString(content: string, options?: {
-        filePath?: string;
-        language?: string;
-        extension?: string;
-        config?: Partial<ConfigOptions>;
-    }): Promise<string>;
-    // (undocumented)
-    renderToResult(input: string | {
-        source: string;
-        filePath?: string;
-        language?: string;
-        extension?: string;
-    }, options?: Partial<ConfigOptions> & {
-        filePath?: string;
-        language?: string;
-        extension?: string;
-    }): Promise<{
-        css: string;
-        errors: ErrorDiagnostic[];
-        warnings: WarningDiagnostic[];
-        loadedUrls: string[];
-    }>;
-    // @internal (undocumented)
-    safeCompile(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-        document: Stylesheet | null;
-        context: Context;
-        errors: ErrorDiagnostic[];
-        warnings: WarningDiagnostic[];
-    }>;
-    // @internal (undocumented)
-    safeRender(filePath: string, options?: Partial<ConfigOptions>): Promise<{
-        css: string | null;
-        errors: ErrorDiagnostic[];
-        warnings: WarningDiagnostic[];
-    }>;
 }
 
-// @public (undocumented)
-export type ConfigOptions = StylesConfig & {
-    outputFile?: string;
-    suppressWarnings?: boolean;
-    breakOnError?: boolean;
-    verbose?: boolean;
-    fatalDeprecations?: Iterable<Deprecation>;
-    limitDeprecationRepetition?: boolean;
-    warnings?: WarningsConfigInput;
-    errors?: ErrorsConfigInput;
-};
+export { ConfigOptions }
 
 // (No @packageDocumentation comment for this package)
 

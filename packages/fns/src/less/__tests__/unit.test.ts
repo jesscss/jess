@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { makeDimension, makeKeyword, makeQuoted } from '@jesscss/core/value';
-import unit from '../unit.js';
+import { unit } from '../unit.js';
 
 describe('unit()', () => {
   it('removes unit when no second argument is given', () => {
@@ -10,12 +10,8 @@ describe('unit()', () => {
   });
 
   it('sets unit from Any keyword and Quoted values', () => {
-    const fromAny = unit(
-      makeDimension(5, 'px'), makeKeyword('em')
-    );
-    const fromQuoted = unit(
-      makeDimension(7, 'px'), makeQuoted('ch')
-    );
+    const fromAny = unit(makeDimension(5, 'px'), makeKeyword('em'));
+    const fromQuoted = unit(makeDimension(7, 'px'), makeQuoted('ch'));
     expect(fromAny.number).toBe(5);
     expect(fromAny.unit).toBe('em');
     expect(fromQuoted.number).toBe(7);

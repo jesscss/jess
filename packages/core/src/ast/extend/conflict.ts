@@ -31,8 +31,10 @@
 const enum Kind {
   /** A type/element selector (`div`, `a`) — at most one per compound. */
   Type,
+
   /** An id selector (`#foo`) — at most one distinct id per compound. */
   Id,
+
   /** Class / attribute / pseudo / `&` / `*` / interpolated-empty — never a conflict source. */
   Other
 }
@@ -86,8 +88,10 @@ function collect(text: string, types: Set<string>, ids: Set<string>): void {
  * over O(surrounding + extender) atoms, no serialization.
  */
 export function wouldConflict(surrounding: readonly string[], extenderTerminal: readonly string[]): boolean {
-  // tree-v1 precondition: an extender with no type/id can never introduce a conflict
-  // (a valid authored `surrounding` already holds ≤1 type and ≤1 id on its own).
+  /*
+   * tree-v1 precondition: an extender with no type/id can never introduce a conflict
+   * (a valid authored `surrounding` already holds ≤1 type and ≤1 id on its own).
+   */
   const extTypes = new Set<string>();
   const extIds = new Set<string>();
   for (const t of extenderTerminal) {

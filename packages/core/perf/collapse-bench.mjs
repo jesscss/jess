@@ -21,7 +21,9 @@ writeFileSync(p, src);
 const mode = process.argv[2]; // 'collapse' | 'nested' | undefined (both)
 async function bench(label, opts, iters) {
   const t = [];
-  for (let i = 0; i < 3; i++) await new Compiler().render(p, opts);      // warmup
+  for (let i = 0; i < 3; i++) {
+    await new Compiler().render(p, opts);
+  }      // warmup
   for (let i = 0; i < iters; i++) {
     const t0 = performance.now();
     await new Compiler().render(p, opts);
@@ -31,9 +33,11 @@ async function bench(label, opts, iters) {
   console.log(`${label}: median ${t[t.length >> 1].toFixed(1)}ms (min ${t[0].toFixed(1)}, max ${t[t.length - 1].toFixed(1)})`);
 }
 
-if (mode === 'collapse') { await bench('collapse', { output: { collapseNesting: true } }, 40); }
-else if (mode === 'nested') { await bench('nested', { output: { collapseNesting: false } }, 40); }
-else {
+if (mode === 'collapse') {
+  await bench('collapse', { output: { collapseNesting: true } }, 40);
+} else if (mode === 'nested') {
+  await bench('nested', { output: { collapseNesting: false } }, 40);
+} else {
   await bench('collapseNesting:true ', { output: { collapseNesting: true } }, 15);
   await bench('collapseNesting:false', { output: { collapseNesting: false } }, 15);
 }

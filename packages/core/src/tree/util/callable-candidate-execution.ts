@@ -107,23 +107,25 @@ export async function executeCallableCandidate({
       usesPreboundParamGuardOuterRules
     });
   } else if (context.spineMixinSurfaceSink !== undefined && lexicalScopeFrame) {
-    // SPINE-FOLD ONLY (cutover MIXIN fold #6). A param-less nested mixin folded
-    // through the spine descends its SHARED body under `context.rulesContext =
-    // surface` (the `spineFrame` tag). Unlike the eval path — which reaches the
-    // definition scope by walking the surface node's `.parent` chain at
-    // `getScopeFrame` time — the fold resolves each leaf against the surface's own
-    // scope frame, whose parent must therefore BE the definition (lexical) scope so
-    // a closure over an INTERMEDIATE-scope local (`.util { @local: red; .paint() {
-    // color: @local } }`) resolves, and a shadowed name (`.box { @c: inner; .tint()
-    // }`) reads the definition binding, not the caller/root one.
-    //
-    // Reuse the lexical-scope re-parent that `wireCallableScopeFrames`' imported-
-    // surface branch performs (`rules.getScopeFrame(lexicalScopeFrame)`): it chains
-    // the surface frame to the def scope (which itself chains to root, so a root-var
-    // closure still resolves) and deliberately wires NO caller fallback — a Less
-    // mixin closure captures its DEFINITION scope, not the call site. GATED on the
-    // sink so the EVAL path (no sink installed) is byte-untouched: it wires nothing
-    // here and resolves via the node `.parent` walk exactly as before.
+    /*
+     * SPINE-FOLD ONLY (cutover MIXIN fold #6). A param-less nested mixin folded
+     * through the spine descends its SHARED body under `context.rulesContext =
+     * surface` (the `spineFrame` tag). Unlike the eval path — which reaches the
+     * definition scope by walking the surface node's `.parent` chain at
+     * `getScopeFrame` time — the fold resolves each leaf against the surface's own
+     * scope frame, whose parent must therefore BE the definition (lexical) scope so
+     * a closure over an INTERMEDIATE-scope local (`.util { @local: red; .paint() {
+     * color: @local } }`) resolves, and a shadowed name (`.box { @c: inner; .tint()
+     * }`) reads the definition binding, not the caller/root one.
+     *
+     * Reuse the lexical-scope re-parent that `wireCallableScopeFrames`' imported-
+     * surface branch performs (`rules.getScopeFrame(lexicalScopeFrame)`): it chains
+     * the surface frame to the def scope (which itself chains to root, so a root-var
+     * closure still resolves) and deliberately wires NO caller fallback — a Less
+     * mixin closure captures its DEFINITION scope, not the call site. GATED on the
+     * sink so the EVAL path (no sink installed) is byte-untouched: it wires nothing
+     * here and resolves via the node `.parent` walk exactly as before.
+     */
     wireCallableScopeFrames({
       rules,
       lexicalScopeFrame,
@@ -136,11 +138,13 @@ export async function executeCallableCandidate({
       leakyScope: true
     });
   } else if (definedInImportedSurface) {
-    // Param-less callable defined inside an imported/composed surface: no live
-    // slots, but the body (and any detached-ruleset closure it defines) must
-    // still reach config vars applied at the import/call site — an imported
-    // `with`/`set` binding lives on the call-site chain, not the definition
-    // chain. Wire the body-surface frame's fallback so those vars resolve.
+    /*
+     * Param-less callable defined inside an imported/composed surface: no live
+     * slots, but the body (and any detached-ruleset closure it defines) must
+     * still reach config vars applied at the import/call site — an imported
+     * `with`/`set` binding lives on the call-site chain, not the definition
+     * chain. Wire the body-surface frame's fallback so those vars resolve.
+     */
     wireCallableScopeFrames({
       rules,
       lexicalScopeFrame,

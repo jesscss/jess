@@ -6,8 +6,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Compiler } from '../packages/jess/lib/index.js';
-import lessPlugin from '../packages/jess-plugin-less/lib/index.js';
-import { lessCompatPlugin } from '../packages/jess-plugin-less-compat/lib/index.js';
+import lessPlugin from '../packages/syntax/less/jess-plugin-less/lib/index.js';
+import { lessCompatPlugin } from '../packages/syntax/less/jess-plugin-less-compat/lib/index.js';
 
 const require = createRequire(import.meta.url);
 

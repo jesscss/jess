@@ -11,8 +11,8 @@ describe('public merge-alongside-mixin contract', () => {
       { lessCompatPlugin }
     ] = await Promise.all([
       import('../../src/index.js'),
-      import('../../../jess-plugin-less/src/index.js'),
-      import('../../../jess-plugin-less-compat/src/index.js')
+      import('../../../syntax/less/jess-plugin-less/src/index.js'),
+      import('../../../syntax/less/jess-plugin-less-compat/src/index.js')
     ]);
     const fixture = path.resolve(
       path.dirname(fileURLToPath(import.meta.url)),

@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Dimension as LegacyDimension } from '@jesscss/core';
 import { makeDimension } from '@jesscss/core/value';
-import { builtinLessFns } from '../../builtins/index.js';
-import { pow as builtinPow } from '../../builtins/pow.js';
-import pow, { pow as namedPow } from '../pow.js';
+import { lessFns } from '../registry.js';
+import { pow } from '../pow.js';
 
 type LegacyDimensionOracle = {
   number: number;
@@ -53,9 +52,7 @@ describe('Less pow canonical cutover', () => {
     }
   });
 
-  it('uses one canonical callable at every Less entrypoint and registry slot', () => {
-    expect(pow).toBe(namedPow);
-    expect(pow).toBe(builtinPow);
-    expect(builtinLessFns.find(fn => fn.name === 'pow')).toBe(builtinPow);
+  it('registers the one canonical callable in the Less registry', () => {
+    expect(lessFns.find(fn => fn.name === 'pow')).toBe(pow);
   });
 });

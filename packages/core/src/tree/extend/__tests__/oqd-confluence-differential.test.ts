@@ -80,8 +80,10 @@ function instr(
 
 interface ConfluenceCase {
   name: string;
+
   /** A fresh subject each run — eval/extend mutate, so never share a node across permutations. */
   subject: () => Selector;
+
   /** A fresh instruction list each run (same reason). */
   instructions: () => ExtendInstruction[];
 }
@@ -93,8 +95,10 @@ interface ConfluenceCase {
  */
 const cases: ConfluenceCase[] = [
   {
-    // extend-exact.less `.effected { &:extend(.a); &:extend(.b); &:extend(.c); }` — one subject,
-    // three DISTINCT non-partial targets. Different orders reach different batch/sequential splits.
+    /*
+     * extend-exact.less `.effected { &:extend(.a); &:extend(.b); &:extend(.c); }` — one subject,
+     * three DISTINCT non-partial targets. Different orders reach different batch/sequential splits.
+     */
     name: 'fan-in: one subject extends three distinct targets (.a,.b,.c)',
     subject: () => el('.a'),
     instructions: () => [
@@ -104,8 +108,10 @@ const cases: ConfluenceCase[] = [
     ]
   },
   {
-    // Fan-OUT: many extenders target the SAME base (.btn ← .x,.y,.z). This is the shape the batch
-    // path was built for (Bootstrap-style). Adjacent → batched; permutation varies append order.
+    /*
+     * Fan-OUT: many extenders target the SAME base (.btn ← .x,.y,.z). This is the shape the batch
+     * path was built for (Bootstrap-style). Adjacent → batched; permutation varies append order.
+     */
     name: 'fan-out: three extenders on one base (.btn ← .x,.y,.z)',
     subject: () => el('.btn'),
     instructions: () => [
@@ -115,8 +121,10 @@ const cases: ConfluenceCase[] = [
     ]
   },
   {
-    // MIXED same-target + distinct-target: batch cluster (.base←.x,.y) INTERLEAVED with a distinct
-    // (.other←.q). Permutation both clusters and splits the .base pair → batch vs sequential fork.
+    /*
+     * MIXED same-target + distinct-target: batch cluster (.base←.x,.y) INTERLEAVED with a distinct
+     * (.other←.q). Permutation both clusters and splits the .base pair → batch vs sequential fork.
+     */
     name: 'mixed: same-target pair interleaved with a distinct target',
     subject: () => sellist([el('.base'), el('.other')]),
     instructions: () => [
@@ -126,8 +134,10 @@ const cases: ConfluenceCase[] = [
     ]
   },
   {
-    // CHAINED / transitive: .a←.b, .b←.c. Applying .b←.c first then .a←.b, or the reverse, must
-    // converge to the same branch SET (the fixpoint re-queues chained discovery either way).
+    /*
+     * CHAINED / transitive: .a←.b, .b←.c. Applying .b←.c first then .a←.b, or the reverse, must
+     * converge to the same branch SET (the fixpoint re-queues chained discovery either way).
+     */
     name: 'chain: .a←.b and .b←.c (transitive closure)',
     subject: () => el('.a'),
     instructions: () => [
@@ -136,8 +146,10 @@ const cases: ConfluenceCase[] = [
     ]
   },
   {
-    // extend-selector.less `.foo .bar,.foo .baz` gaining `.foo`←{.ext1 .ext2,.ext3,.ext4} — a
-    // complex-component target list with fan-out on a complex subject.
+    /*
+     * extend-selector.less `.foo .bar,.foo .baz` gaining `.foo`←{.ext1 .ext2,.ext3,.ext4} — a
+     * complex-component target list with fan-out on a complex subject.
+     */
     name: 'fan-out into complex subject (.foo .bar ← .foo from many)',
     subject: () => sellist([
       sel([el('.foo'), co(' '), el('.bar')]),
@@ -150,8 +162,10 @@ const cases: ConfluenceCase[] = [
     ]
   },
   {
-    // Compound targets + fan-out (extend-nest.less sidebar family): base `.sidebar` gains four
-    // extenders of varied shape (simple, complex, compound).
+    /*
+     * Compound targets + fan-out (extend-nest.less sidebar family): base `.sidebar` gains four
+     * extenders of varied shape (simple, complex, compound).
+     */
     name: 'compound/complex fan-out (.sidebar ← .sidebar2, .type1 .sidebar3, .type2.sidebar4)',
     subject: () => el('.sidebar'),
     instructions: () => [
@@ -161,9 +175,11 @@ const cases: ConfluenceCase[] = [
     ]
   },
   {
-    // Partial + non-partial MIX on one subject: `.z .c` gains a partial `.z`←.visible while a
-    // distinct non-partial `.c`←.q also applies. Partial never batches (extend.ts:391 gates
-    // `!partial`), so this forces the partial through sequential regardless of position.
+    /*
+     * Partial + non-partial MIX on one subject: `.z .c` gains a partial `.z`←.visible while a
+     * distinct non-partial `.c`←.q also applies. Partial never batches (extend.ts:391 gates
+     * `!partial`), so this forces the partial through sequential regardless of position.
+     */
     name: 'partial+full mix (.z .c: partial .z←.visible + full .c←.q)',
     subject: () => sel([el('.z'), co(' '), el('.c')]),
     instructions: () => [
@@ -194,8 +210,11 @@ describe('OQ-D — extend confluence: branch SET is order-independent (batch == 
         const subject = c.subject();
         const freshList = c.instructions();
         const extendsList = order.map(i => freshList[i]!);
-        // `allExtends` is the FULL set (canonical order) held constant across permutations so
-        // chained-extend discovery routes identically — the variable under test is APPLY order.
+
+        /*
+         * `allExtends` is the FULL set (canonical order) held constant across permutations so
+         * chained-extend discovery routes identically — the variable under test is APPLY order.
+         */
         const allExtends = c.instructions();
 
         const value = String(applyExtendsToSelector(subject, extendsList, allExtends).valueOf());
@@ -206,12 +225,10 @@ describe('OQ-D — extend confluence: branch SET is order-independent (batch == 
           canonicalRaw = value;
           canonicalOrder = order;
         } else if (set !== canonicalSet) {
-          throw new Error(
-            `OQ-D COUNTEREXAMPLE — the branch SET (not just its order) depends on apply order for `
+          throw new Error(`OQ-D COUNTEREXAMPLE — the branch SET (not just its order) depends on apply order for `
             + `"${c.name}".\n`
             + `  order ${describeOrder(canonicalOrder!)}\n    => ${canonicalRaw}\n`
-            + `  order ${describeOrder(order)}\n    => ${value}`
-          );
+            + `  order ${describeOrder(order)}\n    => ${value}`);
         }
       }
 
@@ -220,9 +237,11 @@ describe('OQ-D — extend confluence: branch SET is order-independent (batch == 
   }
 
   it('batch fast-path (adjacent same-target) yields the SAME branch SET as interleaved sequential', () => {
-    // Two extenders on the SAME base + one distinct target between them. Adjacent placement drives
-    // the batch fast-path (extend.ts:402 `applyBatchedExtend`); interleaving the distinct target
-    // between them defeats the adjacency scan (extend.ts:395-401) → per-instruction sequential.
+    /*
+     * Two extenders on the SAME base + one distinct target between them. Adjacent placement drives
+     * the batch fast-path (extend.ts:402 `applyBatchedExtend`); interleaving the distinct target
+     * between them defeats the adjacency scan (extend.ts:395-401) → per-instruction sequential.
+     */
     const mk = (): ExtendInstruction[] => [
       instr(el('.base'), el('.x')),
       instr(el('.base'), el('.y')),
@@ -250,26 +269,27 @@ describe('OQ-D — extend confluence: branch SET is order-independent (batch == 
   });
 
   it('EXTEND IS LIST-APPEND: the target LEADS; siblings follow in FEED (document) order — no sort', () => {
-    // OQ-D CORRECTED (owner 2026-07-08): there was never a "document-order sort" to build. Extend
-    // = append the extender to the target's list; the target's own selector always LEADS, and
-    // extenders follow in the order they are fed. The former `setExtendOrderMap`/`extendOrderMap`
-    // scaffolding (a canonicalizing sort) was DEAD (no callers) and is DELETED — it modeled a sort
-    // append semantics have no use for. So: the branch SET is confluent (above); the ORDER is
-    // deterministically the FEED order (= document order in production, which never permutes).
+    /*
+     * OQ-D CORRECTED (owner 2026-07-08): there was never a "document-order sort" to build. Extend
+     * = append the extender to the target's list; the target's own selector always LEADS, and
+     * extenders follow in the order they are fed. The former `setExtendOrderMap`/`extendOrderMap`
+     * scaffolding (a canonicalizing sort) was DEAD (no callers) and is DELETED — it modeled a sort
+     * append semantics have no use for. So: the branch SET is confluent (above); the ORDER is
+     * deterministically the FEED order (= document order in production, which never permutes).
+     */
     const mk = (): ExtendInstruction[] => [
       instr(el('.btn'), el('.x')),
       instr(el('.btn'), el('.y'))
     ];
     const forward = mk();
-    const a = String(
-      applyExtendsToSelector(el('.btn'), [forward[0]!, forward[1]!], forward).valueOf()
-    );
+    const a = String(applyExtendsToSelector(el('.btn'), [forward[0]!, forward[1]!], forward).valueOf());
     const reverse = mk();
-    const b = String(
-      applyExtendsToSelector(el('.btn'), [reverse[1]!, reverse[0]!], reverse).valueOf()
-    );
-    // SAME set; order follows the (reversed) feed. NOT a bug and NOT a missing sort — production
-    // feeds in document order, so order is pinned there. Target-first is invariant in both.
+    const b = String(applyExtendsToSelector(el('.btn'), [reverse[1]!, reverse[0]!], reverse).valueOf());
+
+    /*
+     * SAME set; order follows the (reversed) feed. NOT a bug and NOT a missing sort — production
+     * feeds in document order, so order is pinned there. Target-first is invariant in both.
+     */
     expect(siblingSet(a)).toBe(siblingSet(b));
     expect(a.startsWith('.btn')).toBe(true);
     expect(b.startsWith('.btn')).toBe(true);

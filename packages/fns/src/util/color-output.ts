@@ -21,8 +21,11 @@ export function formatColorOutput(
     ...input.options,
     format,
     modernSyntax
-    // Source span is carried by `.inherit(input)` (provenance side-table);
-    // nodes have no public `.location` field to pass here.
+
+    /*
+     * Source span is carried by `.inherit(input)` (provenance side-table);
+     * nodes have no public `.location` field to pass here.
+     */
   }).inherit(input);
   color.node = undefined;
   return color;

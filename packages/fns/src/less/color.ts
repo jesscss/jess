@@ -1,60 +1,44 @@
-import {
-  defineFunction,
-  Node,
-  Color,
-  ColorFormat,
-  Quoted
-} from '@jesscss/core';
-import colors from 'color-name';
+import type { Fn } from '@jesscss/core/value';
+import { colorRgbRounded, makeColorRgb, defineFunction, HEX, parseHex, namedColor } from '@jesscss/core/value';
 
-const colorRegex = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/i;
+const HEX_RE = /^#([A-Fa-f0-9]{8}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{3,4})$/;
 
 /**
- * Less `color()` — parse a string into a `Color`. Accepts a named CSS color or a
- * 3/4/6/8-digit hex string; a `Color` argument passes through (named colors are
- * re-tagged as hex).
- * @param c a `Quoted` string (color name or hex) or an existing `Color`
- * @returns the parsed `Color`
- * @throws if the string is neither a known color keyword nor a valid hex value
+ * `color(c)` — parse a quoted string into a color, or normalize a color arg.
+ * Byte-faithful to `less/color`:
+ *  - a Color whose source spelling names a CSS color → re-emit as HEX (drop node);
+ *    otherwise return it unchanged (verbatim hex passes through).
+ *  - a Quoted naming a CSS color → HEX; a quoted hex string → that hex verbatim;
+ *    anything else throws.
+ *
+ * NOTE: the legacy `@jesscss/fns` adapter THROWS on the quoted-string form here
+ * (cross-boundary `instanceof` mishandles the reconstructed Quoted), so this fn is
+ * validated directly against Less 4.x, not the adapter (differential asserts built-in
+ * = Less 4.x for the quoted cases).
  */
-export default defineFunction(
-  'color',
-  function(c: Color | Quoted) {
-    if (c instanceof Color) {
-      const sourceNode = c.node;
-      const namedColor = typeof sourceNode === 'string' ? colors[sourceNode.toLowerCase()] : undefined;
-      if (namedColor) {
-        return new Color({
-          format: ColorFormat.HEX,
-          rgb: c.rgb,
-          alpha: c.alpha
-        });
+export const color: Fn = defineFunction('color', {
+  params: [{ kinds: ['Color', 'Quoted'] }],
+  body: (arg) => {
+    if (arg.type === 'Color') {
+      const c = arg;
+      const named = typeof c.node === 'string' ? namedColor(c.node) : undefined;
+      if (named) {
+        return makeColorRgb(colorRgbRounded(c), c.alpha, HEX);
       }
       return c;
     }
-    // Quoted/Any values both normalize through valueOf()
-    const value = c.valueOf();
-    // Check if it's a color keyword
-    const colorValue = colors[value];
-    if (colorValue) {
-      return new Color({
-        format: ColorFormat.HEX,
-        rgb: colorValue,
-        alpha: 1
-      });
+    if (arg.type !== 'Quoted') {
+      throw new TypeError('Expected a color or quoted value');
     }
-    // Check if it's a valid hex string
-    if (colorRegex.test(value)) {
-      return new Color(value);
+    const value = arg.value;
+    const named = namedColor(value);
+    if (named) {
+      return makeColorRgb(named.rgb, named.alpha, HEX);
     }
-    // If we get here, the value is neither a color keyword nor a valid hex string
-    // This should have been caught by validation, but throw for safety
+    if (HEX_RE.test(value)) {
+      const { rgb, alpha } = parseHex(value);
+      return makeColorRgb(rgb, alpha, HEX, { node: value });
+    }
     throw new Error('argument must be a color keyword or 3|4|6|8 digit hex e.g. #FFF');
-  },
-  {
-    params: [{
-      name: 'c',
-      type: [Color, Quoted]
-    }]
   }
-);
+});

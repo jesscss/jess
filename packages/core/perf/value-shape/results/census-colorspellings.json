@@ -1,0 +1,25 @@
+{
+  "workload": "colorspellings",
+  "files": 1,
+  "ok": 1,
+  "failed": 0,
+  "outBytes": 1209,
+  "counts": {
+    "makeColorRgb": {
+      "total": 6,
+      "combos": {
+        "node": 3,
+        "-": 3
+      },
+      "mapsObserved": 2
+    },
+    "makeColorHsl": {
+      "total": 5,
+      "combos": {
+        "-": 4,
+        "hueUnit": 1
+      },
+      "mapsObserved": 2
+    }
+  }
+}

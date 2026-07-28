@@ -159,8 +159,10 @@ describe('CallMap', () => {
       // First call with list1
       expect(callMap.add(call1, list1)).toBe(false);
 
-      // Different call with same params - should return false
-      // (each call tracks its own args separately)
+      /*
+       * Different call with same params - should return false
+       * (each call tracks its own args separately)
+       */
       expect(callMap.add(call2, list1)).toBe(false);
 
       // But if call2 calls itself with same params, it should return true

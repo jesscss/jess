@@ -16,7 +16,6 @@ function expectSelector(result: Selector | ExtendErrorType): Selector {
 function ampWithSelector(selector: any): Ampersand {
   const created = Ampersand.create({ selectorContainer: { selector } });
   if (!(created instanceof Ampersand)) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     throw new Error(`Expected Ampersand, got ${(created as unknown as { type: string }).type}`);
   }
   return created;
@@ -25,10 +24,12 @@ function ampWithSelector(selector: any): Ampersand {
 describe('Extend Ampersand Handling Tests', () => {
   describe('Ampersand boundary detection', () => {
     it('should detect when extension crosses ampersand boundary', () => {
-      // Setup: .foo { &.bar { ... } } - ampersand resolves to .foo
-      // Target: .foo.bar (matches resolved form of &.bar)
-      // ExtendWith: .a
-      // Expected: .foo.bar, .a (with hoistToRoot: true)
+      /*
+       * Setup: .foo { &.bar { ... } } - ampersand resolves to .foo
+       * Target: .foo.bar (matches resolved form of &.bar)
+       * ExtendWith: .a
+       * Expected: .foo.bar, .a (with hoistToRoot: true)
+       */
 
       const parentSelector = el('.foo');
       const ampersandWithSelector = ampWithSelector(parentSelector);
@@ -49,10 +50,12 @@ describe('Extend Ampersand Handling Tests', () => {
     });
 
     it('should preserve ampersand when extension does not cross boundary', () => {
-      // Setup: .foo { &.bar { ... } } - ampersand resolves to .foo
-      // Target: .bar (matches just the .bar part, not the full resolved &.bar)
-      // ExtendWith: .a
-      // Expected: &:is(.bar, .a) - extend the .bar part without crossing boundary
+      /*
+       * Setup: .foo { &.bar { ... } } - ampersand resolves to .foo
+       * Target: .bar (matches just the .bar part, not the full resolved &.bar)
+       * ExtendWith: .a
+       * Expected: &:is(.bar, .a) - extend the .bar part without crossing boundary
+       */
 
       const parentSelector = el('.foo');
       const ampersandWithSelector = ampWithSelector(parentSelector);
@@ -74,9 +77,11 @@ describe('Extend Ampersand Handling Tests', () => {
 
   describe('Complex ampersand scenarios', () => {
     it('should handle ampersand with selector list', () => {
-      // Setup: .foo, .bar { &.baz { ... } } with target .foo.baz
-      // Note: This is a complex case involving selector list resolution
-      // For now, we'll test a simpler case that should work
+      /*
+       * Setup: .foo, .bar { &.baz { ... } } with target .foo.baz
+       * Note: This is a complex case involving selector list resolution
+       * For now, we'll test a simpler case that should work
+       */
       const parentSelector = el('.foo'); // Simplified to single selector instead of selector list
       const ampersandWithSelector = ampWithSelector(parentSelector);
       const selector = compound([ampersandWithSelector, el('.baz')]);
@@ -159,13 +164,9 @@ describe('Extend Ampersand Handling Tests', () => {
       );
 
       expect(parentSelector.parent).toBeUndefined();
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      expect(sourceSelectorChildren.map(child => (child as unknown as Node).parent)).toEqual(
-        sourceSelectorChildren.map(() => selector)
-      );
+      expect(sourceSelectorChildren.map(child => (child as unknown as Node).parent)).toEqual(sourceSelectorChildren.map(() => selector));
 
       if (!isNode(result, N.SelectorList)) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         throw new Error(`Expected hoisted selector list, got ${(result as unknown as { type: string }).type}`);
       }
 
@@ -176,10 +177,12 @@ describe('Extend Ampersand Handling Tests', () => {
     });
 
     it('should extend .foo &.bar across boundary to create .foo.bar, .extended', () => {
-      // Original: .foo { &.bar { color: red; } }
-      // Target: .foo.bar (matches resolved form of &.bar)
-      // ExtendWith: .a
-      // Expected result: .foo.bar, .a { color: red; } (hoisted to root)
+      /*
+       * Original: .foo { &.bar { color: red; } }
+       * Target: .foo.bar (matches resolved form of &.bar)
+       * ExtendWith: .a
+       * Expected result: .foo.bar, .a { color: red; } (hoisted to root)
+       */
 
       const parentSelector = el('.foo');
       const ampersandWithSelector = ampWithSelector(parentSelector);
@@ -190,8 +193,10 @@ describe('Extend Ampersand Handling Tests', () => {
 
       const result = expectSelector(extendSelector(selector, target, extendWith, true));
 
-      // Should produce the resolved selector with extension
-      // Verify hoisting flag
+      /*
+       * Should produce the resolved selector with extension
+       * Verify hoisting flag
+       */
       expect(result.hoistToRoot).toBe(true);
 
       // Should contain both the original resolved selector and the extension
@@ -200,9 +205,11 @@ describe('Extend Ampersand Handling Tests', () => {
     });
 
     it('should extend complex ampersand selector across boundary', () => {
-      // Original: .container { > &.item { ... } }
-      // Target: .container.item (after > combinator resolves)
-      // ExtendWith: .new-item
+      /*
+       * Original: .container { > &.item { ... } }
+       * Target: .container.item (after > combinator resolves)
+       * ExtendWith: .new-item
+       */
 
       const parentSelector = el('.container');
       const ampersandWithSelector = ampWithSelector(parentSelector);
@@ -234,10 +241,12 @@ describe('Extend Ampersand Handling Tests', () => {
 
   describe('Expected outputs - boundary preservation', () => {
     it('should preserve ampersand when extending within boundary', () => {
-      // Original: .foo { &.bar { ... } }
-      // Target: .bar (only matches part, doesn't cross boundary)
-      // ExtendWith: .extended
-      // Expected: .foo { :is(&.bar, .extended) { ... } } (preserved structure)
+      /*
+       * Original: .foo { &.bar { ... } }
+       * Target: .bar (only matches part, doesn't cross boundary)
+       * ExtendWith: .extended
+       * Expected: .foo { :is(&.bar, .extended) { ... } } (preserved structure)
+       */
 
       const parentSelector = el('.foo');
       const ampersandWithSelector = ampWithSelector(parentSelector);
@@ -292,12 +301,10 @@ describe('Extend Ampersand Handling Tests', () => {
     const parentContainer = { selector: el('.aa') };
     const original = Ampersand.create({ selectorContainer: parentContainer });
     if (!(original instanceof Ampersand)) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       throw new Error(`Expected Ampersand, got ${(original as unknown as { type: string }).type}`);
     }
     const cloned = original.clone(false);
     if (!(cloned instanceof Ampersand)) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       throw new Error(`Expected Ampersand clone, got ${(cloned as unknown as { type: string }).type}`);
     }
 

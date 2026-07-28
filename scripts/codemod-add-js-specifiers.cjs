@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+
 /**
  * Codemod: rewrite extensionless relative specifiers in TS source to `.js`.
  *
@@ -78,9 +78,11 @@ function computeReplacement(fromFile, spec) {
   const { base, suffix } = splitSuffix(spec);
   const fromDir = path.dirname(fromFile);
 
-  // If spec already has an extension:
-  // - keep non-.js (css/json/etc)
-  // - for .js: ensure it actually corresponds to a TS file (or directory index)
+  /*
+   * If spec already has an extension:
+   * - keep non-.js (css/json/etc)
+   * - for .js: ensure it actually corresponds to a TS file (or directory index)
+   */
   if (hasKnownExtension(spec)) {
     if (!base.endsWith('.js')) return null;
     const withoutJs = base.slice(0, -3);

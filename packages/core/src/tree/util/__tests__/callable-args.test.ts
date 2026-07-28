@@ -26,20 +26,23 @@ describe('callable arg evaluation helper', () => {
     const evaluated = await evaluateCallableArgs({
       context,
       rulesContext,
-      // A bare string terminal and a space-group array are parser value-shapes;
-      // a boolean is a JS-interop value. Value-shapes coerce (string → keyword,
-      // multi-item array → space `Sequence`); JS values still go through `cast`.
+
+      /*
+       * A bare string terminal and a space-group array are parser value-shapes;
+       * a boolean is a JS-interop value. Value-shapes coerce (string → keyword,
+       * multi-item array → space `Sequence`); JS values still go through `cast`.
+       */
       args: ['literal', true, [any('a'), any('b')]]
     });
 
     expect(evaluated[0]?.valueOf()).toBe('literal');
     expect(evaluated[1]?.valueOf()).toBe(true);
+
     // A space-group array is a space-separated `Sequence`, not a comma `List`.
     expect(evaluated[2]?.type).toBe('Sequence');
     if (evaluated[2]?.type !== 'Sequence') {
       throw new Error('Expected coerced Sequence');
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     expect((evaluated[2] as unknown as Sequence).value.map(item => item.valueOf())).toEqual(['a', 'b']);
   });
 });

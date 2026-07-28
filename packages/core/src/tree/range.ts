@@ -5,7 +5,7 @@ import { Node, defineType } from './node.js';
 import { type FinalPrintOptions, type PrintOptions, getPrintOptions } from './util/print.js';
 import { isRenderBuffer, writeRenderText, type RenderBuffer } from './util/render-buffer.js';
 import type { MaybePromise } from '@jesscss/awaitable-pipe';
-import round from 'lodash-es/round.js';
+import { formatNumber } from '../ast/format-number.js';
 
 export type RangeValue = {
   start: Node;
@@ -16,6 +16,7 @@ export type RangeValue = {
 export type RangeOptions = {
   /** If false, serialize as `1> to ...` */
   includeStart?: boolean;
+
   /** If false, serialize as `... to <3` */
   includeEnd?: boolean;
 };
@@ -56,7 +57,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
       if (unit.includes('/') || unit.includes('*') || unit.includes('±')) {
         return undefined;
       }
-      return `${round(value.number, 8)}`.toLowerCase() + unit;
+      return formatNumber(value.number).toLowerCase() + unit;
     }
     return undefined;
   }
@@ -137,6 +138,7 @@ export class Range extends Node<RangeValue, RangeOptions> {
   override render(context: Context, options?: PrintOptions): string;
   override render(context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, options?: PrintOptions): string {
     const buffer = isRenderBuffer(bufferOrOptions) ? bufferOrOptions : undefined;
+
     // bufferOrOptions is PrintOptions | undefined in the non-buffer branch
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
     const printOptions = buffer ? options : (bufferOrOptions as PrintOptions | undefined);
@@ -146,8 +148,11 @@ export class Range extends Node<RangeValue, RangeOptions> {
         ? writeRenderText(buffer, out)
         : (getPrintOptions(printOptions).writer.add(out, this), out);
     }
-    // super.render returns MaybePromise<string>, but Range.render is declared as sync;
-    // Range only contains Dimension/Any children which render synchronously
+
+    /*
+     * super.render returns MaybePromise<string>, but Range.render is declared as sync;
+     * Range only contains Dimension/Any children which render synchronously
+     */
     return buffer
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       ? super.render(context, buffer, options) as string

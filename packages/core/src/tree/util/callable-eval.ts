@@ -29,10 +29,13 @@ export async function evaluateCallableCollection({
   args
 }: EvaluateCallableCollectionOptions): Promise<Rules> {
   const caller = context.caller;
-  // Use the dynamic eval context (rulesContext) for arg evaluation: it's the
-  // eval surface where the call lives, which has the live param slots wired in.
-  // caller.rulesParent walks the static AST parent chain and misses eval surfaces
-  // created by createCallableRulesSurface (push-without-adopt).
+
+  /*
+   * Use the dynamic eval context (rulesContext) for arg evaluation: it's the
+   * eval surface where the call lives, which has the live param slots wired in.
+   * caller.rulesParent walks the static AST parent chain and misses eval surfaces
+   * created by createCallableRulesSurface (push-without-adopt).
+   */
   const argEvalRulesContext = context.rulesContext ?? caller?.rulesParent ?? caller?.sourceRulesParent;
   const nodeArgs = await evaluateCallableArgs({
     context,

@@ -40,48 +40,61 @@ export function applyInstruction(
   extenderKeys: Set<string>,
   targetAtoms: Set<string>,
   extenderHidden = false,
-  // The plain-text simples of the ENCLOSING compound(s) this list sits inside — non-empty
-  // only when the fixpoint re-enters an instruction into an `:is()` graft (`div:is(<list>)`
-  // threads `['div']`). The element/id conflict guard unions it so a wrap decided INSIDE a
-  // graft still sees the full outer compound context (an extender that would form
-  // `div ∧ span` is rejected even when `span` is re-tried transitively through the graft).
+
+  /*
+   * The plain-text simples of the ENCLOSING compound(s) this list sits inside — non-empty
+   * only when the fixpoint re-enters an instruction into an `:is()` graft (`div:is(<list>)`
+   * threads `['div']`). The element/id conflict guard unions it so a wrap decided INSIDE a
+   * graft still sees the full outer compound context (an extender that would form
+   * `div ∧ span` is rejected even when `span` is re-tried transitively through the graft).
+   */
   outerSurrounding: readonly string[] = []
 ): Branch[] | null {
   const out: Branch[] = [];
   const appends: Branch[] = [];
   let changed = false;
 
-  // When this list sits INSIDE an `:is()` graft (`outerSurrounding` non-empty), a
-  // whole-branch append adds a NEW `:is()` arm that distributes over the enclosing
-  // compound — so an extender forming an invalid two-type / two-id compound with
-  // `outerSurrounding` must be dropped here as well (the append path, unlike the
-  // sub-wrap, has no matched compound of its own to reason about). At the top level
-  // (`outerSurrounding` empty) an append is a rule-level comma sibling that can never
-  // conflict, so the input array is used verbatim — byte-identical, no allocation.
+  /*
+   * When this list sits INSIDE an `:is()` graft (`outerSurrounding` non-empty), a
+   * whole-branch append adds a NEW `:is()` arm that distributes over the enclosing
+   * compound — so an extender forming an invalid two-type / two-id compound with
+   * `outerSurrounding` must be dropped here as well (the append path, unlike the
+   * sub-wrap, has no matched compound of its own to reason about). At the top level
+   * (`outerSurrounding` empty) an append is a rule-level comma sibling that can never
+   * conflict, so the input array is used verbatim — byte-identical, no allocation.
+   */
   const appendExtenders = outerSurrounding.length > 0
     ? nonConflictingExtenders(outerSurrounding, extenders)
     : extenders;
 
   for (const b of list) {
-    // Core matcher comparison: one candidate branch tested against the target.
-    // Opt-in, import-time-captured counter (undefined in production → no call, no
-    // allocation); the sum across the fixpoint is the O(subjects·instructions·
-    // branches) surface the extend-op-budget gate ceilings.
+    /*
+     * Core matcher comparison: one candidate branch tested against the target.
+     * Opt-in, import-time-captured counter (undefined in production → no call, no
+     * allocation); the sum across the fixpoint is the O(subjects·instructions·
+     * branches) surface the extend-op-budget gate ceilings.
+     */
     recordAstExtendProfile?.('astExtend.match.branchComparisons');
     const bKey = branchText(b);
-    // [import:reference] chaining an extend off a branch that was itself an extend
-    // PRODUCT from a hidden rule (`b.ext && b.hidden`) yields a hidden result — the
-    // less.js per-chain `visibilityInfo`. An extend off an ORIGINAL hidden seed
-    // (`!b.ext`) keeps the extender's own visibility, so the seed's `hidden` does
-    // NOT force the append hidden. `effHidden` folds both into one decision.
+
+    /*
+     * [import:reference] chaining an extend off a branch that was itself an extend
+     * PRODUCT from a hidden rule (`b.ext && b.hidden`) yields a hidden result — the
+     * less.js per-chain `visibilityInfo`. An extend off an ORIGINAL hidden seed
+     * (`!b.ext`) keeps the extender's own visibility, so the seed's `hidden` does
+     * NOT force the append hidden. `effHidden` folds both into one decision.
+     */
     const chainHidden = b.hidden === true && b.ext === true;
     const effHidden = extenderHidden || chainHidden;
-    // Whole-branch EXACT match → append extenders as siblings. Matches by selector
-    // EQUIVALENCY (EXTEND_RULES §0), not serialization: `.b.c` ≡ `.c.b`, and a target
-    // may match THROUGH a base's crossable `:is()` graft — in a single compound
-    // (`.x:is(.a, .b)` matched by `.x.a`), alongside trailing simples (`.x:is(.a, .b).c`
-    // by `.x.a.c`), across ANY number of segments (`.x:is(.a, .b) .y` by `.x.a .y`), or
-    // as a lone-graft segment expanding (`:is(.a .b, .c) .d` by `.a .b .d`).
+
+    /*
+     * Whole-branch EXACT match → append extenders as siblings. Matches by selector
+     * EQUIVALENCY (EXTEND_RULES §0), not serialization: `.b.c` ≡ `.c.b`, and a target
+     * may match THROUGH a base's crossable `:is()` graft — in a single compound
+     * (`.x:is(.a, .b)` matched by `.x.a`), alongside trailing simples (`.x:is(.a, .b).c`
+     * by `.x.a.c`), across ANY number of segments (`.x:is(.a, .b) .y` by `.x.a .y`), or
+     * as a lone-graft segment expanding (`:is(.a .b, .c) .d` by `.a .b .d`).
+     */
     if (branchWholeMatch(b, target, false)) {
       out.push(b);
       for (const e of appendExtenders) {
@@ -89,22 +102,27 @@ export function applyInstruction(
       }
       continue;
     }
-    // ATOM FAST-REJECT: every remaining (`all`) match — whole-branch subset,
-    // sub-compound substitution, and `:is()`-graft chaining — requires the branch
-    // to share at least one individual simple atom with the target (the matcher's
-    // multiset-subset / graft-recurse can only fire on a common atom). A branch
-    // disjoint from `targetAtoms` (graft-recursive, same extraction both sides)
-    // provably yields `rewriteBranchPartial === null`, so skip the clone + double
-    // `branchText` + substitute. ~98% of partial candidates on real fixtures are
-    // atom-disjoint (measured), so this reject is the fixpoint's dominant lever.
+
+    /*
+     * ATOM FAST-REJECT: every remaining (`all`) match — whole-branch subset,
+     * sub-compound substitution, and `:is()`-graft chaining — requires the branch
+     * to share at least one individual simple atom with the target (the matcher's
+     * multiset-subset / graft-recurse can only fire on a common atom). A branch
+     * disjoint from `targetAtoms` (graft-recursive, same extraction both sides)
+     * provably yields `rewriteBranchPartial === null`, so skip the clone + double
+     * `branchText` + substitute. ~98% of partial candidates on real fixtures are
+     * atom-disjoint (measured), so this reject is the fixpoint's dominant lever.
+     */
     if (partial && !extenderKeys.has(bKey) && branchSharesAtom(b, targetAtoms)) {
-      // `all` whole-branch SUBSET match: a multi-segment target whose every segment
-      // compound-subsets the aligned branch segment across the WHOLE span (each
-      // pattern compound ⊆ its branch compound, combinators aligned — e.g.
-      // `.a > .c` vs `.a.b > .c.d`). The matched span is the entire selector, so it
-      // degenerates to a plain comma-append (`.a.b > .c.d, .x`), NOT an
-      // `:is()`-wrap of the whole branch — the sub-span `:is()` wrap is reserved for
-      // matches with surrounding combinator context (see `substituteMultiCompound`).
+      /*
+       * `all` whole-branch SUBSET match: a multi-segment target whose every segment
+       * compound-subsets the aligned branch segment across the WHOLE span (each
+       * pattern compound ⊆ its branch compound, combinators aligned — e.g.
+       * `.a > .c` vs `.a.b > .c.d`). The matched span is the entire selector, so it
+       * degenerates to a plain comma-append (`.a.b > .c.d, .x`), NOT an
+       * `:is()`-wrap of the whole branch — the sub-span `:is()` wrap is reserved for
+       * matches with surrounding combinator context (see `substituteMultiCompound`).
+       */
       if (branchWholeMatch(b, target, true)) {
         out.push(b);
         for (const e of appendExtenders) {
@@ -112,12 +130,15 @@ export function applyInstruction(
         }
         continue;
       }
-      // [import:reference] a HIDDEN sub-part `all` match adds only invisible copies
-      // (less.js comma-expands the extender with the extender's hidden visibility),
-      // which the serializer drops — so the VISIBLE base branch must be left EXACTLY
-      // as authored (never rewritten into `:is(span, hidden-ext)`, which would leak
-      // the hidden extender's text). Skip the in-place substitution for this branch;
-      // the net visible effect of a hidden extender's sub-match is nothing.
+
+      /*
+       * [import:reference] a HIDDEN sub-part `all` match adds only invisible copies
+       * (less.js comma-expands the extender with the extender's hidden visibility),
+       * which the serializer drops — so the VISIBLE base branch must be left EXACTLY
+       * as authored (never rewritten into `:is(span, hidden-ext)`, which would leak
+       * the hidden extender's text). Skip the in-place substitution for this branch;
+       * the net visible effect of a hidden extender's sub-match is nothing.
+       */
       if (!effHidden) {
         const rewritten = rewriteBranchPartial(b, target, extenders, partial, extenderKeys, targetAtoms, outerSurrounding);
         if (rewritten) {
@@ -131,9 +152,11 @@ export function applyInstruction(
   }
 
   if (appends.length > 0) {
-    // Build the presence index ONCE per apply (i.e. once per group per pass — the
-    // fold collapses a target's N instructions into one call), not once per queued
-    // extender. `appendDeduped` then folds every whole-branch append through it.
+    /*
+     * Build the presence index ONCE per apply (i.e. once per group per pass — the
+     * fold collapses a target's N instructions into one call), not once per queued
+     * extender. `appendDeduped` then folds every whole-branch append through it.
+     */
     const present = new Set(out.map(branchText));
     if (appendDeduped(out, appends, present)) {
       changed = true;
@@ -264,6 +287,7 @@ export function matchBoundarySpan(b: Branch, target: Branch, partial: boolean): 
   if (!partial) {
     return { boundary: 'none', maxBnd: 0 };
   }
+
   // Single-compound `all` sub-match: the first segment the target compound subsets.
   if (target.segs.length === 1) {
     const need = textSimples(target.segs[0]!.compound);
@@ -274,6 +298,7 @@ export function matchBoundarySpan(b: Branch, target: Branch, partial: boolean): 
     }
     return { boundary: 'none', maxBnd: 0 };
   }
+
   // Multi-segment `all` sub-match: the first aligned span (mirrors substituteMultiCompound).
   const P = target.segs.length;
   for (let start = 0; start + P <= b.segs.length; start++) {
@@ -349,24 +374,33 @@ export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): b
   if (branchText(b) === branchText(target)) {
     return true;
   }
-  // A single-compound `all` target is a sub-compound rewrite, never a whole-branch
-  // append (the former `matchesWholeBranchSubset` P<2 guard). Exact mode still matches
-  // a single compound by order-independent equality, so this gate is ALL-mode only.
+
+  /*
+   * A single-compound `all` target is a sub-compound rewrite, never a whole-branch
+   * append (the former `matchesWholeBranchSubset` P<2 guard). Exact mode still matches
+   * a single compound by order-independent equality, so this gate is ALL-mode only.
+   */
   if (partial && target.segs.length < 2) {
     return false;
   }
-  // GRAFT-FREE FAST PATH (the overwhelmingly-common candidate): with no crossable graft
-  // anywhere in the base there is nothing to fork, so no atom Set, no memo Map, no `Walk`
-  // and no recursion — a flat per-segment multiset compare (the former inline
-  // `branchExactEquivalent` / `matchesWholeBranchSubset` loops), allocation-identical to
-  // dev. The recursive cross-through machinery is reserved for the rare grafted base.
+
+  /*
+   * GRAFT-FREE FAST PATH (the overwhelmingly-common candidate): with no crossable graft
+   * anywhere in the base there is nothing to fork, so no atom Set, no memo Map, no `Walk`
+   * and no recursion — a flat per-segment multiset compare (the former inline
+   * `branchExactEquivalent` / `matchesWholeBranchSubset` loops), allocation-identical to
+   * dev. The recursive cross-through machinery is reserved for the rare grafted base.
+   */
   if (!branchHasGraft(b)) {
     return flatWholeMatch(b.segs, target.segs, partial);
   }
-  // ATOM FAST-REJECT (grafted base): every atom the target REQUIRES (its plain-text
-  // simples across all segments) must be suppliable by the base — its bare text simples
-  // plus every atom reachable inside a crossable graft. A required atom no branch
-  // supplies is unmatchable, so bail before exploring any OR-path.
+
+  /*
+   * ATOM FAST-REJECT (grafted base): every atom the target REQUIRES (its plain-text
+   * simples across all segments) must be suppliable by the base — its bare text simples
+   * plus every atom reachable inside a crossable graft. A required atom no branch
+   * supplies is unmatchable, so bail before exploring any OR-path.
+   */
   const baseAtoms = new Set<string>();
   collectBranchAtoms(b, baseAtoms);
   for (const seg of target.segs) {
@@ -376,9 +410,12 @@ export function branchWholeMatch(b: Branch, target: Branch, partial: boolean): b
       }
     }
   }
-  // Memoize on (segIdx, findIdx) ONLY when the base has a lone-graft segment — the sole
-  // source of segment-level forking. Without one the walk advances both cursors in
-  // lockstep (linear), so no memo Map is allocated on that path either.
+
+  /*
+   * Memoize on (segIdx, findIdx) ONLY when the base has a lone-graft segment — the sole
+   * source of segment-level forking. Without one the walk advances both cursors in
+   * lockstep (linear), so no memo Map is allocated on that path either.
+   */
   const walk: Walk = {
     base: b.segs,
     target: target.segs,
@@ -636,28 +673,26 @@ function recurseIntoGrafts(
   targetAtoms: Set<string>,
   outerSurrounding: readonly string[]
 ): Branch {
-  return mkBranch(
-    b.segs.map((seg) => {
-      let graftOuter = outerSurrounding;
-      for (const s of seg.compound.simples) {
-        if (s.t === 'text') {
-          graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
-        }
+  return mkBranch(b.segs.map((seg) => {
+    let graftOuter = outerSurrounding;
+    for (const s of seg.compound.simples) {
+      if (s.t === 'text') {
+        graftOuter = graftOuter === outerSurrounding ? [...outerSurrounding, s.text] : [...graftOuter, s.text];
       }
-      return {
-        comb: seg.comb,
-        compound: {
-          simples: seg.compound.simples.map((s): Simple => {
-            if (s.t !== 'is') {
-              return s;
-            }
-            const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
-            return inner ? { t: 'is', branches: inner } : s;
-          })
-        }
-      };
-    })
-  );
+    }
+    return {
+      comb: seg.comb,
+      compound: {
+        simples: seg.compound.simples.map((s): Simple => {
+          if (s.t !== 'is') {
+            return s;
+          }
+          const inner = applyInstruction(s.branches, target, extenders, partial, extenderKeys, targetAtoms, false, graftOuter);
+          return inner ? { t: 'is', branches: inner } : s;
+        })
+      }
+    };
+  }));
 }
 
 /**
@@ -710,9 +745,12 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
     if (!multisetSubset(need, have)) {
       return seg;
     }
-    // Drop any extender whose wrap would form an invalid two-type / two-id compound
-    // with the surrounding context (graft-inherited outer context included). If none
-    // survive, leave this segment — and, if nothing else changes, the branch — as authored.
+
+    /*
+     * Drop any extender whose wrap would form an invalid two-type / two-id compound
+     * with the surrounding context (graft-inherited outer context included). If none
+     * survive, leave this segment — and, if nothing else changes, the branch — as authored.
+     */
     const kept = nonConflictingExtenders(surroundingOf(seg.compound, needSet, outerSurrounding), extenders);
     if (kept.length === 0) {
       return seg;
@@ -720,16 +758,18 @@ function substituteSingleCompound(b: Branch, targetCompound: Compound, extenders
     if (need.length > 1) {
       return { comb: seg.comb, compound: collapseMatchedAtoms(seg.compound, needSet, targetCompound, kept) };
     }
-    // single-simple target: wrap each matched slot individually (deduping a
-    // self-extend's `:is(x, x)` down to `x`).
+
+    /*
+     * single-simple target: wrap each matched slot individually (deduping a
+     * self-extend's `:is(x, x)` down to `x`).
+     */
     return {
       comb: seg.comb,
       compound: {
         simples: seg.compound.simples.flatMap((s): Simple[] =>
           s.t === 'text' && needSet.has(s.text)
             ? isOrPlainSimples([descendantBranch([cloneSimple(s)]), ...kept])
-            : [cloneSimple(s)]
-        )
+            : [cloneSimple(s)])
       }
     };
   });
@@ -752,6 +792,7 @@ function collapseMatchedAtoms(
         out.push(...isOrPlainSimples([matchedBranch, ...extenders]));
         placed = true;
       }
+
       // subsequent matched atoms are subsumed by the :is()
     } else {
       out.push(cloneSimple(s));
@@ -785,6 +826,7 @@ function substituteMultiCompound(b: Branch, target: Branch, extenders: Branch[])
     if (!ok) {
       continue;
     }
+
     // Build the matched span text (segments start..start+P-1, internal combinators).
     const spanSegs: Seg[] = [];
     for (let k = 0; k < P; k++) {

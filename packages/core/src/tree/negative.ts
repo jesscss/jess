@@ -9,7 +9,7 @@ import {
   writeRenderText,
   type RenderBuffer
 } from './util/render-buffer.js';
-import round from 'lodash-es/round.js';
+import { formatNumber } from '../ast/format-number.js';
 import { coerceValueNode, type NodeArrayItem } from './util/evaluate-node-array.js';
 
 const NEGATIVE_ONE = new Dimension({ number: -1 });
@@ -27,12 +27,16 @@ export class Negative extends Node<Node> {
   }
 
   constructor(value: NodeArrayItem, options?: NodeOptions, location?: LocationInfo) {
-    // A parser space-group arrives as a raw string/array; normalize to the
-    // canonical node form so negation stays node-only.
+    /*
+     * A parser space-group arrives as a raw string/array; normalize to the
+     * canonical node form so negation stays node-only.
+     */
     const node = value == null || value instanceof Node ? value : coerceValueNode(value);
     super(node, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = node;
+
     // Negative operations are always non-static, but can inherit may_async from children
     this.addFlags(F_VISIBLE, F_NON_STATIC);
   }
@@ -47,7 +51,7 @@ export class Negative extends Node<Node> {
     if (node instanceof Dimension && !this.isCompoundDimension(node)) {
       const value = node;
       const unit = value.unit ?? '';
-      const out = `-${`${round(value.number, 8)}`.toLowerCase()}${unit}`;
+      const out = `-${formatNumber(value.number).toLowerCase()}${unit}`;
       options.writer.add(out, this);
       return out;
     }
@@ -118,7 +122,7 @@ export class Negative extends Node<Node> {
 
   private negatedDimensionText(value: Dimension): string {
     const unit = value.unit ?? '';
-    return `${round(value.number * -1, 8)}`.toLowerCase() + unit;
+    return formatNumber(value.number * -1).toLowerCase() + unit;
   }
 
   override evalNode(context: Context): MaybePromise<Node> {

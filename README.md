@@ -16,6 +16,13 @@ reusable rules, functions, composition, and module boundaries - while staying
 close to CSS and the platform's direction. It is meant to give stylesheets more
 leverage without pushing teams into runtime styling or away from the platform.
 
+Architecturally, Jess is growing toward a common stylesheet runtime: CSS, Less,
+SCSS/Sass+, and Jess parse into one canonical stylesheet model, then share the
+same evaluation and emission engine. The comparison is broad rather than
+literal, but the intent is similar to what the CLR did for .NET languages or
+LLVM did for compiler back ends: each language keeps its syntax while sharing a
+strong lower-level representation.
+
 The alpha starts by earning trust on familiar Less workflows, then opens toward
 broader Jess syntax and composition over time. This repo is the home of the
 Jess compiler, parsers, CLI tools, and supporting packages. Docs live at
@@ -59,13 +66,18 @@ growing toward looks more like this:
 // Jess keeps stylesheet authoring in CSS-space, but gives it richer composition.
 .card {
   color: $theme.primary-color;
-  $rounded(8px);
+  $ > rounded(8px);
 
   & > .title {
     font-weight: 700;
   }
 }
 ```
+
+Two caveats on that snippet, since it is the shape and not the state of things:
+module resolution is not wired up yet (`@-compose` currently round-trips
+verbatim), and the parent selector `&` is deliberately still out of the `.jess`
+parser.
 
 ## Repo layout
 
@@ -78,9 +90,9 @@ repo more than a forever package contract.
 | --- | --- |
 | [`jess`](./packages/jess) | Main CLI entry point for the current alpha. |
 | [`@jesscss/core`](./packages/core) | Compiler engine: AST, evaluation, and CSS emission. |
-| [`@jesscss/css-parser`](./packages/css-parser) | Shared CSS base parser. |
-| [`@jesscss/less-parser`](./packages/less-parser) | Less grammar on top of the CSS parser. |
-| [`@jesscss/scss-parser`](./packages/scss-parser) | Experimental SCSS grammar. |
+| [`@jesscss/css-parser`](./packages/syntax/css/css-parser) | Shared CSS base parser. |
+| [`@jesscss/less-parser`](./packages/syntax/less/less-parser) | Less grammar on top of the CSS parser. |
+| [`@jesscss/scss-parser`](./packages/syntax/scss/scss-parser) | Experimental SCSS grammar. |
 | [`@jesscss/fns`](./packages/fns) | Built-in function library. |
 | [`@jesscss/plugin-less`](./packages/jess-plugin-less) | Less language engine and defaults. |
 | [`@jesscss/plugin-scss`](./packages/jess-plugin-scss) | Experimental SCSS language engine. |

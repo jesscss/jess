@@ -492,7 +492,6 @@ describe('Color Node', () => {
         new Dimension({ number: 0, unit: '' }),
         new Dimension({ number: 0, unit: '' })
       ];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const callNode = new Call({ name: 'rgb', args: argItems as unknown as List<Node> });
 
       const color = new Color({
@@ -516,7 +515,6 @@ describe('Color Node', () => {
         new Dimension({ number: 100, unit: '%' }),
         new Dimension({ number: 50, unit: '%' })
       ];
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       const callNode = new Call({ name: 'hsl', args: hslArgs as unknown as List<Node> });
 
       const color = new Color({
@@ -588,6 +586,7 @@ describe('Color Node', () => {
       expect(() => {
         new Color({
           format: ColorFormat.RGB,
+
           // Missing rgb and hsl
           alpha: 1
         });
@@ -623,10 +622,12 @@ describe('Color Node', () => {
   });
 
   describe('clone round-trip', () => {
-    // Repro: a Color derived from `rgba(...)` has `node === undefined` and its
-    // channels on `_rgbChannels`. The base clone rebuilt from `childKeys=['node']`
-    // → `new Color({ node: undefined })`, which threw "requires rgb, hsl, or node".
-    // Declaration-merge clones such Colors (cloneForPlacement → clone).
+    /*
+     * Repro: a Color derived from `rgba(...)` has `node === undefined` and its
+     * channels on `_rgbChannels`. The base clone rebuilt from `childKeys=['node']`
+     * → `new Color({ node: undefined })`, which threw "requires rgb, hsl, or node".
+     * Declaration-merge clones such Colors (cloneForPlacement → clone).
+     */
     it('clones a channels-only rgba Color without losing channels', () => {
       const color = new Color({ rgb: [0, 0, 0], alpha: 0.12 }, { format: ColorFormat.RGB });
       expect(color.node).toBeUndefined();

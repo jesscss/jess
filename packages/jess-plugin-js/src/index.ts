@@ -7,7 +7,27 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { decodeBridgeValue, encodeBridgeArgs } from './bridge.js';
+import { decodeBridgeValue, encodeBridgeArgs, encodeBridgeValue } from './bridge.js';
+
+/**
+ * A failure raised BY a `@plugin` script (its own `throw`, or a shim member it
+ * cannot use), as distinct from a value the engine simply could not compute.
+ * The distinction is what lets the compiler report a plugin fault loudly and
+ * attributably instead of preserving the call verbatim.
+ */
+export class PluginFunctionError extends Error {
+  readonly functionName: string;
+  readonly pluginStack: string | undefined;
+  readonly originalName: string;
+
+  constructor(functionName: string, reason: string, pluginStack?: string, originalName = 'Error') {
+    super(`Less @plugin function "${functionName}" threw: ${reason}`);
+    this.name = 'PluginFunctionError';
+    this.functionName = functionName;
+    this.pluginStack = pluginStack;
+    this.originalName = originalName;
+  }
+}
 
 /**
  * Child-process stdio streams are typed as bare `Writable`/`Readable`, which do
@@ -34,6 +54,7 @@ export type JavaScriptSandboxConfig = {
 
 export interface JsPluginOptions extends JavaScriptSandboxConfig {
   denoCommand?: string;
+
   /**
    * Runtime API exposed inside the Deno worker.
    *
@@ -82,9 +103,7 @@ const DEBUG_ENV_VALUE_RE = /js-debug|bootloader/i;
  * The Deno permission sandbox is untouched; this only stops leaking the debugger
  * into it.
  */
-export const sanitizeSpawnEnv = (
-  env: NodeJS.ProcessEnv = process.env
-): NodeJS.ProcessEnv => {
+export const sanitizeSpawnEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => {
   const clean: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(env)) {
     if (DEBUG_ENV_KEY_RE.test(key)) {
@@ -139,6 +158,13 @@ const isFnsPath = (importPath: string): boolean => {
   );
 };
 
+/** `EAGAIN` on a non-blocking FIFO means "no reply yet", not a failure. */
+const isRetryableRead = (error: unknown): boolean =>
+  typeof error === 'object'
+  && error !== null
+  && 'code' in error
+  && error.code === 'EAGAIN';
+
 const isJsonValue = (value: unknown) => {
   try {
     JSON.stringify(value);
@@ -163,11 +189,71 @@ type BrokerResponse = {
   reason?: string;
 };
 
+/**
+ * One scope/built-in fact resolved on the HOST and handed to the sandbox so a
+ * synchronous Less-4 plugin body can read it. See {@link PluginCallCapabilities}.
+ */
+export type PluginCallFacts = {
+  vars: Record<string, { value: unknown; important?: boolean } | null>;
+  calls: Record<string, unknown>;
+  fileInfo: { filename: string; entryPath: string } | null;
+};
+
+type PluginFactNeed =
+  | { kind: 'variable'; name: string }
+  | { kind: 'call'; name: string; args: unknown[]; key: string };
+
+export type PluginLogRecord = { level: 'warn' | 'error' | 'info' | 'debug'; message: string };
+
+/**
+ * The compiler-side capabilities a legacy `@plugin` function body needs. The
+ * dialect adapter supplies these bound to the LIVE evaluation frame of the call
+ * site; the sandbox reaches them only through the resolve-and-replay protocol,
+ * never as a live object.
+ */
+export interface PluginCallCapabilities {
+  /** Resolve `@name` at the call site. `null` means "no such variable". */
+  lookupVariable?(name: string): { value: unknown; important?: boolean } | null;
+
+  /** Evaluate a built-in function (`less.functions.functionRegistry.get(...)`). */
+  callFunction?(name: string, args: unknown[]): unknown;
+
+  /** The file/entry pair a plugin reads through `this.currentFileInfo`. */
+  currentFileInfo?: { filename: string; entryPath: string };
+
+  /** Records a diagnostic emitted by the plugin through `less.logger`. */
+  log?(record: PluginLogRecord): void;
+
+  /** Propagates `!important` picked up while resolving a variable. */
+  markImportant?(): void;
+}
+
+/** A `@plugin` function bound to the live call-site capabilities. */
+export type ContextualPluginFunction = (
+  args: readonly unknown[],
+  capabilities: PluginCallCapabilities
+) => unknown | Promise<unknown>;
+
+/**
+ * Ceiling on resolve-and-replay rounds for a single call. Each round satisfies
+ * exactly one fact, so this also bounds a pathological plugin that asks for an
+ * unbounded number of distinct variables.
+ */
+const MAX_FACT_ROUNDS = 64;
+
 type RpcRequest =
   | { id: number; type: 'load'; modulePath: string }
   | { id: number; type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
   | { id: number; type: 'loadLessPlugin'; modulePath: string; options: string | null }
-  | { id: number; type: 'invokeLessPluginFunction'; modulePath: string; options: string | null; functionName: string; args: unknown[] };
+  | {
+    id: number;
+    type: 'invokeLessPluginFunction';
+    modulePath: string;
+    options: string | null;
+    functionName: string;
+    args: unknown[];
+    facts: PluginCallFacts;
+  };
 
 type RpcResult =
   | {
@@ -176,8 +262,20 @@ type RpcResult =
     exports?: Array<{ name: string; kind: 'function' | 'value'; value?: unknown }>;
     functions?: string[];
     value?: unknown;
+    logs?: PluginLogRecord[];
+    important?: boolean;
   }
-  | { id: number; ok: false; error: string };
+  | {
+    id: number;
+    ok: false;
+
+    /** Present when the sandbox paused for one unresolved scope/built-in fact. */
+    need?: PluginFactNeed;
+    error?: string;
+    errorName?: string;
+    stack?: string;
+    logs?: PluginLogRecord[];
+  };
 
 type RuntimeState =
   | { status: 'idle' }
@@ -205,6 +303,13 @@ export class JsPlugin extends AbstractPlugin {
   }>();
 
   private idleTimer: NodeJS.Timeout | undefined;
+
+  /**
+   * Variable names each legacy plugin function has been observed to read,
+   * keyed by module+options+function. Prefetching them turns the steady-state
+   * call into a single round trip instead of one round trip per read.
+   */
+  private readonly factMemo = new Map<string, Set<string>>();
 
   constructor(public opts: JsPluginOptions = {}) {
     super();
@@ -297,6 +402,7 @@ export class JsPlugin extends AbstractPlugin {
       const rand = `${process.pid}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
       return `\\\\.\\pipe\\jess-deno-broker-${rand}`;
     }
+
     // macOS temp dir paths can exceed unix socket limits. Keep this short.
     const rand = Math.floor(Math.random() * 10000);
     return `/tmp/jd-${process.pid}-${Date.now()}-${rand}.sock`;
@@ -445,11 +551,9 @@ export class JsPlugin extends AbstractPlugin {
     return new Promise<void>((resolve, reject) => {
       let stderrText = '';
       const timer = setTimeout(() => {
-        reject(new Error(
-          stderrText.trim()
-            ? `Timed out waiting for Deno worker startup.\n${stderrText.trim()}`
-            : 'Timed out waiting for Deno worker startup.'
-        ));
+        reject(new Error(stderrText.trim()
+          ? `Timed out waiting for Deno worker startup.\n${stderrText.trim()}`
+          : 'Timed out waiting for Deno worker startup.'));
       }, BOOT_TIMEOUT_MS);
       const onStderr = (chunk: string) => {
         stderrText += chunk;
@@ -542,16 +646,21 @@ export class JsPlugin extends AbstractPlugin {
     this.pending.clear();
   }
 
-  private async callWorker(
-    request:
-      | { type: 'load'; modulePath: string }
-      | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
-      | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
-      | { type: 'invokeLessPluginFunction'; modulePath: string; options: string | null; functionName: string; args: unknown[] }
-  ): Promise<RpcResult> {
+  private async callWorker(request:
+    | { type: 'load'; modulePath: string }
+    | { type: 'invoke'; modulePath: string; exportName: string; args: unknown[] }
+    | { type: 'loadLessPlugin'; modulePath: string; options: string | null }
+    | {
+      type: 'invokeLessPluginFunction';
+      modulePath: string;
+      options: string | null;
+      functionName: string;
+      args: unknown[];
+      facts: PluginCallFacts;
+    }): Promise<RpcResult> {
     await this.ensureRuntime();
     this.clearIdleTimer();
-    if (!this.worker || !this.worker.stdin.writable) {
+    if (!this.worker?.stdin.writable) {
       throw new Error('Deno worker is not available.');
     }
     const id = this.nextRequestId++;
@@ -607,6 +716,7 @@ export class JsPlugin extends AbstractPlugin {
     if (isPathInside(resolvedPath, jsReadRoot)) {
       return;
     }
+
     // pnpm layouts may resolve package files outside project root.
     if (resolvedPath.includes(`${path.sep}node_modules${path.sep}`)) {
       return;
@@ -667,7 +777,7 @@ export class JsPlugin extends AbstractPlugin {
    * @deprecated Less `@plugin` is deprecated. Prefer `@-from` for
    * ESM-style script imports or `@-use` for Sass-module-style namespace imports.
    */
-  async importLessPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
+  async importLessPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
     const ext = path.extname(absoluteFilePath);
     if (!SCRIPT_EXTENSIONS.has(ext)) {
       throw new Error(`Plugin "${this.name}" cannot import Less plugin "${absoluteFilePath}"`);
@@ -677,29 +787,126 @@ export class JsPlugin extends AbstractPlugin {
     const modulePath = path.resolve(absoluteFilePath);
     const loadResult = await this.callWorker({ type: 'loadLessPlugin', modulePath, options });
     if (!loadResult.ok) {
-      throw new Error(loadResult.error);
+      throw new PluginFunctionError(path.basename(modulePath), loadResult.error ?? 'an unknown sandbox failure', loadResult.stack);
     }
-    const functions: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+    const functions: Record<string, ContextualPluginFunction> = {};
     for (const functionName of loadResult.functions ?? []) {
-      functions[functionName] = async (...args: unknown[]) => {
-        const invokeResult = await this.callWorker({
-          type: 'invokeLessPluginFunction',
-          modulePath,
-          options,
-          functionName,
-          args: encodeBridgeArgs(args)
-        });
-        if (!invokeResult.ok) {
-          throw new Error(invokeResult.error);
-        }
-        return decodeBridgeValue(invokeResult.value);
-      };
+      functions[functionName] = (args, capabilities) =>
+        this.invokePluginFunction(modulePath, options, functionName, args, capabilities);
     }
     return { functions };
   }
 
+  /**
+   * Runs one legacy `@plugin` function, resolving the scope/built-in facts its
+   * body reads. The sandbox reports one unmet fact at a time; the host answers
+   * it from the LIVE call-site capabilities and replays. The names a function
+   * asked for are remembered per function, so steady-state calls ship the facts
+   * up front and complete in a single round trip.
+   */
+  private invokePluginFunction(
+    modulePath: string,
+    options: string | null,
+    functionName: string,
+    args: readonly unknown[],
+    capabilities: PluginCallCapabilities
+  ): Promise<unknown> {
+    const memoKey = `${modulePath} ${options ?? ''} ${functionName}`;
+    const known = this.factMemo.get(memoKey) ?? new Set<string>();
+    const facts: PluginCallFacts = {
+      vars: {},
+      calls: {},
+      fileInfo: capabilities.currentFileInfo ?? null
+    };
+    for (const name of known) {
+      facts.vars[name] = this.resolveVariableFact(name, capabilities);
+    }
+    const request = {
+      type: 'invokeLessPluginFunction' as const,
+      modulePath,
+      options,
+      functionName,
+      args: encodeBridgeArgs([...args]),
+      facts
+    };
+
+    /**
+     * Folds one reply. Returns the decoded value, or `undefined` to signal that
+     * `facts` has been extended and the call must be replayed.
+     */
+    const settle = (result: RpcResult): { value: unknown } | undefined => {
+      for (const record of result.logs ?? []) {
+        capabilities.log?.(record);
+      }
+      if (result.ok) {
+        if (result.important) {
+          capabilities.markImportant?.();
+        }
+        return { value: decodeBridgeValue(result.value) };
+      }
+      if (!result.need) {
+        throw new PluginFunctionError(
+          functionName,
+          result.error ?? 'an unknown sandbox failure',
+          result.stack,
+          result.errorName
+        );
+      }
+      if (result.need.kind === 'variable') {
+        const name = result.need.name;
+        facts.vars[name] = this.resolveVariableFact(name, capabilities);
+        known.add(name);
+        this.factMemo.set(memoKey, known);
+        return undefined;
+      }
+      facts.calls[result.need.key] = this.resolveCallFact(result.need, capabilities);
+      return undefined;
+    };
+
+    const exhausted = () => new PluginFunctionError(
+      functionName,
+      `resolving its scope reads did not settle after ${MAX_FACT_ROUNDS} rounds.`
+    );
+
+    /*
+     * A `@plugin` result is an ORDINARY awaitable value. It used to travel over a
+     * blocking channel so it never reached the engine as a promise; that channel
+     * is gone, so plugin calls exercise the same lane every other async value does.
+     */
+    const replay = async (): Promise<unknown> => {
+      for (let round = 0; round <= MAX_FACT_ROUNDS; round++) {
+        const settled = settle(await this.callWorker(request));
+        if (settled) {
+          return settled.value;
+        }
+      }
+      throw exhausted();
+    };
+    return replay();
+  }
+
+  private resolveVariableFact(
+    name: string,
+    capabilities: PluginCallCapabilities
+  ): { value: unknown; important?: boolean } | null {
+    const hit = capabilities.lookupVariable?.(name);
+    if (!hit) {
+      return null;
+    }
+    return { value: encodeBridgeValue(hit.value), important: hit.important === true };
+  }
+
+  private resolveCallFact(
+    need: { name: string; args: unknown[] },
+    capabilities: PluginCallCapabilities
+  ): unknown {
+    const decoded = need.args.map(decodeBridgeValue);
+    const answer = capabilities.callFunction?.(need.name, decoded);
+    return answer === undefined ? null : encodeBridgeValue(answer);
+  }
+
   /** Context-facing executable-plugin capability used by the direct AST path. */
-  async importPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, (...args: unknown[]) => Promise<unknown>> }> {
+  async importPlugin(absoluteFilePath: string, options: string | null = null): Promise<{ functions: Record<string, ContextualPluginFunction> }> {
     return this.importLessPlugin(absoluteFilePath, options);
   }
 }

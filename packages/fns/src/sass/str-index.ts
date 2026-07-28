@@ -20,8 +20,10 @@ const strIndex = defineFunction(
       return null;
     }
 
-    // Convert to 1-based index
-    // Note: Sass uses code point indexing, but for simplicity we use character indexing
+    /*
+     * Convert to 1-based index
+     * Note: Sass uses code point indexing, but for simplicity we use character indexing
+     */
     return new Dimension({ number: index + 1, unit: undefined });
   },
   {

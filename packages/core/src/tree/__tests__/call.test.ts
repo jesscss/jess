@@ -249,11 +249,13 @@ describe('Call', () => {
   });
 
   it('does not double the separator when a space-group arg term already carries leading whitespace', () => {
-    // Repro of the `less` `modern` fixture: the parser bakes leading spaces into
-    // value keywords that follow a `)`-terminated term (e.g. `... calc(l - 0.1) c h`
-    // yields keyword terms `" c"` / `" h"`). The known-text fast path in
-    // `getKnownRenderedCallText` joined space-group terms with an unconditional
-    // space, so a term that already carried a leading space rendered doubled.
+    /*
+     * Repro of the `less` `modern` fixture: the parser bakes leading spaces into
+     * value keywords that follow a `)`-terminated term (e.g. `... calc(l - 0.1) c h`
+     * yields keyword terms `" c"` / `" h"`). The known-text fast path in
+     * `getKnownRenderedCallText` joined space-group terms with an unconditional
+     * space, so a term that already carried a leading space rendered doubled.
+     */
     const rule = call({
       name: 'fn',
       args: list([
@@ -954,9 +956,12 @@ describe('Call', () => {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('red 10px');
-      // Thin placement (LIVE_BINDING invariants 2/3): the callable binding
-      // surface SHARES the source arg node instead of deep-cloning it, so the
-      // Sequence is never reconstructed.
+
+      /*
+       * Thin placement (LIVE_BINDING invariants 2/3): the callable binding
+       * surface SHARES the source arg node instead of deep-cloning it, so the
+       * Sequence is never reconstructed.
+       */
       expect(CountingSequence.constructedCopies).toBe(0);
       expect(collectionEvalCalls).toBe(0);
       expect(originalArg.parent).toBe(originalArgs);
@@ -1460,11 +1465,15 @@ describe('Call', () => {
     const rule = call({ name, args }, { silentFail: true });
     const buffer = createRenderBuffer('flat');
 
-    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rotate(0deg)');
-    expect(await rule.render(context, buffer)).toBe('rotate(0deg)');
-    expect(buffer.parts).toEqual(['rotate(0deg)']);
+    /*
+     * The number policy is tolerance-based, not an 8-decimal floor, so this value
+     * survives instead of being denoised to `0` (DD F6).
+     */
+    await expect(Promise.resolve(rule.render(context))).resolves.toBe('rotate(-0.0000000001deg)');
+    expect(await rule.render(context, buffer)).toBe('rotate(-0.0000000001deg)');
+    expect(buffer.parts).toEqual(['rotate(-0.0000000001deg)']);
     await expect(Promise.resolve(rule.resolve(context))).resolves.toMatchObject({
-      value: 'rotate(0deg)'
+      value: 'rotate(-0.0000000001deg)'
     });
   });
 
@@ -1536,17 +1545,21 @@ describe('Call', () => {
 
     expect(rule.makeImportant(root)).toBe(root);
 
-    // Top-level declarations are replaced in place on `root` (which is the call's
-    // own fresh output surface).
+    /*
+     * Top-level declarations are replaced in place on `root` (which is the call's
+     * own fresh output surface).
+     */
     const topReplacement = root.rules[0];
     expect(topReplacement).not.toBe(topDeclaration);
     expect(isNode(topReplacement, N.Declaration)).toBe(true);
     expect(topDeclaration.important).toBeUndefined();
     expect(topReplacement?.parent).toBe(root);
 
-    // A NESTED rule is made important on a COPY, never the shared canonical node —
-    // so the original `nestedRuleset` (which a mixin-call output can reuse across
-    // later calls) is left untouched, preventing an `!important` leak.
+    /*
+     * A NESTED rule is made important on a COPY, never the shared canonical node —
+     * so the original `nestedRuleset` (which a mixin-call output can reuse across
+     * later calls) is left untouched, preventing an `!important` leak.
+     */
     const nestedCopy = root.rules[1];
     expect(nestedCopy).not.toBe(nestedRuleset);
     expect(isNode(nestedCopy, N.Ruleset)).toBe(true);
@@ -1798,9 +1811,11 @@ describe('Call', () => {
     expect(context.printState.writer).toBeUndefined();
   });
 
-  // (Removed "resolves already evaluated calls without re-entering eval": it
-  // tested the deleted `evaluated`-skip mechanism — §2.7 makes resolve re-enter
-  // eval idempotently. `evaluated` is no longer a node flag.)
+  /*
+   * (Removed "resolves already evaluated calls without re-entering eval": it
+   * tested the deleted `evaluated`-skip mechanism — §2.7 makes resolve re-enter
+   * eval idempotently. `evaluated` is no longer a node flag.)
+   */
 
   it('keeps source CSS call child containers canonical after resolve(context)', async () => {
     const root = rules([
@@ -2321,9 +2336,12 @@ describe('Call', () => {
       const result = await rule.eval(context);
 
       expect(result.toTrimmedString()).toBe('ok');
-      // Thin placement (LIVE_BINDING invariants 2/3): rawArgs owns a fresh List
-      // surface for mutation isolation, but SHARES the source arg node — the
-      // Sequence is never reconstructed and stays canonically parented.
+
+      /*
+       * Thin placement (LIVE_BINDING invariants 2/3): rawArgs owns a fresh List
+       * surface for mutation isolation, but SHARES the source arg node — the
+       * Sequence is never reconstructed and stays canonically parented.
+       */
       expect(CountingSequence.constructedCopies).toBe(0);
       expect(rawArg).toBe(originalValue);
       expect(rawArg instanceof Sequence ? rawArg.value[0] : undefined).toBe(originalLeaf);
@@ -2518,10 +2536,13 @@ describe('Call', () => {
       for (const { originalValue, originalArgs } of [direct, buffered, resolved]) {
         expect(originalArgs.value).toEqual([originalValue]);
         expect(originalValue.parent).toBe(originalArgs);
-        // The Call is built with the raw `new CountingCall` constructor, which
-        // parents nothing (LIVE_BINDING invariant 6). Only the `list()` factory
-        // parented originalValue → originalArgs; originalArgs itself stays
-        // unparented, and thin-placement render/resolve never reparents it.
+
+        /*
+         * The Call is built with the raw `new CountingCall` constructor, which
+         * parents nothing (LIVE_BINDING invariant 6). Only the `list()` factory
+         * parented originalValue → originalArgs; originalArgs itself stays
+         * unparented, and thin-placement render/resolve never reparents it.
+         */
         expect(originalArgs.parent).toBeUndefined();
       }
     } finally {
@@ -2573,8 +2594,11 @@ describe('Call', () => {
         'inspect-owned',
         async function(value: Sequence) {
           receivedArg = value;
-          // Thin placement (LIVE_BINDING invariants 2/3): a static arg evaluates
-          // to itself and is SHARED through the callable surface, not deep-cloned.
+
+          /*
+           * Thin placement (LIVE_BINDING invariants 2/3): a static arg evaluates
+           * to itself and is SHARED through the callable surface, not deep-cloned.
+           */
           return any(value === originalValue ? 'ok' : 'bad');
         },
         { params: [{ name: 'value', type: Sequence }] }
@@ -2700,8 +2724,11 @@ describe('Call', () => {
     }
 
     const originalArgs = list([any('red')]);
-    // Invariant 7: raw `new` shares; parent canonically via the explicit primitive
-    // (as the `call` factory does) so resolve() has real source parentage.
+
+    /*
+     * Invariant 7: raw `new` shares; parent canonically via the explicit primitive
+     * (as the `call` factory does) so resolve() has real source parentage.
+     */
     const rule = new CountingCall({
       name: ref({ key: 'echo' }, { type: 'function' }),
       args: originalArgs
@@ -3281,14 +3308,16 @@ describe('Call', () => {
     expect(css).toContain('color: dark;');
   });
 
-  // it('should serialize to a module', () => {
-  //   let rule = call({
-  //     name: 'rgb',
-  //     value: list([num(100), num(100), num(100)])
-  //   })
-  //   rule.toModule(context, out)
-  //   expect(out.toString()).toBe(
-  //     '$J.call({\n  name: "rgb",\n  value: $J.list([\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    })\n  ]),\n  ref: () => rgb,\n})'
-  //   )
-  // })
+  /*
+   * it('should serialize to a module', () => {
+   * let rule = call({
+   * name: 'rgb',
+   * value: list([num(100), num(100), num(100)])
+   * })
+   * rule.toModule(context, out)
+   * expect(out.toString()).toBe(
+   * '$J.call({\n  name: "rgb",\n  value: $J.list([\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    }),\n    $J.num({\n      value: 100,\n      unit: ""\n    })\n  ]),\n  ref: () => rgb,\n})'
+   * )
+   * })
+   */
 });

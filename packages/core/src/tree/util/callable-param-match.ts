@@ -96,6 +96,7 @@ export function matchCallableParams({
       }
       if (paramIndex >= 0) {
         param = params.value[paramIndex];
+
         // VarDeclaration.value in callable context is always a Node
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
         argValue = arg.value as Node;

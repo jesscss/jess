@@ -11,6 +11,7 @@ import type { ExtendSelectorKind } from './types/config.js';
 export type ISafeParseResult = {
   /** Canonical parser document on successful parsing. */
   document?: Stylesheet;
+
   /**
    * Normalized errors from parsing.
    * This should include ALL errors from lexing, parsing, and any plugin-level issues.
@@ -18,6 +19,7 @@ export type ISafeParseResult = {
    * Always an array (empty if no errors).
    */
   errors: ErrorDiagnostic[];
+
   /**
    * Normalized warnings from parsing.
    * This should include ALL warnings from lexing, parsing, and any plugin-level issues.
@@ -51,10 +53,13 @@ export type SafeParseOptions = {
 export interface UrlTransformRequest {
   /** The unquoted URL target after value evaluation. */
   value: string;
+
   /** Whether the target was authored as a quoted URL token. */
   quoted: boolean;
+
   /** The document that authored this URL. */
   fromFilePath?: string;
+
   /** The entry document currently being rendered. */
   entryFilePath?: string;
 }
@@ -190,9 +195,11 @@ export abstract class AbstractPlugin implements PluginInterface {
   }
 
   /** Implement using the JS plugin w/ Deno */
-  // import(absoluteFilePath: string): Promise<Record<string, any>> {
-  //   return import(absoluteFilePath);
-  // }
+  /*
+   * import(absoluteFilePath: string): Promise<Record<string, any>> {
+   * return import(absoluteFilePath);
+   * }
+   */
 }
 
 export type Plugin = <T extends Record<string, any>>(opts?: T) => PluginInterface;

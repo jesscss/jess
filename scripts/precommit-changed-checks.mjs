@@ -104,20 +104,32 @@ function changedFilesAgainstUpstream() {
 }
 
 function uniqueLines(outputs) {
-  return [...new Set(
-    outputs
-      .flatMap(output => output.split('\n'))
-      .map(line => line.trim())
-      .filter(Boolean)
-  )];
+  return [...new Set(outputs
+    .flatMap(output => output.split('\n'))
+    .map(line => line.trim())
+    .filter(Boolean))];
 }
 
 function packageDirs(files) {
   const unique = new Set();
   for (const file of files) {
-    const match = file.match(/^packages\/[^/]+/);
-    if (match) {
-      unique.add(match[0]);
+    /* Walk up from the file's directory to the nearest owning package.json.
+       Replaces the flat `^packages\/[^/]+` heuristic so nested workspace
+       layouts (packages/syntax/<lang>/<pkg>, packages/editor/<pkg>, etc.)
+       classify correctly. A package root is any directory under packages/
+       that contains a package.json. */
+    let dir = path.dirname(file);
+    while (dir.startsWith('packages/')) {
+      if (existsSync(path.join(ROOT, dir, 'package.json'))) {
+        unique.add(dir);
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === 'packages') {
+        /* Reached the workspace anchor with no package.json found; bail. */
+        break;
+      }
+      dir = parent;
     }
   }
   return [...unique].sort();
@@ -194,8 +206,10 @@ async function runStagedLintForFiles(files) {
     const { lintStagedFiles } = await import('./staged-eslint.mjs');
     reports = await lintStagedFiles(files, { cwd: ROOT });
   } catch (error) {
-    // A broken ESLint invocation/config means no complete diagnostic result was
-    // available, so it must block rather than be treated as historical debt.
+    /*
+     * A broken ESLint invocation/config means no complete diagnostic result was
+     * available, so it must block rather than be treated as historical debt.
+     */
     const output = error instanceof Error ? (error.stack ?? error.message) : String(error);
     console.error('ESLint staged API failed before diagnostics could be collected.');
     console.error(output);
@@ -237,9 +251,12 @@ function runTestsForPackage(packageDir, scripts, files) {
     console.log(`- skip required tests for ${packageDir} (no test script)`);
     return;
   }
-  // Most package test scripts start Vitest in watch mode, so the push gate
-  // must add `--run`. Some packages already own an explicit non-watch flag;
-  // forwarding a second runner flag makes Vitest reject the invocation.
+
+  /*
+   * Most package test scripts start Vitest in watch mode, so the push gate
+   * must add `--run`. Some packages already own an explicit non-watch flag;
+   * forwarding a second runner flag makes Vitest reject the invocation.
+   */
   const ownsNonWatchFlag = /(?:^|\s)--run(?:\s|$)|(?:^|\s)--watch(?:=false|\s+false)(?:\s|$)/.test(scripts.test);
   const args = ['--filter', `./${packageDir}`, 'test'];
   if (!ownsNonWatchFlag) {
@@ -253,8 +270,7 @@ const files = filterRelevantFiles(rawFiles);
 if (files.length === 0) {
   console.log(MODE === 'upstream'
     ? 'No branch changes against upstream. Skipping checks.'
-    : 'No staged files. Skipping pre-commit checks.'
-  );
+    : 'No staged files. Skipping pre-commit checks.');
   process.exit(0);
 }
 
@@ -270,8 +286,7 @@ run(
 
 const changedPackages = packageDirs(files);
 const hasParserSourceChanges = files.some(file =>
-  /^packages\/(?:css|less|scss|jess)-parser\/src\//.test(file)
-);
+  /^packages\/syntax\/(?:css|less|scss|jess)\/(?:css|less|scss|jess)-parser\/src\//.test(file));
 
 if (MODE === 'upstream' && hasParserSourceChanges) {
   console.log('\n==> Running parser runtime-boundary validation');
@@ -285,8 +300,7 @@ if (MODE === 'staged') {
 if (changedPackages.length === 0) {
   console.log(MODE === 'upstream'
     ? 'No package changes against upstream. Skipping package checks.'
-    : 'No staged package changes. Skipping package checks.'
-  );
+    : 'No staged package changes. Skipping package checks.');
   process.exit(0);
 }
 

@@ -1,44 +1,37 @@
 /**
- * Sass math module (sass:math)
+ * Sass math module (`sass:math`).
  *
- * Re-exports all math functions that are available in the sass:math module.
- * These are the modern, non-deprecated functions.
+ * Members carry their MODULE name (`is-unitless`, `compatible`), which is not
+ * always the deprecated GLOBAL name (`unitless`, `comparable`) — dart-sass
+ * rejects `math.unitless` and `math.comparable` outright
+ * (`spec/core_functions/math/{unitless,comparable}.hrx` § `error/wrong_name`).
+ * The global spellings are separate `Fn`s exported from the same body modules
+ * and belong to the globals index, not here.
+ *
+ * `min`/`max` also differ by surface: the module members RAISE on a non-number
+ * or on incompatible units, while the globals fall through to plain CSS. This
+ * index exports the module (strict) pair.
  *
  * Usage:
  * ```typescript
- * import { abs, ceil, floor } from '@jesscss/fns/sass/math';
- * abs(-10px); // 10px
+ * import { abs, unit } from '@jesscss/fns/sass/math';
  * ```
  */
 
-// Math functions (available in math module)
-export { abs, ceil, floor, round, max, min } from '../../shared/index.js';
-export { default as unitless } from '../unitless.js';
-export { default as compatible } from '../compatible.js';
-export { default as percentage } from '../percentage.js';
-export { default as unit } from '../unit.js';
-export { default as random } from '../random.js';
-// TODO: Implement remaining math module functions
-// - math.sqrt()
-// - math.pow()
-// - math.log()
-// - math.hypot()
-// - math.sin()
-// - math.cos()
-// - math.tan()
-// - math.asin()
-// - math.acos()
-// - math.atan()
-// - math.atan2()
-// - math.clamp()
-// - math.div()
+export { abs, ceil, floor } from '../../shared/index.js';
+export { round } from './round.js';
+export { mathMin as min } from './min.js';
+export { mathMax as max } from './max.js';
+export { isUnitless } from './is-unitless.js';
+export { compatible } from './compatible.js';
+export { percentage } from './percentage.js';
+export { unit } from './unit.js';
+export { random } from './random.js';
 
-// Math module variables (constants)
-// TODO: Implement as variables or functions
-// - math.$e
-// - math.$pi
-// - math.$epsilon
-// - math.$max-safe-integer
-// - math.$min-safe-integer
-// - math.$max-number
-// - math.$min-number
+/*
+ * TODO: Implement remaining math module functions
+ * - math.sqrt(), math.pow(), math.log(), math.hypot(), math.clamp(), math.div()
+ * - the trig family: sin/cos/tan/asin/acos/atan/atan2
+ * Math module variables (math.$e, math.$pi, math.$epsilon, math.$max-number, …)
+ * are not functions and need a variable-export mechanism, not an entry here.
+ */

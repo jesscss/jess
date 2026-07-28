@@ -6,9 +6,11 @@ describe('is-node', () => {
   test('is a basic selector (bitmask)', () => {
     let node = el('.foo');
     expect(isNode(node, N.BasicSelector)).toBe(true);
+
     /** Test the abstract parent mask */
     expect(isNode(node, N.SimpleSelector)).toBe(true);
     expect(isNode(node, N.Selector)).toBe(true);
+
     /** Negative checks */
     expect(isNode(node, N.PseudoSelector)).toBe(false);
     expect(isNode(node, N.CompoundSelector)).toBe(false);

@@ -175,13 +175,16 @@ describe('Rules extend', () => {
         })
       ]);
       const css = await renderNodeToString(node, context);
-      // Two SEPARATELY-authored `.btn:hover` blocks whose second block self-extends its own
-      // selector. The extend is a no-op (the target IS the subject), so both blocks stream
-      // unchanged — the STRUCTURALLY-CORRECT form, matching Less 4.x's two-block output
-      // (`.btn:hover, .btn:hover { color: red } .btn:hover { background: blue }`; Less adds a
-      // self-duplicate branch to the first block, an inert self-extend quirk the spine omits).
-      // The former single-merged-block expectation was the EVAL path silently merging two
-      // distinct rulesets, which disagrees with Less 4.x; superseded by the extend-chaining fold.
+
+      /*
+       * Two SEPARATELY-authored `.btn:hover` blocks whose second block self-extends its own
+       * selector. The extend is a no-op (the target IS the subject), so both blocks stream
+       * unchanged — the STRUCTURALLY-CORRECT form, matching Less 4.x's two-block output
+       * (`.btn:hover, .btn:hover { color: red } .btn:hover { background: blue }`; Less adds a
+       * self-duplicate branch to the first block, an inert self-extend quirk the spine omits).
+       * The former single-merged-block expectation was the EVAL path silently merging two
+       * distinct rulesets, which disagrees with Less 4.x; superseded by the extend-chaining fold.
+       */
       expect(css).toBeString(`
         .btn:hover {
           color: red;

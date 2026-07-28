@@ -20,9 +20,9 @@ alwaysApply: true
 - Rely on **glob-scoped rules** so guidance loads automatically based on edited paths.
 
 ## Persistent state (debugging memory)
-- For debugging/build sessions, treat `.cursor/PROJECT_STATE.md` as the shared memory.
-- If you make meaningful progress during debugging, update `.cursor/PROJECT_STATE.md` and any active area notes.
-- Before starting debugging work, load `.cursor/PROJECT_STATE.md` plus relevant package/subtree rules for touched paths.
+- For debugging/build sessions, treat `docs/state/PROJECT_STATE.md` as the shared memory.
+- If you make meaningful progress during debugging, update `docs/state/PROJECT_STATE.md` and any active area notes.
+- Before starting debugging work, load `docs/state/PROJECT_STATE.md` plus relevant package/subtree rules for touched paths.
 
 ## Debug logging standard
 - Use `syncLog()` for debugging output.

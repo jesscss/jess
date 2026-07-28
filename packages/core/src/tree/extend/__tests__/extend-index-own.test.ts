@@ -45,9 +45,7 @@ function str(v: Result | Selector | Selector[]): string {
 }
 
 /** Assert own-engine output is byte-identical to the oracle (fails on divergence). */
-function same(
-  make: () => { target: Input; find: Selector; extendWith: Selector; partial: boolean }
-): void {
+function same(make: () => { target: Input; find: Selector; extendWith: Selector; partial: boolean }): void {
   const a = make();
   const oracle = extendSelector(a.target, a.find, a.extendWith, a.partial);
   const b = make();
@@ -113,8 +111,10 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
       }));
     });
     it('.b.b.c find .b.c full → unchanged (HARDCODED pin — pre-fix returned .b.b.c,.x)', () => {
-      // `same()` above only asserts prototype==oracle; before the dup-full fix BOTH engines
-      // agreed on the WRONG answer (.b.b.c,.x), so it caught nothing. This pins the CORRECT output.
+      /*
+       * `same()` above only asserts prototype==oracle; before the dup-full fix BOTH engines
+       * agreed on the WRONG answer (.b.b.c,.x), so it caught nothing. This pins the CORRECT output.
+       */
       const r = extendByIndexOwn(compound([el('.b'), el('.b'), el('.c')]), compound([el('.b'), el('.c')]), el('.x'), false);
       expect(r === UNSUPPORTED ? 'UNSUPPORTED' : str(r)).toBe('.b.b.c');
     });
@@ -406,11 +406,13 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     });
   });
 
-  // RUNG CLOSED: `:is` boundary-cross flatten (PARTIAL). A multi-atom find that aligns POSITIONALLY
-  // across a graft-bearing compound, crossing at least one `:is` boundary, collapses the matched span
-  // into `:is(<find-as-written>, <extendWith>)` placed first, with the UNMATCHED plain atoms trailing
-  // in original order. A find whose atoms are NOT in target position order is a non-positional whole
-  // consume → append. All pins are HARDCODED (independent of the oracle).
+  /*
+   * RUNG CLOSED: `:is` boundary-cross flatten (PARTIAL). A multi-atom find that aligns POSITIONALLY
+   * across a graft-bearing compound, crossing at least one `:is` boundary, collapses the matched span
+   * into `:is(<find-as-written>, <extendWith>)` placed first, with the UNMATCHED plain atoms trailing
+   * in original order. A find whose atoms are NOT in target position order is a non-positional whole
+   * consume → append. All pins are HARDCODED (independent of the oracle).
+   */
   describe('12. :is boundary-cross flatten (PARTIAL)', () => {
     it(':is(.a,.b).c find .a.c → :is(.a.c,.d)  (canonical: matched span → :is, `.b` arm dropped)', () => {
       pin(compound([is(sellist([el('.a'), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, ':is(.a.c,.d)');
@@ -454,9 +456,11 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
   });
 
   describe('12b. graft partial-of-branch → NOT_FOUND (rung 4, class 1)', () => {
-    // `.a` reaches only PART of the multi-atom `:is` branch `.a.z` — partial-of-a-branch never
-    // matches, so the whole find fails to match. The oracle returns NOT_FOUND (no extend). Own now
-    // returns NOT_FOUND (was UNSUPPORTED) — a clean "no match", not a fail-loud gate.
+    /*
+     * `.a` reaches only PART of the multi-atom `:is` branch `.a.z` — partial-of-a-branch never
+     * matches, so the whole find fails to match. The oracle returns NOT_FOUND (no extend). Own now
+     * returns NOT_FOUND (was UNSUPPORTED) — a clean "no match", not a fail-loud gate.
+     */
     it(':is(.a.z,.b).c find .a.c partial → NOT_FOUND  (`.a` partial-of-branch `.a.z`)', () => {
       pin(compound([is(sellist([compound([el('.a'), el('.z')]), el('.b')])), el('.c')]), compound([el('.a'), el('.c')]), el('.d'), true, 'NOT_FOUND');
     });
@@ -472,9 +476,11 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
   });
 
   describe('12c. graft proper-subset-in-full with trailing atom → unchanged (rung 4, class 2)', () => {
-    // FULL mode, the find matches the graft + a plain atom as a SUBSET but a trailing `.x` is
-    // stranded → not a full match → the target is UNCHANGED (oracle-verified). Own now builds this
-    // (was UNSUPPORTED).
+    /*
+     * FULL mode, the find matches the graft + a plain atom as a SUBSET but a trailing `.x` is
+     * stranded → not a full match → the target is UNCHANGED (oracle-verified). Own now builds this
+     * (was UNSUPPORTED).
+     */
     it(':is(.a,.b).c.x find .a.c FULL → :is(.a,.b).c.x  (unchanged; `.x` stranded)', () => {
       pin(compound([is(sellist([el('.a'), el('.b')])), el('.c'), el('.x')]), compound([el('.a'), el('.c')]), el('.d'), false, ':is(.a,.b).c.x');
     });
@@ -487,8 +493,10 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
   });
 
   describe('13. OR-find (selector-list find) — rung 4, class 3', () => {
-    // A `sellist` find matches a target branch via the FIRST find branch that matches THAT branch
-    // (oracle-verified). extendWith is appended ONCE overall for full matches, never per find branch.
+    /*
+     * A `sellist` find matches a target branch via the FIRST find branch that matches THAT branch
+     * (oracle-verified). extendWith is appended ONCE overall for full matches, never per find branch.
+     */
     it('.a.b find (.a,.b) partial → :is(.a,.d).b  (first find branch `.a` fires; `.b` ignored)', () => {
       pin(compound([el('.a'), el('.b')]), sellist([el('.a'), el('.b')]), el('.d'), true, ':is(.a,.d).b');
     });
@@ -513,9 +521,11 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
   });
 
   describe('14. multi-compound find against a graft-bearing target — rung 4, class 4', () => {
-    // Clean WHOLE-span side-by-side match: each find compound fully consumes its aligned target
-    // compound (plain multiset-equal, or a single find atom = a whole BARE `:is` branch), combinators
-    // match → target branch UNCHANGED, extendWith appended as a sibling (both modes, oracle-verified).
+    /*
+     * Clean WHOLE-span side-by-side match: each find compound fully consumes its aligned target
+     * compound (plain multiset-equal, or a single find atom = a whole BARE `:is` branch), combinators
+     * match → target branch UNCHANGED, extendWith appended as a sibling (both modes, oracle-verified).
+     */
     it(':is(.a,.b) .c find .a .c partial → :is(.a,.b) .c,.d', () => {
       pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), el('.c')]), sel([el('.a'), co(' '), el('.c')]), el('.d'), true, ':is(.a,.b) .c,.d');
     });
@@ -537,12 +547,14 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
   });
 
   describe('15. multi-compound :is-graft EXPANSION — rung 5', () => {
-    // A MULTI-compound find crossing a BARE single-`:is` compound (`:is(.a,.b)` in its own slot),
-    // where the alignment is NOT the clean rung-4 whole-span-full. The oracle expands the `:is` into
-    // one sibling branch per arm (splicing the arm's compounds into the slot), then runs the plain
-    // multi-compound extend per expanded branch. PARTIAL folds per arm (substring `:is`-wrap or
-    // whole-span remainder sibling-split, hoisted to the tail); FULL emits expanded branches unchanged
-    // and appends extendWith ONCE iff the graft was multi-arm. All oracle-derived + pinned.
+    /*
+     * A MULTI-compound find crossing a BARE single-`:is` compound (`:is(.a,.b)` in its own slot),
+     * where the alignment is NOT the clean rung-4 whole-span-full. The oracle expands the `:is` into
+     * one sibling branch per arm (splicing the arm's compounds into the slot), then runs the plain
+     * multi-compound extend per expanded branch. PARTIAL folds per arm (substring `:is`-wrap or
+     * whole-span remainder sibling-split, hoisted to the tail); FULL emits expanded branches unchanged
+     * and appends extendWith ONCE iff the graft was multi-arm. All oracle-derived + pinned.
+     */
     const t = (): Selector => sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b')])), co(' '), el('.c')]);
     const fac = (): Selector => sel([el('.a'), co(' '), el('.c')]);
 
@@ -602,16 +614,20 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
       pin(t(), fac(), sellist([el('.d'), el('.e')]), true, '.x :is(.a .c,.d,.e),.x .b .c');
     });
 
-    // SCOPE (fail-loud / distinct paths): a 2nd graft the find must cross → UNSUPPORTED (oracle
-    // NOT_FOUND, but proving it needs the expansion-then-fail machinery → prefer fail-loud).
+    /*
+     * SCOPE (fail-loud / distinct paths): a 2nd graft the find must cross → UNSUPPORTED (oracle
+     * NOT_FOUND, but proving it needs the expansion-then-fail machinery → prefer fail-loud).
+     */
     it('.x :is(.a,.b) :is(.p,.q) f .a .p → UNSUPPORTED (2nd graft in span)', () => {
       pin(sel([el('.x'), co(' '), is(sellist([el('.a'), el('.b')])), co(' '), is(sellist([el('.p'), el('.q')]))]), sel([el('.a'), co(' '), el('.p')]), el('.d'), false, 'UNSUPPORTED');
     });
   });
 
   describe('11. remainder-splitting (multi-compound partial with an unmatched remainder)', () => {
-    // WHOLE span → SIBLING-SPLIT: original branch unchanged + one sibling built from the LAST
-    // spanned compound's remainder merged into extendWith's head compound.
+    /*
+     * WHOLE span → SIBLING-SPLIT: original branch unchanged + one sibling built from the LAST
+     * spanned compound's remainder merged into extendWith's head compound.
+     */
     it('.a>.b.c find .a>.b partial → .a>.b.c,.c.d (sibling, last-compound remainder)', () => {
       pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), el('.d'), true, '.a>.b.c,.c.d');
     });
@@ -636,6 +652,7 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     it('.a .b.c find .a .b → .a .b.c,.c.d (descendant combinator; sibling bare, no combinator)', () => {
       pin(sel([el('.a'), co(' '), compound([el('.b'), el('.c')])]), sel([el('.a'), co(' '), el('.b')]), el('.d'), true, '.a .b.c,.c.d');
     });
+
     // extendWith LIST: remainder merges into FIRST branch only; remaining branches appended verbatim.
     it('.a>.b.c find .a>.b ext (.d,.e) → .a>.b.c,.c.d,.e', () => {
       pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), sellist([el('.d'), el('.e')]), true, '.a>.b.c,.c.d,.e');
@@ -643,6 +660,7 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     it('.a>.b.c find .a>.b ext (.d>.f,.e) → .a>.b.c,.c.d>.f,.e', () => {
       pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), sellist([sel([el('.d'), co('>'), el('.f')]), el('.e')]), true, '.a>.b.c,.c.d>.f,.e');
     });
+
     // extendWith :is(...) is NOT flattened into the sibling: `.c:is(.d,.e)`.
     it('.a>.b.c find .a>.b ext :is(.d,.e) → .a>.b.c,.c:is(.d,.e)', () => {
       pin(sel([el('.a'), co('>'), compound([el('.b'), el('.c')])]), sel([el('.a'), co('>'), el('.b')]), is(sellist([el('.d'), el('.e')])), true, '.a>.b.c,.c:is(.d,.e)');
@@ -657,8 +675,10 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     });
   });
 
-  // RUNG 8 — closed by the full-corpus sweep (differential vs the oracle over the whole reachable
-  // extend suite). Each case is a real divergence the sweep surfaced; the fix is pinned here.
+  /*
+   * RUNG 8 — closed by the full-corpus sweep (differential vs the oracle over the whole reachable
+   * extend suite). Each case is a real divergence the sweep surfaced; the fix is pinned here.
+   */
   describe('16. full-corpus sweep (rung 8)', () => {
     // FULL-mode append DEDUPES: extendWith already a target branch → no duplicate OR-branch.
     it('.base,.child f .base e .child → .base,.child (dedup, no dup branch)', () => {
@@ -673,6 +693,7 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     it('.btn:hover f .btn:hover e .btn:hover → .btn:hover (FULL self-extend no-op)', () => {
       pin(sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), sel([compound([el('.btn'), pseudo({ name: ':hover' })])]), false, '.btn:hover');
     });
+
     // Control: extendWith NOT present → append fires normally.
     it('.a,.b f .b e .c → .a,.b,.c (control, append fires)', () => {
       pin(sellist([sel([el('.a')]), sel([el('.b')])]), el('.b'), el('.c'), false, '.a,.b,.c');
@@ -717,6 +738,7 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     it('#main.info f .info e #other.foo PARTIAL → UNSUPPORTED (id conflict)', () => {
       pin(compound([el('#main'), el('.info')]), el('.info'), compound([el('#other'), el('.foo')]), true, 'UNSUPPORTED');
     });
+
     // Control: same element type → no conflict, wrap builds.
     it('a.info f .info e a.foo PARTIAL → a:is(.info,a.foo) (same element, no conflict)', () => {
       pin(compound([el('a'), el('.info')]), el('.info'), compound([el('a'), el('.foo')]), true, 'a:is(.info,a.foo)');
@@ -733,14 +755,18 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     });
   });
 
-  // RUNG 9 residuals — the last own-engine UNSUPPORTED-with-oracle-output classes the rung-8 sweep
-  // enumerated (reached only from synthetic unit tests, never a real render). Each derived from the
-  // oracle on the exact sweep tuples + hardcode-pinned. See EXTEND-INDEX-DESIGN.md rung 9.
+  /*
+   * RUNG 9 residuals — the last own-engine UNSUPPORTED-with-oracle-output classes the rung-8 sweep
+   * enumerated (reached only from synthetic unit tests, never a real render). Each derived from the
+   * oracle on the exact sweep tuples + hardcode-pinned. See EXTEND-INDEX-DESIGN.md rung 9.
+   */
   describe('17. rung-9 residual classes', () => {
-    // (1) DISTINCT-PARENT `&&` passenger — two amps with DIFFERENT resolved parents in one compound.
-    // A CHILD-ONLY match (find confined to the compound's genuinely-child atom, disjoint from every
-    // resolved parent) is order-independent: recurse the resolved form (parents ride as passengers,
-    // spliced AT their `&` positions so order is faithful). Any parent contact → NOT_FOUND.
+    /*
+     * (1) DISTINCT-PARENT `&&` passenger — two amps with DIFFERENT resolved parents in one compound.
+     * A CHILD-ONLY match (find confined to the compound's genuinely-child atom, disjoint from every
+     * resolved parent) is order-independent: recurse the resolved form (parents ride as passengers,
+     * spliced AT their `&` positions so order is faithful). Any parent contact → NOT_FOUND.
+     */
     const ampAmp = (): Selector => compound([ampWith(compound([el('.foo'), el('.bar')])), ampWith(el('.baz')), el('.suffix')]);
     it('&(.foo.bar)&(.baz).suffix f .suffix e .extended PARTIAL → .foo.bar.baz:is(.suffix,.extended)', () => {
       pin(ampAmp(), el('.suffix'), el('.extended'), true, '.foo.bar.baz:is(.suffix,.extended)');
@@ -758,9 +784,11 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
       pin(ampAmp(), compound([el('.foo'), el('.suffix')]), el('.extended'), true, 'NOT_FOUND');
     });
 
-    // (2) FIND-SIDE GRAFT, WHOLE-SELECTOR match — a find carrying a `:where`/`:not`/`:has`/multi-arm
-    // `:is` graft equal to a whole target branch → append extendWith (deduped). Single-arm `:is`
-    // (needs the oracle's unwrap on output) and non-whole-branch shapes stay UNSUPPORTED (unreached).
+    /*
+     * (2) FIND-SIDE GRAFT, WHOLE-SELECTOR match — a find carrying a `:where`/`:not`/`:has`/multi-arm
+     * `:is` graft equal to a whole target branch → append extendWith (deduped). Single-arm `:is`
+     * (needs the oracle's unwrap on output) and non-whole-branch shapes stay UNSUPPORTED (unreached).
+     */
     it(':where(.a) f :where(.a) e .b FULL → :where(.a),.b (the reachable sweep tuple)', () => {
       pin(where(el('.a')), where(el('.a')), el('.b'), false, ':where(.a),.b');
     });
@@ -783,16 +811,20 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
       pin(compound([el('.a'), is(sellist([el('.b')]))]), compound([el('.a'), is(sellist([el('.b')]))]), el('.c'), false, 'UNSUPPORTED');
     });
 
-    // (3) MULTI-GRAFT-IN-BOTH-SLOTS, find wholly absent → definite NOT_FOUND (find sym absent from the
-    // target's full sym superset). Was UNSUPPORTED (multi-graft fail-loud); now the correct NOT_FOUND.
+    /*
+     * (3) MULTI-GRAFT-IN-BOTH-SLOTS, find wholly absent → definite NOT_FOUND (find sym absent from the
+     * target's full sym superset). Was UNSUPPORTED (multi-graft fail-loud); now the correct NOT_FOUND.
+     */
     it(':is(.a,.b) :is(.p,.q) f .x .y e .d PARTIAL → NOT_FOUND (find absent everywhere)', () => {
       pin(sel([is(sellist([el('.a'), el('.b')])), co(' '), is(sellist([el('.p'), el('.q')]))]), sel([el('.x'), co(' '), el('.y')]), el('.d'), true, 'NOT_FOUND');
     });
   });
 
   describe('18. rung-6 FIND-SIDE `&` (resolve the find amp, then extend the plain find)', () => {
-    // A find carrying `&` is resolved the same way a `&` TARGET is: an UNRESOLVED amp matches no
-    // concrete compound (oracle NOT_FOUND); a RESOLVED amp becomes a plain find the engine builds.
+    /*
+     * A find carrying `&` is resolved the same way a `&` TARGET is: an UNRESOLVED amp matches no
+     * concrete compound (oracle NOT_FOUND); a RESOLVED amp becomes a plain find the engine builds.
+     */
     it('UNRESOLVED &.x find, .a.x target FULL → NOT_FOUND (bare & matches nothing)', () => {
       pin(compound([el('.a'), el('.x')]), compound([amp(), el('.x')]), el('.y'), false, 'NOT_FOUND');
     });
@@ -814,6 +846,7 @@ describe('extendByIndexOwn (own construction, no delegation)', () => {
     it('RESOLVED &.x (&=.foo), .bar.x target PARTIAL → NOT_FOUND (resolved .foo.x absent)', () => {
       pin(compound([el('.bar'), el('.x')]), compound([ampWith(el('.foo')), el('.x')]), el('.y'), true, 'NOT_FOUND');
     });
+
     // Byte-identical to the oracle across the same shapes.
     it('resolved &-find agrees with oracle (differential)', () => {
       same(() => ({ target: compound([el('.foo'), el('.x')]), find: compound([ampWith(el('.foo')), el('.x')]), extendWith: el('.y'), partial: false }));

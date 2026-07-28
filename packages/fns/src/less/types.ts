@@ -1,10 +1,12 @@
 import { makeBool, defineFunction, isValueGroupArray } from '@jesscss/core/value';
 import type { Fn, ValueGroup, ValueObj } from '@jesscss/core/value';
 
-// `isurl()` deliberately has no AST-v2 value-domain export. `Url` is syntax,
-// not a materialized ValueObj tag; once evaluated its rendered `url(...)` form is
-// intentionally opaque. Recreating the legacy predicate would require sniffing
-// output bytes, which this function layer must not do.
+/*
+ * `isurl()` deliberately has no AST-v2 value-domain export. `Url` is syntax,
+ * not a materialized ValueObj tag; once evaluated its rendered `url(...)` form is
+ * intentionally opaque. Recreating the legacy predicate would require sniffing
+ * output bytes, which this function layer must not do.
+ */
 
 /** Less `iscolor()` — true for an already-materialized colour value. */
 const iscolor: Fn = defineFunction('iscolor', {
@@ -33,11 +35,9 @@ const iskeyword: Fn = defineFunction('iskeyword', {
 /** Less `isunit()` — true for a dimension with a case-insensitive matching unit. */
 const isunit: Fn = defineFunction('isunit', {
   params: [{ kinds: 'any' }, { kinds: 'any' }],
-  body: (value, unit) => makeBool(
-    !isValueGroupArray(value)
+  body: (value, unit) => makeBool(!isValueGroupArray(value)
     && value.type === 'Dimension'
-    && value.unit.toLowerCase() === unitText(unit).toLowerCase()
-  )
+    && value.unit.toLowerCase() === unitText(unit).toLowerCase())
 });
 
 /** Less `ispixel()` — `isunit(value, px)`. */

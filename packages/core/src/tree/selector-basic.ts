@@ -25,6 +25,7 @@ export class BasicSelector extends SimpleSelector<string> {
     location?: ConstructorParameters<typeof SimpleSelector<string>>[2]
   ) {
     super(value, options, location);
+
     // Invariant 7: each node owns its value; the base stores nothing.
     this.value = value;
     this.addFlag(F_STATIC);
@@ -75,20 +76,24 @@ export class BasicSelector extends SimpleSelector<string> {
   }
 
   /** @todo - move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   if (this.isClass) {
-  //     out.add(context.hashClass(this.value.value), sourceSpanOf(this))
-  //   } else {
-  //     out.add(this.value.value, sourceSpanOf(this))
-  //   }
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * if (this.isClass) {
+   * out.add(context.hashClass(this.value.value), sourceSpanOf(this))
+   * } else {
+   * out.add(this.value.value, sourceSpanOf(this))
+   * }
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   const loc = sourceSpanOf(this)
-  //   out.add('$J.el(', loc)
-  //   this.value.toModule(context, out)
-  //   out.add(')')
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * const loc = sourceSpanOf(this)
+   * out.add('$J.el(', loc)
+   * this.value.toModule(context, out)
+   * out.add(')')
+   * }
+   */
 }
 
 /** Short form of a basic selector is a short 'el' for 'element' */

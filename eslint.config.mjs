@@ -42,6 +42,36 @@ Module._resolveFilename = function(request, parent, isMain, options) {
 
 const { default: tseslint } = await import('typescript-eslint');
 const { default: localRules } = await import('./scripts/eslint-rules/index.mjs');
+const { default: grammarRules } = await import('./scripts/eslint-rules/grammar-rules.mjs');
+
+/**
+ * Grammar sources: the four dialect parsers plus the shared recognition surface
+ * they are supposed to COMPOSE rather than reimplement.
+ *
+ * Each parser owns one grammar source that is compiled for AST and CST host
+ * modes. Linting applies to the source shape, not to duplicated grammar bodies.
+ */
+const GRAMMAR_FILES = [
+  'packages/syntax/css/css-parser/src/**/*.ts',
+  'packages/syntax/less/less-parser/src/**/*.ts',
+  'packages/syntax/scss/scss-parser/src/**/*.ts',
+  'packages/syntax/jess/jess-parser/src/**/*.ts',
+  'packages/parser-shared/src/**/*.ts'
+];
+
+/**
+ * Test scope, matching the `lint:tests` glob in package.json.
+ *
+ * Deliberately WIDER than the older `**\/test\/**` block further down: that one
+ * predates `.spec.` files, nested `__tests__` subdirectories and `perf/`, so it
+ * silently missed files that `lint:tests` does lint.
+ */
+const TEST_FILES = [
+  'packages/**/test/**/*.{mjs,cjs,js,ts}',
+  'packages/**/__tests__/**/*.{mjs,cjs,js,ts}',
+  'packages/**/*.{test,spec}.{mjs,cjs,js,ts}',
+  'packages/**/perf/**/*.{mjs,cjs,js,ts}'
+];
 
 const compat = new FlatCompat({
   baseDirectory: __dirname,
@@ -61,8 +91,10 @@ const jsRules = {
   semi: 0,
   ...customized.rules,
 
-  // Disallow single-line blocks like: `if (x) { y(); }`
-  // so ESLint can auto-fix to a multiline block.
+  /*
+   * Disallow single-line blocks like: `if (x) { y(); }`
+   * so ESLint can auto-fix to a multiline block.
+   */
   '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }],
 
   '@stylistic/space-before-function-paren': ['error', {
@@ -92,9 +124,11 @@ const jsRules = {
   '@stylistic/comma-dangle': ['error', 'never'],
   '@stylistic/padded-blocks': ['error', 'never'],
 
-  // Consistency / DRY / organization nudges (all auto-fixable; `warn` because
-  // `pnpm lint` is not yet a blocking gate — promote to `error` once a baseline
-  // sweep lands). Run `pnpm lint:fix` on files you touch.
+  /*
+   * Consistency / DRY / organization nudges (all auto-fixable; `warn` because
+   * `pnpm lint` is not yet a blocking gate — promote to `error` once a baseline
+   * sweep lands). Run `pnpm lint:fix` on files you touch.
+   */
   'object-shorthand': ['warn', 'always'],
   'no-useless-rename': 'warn',
   'no-lonely-if': 'warn',
@@ -103,8 +137,10 @@ const jsRules = {
   'prefer-object-spread': 'warn',
   'dot-notation': 'warn',
 
-  // Organization guardrails: a function that trips these is usually doing too
-  // much / named like a sentence — a signal to split, not a hard limit.
+  /*
+   * Organization guardrails: a function that trips these is usually doing too
+   * much / named like a sentence — a signal to split, not a hard limit.
+   */
   'max-depth': ['warn', 5],
   'max-params': ['warn', 6]
 };
@@ -157,9 +193,12 @@ export default tseslint.config([
       'no-void': 0,
       '@typescript-eslint/consistent-type-assertions': 0,
       '@typescript-eslint/no-unsafe-type-assertion': 'error',
-      // Enforce runtime-correct ESM specifiers in TS source:
-      // - relative imports must include `.js`
-      // - directory imports like `./foo` are banned; use `./foo/index.js`
+
+      /*
+       * Enforce runtime-correct ESM specifiers in TS source:
+       * - relative imports must include `.js`
+       * - directory imports like `./foo` are banned; use `./foo/index.js`
+       */
       'import/extensions': ['error', 'ignorePackages', {
         js: 'always',
         mjs: 'always',
@@ -193,6 +232,7 @@ export default tseslint.config([
         format: ['camelCase', 'PascalCase', 'UPPER_CASE', 'snake_case'],
         leadingUnderscore: 'allow'
       },
+
       // Destructured bindings may mirror underscored object keys (`const { _x } = o`).
       {
         selector: 'variable',
@@ -260,16 +300,201 @@ export default tseslint.config([
     }
   },
 
-  // ---------------------------------------------------------------------------
-  // LLM-quality REGRESSION PINS (local rules). ALL `warn` (advisory) by policy:
-  // these are pins, not merge gates. Several are intentionally heuristic and
-  // WILL surface some legitimate code; promotion of any to `error`/blocking
-  // requires a measured <5% false-positive bake on real PRs. See
-  // `scripts/eslint-rules/index.mjs` for the per-rule limitation notes.
-  // ---------------------------------------------------------------------------
+  /*
+   * =========================================================================
+   * TESTS: the broad assertion rule is OFF; the absolute rule is enforced
+   * elsewhere and is NOT suppressible.
+   *
+   * `no-unsafe-type-assertion` fires on every `x as SomeNode` used to build a
+   * fixture or narrow a parse result. In test code that is the normal idiom,
+   * not a defect, and it had accumulated 444 per-site `eslint-disable`
+   * comments across 38 files — enough noise that adding the next one had
+   * stopped being a decision.
+   *
+   * Turning it off here is NOT a relaxation of "never `as any`". That rule is
+   * an absolute, and it now has its own enforcement that this block cannot
+   * reach and no comment can silence: `eslint.absolute.config.mjs`, run by
+   * `pnpm lint:absolute`, with `noInlineConfig`. See
+   * `scripts/eslint-rules/absolute-bans.mjs` for the ban itself.
+   *
+   * What is genuinely given up here is the NARROWING half of the rule
+   * (`x as Ruleset` where `x` is wider) in test files only. That was 222 of
+   * the 581 assertions this rule reports across the test glob; the other 359
+   * were `any`-related and are now covered by the absolute pass instead.
+   * Production `src/` keeps the full rule.
+   * =========================================================================
+   */
+  {
+    files: TEST_FILES,
+    rules: {
+      '@typescript-eslint/no-unsafe-type-assertion': 'off'
+    }
+  },
 
-  // #2 Byte re-derivation — hot AST code only; serializers/debug are the
-  // legitimate owners of byte scanning, so they are excluded.
+  /*
+   * =========================================================================
+   * COMMENT SHAPE — repo-wide, `error`, both autofixing.
+   *
+   * NOTE FOR ANYONE CHANGING LAYOUT LATER: this repo has NO formatter, and
+   * that is deliberate. There is no prettier, no prettier config, and none is
+   * wanted. The `@stylistic` rules below OWN layout outright, which is what
+   * makes an always-expanded form enforceable at all — a fit-based formatter
+   * would collapse it right back. Do not add one.
+   *
+   * Both rules are scoped repo-wide because they are cheap, autofixable, and
+   * about readability rather than any grammar-specific concern.
+   * =========================================================================
+   */
+  {
+    files: ['packages/**/*.{js,mjs,cjs,ts,tsx}', 'scripts/**/*.{js,mjs,cjs,ts}', '*.config.{js,mjs,cjs,ts}'],
+    plugins: { grammar: grammarRules, '@stylistic': stylistic },
+    rules: {
+      /*
+       * A comment that spans lines is ONE comment and must be one block
+       * comment. A lone `//` is untouched — banning every line comment
+       * repo-wide is a much bigger change with no stated benefit, and the
+       * stricter "no `//` at all" lives in the grammar block below instead.
+       *
+       * Runs containing a DIRECTIVE (`eslint-disable-next-line`,
+       * `@ts-expect-error`, coverage pragmas) are skipped: their meaning is
+       * positional, and merging two of them into one block comment would
+       * silently disable both.
+       */
+      'grammar/no-multiline-line-comments': 'error',
+
+      /*
+       * A comment gets a blank line above it, so it separates from the code
+       * it follows instead of crowding it. All the `*Start`/`*End` allowances
+       * are on, so a comment opening a block, object, array, class,
+       * interface, enum, module, or type never demands a separator, and
+       * neither does one at the top of a file. Trailing same-line comments
+       * and consecutive comment lines are unaffected.
+       */
+      '@stylistic/lines-around-comment': ['error', {
+        beforeBlockComment: true,
+        beforeLineComment: true,
+        allowBlockStart: true,
+        allowBlockEnd: true,
+        allowObjectStart: true,
+        allowObjectEnd: true,
+        allowArrayStart: true,
+        allowArrayEnd: true,
+        allowClassStart: true,
+        allowClassEnd: true,
+        allowEnumStart: true,
+        allowEnumEnd: true,
+        allowInterfaceStart: true,
+        allowInterfaceEnd: true,
+        allowModuleStart: true,
+        allowModuleEnd: true,
+        allowTypeStart: true,
+        allowTypeEnd: true
+      }]
+    }
+  },
+
+  /*
+   * =========================================================================
+   * GRAMMAR SOURCES — maximum strictness.
+   *
+   * These files are parseman's reference implementation. The bar is "would
+   * this be the example in the docs", which is higher than ordinary code.
+   * =========================================================================
+   */
+  {
+    files: GRAMMAR_FILES,
+    ignores: ['**/__tests__/**', '**/*.test.ts'],
+    plugins: { grammar: grammarRules, '@stylistic': stylistic },
+    rules: {
+      /*
+       * Block comments only. Grammar rules are documented productions, and a
+       * `//` cannot carry a `@see` link to the spec paragraph a rule
+       * implements. Directive comments remain exempt.
+       */
+      'grammar/no-line-comments': 'error',
+      'grammar/no-multiline-line-comments': 'off',
+
+      /*
+       * A raw non-ASCII character in a regex cannot be reviewed: U+0080 and
+       * U+00A0 are the same glyph on screen, and neither announces itself as a
+       * range endpoint. Escapes also survive re-encoding and copy-paste. The
+       * fix is byte-preserving for the compiled pattern.
+       */
+      'grammar/no-literal-non-ascii-in-regex': 'error',
+
+      /*
+       * A grammar recognises input through combinators. An ad-hoc regex is
+       * invisible to the macro compiler and to first-set computation.
+       */
+      'grammar/no-regex-outside-combinator': 'error',
+
+      /*
+       * Keeps the file macro-buildable: no factories, no spreads into
+       * combinator argument lists, no patterns assembled from variables.
+       * `check-macro-buildable` catches these at build time; catching them at
+       * write time is strictly better.
+       */
+      'grammar/no-macro-hazards': 'error',
+
+      /*
+       * Grammar readability is mostly semantic: use the combinator shape that
+       * makes the production obvious. Tiny calls such as `choice(foo, bar)` and
+       * `sequence(literal('{'), body, literal('}'))` should stay compact when
+       * they read better that way. Larger calls can expand around the parts
+       * that need documentation or visual grouping without forcing every short
+       * argument onto its own line.
+       */
+      '@stylistic/function-paren-newline': 'off',
+      '@stylistic/function-call-argument-newline': 'off'
+
+      /*
+       * Deliberately NOT re-declaring `@stylistic/indent` here. The base config
+       * already sets it from the `customize()` preset, whose options differ
+       * from a bare `['error', 2]`; declaring it twice gave two disagreeing
+       * definitions of correct indentation and left 128 unfixable errors.
+       * One rule, one definition.
+       */
+    }
+  },
+
+  /*
+   * TEMPORARY, and deliberately narrow: `less-parser` is still in a heavy
+   * grammar-shaping pass. Keep parser-correctness rules on, but defer line
+   * comment and non-ASCII cleanup until the remaining Less productions stop
+   * churning.
+   *
+   * DELETE THIS BLOCK once that pass lands and `pnpm lint:fix` has been run
+   * over `packages/syntax/less/less-parser/src`.
+   */
+  {
+    files: ['packages/syntax/less/less-parser/src/**/*.ts'],
+    rules: {
+      'grammar/no-line-comments': 'off',
+      '@stylistic/lines-around-comment': 'off',
+
+      /*
+       * Also deferred: 16 raw non-ASCII characters in regex literals. These are
+       * autofixable and byte-preserving, but they sit in the two files being
+       * rewritten, so they belong to that pass rather than to a drive-by edit.
+       */
+      'grammar/no-literal-non-ascii-in-regex': 'off'
+    }
+  },
+
+  /*
+   * ---------------------------------------------------------------------------
+   * LLM-quality REGRESSION PINS (local rules). ALL `warn` (advisory) by policy:
+   * these are pins, not merge gates. Several are intentionally heuristic and
+   * WILL surface some legitimate code; promotion of any to `error`/blocking
+   * requires a measured <5% false-positive bake on real PRs. See
+   * `scripts/eslint-rules/index.mjs` for the per-rule limitation notes.
+   * ---------------------------------------------------------------------------
+   */
+
+  /*
+   * #2 Byte re-derivation — hot AST code only; serializers/debug are the
+   * legitimate owners of byte scanning, so they are excluded.
+   */
   {
     files: ['packages/*/src/ast/**/*.{ts,tsx}'],
     ignores: [
@@ -285,9 +510,11 @@ export default tseslint.config([
     }
   },
 
-  // #3 Full-tree walk — best-effort, report-only; scoped to an explicit
-  // allowlist of eval/render hot-path files (recursion is legitimate in
-  // serialize/eval, so this stays advisory and narrowly targeted).
+  /*
+   * #3 Full-tree walk — best-effort, report-only; scoped to an explicit
+   * allowlist of eval/render hot-path files (recursion is legitimate in
+   * serialize/eval, so this stays advisory and narrowly targeted).
+   */
   {
     files: [
       'packages/core/src/ast/value-eval.ts',
@@ -302,24 +529,28 @@ export default tseslint.config([
     }
   },
 
-  // #6 Oversized/duplicated choice — RETIRED. `choice()` in `src/…grammar.ts` is
-  // an AUTHORED parseman macro DSL declaration (`import … from 'parseman' with
-  // { type: 'macro' }`); the parseman compiler (`parseman.rolldown()` in tsdown)
-  // expands it at build into `lib/` (gitignored), and THAT compiled output — not
-  // the authored arm list — decides dispatch: disjoint arms become a switch
-  // jump-table or a single integer compare each (no re-lex), and reference arms
-  // keep dispatch parity via the fixpoint first-set recipe. So arm count on the
-  // authored declaration is NOT a cost signal, and eslint only ever sees the
-  // authored src. Genuine duplication (e.g. scss copy-pasting a statement-body
-  // choice 26×) is a code-size/structure concern surfaced by the grammar audit,
-  // not a line-count lint. See docs/perf/V8-ARCHITECTURE.md invariant 8 / R5.
-  // Rule impl kept in scripts/eslint-rules for reference but intentionally unwired.
+  /*
+   * #6 Oversized/duplicated choice — RETIRED. `choice()` in `src/…grammar.ts` is
+   * an AUTHORED parseman macro DSL declaration (`import … from 'parseman' with
+   * { type: 'macro' }`); the parseman compiler (`parseman.rolldown()` in tsdown)
+   * expands it at build into `lib/` (gitignored), and THAT compiled output — not
+   * the authored arm list — decides dispatch: disjoint arms become a switch
+   * jump-table or a single integer compare each (no re-lex), and reference arms
+   * keep dispatch parity via the fixpoint first-set recipe. So arm count on the
+   * authored declaration is NOT a cost signal, and eslint only ever sees the
+   * authored src. Genuine duplication (e.g. scss copy-pasting a statement-body
+   * choice 26×) is a code-size/structure concern surfaced by the grammar audit,
+   * not a line-count lint. See docs/perf/V8-ARCHITECTURE.md invariant 8 / R5.
+   * Rule impl kept in scripts/eslint-rules for reference but intentionally unwired.
+   */
 
-  // Deprecated DetachedRuleset AST node type. Allowlist: the plugin-transport
-  // (`serialize.ts` uses the less.js-facing transport tag; `value-eval.ts`
-  // declares the `PluginDetachedRuleset` transport interface) and the
-  // grammar/CST `DetachedRuleset` productions (grammar files live outside
-  // `src/ast`, so they are already out of scope).
+  /*
+   * Deprecated DetachedRuleset AST node type. Allowlist: the plugin-transport
+   * (`serialize.ts` uses the less.js-facing transport tag; `value-eval.ts`
+   * declares the `PluginDetachedRuleset` transport interface) and the
+   * grammar/CST `DetachedRuleset` productions (grammar files live outside
+   * `src/ast`, so they are already out of scope).
+   */
   {
     files: ['packages/*/src/ast/**/*.{ts,tsx}'],
     ignores: [

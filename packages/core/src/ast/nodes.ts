@@ -146,6 +146,7 @@ export type VariableLookup = 'live' | 'scoped';
 export interface VariableReference {
   readonly type: 'VariableReference';
   readonly name: string;
+
   /** `$name` reads `live`; `$$name` and Less `@name` read `scoped`. */
   readonly lookup: VariableLookup;
 }
@@ -227,8 +228,19 @@ export interface Block {
   readonly type: 'Block';
   readonly inner: ValueSlot;
   readonly delimiter: 'paren' | 'square';
+
   /** Less `~(...)` emits without the authored delimiters. */
   readonly escaped?: boolean;
+
+  /**
+   * The delimiters belong to an enclosing form's SYNTAX, not to the value —
+   * jess's `$( … )`, whose parens are consumed by the `$(`/`)` spelling itself.
+   * Such a block opens the same math context an authored group does (so
+   * `$(4px / 2)` divides) but never emits delimiters, whatever its inner
+   * evaluates to. This is NOT {@link escaped}, which drops the delimiters AND
+   * the math context.
+   */
+  readonly boundary?: boolean;
 }
 
 /**
@@ -276,6 +288,7 @@ export interface Interpolation {
 export interface GeneralEnclosed {
   readonly type: 'GeneralEnclosed';
   readonly form: 'function' | 'paren';
+
   /** The glued function name, or null for the parenthesized form. */
   readonly name: string | null;
   readonly content: Interpolation;
@@ -289,6 +302,7 @@ export interface GeneralEnclosed {
 export interface VarIndirect {
   readonly type: 'VarIndirect';
   readonly nameRef: ValueNode;
+
   /** Lookup mode for the variable named by `nameRef`. */
   readonly lookup: VariableLookup;
 }
@@ -331,6 +345,7 @@ export interface AnonymousMixin {
 export interface Collection {
   readonly type: 'Collection';
   readonly entries: (Declaration | VariableDeclaration)[];
+
   /** The carrier's own declaration value, e.g. `20px` in `font: 20px { … }`;
    * omitted when the nested property has no own value. */
   readonly base?: ValueSlot;
@@ -365,6 +380,7 @@ export interface BracketLookup {
   readonly type: 'BracketLookup';
   readonly key: ValueNode | number;
   readonly keyKind: 'var' | 'prop' | 'index' | 'member';
+
   /** Explicit dialect indexing convention; omitted preserves the historical 1-based map index. */
   readonly indexBase?: 0 | 1;
 }
@@ -383,6 +399,7 @@ export interface ReferenceCall {
  */
 export interface Reference {
   readonly type: 'Reference';
+
   /**
    * A reference starts from either an ordinary value lookup or a typed namespace
    * / mixin fact.  Keeping the latter typed is what lets a later bracket or call
@@ -481,8 +498,10 @@ export type SimpleToken = SimpleSelector | PseudoSelector;
 export interface CompoundSelector {
   readonly type: 'CompoundSelector';
   readonly simples: SimpleToken[];
+
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
+
   /** Serializer-owned memo of the has-interp flag (lazy). */
   _hasInterp?: boolean;
 }
@@ -553,10 +572,13 @@ export interface ComplexSelector {
   readonly head: CompoundSelector;
   readonly tail: ComplexSegment[];
   readonly leadingComb?: Combinator;
+
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
+
   /** Serializer-owned memo of the has-ampersand flag (lazy). */
   _hasAmp?: boolean;
+
   /** Serializer-owned memo of the has-interp flag (lazy). */
   _hasInterp?: boolean;
 }
@@ -565,9 +587,12 @@ export interface ComplexSelector {
 export const complexCanonical = (c: ComplexSelector): string => {
   if (c._canon === undefined) {
     let s = compoundCanonical(c.head);
-    // A leading combinator (e.g. `> .b`) is rendered surrounded on the right
-    // only: `renderCombinator` yields ` > `; the head has no left context, so
-    // trim the leading space to emit `> .b`.
+
+    /*
+     * A leading combinator (e.g. `> .b`) is rendered surrounded on the right
+     * only: `renderCombinator` yields ` > `; the head has no left context, so
+     * trim the leading space to emit `> .b`.
+     */
     if (c.leadingComb !== undefined && c.leadingComb !== ' ') {
       s = renderCombinator(c.leadingComb).trimStart() + s;
     }
@@ -650,6 +675,7 @@ export interface Declaration {
   readonly value: ValueSlot;
   readonly merge: null | ',' | ' ';
   readonly important: boolean;
+
   /** The authored gap after the `:` contained a NEWLINE (a value written on its
    * own line, e.g. a multi-line `grid-template-areas`). v5 preserves that layout:
    * the value emits starting on the next indented line instead of after `: `. */
@@ -673,6 +699,7 @@ export interface VariableDeclaration {
   readonly type: 'VariableDeclaration';
   readonly name: string;
   readonly value: ValueSlot | MixinCall;
+
   /**
    * An ordinary declaration writes both stores and therefore has no lookup
    * selector. Conditional and reassignment forms carry the lookup they use.
@@ -715,6 +742,7 @@ export interface RawInline {
 export interface ExtendInstruction {
   target: SelectorList;
   partial: boolean;
+
   /**
    * The EXTENDER subject: the specific selector this extend contributes. An INLINE
    * extend (`.a:extend(.b), .c { … }`) attaches to a single complexSelector (`.a`), so its
@@ -736,6 +764,7 @@ export interface Rule {
   readonly selector: SelectorList;
   readonly body: Statement[];
   readonly extendInstructions?: ExtendInstruction[];
+
   /**
    * [guards] An optional `when (...)` guard authored on the selector
    * (`.sel when (cond) { … }`). The rule's block emits only when the guard
@@ -743,6 +772,7 @@ export interface Rule {
    * common unguarded rule (the serializer's zero-cost gate holds).
    */
   readonly guard?: GuardNode;
+
   /**
    * [import:reference] This rule came from an `@import (reference)` file, so it is
    * HIDDEN: it emits nothing on its OWN (the serializer drops a rule whose visible
@@ -778,11 +808,13 @@ export interface MixinDef {
   readonly params: Param[];
   readonly body: Statement[];
   readonly guard?: GuardNode; // [guards]
-  // [dedup] set only on a def SYNTHESIZED from a paren-less ruleset callable as a
-  // zero-arg mixin (`.foo {…}` dispatched via `.foo()`). A real parametric
-  // `MixinDef` leaves it undefined. Duplicate-declaration dedup keeps overloaded
-  // PARAMETRIC output verbatim (Less restricts its ambient lookup) but collapses
-  // identical ruleset-mixin output, so the serializer must tell them apart.
+  /*
+   * [dedup] set only on a def SYNTHESIZED from a paren-less ruleset callable as a
+   * zero-arg mixin (`.foo {…}` dispatched via `.foo()`). A real parametric
+   * `MixinDef` leaves it undefined. Duplicate-declaration dedup keeps overloaded
+   * PARAMETRIC output verbatim (Less restricts its ambient lookup) but collapses
+   * identical ruleset-mixin output, so the serializer must tell them apart.
+   */
   readonly ruleMixin?: boolean;
 }
 
@@ -878,6 +910,7 @@ export interface ModuleImport {
   readonly type: 'ModuleImport';
   readonly path: Quoted;
   readonly mode: 'use' | 'from';
+
   /** Default ESM binding in `@-from "…" import name`. */
   readonly defaultImport: string | null;
   readonly namespace: string | null;
@@ -890,8 +923,10 @@ export interface Stylesheet {
   readonly children: Statement[];
 }
 
-// [atrule] at-rule nodes are valid body/stylesheet statements; type-only import keeps
-// nodes.ts free of a runtime dependency on the sibling at-rule module.
+/*
+ * [atrule] at-rule nodes are valid body/stylesheet statements; type-only import keeps
+ * nodes.ts free of a runtime dependency on the sibling at-rule module.
+ */
 import type { AtRuleBlock, AtRuleStatement, ImportAtRule, OpaqueAtRuleBlock, Plugin } from './at-rule.js';
 
 export type Statement =
@@ -913,9 +948,12 @@ export type Statement =
   | StyleImport
   | ModuleImport
   | RawInline
-  // A bare value-position call in statement position (`e('/* … */');`): Less
-  // evaluates it and emits its result bytes as a standalone line (unquote/escape
-  // at document scope), so it is a legitimate statement, not just a value node.
+
+  /*
+   * A bare value-position call in statement position (`e('/* … *\/');`): Less
+   * evaluates it and emits its result bytes as a standalone line (unquote/escape
+   * at document scope), so it is a legitimate statement, not just a value node.
+   */
   | FunctionCall;
 
 /* ------------------------------------------------------------ constructors */
@@ -951,6 +989,7 @@ export const list = (
 ): List => ({ type: 'List', value, sep });
 
 export const simpleSelector = (text: string): SimpleSelector => ({ type: 'SimpleSelector', text, interp: null });
+
 /** An interpolated simple token, e.g. `.icon-@{type}`. */
 export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelector => ({ type: 'SimpleSelector', text: null, interp });
 
@@ -962,6 +1001,7 @@ export const interpolatedSimpleSelector = (interp: Interpolation): SimpleSelecto
  */
 const CROSSABLE_PSEUDOS = new Set([':is', ':matches']);
 export const crossable = (name: string): boolean => CROSSABLE_PSEUDOS.has(name.toLowerCase());
+
 /** A structured selector-function pseudo. When `args` is present the structure
  *  lives there and `text` is forced `null` (serialization joins via
  *  `pseudoCanonical`, the parser never does); `text` is only retained for the
@@ -1023,10 +1063,13 @@ export const reference = (
   raw: string
 ): Reference => ({ type: 'Reference', base, steps, raw });
 export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw });
+
 /** A compound from an already-built list of simple tokens. */
 export const compoundSelectorOf = (simples: SimpleToken[]): CompoundSelector => ({ type: 'CompoundSelector', simples });
+
 /** `compoundSelector('.a', '.b')` => `.a.b`. */
 export const compoundSelector = (...texts: string[]): CompoundSelector => compoundSelectorOf(texts.map(simpleSelector));
+
 /** `complexSelector([{ compound: compoundSelector('.a') }, { comb: '>', compound: compoundSelector('.b') }])` => `.a > .b`. */
 export const complexSelector = (
   segments: Array<{ comb?: Combinator; compound: CompoundSelector }>,
@@ -1055,11 +1098,13 @@ export const decl = (
   valueOnNewLine
     ? { type: 'Declaration', name, value, merge, important, valueOnNewLine: true }
     : { type: 'Declaration', name, value, merge, important };
+
 /** A data/map block value: leaf-named `entries`, plus an optional `base` carrier
  * value (`20px` in `font: 20px { … }`). See {@link Collection}. */
 export const collection = (entries: Declaration[], base?: ValueSlot): Collection =>
   base === undefined ? { type: 'Collection', entries } : { type: 'Collection', entries, base };
 export const comment = (text: string): Comment => ({ type: 'Comment', text });
+
 /** [import:inline] A verbatim raw-bytes statement (`@import (inline)` splice).
  * `media` (optional) wraps the splice in an `@media <media> { … }` block. */
 export const rawInline = (text: string, media?: string | null): RawInline =>
@@ -1068,6 +1113,7 @@ export const variableReference = (name: string, lookup: VariableLookup): Variabl
   ({ type: 'VariableReference', name, lookup });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 export const important = (inner: ValueSlot): Important => ({ type: 'Important', inner });
+
 /** @deprecated Renamed to {@link sequence}; kept one cycle for straddling callers. */
 export const concat = sequence;
 export const operation = (operator: string, left: ValueNode, right: ValueNode): Operation =>
@@ -1076,6 +1122,10 @@ export const funcCall = (name: string, args: ValueSlot[], modern = false): Funct
   ({ type: 'FunctionCall', name, args, modern });
 export const block = (inner: ValueSlot, delimiter: Block['delimiter'] = 'paren', escaped = false): Block =>
   escaped ? { type: 'Block', inner, delimiter, escaped: true } : { type: 'Block', inner, delimiter };
+
+/** The `$( … )` math boundary — see {@link Block.boundary}. */
+export const boundaryBlock = (inner: ValueSlot): Block =>
+  ({ type: 'Block', inner, delimiter: 'paren', boundary: true });
 export const condition = (guard: GuardNode, src: string): Condition => ({ type: 'Condition', guard, src });
 export const variableDeclaration = (
   name: string,
@@ -1089,6 +1139,7 @@ export const mixinDef = (
   body: Statement[],
   guard?: GuardNode // [guards]
 ): MixinDef => ({ type: 'MixinDef', name, params, body, ...(guard !== undefined ? { guard } : {}) });
+
 /** [guards] Args may be bare value nodes (positional) or `{ value, name? }`. */
 export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): MixinCall => ({
   type: 'MixinCall',

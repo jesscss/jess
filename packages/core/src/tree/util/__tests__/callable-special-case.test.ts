@@ -59,18 +59,22 @@ describe('callable special-case helper', () => {
   });
 
   it('falls back to callSiteRules when the ruleset candidate has no parent', async () => {
-    // A detached ruleset called from a variable has no tree parent, and the
-    // caller has no parent either; `callParent` derefed undefined at `.adopt`.
-    // The call-site Rules is the placement parent.
+    /*
+     * A detached ruleset called from a variable has no tree parent, and the
+     * caller has no parent either; `callParent` derefed undefined at `.adopt`.
+     * The call-site Rules is the placement parent.
+     */
     const context = new Context({ leakyScope: true });
     context.depth = 2;
 
     const callSiteRules = rules([]);
+
     // Candidate ruleset is unparented (as if held in a variable binding).
     const candidate = ruleset({
       selector: el('.candidate'),
       rules: [decl({ name: 'color', value: any('red') })]
     });
+
     // Caller with no parent.
     const caller = call({ name: ref({ key: '.candidate' }, { type: 'mixin' }) });
     context.root = rules([]);
@@ -190,7 +194,6 @@ describe('callable special-case helper', () => {
       restrictMixinOutputLookup: true,
       candidateName: candidate.name,
       candidateParams: candidate.params,
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       candidateGuard: candidate.guard as Node | undefined,
       createCallableRules: createCallableRulesSurface,
       getRootSourceRules

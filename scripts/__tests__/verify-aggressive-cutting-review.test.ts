@@ -38,11 +38,11 @@ describe('proven staged quality-only review', () => {
     expect(qualityOnlyStagedPaths(
       [
         { status: 'M', paths: [sourceFile] },
-        { status: 'M', paths: ['packages/less-parser/src/ast/grammar.ts'] }
+        { status: 'M', paths: ['packages/syntax/less/less-parser/src/ast/grammar.ts'] }
       ],
       [],
       []
-    )).toEqual([sourceFile, 'packages/less-parser/src/ast/grammar.ts']);
+    )).toEqual([sourceFile, 'packages/syntax/less/less-parser/src/ast/grammar.ts']);
 
     for (const entry of [
       { status: 'A', paths: [sourceFile] },
@@ -131,7 +131,7 @@ describe('proven staged quality-only review', () => {
 
 describe('aggressive-cutting review scope', () => {
   const snapshots = {
-    branch: ['packages/less-parser/src/grammar.ts'],
+    branch: ['packages/syntax/less/less-parser/src/grammar.ts'],
     unstaged: ['packages/core/src/tree/rules.ts'],
     staged: ['scripts/__tests__/verify-aggressive-cutting-review.test.ts'],
     untracked: ['packages/core/src/ast/__tests__/scratch.test.ts']
@@ -157,7 +157,7 @@ describe('aggressive-cutting review scope', () => {
 
   it('reviews the committed branch delta at pre-push rather than only dirty files', () => {
     expect(scopedChangedPaths('committed', snapshots)).toEqual([
-      'packages/less-parser/src/grammar.ts'
+      'packages/syntax/less/less-parser/src/grammar.ts'
     ]);
   });
 
@@ -165,14 +165,14 @@ describe('aggressive-cutting review scope', () => {
     expect(isProductionHotPathFile('packages/core/src/ast/__tests__/factory.test.ts')).toBe(false);
     expect(isProductionHotPathFile('packages/core/src/ast/fixtures/large.less')).toBe(false);
     expect(isProductionHotPathFile('packages/core/src/ast/serialize.ts')).toBe(true);
-    expect(isProductionHotPathFile('packages/less-parser/src/grammar.ts')).toBe(true);
+    expect(isProductionHotPathFile('packages/syntax/less/less-parser/src/grammar.ts')).toBe(true);
   });
 
   it('keeps test-only object-literal diffs out of the danger-token scan input', () => {
     expect(productionChangedPaths([
       'packages/core/src/ast/__tests__/factory-shapes.test.ts',
       'packages/core/src/ast/serialize.ts',
-      'packages/css-parser/src/fixtures/recovery.test.ts'
+      'packages/syntax/css/css-parser/src/fixtures/recovery.test.ts'
     ])).toEqual(['packages/core/src/ast/serialize.ts']);
   });
 
@@ -180,25 +180,25 @@ describe('aggressive-cutting review scope', () => {
     const paths = [
       'packages/core/src/ast/serialize.ts',
       'packages/core/src/ast/nodes.ts',
-      'packages/less-parser/src/ast/grammar.ts',
+      'packages/syntax/less/less-parser/src/ast/grammar.ts',
       'packages/jess/src/index.ts'
     ];
     expect(productionChangedPaths(paths)).toEqual(paths);
     expect(runtimeChangedPaths(paths)).toEqual(['packages/core/src/ast/serialize.ts']);
     expect(boundaryChangedPaths(paths)).toEqual([
       'packages/core/src/ast/nodes.ts',
-      'packages/less-parser/src/ast/grammar.ts',
+      'packages/syntax/less/less-parser/src/ast/grammar.ts',
       'packages/jess/src/index.ts'
     ]);
     expect(classifyProductionSurface('packages/core/src/ast/serialize.ts')).toBe('runtime-engine');
     expect(classifyProductionSurface('packages/core/src/ast/nodes.ts')).toBe('public-plumbing');
-    expect(classifyProductionSurface('packages/less-parser/src/ast/grammar.ts')).toBe('frontend');
+    expect(classifyProductionSurface('packages/syntax/less/less-parser/src/ast/grammar.ts')).toBe('frontend');
     expect(isStrictRuntimeSurface('packages/core/src/ast/serialize.ts')).toBe(true);
-    expect(isStrictRuntimeSurface('packages/less-parser/src/ast/grammar.ts')).toBe(false);
+    expect(isStrictRuntimeSurface('packages/syntax/less/less-parser/src/ast/grammar.ts')).toBe(false);
   });
 
   it('requires behavior, build, and boundary evidence for non-runtime source changes', () => {
-    const paths = ['packages/css-parser/src/ast/grammar.ts'];
+    const paths = ['packages/syntax/css/css-parser/src/ast/grammar.ts'];
     expect(validateBoundaryEvidence('- Behavior evidence: focused grammar fixture parse proves typed AST construction.\n- Build evidence: parser package build completed successfully.\n- Boundary evidence: public parse() route and parser-runtime-boundary verifier both passed.', paths)).toEqual([]);
     expect(validateBoundaryEvidence('- Behavior evidence: yes', paths)).toHaveLength(3);
   });
@@ -257,9 +257,7 @@ describe('aggressive-cutting review scope', () => {
     }];
     const diff = 'diff --git a/packages/core/src/ast/serialize.ts b/packages/core/src/ast/serialize.ts\n'
       + '+++ b/packages/core/src/ast/serialize.ts\n@@ -1 +1 @@\n+function unrelated() { return added(); }\n';
-    expect(validateChangedContractSurface(registry, ['packages/core/src/ast/serialize.ts'], diff)).toContain(
-      'Changed production hot-path surface packages/core/src/ast/serialize.ts has 1/1 unmatched hunks; add/update exact runtime contracts rather than hiding the aggregate branch inventory.'
-    );
+    expect(validateChangedContractSurface(registry, ['packages/core/src/ast/serialize.ts'], diff)).toContain('Changed production hot-path surface packages/core/src/ast/serialize.ts has 1/1 unmatched hunks; add/update exact runtime contracts rather than hiding the aggregate branch inventory.');
   });
 });
 
@@ -313,8 +311,8 @@ describe('alpha release snapshot CLI boundary', () => {
   it('skips only aggregate patch accounting and still validates release evidence', () => {
     const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
     const sandbox = mkdtempSync(resolve(tmpdir(), 'jess-release-review-'));
-    const handoffPath = 'docs/future/core-architecture/HANDOFF.md';
-    const reviewPath = 'docs/future/core-architecture/AGGRESSIVE-CUTTING-REVIEW.md';
+    const handoffPath = 'docs/architecture/core/HANDOFF.md';
+    const reviewPath = 'docs/architecture/core/AGGRESSIVE-CUTTING-REVIEW.md';
     const verifierPath = 'scripts/verify-aggressive-cutting-review.mjs';
     try {
       execFileSync('git', ['clone', '--quiet', '--no-hardlinks', repo, sandbox]);
@@ -337,12 +335,8 @@ describe('alpha release snapshot CLI boundary', () => {
 
       const release = invokeVerifier(sandbox, 'release');
       expect(release.status).toBe(0);
-      expect(release.output).toContain(
-        'Release snapshot mode: aggregate changed-path, danger-token, and cost/A-B accounting skipped.'
-      );
-      expect(release.output).toContain(
-        'Release snapshot evidence validated: cost-contract registry and self-prosecution block are structurally valid.'
-      );
+      expect(release.output).toContain('Release snapshot mode: aggregate changed-path, danger-token, and cost/A-B accounting skipped.');
+      expect(release.output).toContain('Release snapshot evidence validated: cost-contract registry and self-prosecution block are structurally valid.');
       expect(release.output).not.toContain('No danger tokens found in scoped diff.');
 
       const handoff = readFileSync(resolve(sandbox, handoffPath), 'utf8');
@@ -355,9 +349,7 @@ describe('alpha release snapshot CLI boundary', () => {
       writeFileSync(resolve(sandbox, handoffPath), `${prefix}${brokenSection}`);
       const missingHandoffEvidence = invokeVerifier(sandbox, 'release');
       expect(missingHandoffEvidence.status).not.toBe(0);
-      expect(missingHandoffEvidence.output).toContain(
-        'Missing required Aggressive Cutting Self-Prosecution block'
-      );
+      expect(missingHandoffEvidence.output).toContain('Missing required Aggressive Cutting Self-Prosecution block');
 
       writeFileSync(resolve(sandbox, handoffPath), handoff);
       const review = readFileSync(resolve(sandbox, reviewPath), 'utf8');
@@ -370,9 +362,7 @@ describe('alpha release snapshot CLI boundary', () => {
       );
       const missingRegistry = invokeVerifier(sandbox, 'release');
       expect(missingRegistry.status).not.toBe(0);
-      expect(missingRegistry.output).toContain(
-        'AGGRESSIVE-CUTTING-REVIEW.md is missing the machine-readable cost-contract registry.'
-      );
+      expect(missingRegistry.output).toContain('AGGRESSIVE-CUTTING-REVIEW.md is missing the machine-readable cost-contract registry.');
     } finally {
       rmSync(sandbox, { recursive: true, force: true });
     }
@@ -380,7 +370,7 @@ describe('alpha release snapshot CLI boundary', () => {
 });
 
 describe('private grammar artifact reachability', () => {
-  const entry = 'packages/css-parser/src/ast/grammar.ts';
+  const entry = 'packages/syntax/css/css-parser/src/ast/grammar.ts';
 
   it('finds a package source export targeting an otherwise unimported private grammar', () => {
     const exports: Record<string, unknown> = {};
@@ -397,7 +387,7 @@ describe('private grammar artifact reachability', () => {
   });
 
   it('uses the owning package path when checking a non-CSS private grammar', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
     const exports: Record<string, unknown> = {};
     exports['./ast'] = { source: './src/ast/grammar.ts' };
     expect(publicArtifactReferences(lessEntry, JSON.stringify({
@@ -406,16 +396,16 @@ describe('private grammar artifact reachability', () => {
   });
 
   it('detects named, default, and namespace imports by their resolved grammar module', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
-    const sourcePath = 'packages/less-parser/src/index.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
     expect(grammarSourceReferences(sourcePath, 'import { anything } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'import grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'import * as grammar from \'./ast/grammar.js\';', lessEntry)).toBe(true);
   });
 
   it('detects side-effect imports and re-exports even without a grammar symbol', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
-    const sourcePath = 'packages/less-parser/src/index.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
     expect(grammarSourceReferences(sourcePath, 'import \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'export * from \'./ast/grammar.js\';', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'export { default as direct } from \'./ast/grammar.js\';', lessEntry)).toBe(true);
@@ -423,8 +413,8 @@ describe('private grammar artifact reachability', () => {
   });
 
   it('detects dynamic ESM imports by their resolved grammar module', () => {
-    const lessEntry = 'packages/less-parser/src/ast/grammar.ts';
-    const sourcePath = 'packages/less-parser/src/index.ts';
+    const lessEntry = 'packages/syntax/less/less-parser/src/ast/grammar.ts';
+    const sourcePath = 'packages/syntax/less/less-parser/src/index.ts';
     expect(grammarSourceReferences(sourcePath, 'await import(\'./ast/grammar.js\');', lessEntry)).toBe(true);
     expect(grammarSourceReferences(sourcePath, 'import(\'./ast/other.js\');', lessEntry)).toBe(false);
   });
@@ -432,7 +422,7 @@ describe('private grammar artifact reachability', () => {
 
 describe('exact parser-runtime debt deletion', () => {
   const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
-  const sourcePath = 'packages/css-parser/src/cst.ts';
+  const sourcePath = 'packages/syntax/css/css-parser/src/cst.ts';
   const snippet = '/(^|[^a-zA-Z0-9]+)([a-zA-Z0-9])/g';
   const oldLine = `    .replace(${snippet}, (_, _sep, char) => char.toUpperCase())`;
   const previousSource = `${oldLine}\n`;
@@ -511,7 +501,7 @@ describe('exact parser-runtime debt deletion', () => {
         const target = resolve(sandbox, path);
         writeFileSync(target, staged);
       }
-      const parserPath = 'packages/css-parser/src/cst.ts';
+      const parserPath = 'packages/syntax/css/css-parser/src/cst.ts';
       const ledgerPath = 'scripts/parser-runtime-boundary-debt.json';
       const source = execFileSync('git', ['show', `:${parserPath}`], { cwd: repo, encoding: 'utf8' });
       const snippet = '/stagedOnlyDebt/';
@@ -605,9 +595,7 @@ describe('concise handoff cost-contract ledger pointers', () => {
       ledger
     );
 
-    expect(validateCostAuditRecords(records, ledger, [], '')).toContain(
-      'Hot-path cost audit record missing-terminal-surface is not declared in the machine-readable cost-contract registry.'
-    );
+    expect(validateCostAuditRecords(records, ledger, [], '')).toContain('Hot-path cost audit record missing-terminal-surface is not declared in the machine-readable cost-contract registry.');
   });
 });
 
@@ -712,9 +700,7 @@ function makeRecord(overrides: Record<string, unknown> = {}) {
 describe('hot-path admission counter relations', () => {
   it('requires a proof-of-necessity record for every contract', () => {
     const withoutNecessity = { ...registry[0], necessity: undefined };
-    expect(validateCostContractRegistry([withoutNecessity])).toContain(
-      'Cost contract test-admission-contract must include proof-of-necessity metadata.'
-    );
+    expect(validateCostContractRegistry([withoutNecessity])).toContain('Cost contract test-admission-contract must include proof-of-necessity metadata.');
   });
 
   it('requires the expensive-call admission chain in every contract', () => {
@@ -723,9 +709,7 @@ describe('hot-path admission counter relations', () => {
       ...registry[0],
       relations: ['admittedCalls <= featureBearingContainers']
     };
-    expect(validateCostContractRegistry([withoutAdmissionBound])).toContain(
-      'Cost contract test-admission-contract must bind expensive calls to admitted calls with calls <= admittedCalls.'
-    );
+    expect(validateCostContractRegistry([withoutAdmissionBound])).toContain('Cost contract test-admission-contract must bind expensive calls to admitted calls with calls <= admittedCalls.');
   });
 
   it('requires named carry-forward coverage for producer support files', () => {
@@ -737,9 +721,7 @@ describe('hot-path admission counter relations', () => {
     expect(validateCostContractRegistry([withSupport])).toEqual([]);
 
     const withoutCoverage = { ...withSupport, coverage: undefined };
-    expect(validateCostContractRegistry([withoutCoverage])).toContain(
-      'Cost contract test-admission-contract supportFiles require coverage owner-plus-named-carry-forward-support.'
-    );
+    expect(validateCostContractRegistry([withoutCoverage])).toContain('Cost contract test-admission-contract supportFiles require coverage owner-plus-named-carry-forward-support.');
   });
 
   it('rejects 10,000 expensive calls when the cheap admission found no feature', () => {
@@ -761,9 +743,7 @@ describe('hot-path admission counter relations', () => {
       diff
     );
 
-    expect(errors).toContain(
-      'Cost contract test-admission-contract relation failed: admittedCalls <= featureBearingContainers.'
-    );
+    expect(errors).toContain('Cost contract test-admission-contract relation failed: admittedCalls <= featureBearingContainers.');
   });
 
   it('accepts a consistent admitted-call chain', () => {
@@ -778,9 +758,7 @@ describe('hot-path admission counter relations', () => {
       diff
     );
 
-    expect(errors).toContain(
-      'Hot-path cost audit record test-admission-contract exceeds its admission-work budget: 10000 > 15 * 8.'
-    );
+    expect(errors).toContain('Hot-path cost audit record test-admission-contract exceeds its admission-work budget: 10000 > 15 * 8.');
   });
 });
 
@@ -847,9 +825,7 @@ describe('conservative-filter contract kind', () => {
 
   it('requires the flipped superset relation featureBearing* <= admittedCalls', () => {
     const badRegistry = [{ ...filterContract, relations: ['calls <= admittedCalls', 'admittedCalls <= featureBearingCalls'] }];
-    expect(validateCostContractRegistry(badRegistry)).toContain(
-      'Conservative-filter cost contract test-filter-contract must admit a superset: bind featureBearing* <= admittedCalls.'
-    );
+    expect(validateCostContractRegistry(badRegistry)).toContain('Conservative-filter cost contract test-filter-contract must admit a superset: bind featureBearing* <= admittedCalls.');
   });
 
   it('refuses the no-feature allocation escape when the filter is not faster', () => {
@@ -877,9 +853,7 @@ describe('conservative-filter contract kind', () => {
 
   it('still rejects a precise contract that omits the feature-admission bound', () => {
     const preciseNoBound = { ...registry[0], relations: ['calls <= admittedCalls'] };
-    expect(validateCostContractRegistry([preciseNoBound])).toContain(
-      'Cost contract test-admission-contract must bind admitted calls to a feature-bearing counter.'
-    );
+    expect(validateCostContractRegistry([preciseNoBound])).toContain('Cost contract test-admission-contract must bind admitted calls to a feature-bearing counter.');
   });
 });
 
@@ -987,20 +961,14 @@ describe('redundant-call-elimination contract kind', () => {
 
   it('rejects a removal that borrows the admission-filter relation calls <= admittedCalls', () => {
     const badRegistry = [{ ...removalContract, relations: ['callsAfter <= callsBefore', 'calls <= admittedCalls'] }];
-    expect(validateCostContractRegistry(badRegistry)).toContain(
-      'Redundant-call-elimination cost contract test-removal-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.'
-    );
+    expect(validateCostContractRegistry(badRegistry)).toContain('Redundant-call-elimination cost contract test-removal-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.');
   });
 
   it('requires the redundantCallElimination block and net-removal relation in the registry', () => {
     const noBlock = { ...removalContract, redundantCallElimination: undefined };
-    expect(validateCostContractRegistry([noBlock])).toContain(
-      'Redundant-call-elimination cost contract test-removal-contract must include a redundantCallElimination block.'
-    );
+    expect(validateCostContractRegistry([noBlock])).toContain('Redundant-call-elimination cost contract test-removal-contract must include a redundantCallElimination block.');
     const noRelation = { ...removalContract, relations: ['callsAfter <= 0'] };
-    expect(validateCostContractRegistry([noRelation])).toContain(
-      'Redundant-call-elimination cost contract test-removal-contract must bind the eliminated work with callsAfter <= callsBefore.'
-    );
+    expect(validateCostContractRegistry([noRelation])).toContain('Redundant-call-elimination cost contract test-removal-contract must bind the eliminated work with callsAfter <= callsBefore.');
   });
 
   it('still validates the precise and conservative-filter kinds unchanged', () => {
@@ -1050,9 +1018,7 @@ function makeNeutralRecord(overrides: Record<string, unknown> = {}) {
 describe('neutral-or-negative auto-pass contract kind', () => {
   it('accepts a byte-identical, token-free, cost-neutral change without an admission contract', () => {
     expect(validateCostContractRegistry(neutralRegistry)).toEqual([]);
-    expect(
-      validateCostAuditRecords([makeNeutralRecord()], neutralRegistry, [neutralFile], neutralDiff, false)
-    ).toEqual([]);
+    expect(validateCostAuditRecords([makeNeutralRecord()], neutralRegistry, [neutralFile], neutralDiff, false)).toEqual([]);
   });
 
   it('rejects a neutral auto-pass when the diff introduces danger tokens', () => {
@@ -1089,9 +1055,7 @@ describe('neutral-or-negative auto-pass contract kind', () => {
   });
 
   it('rejects a neutral contract missing its neutralRefactor block or byte-identity', () => {
-    expect(validateCostContractRegistry([{ ...neutralContract, neutralRefactor: undefined }])).toContain(
-      'Neutral-or-negative cost contract test-neutral-contract must include a neutralRefactor block.'
-    );
+    expect(validateCostContractRegistry([{ ...neutralContract, neutralRefactor: undefined }])).toContain('Neutral-or-negative cost contract test-neutral-contract must include a neutralRefactor block.');
     const noByteIdentity = {
       ...neutralContract,
       neutralRefactor: { ...neutralContract.neutralRefactor, byteIdentity: undefined }
@@ -1197,6 +1161,7 @@ describe('off-benchmark call-reduction cost-contract kind', () => {
           beforeMedianMs: 100, afterMedianMs: 100, medianDeltaMs: 0,
           wins: 20, byteIdentical: true, outputBytes: 100, outputSha256: 'a'.repeat(64)
         },
+
         // render after-median 200ms is far beyond the 3% noise cap over 100ms before.
         render: {
           beforeMedianMs: 100, afterMedianMs: 200, medianDeltaMs: 100,
@@ -1242,9 +1207,7 @@ describe('off-benchmark call-reduction cost-contract kind', () => {
         measuredOn: 'packages/jess/benchmark/benchmark.less'
       }
     };
-    expect(validateCostContractRegistry([onBenchmark])).toContain(
-      'Off-benchmark call-reduction cost contract test-off-bench-contract must name a representative measuredOn fixture that is NOT benchmark.less (the benefit is off the wall-clock oracle).'
-    );
+    expect(validateCostContractRegistry([onBenchmark])).toContain('Off-benchmark call-reduction cost contract test-off-bench-contract must name a representative measuredOn fixture that is NOT benchmark.less (the benefit is off the wall-clock oracle).');
   });
 
   it('rejects a contract that borrows the admission-filter relation', () => {
@@ -1252,9 +1215,7 @@ describe('off-benchmark call-reduction cost-contract kind', () => {
       ...offBenchContract,
       relations: ['callsAfter < callsBefore', 'calls <= admittedCalls']
     };
-    expect(validateCostContractRegistry([borrowed])).toContain(
-      'Off-benchmark call-reduction cost contract test-off-bench-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.'
-    );
+    expect(validateCostContractRegistry([borrowed])).toContain('Off-benchmark call-reduction cost contract test-off-bench-contract must not claim the admission-filter relation calls <= admittedCalls; it removes work, it does not admit it.');
   });
 
   it('leaves the existing precise / conservative-filter kinds validating unchanged', () => {
@@ -1368,9 +1329,7 @@ describe('semantic-preflight cost-contract kind', () => {
       ...preflightContract,
       semanticPreflight: { ...preflightContract.semanticPreflight, falsePath: undefined }
     };
-    expect(validateCostContractRegistry([malformed])).toContain(
-      'Semantic-preflight cost contract test-semantic-preflight must name a false-path fixture and requiredZeroCounters.'
-    );
+    expect(validateCostContractRegistry([malformed])).toContain('Semantic-preflight cost contract test-semantic-preflight must name a false-path fixture and requiredZeroCounters.');
   });
 });
 

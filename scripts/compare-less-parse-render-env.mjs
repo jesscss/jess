@@ -123,9 +123,11 @@ async function parseAndRender(file, envName, envValue, phase) {
     return { elapsed: performance.now() - start, css };
   }
 
-  // `Compiler.compile()` is the public plugin-selected AST-v2 parse route.
-  // Rendering the returned Stylesheet with the public AST serializer measures
-  // the same render phase without resurrecting the retired tree.render API.
+  /*
+   * `Compiler.compile()` is the public plugin-selected AST-v2 parse route.
+   * Rendering the returned Stylesheet with the public AST serializer measures
+   * the same render phase without resurrecting the retired tree.render API.
+   */
   const { document, context } = await compiler.compile(file);
   const start = performance.now();
   const result = await context.withDocument(document, () => serialize(document, {

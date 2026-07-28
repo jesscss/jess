@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { makeDimension } from '@jesscss/core/value';
-import floor from '../less/floor.js';
+import { floor } from '../shared/index.js';
 
 function invoke(fn: unknown, ...args: unknown[]): unknown {
   if (typeof fn !== 'function') {

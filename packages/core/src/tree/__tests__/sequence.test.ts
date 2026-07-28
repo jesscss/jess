@@ -646,9 +646,12 @@ describe('Sequence', () => {
 
     const leftChild = any('left');
     const rightChild = any('right');
-    // Invariant 7: raw `new` shares children; parent canonically via the
-    // explicit primitive (as the `seq` factory does) so `operate` has real
-    // source parentage to preserve.
+
+    /*
+     * Invariant 7: raw `new` shares children; parent canonically via the
+     * explicit primitive (as the `seq` factory does) so `operate` has real
+     * source parentage to preserve.
+     */
     const left = new CountingSequence([leftChild]).parentChildren();
     const right = seq([rightChild]);
 
@@ -730,8 +733,10 @@ describe('Sequence', () => {
       return '';
     };
 
-    // The source-boundary trivia guard resolves each node's tree context via its
-    // sourceRoot, so the sequence must be parented under the source-tree Rules.
+    /*
+     * The source-boundary trivia guard resolves each node's tree context via its
+     * sourceRoot, so the sequence must be parented under the source-tree Rules.
+     */
     const rule = seq([first, second]);
     new RulesClass([rule], undefined, undefined, treeContext).parentChildren();
     expect(rule.toTrimmedString({ trivia })).toBe('10  20');

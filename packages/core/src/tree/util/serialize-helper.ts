@@ -121,7 +121,7 @@ function captureNodeTrivia(
  * no registered visitors (`spineVisitors` undefined/empty) the node is returned
  * as-is with no iteration — the §4.0-style "pay only for real work" gate.
  *
- * @see docs/future/core-architecture/UNIFIED-EVAL-EMIT-DESIGN.md §6.
+ * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
  */
 function applySpineVisitorsEnter(
   node: Node,
@@ -240,11 +240,14 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
     if (!resolved || resolved instanceof Nil) {
       return '';
     }
-    // Generic EMIT visitor hook (design §6): fire the registered `(node)=>Node|
-    // void` enter hooks on the RESOLVED output node at its emit moment. ZERO-cost
-    // when nothing is registered — `applySpineVisitorsEnter` returns the node
-    // untouched if `context.spineVisitors` is empty. A visitor may REPLACE the
-    // node (fresh transient), which is what gets serialized here.
+
+    /*
+     * Generic EMIT visitor hook (design §6): fire the registered `(node)=>Node|
+     * void` enter hooks on the RESOLVED output node at its emit moment. ZERO-cost
+     * when nothing is registered — `applySpineVisitorsEnter` returns the node
+     * untouched if `context.spineVisitors` is empty. A visitor may REPLACE the
+     * node (fresh transient), which is what gets serialized here.
+     */
     const hooked = applySpineVisitorsEnter(resolved, options.context);
     if (!hooked || hooked instanceof Nil) {
       return '';
@@ -253,11 +256,14 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
     hooked.toString(getPrintOptions({ ...options, writer }));
     return writer.toString();
   };
-  // `+:`/`+_:` merge (P1): a suppressed member emits nothing; the anchor emits
-  // the coalesced value. Eval the decl FIRST so its assign normalizes (`+:` → a
-  // plain `:` printed form, via `normalizedFromAssign`), THEN swap in the combined
-  // value (a genuinely new node — no canonical mutation). The combined value was
-  // resolved against the live frame during planning.
+
+  /*
+   * `+:`/`+_:` merge (P1): a suppressed member emits nothing; the anchor emits
+   * the coalesced value. Eval the decl FIRST so its assign normalizes (`+:` → a
+   * plain `:` printed form, via `normalizedFromAssign`), THEN swap in the combined
+   * value (a genuinely new node — no canonical mutation). The combined value was
+   * resolved against the live frame during planning.
+   */
   const mergeEntry = options.spineMergePlan?.get(node);
   if (mergeEntry) {
     if (mergeEntry.kind === 'suppress') {
@@ -265,19 +271,24 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
     }
     const withMergedValue = (resolved: Node | Nil | undefined): string => {
       if (isNode(resolved, N.Declaration)) {
-        // The anchor is the LAST merged member; its own `important` is correct only
-        // when `!important` sat on that last member. When the plan propagated a
-        // `!important` from an earlier (first/middle) chain member, override the
-        // anchor's `important` so it is not dropped (`a; b !important; c` →
-        // `a, b, c !important`).
+        /*
+         * The anchor is the LAST merged member; its own `important` is correct only
+         * when `!important` sat on that last member. When the plan propagated a
+         * `!important` from an earlier (first/middle) chain member, override the
+         * anchor's `important` so it is not dropped (`a; b !important; c` →
+         * `a, b, c !important`).
+         */
         const anchorDecl = mergeEntry.important !== undefined
           ? resolved.deriveWithParts({ value: mergeEntry.value, important: mergeEntry.important })
           : resolved.deriveWithParts({ value: mergeEntry.value });
-        // Print the anchor as a plain `prop: value` (not `prop+: …`). `withParts`
-        // copies options into a fresh transient, so recording that this declaration
-        // was NORMALIZED from a merge assign (`normalizedFromAssign`) — which the
-        // decl serializer reads to print `:` — mutates only this per-emit node,
-        // never the canonical source.
+
+        /*
+         * Print the anchor as a plain `prop: value` (not `prop+: …`). `withParts`
+         * copies options into a fresh transient, so recording that this declaration
+         * was NORMALIZED from a merge assign (`normalizedFromAssign`) — which the
+         * decl serializer reads to print `:` — mutates only this per-emit node,
+         * never the canonical source.
+         */
         const anchorOptions = anchorDecl.options as { assign?: string; normalizedFromAssign?: string };
         if (anchorOptions.normalizedFromAssign === undefined && anchorOptions.assign && anchorOptions.assign !== ':') {
           anchorOptions.normalizedFromAssign = anchorOptions.assign;
@@ -289,11 +300,14 @@ export function resolveSpineLeafText(node: Node, options: FinalPrintOptions): Ma
     const evaluatedAnchor = evalIsolatingSpinePrintState(options.context!, () => node.eval(options.context!));
     return isThenable(evaluatedAnchor) ? evaluatedAnchor.then(withMergedValue) : withMergedValue(evaluatedAnchor);
   }
-  // `?:` conditional-assign: the plan resolved the eval-path self-reference (prior
-  // binding wins; else fallback) at body-enter. Emit that value with the `?:`
-  // normalized to a plain `:` — a VarDeclaration serializes to nothing (a scope
-  // binding); a plain Declaration emits `prop: <resolved>`. The write-forward onto
-  // the node's own binding cell (done in the plan) is what a LATER read sees.
+
+  /*
+   * `?:` conditional-assign: the plan resolved the eval-path self-reference (prior
+   * binding wins; else fallback) at body-enter. Emit that value with the `?:`
+   * normalized to a plain `:` — a VarDeclaration serializes to nothing (a scope
+   * binding); a plain Declaration emits `prop: <resolved>`. The write-forward onto
+   * the node's own binding cell (done in the plan) is what a LATER read sees.
+   */
   const condEntry = options.spineCondPlan?.get(node);
   if (condEntry) {
     const withCondValue = (resolved: Node | Nil | undefined): string => {
@@ -334,9 +348,12 @@ export function withSpineMergePlan(
       isNode(node, N.Declaration) ? node.valueNode() : undefined;
     return isThenable(resolved) ? resolved.then(toValue) : toValue(resolved);
   };
-  // `?:` conditional-assign (assign-if-undefined): resolve the eval-path self-
-  // reference against the live frame (prior binding wins; else fallback). Undefined
-  // when the body has no `?:` decl (the common case allocates + touches nothing).
+
+  /*
+   * `?:` conditional-assign (assign-if-undefined): resolve the eval-path self-
+   * reference against the live frame (prior binding wins; else fallback). Undefined
+   * when the body has no `?:` decl (the common case allocates + touches nothing).
+   */
   const resolveReference = (ref: Reference): MaybePromise<Node | undefined> => {
     const resolved = evalIsolatingSpinePrintState(context, () => ref.eval(context));
     return isThenable(resolved)
@@ -344,17 +361,18 @@ export function withSpineMergePlan(
       : resolved ?? undefined;
   };
   const condFrame = context.rulesContext?.getScopeFrame();
-  // `setDefined` (Sass !global): an incremental binding-WRITE performed at body-
-  // enter in source order (BEFORE the body descends, so a write lands before any
-  // later read of the cell). Zero cost on a body with no `setDefined` (fast
-  // pre-scan bail). On an `uncovered` frame surface the whole root is SEQUENCED to
-  // eval by the static gate, so reaching an `uncovered` here is an invariant breach.
+
+  /*
+   * `setDefined` (Sass !global): an incremental binding-WRITE performed at body-
+   * enter in source order (BEFORE the body descends, so a write lands before any
+   * later read of the cell). Zero cost on a body with no `setDefined` (fast
+   * pre-scan bail). On an `uncovered` frame surface the whole root is SEQUENCED to
+   * eval by the static gate, so reaching an `uncovered` here is an invariant breach.
+   */
   const setDefinedResult = applyBodySetDefined(children, condFrame, context);
   const afterSetDefined = (sd: SetDefinedApplyResult): MaybePromise<string> => {
     if (sd === 'uncovered') {
-      throw new Error(
-        'spine setDefined: uncovered frame surface reached the descent (gate admits only covered shapes)'
-      );
+      throw new Error('spine setDefined: uncovered frame surface reached the descent (gate admits only covered shapes)');
     }
     return runMergeAndCond();
   };
@@ -367,9 +385,12 @@ export function withSpineMergePlan(
       }
       const savedMerge = options.spineMergePlan;
       const savedCond = options.spineCondPlan;
-      // Mirror the merge plan onto the CONTEXT too: a `$prop` Reference resolved
-      // mid-emit (inside `node.eval`) reads the coalesced value via the context,
-      // not the print options. Restored in lockstep so nested bodies scope cleanly.
+
+      /*
+       * Mirror the merge plan onto the CONTEXT too: a `$prop` Reference resolved
+       * mid-emit (inside `node.eval`) reads the coalesced value via the context,
+       * not the print options. Restored in lockstep so nested bodies scope cleanly.
+       */
       const savedContextMerge = context.spineMergePlan;
       if (mergePlan) {
         options.spineMergePlan = mergePlan;
@@ -435,6 +456,7 @@ function renderNodeText(
 
 type RenderRuleEntry = {
   node: Node;
+
   /**
    * Spine mixin-fold (cutover increment 2, UNIFIED-EVAL-EMIT-DESIGN §2/§3): the
    * bound SURFACE this entry's node was folded from. When set, the leaf/container
@@ -444,6 +466,7 @@ type RenderRuleEntry = {
    * caller frame. Undefined for authored (non-folded) entries.
    */
   spineFrame?: Rules;
+
   /**
    * MERGE-ACROSS-MIXIN fold: the OWNER scope for `+:`/`+_:` merge coalescing (see
    * `SpineMergeEntry.ownerKey`). A merge chain only accumulates within one owner.
@@ -464,6 +487,7 @@ function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions):
   if (!isNode(node, N.AtRule)) {
     return node;
   }
+
   // AtRuleStatement shares the AtRule bit but extends Node (not Rules) — always a leaf.
   if (node instanceof AtRuleStatement || !isNode(node, N.Rules)) {
     return undefined;
@@ -471,9 +495,12 @@ function getContainerRules(node: AtRule | Ruleset, options?: FinalPrintOptions):
   if (node === options?.atRuleBodyNode) {
     return options.atRuleBodyOverride;
   }
-  // AtRules with no rules are statement at-rules (leaf form, no `{}` block).
-  // Return undefined so the serializer calls writeSyntax directly instead of
-  // trying to recurse into an empty container.
+
+  /*
+   * AtRules with no rules are statement at-rules (leaf form, no `{}` block).
+   * Return undefined so the serializer calls writeSyntax directly instead of
+   * trying to recurse into an empty container.
+   */
   return (node as AtRule).getRenderRules().length > 0 ? node : undefined;
 }
 
@@ -631,12 +658,14 @@ export function flattenVisibleRulesForRender(
           continue;
         }
         if (isNode(child, N.Rules)) {
-          // A `For` (`$for`/`each`) is a `Rules`-masked node but is NOT a transparent
-          // group to flatten — its body children are per-ITERATION templates that must
-          // stay unexpanded until `runSpineForExpansion` produces the bound surfaces.
-          // Flattening them here would splice the raw loop-body decls (with an unbound
-          // `@value`) directly into the render sequence. Keep the loop as a container
-          // entry so the loop-fold pass owns it.
+          /*
+           * A `For` (`$for`/`each`) is a `Rules`-masked node but is NOT a transparent
+           * group to flatten — its body children are per-ITERATION templates that must
+           * stay unexpanded until `runSpineForExpansion` produces the bound surfaces.
+           * Flattening them here would splice the raw loop-body decls (with an unbound
+           * `@value`) directly into the render sequence. Keep the loop as a container
+           * entry so the loop-fold pass owns it.
+           */
           if (Reflect.get(child, 'type') === 'For') {
             pushContainer(child);
             continue;
@@ -660,6 +689,7 @@ export function flattenVisibleRulesForRender(
   iterateRules(rules, allowTransparentRulesetFlatten);
   return [...leadingLeafEntries, ...trailingEntries];
 }
+
 /**
  * Normalizes the indent of a multi-line string by replacing initial whitespace.
  */
@@ -681,8 +711,10 @@ export function normalizeIndent(multiLineString: string, indent: string, maintai
     }
 
     const lineOriginalIndentLength = lineIndent.length;
+
     // Calculate the difference from the first line's indent
     const indentDifference = lineOriginalIndentLength - firstLineOriginalIndentLength;
+
     // Apply the difference to the new indent to maintain relative spacing
     const newLineIndent = indent + ' '.repeat(Math.max(0, indentDifference));
     return '\n' + newLineIndent + lineContent.trimEnd();
@@ -724,13 +756,15 @@ export function indent(depth: number): string {
   return ''.padStart(depth * 2);
 }
 
-// The comparable header a frame emitted the LAST time it was written directly.
-// A hoisted (flat) ruleset shared across call sites keeps a single canonical
-// frame identity, so `currentFrame === priorFrame` can't tell two emissions of
-// the same body apart (e.g. `#foo-foo.bar()` from `mi-test-c-1` vs `mi-test-c-2`
-// both emit the shared `.baz`). Recomputing the prior header against the current
-// context yields the current call site's selector, hiding the boundary. Comparing
-// against the header ACTUALLY emitted last keeps the blocks separate.
+/*
+ * The comparable header a frame emitted the LAST time it was written directly.
+ * A hoisted (flat) ruleset shared across call sites keeps a single canonical
+ * frame identity, so `currentFrame === priorFrame` can't tell two emissions of
+ * the same body apart (e.g. `#foo-foo.bar()` from `mi-test-c-1` vs `mi-test-c-2`
+ * both emit the shared `.baz`). Recomputing the prior header against the current
+ * context yields the current call site's selector, hiding the boundary. Comparing
+ * against the header ACTUALLY emitted last keeps the blocks separate.
+ */
 const lastEmittedComparableHeader = new WeakMap<AtRule | Ruleset, string>();
 
 function getHoistedParent(
@@ -745,29 +779,38 @@ function getHoistedParent(
   if (!atRule.isNestable() || atRule.isRootOnly() || !hoisted) {
     return undefined;
   }
-  // The render walk already descends THROUGH every enclosing ruleset before it
-  // reaches this hoisted at-rule, composing each into `composedSelectorStack`.
-  // Its top entry IS the full severed selector-ancestor chain (`.card .body`),
-  // so the hoisted at-rule recovers its parent selector directly from the live
-  // walk — no eval-captured frame snapshot needed.
+
+  /*
+   * The render walk already descends THROUGH every enclosing ruleset before it
+   * reaches this hoisted at-rule, composing each into `composedSelectorStack`.
+   * Its top entry IS the full severed selector-ancestor chain (`.card .body`),
+   * so the hoisted at-rule recovers its parent selector directly from the live
+   * walk — no eval-captured frame snapshot needed.
+   */
   const parentSelector = options.composedSelectorStack?.at(-1);
   if (!parentSelector) {
     return undefined;
   }
-  // The identity key for the frame-diff loop: the nearest enclosing ruleset in
-  // structural context. Under collapse every ruleset ancestor is folded into the
-  // composed selector and dropped from the live frame stack, so recover it from
-  // the at-rule's structural parent chain.
+
+  /*
+   * The identity key for the frame-diff loop: the nearest enclosing ruleset in
+   * structural context. Under collapse every ruleset ancestor is folded into the
+   * composed selector and dropped from the live frame stack, so recover it from
+   * the at-rule's structural parent chain.
+   */
   let frameNode: Node | undefined = atRule.parent;
   while (frameNode && !isNode(frameNode, N.Ruleset)) {
     frameNode = frameNode.parent;
   }
   let frame: Ruleset | undefined = frameNode && isNode(frameNode, N.Ruleset) ? frameNode : undefined;
-  // SPINE: a PARSED source tree carries no `.parent` back-pointer (only the eval
-  // pass, which the spine replaces, set them), so the walk above finds nothing.
-  // The spine descent pushes each enclosing ruleset onto `context.rulesetFrames`
-  // before reaching this at-rule, so its top IS the nearest enclosing ruleset —
-  // the same structural frame the `.parent` walk recovers on the eval path.
+
+  /*
+   * SPINE: a PARSED source tree carries no `.parent` back-pointer (only the eval
+   * pass, which the spine replaces, set them), so the walk above finds nothing.
+   * The spine descent pushes each enclosing ruleset onto `context.rulesetFrames`
+   * before reaching this at-rule, so its top IS the nearest enclosing ruleset —
+   * the same structural frame the `.parent` walk recovers on the eval path.
+   */
   if (!frame) {
     const frames = options.context?.rulesetFrames;
     if (frames && frames.length > 0) {
@@ -845,12 +888,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     return '';
   }
 
-  // Spine mode (P1 §2): the resolved value-frame + header override (selector for a
-  // Ruleset, prelude for an AtRule) must be live BEFORE header composition below.
-  // Route through the per-kind setup, which pushes the frame + override for the
-  // whole descent and restores on exit (chaining on the async path — never a sync
-  // `finally`, which would pop before an async leaf resolves, the B1s bug). The
-  // `!== node` guards break the re-entry (the marker doubles as "frame pushed").
+  /*
+   * Spine mode (P1 §2): the resolved value-frame + header override (selector for a
+   * Ruleset, prelude for an AtRule) must be live BEFORE header composition below.
+   * Route through the per-kind setup, which pushes the frame + override for the
+   * whole descent and restores on exit (chaining on the async path — never a sync
+   * `finally`, which would pop before an async leaf resolves, the B1s bug). The
+   * `!== node` guards break the re-entry (the marker doubles as "frame pushed").
+   */
   const spineCtx = options.spineMode ? options.context : undefined;
   if (spineCtx && node instanceof Ruleset && isNode(node, N.Rules) && options.spineSelectorNode !== node) {
     return serializeSpineFrameContainer(node, options, closeFramesOnExit, spineCtx);
@@ -858,20 +903,29 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
   if (spineCtx && isNode(node, N.AtRule) && isNode(node, N.Rules) && options.spineAtRuleNode !== node) {
     return serializeSpineFrameAtRule(node, options, closeFramesOnExit, spineCtx);
   }
-  // Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
-  // getHeaderString normally handles this, but cached frame headers skip it.
+
+  /*
+   * Ensure every Ruleset pushes to composedSelectorStack for collapseNesting.
+   * getHeaderString normally handles this, but cached frame headers skip it.
+   */
   let pushedComposed = false;
   let pushedComposedSelector: Selector | undefined;
-  // A bare `&` selector is a selector-transparent wrapper. Whether authored
-  // directly or generated around hoisted content, it should not emit its own
-  // header; its children render against the current parent frame instead.
+
+  /*
+   * A bare `&` selector is a selector-transparent wrapper. Whether authored
+   * directly or generated around hoisted content, it should not emit its own
+   * header; its children render against the current parent frame instead.
+   */
   let isTransparentWrapper = false;
   if (options.collapseNesting && isNode(node, N.Ruleset)) {
     const rs = node as Ruleset;
     const sel = rs.selector;
-    // A bare `&` is transparent; an APPEND ampersand (`&-modifier`, carrying
-    // `appendValue`) is NOT — it materializes a new hoisted selector
-    // (`.a-modifier`) and must emit its OWN header. Distinguish by `appendValue`.
+
+    /*
+     * A bare `&` is transparent; an APPEND ampersand (`&-modifier`, carrying
+     * `appendValue`) is NOT — it materializes a new hoisted selector
+     * (`.a-modifier`) and must emit its OWN header. Distinguish by `appendValue`.
+     */
     const isBareAmp = sel && !(sel instanceof Nil) && isNode(sel, N.Ampersand)
       && (sel as { appendValue?: string }).appendValue === undefined;
     if (isBareAmp) {
@@ -888,20 +942,21 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const mark = w.mark();
     const previousReferenceMode = options.referenceMode === true;
     const previousReferenceRenderEnabled = options.referenceRenderEnabled !== false;
-    const ownReferenceMode = Boolean(
-      node.options
+    const ownReferenceMode = Boolean(node.options
       && 'referenceMode' in node.options
-      && node.options.referenceMode === true
-    );
+      && node.options.referenceMode === true);
     const inReferenceMode = previousReferenceMode || ownReferenceMode;
     const enteringReferenceMode = !previousReferenceMode && ownReferenceMode;
-    // REFERENCE-UNLOCK signal (eval-path parity). A reference-mode ruleset is render-enabled when
-    // an `:extend` reaches it. Two forms carry that signal:
-    //   - eval / own-body extender: the node bears `F_EXTENDED` (or an extended top-level selector);
-    //   - SPINE FOLD: the node is an extend TARGET (not itself the extender) whose header override
-    //     `wireSpineExtends` installed on `options.spineExtendHeaders` — the extender lives in the
-    //     importing file, so the reference target carries no `F_EXTENDED` of its own. The presence of
-    //     a header override IS the reaching-extend signal (see `emit-walk` `collectImportedRootSubjects`).
+
+    /*
+     * REFERENCE-UNLOCK signal (eval-path parity). A reference-mode ruleset is render-enabled when
+     * an `:extend` reaches it. Two forms carry that signal:
+     * - eval / own-body extender: the node bears `F_EXTENDED` (or an extended top-level selector);
+     * - SPINE FOLD: the node is an extend TARGET (not itself the extender) whose header override
+     * `wireSpineExtends` installed on `options.spineExtendHeaders` — the extender lives in the
+     * importing file, so the reference target carries no `F_EXTENDED` of its own. The presence of
+     * a header override IS the reaching-extend signal (see `emit-walk` `collectImportedRootSubjects`).
+     */
     const nodeExtendsReference = isNode(node, N.Ruleset)
       && (node.hasFlag(F_EXTENDED)
         || (node.selector != null && Ruleset.hasExtendedTopLevelSelector(node.selector))
@@ -915,8 +970,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       if (inReferenceMode && !renderEnabled) {
         return '';
       }
-      // Leaf at-rules (no body) are not "frame headers". Always emit them with comments
-      // preserved; comment-stripping should only apply to repeated *frame* headers.
+
+      /*
+       * Leaf at-rules (no body) are not "frame headers". Always emit them with comments
+       * preserved; comment-stripping should only apply to repeated *frame* headers.
+       */
       node.writeSyntax(options);
       return w.getSince(mark);
     }
@@ -926,18 +984,27 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       options.collapseNesting === true
       && (isNode(node, N.Ruleset) || Boolean(getHoistedParent(node, options)))
     );
-    // Most containers do not have repeated declaration properties. Keep the
-    // duplicate-output state absent until the post-expansion count proves it is
-    // needed; imports, loops, and mixin folds can introduce repeats later.
+
+    /*
+     * Most containers do not have repeated declaration properties. Keep the
+     * duplicate-output state absent until the post-expansion count proves it is
+     * needed; imports, loops, and mixin folds can introduce repeats later.
+     */
     let skippedDuplicateDeclarations: Set<number> | undefined;
     let seenDeclarationsByProp: Map<string, Set<string>> | undefined;
-    // MERGE-ACROSS-MIXIN fold: set when a mixin-call expansion splices surface
-    // children into `rulesToRender`. Gates the post-expansion merge re-plan so a
-    // body with no expansion pays nothing (the pre-expansion plan stays valid).
+
+    /*
+     * MERGE-ACROSS-MIXIN fold: set when a mixin-call expansion splices surface
+     * children into `rulesToRender`. Gates the post-expansion merge re-plan so a
+     * body with no expansion pays nothing (the pre-expansion plan stays valid).
+     */
     let mixinExpansionOccurred = false;
-    // Track whether any expansion inserts entries that need a live frame switch during
-    // emission. This is separate from the merge re-plan gate because imported
-    // folded children are frame-bearing without being mixin expansions.
+
+    /*
+     * Track whether any expansion inserts entries that need a live frame switch during
+     * emission. This is separate from the merge re-plan gate because imported
+     * folded children are frame-bearing without being mixin expansions.
+     */
     let frameAwareEntriesOccurred = false;
     const sourceChainHas = (start: any, predicate: (n: any) => boolean): boolean => {
       const seen = new Set<any>();
@@ -958,8 +1025,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     const originatesFromCall = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Call');
     const originatesFromMixin = (n: any): boolean => sourceChainHas(n, current => current?.type === 'Mixin');
     const originatesFromControl = (n: any): boolean => sourceChainHas(n, current =>
-      current?.type === 'For' || current?.type === 'While' || current?.type === 'If'
-    );
+      current?.type === 'For' || current?.type === 'While' || current?.type === 'If');
     const keepsDuplicateGeneratedOutput = (n: any): boolean => keepsDuplicateMixinOutputDeclaration(n);
     if (serializeProfileCounters) {
       if (rulesToRender.length === 0) {
@@ -976,8 +1042,10 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return '';
     }
 
-    // Less-style duplicate declaration handling:
-    // for each property, keep the last exact serialized declaration and skip earlier duplicates.
+    /*
+     * Less-style duplicate declaration handling:
+     * for each property, keep the last exact serialized declaration and skip earlier duplicates.
+     */
     if (serializeProfileCounters) {
       incrementSerializeProfileCounter('duplicateDeclarationComparisonContainers');
     }
@@ -1019,33 +1087,41 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     if (!skipInitialDuplicateDeclarationScan) {
       recomputeDeclCounts();
     }
-    // Per-declaration dedup KEY. Eval path: the static `writeSyntax` of the
-    // already-resolved node IS its final bytes. Spine path: the value is still
-    // UNRESOLVED at this point, so `writeSyntax` emits opaque `$??(…)` placeholders
-    // that collapse distinct calls (e.g. `rgb(var(--x))` vs `hsla(var(--x))`) to
-    // one key and would wrongly dedupe them. In spine mode the key must be the
-    // LIVE-resolved bytes (`resolveSpineLeafText`, MaybePromise), computed against
-    // the frame the container descent pushed — the same resolution the emit uses.
+
+    /*
+     * Per-declaration dedup KEY. Eval path: the static `writeSyntax` of the
+     * already-resolved node IS its final bytes. Spine path: the value is still
+     * UNRESOLVED at this point, so `writeSyntax` emits opaque `$??(…)` placeholders
+     * that collapse distinct calls (e.g. `rgb(var(--x))` vs `hsla(var(--x))`) to
+     * one key and would wrongly dedupe them. In spine mode the key must be the
+     * LIVE-resolved bytes (`resolveSpineLeafText`, MaybePromise), computed against
+     * the frame the container descent pushed — the same resolution the emit uses.
+     */
     const computeDeclKey = (node: Node, spineFrame?: Rules): MaybePromise<string> => {
       if (options.spineMode && options.context) {
-        // Isolate trivia CONSUMPTION for the throwaway key resolution: `resolve`
-        // → `.toString` calls `consumeTrivia`, which marks runs in
-        // `options.emittedTrivia` so each comment prints ONCE. Without a scratch
-        // Set the key resolution would consume the declaration's field-gap
-        // comment (e.g. `color/*c*/:red`), and the REAL emit would then find it
-        // already consumed and drop it. Swap in a scratch Set for the whole
-        // resolution (including the async `.then` serialize) and restore after —
-        // an async-safe form of `withScratchEmittedTrivia` (whose sync `finally`
-        // would restore before the awaited serialize runs).
+        /*
+         * Isolate trivia CONSUMPTION for the throwaway key resolution: `resolve`
+         * → `.toString` calls `consumeTrivia`, which marks runs in
+         * `options.emittedTrivia` so each comment prints ONCE. Without a scratch
+         * Set the key resolution would consume the declaration's field-gap
+         * comment (e.g. `color/*c*\/:red`), and the REAL emit would then find it
+         * already consumed and drop it. Swap in a scratch Set for the whole
+         * resolution (including the async `.then` serialize) and restore after —
+         * an async-safe form of `withScratchEmittedTrivia` (whose sync `finally`
+         * would restore before the awaited serialize runs).
+         */
         const savedEmitted = options.emittedTrivia;
         options.emittedTrivia = new Set();
-        // FOLD C: a spliced mixin-surface decl (`spineFrame` set) resolves its key
-        // against the surface's DEFINITION frame — identical to the real emit's
-        // `processNode` push. A recursive `.loop(@n)` splices multiple `level: @n`
-        // decls whose repeated property triggers this dedup pass; each `@n` must
-        // read its own level's param frame, not the ambient caller context (else
-        // `'n' is not defined`). An authored decl (no `spineFrame`) resolves
-        // unwrapped — the common path touches nothing.
+
+        /*
+         * FOLD C: a spliced mixin-surface decl (`spineFrame` set) resolves its key
+         * against the surface's DEFINITION frame — identical to the real emit's
+         * `processNode` push. A recursive `.loop(@n)` splices multiple `level: @n`
+         * decls whose repeated property triggers this dedup pass; each `@n` must
+         * read its own level's param frame, not the ambient caller context (else
+         * `'n' is not defined`). An authored decl (no `spineFrame`) resolves
+         * unwrapped — the common path touches nothing.
+         */
         const ctx = spineFrame ? options.context : undefined;
         const savedRulesContext = ctx ? ctx.rulesContext : undefined;
         if (ctx) {
@@ -1121,35 +1197,41 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         seenValues.add(declKey);
       }
     };
-    // Spine mixin-fold (cutover increment 1, UNIFIED-EVAL-EMIT-DESIGN §2/§3):
-    // resolve each spine-eligible no-arg mixin CALL entry and splice its
-    // guard-passed bound-surface children into `rulesToRender` in place, BEFORE
-    // dedup + body render — so the folded declarations participate in the same
-    // duplicate-declaration handling and statement framing as authored decls
-    // (byte-identical to the eval path, which flattens the mixin output surface).
-    // FOLD splices the surfaces' children; the EVAL fallback (a non-simple
-    // candidate) splices the terminal's flattened output `Rules`. Off the spine
-    // (`!spineMode`) this is a no-op. Resolution is async (a mixin call always
-    // resolves async).
+
+    /*
+     * Spine mixin-fold (cutover increment 1, UNIFIED-EVAL-EMIT-DESIGN §2/§3):
+     * resolve each spine-eligible no-arg mixin CALL entry and splice its
+     * guard-passed bound-surface children into `rulesToRender` in place, BEFORE
+     * dedup + body render — so the folded declarations participate in the same
+     * duplicate-declaration handling and statement framing as authored decls
+     * (byte-identical to the eval path, which flattens the mixin output surface).
+     * FOLD splices the surfaces' children; the EVAL fallback (a non-simple
+     * candidate) splices the terminal's flattened output `Rules`. Off the spine
+     * (`!spineMode`) this is a no-op. Resolution is async (a mixin call always
+     * resolves async).
+     */
     const runSpineMixinExpansion = (): MaybePromise<void> => {
       const spineContext = options.spineMode ? options.context : undefined;
       if (!spineContext) {
         return undefined;
       }
-      // DISTINCT-PER-LEVEL container surface (STRIPE recursion / repeated-call fold).
-      // A fold splices a bound surface's children; a nested CONTAINER child (Ruleset /
-      // non-leaf AtRule) is the SAME canonical node across every re-entrant recursion
-      // level AND across repeated calls to the same mixin, because the surface reuses
-      // the definition body's children. Two entries pointing at the SAME container node
-      // COLLAPSE into one printed block (the header-merge is keyed on node identity), so
-      // `.stripe(3)` → one `.wrap a{…}` instead of three. Mirror the loop fold's
-      // per-iteration `copyWithReusableLeaves`: on a container child's SECOND+ occurrence
-      // within this expansion pass, splice a distinct COPY (reusing scalar leaves) under
-      // the same `spineFrame` — a projection giving each level its own surface identity,
-      // NOT a merge/mutation. The FIRST occurrence stays SHARED (zero cost for the common
-      // single-call container mixin); a leaf decl is never copied (it resolves per-entry
-      // via `spineFrame`). The copy resolves its values against the same surface frame,
-      // so it is byte-identical to the shared node — only its printed-block identity differs.
+
+      /*
+       * DISTINCT-PER-LEVEL container surface (STRIPE recursion / repeated-call fold).
+       * A fold splices a bound surface's children; a nested CONTAINER child (Ruleset /
+       * non-leaf AtRule) is the SAME canonical node across every re-entrant recursion
+       * level AND across repeated calls to the same mixin, because the surface reuses
+       * the definition body's children. Two entries pointing at the SAME container node
+       * COLLAPSE into one printed block (the header-merge is keyed on node identity), so
+       * `.stripe(3)` → one `.wrap a{…}` instead of three. Mirror the loop fold's
+       * per-iteration `copyWithReusableLeaves`: on a container child's SECOND+ occurrence
+       * within this expansion pass, splice a distinct COPY (reusing scalar leaves) under
+       * the same `spineFrame` — a projection giving each level its own surface identity,
+       * NOT a merge/mutation. The FIRST occurrence stays SHARED (zero cost for the common
+       * single-call container mixin); a leaf decl is never copied (it resolves per-entry
+       * via `spineFrame`). The copy resolves its values against the same surface frame,
+       * so it is byte-identical to the shared node — only its printed-block identity differs.
+       */
       const seenFoldContainers = new WeakSet<Node>();
       const distinctFoldChild = (child: Node): Node => {
         const isContainer = isNode(child, N.Ruleset)
@@ -1172,13 +1254,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           if (!isSpineEligibleMixinCall(entryNode)) {
             continue;
           }
-          // FOLD C: a NESTED call (a spliced child of a folded surface, `entry.spineFrame`
-          // set) must resolve its ARGS / GUARD against the OUTER surface's definition
-          // frame — a self-recursive `.loop((@n - 1))` reads `@n` from the loop's param
-          // frame. Push `context.rulesContext = spineFrame` around the resolve drive
-          // (same discipline as `processNode`'s leaf descent); the pop chains on the
-          // async result (B1s early-pop guard). A top-level authored call (no
-          // `spineFrame`) drives unwrapped — the common case pays nothing.
+
+          /*
+           * FOLD C: a NESTED call (a spliced child of a folded surface, `entry.spineFrame`
+           * set) must resolve its ARGS / GUARD against the OUTER surface's definition
+           * frame — a self-recursive `.loop((@n - 1))` reads `@n` from the loop's param
+           * frame. Push `context.rulesContext = spineFrame` around the resolve drive
+           * (same discipline as `processNode`'s leaf descent); the pop chains on the
+           * async result (B1s early-pop guard). A top-level authored call (no
+           * `spineFrame`) drives unwrapped — the common case pays nothing.
+           */
           const entryFrame = entry.spineFrame;
           const savedRulesContext = entryFrame ? spineContext.rulesContext : undefined;
           if (entryFrame) {
@@ -1190,12 +1275,15 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             }
             return value;
           };
-          // Isolate the shared print state across the call resolution: the EVAL-
-          // FALLBACK expansion evaluates the mixin body (which may contain an unknown
-          // `Call` — `rotate(90deg)` — whose call-syntax render RESETS `context.print
-          // State` in place). Left unguarded that swaps the live spine writer/frames
-          // mid-render and drops the enclosing block header (see
-          // `evalIsolatingSpinePrintState`).
+
+          /*
+           * Isolate the shared print state across the call resolution: the EVAL-
+           * FALLBACK expansion evaluates the mixin body (which may contain an unknown
+           * `Call` — `rotate(90deg)` — whose call-syntax render RESETS `context.print
+           * State` in place). Left unguarded that swaps the live spine writer/frames
+           * mid-render and drops the enclosing block header (see
+           * `evalIsolatingSpinePrintState`).
+           */
           const resolution = evalIsolatingSpinePrintState(
             spineContext,
             () => resolveSpineMixinCall(entryNode, spineContext)
@@ -1203,22 +1291,25 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const apply = (resolved: SpineMixinCallResolution): MaybePromise<void> => {
             frameAwareEntriesOccurred = true;
             restoreFrame(undefined);
-            // FOLD: splice each bound surface's children, TAGGED with the surface
-            // as their `spineFrame` — so a body reference resolves against the
-            // mixin's DEFINITION scope (closure/lexical/param bindings on the
-            // surface's wired frame), not the enclosing caller frame (increment 2).
-            // EVAL fallback: flatten the terminal's output `Rules` (no frame tag —
-            // the eval path already resolved it).
-            // LEAKY forward-propagation (spine fold): in leaky Less mode a mixin
-            // body's plain `@x: …` VarDeclaration LEAKS into the caller scope, so a
-            // caller sibling (`width: @x`) reads it — Less resolves a scope's vars
-            // lazily last-wins, so BOTH earlier and later siblings see the leak (the
-            // less@4 oracle). Inject each folded surface's leaked bindings into the
-            // caller frame at the call's source index. The caller frame is the
-            // surface for a nested call (`entry.spineFrame`), else the enclosing
-            // container being serialized. Scoped to the caller frame (an out-of-scope
-            // sibling still sees the outer binding). Zero-cost off leaky mode; the
-            // injector no-ops when the surface has no plain var.
+
+            /*
+             * FOLD: splice each bound surface's children, TAGGED with the surface
+             * as their `spineFrame` — so a body reference resolves against the
+             * mixin's DEFINITION scope (closure/lexical/param bindings on the
+             * surface's wired frame), not the enclosing caller frame (increment 2).
+             * EVAL fallback: flatten the terminal's output `Rules` (no frame tag —
+             * the eval path already resolved it).
+             * LEAKY forward-propagation (spine fold): in leaky Less mode a mixin
+             * body's plain `@x: …` VarDeclaration LEAKS into the caller scope, so a
+             * caller sibling (`width: @x`) reads it — Less resolves a scope's vars
+             * lazily last-wins, so BOTH earlier and later siblings see the leak (the
+             * less@4 oracle). Inject each folded surface's leaked bindings into the
+             * caller frame at the call's source index. The caller frame is the
+             * surface for a nested call (`entry.spineFrame`), else the enclosing
+             * container being serialized. Scoped to the caller frame (an out-of-scope
+             * sibling still sees the outer binding). Zero-cost off leaky mode; the
+             * injector no-ops when the surface has no plain var.
+             */
             if (
               resolved.kind === 'fold'
               && spineContext.options.leakyScope === true
@@ -1235,21 +1326,27 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               ? resolved.surfaces.flatMap(surface =>
                   surface.rules.map(child => ({ node: distinctFoldChild(child), spineFrame: surface, mergeOwner: surface })))
               : isNode(resolved.output, N.Rules)
-                // EVAL-fallback: tag every flattened child with the per-CALL output
-                // Rules as its merge owner, so a `+:` from THIS call does not
-                // accumulate with a same-property `+:` from a DIFFERENT call (eval is
-                // last-wins across separate call outputs; MERGE-ACROSS-MIXIN fold).
+
+                /*
+                 * EVAL-fallback: tag every flattened child with the per-CALL output
+                 * Rules as its merge owner, so a `+:` from THIS call does not
+                 * accumulate with a same-property `+:` from a DIFFERENT call (eval is
+                 * last-wins across separate call outputs; MERGE-ACROSS-MIXIN fold).
+                 */
                 ? flattenVisibleRulesForRender(resolved.output, options, false)
                     .map(e => ({ ...e, mergeOwner: e.mergeOwner ?? resolved.output }))
                 : [{ node: resolved.output, mergeOwner: resolved.output }];
             rulesToRender.splice(i, 1, ...childEntries);
             mixinExpansionOccurred = true;
             recomputeDeclCounts();
-            // FOLD C: re-scan FROM `i` (the just-spliced children), not past them —
-            // so a nested mixin CALL among a folded surface's own children is expanded
-            // in turn (re-entrant fold). `callMap` terminates genuine recursion. A
-            // fold-fallback (`kind: 'eval'`) child that is itself a call re-resolves
-            // harmlessly (already-resolved output is not `isSpineEligibleMixinCall`).
+
+            /*
+             * FOLD C: re-scan FROM `i` (the just-spliced children), not past them —
+             * so a nested mixin CALL among a folded surface's own children is expanded
+             * in turn (re-entrant fold). `callMap` terminates genuine recursion. A
+             * fold-fallback (`kind: 'eval'`) child that is itself a call re-resolves
+             * harmlessly (already-resolved output is not `isSpineEligibleMixinCall`).
+             */
             return expandFrom(i);
           };
           return isThenable(resolution)
@@ -1264,17 +1361,19 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return expandFrom(0);
     };
 
-    // Spine LOOP-fold (cutover LOOP increment 1): expand each `$for`/`each(...)`
-    // (`For`) entry into its per-iteration bound-body surfaces and splice their
-    // children in place — the loop-variable-bound analogue of the mixin-call fold.
-    // Each iteration surface (`For.spineIterationSurfaces`) shares the loop body under
-    // a fresh frame holding the iteration's `@value`/`@key`/counter bindings; a spliced
-    // child is TAGGED with its surface as `spineFrame` so a body reference resolves the
-    // loop variable. All iterations share ONE `mergeOwner` (the `For` node) so a `+_:`
-    // merge across iterations coalesces into a single property (eval flattens all
-    // iteration outputs into one body — `each(1 2 3 4, {padding+_: …})` →
-    // `padding: 10px 20px 30px 40px`). Re-scan from `i` so a loop body's own mixin call
-    // / nested loop expands in turn. Off the spine this is a no-op.
+    /*
+     * Spine LOOP-fold (cutover LOOP increment 1): expand each `$for`/`each(...)`
+     * (`For`) entry into its per-iteration bound-body surfaces and splice their
+     * children in place — the loop-variable-bound analogue of the mixin-call fold.
+     * Each iteration surface (`For.spineIterationSurfaces`) shares the loop body under
+     * a fresh frame holding the iteration's `@value`/`@key`/counter bindings; a spliced
+     * child is TAGGED with its surface as `spineFrame` so a body reference resolves the
+     * loop variable. All iterations share ONE `mergeOwner` (the `For` node) so a `+_:`
+     * merge across iterations coalesces into a single property (eval flattens all
+     * iteration outputs into one body — `each(1 2 3 4, {padding+_: …})` →
+     * `padding: 10px 20px 30px 40px`). Re-scan from `i` so a loop body's own mixin call
+     * / nested loop expands in turn. Off the spine this is a no-op.
+     */
     const runSpineForExpansion = (): MaybePromise<void> => {
       const spineContext = options.spineMode ? options.context : undefined;
       if (!spineContext) {
@@ -1289,9 +1388,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           }
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- type-string narrows to For; only For exposes spineIterationSurfaces.
           const forNode = entryNode as unknown as { spineIterationSurfaces(context: Context): Promise<Rules[]> };
-          // A nested loop/call among a folded surface's children resolves its iterable
-          // against that surface's frame (mirrors the mixin fold's `entry.spineFrame`
-          // push): an inner `each(@list, …)` reads `@list` from the outer binding.
+
+          /*
+           * A nested loop/call among a folded surface's children resolves its iterable
+           * against that surface's frame (mirrors the mixin fold's `entry.spineFrame`
+           * push): an inner `each(@list, …)` reads `@list` from the outer binding.
+           */
           const entryFrame = entry.spineFrame;
           const savedRulesContext = entryFrame ? spineContext.rulesContext : undefined;
           if (entryFrame) {
@@ -1330,9 +1432,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     };
 
     const runDedupPass = (): MaybePromise<void> => {
-      // Count after every expansion splice. A unique final property sequence
-      // cannot call computeDeclKey or suppress an entry, so it needs no dedup
-      // maps, output previews, or reverse walk.
+      /*
+       * Count after every expansion splice. A unique final property sequence
+       * cannot call computeDeclKey or suppress an entry, so it needs no dedup
+       * maps, output previews, or reverse walk.
+       */
       const counts = declarationCountsByProp;
       if (!hasRepeatedDeclarationProperty || !counts) {
         return undefined;
@@ -1363,17 +1467,21 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
 
     const proceed = (): MaybePromise<string> => {
       const hoisted = node.isHoisted(options);
+
       // const isRuleset = isNode(node, 'Ruleset');
       const treeFrames = options.treeFrames!;
       const renderRulesBody = () => {
         if (isTransparentWrapper) {
-          // Transparent `&` wrapper: don't add self as a frame, just render children
-          // using the parent frame context.
+          /*
+           * Transparent `&` wrapper: don't add self as a frame, just render children
+           * using the parent frame context.
+           */
           options.inFrames = inFrames = treeFrames!;
         } else if (!hoisted) {
           options.inFrames = inFrames = treeFrames!;
           inFrames.push(node);
         }
+
         // Note: in the hoisted branch above, `node` is already included.
 
         let lastRenderedFrames = options.lastRenderedFrames;
@@ -1403,9 +1511,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
                 ? renderHoistedParentComparableHeader(hoistedParent, options)
                 : priorFrame.getComparableHeaderString(options)
             ]);
-            // For a frame shared across call sites (same object, different emission),
-            // the recompute reflects the CURRENT site. Prefer the header the prior
-            // frame actually emitted last so distinct call-site blocks stay closed.
+
+            /*
+             * For a frame shared across call sites (same object, different emission),
+             * the recompute reflects the CURRENT site. Prefer the header the prior
+             * frame actually emitted last so distinct call-site blocks stay closed.
+             */
             const priorComparableHeader = (
               currentFrame === priorFrame
                 ? lastEmittedComparableHeader.get(priorFrame) ?? recomputedPriorHeader
@@ -1467,9 +1578,12 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               lastRenderedFrames.pop();
               continue;
             }
-            // Record the header this frame just emitted, so a later render of the
-            // SAME (shared, hoisted) frame at a different call site compares against
-            // what was actually written rather than a fresh recompute.
+
+            /*
+             * Record the header this frame just emitted, so a later render of the
+             * SAME (shared, hoisted) frame at a different call site compares against
+             * what was actually written rather than a fresh recompute.
+             */
             lastEmittedComparableHeader.set(
               f,
               withScratchEmittedTrivia(options, () => f.getComparableHeaderString(options))
@@ -1481,11 +1595,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         };
 
         /** Don't output selector yet. Let's see if any child rules need hoisting. */
-        // Per-node emit. Returns MaybePromise<void>: sync unless a spine-mode leaf
-        // or a nested container resolves ASYNC (a `calc()`/function value), in which
-        // case the promise is threaded up through `processFrom` → `renderRulesBody`.
-        // `continue` in the original loop maps to `return` here; the trivia/indent
-        // side-effect tails stay synchronous (only value resolution is async).
+        /*
+         * Per-node emit. Returns MaybePromise<void>: sync unless a spine-mode leaf
+         * or a nested container resolves ASYNC (a `calc()`/function value), in which
+         * case the promise is threaded up through `processFrom` → `renderRulesBody`.
+         * `continue` in the original loop maps to `return` here; the trivia/indent
+         * side-effect tails stay synchronous (only value resolution is async).
+         */
         const processNodeInner = (idx: number): MaybePromise<void> => {
           const entry = rulesToRender[idx]!;
           let n = entry.node;
@@ -1494,17 +1610,23 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           if (!n.visible && !hasPrintableTrivia(n, options)) {
             return;
           }
-          // `+:`/`+_:` merge (P1): a suppressed member is coalesced into a later
-          // anchor — skip it entirely (like a hidden decl), unless it carries
-          // printable trivia to preserve.
+
+          /*
+           * `+:`/`+_:` merge (P1): a suppressed member is coalesced into a later
+           * anchor — skip it entirely (like a hidden decl), unless it carries
+           * printable trivia to preserve.
+           */
           if (options.spineMergePlan?.get(n)?.kind === 'suppress' && !hasPrintableTrivia(n, options)) {
             return;
           }
-          // A `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top — it
-          // never emits inline. Register the first as `currentCharset` (prepended by
-          // `renderRootViaSpine`) and skip it, mirroring eval's charset→Nil hoist. In
-          // practice a charset is a root child; handled here too so a nested body that
-          // somehow carries one does not emit it mid-block.
+
+          /*
+           * A `@charset "utf-8";` (role-'charset' `Any`) HOISTS to document top — it
+           * never emits inline. Register the first as `currentCharset` (prepended by
+           * `renderRootViaSpine`) and skip it, mirroring eval's charset→Nil hoist. In
+           * practice a charset is a root child; handled here too so a nested body that
+           * somehow carries one does not emit it mid-block.
+           */
           if (isNode(n, N.Any) && n.role === 'charset') {
             if (options.context && !options.context.currentCharset) {
               options.context.currentCharset = n;
@@ -1566,8 +1688,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           const renderedPositionBaseline = w.position();
           if (isNode(nn, N.Rules) && !isLeafAtRule) {
             const hasRenderableChild = nn.rules.some(child =>
-              child.visible || hasPrintableTrivia(child, options)
-            );
+              child.visible || hasPrintableTrivia(child, options));
             if (!hasRenderableChild && !hasPrintableTrivia(nn, options)) {
               return;
             }
@@ -1623,24 +1744,31 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             }
             return;
           }
-          // Leaf value resolution. In spineMode a declaration resolves LIVE against
-          // the pushed frame (`resolveSpineLeafText`, MaybePromise for `calc()`/
-          // functions); otherwise it is the static/eval-tree serializer. The
-          // sync trivia/indent tail below runs in `finishLeaf` once `out` is known.
+
+          /*
+           * Leaf value resolution. In spineMode a declaration resolves LIVE against
+           * the pushed frame (`resolveSpineLeafText`, MaybePromise for `calc()`/
+           * functions); otherwise it is the static/eval-tree serializer. The
+           * sync trivia/indent tail below runs in `finishLeaf` once `out` is known.
+           */
           const outResult: MaybePromise<string> = isHiddenStructuralNode
             ? ''
             : options.spineMode && options.context && isNode(nn, N.Declaration)
               ? resolveSpineLeafText(nn, options)
               : isNode(nn, N.Declaration)
                 ? renderNodeText(nn, options, 'declaration-fallback')
-              // Bare statement-position built-in FUNCTION call (`if((false), {g: 7});`):
-              // evaluate + serialize inline (void → ''), byte-identical to the eval
-              // call-lane. See `isSpineFoldableStatementCall`.
+
+              /*
+               * Bare statement-position built-in FUNCTION call (`if((false), {g: 7});`):
+               * evaluate + serialize inline (void → ''), byte-identical to the eval
+               * call-lane. See `isSpineFoldableStatementCall`.
+               */
                 : options.spineMode && options.context && isSpineFoldableStatementCall(nn)
                   ? resolveSpineStatementCallText(nn, options)
                   : renderNodeText(nn, options);
           const finishLeaf = (out: string): void => {
             restorePrintState(options, leafSaved);
+
             // Suppress pure-void Any nodes from generating blank output lines.
             if (
               isNode(nn, N.Any)
@@ -1650,13 +1778,16 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             ) {
               return;
             }
-            // A bare statement-position function call (`if((false), {g: 7});`,
-            // `e('…')`) resolved inline. Reproduce the eval call-lane exactly: a VOID
-            // result (empty) emits NO statement line (the `if`-false-no-else shape); a
-            // value result emits its serialized value as its own line. In BOTH cases
-            // the source `requiredSemi` `;` is dropped (eval emits the value/void with
-            // no trailing `;`), and the surrounding trivia (the `/* results in void */`
-            // comment) is preserved. Byte-identical to eval.
+
+            /*
+             * A bare statement-position function call (`if((false), {g: 7});`,
+             * `e('…')`) resolved inline. Reproduce the eval call-lane exactly: a VOID
+             * result (empty) emits NO statement line (the `if`-false-no-else shape); a
+             * value result emits its serialized value as its own line. In BOTH cases
+             * the source `requiredSemi` `;` is dropped (eval emits the value/void with
+             * no trailing `;`), and the surrounding trivia (the `/* results in void *\/`
+             * comment) is preserved. Byte-identical to eval.
+             */
             if (isSpineFoldableStatementCall(nn)) {
               if (!/^\s*$/.test(leading)) {
                 w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
@@ -1705,14 +1836,20 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               const normalizedLeading = hasLeadingDeclarationBlockComment
                 ? (leading.match(/\n([ \t]*)$/u)?.[1] ?? '')
                 : leading.replace(/^[\s\S]*\n([ \t]*)$/g, '$1');
-              // `out` already carries continuation indentation relative to the
-              // property line (see `formatNonCustomValue`), so measure the relative
-              // baseline from `out` itself (first line at column 0) — not from any
-              // authored leading indent, which is empty for non-first declarations
-              // and would otherwise re-base multi-line values inconsistently.
+
+              /*
+               * `out` already carries continuation indentation relative to the
+               * property line (see `formatNonCustomValue`), so measure the relative
+               * baseline from `out` itself (first line at column 0) — not from any
+               * authored leading indent, which is empty for non-first declarations
+               * and would otherwise re-base multi-line values inconsistently.
+               */
               const hasEmptyValue = /:\s*$/.test(out);
-              // Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
-              // `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
+
+              /*
+               * Preserve the single post-colon space for empty declaration values (Less parity: `x: ;`).
+               * `normalizeIndent(..., true)` trims end-of-line whitespace and would collapse this to `x:;`.
+               */
               const declNormalized = hasEmptyValue && (!normalizedLeading || normalizedLeading.trim() === '')
                 ? `${idt}${out}`
                 : normalizeIndent(out, idt, true);
@@ -1726,6 +1863,7 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               if (!/^\s*$/.test(leading)) {
                 w.add(/\/\*/u.test(leading) ? normalizeBlockTrivia(leading, idt) : normalizeIndent(leading, idt));
               }
+
               /**
        * `Rules` nodes can be produced by evaluations like detached ruleset calls.
        * `Rules.toTrimmedString()` already emits correctly indented child declarations for the
@@ -1745,10 +1883,13 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               w.add(idt);
               w.add(out, nn);
             }
+
             /** @todo - optionally add semi-colon for compression */
-            // if (n.requiredSemi && next) {
-            //   w.add(';');
-            // }
+            /*
+             * if (n.requiredSemi && next) {
+             * w.add(';');
+             * }
+             */
             if (nn.requiredSemi) {
               w.add(';');
             }
@@ -1762,14 +1903,17 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
           };
           return isThenable(outResult) ? outResult.then(finishLeaf) : finishLeaf(outResult);
         };
-        // Spine mixin-fold (cutover increment 2): a FOLDED entry (`entry.spineFrame`
-        // set — a bound mixin surface) is processed with `context.rulesContext`
-        // pushed to that surface, so a body reference resolves against the mixin's
-        // DEFINITION scope (the surface's wired lexical/closure/param frame), not the
-        // enclosing caller frame (the B1s frame-threading discipline, §2, applied to
-        // a shared mixin body — no copy). The pop chains on the async result (never a
-        // sync `finally` that would pop before an async leaf resolves — the B1s
-        // early-pop guard). Authored entries (no `spineFrame`) run unwrapped.
+
+        /*
+         * Spine mixin-fold (cutover increment 2): a FOLDED entry (`entry.spineFrame`
+         * set — a bound mixin surface) is processed with `context.rulesContext`
+         * pushed to that surface, so a body reference resolves against the mixin's
+         * DEFINITION scope (the surface's wired lexical/closure/param frame), not the
+         * enclosing caller frame (the B1s frame-threading discipline, §2, applied to
+         * a shared mixin body — no copy). The pop chains on the async result (never a
+         * sync `finally` that would pop before an async leaf resolves — the B1s
+         * early-pop guard). Authored entries (no `spineFrame`) run unwrapped.
+         */
         const processNode = (idx: number): MaybePromise<void> => {
           const spineFrame = rulesToRender[idx]!.spineFrame;
           if (!spineFrame || !options.context) {
@@ -1795,14 +1939,20 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
             throw error;
           }
         };
-        // Expansion is complete before the body driver starts. When no frame-bearing
-        // expansion occurred, every entry is authored in this container and cannot
-        // carry a frame; select the direct processor once instead of rechecking that
-        // fact for every entry. Expanded bodies retain the frame-aware wrapper.
+
+        /*
+         * Expansion is complete before the body driver starts. When no frame-bearing
+         * expansion occurred, every entry is authored in this container and cannot
+         * carry a frame; select the direct processor once instead of rechecking that
+         * fact for every entry. Expanded bodies retain the frame-aware wrapper.
+         */
         const processEntry = frameAwareEntriesOccurred ? processNode : processNodeInner;
-        // Drive the per-node processor in source order, threading a promise only if
-        // a node resolved async (spine-mode `calc()`/function leaf or nested async
-        // container). The common all-sync case never allocates a promise.
+
+        /*
+         * Drive the per-node processor in source order, threading a promise only if
+         * a node resolved async (spine-mode `calc()`/function leaf or nested async
+         * container). The common all-sync case never allocates a promise.
+         */
         const processFrom = (idx: number): MaybePromise<void> => {
           for (let i = idx; i < rulesToRender.length; i++) {
             const step = processEntry(i);
@@ -1836,11 +1986,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
               w.add(indent(renderedLength - 1) + '}\n');
               options.depth--;
               lastRenderedFrames.pop();
-              // Pop the matching cached header (positional, keyed by frame depth) too —
-              // otherwise a stale header (e.g. `@media screen`) survives at this depth and
-              // a LATER root sibling at the same depth (a second `@media print`, a plain
-              // ruleset) reuses it instead of composing its own. The header stack must
-              // stay in lockstep with `lastRenderedFrames`.
+
+              /*
+               * Pop the matching cached header (positional, keyed by frame depth) too —
+               * otherwise a stale header (e.g. `@media screen`) survives at this depth and
+               * a LATER root sibling at the same depth (a second `@media print`, a plain
+               * ruleset) reuses it instead of composing its own. The header stack must
+               * stay in lockstep with `lastRenderedFrames`.
+               */
               if (frameHeaders.length > lastRenderedFrames.length) {
                 frameHeaders.pop();
               }
@@ -1853,11 +2006,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       };
       if (hoisted && !isTransparentWrapper) {
         const savedFrames = saveArrayState(treeFrames);
-        // When hoisting, we must reset the active frame stack to at-rules only.
-        // Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
-        // in `treeFrames` and cause nested output like:
-        //   .header { :is(.header-nav, .footer .footer-nav) { ... } }
-        // even though the current node is hoisted to root.
+
+        /*
+         * When hoisting, we must reset the active frame stack to at-rules only.
+         * Otherwise, previously-rendered non-hoisted rulesets (e.g. `.header`) can remain
+         * in `treeFrames` and cause nested output like:
+         * .header { :is(.header-nav, .footer .footer-nav) { ... } }
+         * even though the current node is hoisted to root.
+         */
         let atRuleCount = 0;
         for (let i = 0; i < treeFrames.length; i++) {
           const frame = treeFrames[i]!;
@@ -1877,22 +2033,28 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       }
       return renderRulesBody();
     };
-    // Expand loops before mixin calls so a loop body's call participates in the
-    // same post-expansion dedup and statement framing.
+
+    /*
+     * Expand loops before mixin calls so a loop body's call participates in the
+     * same post-expansion dedup and statement framing.
+     */
     const runExpansions = (): MaybePromise<void> => {
       const loops = runSpineForExpansion();
       return isThenable(loops) ? loops.then(runSpineMixinExpansion) : runSpineMixinExpansion();
     };
     const expand = runExpansions();
-    // MERGE-ACROSS-MIXIN fold: after mixin-call expansion has spliced surface
-    // children into `rulesToRender`, an expansion-contributed `+:`/`+_:` merge decl
-    // is now IN the render sequence but was never in the pre-expansion plan (built
-    // over `node.rules` by `withSpineMergePlan`). Re-plan the coalesce over the
-    // POST-EXPANSION entry sequence so the spliced merge decls participate, carrying
-    // each entry's mixin-output side (`spineFrame !== undefined`) so eval's
-    // cross-scope boundary is reproduced. Gated behind "expansion happened" so a
-    // body with no expansion keeps the pre-expansion plan (zero cost). Values are
-    // resolved frame-aware (the entry's `spineFrame`, mirroring `processNode`).
+
+    /*
+     * MERGE-ACROSS-MIXIN fold: after mixin-call expansion has spliced surface
+     * children into `rulesToRender`, an expansion-contributed `+:`/`+_:` merge decl
+     * is now IN the render sequence but was never in the pre-expansion plan (built
+     * over `node.rules` by `withSpineMergePlan`). Re-plan the coalesce over the
+     * POST-EXPANSION entry sequence so the spliced merge decls participate, carrying
+     * each entry's mixin-output side (`spineFrame !== undefined`) so eval's
+     * cross-scope boundary is reproduced. Gated behind "expansion happened" so a
+     * body with no expansion keeps the pre-expansion plan (zero cost). Values are
+     * resolved frame-aware (the entry's `spineFrame`, mirroring `processNode`).
+     */
     const replanMergesIfExpanded = (): MaybePromise<void> => {
       if (!mixinExpansionOccurred || !options.spineMode || !options.context) {
         return undefined;
@@ -1902,8 +2064,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
         node: entry.node,
         ownerKey: entry.mergeOwner
       }));
-      // Map each entry node to its spine frame (a decl appears once), so the
-      // resolve reads the right definition scope for a spliced mixin-body decl.
+
+      /*
+       * Map each entry node to its spine frame (a decl appears once), so the
+       * resolve reads the right definition scope for a spliced mixin-body decl.
+       */
       const frameByDecl = new WeakMap<Node, Rules>();
       for (let i = 0; i < rulesToRender.length; i++) {
         const f = rulesToRender[i]!.spineFrame;
@@ -1950,9 +2115,11 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
       return isThenable(planResult) ? planResult.then(install) : install(planResult);
     };
     const afterExpand = (): MaybePromise<string> => {
-      // The duplicate-declaration dedup pass may resolve keys ASYNC in spine mode
-      // (live value resolution); the body render must wait for the skip set to be
-      // populated. Eval path stays fully sync (keys are static `writeSyntax`).
+      /*
+       * The duplicate-declaration dedup pass may resolve keys ASYNC in spine mode
+       * (live value resolution); the body render must wait for the skip set to be
+       * populated. Eval path stays fully sync (keys are static `writeSyntax`).
+       */
       const runDedupAndBody = (): MaybePromise<string> => {
         const dedup = runDedupPass();
         return isThenable(dedup) ? dedup.then(proceed) : proceed();
@@ -1984,11 +2151,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     };
     return isThenable(out) ? out.then(restoreStack) : restoreStack(out);
   };
-  // Spine mode (P1 §2): push this container's VALUE-FRAME for the duration of
-  // its body descent, so leaves resolve against the SAME frame eval would have
-  // used — no eval pass, no output tree. The frame is the source container's own
-  // `_scopeFrame` (built lazily, lexical parent via the `.parent` chain). Popped
-  // (rulesContext restored) after the body's bytes are in the buffer.
+
+  /*
+   * Spine mode (P1 §2): push this container's VALUE-FRAME for the duration of
+   * its body descent, so leaves resolve against the SAME frame eval would have
+   * used — no eval pass, no output tree. The frame is the source container's own
+   * `_scopeFrame` (built lazily, lexical parent via the `.parent` chain). Popped
+   * (rulesContext restored) after the body's bytes are in the buffer.
+   */
   const runContainer = (): MaybePromise<string> => {
     if (isNode(node, N.AtRule) && (node as AtRule).isRootOnly()) {
       const currentStack = options.composedSelectorStack;
@@ -2008,11 +2178,14 @@ function serializeRulesContainerInternal(node: AtRule | Ruleset, options: FinalP
     }
     return runWithCurrentComposedStack();
   };
-  // Restore the print state after the body's bytes are in the buffer — for the
-  // async path this MUST chain on the promise, never a sync `finally` (which
-  // would pop before an async leaf resolves — the B1s bug). The spine value-frame
-  // + selector override (when present) are pushed/popped by
-  // `serializeSpineFrameContainer`, which wraps this call.
+
+  /*
+   * Restore the print state after the body's bytes are in the buffer — for the
+   * async path this MUST chain on the promise, never a sync `finally` (which
+   * would pop before an async leaf resolves — the B1s bug). The spine value-frame
+   * + selector override (when present) are pushed/popped by
+   * `serializeSpineFrameContainer`, which wraps this call.
+   */
   const finishRun = (text: string): string => {
     restorePrintState(options, saved);
     return text;
@@ -2040,52 +2213,58 @@ function serializeSpineFrameContainer(
   closeFramesOnExit: boolean,
   context: NonNullable<FinalPrintOptions['context']>
 ): MaybePromise<string> {
-  // GUARD-FOLD: a `when`-guarded ruleset evaluates its guard at DESCENT against the
-  // ENCLOSING live frame (definition-time, NOT caller scope) — exactly as the eval
-  // path's `Ruleset.evalNode` (`guard.evaluateBoolean` / `Condition.resultPasses`).
-  // A failing guard emits NOTHING (eval returns Nil); a passing guard descends the
-  // body. Evaluated HERE, before the node's own scope frame / `rulesContext` swap, so
-  // its free vars resolve against the enclosing scope (`context.frames` top is still
-  // the enclosing ruleset). The source `node.guard` is NOT mutated (unlike eval, which
-  // COW-derives a fresh node) — the spine renders the source directly and may re-render
-  // it. Zero-cost when `node.guard` is unset (the common case). `isSpineEligibleContainer`
-  // has already excluded a not-yet-materialized STRING guard.
+  /*
+   * GUARD-FOLD: a `when`-guarded ruleset evaluates its guard at DESCENT against the
+   * ENCLOSING live frame (definition-time, NOT caller scope) — exactly as the eval
+   * path's `Ruleset.evalNode` (`guard.evaluateBoolean` / `Condition.resultPasses`).
+   * A failing guard emits NOTHING (eval returns Nil); a passing guard descends the
+   * body. Evaluated HERE, before the node's own scope frame / `rulesContext` swap, so
+   * its free vars resolve against the enclosing scope (`context.frames` top is still
+   * the enclosing ruleset). The source `node.guard` is NOT mutated (unlike eval, which
+   * COW-derives a fresh node) — the spine renders the source directly and may re-render
+   * it. Zero-cost when `node.guard` is unset (the common case). `isSpineEligibleContainer`
+   * has already excluded a not-yet-materialized STRING guard.
+   */
   const guard = node.guard;
-  // A `Nil` guard means the guard was already evaluated on the EVAL path and FAILED
-  // (`Ruleset.evalNode` memoizes a failed `when` guard by mutating `this.guard` to a
-  // `Nil` — see its guard block). The eval and spine paths share the same canonical
-  // node (object-reduction / node-reuse), so when a mixin body was routed through eval
-  // FIRST (e.g. bootstrap's `#rfs`, whose `@rfs-fluid = null` fluid guard fails), the
-  // spine later renders the SAME node. A failed guard must emit NOTHING — WITHOUT this
-  // branch a `Nil` guard fell through to the UNGUARDED descent below and the failed
-  // block was rendered unconditionally (bootstrap ran the fluid block's `#mq-value` in
-  // a broken scope). Mirrors `Ruleset.evalNode`'s `guard instanceof Nil` early return.
+
+  /*
+   * A `Nil` guard means the guard was already evaluated on the EVAL path and FAILED
+   * (`Ruleset.evalNode` memoizes a failed `when` guard by mutating `this.guard` to a
+   * `Nil` — see its guard block). The eval and spine paths share the same canonical
+   * node (object-reduction / node-reuse), so when a mixin body was routed through eval
+   * FIRST (e.g. bootstrap's `#rfs`, whose `@rfs-fluid = null` fluid guard fails), the
+   * spine later renders the SAME node. A failed guard must emit NOTHING — WITHOUT this
+   * branch a `Nil` guard fell through to the UNGUARDED descent below and the failed
+   * block was rendered unconditionally (bootstrap ran the fluid block's `#mq-value` in
+   * a broken scope). Mirrors `Ruleset.evalNode`'s `guard instanceof Nil` early return.
+   */
   if (guard instanceof Nil) {
     return '';
   }
   if (guard instanceof Node) {
-    // ISOLATE the guard eval's print-state. A `when` guard whose operands render
-    // nested values — a function/plugin call (`isnumber(@fs)`), or a local var read
-    // whose binding is itself a call (`@fs-unit: get-unit(@fs)`) — drives those
-    // renders through `prepareRenderPrintState`, which RESETS `context.printState`
-    // IN PLACE (fresh writer + frame arrays). In the single-pass spine render
-    // `context.printState` IS the live emit state, so the reset swaps the live
-    // writer/frames MID-DESCENT: the guard still computes the right verdict, but the
-    // subsequent PASSING body descent writes leaf text into the swapped (discarded)
-    // writer and its output is LOST — a silently DROPPED block (bootstrap RFS
-    // `#font-size`: the compound `not(isnumber(@fs)) or (not(@fs-unit = px) and
-    // not(@fs-unit = rem))` guard passed yet dropped the whole `font-size` block,
-    // cascading into dropped later siblings). Both the `Condition` fold
-    // (`evaluateBoolean`, which evals each operand) and a non-`Condition` guard's
-    // full `Node.eval` (a parenthesized compound parses as a `Paren`) hit this, so
-    // isolate BOTH — exactly as the value-leaf resolves do
-    // (`evalIsolatingSpinePrintState`), leaving the live writer/frames byte-identical
-    // for the body descent. A simple guard with no rendering operand pays only a
-    // shallow snapshot.
+    /*
+     * ISOLATE the guard eval's print-state. A `when` guard whose operands render
+     * nested values — a function/plugin call (`isnumber(@fs)`), or a local var read
+     * whose binding is itself a call (`@fs-unit: get-unit(@fs)`) — drives those
+     * renders through `prepareRenderPrintState`, which RESETS `context.printState`
+     * IN PLACE (fresh writer + frame arrays). In the single-pass spine render
+     * `context.printState` IS the live emit state, so the reset swaps the live
+     * writer/frames MID-DESCENT: the guard still computes the right verdict, but the
+     * subsequent PASSING body descent writes leaf text into the swapped (discarded)
+     * writer and its output is LOST — a silently DROPPED block (bootstrap RFS
+     * `#font-size`: the compound `not(isnumber(@fs)) or (not(@fs-unit = px) and
+     * not(@fs-unit = rem))` guard passed yet dropped the whole `font-size` block,
+     * cascading into dropped later siblings). Both the `Condition` fold
+     * (`evaluateBoolean`, which evals each operand) and a non-`Condition` guard's
+     * full `Node.eval` (a parenthesized compound parses as a `Paren`) hit this, so
+     * isolate BOTH — exactly as the value-leaf resolves do
+     * (`evalIsolatingSpinePrintState`), leaving the live writer/frames byte-identical
+     * for the body descent. A simple guard with no rendering operand pays only a
+     * shallow snapshot.
+     */
     const guardNode: Node = guard;
     const guardResult = evalIsolatingSpinePrintState(context, () =>
-      guard instanceof Condition ? guard.evaluateBoolean(context) : guardNode.eval(context)
-    );
+      guard instanceof Condition ? guard.evaluateBoolean(context) : guardNode.eval(context));
     const decideGuard = (result: boolean | Node): MaybePromise<string> => {
       if (!Condition.resultPasses(result)) {
         return '';
@@ -2109,27 +2288,33 @@ function serializeSpineFrameContainerUnguarded(
   const savedSelectorNode = options.spineSelectorNode;
   const savedSelector = options.spineSelector;
   const rawSelector = node.selector;
-  // Per-position bookkeeping BEFORE the scope frame is built, so this ruleset's
-  // declaration buckets carry source indices (re-declared / `snapshot` reads
-  // resolve against the binding at their position). See `assignSpineChildIndices`.
+
+  /*
+   * Per-position bookkeeping BEFORE the scope frame is built, so this ruleset's
+   * declaration buckets carry source indices (re-declared / `snapshot` reads
+   * resolve against the binding at their position). See `assignSpineChildIndices`.
+   */
   assignSpineChildIndices(node);
-  // Link this container's scope frame to the ENCLOSING live frame explicitly.
-  // The lexical parent is `savedRulesContext` (the frame live at container-enter
-  // — the root or an outer ruleset). `getScopeFrame`'s default parent discovery
-  // walks `node.parent`, but a PARSED source ruleset carries no `.parent` back-
-  // pointer (only the eval pass, which the spine replaces, established those), so
-  // the walk finds no enclosing `Rules` and the frame is orphaned — a var read
-  // then can't see an ancestor-scope (e.g. root-level) binding. Passing the live
-  // enclosing frame reproduces the eval-path lexical chain without `.parent`.
-  //
-  // PER-CALL RE-POINT: `node.getScopeFrame` MEMOIZES `_scopeFrame` on the node, so a
-  // container SHARED across repeated mixin calls (a nested container in a mixin body —
-  // the same canonical child descended once per call) would reuse the FIRST call's
-  // parent frame, resolving its free vars (e.g. a `.@{name}` selector interpolation)
-  // against the first call's params. Re-point the frame's parent to the CURRENT
-  // enclosing (surface) frame each descent — mirrors the eval path's placement re-point
-  // (`rules.getScopeFrame().parent = placementFrame`). A no-op for an authored container
-  // (the parent already matches); load-bearing for a repeated mixin-surface child.
+
+  /*
+   * Link this container's scope frame to the ENCLOSING live frame explicitly.
+   * The lexical parent is `savedRulesContext` (the frame live at container-enter
+   * — the root or an outer ruleset). `getScopeFrame`'s default parent discovery
+   * walks `node.parent`, but a PARSED source ruleset carries no `.parent` back-
+   * pointer (only the eval pass, which the spine replaces, established those), so
+   * the walk finds no enclosing `Rules` and the frame is orphaned — a var read
+   * then can't see an ancestor-scope (e.g. root-level) binding. Passing the live
+   * enclosing frame reproduces the eval-path lexical chain without `.parent`.
+   *
+   * PER-CALL RE-POINT: `node.getScopeFrame` MEMOIZES `_scopeFrame` on the node, so a
+   * container SHARED across repeated mixin calls (a nested container in a mixin body —
+   * the same canonical child descended once per call) would reuse the FIRST call's
+   * parent frame, resolving its free vars (e.g. a `.@{name}` selector interpolation)
+   * against the first call's params. Re-point the frame's parent to the CURRENT
+   * enclosing (surface) frame each descent — mirrors the eval path's placement re-point
+   * (`rules.getScopeFrame().parent = placementFrame`). A no-op for an authored container
+   * (the parent already matches); load-bearing for a repeated mixin-surface child.
+   */
   const enclosingFrame = savedRulesContext?.getScopeFrame();
   const nodeFrame = node.getScopeFrame(enclosingFrame);
   if (enclosingFrame !== undefined && nodeFrame.parent !== enclosingFrame) {
@@ -2145,20 +2330,26 @@ function serializeSpineFrameContainerUnguarded(
     context.spineResolvedFrameSelector?.delete(node);
     return text;
   };
-  // Descend with the override MARKER set on this node (`spineSelectorNode`), so
-  // the re-entry below skips this setup — the marker is what breaks the recursion
-  // AND signals "this node's frame is already pushed". `spineSelector` carries the
-  // resolved selector when one was computed; when undefined the header falls back
-  // to the authored `this.selector`. Node's OWN ruleset frame is pushed HERE (not
-  // before selector eval) so its `&` resolves against the PARENT frame — node's
-  // frame is only the parent for its DESCENDANTS' `&`.
+
+  /*
+   * Descend with the override MARKER set on this node (`spineSelectorNode`), so
+   * the re-entry below skips this setup — the marker is what breaks the recursion
+   * AND signals "this node's frame is already pushed". `spineSelector` carries the
+   * resolved selector when one was computed; when undefined the header falls back
+   * to the authored `this.selector`. Node's OWN ruleset frame is pushed HERE (not
+   * before selector eval) so its `&` resolves against the PARENT frame — node's
+   * frame is only the parent for its DESCENDANTS' `&`.
+   */
   const descend = (resolvedSelector: Selector | Nil | undefined): MaybePromise<string> => {
     options.spineSelectorNode = node;
     options.spineSelector = resolvedSelector;
-    // Expose the RESOLVED concrete selector to a descendant's `&` append eval (see
-    // `Context.spineResolvedFrameSelector`): a nested `&-c` under `&-b` must compose
-    // against the resolved `.a-b`, not the raw authored `&-b`. Only record when the
-    // resolution produced a concrete selector (interpolation / `&` / append).
+
+    /*
+     * Expose the RESOLVED concrete selector to a descendant's `&` append eval (see
+     * `Context.spineResolvedFrameSelector`): a nested `&-c` under `&-b` must compose
+     * against the resolved `.a-b`, not the raw authored `&-b`. Only record when the
+     * resolution produced a concrete selector (interpolation / `&` / append).
+     */
     if (resolvedSelector !== undefined) {
       (context.spineResolvedFrameSelector ??= new WeakMap()).set(node, resolvedSelector);
     }
@@ -2169,12 +2360,15 @@ function serializeSpineFrameContainerUnguarded(
     });
     return renderBody();
   };
-  // Resolve the selector against the live frame. A Selector node carries either
-  // interpolation (`@{…}` → concrete via `eval`) or ampersand (`&-x` → the
-  // composed form via `eval` reading `context.rulesetFrames`, whose top is the
-  // enclosing ruleset). Either way the resolved selector becomes the header
-  // override, so it emits concretely AND extend sees the resolved form (OQ-A).
-  // string/array/Nil pass through unevaled.
+
+  /*
+   * Resolve the selector against the live frame. A Selector node carries either
+   * interpolation (`@{…}` → concrete via `eval`) or ampersand (`&-x` → the
+   * composed form via `eval` reading `context.rulesetFrames`, whose top is the
+   * enclosing ruleset). Either way the resolved selector becomes the header
+   * override, so it emits concretely AND extend sees the resolved form (OQ-A).
+   * string/array/Nil pass through unevaled.
+   */
   try {
     if (rawSelector instanceof Selector) {
       const resolved = rawSelector.eval(context);
@@ -2226,40 +2420,49 @@ function serializeSpineFrameAtRule(
     }
     return text;
   };
-  // Descend with the marker + prelude override set. The marker (`spineAtRuleNode`)
-  // breaks re-entry; the prelude override feeds the header write. Push the at-rule
-  // body frame AFTER the prelude is resolved against the enclosing scope.
+
+  /*
+   * Descend with the marker + prelude override set. The marker (`spineAtRuleNode`)
+   * breaks re-entry; the prelude override feeds the header write. Push the at-rule
+   * body frame AFTER the prelude is resolved against the enclosing scope.
+   */
   const descend = (resolvedPrelude: AtRulePrelude | undefined): MaybePromise<string> => {
     options.spineAtRuleNode = node;
     if (resolvedPrelude !== undefined) {
       options.atRuleHeaderNode = node;
       options.atRuleHeaderPrelude = resolvedPrelude;
-      // Register on the render-local stack too: when a nested at-rule HOISTS to root,
-      // the frame-diff loop re-emits THIS ancestor's header via `writeHeader`/
-      // `getHeaderString`/`getComparableHeaderString` at a point where the single
-      // `atRuleHeaderNode` override no longer targets this node. The registry lets
-      // those raw-prelude header paths substitute the resolved prelude (matching
-      // eval) instead of emitting `$[bpMedium]`. Keyed by node + save/restore, so a
-      // body shared across mixin call sites resolves each call's arg independently.
+
+      /*
+       * Register on the render-local stack too: when a nested at-rule HOISTS to root,
+       * the frame-diff loop re-emits THIS ancestor's header via `writeHeader`/
+       * `getHeaderString`/`getComparableHeaderString` at a point where the single
+       * `atRuleHeaderNode` override no longer targets this node. The registry lets
+       * those raw-prelude header paths substitute the resolved prelude (matching
+       * eval) instead of emitting `$[bpMedium]`. Keyed by node + save/restore, so a
+       * body shared across mixin call sites resolves each call's arg independently.
+       */
       (options.spineResolvedPreludes ??= new Map()).set(node, resolvedPrelude);
     }
     assignSpineChildIndices(node);
-    // Link this at-rule's scope frame to the ENCLOSING live frame explicitly
-    // (mirrors `serializeSpineFrameContainer`). A parsed at-rule carries no `.parent`
-    // back-pointer, so `getScopeFrame`'s default parent-discovery walk finds nothing
-    // and the frame is orphaned — a var read inside the body then can't see an
-    // ancestor-scope binding (e.g. an imported `@c` registered on the ROOT frame's
-    // fallback chain: `'c' is not defined`). Passing the live enclosing frame
-    // reproduces the eval-path lexical chain (incl. its import fallbacks) without
-    // `.parent`.
-    //
-    // PER-CALL RE-POINT (mirrors `serializeSpineFrameContainer`): `getScopeFrame`
-    // MEMOIZES `_scopeFrame` on the node, so an at-rule child SHARED across repeated
-    // mixin calls (`.mix(@c) { @media @m { value: @c } }` called with different args)
-    // would reuse the FIRST call's parent frame, resolving its body's free vars
-    // (`@c`/`@m`) against the first call's params. Re-point the frame's parent to the
-    // CURRENT enclosing (surface) frame each descent — a no-op for an authored at-rule
-    // (parent already matches), load-bearing for a repeated mixin-surface at-rule child.
+
+    /*
+     * Link this at-rule's scope frame to the ENCLOSING live frame explicitly
+     * (mirrors `serializeSpineFrameContainer`). A parsed at-rule carries no `.parent`
+     * back-pointer, so `getScopeFrame`'s default parent-discovery walk finds nothing
+     * and the frame is orphaned — a var read inside the body then can't see an
+     * ancestor-scope binding (e.g. an imported `@c` registered on the ROOT frame's
+     * fallback chain: `'c' is not defined`). Passing the live enclosing frame
+     * reproduces the eval-path lexical chain (incl. its import fallbacks) without
+     * `.parent`.
+     *
+     * PER-CALL RE-POINT (mirrors `serializeSpineFrameContainer`): `getScopeFrame`
+     * MEMOIZES `_scopeFrame` on the node, so an at-rule child SHARED across repeated
+     * mixin calls (`.mix(@c) { @media @m { value: @c } }` called with different args)
+     * would reuse the FIRST call's parent frame, resolving its body's free vars
+     * (`@c`/`@m`) against the first call's params. Re-point the frame's parent to the
+     * CURRENT enclosing (surface) frame each descent — a no-op for an authored at-rule
+     * (parent already matches), load-bearing for a repeated mixin-surface at-rule child.
+     */
     const enclosingFrame = savedRulesContext?.getScopeFrame();
     const nodeFrame = node.getScopeFrame(enclosingFrame);
     if (enclosingFrame !== undefined && nodeFrame.parent !== enclosingFrame) {
@@ -2274,9 +2477,11 @@ function serializeSpineFrameAtRule(
   };
   const rawPrelude = node.prelude;
   try {
-    // Resolve the prelude against the ENCLOSING frame (current rulesContext), not
-    // the at-rule's own — mirrors `liftedAtRulePreludeRulesContext` intent. Only a
-    // Node prelude carries interpolation; string/undefined pass through unchanged.
+    /*
+     * Resolve the prelude against the ENCLOSING frame (current rulesContext), not
+     * the at-rule's own — mirrors `liftedAtRulePreludeRulesContext` intent. Only a
+     * Node prelude carries interpolation; string/undefined pass through unchanged.
+     */
     if (rawPrelude instanceof Node) {
       const resolved = rawPrelude.eval(context);
       return isThenable(resolved) ? resolved.then(descend) : descend(resolved);

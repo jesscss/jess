@@ -19,11 +19,11 @@ const STRICT: EvalModes = { unitMode: 'strict' };
 const dim = (n: number, u = ''): ValueObj => makeDimension(n, u);
 const bytesOf = (op: string, a: ValueObj, b: ValueObj, m = PRESERVE) => operate(op, a, b, m).bytes;
 
-describe('cross-unit arithmetic — vs less@4.6.7 (parens-division)', () => {
+describe('cross-unit arithmetic — parens-division (unit algebra vs less@4.6.7; digits per DD F6)', () => {
   it('division keeps the LHS unit for incompatible units', () => {
     expect(bytesOf('/', dim(4, 'em'), dim(2, 'cm'))).toBe('2em');
     expect(bytesOf('/', dim(14, 'px'), dim(1.4, 'em'))).toBe('10px');
-    expect(bytesOf('/', dim(2, 'px'), dim(3, 's'))).toBe('0.66666667px');
+    expect(bytesOf('/', dim(2, 'px'), dim(3, 's'))).toBe('0.6666666667px');
   });
 
   it('multiplication keeps the LHS unit', () => {

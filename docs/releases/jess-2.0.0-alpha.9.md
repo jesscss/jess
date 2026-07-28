@@ -60,7 +60,7 @@ byte-identical checks and 21 active expected-failure checks. The latter retain
 their observed mismatch/error as compatibility evidence; they are not passing
 Less-parity proof. The complete 32-entry registry, its 11 intentionally
 unselected entries, and each limitation's scope are in the
-[Less v5 corpus inventory](../less-v5-corpus-inventory.md).
+[Less v5 corpus inventory](../state/less-v5-corpus-inventory.md).
 
 Oracle correction: `property-accessors`' v5 expected CSS was previously
 rewritten to match a Jess serializer state; Less 4.8's upstream fixture and live
@@ -105,7 +105,7 @@ This is a deliberately breaking alpha architecture change.
   lane has 21 active expected-failure checks, while the 32-entry registry also
   records 11 intentionally unselected cases. These remain visible compatibility
   work, not hidden passing evidence. See the [Less v5 corpus
-  inventory](../less-v5-corpus-inventory.md) for the exact selection and
+  inventory](../state/less-v5-corpus-inventory.md) for the exact selection and
   follow-up.
 - Less v5 intentionally removes backtick JavaScript evaluation, IE
   `progid:DXImageTransform` filters, the legacy fixture's non-Less `$list`

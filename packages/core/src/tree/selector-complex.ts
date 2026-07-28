@@ -95,14 +95,18 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
       if (typeof component !== 'string' && component.hoistToRoot) {
         hoistToRoot = true;
       }
-      // Bubble F_AMPERSAND from a resolved `&` component (see selector-compound
-      // withComponents): composeSelector keys on the flag to substitute `&` once
-      // instead of re-prepending the parent, so a nested `& ...` complex selector
-      // does not duplicate the ancestor.
+
+      /*
+       * Bubble F_AMPERSAND from a resolved `&` component (see selector-compound
+       * withComponents): composeSelector keys on the flag to substitute `&` once
+       * instead of re-prepending the parent, so a nested `& ...` complex selector
+       * does not duplicate the ancestor.
+       */
       if (typeof component !== 'string' && component.hasFlag(F_AMPERSAND)) {
         hasAmpersand = true;
       }
     }
+
     // Own unchanged source children; evaluated clones may carry runtime state.
     const node = this instanceof RelativeSelector
       ? new RelativeSelector(ownedValue, this._options ? { ...this._options } : undefined, sourceSpanOf(this))
@@ -150,10 +154,13 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
     let length = value.length;
     let isFirstSelector = true;
     const saved = savePrintState(options, ['ampersandFirst']);
-    // String components carry no own source span, so authored inter-component
-    // whitespace is dropped (normalized). COMMENTS that fall inside this
-    // selector's span still round-trip: pull them, in source order, and place
-    // one at each descendant-combinator gap between string components.
+
+    /*
+     * String components carry no own source span, so authored inter-component
+     * whitespace is dropped (normalized). COMMENTS that fall inside this
+     * selector's span still round-trip: pull them, in source order, and place
+     * one at each descendant-combinator gap between string components.
+     */
     const spanComments = options.trivia
       ? commentRunsWithinSpan(options.trivia, spanStartOf(this), spanEndOf(this))
       : [];
@@ -197,10 +204,12 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
             tokens = consumeTriviaBetween(options.trivia, prev, next, options);
           }
           if (typeof component === 'string') {
-            // String descendant combinator: whitespace is normalized to a single
-            // space, but a comment authored in this gap round-trips verbatim (its
-            // run carries its own surrounding spacing). Take the next in-span
-            // comment run; if none, emit a single space.
+            /*
+             * String descendant combinator: whitespace is normalized to a single
+             * space, but a comment authored in this gap round-trips verbatim (its
+             * run carries its own surrounding spacing). Take the next in-span
+             * comment run; if none, emit a single space.
+             */
             const commentRun = spanCommentCursor < spanComments.length
               ? spanComments[spanCommentCursor]
               : undefined;
@@ -475,41 +484,50 @@ export class ComplexSelector extends Selector<ComplexSelectorValue> {
   override resolve(context: Context): MaybePromise<Node> {
     return this.resolveForRender(context);
   }
-  // override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
-  //   let elements = [...selector.value] as ComplexSelectorValue
-  //   selector.value = elements
 
-  //   let collapseNesting = context.opts.collapseNesting
-  //   if (collapseNesting) {
-  //     let hasAmp = elements.find(el => el instanceof Ampersand)
-  //     /**
-  //      * Try to evaluate all selectors as if they are prepended by `&`
-  //      */
-  //     if (!hasAmp && context.rulesetFrames.length > 0) {
-  //       if (elements[0] instanceof Combinator) {
-  //         elements.unshift(new Ampersand())
-  //       } else {
-  //         elements.unshift(new Ampersand(), new Combinator(' '))
-  //       }
-  //     }
-  //   }
+  /*
+   * override async evalNode(context: Context): Promise<ComplexSelector | SelectorList | Nil> {
+   * let elements = [...selector.value] as ComplexSelectorValue
+   * selector.value = elements
+   */
+
+  /*
+   * let collapseNesting = context.opts.collapseNesting
+   * if (collapseNesting) {
+   * let hasAmp = elements.find(el => el instanceof Ampersand)
+   * /**
+   * * Try to evaluate all selectors as if they are prepended by `&`
+   * *\/
+   * if (!hasAmp && context.rulesetFrames.length > 0) {
+   * if (elements[0] instanceof Combinator) {
+   * elements.unshift(new Ampersand())
+   * } else {
+   * elements.unshift(new Ampersand(), new Combinator(' '))
+   * }
+   * }
+   * }
+   */
 
   /** @todo move to visitors */
-  // toCSS(context: Context, out: OutputCollector) {
-  //   this.value.forEach(node => node.toCSS(context, out))
-  // }
+  /*
+   * toCSS(context: Context, out: OutputCollector) {
+   * this.value.forEach(node => node.toCSS(context, out))
+   * }
+   */
 
-  // toModule(context: Context, out: OutputCollector) {
-  //   out.add('$J.sel([', sourceSpanOf(this))
-  //   const length = this.value.length - 1
-  //   this.value.forEach((node, i) => {
-  //     node.toModule(context, out)
-  //     if (i < length) {
-  //       out.add(', ')
-  //     }
-  //   })
-  //   out.add('])')
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * out.add('$J.sel([', sourceSpanOf(this))
+   * const length = this.value.length - 1
+   * this.value.forEach((node, i) => {
+   * node.toModule(context, out)
+   * if (i < length) {
+   * out.add(', ')
+   * }
+   * })
+   * out.add('])')
+   * }
+   */
 }
 
 type SelectorParams = ConstructorParameters<typeof ComplexSelector>;

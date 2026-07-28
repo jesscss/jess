@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const RUNTIME_DEP_FIELDS = ['dependencies', 'optionalDependencies', 'peerDependencies'];
+const WORKSPACE_SCAN_SKIP_DIRS = new Set(['node_modules', 'lib', 'dist', '.cache']);
 
 export function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'));
@@ -10,30 +11,35 @@ export function readJson(filePath) {
 
 export function listWorkspacePackages(rootDir) {
   const packagesDir = path.join(rootDir, 'packages');
-  const entries = readdirSync(packagesDir, { withFileTypes: true });
   const byName = new Map();
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-    const packageJsonPath = path.join(packagesDir, entry.name, 'package.json');
+  const visit = (dir) => {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const packageJsonPath = path.join(dir, 'package.json');
     let manifest;
     try {
       manifest = readJson(packageJsonPath);
     } catch {
-      continue;
+      manifest = null;
     }
-    if (!manifest.name) {
-      continue;
+    if (manifest?.name) {
+      byName.set(manifest.name, {
+        name: manifest.name,
+        dir,
+        packageJsonPath,
+        manifest
+      });
     }
-    byName.set(manifest.name, {
-      name: manifest.name,
-      dir: path.join(packagesDir, entry.name),
-      packageJsonPath,
-      manifest
-    });
-  }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || WORKSPACE_SCAN_SKIP_DIRS.has(entry.name)) {
+        continue;
+      }
+      visit(path.join(dir, entry.name));
+    }
+  };
+
+  visit(packagesDir);
 
   return byName;
 }
@@ -200,13 +206,14 @@ export function isAlphaClobber({ manifestVersion, minTag }) {
 /**
  * True for repo-relative paths that the release BUILD regenerates and that must
  * never block the clean-tree gate:
- *   - `.cursor/**`             : transient debugging state
+ *   - `.cursor/**`             : Cursor tool configuration
+ *   - `docs/state/**`          : transient project/debugging state
  *   - `**​/lib/**`              : compiled output (gitignored, but be explicit)
  *   - `**​/etc/*.api.md`        : API-Extractor reports, rewritten by the build
  * The gate checks SOURCE cleanliness, not build artifacts.
  */
 export function isReleaseArtifactPath(file) {
-  if (file.startsWith('.cursor/')) {
+  if (file.startsWith('.cursor/') || file.startsWith('docs/state/')) {
     return true;
   }
   if (file === 'lib' || file.startsWith('lib/') || file.includes('/lib/')) {
@@ -256,6 +263,7 @@ export function compareSemver(a, b) {
       return pa[key] < pb[key] ? -1 : 1;
     }
   }
+
   // A version with a prerelease has LOWER precedence than one without.
   if (pa.pre.length === 0 && pb.pre.length === 0) {
     return 0;
@@ -302,9 +310,7 @@ export function compareSemver(a, b) {
 export function nextAlphaAfter(version) {
   const parsed = parseAlphaVersion(version);
   if (!parsed) {
-    throw new Error(
-      `Cannot compute the next alpha after non-alpha version '${version}' (expected X.Y.Z-alpha.N).`
-    );
+    throw new Error(`Cannot compute the next alpha after non-alpha version '${version}' (expected X.Y.Z-alpha.N).`);
   }
   return `${parsed.base}-alpha.${parsed.num + 1}`;
 }
@@ -381,9 +387,7 @@ export function resolveAlphaPublishVersion({
   }
   const intended = manifestVersions.reduce((max, v) => (compareSemver(v, max) > 0 ? v : max));
   if (!parseAlphaVersion(intended)) {
-    throw new Error(
-      `Intended lockstep version '${intended}' is not an alpha version (expected X.Y.Z-alpha.N).`
-    );
+    throw new Error(`Intended lockstep version '${intended}' is not an alpha version (expected X.Y.Z-alpha.N).`);
   }
 
   const publishedByPackage = new Map();
@@ -574,9 +578,7 @@ export function getAlphaReleasePlan({
 
   const duplicates = findAllowlistDuplicates(allowlist);
   if (duplicates.length > 0) {
-    errors.push(
-      `Duplicate allowlist entries (each package must appear once): ${duplicates.join(', ')}`
-    );
+    errors.push(`Duplicate allowlist entries (each package must appear once): ${duplicates.join(', ')}`);
   }
 
   const dedupedAllowlist = [...new Set(allowlist)];
@@ -597,10 +599,12 @@ export function getAlphaReleasePlan({
     packages.push(info);
   }
 
-  // Lockstep spans every publishable (non-private) workspace package, not just the
-  // allowlist: incrementAlphaVersions and the changesets `fixed: [["*"]]` group both
-  // bump all non-private packages together, so drift in a not-yet-allowlisted package
-  // (e.g. one about to be added to the set) must fail the publish before it lands.
+  /*
+   * Lockstep spans every publishable (non-private) workspace package, not just the
+   * allowlist: incrementAlphaVersions and the changesets `fixed: [["*"]]` group both
+   * bump all non-private packages together, so drift in a not-yet-allowlisted package
+   * (e.g. one about to be added to the set) must fail the publish before it lands.
+   */
   const versionsByValue = new Map();
   for (const [name, info] of byName) {
     if (info.manifest.private === true) {
@@ -620,9 +624,7 @@ export function getAlphaReleasePlan({
       .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([version, names]) => `${version} (${names.sort().join(', ')})`)
       .join('; ');
-    errors.push(
-      `Lockstep version invariant failed: all non-private workspace packages must share one version. Found: ${detail}`
-    );
+    errors.push(`Lockstep version invariant failed: all non-private workspace packages must share one version. Found: ${detail}`);
   }
 
   for (const pkg of packages) {
@@ -630,21 +632,15 @@ export function getAlphaReleasePlan({
     for (const depName of runtimeWorkspaceDeps) {
       const dep = byName.get(depName);
       if (!dep) {
-        blocked.push(
-          `${pkg.name} depends on unknown workspace package ${depName}`
-        );
+        blocked.push(`${pkg.name} depends on unknown workspace package ${depName}`);
         continue;
       }
       if (dep.manifest.private === true) {
-        blocked.push(
-          `${pkg.name} depends on private workspace package ${depName}`
-        );
+        blocked.push(`${pkg.name} depends on private workspace package ${depName}`);
         continue;
       }
       if (!allowlistSet.has(depName)) {
-        blocked.push(
-          `${pkg.name} depends on non-allowlisted workspace package ${depName}`
-        );
+        blocked.push(`${pkg.name} depends on non-allowlisted workspace package ${depName}`);
       }
     }
   }

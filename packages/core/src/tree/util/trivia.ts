@@ -43,9 +43,11 @@ export function createTriviaMap(indexes?: {
     },
     commentRuns() {
       if (sortedComments === undefined) {
-        // Mirror the exact source set the old per-node scan used: the `after`
-        // index only. A run keyed from both offsets is the same object, so
-        // dedupe by identity to keep it single.
+        /*
+         * Mirror the exact source set the old per-node scan used: the `after`
+         * index only. A run keyed from both offsets is the same object, so
+         * dedupe by identity to keep it single.
+         */
         const seen = new Set<Trivia>();
         const runs: Trivia[] = [];
         for (const run of after.values()) {
@@ -72,6 +74,7 @@ export function makeTrivia(src: string, start: number, end: number): Trivia {
   let hasComment = false;
   for (let i = start; i < end; i++) {
     const c = src.charCodeAt(i);
+
     // space \t \n \r \f  → whitespace; anything else starts a comment
     if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) {
       hasComment = true;
@@ -147,7 +150,7 @@ export function printableTriviaText(run: Trivia | undefined, context?: unknown):
 
 /** True if the run contains a block comment (`/* … *\/`), regardless of context. */
 export function triviaHasBlockComment(run: Trivia | undefined): boolean {
-  return Boolean(run && run.src.slice(run.start, run.end).includes('/*'));
+  return Boolean(run?.src.slice(run.start, run.end).includes('/*'));
 }
 
 /** The leading whitespace prefix of a run (empty when it starts with a comment). */
@@ -321,8 +324,11 @@ export function commentRunsWithinSpan(
     return [];
   }
   const sorted = trivia.commentRuns();
-  // Binary-search the first run with `start >= spanStart`; the array is sorted
-  // ascending by `start` and already deduped to comment-bearing runs.
+
+  /*
+   * Binary-search the first run with `start >= spanStart`; the array is sorted
+   * ascending by `start` and already deduped to comment-bearing runs.
+   */
   let lo = 0;
   let hi = sorted.length;
   while (lo < hi) {
@@ -338,6 +344,7 @@ export function commentRunsWithinSpan(
   for (let i = lo; i < sorted.length; i++) {
     commentRunVisits++;
     const run = sorted[i]!;
+
     // Sorted by start, so once start passes spanEnd no later run can fit.
     if (run.start > spanEnd) {
       break;

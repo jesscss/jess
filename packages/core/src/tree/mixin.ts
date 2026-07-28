@@ -28,12 +28,14 @@ export interface MixinValue<Name extends AnyRole = 'name'> {
    * @todo - Should anonymous mixins have a different class type?
    */
   name?: string | Interpolated<Name>;
+
   /**
    * Functions can be assigned an expression when parsing,
    * but it will be evaluated as a set of Rules with a scope
    * and an implicit `return`
    */
   rules: Node[];
+
   /**
    * - A plain node is a kind of value guard.
    * - A name is just a named variable.
@@ -103,11 +105,14 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     this.name = value.name;
     this.params = value.params;
     this.guard = value.guard;
-    // A mixin owns its structural parts: name, params, and guard parent to the
-    // mixin (body is adopted below or via the Rules array in super()). This
-    // keeps scope resolution able to walk up from any part to the mixin, and
-    // keeps the canonical definition owning its parts when prepareRegistration
-    // builds a separate prepared wrapper from copies.
+
+    /*
+     * A mixin owns its structural parts: name, params, and guard parent to the
+     * mixin (body is adopted below or via the Rules array in super()). This
+     * keeps scope resolution able to walk up from any part to the mixin, and
+     * keeps the canonical definition owning its parts when prepareRegistration
+     * builds a separate prepared wrapper from copies.
+     */
     if (value.name instanceof Node) {
       this.adopt(value.name);
     }
@@ -118,13 +123,16 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
       this.adopt(value.guard);
     }
     this.removeFlag(F_VISIBLE);
-    // R2 SINGLE-FRAME: the Mixin IS its own canonical body. Body children are
-    // parented to the Mixin by the `mixin()` factory's parentChildren (childKeys
-    // includes 'rules'); the Mixin's own scope frame is the single body-decl
-    // frame. (Formerly a factory-passed `rules([...])` wrapper was recorded as
-    // `sourceNode` and the children re-parented to it — a DUPLICATE body frame
-    // that the parser path never created, and that split params (per-call
-    // surface) from body decls. Eliminated.)
+
+    /*
+     * R2 SINGLE-FRAME: the Mixin IS its own canonical body. Body children are
+     * parented to the Mixin by the `mixin()` factory's parentChildren (childKeys
+     * includes 'rules'); the Mixin's own scope frame is the single body-decl
+     * frame. (Formerly a factory-passed `rules([...])` wrapper was recorded as
+     * `sourceNode` and the children re-parented to it — a DUPLICATE body frame
+     * that the parser path never created, and that split params (per-call
+     * surface) from body decls. Eliminated.)
+     */
   }
 
   // Mixin owns registration prep and marks `registrationPrepared` directly.
@@ -236,8 +244,10 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     return w.getSince(mark);
   }
 
-  // Static-by-type invisibility: a mixin definition is never CSS output. The
-  // no-op render keeps the base render() gate off the common hot path (D.1 §2).
+  /*
+   * Static-by-type invisibility: a mixin definition is never CSS output. The
+   * no-op render keeps the base render() gate off the common hot path (D.1 §2).
+   */
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
@@ -274,6 +284,7 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     if (name || params || guard) {
       w.add(' ');
     }
+
     // Emit rules directly into shared writer; do not re-add return value
     this.writeBraced(options);
   }
@@ -287,8 +298,10 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   }
 
   private _prepareMixinRegistration(context: Context): MaybePromise<Mixin> {
-    // Mixins should NOT prepare their body rules during initial registration.
-    // Body rules are prepared/evaluated when the mixin is called.
+    /*
+     * Mixins should NOT prepare their body rules during initial registration.
+     * Body rules are prepared/evaluated when the mixin is called.
+     */
     let node: Mixin = this;
     let { name } = node;
     if (name && name instanceof Interpolated) {
@@ -308,8 +321,11 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
   private _prepareMixinBodyVisibility(rules: Rules, context: Context): void {
     if (context.options.leakyScope) {
       rules.options.rulesVisibility.Mixin = 'public';
-      // Keep Less mixin-definition vars as fallback by default. Call-time scope
-      // controls for params/local vars are handled in mixin evaluation paths.
+
+      /*
+       * Keep Less mixin-definition vars as fallback by default. Call-time scope
+       * controls for params/local vars are handled in mixin evaluation paths.
+       */
       rules.options.rulesVisibility.VarDeclaration = 'optional';
     } else {
       rules.options.rulesVisibility.Mixin = 'private';
@@ -363,10 +379,12 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
 
   /** Since this is a mixin definition, it's not evaluated until it's called. */
   override evalNode(_context?: Context): MaybePromise<this> {
-    // A mixin definition is a lazy template — evalNode returns self without
-    // walking the body. But callers that DO evaluate a mixin body rely on the
-    // narrow §2.7 eval-state signal to distinguish evaluated from cold. Rules.evalNode
-    // is bypassed here, so stamp it directly. See rules.ts callable-descendant gate.
+    /*
+     * A mixin definition is a lazy template — evalNode returns self without
+     * walking the body. But callers that DO evaluate a mixin body rely on the
+     * narrow §2.7 eval-state signal to distinguish evaluated from cold. Rules.evalNode
+     * is bypassed here, so stamp it directly. See rules.ts callable-descendant gate.
+     */
     this._bodyEvaluated = true;
     return this;
   }
@@ -375,11 +393,13 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
     return this.evalNode(context);
   }
 
-  // override async evalNode(context: Context): Promise<Rules | Expression> {
-  //   let { name, body, params, guard } = this.value
-  //   if (name instanceof Interpolated) {
-  //     name
-  // }
+  /*
+   * override async evalNode(context: Context): Promise<Rules | Expression> {
+   * let { name, body, params, guard } = this.value
+   * if (name instanceof Interpolated) {
+   * name
+   * }
+   */
 
   /**
    * @todo -
@@ -388,37 +408,39 @@ export class Mixin extends Rules<MixinValue, MixinOptions> {
    *
    * @todo - move to visitors
    */
-  // toModule(context: Context, out: OutputCollector) {
-  //   const { name, args, value } = this
-  //   const nm = name.value
-  //   if (context.depth === 0) {
-  //     out.add(`export let ${nm}`, sourceSpanOf(this))
-  //     context.exports.add(nm)
-  //   } else {
-  //     if (context.depth !== 1) {
-  //       out.add('let ')
-  //     }
-  //     out.add(`${nm} = function(`)
-  //     if (args) {
-  //       const length = args.value.length - 1
-  //       args.value.forEach((node, i) => {
-  //         if (node instanceof JsIdent) {
-  //           out.add(node.value)
-  //         } else {
-  //           out.add(node.name.value)
-  //           out.add(' = ')
-  //           node.value.toModule(context, out)
-  //         }
-  //         if (i < length) {
-  //           out.add(', ')
-  //         }
-  //       })
-  //     }
-  //     out.add(') { return ')
-  //     value.toModule(context, out)
-  //     out.add('}')
-  //   }
-  // }
+  /*
+   * toModule(context: Context, out: OutputCollector) {
+   * const { name, args, value } = this
+   * const nm = name.value
+   * if (context.depth === 0) {
+   * out.add(`export let ${nm}`, sourceSpanOf(this))
+   * context.exports.add(nm)
+   * } else {
+   * if (context.depth !== 1) {
+   * out.add('let ')
+   * }
+   * out.add(`${nm} = function(`)
+   * if (args) {
+   * const length = args.value.length - 1
+   * args.value.forEach((node, i) => {
+   * if (node instanceof JsIdent) {
+   * out.add(node.value)
+   * } else {
+   * out.add(node.name.value)
+   * out.add(' = ')
+   * node.value.toModule(context, out)
+   * }
+   * if (i < length) {
+   * out.add(', ')
+   * }
+   * })
+   * }
+   * out.add(') { return ')
+   * value.toModule(context, out)
+   * out.add('}')
+   * }
+   * }
+   */
 }
 
 type MixinConstructorParams = ConstructorParameters<typeof Mixin>;

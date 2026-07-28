@@ -21,22 +21,28 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
 const require = createRequire(import.meta.url);
-// The workspace pins the compiler API package separately from the experimental
-// `typescript` package, whose package export intentionally has no CommonJS main.
+
+/*
+ * The workspace pins the compiler API package separately from the experimental
+ * `typescript` package, whose package export intentionally has no CommonJS main.
+ */
 const ts = require('@typescript/typescript6/lib/typescript.js');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const inventoryPath = resolve(root, 'scripts/parser-runtime-boundary-debt.json');
 const parserRoots = [
-  'packages/css-parser/src',
-  'packages/less-parser/src',
-  'packages/scss-parser/src',
-  'packages/jess-parser/src'
+  'packages/syntax/css/css-parser/src',
+  'packages/syntax/less/less-parser/src',
+  'packages/syntax/scss/scss-parser/src',
+  'packages/syntax/jess/jess-parser/src'
 ];
 const sourceExtensions = new Set(['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs']);
 const recognizerMethods = new Set(['charCodeAt', 'charAt', 'codePointAt', 'exec', 'test', 'match', 'search']);
-// These methods answer a recognition question directly. Deliberately do not ban
-// generic copying methods such as `.slice()`: on a node/child collection those
-// are not source recognition, and TypeScript syntax alone cannot prove the type.
+
+/*
+ * These methods answer a recognition question directly. Deliberately do not ban
+ * generic copying methods such as `.slice()`: on a node/child collection those
+ * are not source recognition, and TypeScript syntax alone cannot prove the type.
+ */
 const sourceStringMethods = new Set(['indexOf', 'lastIndexOf', 'includes', 'startsWith', 'endsWith']);
 const reparseLikeName = /^parse(?:Css|Less|Scss|Jess)Fn(?:[A-Z][A-Za-z0-9_]*)?$/;
 
@@ -117,10 +123,13 @@ function scopeShadowsName(node, name) {
 
 function isGrammarRegex(node, file, regexBindings) {
   const parent = node.parent;
-  // Parseman `regex(...)` is declarative grammar input and macro-compiles into
-  // the parser artifact. Recognition-only source modules may intentionally be
-  // named something other than a bare `grammar.ts`; the imported macro binding,
-  // rather than the filename, is the actual runtime-boundary proof.
+
+  /*
+   * Parseman `regex(...)` is declarative grammar input and macro-compiles into
+   * the parser artifact. Recognition-only source modules may intentionally be
+   * named something other than a bare `grammar.ts`; the imported macro binding,
+   * rather than the filename, is the actual runtime-boundary proof.
+   */
   return ts.isCallExpression(parent)
     && parent.arguments.includes(node)
     && ts.isIdentifier(parent.expression)
@@ -179,6 +188,9 @@ function assign(scope, name, kind, properties = undefined) {
 }
 
 function objectProperties(expression, scope) {
+  if (!expression) {
+    return undefined;
+  }
   if (!ts.isObjectLiteralExpression(expression)) {
     return undefined;
   }
@@ -222,8 +234,11 @@ function typeProperties(type) {
     }
     return properties.size > 0 ? properties : undefined;
   }
-  // Parser CST leaf aliases are the one source object shape whose `.value` is
-  // semantically source text. Do not infer that for arbitrary `.value` fields.
+
+  /*
+   * Parser CST leaf aliases are the one source object shape whose `.value` is
+   * semantically source text. Do not infer that for arbitrary `.value` fields.
+   */
   if (ts.isTypeReferenceNode(type) && /(?:^|\.)(?:CSTLeaf|CSTLike|CSTChild|CSTRawChild)$/.test(type.typeName.getText())) {
     return new Map([['value', 'text']]);
   }
@@ -231,6 +246,9 @@ function typeProperties(type) {
 }
 
 function objectPropertiesOf(expression, scope) {
+  if (!expression) {
+    return undefined;
+  }
   const literal = objectProperties(expression, scope);
   if (literal) {
     return literal;
@@ -268,9 +286,12 @@ function propertyKind(expression, scope) {
   const receiver = ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)
     ? expression.expression
     : undefined;
-  // A known object member beats the loose name heuristic. `payload.value`
-  // may be a child collection, not source text, and that fact must survive
-  // member access and later destructuring.
+
+  /*
+   * A known object member beats the loose name heuristic. `payload.value`
+   * may be a child collection, not source text, and that fact must survive
+   * member access and later destructuring.
+   */
   const memberKind = receiver ? objectMemberKind(receiver, property, scope) : undefined;
   if (memberKind !== undefined) {
     return memberKind;
@@ -291,6 +312,9 @@ function propertyKind(expression, scope) {
 }
 
 function expressionKind(expression, scope) {
+  if (!expression) {
+    return undefined;
+  }
   if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
     return 'text';
   }
@@ -485,8 +509,7 @@ export function scanParserSource(file, text, source = undefined) {
 
 export function scanParserSources({ base = root } = {}) {
   return parserRoots.flatMap(sourceRoot => sourceFiles(resolve(base, sourceRoot)).flatMap(file =>
-    scanParserSource(file, readFileSync(file, 'utf8'))
-  ));
+    scanParserSource(file, readFileSync(file, 'utf8'))));
 }
 
 function ledgerEntries(findings, priorDebt = []) {
@@ -505,8 +528,7 @@ function ledgerEntries(findings, priorDebt = []) {
       retirement: priorEntry?.retirement ?? 'Delete by moving this recognition into Parseman grammar during the AST v2 parser cutover.'
     };
   }).sort((a, b) =>
-    a.file.localeCompare(b.file) || a.start - b.start || a.kind.localeCompare(b.kind)
-  );
+    a.file.localeCompare(b.file) || a.start - b.start || a.kind.localeCompare(b.kind));
 }
 
 function readInventory() {

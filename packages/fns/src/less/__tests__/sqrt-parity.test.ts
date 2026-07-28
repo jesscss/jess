@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Dimension as LegacyDimension } from '@jesscss/core';
-import { builtinLessFns } from '../../builtins/index.js';
-import { sqrt as builtinSqrt } from '../../builtins/sqrt.js';
+import { lessFns } from '../registry.js';
 import { makeDimension } from '@jesscss/core/value';
-import sqrt, { sqrt as namedSqrt } from '../sqrt.js';
+import { sqrt } from '../sqrt.js';
 
 type LegacyDimensionOracle = {
   number: number;
@@ -47,9 +46,7 @@ describe('Less sqrt canonical cutover', () => {
     }
   });
 
-  it('uses one canonical callable at every Less entrypoint and registry slot', () => {
-    expect(sqrt).toBe(namedSqrt);
-    expect(sqrt).toBe(builtinSqrt);
-    expect(builtinLessFns.find(fn => fn.name === 'sqrt')).toBe(builtinSqrt);
+  it('registers the one canonical callable in the Less registry', () => {
+    expect(lessFns.find(fn => fn.name === 'sqrt')).toBe(sqrt);
   });
 });

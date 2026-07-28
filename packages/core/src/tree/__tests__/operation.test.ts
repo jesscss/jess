@@ -352,9 +352,12 @@ describe('Operation', () => {
       throw new Error('Expected Operation result');
     }
     expect(resolved.toTrimmedString()).toBe('2em * 10px / 2');
-    // Reparent-free placement: the unchanged operand is SHARED into the
-    // materialized operation (same object), not cloned. Its canonical parent
-    // stays the source operation — placement never reparents a shared node.
+
+    /*
+     * Reparent-free placement: the unchanged operand is SHARED into the
+     * materialized operation (same object), not cloned. Its canonical parent
+     * stays the source operation — placement never reparents a shared node.
+     */
     expect(resolved.left).toBe(leftOperand);
     expect(resolved.left?.toTrimmedString()).toBe('2em');
     expect(leftOperand.parent).toBe(operationNode);
@@ -396,13 +399,19 @@ describe('Operation', () => {
       throw new Error('Expected calc fallback Operation argument');
     }
     expect(calcArg).not.toBe(operationNode);
-    // Reparent-free placement: unchanged operands are SHARED into the calc
-    // fallback operation (same objects), not cloned.
+
+    /*
+     * Reparent-free placement: unchanged operands are SHARED into the calc
+     * fallback operation (same objects), not cloned.
+     */
     expect(calcArg.left).toBe(leftOperand);
     expect(calcArg.right).toBe(rightOperand);
-    // Source operands stay owned by the canonical operation, unchanged — the
-    // calc fallback materializes copies. (`evaluated` flag assertions removed:
-    // it is being deleted as a clone-era relic; see LIVE_BINDING §2.7.)
+
+    /*
+     * Source operands stay owned by the canonical operation, unchanged — the
+     * calc fallback materializes copies. (`evaluated` flag assertions removed:
+     * it is being deleted as a clone-era relic; see LIVE_BINDING §2.7.)
+     */
     expect(leftOperand.parent).toBe(operationNode);
     expect(rightOperand.parent).toBe(operationNode);
   });
@@ -555,13 +564,17 @@ describe('Operation', () => {
     expect(css).toContain('height: calc(50% + (25vh - 20px));');
   });
 
-  // Repro: `calc(50% + (@var - 20px))` where `@var` is a preserved slash-list
-  // (`50vh / 2`). Under the default `parens-division` mode the inner subtraction
-  // doesn't collapse, so the Paren survives eval. The outer `+` must preserve it,
-  // not throw "Cannot operate on Paren".
+  /*
+   * Repro: `calc(50% + (@var - 20px))` where `@var` is a preserved slash-list
+   * (`50vh / 2`). Under the default `parens-division` mode the inner subtraction
+   * doesn't collapse, so the Paren survives eval. The outer `+` must preserve it,
+   * not throw "Cannot operate on Paren".
+   */
   it('preserves a surviving Paren operand instead of operating on it', () => {
-    // `(50vh / 2 - 20px)` — the `-` has a preserved slash-list operand, so the
-    // inner Operation stays unevaluated and the Paren is not reduced to a value.
+    /*
+     * `(50vh / 2 - 20px)` — the `-` has a preserved slash-list operand, so the
+     * inner Operation stays unevaluated and the Paren is not reduced to a value.
+     */
     const slashList = list([dimension([50, 'vh']), num(2)], { sep: '/' });
     const inner = op([slashList, '-', dimension([20, 'px'])]);
     const operation = op([dimension([50, '%']), '+', paren(inner)]);
@@ -576,8 +589,10 @@ describe('Operation', () => {
     expect(resolved.toTrimmedString()).toBe('50% + (50vh / 2 - 20px)');
   });
 
-  // Two-united `*` behaves per unitMode: preserve → calc fallback (composable),
-  // strict → throws (must NOT be swallowed), loose → folds to the left unit.
+  /*
+   * Two-united `*` behaves per unitMode: preserve → calc fallback (composable),
+   * strict → throws (must NOT be swallowed), loose → folds to the left unit.
+   */
   describe('two-united multiplication across unitMode', () => {
     const mul = () => op([dimension([4, 'px']), '*', dimension([3, 'px'])]);
 
@@ -586,6 +601,7 @@ describe('Operation', () => {
       context.setOption('unitMode', 'preserve');
       const out = await mul().eval(context);
       expect(out.render(context)).toBe('calc(4px * 3px)');
+
       // and composing it further nests into a single flat calc
       const composed = await op([out, '+', num(1)]).eval(context);
       expect(composed.render(context)).toBe('calc(4px * 3px + 1)');

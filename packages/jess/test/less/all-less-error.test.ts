@@ -34,25 +34,23 @@ const acceptedDivergences = new Map<string, string>([
   //  now error via checkValidNodes' root property-in-root check.)
   // detached-ruleset-1/-2 GRADUATED — a detached ruleset (Mixin/Rules) used as a
   // property value now throws eval/ruleset-on-property (declaration.ts).
-  ['tests-error/eval/multiple-guards-on-css-selectors2.less', 'GAP: a guard on a multi-selector rule should error'],
-  ['tests-error/eval/root-func-undefined-1.less', 'GAP: a root-level call returning no root node should error (root-call-without-root)'],
+  // multiple-guards-on-css-selectors2 GRADUATED — guarded selector lists now throw
+  // eval/guarded-selector-list from the public AST serializer.
+  // root-func-undefined-1 GRADUATED — root-level value/void function statements now
+  // throw eval/root-call-without-root from emitCallStatement.
+  // These five DO error again, so they are no longer accepted divergences — but
+  // for a DIFFERENT reason than Less has. Less rejects them because a root-level
+  // call returns a non-root node; Jess now rejects them because the `@plugin`
+  // value is awaited in a position that cannot suspend (the blocking plugin
+  // channel that used to hide that is gone). The corpus contract — "Jess must
+  // error where Less errors" — is met either way, and this entry documents that
+  // closing the remaining async walls will make them stop erroring until
+  // root-call-without-root itself is closed.
   // ampersand-merge-template-invalid GRADUATED — its parent `@{list-quoted}` is a
   // comma-list value in selector position, so it now throws selector/comma-list-interpolation
   // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw
   // (assertNotCommaMergeTemplate) was removed with the merge surface.
   // invalid-color-with-comment GRADUATED — colorHex now only matches 3/4/6/8-digit hex.
-]);
-
-/**
- * Fixtures whose eval leaves a dangling async handle (unresolved recursion) that
- * force-kills the vitest worker at teardown. They're also should-error GAPS
- * (Less rejects the recursive definition; Jess neither errors nor terminates).
- * Skipped here so the in-process lane stays reliable; tracked for the cycle-
- * detection fix that will let them error and graduate back in.
- */
-const hangSkips = new Map<string, string>([
-  ['tests-error/eval/recursive-variable.less', 'hangs worker: recursive @var definition not detected (should error)'],
-  ['tests-error/eval/recursive-property.less', 'hangs worker: recursive property definition not detected (should error)']
 ]);
 
 function makeCompiler() {
@@ -95,18 +93,13 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
     .sort();
 
   files.forEach((file) => {
-    const hang = hangSkips.get(file);
-    if (hang) {
-      it.skip(`${file} (skipped — ${hang})`, () => {});
-      return;
-    }
     const divergence = acceptedDivergences.get(file);
     it(`${file}${divergence ? ` (accepts — divergence: ${divergence})` : ''}`, async () => {
       const errors = await renderErrors(path.join(TD, file));
       const errored = errors.length > 0;
       if (file === 'tests-error/eval/plugin-2.less' || file === 'tests-error/eval/plugin-3.less') {
         expect(errors, `${file} should surface a structured eval error`).toEqual(expect.arrayContaining([
-          expect.objectContaining({ phase: 'eval', code: expect.any(String) }),
+          expect.objectContaining({ phase: 'eval', code: expect.any(String) })
         ]));
       }
       if (divergence) {

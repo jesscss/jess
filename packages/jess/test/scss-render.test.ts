@@ -87,4 +87,26 @@ describe('scss plugin render-through', () => {
     expect(css).not.toContain('double(');
     expect(css).not.toContain('@function');
   });
+
+  /**
+   * An SCSS map literal lowers to a `Collection`, which reaches an argument
+   * position trivially. The value serializer used to fold it to EMPTY bytes while
+   * the surrounding comma glue still printed (`foo($m, b)` → `foo(, b)`), silently
+   * dropping the argument. A Collection serializes as the canonical Jess
+   * collection form — never the Sass paren-map input syntax, which is lowered
+   * away at parse.
+   */
+  it('serializes an SCSS map argument as a Jess collection', async () => {
+    const compiler = new Compiler();
+    const src = '$m: (a: 1, b: 2);\n.x { y: foo($m, b); }';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toContain('y: foo({ a: 1; b: 2 }, b)');
+  });
+
+  it('serializes an inline SCSS map literal in a non-first argument position', async () => {
+    const compiler = new Compiler();
+    const src = '.x { y: foo(z, (a: 1, b: 2)); }';
+    const css = await compiler.renderString(src, { extension: '.scss' });
+    expect(css).toContain('y: foo(z, { a: 1; b: 2 })');
+  });
 });

@@ -10,11 +10,14 @@ import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
 export type PrintOptions = {
   /** The actual tree frames we started from */
   treeFrames?: (Ruleset | AtRule)[] | undefined;
+
   /** Tracks what ruleset or at-rule body we're serializing to the root */
   inFrames?: (Ruleset | AtRule)[] | undefined;
+
   /** Stored frames if we hoist a ruleset */
   lastRenderedFrames?: (Ruleset | AtRule)[] | undefined;
   frameHeaders?: string[];
+
   /** Current indentation depth (set by parent, used by children) */
   depth?: number;
   writer?: OutputWriter;
@@ -22,14 +25,19 @@ export type PrintOptions = {
   collapseNesting?: boolean;
   context?: Context;
   inCustom?: boolean;
+
   /** True while traversing a referenced import/use tree. */
   referenceMode?: boolean;
+
   /** Effective render state while in referenceMode. */
   referenceRenderEnabled?: boolean;
+
   /** Enable SelectorList-level filtering of extend target members during reference rendering. */
   referenceFilterTargets?: boolean;
+
   /** Stack of composed selectors for collapseNesting on-demand composition and & resolution. */
   composedSelectorStack?: Selector[];
+
   /**
    * Session-local composed selector cache keyed by rendered ruleset, then by the
    * composed parent selector under which it was rendered. A shared canonical
@@ -38,9 +46,11 @@ export type PrintOptions = {
    * must not be shared across parent contexts.
    */
   composedSelectorCache?: WeakMap<Ruleset, Map<string, Selector>>;
+
   /** Render-local override for one at-rule header prelude during direct render. */
   atRuleHeaderNode?: AtRule;
   atRuleHeaderPrelude?: AtRulePrelude;
+
   /**
    * Spine-mode resolved-prelude registry for at-rules CURRENTLY on the descent
    * stack (keyed by node identity). `serializeSpineFrameAtRule` sets the entry at
@@ -54,9 +64,11 @@ export type PrintOptions = {
    * arg independently — the invariant the `spineSelector` override also observes.
    */
   spineResolvedPreludes?: Map<AtRule, AtRulePrelude>;
+
   /** Render-local override for one at-rule body during direct render. */
   atRuleBodyNode?: AtRule;
   atRuleBodyOverride?: import('../rules.js').Rules;
+
   /**
    * Spine-mode selector override (P1 §2, OQ-A). When `spineSelectorNode === this`
    * ruleset, its header composes from `spineSelector` — the selector resolved
@@ -70,6 +82,7 @@ export type PrintOptions = {
    */
   spineSelectorNode?: Ruleset;
   spineSelector?: Selector | Nil;
+
   /**
    * Spine-mode EXTEND header override (P3 §4.3 increment 1). Maps a root-level SUBJECT
    * ruleset to its FINAL composed multi-branch header (a `SelectorList` of the authored own
@@ -80,6 +93,7 @@ export type PrintOptions = {
    * render-local override (output-affecting → not on the canonical node), like `spineSelector`.
    */
   spineExtendHeaders?: Map<Ruleset, Selector>;
+
   /**
    * Spine-mode EXTEND HOIST marker (P3 §4.3 increment 3 — `&`-crossing hoist-to-root). The
    * subset of `spineExtendHeaders` subjects whose override is a HOISTED projection — the
@@ -96,6 +110,7 @@ export type PrintOptions = {
    * its parent and stays nested.
    */
   spineExtendHoisted?: Set<Ruleset>;
+
   /**
    * Spine-mode at-rule marker (P1 §4/§7). When `spineAtRuleNode === this` at-rule,
    * its value-frame has already been pushed by `serializeSpineFrameAtRule` and its
@@ -104,6 +119,7 @@ export type PrintOptions = {
    * guard so the spine setup runs once per at-rule, then the descent proceeds.
    */
   spineAtRuleNode?: AtRule;
+
   /**
    * Spine-mode `+:`/`+_:` merge plan for the CURRENT body (P1). Keyed by source
    * declaration: a `suppress` entry emits nothing; an `anchor` entry emits the
@@ -112,6 +128,7 @@ export type PrintOptions = {
    * (the common case pays nothing).
    */
   spineMergePlan?: import('./spine-merge.js').SpineMergePlan;
+
   /**
    * Spine-mode `?:` conditional-assign plan for the CURRENT body. Keyed by source
    * declaration: an `anchor` entry emits the resolved value (the eval-path self-
@@ -120,12 +137,14 @@ export type PrintOptions = {
    * body has no `?:` declaration (the common case pays nothing).
    */
   spineCondPlan?: import('./spine-cond.js').SpineCondPlan;
+
   /** Whether the current ampersand is at the start of its containing selector. */
   ampersandFirst?: boolean;
   trivia?: TriviaMap;
   emittedTrivia?: Set<Trivia>;
   suppressBoundaryTrivia?: 'pre' | 'post' | 'both';
   sourceMap?: boolean;
+
   /**
    * Single-pass spine mode (P1, UNIFIED-EVAL-EMIT §2). When set, the container
    * serializer descends the SOURCE tree with the live value-frame threaded and
@@ -142,8 +161,10 @@ export type PrintOptions = {
    * `calc()`/`Operation` whose subtree is fully sync pays ZERO async cost.
    */
   spineMode?: boolean;
+
   /** Output syntax target, e.g. 'jess' for Jess canonical output. */
   syntax?: string;
+
   /** Jess conversion options for rewriting import paths during serialization. */
   conversion?: {
     mapPath?: (sourcePath: string) => string;
@@ -151,6 +172,7 @@ export type PrintOptions = {
     sourceRoot?: string;
     fromFilePath?: string;
   };
+
   /**
    * Root-render hook fired on the EVALUATED root tree after `render()` drives
    * eval and BEFORE serialization. Lets the compiler run post-eval / pre-render
@@ -306,6 +328,7 @@ function sourceSegmentFor(originParam: unknown, genLine: number, genColumn: numb
   }
   const treeContext = origin?.sourceRoot?._treeContext;
   const file = treeContext?.file?.fullPath || treeContext?.file?.path || treeContext?.file?.name;
+
   // Original line/col derive from the source offset + source text (cold path).
   const source = treeContext?.file?.source;
   const { line, column } = source !== undefined
@@ -348,10 +371,12 @@ export function getPrintOptions(options?: PrintOptions): FinalPrintOptions {
     return resolved;
   }
   const resolved = options ?? {};
+
   // Derive collapseNesting from context when missing so nested vs flat is correct for & serialization
   if (resolved.collapseNesting === undefined && resolved.context?.opts?.output?.collapseNesting !== undefined) {
     resolved.collapseNesting = Boolean(resolved.context.opts.output.collapseNesting);
   }
+
   // Always ensure frameState exists - nodes should not need to check for it
   ensureFinalPrintOptions(resolved);
   return resolved;
@@ -518,18 +543,23 @@ export class OutputWriter implements OutputWriter {
   private _length = 0;
   private _line = 0;
   private _column = 0;
-  // These arrays are only needed for source-map position tracking. Keep them
-  // out of the common no-source-map writer shape until that path actually
-  // needs them.
+
+  /*
+   * These arrays are only needed for source-map position tracking. Keep them
+   * out of the common no-source-map writer shape until that path actually
+   * needs them.
+   */
   private _segments?: SourceSegment[];
   private _posLine?: number[];
   private _posColumn?: number[];
   private _posSegments?: number[];
   private _posLength: number[] = [];
+
   /** Store segments from the most recent capture for merging when content is added back */
   declare private _capturedSegments?: SourceSegment[];
   declare private _queuedSpacerText?: string;
   declare private _queuedSpacerShouldAdd?: (nextText: string) => boolean;
+
   /** See `OutputWriter` interface: post-inline-import blank-line boundary flag. */
   lastEmitWasInlineSource = false;
 
@@ -589,13 +619,17 @@ export class OutputWriter implements OutputWriter {
     const currentLine = this._line;
     const currentColumn = this._column;
 
-    // If we have captured segments and we're adding with an origin, merge them
-    // This happens when captured content is added back (e.g., in Declaration.declTrimmedString)
+    /*
+     * If we have captured segments and we're adding with an origin, merge them
+     * This happens when captured content is added back (e.g., in Declaration.declTrimmedString)
+     */
     if (this._capturedSegments && originParam) {
       // Adjust captured segment positions to current writer position and add them
       for (const seg of this._capturedSegments) {
-        // If segment is on the same line as capture start, add column offset
-        // If segment is on a different line, column is already correct (relative to that line)
+        /*
+         * If segment is on the same line as capture start, add column offset
+         * If segment is on a different line, column is already correct (relative to that line)
+         */
         const adjustedColumn = seg.genLine === 0 ? currentColumn + seg.genColumn : seg.genColumn;
         this._segments!.push({
           genLine: currentLine + seg.genLine,
@@ -616,6 +650,7 @@ export class OutputWriter implements OutputWriter {
     if (i === -1) {
       this._column += text.length;
       this.recordPosition(chunkIndex);
+
       // Clear captured segments if we added content without origin (normal add, not merging captured content)
       if (!originParam && this._capturedSegments) {
         this._capturedSegments = undefined;
@@ -635,6 +670,7 @@ export class OutputWriter implements OutputWriter {
     }
     this._column = text.length - (i + 1);
     this.recordPosition(chunkIndex);
+
     // Clear captured segments if we added content without origin
     if (!originParam && this._capturedSegments) {
       this._capturedSegments = undefined;
@@ -983,11 +1019,13 @@ export class OutputWriter implements OutputWriter {
     const segmentsBefore = this.tracksSources ? this._segments!.length : 0;
     fn();
     const s = this.getSince(m);
+
     // Store segments created during capture (but don't add to main buffer)
     const segmentsCreated = this.tracksSources
       ? this._segments!.slice(segmentsBefore)
       : [];
     this.restore(m);
+
     // Store captured segments for potential merging when content is added back
     if (segmentsCreated.length > 0) {
       this._capturedSegments = segmentsCreated;

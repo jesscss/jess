@@ -1,0 +1,303 @@
+---
+title: 'Advanced: extend'
+sidebar_position: 5.5
+audiences:
+  - jess
+origin: jess
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+`extend` is the mirror image of a [mixin](./05-mixins.mdx). A mixin copies a
+block's *declarations* into your selector; `extend` does the opposite — it copies
+*your selector* up to another rule, so both share one block of CSS instead of
+duplicating it. It's the leanest way to say "style me like that thing, too."
+
+## The basic idea
+
+Attach `&:extend(<target>)` inside a rule (or the Jess `$extend <target>;`
+statement), and your selector is added *wherever the target already appears*.
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .animal { background: black; color: white; }
+    .bear {
+      $extend .animal !exact;   // style .bear like .animal
+      background: brown;
+    }
+    ```
+  </TabItem>
+  <TabItem value="less" label="Less">
+    ```less
+    .animal { background: black; color: white; }
+    .bear {
+      &:extend(.animal);        // style .bear like .animal
+      background: brown;
+    }
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS output">
+    ```css
+    .animal,
+    .bear {
+      background: black;
+      color: white;
+    }
+    .bear {
+      background: brown;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+The `extend` clause itself is never emitted — it's resolved away, leaving your
+rule's own declarations behind. Matching runs against the **compiled** CSS (after
+nesting is resolved), not the source text.
+
+## Forms
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    // statement form (Jess-native)
+    .a { $extend .b; }
+
+    // multiple targets
+    .a { $extend .b, .c; }
+    ```
+  </TabItem>
+  <TabItem value="less" label="Less">
+    ```less
+    // attached to the selector — clause must be last
+    .a:extend(.b) {}
+
+    // inside the body — shorthand for attaching to every selector
+    .a { &:extend(.b); }
+
+    // multiple targets
+    .a:extend(.b, .c) {}
+    ```
+  </TabItem>
+</Tabs>
+
+In Less, the body form `.a { &:extend(.b); }` is exactly equivalent to attaching
+`:extend(.b)` to every selector of the rule.
+
+## Exact match vs. `all`
+
+There are two matching modes:
+
+- **Exact** — matches only where the target is the *whole* selector.
+- **`all` (partial)** — matches the target *wherever it appears as part of* a
+  larger selector, and rewrites that spot in place. Think non-destructive
+  search-and-replace.
+
+:::note Jess flips the default
+
+In **Less**, `:extend(.b)` is exact and `:extend(.b all)` is partial. In
+**Jess**, the `$extend .b;` statement defaults to the partial (`all`) match, and
+you write `$extend .b !exact;` for an exact match.
+
+:::
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .clearfix {
+      &:after { content: ''; clear: both; }
+    }
+    .foo { $extend .clearfix; color: red; }   // partial (all) by default
+    ```
+  </TabItem>
+  <TabItem value="less" label="Less">
+    ```less
+    .clearfix {
+      &:after { content: ''; clear: both; }
+    }
+    .foo { &:extend(.clearfix all); color: red; }
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS output">
+    ```css
+    :is(.clearfix, .foo):after {
+      content: '';
+      clear: both;
+    }
+    .foo {
+      color: red;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+Because `.clearfix` is matched *inside* the compound `.clearfix:after`, the match
+is grafted in place as `:is(.clearfix, .foo):after`.
+
+## `:is()` output
+
+When several selectors extend into the same spot, Jess combines them into a
+single `:is(…)` group rather than duplicating the whole rule once per extender.
+This keeps the output compact:
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .clearfix { &:after { content: ''; } }
+    .foo { $extend .clearfix; }
+    .bar { $extend .clearfix; }
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS output">
+    ```css
+    :is(.clearfix, .foo, .bar):after {
+      content: '';
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+When the target *is* the whole selector (not part of a compound), the extenders
+simply join the selector list — no `:is()` needed:
+
+```css
+.clearfix,
+.foo,
+.bar {
+  /* … */
+}
+```
+
+## Chained extends
+
+Extends resolve to a fixpoint: if `.b` extends `.a` and `.c` extends `.b`, then
+`.c` chains all the way through. Ordering doesn't matter — the extender may come
+before the target.
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .a { color: black; }
+    .b { $extend .a !exact; }
+    .c { $extend .b !exact; }
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS output">
+    ```css
+    .a,
+    .b,
+    .c {
+      color: black;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+Self-references and circular references are handled safely — they simply resolve
+and stop, never loop.
+
+## Nested selectors
+
+Extend matches nested selectors too, because it works on the compiled result:
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .sidebar {
+      width: 300px;
+      .box { border: 1px solid; }
+    }
+    .sidebar2 { $extend .sidebar; background: blue; }
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS output">
+    ```css
+    .sidebar,
+    .sidebar2 {
+      width: 300px;
+    }
+    :is(.sidebar, .sidebar2) .box {
+      border: 1px solid;
+    }
+    .sidebar2 {
+      background: blue;
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+## Extending inside `@media`
+
+An extend written **inside** a `@media` block only matches selectors in that same
+media (or a nested one) — it won't reach the top level or a sibling media. A
+**top-level** extend reaches everything, including inside media blocks.
+
+<Tabs>
+  <TabItem value="jess" label="Jess">
+    ```scss
+    .ext1 .outside { color: inherit; }   // outside media — not matched from inside
+
+    @media (tv) {
+      .ext1 .inside { color: black; }
+      .tv-only {
+        $extend .ext1;                   // matches only within this media
+        background: blue;
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem value="css" label="CSS output">
+    ```css
+    .ext1 .outside {
+      color: inherit;
+    }
+    @media (tv) {
+      :is(.ext1, .tv-only) .inside {
+        color: black;
+      }
+      .tv-only {
+        background: blue;
+      }
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+Nested `@media` blocks stay nested in Jess's output — they are not merged.
+
+## Reference-mode visibility
+
+A `@compose (reference)` / `@import (reference)` module hides its own rules from the
+output. If your extender targets a selector that lives in a referenced module, only
+*your* selector surfaces — carrying the referenced rule's declarations — while the
+referenced target header itself is never emitted. Extend is the sanctioned way to pull
+styles out of a reference-imported sheet.
+
+## What extend does *not* do
+
+- **It is selector-level, not property-level.** Extend shares a rule's *whole*
+  declaration block. It cannot cherry-pick a single property — reach for a mixin or a
+  variable for that.
+- **It does not match variable targets.** An interpolated selector used as a match
+  *target* matches nothing. (An interpolated selector as the *extender* is fine.)
+- **It does not normalize the target form.** Matching is exact: a leading star, the
+  order of pseudo-classes, and the `nth` form all matter. Only attribute-selector quote
+  type is normalized.
+
+## When to reach for extend
+
+- **Avoid a base class.** Style `.bear` like `.animal` without adding
+  `class="animal bear"` to your markup.
+- **Shrink your CSS.** A mixin copies declarations into every caller; `extend`
+  moves the selectors up to one shared block, so the declarations appear once.
+- **Relate two unrelated blocks.** Mixins only take simple selectors; `extend`
+  can graft complex selectors together (`button.list-style` sharing
+  `li.list > a`'s styles).
+
+:::note
+
+The full behavior — exact-match strictness, the fixpoint termination rules,
+`:is()` grafting, and `@media` scoping — is documented for contributors in
+`docs/architecture/core/EXTEND-SEMANTICS.md`.
+
+:::

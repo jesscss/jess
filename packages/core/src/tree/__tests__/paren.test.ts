@@ -245,16 +245,19 @@ describe('Paren', () => {
   });
 
   it('an escaped Paren around a comma-List EVALUATES to the STRIPPED inner list', async () => {
-    // This is what makes the Less `;`-arg lowering safe: `~(1, 2)` binds IDENTICALLY
-    // to the bare list `1, 2` — the escaped wrapper is representational only, so at
-    // eval it returns the inner value STRIPPED (paren.ts §escaped). So `mixin(~(1, 2))`
-    // and a `1, 2` comma-list arg produce the same evaluated value. (The unevaluated
-    // node still round-trips as `~(1, 2)` for source fidelity.)
+    /*
+     * This is what makes the Less `;`-arg lowering safe: `~(1, 2)` binds IDENTICALLY
+     * to the bare list `1, 2` — the escaped wrapper is representational only, so at
+     * eval it returns the inner value STRIPPED (paren.ts §escaped). So `mixin(~(1, 2))`
+     * and a `1, 2` comma-list arg produce the same evaluated value. (The unevaluated
+     * node still round-trips as `~(1, 2)` for source fidelity.)
+     */
     const escapedWrapped = paren(list([num(1), num(2)], { sep: ',' }), { escaped: true });
 
     const evaluated = await escapedWrapped.eval(context);
     expect(evaluated.type).toBe('List');
     expect(evaluated.toTrimmedString()).toBe('1, 2');
+
     // …and the escaped wrapper is gone (no `~`/parens in the evaluated value).
     expect(evaluated.toTrimmedString()).not.toContain('~');
     expect(evaluated.toTrimmedString()).not.toContain('(');

@@ -26,8 +26,7 @@ describe('Basic Ruleset Rendering', () => {
     expect(css).toBeString(`
       .test {
         color: red;
-      }`
-    );
+      }`);
   });
 
   it('should render a basic ruleset without collapseNesting', async () => {
@@ -45,8 +44,7 @@ describe('Basic Ruleset Rendering', () => {
     expect(css).toBeString(`
       .test {
         color: red;
-      }`
-    );
+      }`);
   });
 
   it('renders a root rules container through render(context)', () => {
@@ -82,8 +80,7 @@ describe('Basic Ruleset Rendering', () => {
     expect(css).toBeString(`
       .test {
         color: red;
-      }`
-    );
+      }`);
   });
 
   it('resolves a ruleset declaration from a later variable declaration', async () => {
@@ -102,8 +99,7 @@ describe('Basic Ruleset Rendering', () => {
     expect(css).toBeString(`
       .test {
         color: red;
-      }`
-    );
+      }`);
   });
 
   it('resolves nested ruleset declarations from parent ruleset variables', async () => {
@@ -127,8 +123,7 @@ describe('Basic Ruleset Rendering', () => {
     expect(css).toBeString(`
       .parent .child {
         color: red;
-      }`
-    );
+      }`);
   });
 
   it('renders plain static root rules without deriving an eval surface', () => {
@@ -156,8 +151,7 @@ describe('Basic Ruleset Rendering', () => {
     expect(node.hasFlag(F_STATIC)).toBe(true);
     expect(node.render(context)).toBeString(`
       color: red;
-      background: blue;`
-    );
+      background: blue;`);
     expect(node.render(context, buffer)).toBeString(`
       color: red;
       background: blue;

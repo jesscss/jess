@@ -15,11 +15,13 @@ describe('Less logical / conditional functions', () => {
   a: boolean(not(2 < 1));
   b: boolean(not(2 > 1) and (true));
   c: boolean(not(boolean(true)));
+  f: boolean((2 > 1) = (3 > 2));
 }`);
     expect(css).toBe(`#boolean {
   a: true;
   b: false;
   c: false;
+  f: true;
 }
 `);
   });
@@ -53,7 +55,7 @@ describe('Less logical / conditional functions', () => {
 
   it('if() invokes detached-ruleset branches (true / false / void)', async () => {
     const css = await render(`#if {
-  @1: if(not(false), {c: 3}, {d: 4}); @1();
+  @rules: if(not(false), {c: 3}, {d: 4}); @rules();
 
   if((false), {g: 7}); /* results in void */
 

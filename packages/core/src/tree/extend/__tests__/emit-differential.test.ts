@@ -49,8 +49,10 @@ describe('EMIT compose-relative-to-target — the nested-extender bug the curren
   });
 
   it('a NESTED extender contributes its COMPOSED form (.type1 .sidebar3), NOT .sidebar3', () => {
-    // This is the extend-nest / extend-selector bug: the current engine emits the bare own fragment
-    // `.sidebar3`; the ratified alpha `.css` requires the composed `.type1 .sidebar3`.
+    /*
+     * This is the extend-nest / extend-selector bug: the current engine emits the bare own fragment
+     * `.sidebar3`; the ratified alpha `.css` requires the composed `.type1 .sidebar3`.
+     */
     const { selector } = composeContribution(
       { path: [el('.type1'), el('.sidebar3')], order: 2 },
       [el('.sidebar')]
@@ -79,6 +81,7 @@ describe('EMIT compose-relative-to-target — the nested-extender bug the curren
 describe('EMIT projection — the full Or-branch set (extend-nest.css:1-4)', () => {
   it('projects .sidebar to the ratified 4-branch set in document order', () => {
     const proj = projectSubject(sidebarSubject);
+
     // Ratified alpha: `.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4` (valueOf form).
     expect(emitSubjectHeader(proj)).toBe('.sidebar,.sidebar2,.type1 .sidebar3,.type2.sidebar4');
     expect(proj.hoistToRoot).toBe(false);
@@ -93,9 +96,12 @@ describe('EMIT projection — the full Or-branch set (extend-nest.css:1-4)', () 
         { path: [el('.early')], order: 1 }
       ]
     });
-    // Extend is LIST-APPEND: `.sidebar` (the target's own form) always leads its own rule;
-    // contributions follow in the order fed (`.late` then `.early`). `order` does NOT sort the
-    // set — a before-authored extender does NOT float ahead of the target (the fixed bug).
+
+    /*
+     * Extend is LIST-APPEND: `.sidebar` (the target's own form) always leads its own rule;
+     * contributions follow in the order fed (`.late` then `.early`). `order` does NOT sort the
+     * set — a before-authored extender does NOT float ahead of the target (the fixed bug).
+     */
     expect(emitSubjectHeader(proj)).toBe('.sidebar,.late,.early');
   });
 });
@@ -103,16 +109,18 @@ describe('EMIT projection — the full Or-branch set (extend-nest.css:1-4)', () 
 describe('EMIT collapse policy — :is() grouping (extend-nest.css:8) vs expanded', () => {
   it('collapseNesting:true folds the parent Or-set into the child and groups it under :is()', () => {
     const proj = projectSubject(sidebarSubject);
+
     // Ratified alpha: `:is(.sidebar, .sidebar2, .type1 .sidebar3, .type2.sidebar4) .box`.
-    expect(emitNestedChildHeader(proj, el('.box'), true)).toBe(
-      ':is(.sidebar,.sidebar2,.type1 .sidebar3,.type2.sidebar4) .box'
-    );
+    expect(emitNestedChildHeader(proj, el('.box'), true)).toBe(':is(.sidebar,.sidebar2,.type1 .sidebar3,.type2.sidebar4) .box');
   });
 
   it('collapseNesting:false keeps the child nested (header is the child local only)', () => {
     const proj = projectSubject(sidebarSubject);
-    // Under expanded mode the parent header carries the Or-set; the child block stays nested and its
-    // own header is just `.box`. (extend-selector.css uses this mode: nested blocks preserved.)
+
+    /*
+     * Under expanded mode the parent header carries the Or-set; the child block stays nested and its
+     * own header is just `.box`. (extend-selector.css uses this mode: nested blocks preserved.)
+     */
     expect(emitNestedChildHeader(proj, el('.box'), false)).toBe('.box');
   });
 
@@ -124,8 +132,10 @@ describe('EMIT collapse policy — :is() grouping (extend-nest.css:8) vs expande
 
 describe('EMIT &-crossing hoist-to-root (extend-selector.css:45-46 header/footer)', () => {
   it('a crossing nested extender contributes its FULL composed form and flags hoist', () => {
-    // `.header { .header-nav { ... } }` extended by `.footer { .footer-nav { &:extend(.header .header-nav all) } }`.
-    // The extender crosses the target's `.header` parent boundary → contributes `.footer .footer-nav`, hoisted.
+    /*
+     * `.header { .header-nav { ... } }` extended by `.footer { .footer-nav { &:extend(.header .header-nav all) } }`.
+     * The extender crosses the target's `.header` parent boundary → contributes `.footer .footer-nav`, hoisted.
+     */
     const targetPath = [el('.header'), el('.header-nav')];
     const { selector, crossesParentBoundary } = composeContribution(
       { path: [el('.footer'), el('.footer-nav')], order: 1 },
@@ -141,6 +151,7 @@ describe('EMIT &-crossing hoist-to-root (extend-selector.css:45-46 header/footer
       order: 0,
       contributions: [{ path: [el('.footer'), el('.footer-nav')], order: 1 }]
     });
+
     // Ratified alpha: `.header .header-nav, .footer .footer-nav` (hoisted to root).
     expect(emitSubjectHeader(proj)).toBe('.header .header-nav,.footer .footer-nav');
     expect(proj.hoistToRoot).toBe(true);
@@ -155,18 +166,24 @@ describe('EMIT compose — issue-2586 (extend-selector.css:52-53)', () => {
       order: 0,
       contributions: [{ path: [el('.issue-2586-somepage'), el('.content')], order: 1 }]
     });
+
     // Ratified alpha: `.issue-2586-bordered, .issue-2586-somepage .content`.
     expect(emitSubjectHeader(proj)).toBe('.issue-2586-bordered,.issue-2586-somepage .content');
-    // This is NOT a `&`-crossing (target is root-level, no parent boundary to cross) — it emits at
-    // the target's own placement, not hoisted.
+
+    /*
+     * This is NOT a `&`-crossing (target is root-level, no parent boundary to cross) — it emits at
+     * the target's own placement, not hoisted.
+     */
     expect(proj.hoistToRoot).toBe(false);
   });
 });
 
 describe('EMIT compose — extend-selector.css:1-2 partial-extend :is() grouping into a nested target', () => {
   it('groups a partial-extended compound under :is() folded into its nested child (.bar)', () => {
-    // `.foo .bar` / `.foo .baz` with partial extenders `.ext1 .ext2`, `.ext3`, `.ext4` on `.foo`.
-    // The `.foo` compound becomes `:is(.foo, .ext1 .ext2, .ext3, .ext4)` and folds into `.bar`.
+    /*
+     * `.foo .bar` / `.foo .baz` with partial extenders `.ext1 .ext2`, `.ext3`, `.ext4` on `.foo`.
+     * The `.foo` compound becomes `:is(.foo, .ext1 .ext2, .ext3, .ext4)` and folds into `.bar`.
+     */
     const proj = projectSubject({
       path: [el('.foo')],
       order: 0,
@@ -176,6 +193,7 @@ describe('EMIT compose — extend-selector.css:1-2 partial-extend :is() grouping
         { path: [el('.ext4')], order: 3 }
       ]
     });
+
     // Ratified alpha: `:is(.foo, .ext1 .ext2, .ext3, .ext4) .bar`.
     expect(emitNestedChildHeader(proj, el('.bar'), true)).toBe(':is(.foo,.ext1 .ext2,.ext3,.ext4) .bar');
   });

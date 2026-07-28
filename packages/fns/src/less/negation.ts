@@ -1,31 +1,12 @@
-import { colorBlend } from '../util/colorHelper.js';
-import { Color, defineFunction } from '@jesscss/core';
+import { defineFunction } from '@jesscss/core/value';
+import type { Fn } from '@jesscss/core/value';
+import { colorBlend, requireColor } from './color-helper.js';
 
-export function negationBase(cb: number, cs: number) {
-  return 1 - Math.abs(cb + cs - 1);
-}
+/** per-channel `negation` blend (non-W3C Less extension). */
+export const negationBase = (cb: number, cs: number): number => 1 - Math.abs(cb + cs - 1);
 
-/**
- * Less `negation()` — negation blend of two colors (the inverse of `difference`):
- * `1 - |cb + cs - 1|` per channel.
- * @param color1 backdrop `Color`
- * @param color2 source `Color`
- * @returns the blended `Color`
- */
-const negation = defineFunction(
-  'negation',
-  function(color1: Color, color2: Color) {
-    return colorBlend(negationBase, color1, color2);
-  },
-  {
-    params: [{
-      name: 'color1',
-      type: Color
-    }, {
-      name: 'color2',
-      type: Color
-    }]
-  }
-);
-
-export default negation;
+/** `negation(color1, color2)` — per-channel negation blend. Byte-faithful to `less/negation`. */
+export const negation: Fn = defineFunction('negation', {
+  params: [{ kinds: ['Color'] }, { kinds: ['Color'] }],
+  body: (c1, c2) => colorBlend(negationBase, requireColor(c1), requireColor(c2))
+});

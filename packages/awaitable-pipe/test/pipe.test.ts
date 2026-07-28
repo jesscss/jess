@@ -103,7 +103,9 @@ describe('safePipe', () => {
   });
 
   it('sync throw with onError that throws is swallowed and returns fallback', () => {
-    const onError = vi.fn(() => { throw new Error('handler-fail'); });
+    const onError = vi.fn(() => {
+      throw new Error('handler-fail');
+    });
     const out = safePipe({ onError, fallback: 'X' }, () => 'ok', () => {
       throw new Error('boom');
     });
@@ -169,7 +171,9 @@ describe('safePipe', () => {
     let calls = 0;
     const onError = vi.fn(() => {
       calls += 1;
-      if (calls === 1) throw new Error('onError-fail');
+      if (calls === 1) {
+        throw new Error('onError-fail');
+      }
     });
     const out = safePipe({ onError, fallback: 'Z' }, () => 'x', async () => {
       throw new Error('async-bang');
@@ -213,22 +217,30 @@ describe('safePipe', () => {
 
   it('safePipe handles initial step error with onError (options-first)', () => {
     const onError = vi.fn();
-    const out = safePipe({ onError, fallback: 'F' }, () => { throw new Error('init'); });
+    const out = safePipe({ onError, fallback: 'F' }, () => {
+      throw new Error('init');
+    });
     expect(onError).toHaveBeenCalledTimes(1);
     expect(out).toBe('F');
   });
 
   it('handles step that throws (sync) and returns fallback (options-first)', () => {
     const onError = vi.fn();
-    const init = () => { throw new Error('init-fail'); };
+    const init = () => {
+      throw new Error('init-fail');
+    };
     const out = safePipe({ onError, fallback: 'FB' }, init as any, (x: unknown) => x);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(out).toBe('FB');
   });
 
   it('step throws and onError throws is swallowed; fallback returned (options-first)', () => {
-    const onError = vi.fn(() => { throw new Error('onError-fail'); });
-    const init = () => { throw new Error('init-fail'); };
+    const onError = vi.fn(() => {
+      throw new Error('onError-fail');
+    });
+    const init = () => {
+      throw new Error('init-fail');
+    };
     const out = safePipe({ onError, fallback: 'FB' }, init as any, (x: unknown) => x);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(out).toBe('FB');
@@ -239,4 +251,3 @@ describe('safePipe', () => {
     expect(out).toBe('ab');
   });
 });
-

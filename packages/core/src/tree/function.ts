@@ -50,6 +50,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     this.name = value.name;
     this.params = value.params;
     this.body = value.body;
+
     // Like mixins/functions in source languages: not emitted directly.
     this.removeFlag(F_VISIBLE);
   }
@@ -90,8 +91,10 @@ export class Func extends Node<FuncValue, FuncOptions> {
     return w.getSince(position);
   }
 
-  // Static-by-type invisibility: a function definition is never CSS output. The
-  // no-op render keeps the base render() gate off the common hot path (D.1 §2).
+  /*
+   * Static-by-type invisibility: a function definition is never CSS output. The
+   * no-op render keeps the base render() gate off the common hot path (D.1 §2).
+   */
   override render(context: Context, buffer: RenderBuffer, options?: PrintOptions): string;
   override render(context: Context, options?: PrintOptions): string;
   override render(_context: Context, bufferOrOptions?: RenderBuffer | PrintOptions, _options?: PrintOptions): string {
@@ -131,6 +134,7 @@ export class Func extends Node<FuncValue, FuncOptions> {
     if (!decl) {
       throw new Error(`Function ${this.nameKey ?? '<anonymous>'} must return a value (missing "${returnName}: ...")`);
     }
+
     // Return the declaration's value (already in the correct scope).
     const declVal = decl.value;
     if (!(declVal instanceof Node)) {
