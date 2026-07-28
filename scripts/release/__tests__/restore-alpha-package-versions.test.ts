@@ -17,8 +17,8 @@ function run(command: string, args: string[], cwd: string): string {
   return execFileSync(command, args, { cwd, encoding: 'utf8' });
 }
 
-function writeManifest(root: string, manifest: object): string {
-  const packageDir = path.join(root, 'packages', 'fixture');
+function writeManifest(root: string, manifest: object, packagePath = 'fixture'): string {
+  const packageDir = path.join(root, 'packages', packagePath);
   mkdirSync(packageDir, { recursive: true });
   const packageJson = path.join(packageDir, 'package.json');
   writeFileSync(packageJson, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -89,5 +89,54 @@ describe('preserveRecoveryManifestVersion', () => {
       exports: { ['.']: './lib/index.js' }
     });
     expect(run('git', ['diff', '--', 'packages/fixture/package.json'], root)).toBe('');
+  });
+
+  it('assigns the recovery lockstep version to packages added after the recovery ref', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'jess-alpha-restore-new-'));
+    temporaryRoots.push(root);
+    writeManifest(root, {
+      name: '@fixture/private',
+      version: '2.0.0-alpha.1',
+      private: true
+    }, 'aaa-private');
+    writeManifest(root, { name: '@fixture/package', version: '2.0.0-alpha.10' });
+    run('git', ['init', '--quiet'], root);
+    run('git', ['config', 'user.email', 'test@example.invalid'], root);
+    run('git', ['config', 'user.name', 'Release Test'], root);
+    run('git', ['add', '.'], root);
+    run('git', ['commit', '--quiet', '-m', 'recovery'], root);
+
+    writeManifest(root, {
+      name: '@fixture/package',
+      version: '2.0.0-alpha.5',
+      exports: { ['.']: './lib/index.js' }
+    });
+    writeManifest(root, {
+      name: '@fixture/new',
+      version: '2.0.0-alpha.5',
+      exports: { ['.']: './lib/index.js' }
+    }, 'new');
+    run('git', ['add', '.'], root);
+
+    const script = path.resolve('scripts/release/restore-alpha-package-versions.mjs');
+    const restored = spawnSync(process.execPath, [script, '--from', 'HEAD', '--stage'], {
+      cwd: root,
+      encoding: 'utf8'
+    });
+
+    expect(restored.status).toBe(0);
+    expect(restored.stdout).toMatch(/packages\/new\/package\.json: new in imported source; 2\.0\.0-alpha\.5 -> 2\.0\.0-alpha\.10/u);
+    expect(restored.stdout).toMatch(/Preserved and staged recovery alpha versions in 2 package manifest/u);
+
+    expect(JSON.parse(run('git', ['show', ':packages/fixture/package.json'], root))).toEqual({
+      name: '@fixture/package',
+      version: '2.0.0-alpha.10',
+      exports: { ['.']: './lib/index.js' }
+    });
+    expect(JSON.parse(run('git', ['show', ':packages/new/package.json'], root))).toEqual({
+      name: '@fixture/new',
+      version: '2.0.0-alpha.10',
+      exports: { ['.']: './lib/index.js' }
+    });
   });
 });
