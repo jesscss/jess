@@ -156,7 +156,7 @@ export function createTriviaMapFromParseman(
   src: string,
   index: ParserRootTriviaIndex
 ): TriviaMap {
-  const canonicalByGap = new WeakMap<ParserRootTriviaGap, Trivia>();
+  const canonicalByStart = new Map<number, Map<number, Trivia>>();
   const hasCommentKind = index.labels?.some(isCommentTriviaKind) === true;
   let sortedComments: readonly Trivia[] | undefined;
 
@@ -169,7 +169,12 @@ export function createTriviaMapFromParseman(
     if (end <= start) {
       return undefined;
     }
-    let run = canonicalByGap.get(gap);
+    let byEnd = canonicalByStart.get(start);
+    if (byEnd === undefined) {
+      byEnd = new Map<number, Trivia>();
+      canonicalByStart.set(start, byEnd);
+    }
+    let run = byEnd.get(end);
     if (run === undefined) {
       const labeledHasComment = hasCommentKind && typeof gap.hasKind === 'function'
         ? gapHasCommentKind(gap)
@@ -180,7 +185,7 @@ export function createTriviaMapFromParseman(
         end,
         labeledHasComment
       );
-      canonicalByGap.set(gap, run);
+      byEnd.set(end, run);
     }
     return run;
   };

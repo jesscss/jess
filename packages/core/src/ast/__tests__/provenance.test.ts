@@ -127,6 +127,34 @@ describe('canonical AST source provenance', () => {
     expect(gapsCalls).toBe(1);
   });
 
+  it('dedupes equivalent Parseman gaps by source range', () => {
+    const src = '/* keep */\n.a{}';
+    const beforeGap = { start: 0, end: 11 };
+    const afterGap = { start: 0, end: 11 };
+    const trivia = createTriviaMapFromParseman(src, {
+      entries: {
+        length: 1,
+        start() {
+          return beforeGap.start;
+        },
+        end() {
+          return beforeGap.end;
+        }
+      },
+      gapBefore(offset) {
+        return offset === beforeGap.end ? beforeGap : undefined;
+      },
+      gapAfter(offset) {
+        return offset === afterGap.start ? afterGap : undefined;
+      },
+      gaps() {
+        return [beforeGap];
+      }
+    });
+
+    expect(trivia.lookup(11, 'before')).toBe(trivia.lookup(0, 'after'));
+  });
+
   it('uses Parseman trivia labels to find comments without scanning every gap', () => {
     const src = 'xx/* keep */\n  .a{}';
     const leadingWhitespace = {
