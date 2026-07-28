@@ -292,6 +292,17 @@ const expectedFailureTimeouts = new Map<string, number>([
   ['tests-unit/import/import.less', 15_000]
 ]);
 
+const expectedFailureDiagnosticCodes = new Map<string, string>([
+  ['tests-unit/import/import.less', 'resolve/name-not-found']
+]);
+
+type RenderResult = Awaited<ReturnType<Compiler['renderToResult']>>;
+
+const diagnosticCodesFor = (result: RenderResult): string[] => [
+  ...result.errors.map(diagnostic => diagnostic.code),
+  ...result.warnings.map(diagnostic => diagnostic.code)
+];
+
 // Allow specific fixtures even when they are listed in shared invalidLess.
 const forcedIncludes = new Set<string>([]);
 
@@ -331,7 +342,7 @@ describe("Can render Less files to CSS", () => {
               ? ` (${path.basename(testCase.expectedFile)})`
               : "";
           const expectedFailureReason = expectedFailureFixtures.get(file);
-          const runFixture = async () => {
+          const renderFixture = async () => {
             const expectedCss = readFileSync(testCase.expectedFile, "utf8");
 
             // Merge test case config with base compiler config
@@ -360,16 +371,14 @@ describe("Can render Less files to CSS", () => {
               },
             });
 
-            let result:
-              | Awaited<ReturnType<Compiler["renderToResult"]>>
-              | undefined;
-            try {
-              result = await testCompiler.renderToResult(lessPath, {
-                outputFile: testCase.expectedFile,
-              });
-            } catch (error: any) {
-              throw error;
-            }
+            const result = await testCompiler.renderToResult(lessPath, {
+              outputFile: testCase.expectedFile
+            });
+            return { expectedCss, result };
+          };
+
+          const runFixture = async () => {
+            const { expectedCss, result } = await renderFixture();
             try {
               expect(result.css).toBe(expectedCss);
             } catch (error: any) {
@@ -394,6 +403,18 @@ describe("Can render Less files to CSS", () => {
           }`, async () => {
             if (!expectedFailureReason) {
               await runFixture();
+              return;
+            }
+
+            const expectedDiagnosticCode =
+              expectedFailureDiagnosticCodes.get(file);
+            if (expectedDiagnosticCode !== undefined) {
+              const { result } = await renderFixture();
+              const actualDiagnosticCodes = diagnosticCodesFor(result);
+              expect(
+                actualDiagnosticCodes,
+                `${file} is expected to surface diagnostic ${expectedDiagnosticCode}`
+              ).toContain(expectedDiagnosticCode);
               return;
             }
 

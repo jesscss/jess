@@ -773,10 +773,12 @@ earlier, before a manual publish attempt.
 - 2026-07-28: Repaired the Jess alpha fixture harness so
   `tests-unit/import/import.less` keeps surfacing its settled
   `resolve/name-not-found` expected failure instead of timing out at Vitest's
-  default 5s sentinel during first-use JS plugin/import setup. Verification
-  passed the focused fixture, `pnpm run test:less:test-data:unit` (79 / 79),
-  `pnpm run test:less:test-data:config` (29 / 29), and the full
-  `pnpm run verify:less-alpha` chain.
+  default 5s sentinel during first-use JS plugin/import setup. The harness now
+  asserts the diagnostic code for that fixture, so this expected failure cannot
+  pass as an arbitrary mismatch or swallowed timeout. Verification passed the
+  focused fixture, `pnpm run test:less:test-data:unit` (79 / 79), `pnpm run
+  test:less:test-data:config` (29 / 29), and the full `pnpm run
+  verify:less-alpha` chain.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,

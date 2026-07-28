@@ -63,7 +63,8 @@ The named reason beside every entry remains in
 `import/import` also has a fixture-specific timeout because first-use JS
 plugin/import setup can exceed the default 5s hang sentinel before settling as a
 diagnostic-bearing expected failure. That timeout is not parity evidence; it
-exists so the underlying failure remains visible.
+exists so the underlying failure remains visible, and the harness asserts the
+settled `resolve/name-not-found` diagnostic code.
 `process-imports/google`, `namespacing/namespacing-8`,
 `namespacing/namespacing-functions`, and `namespacing/namespacing-media` are now
 ordinary passes; `functions/functions` is active in the alpha lane and remains
