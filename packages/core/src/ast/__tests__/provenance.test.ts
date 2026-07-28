@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bodySpanOf,
   createTriviaMapFromRanges,
+  createTriviaMapFromRootIndex,
   rule,
   selist,
   sel,
@@ -34,6 +35,40 @@ describe('canonical AST source provenance', () => {
     expect(trivia.lookup(11, 'before')?.src).toBe(src);
     expect(trivia.lookup(11, 'before')?.hasComment).toBe(true);
     expect(Object.keys(doc)).toEqual(keys);
+  });
+
+  it('adapts Parseman root trivia indexes without parser-local raw log decoding', () => {
+    const src = '/* keep */\n.a { color: red; }\n';
+    const gaps = [
+      { start: 0, end: 11 },
+      { start: 27, end: 28 }
+    ];
+    const trivia = createTriviaMapFromRootIndex(src, {
+      entries: {
+        length: gaps.length,
+        start(index) {
+          return gaps[index]?.start ?? 0;
+        },
+        end(index) {
+          return gaps[index]?.end ?? 0;
+        }
+      }
+    });
+
+    const leading = trivia.lookup(11, 'before');
+    expect(leading).toEqual({
+      start: 0,
+      end: 11,
+      src,
+      hasComment: true
+    });
+    expect(trivia.lookup(0, 'after')).toBe(leading);
+    expect(trivia.has(28, 'before')).toBe(true);
+    expect([...trivia.entries('after')].map(([offset, run]) => [offset, run.start, run.end])).toEqual([
+      [0, 0, 11],
+      [27, 27, 28]
+    ]);
+    expect(trivia.commentRuns()).toEqual([leading]);
   });
 
   it('retains a block body span without changing the rule shape', () => {

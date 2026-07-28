@@ -9,6 +9,14 @@ import type { Trivia, TriviaMap } from '../types/index.js';
  */
 export type AstSourceSpan = Readonly<{ start: number; end: number }>;
 export type AstTriviaRange = AstSourceSpan;
+export interface ParserTriviaEntriesView {
+  readonly length: number;
+  start(index: number): number;
+  end(index: number): number;
+}
+export interface ParserRootTriviaIndex {
+  readonly entries: ParserTriviaEntriesView;
+}
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
  *
@@ -106,6 +114,89 @@ export function createTriviaMapFromRanges(
         const runs: Trivia[] = [];
         for (const run of after.values()) {
           if (run.hasComment) {
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
+    }
+  };
+}
+
+/** Adapt Parseman's lazy root trivia index without rebuilding intermediate ranges. */
+export function createTriviaMapFromRootIndex(
+  src: string,
+  index: ParserRootTriviaIndex
+): TriviaMap {
+  const cache = new Map<number, Trivia>();
+  let maps: {
+    readonly before: Map<number, Trivia>;
+    readonly after: Map<number, Trivia>;
+  } | undefined;
+  let sortedComments: readonly Trivia[] | undefined;
+
+  const runAt = (entryIndex: number): Trivia | undefined => {
+    const start = index.entries.start(entryIndex);
+    const end = index.entries.end(entryIndex);
+    if (end <= start) {
+      return undefined;
+    }
+    let run = cache.get(entryIndex);
+    if (run === undefined) {
+      run = makeAstTrivia(src, start, end);
+      cache.set(entryIndex, run);
+    }
+    return run;
+  };
+
+  const getMaps = () => {
+    if (maps !== undefined) {
+      return maps;
+    }
+    const before = new Map<number, Trivia>();
+    const after = new Map<number, Trivia>();
+    for (let entryIndex = 0; entryIndex < index.entries.length; entryIndex++) {
+      const run = runAt(entryIndex);
+      if (run === undefined) {
+        continue;
+      }
+      after.set(run.start, run);
+      before.set(run.end, run);
+    }
+    maps = { before, after };
+    return maps;
+  };
+
+  return {
+    lookup(offset, direction) {
+      if (offset === undefined) {
+        return undefined;
+      }
+      const entries = getMaps();
+      return direction === 'before'
+        ? entries.before.get(offset)
+        : entries.after.get(offset);
+    },
+    *entries(direction) {
+      yield* (direction === 'before' ? getMaps().before : getMaps().after).entries();
+    },
+    has(offset, direction) {
+      if (offset === undefined) {
+        return false;
+      }
+      const entries = getMaps();
+      return direction === 'before'
+        ? entries.before.has(offset)
+        : entries.after.has(offset);
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        const runs: Trivia[] = [];
+        for (let entryIndex = 0; entryIndex < index.entries.length; entryIndex++) {
+          const run = runAt(entryIndex);
+          if (run?.hasComment === true) {
             runs.push(run);
           }
         }

@@ -10,6 +10,7 @@ export * from './ast/at-rule.js';
 export {
   bodySpanOf,
   createTriviaMapFromRanges,
+  createTriviaMapFromRootIndex,
   sourceSpanOf,
   triviaMapOf,
   valueLayoutOf,
@@ -18,6 +19,6 @@ export {
   withTriviaMap,
   withValueLayout
 } from './ast/provenance.js';
-export type { AstSourceSpan, AstTriviaRange, ValueLayout } from './ast/provenance.js';
+export type { AstSourceSpan, AstTriviaRange, ParserRootTriviaIndex, ParserTriviaEntriesView, ValueLayout } from './ast/provenance.js';
 export type { GuardNode } from './ast/guard.js';
 export type { CallArg } from './ast/mixin-dispatch.js';

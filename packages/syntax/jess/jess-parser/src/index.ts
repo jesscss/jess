@@ -4,12 +4,11 @@ export type {
   JessCstChild, JessCstError, JessCstLeaf, JessCstNode, JessCstParseResult, JessCstType
 } from './cst.js';
 
-import { run, triviaEntries } from 'parseman';
+import { run } from 'parseman';
 import {
-  createTriviaMapFromRanges,
+  createTriviaMapFromRootIndex,
   withSourceSpan,
   withTriviaMap,
-  type AstTriviaRange,
   type Stylesheet
 } from '@jesscss/core/ast';
 import { jessAstGrammar } from './grammar.js';
@@ -38,17 +37,6 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && Array.isArray(value.children);
 }
 
-function triviaRanges(triviaLog: readonly number[]): Iterable<AstTriviaRange> {
-  const entries = triviaEntries(triviaLog);
-  return {
-    *[Symbol.iterator]() {
-      for (let i = 0; i < entries.length; i++) {
-        yield { start: entries.start(i), end: entries.end(i) };
-      }
-    }
-  };
-}
-
 /** Parse Jess directly into the canonical AST v2 document. */
 export function parse(input: string): Stylesheet {
   const entry = jessAstGrammar.Stylesheet;
@@ -73,9 +61,6 @@ export function parse(input: string): Stylesheet {
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromRanges(
-      input,
-      triviaRanges(result.triviaLog)
-    )
+    createTriviaMapFromRootIndex(input, result.triviaMap)
   );
 }

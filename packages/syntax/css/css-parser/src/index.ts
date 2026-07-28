@@ -3,12 +3,11 @@ export {
   cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDoc,
   type CssCstChild, type CssCstError, type CssCstLeaf, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type CssCstType, type ParseDoc
 } from './cst-css.js';
-import { run, triviaEntries } from 'parseman';
+import { run } from 'parseman';
 import {
-  createTriviaMapFromRanges,
+  createTriviaMapFromRootIndex,
   withSourceSpan,
   withTriviaMap,
-  type AstTriviaRange,
   type Stylesheet
 } from '@jesscss/core/ast';
 import { cssAstGrammar } from './grammar.js';
@@ -37,17 +36,6 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && Array.isArray(value.children);
 }
 
-function triviaRanges(triviaLog: readonly number[]): Iterable<AstTriviaRange> {
-  const entries = triviaEntries(triviaLog);
-  return {
-    *[Symbol.iterator]() {
-      for (let i = 0; i < entries.length; i++) {
-        yield { start: entries.start(i), end: entries.end(i) };
-      }
-    }
-  };
-}
-
 /** Parse CSS directly into the canonical AST v2 document. */
 export function parse(input: string): Stylesheet {
   const entry = cssAstGrammar.Stylesheet;
@@ -72,9 +60,6 @@ export function parse(input: string): Stylesheet {
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromRanges(
-      input,
-      triviaRanges(result.triviaLog)
-    )
+    createTriviaMapFromRootIndex(input, result.triviaMap)
   );
 }
