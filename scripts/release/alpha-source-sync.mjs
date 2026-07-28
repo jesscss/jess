@@ -109,7 +109,7 @@ function commitDistance(rootDir, ancestor, descendant) {
 }
 
 function isWorkspaceManifest(file) {
-  return /^packages\/[^/]+\/package\.json$/u.test(file);
+  return /^packages\/(?:[^/]+\/)+package\.json$/u.test(file);
 }
 
 function showJson(rootDir, ref, file) {

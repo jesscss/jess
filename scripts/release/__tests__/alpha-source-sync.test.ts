@@ -46,6 +46,9 @@ function createAlphaSandbox() {
   writeJson(path.join(source, 'packages/fixture/package.json'), {
     name: '@fixture/package', version: '2.0.0-alpha.5', exports: { ['.']: './lib/index.js' }
   });
+  writeJson(path.join(source, 'packages/syntax/less/less-parser/package.json'), {
+    name: '@fixture/less-parser', version: '2.0.0-alpha.5', exports: { ['.']: './lib/index.js' }
+  });
   mkdirSync(path.join(source, 'src'), { recursive: true });
   mkdirSync(path.join(source, 'scripts/release'), { recursive: true });
   writeFileSync(path.join(source, 'src/engine.mjs'), 'export const source = true;\n');
@@ -94,6 +97,18 @@ describe('alpha source-sync release guard', () => {
     const result = runResult(process.execPath, [verifyScript], alpha);
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/\(1 commits ahead\)/u);
+  });
+
+  it('accepts version-only differences in recursive workspace package manifests', () => {
+    const { alpha } = createAlphaSandbox();
+    writeJson(path.join(alpha, 'packages/syntax/less/less-parser/package.json'), {
+      name: '@fixture/less-parser', version: '2.0.0-alpha.9', exports: { ['.']: './lib/index.js' }
+    });
+    commitAll(alpha, 'alpha nested package version');
+
+    const result = runResult(process.execPath, [verifyScript], alpha);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/Alpha source projection verified/u);
   });
 
   it('rejects a pushed-dev advance beyond the bounded release drift', () => {
