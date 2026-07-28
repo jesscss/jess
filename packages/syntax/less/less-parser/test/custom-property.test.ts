@@ -87,7 +87,7 @@ describe('Less custom properties', () => {
   });
 
   it('keeps custom-property block comments as trivia and renders them inline', () => {
-    const source = '@n: blue; .x { --a: red/* c */blue; --b: f(a/* inner */b); --c: [a/* square */b]; --d: { x: 1/* curly */ }; --e: red/* var */@{n}; }';
+    const source = '@n: blue; .x { --a: red/* c */blue; --b: f(a/* inner */b); --c: [a/* square */b]; --d: { x: 1/* curly */ }; --e: red/* var */@{n}; --f: "@{literal}"/* q */@{n}; }';
     const document = parse(source);
     const comments = triviaMapOf(document)
       ?.commentRuns()
@@ -101,11 +101,12 @@ describe('Less custom properties', () => {
           { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'f(ab)' } },
           { type: 'Declaration', name: '--c', value: { type: 'Any', src: '[ab]' } },
           { type: 'Declaration', name: '--d', value: { type: 'Any', src: '{ x: 1 }' } },
-          { type: 'Declaration', name: '--e', value: { type: 'Interpolation' } }
+          { type: 'Declaration', name: '--e', value: { type: 'Interpolation' } },
+          { type: 'Declaration', name: '--f', value: { type: 'Interpolation' } }
         ]
       }]
     });
-    expect(comments).toEqual(expect.arrayContaining(['/* c */', '/* inner */', '/* square */', '/* curly */', '/* var */']));
+    expect(comments).toEqual(expect.arrayContaining(['/* c */', '/* inner */', '/* square */', '/* curly */', '/* var */', '/* q */']));
     expect(serialize(document).css).toBe(
       '.x {\n'
       + '  --a: red/* c */blue;\n'
@@ -113,6 +114,7 @@ describe('Less custom properties', () => {
       + '  --c: [a/* square */b];\n'
       + '  --d: { x: 1/* curly */ };\n'
       + '  --e: red/* var */blue;\n'
+      + '  --f: "@{literal}"/* q */blue;\n'
       + '}\n'
     );
   });
