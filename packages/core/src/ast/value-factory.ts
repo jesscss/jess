@@ -7,7 +7,7 @@
  * HARD MODULE BOUNDARY: imports only the value domain + the free serializer.
  */
 import type {
-  Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueGroup
+  Anonymous, Block, Bool, Collection, CollectionEntry, Color, Dimension, Keyword, Quoted, List, ListSeparator, ValueGroup
 } from './value-eval.js';
 import { colorRgb, colorSourceRgb, rgbToHsl, serializeColor } from './color.js';
 import { serializeDimension, serializeQuoted, serializeValue } from './serialize-value.js';
@@ -134,6 +134,8 @@ export function makeQuoted(value: string, quote: string, escaped: boolean): Quot
 }
 
 export const makeKeyword = (text: string): Keyword => ({ type: 'Keyword', text, bytes: text });
+
+export const makeAnonymous = (bytes: string): Anonymous => ({ type: 'Anonymous', bytes });
 
 /** A boolean value result (`true`/`false` — the shape guards and `is*` predicates emit). */
 export const makeBool = (value: boolean): Bool => ({ type: 'Bool', value, bytes: value ? 'true' : 'false' });

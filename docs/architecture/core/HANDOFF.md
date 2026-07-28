@@ -1616,6 +1616,27 @@ involved.
       "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
       "outputBytes": 122534
     }
+  },
+  {
+    "id": "ast-value-guard-equality-modes",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "less-unitless-dimension",
+      "sass-quoted-keyword",
+      "exact-structural-distinction"
+    ],
+    "why": "This slice adds an explicit Anonymous value kind for Less e() raw-byte results and extends the existing Less equality branch so raw anonymous bytes participate in the same emitted-byte comparison path as escaped string bytes. It is semantic value-domain correctness, not an optimization or cost-neutrality claim.",
+    "dangerTokensJustification": "The flagged diagnostic object spreads are existing error-construction shape inside root call rejection, not new normal successful render allocation. The equality branch adds one scalar type check to an already mode-gated comparison path and introduces no collection, traversal, parser replay, or node materialization loop.",
+    "behaviorEvidence": "Focused e() and Less public error tests passed, including root e() output and plugin scalar root-call rejection without eval/async-in-sync-position.",
+    "buildEvidence": "pnpm --filter @jesscss/core build, pnpm --filter @jesscss/fns build, and pnpm run verify:less-alpha passed after the Anonymous value-domain change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
   }
 ]
 ```

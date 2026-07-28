@@ -38,19 +38,22 @@ const acceptedDivergences = new Map<string, string>([
   // eval/guarded-selector-list from the public AST serializer.
   // root-func-undefined-1 GRADUATED — root-level value/void function statements now
   // throw eval/root-call-without-root from emitCallStatement.
-  // These five DO error again, so they are no longer accepted divergences — but
-  // for a DIFFERENT reason than Less has. Less rejects them because a root-level
-  // call returns a non-root node; Jess now rejects them because the `@plugin`
-  // value is awaited in a position that cannot suspend (the blocking plugin
-  // channel that used to hide that is gone). The corpus contract — "Jess must
-  // error where Less errors" — is met either way, and this entry documents that
-  // closing the remaining async walls will make them stop erroring until
-  // root-call-without-root itself is closed.
+  // The plugin tree-node scalar fixtures also throw eval/root-call-without-root:
+  // a top-level function statement may print anonymous bytes, but typed value
+  // results are not root stylesheet output.
   // ampersand-merge-template-invalid GRADUATED — its parent `@{list-quoted}` is a
   // comma-list value in selector position, so it now throws selector/comma-list-interpolation
   // (interpolated.ts). `.foo-&` itself is a plain compound; the old merge-template throw
   // (assertNotCommaMergeTemplate) was removed with the merge surface.
   // invalid-color-with-comment GRADUATED — colorHex now only matches 3/4/6/8-digit hex.
+]);
+
+const rootCallFunctionFixtures = new Set([
+  'tests-error/eval/functions-1.less',
+  'tests-error/eval/functions-5-color.less',
+  'tests-error/eval/functions-7-dimension.less',
+  'tests-error/eval/functions-12-quoted.less',
+  'tests-error/eval/functions-15-value.less'
 ]);
 
 function makeCompiler() {
@@ -101,6 +104,12 @@ describe('Less error corpus (Jess must error where Less errors)', () => {
         expect(errors, `${file} should surface a structured eval error`).toEqual(expect.arrayContaining([
           expect.objectContaining({ phase: 'eval', code: expect.any(String) })
         ]));
+      }
+      if (rootCallFunctionFixtures.has(file)) {
+        expect(errors, `${file} should reject value results in root statement position`).toEqual(expect.arrayContaining([
+          expect.objectContaining({ phase: 'eval', code: 'eval/root-call-without-root' })
+        ]));
+        expect(errors.some(error => error.code === 'eval/async-in-sync-position'), `${file} must not leak the async render lane`).toBe(false);
       }
       if (divergence) {
         expect(errored, `${file} now errors — remove from acceptedDivergences`).toBe(false);

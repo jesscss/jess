@@ -6986,7 +6986,14 @@ function emitDocumentStatements(
       // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
       case 'FunctionCall':
         emitBeforeDocumentStatement(child);
-        emitCallStatement(child, frame, e);
+        {
+          const emitted = emitCallStatement(child, frame, e);
+          if (isThenable(emitted)) {
+            return emitted.then(() => {
+              markAfterDocumentStatement(child);
+            });
+          }
+        }
         markAfterDocumentStatement(child);
         break;
     }
@@ -10331,14 +10338,66 @@ function normalizeMediaFeatures(prelude: string): string {
   return prelude.replace(/\(\s*([-\w]+)\s*:\s*/gu, '($1: ');
 }
 
+function canEmitRootCallValue(value: Value): boolean {
+  return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Anonymous');
+}
+
 /**
  * A bare value-position call in statement position (e.g. `e('…');`): Less
  * evaluates it and prints the result bytes as a standalone line (an `Anonymous`
  * at document scope — no trailing `;`), so an `e(...)` unquote emits its inner
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
-function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): void {
+function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
   const start = e.off;
+  const emitBytes = (bytes: string): void => {
+    const isRoot = e.depth === 0;
+    const isAllowedVoid = node.name.toLowerCase() === 'if';
+    if (isRoot && bytes.length === 0 && !isAllowedVoid) {
+      throw ERR.rootCallWithoutRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { name: node.name }
+      });
+    }
+    if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
+      throw ERR.rootCallWithoutRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { name: node.name }
+      });
+    }
+    if (bytes.length === 0) {
+      return;
+    }
+    if (e.depth > 0) {
+      put(e, INDENT.repeat(e.depth));
+    }
+    put(e, bytes);
+    put(e, '\n');
+    if (e.positions) {
+      e.positions.push({ node, type: node.type, start, end: e.off });
+    }
+  };
+  const emitValueResult = (value: Value): void => {
+    if (e.depth === 0 && !canEmitRootCallValue(value)) {
+      throw ERR.rootCallWithoutRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { name: node.name }
+      });
+    }
+    if (!isLiteral(value)) {
+      validateValueGroupUnits(value, e.modes, node, e);
+    }
+    emitBytes(emitValue(value));
+  };
+  const evalAndEmit = (): MaybePromise<void> =>
+    precomputed === undefined
+      ? e.depth === 0
+        ? mapMaybe(evalValue(node, frame, e), emitValueResult)
+        : mapMaybe(evalBytes(node, frame, e), emitBytes)
+      : emitBytes(precomputed);
 
   /*
    * A typed color is a value, not a statement surface.  Keep the normal
@@ -10348,46 +10407,14 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
    */
   if (precomputed === undefined && e.ev && DEFERRED_COLOR_CALLS.has(node.name) && hasCssColorCallShape(node)) {
     const value = evalTyped(node, frame, e);
-    if (isThenable(value)) {
-      observeRejectedThenable(value);
-      throw ERR.asyncInSyncPosition({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { where: 'statement-position color validation' }
-      });
-    }
-    if (!isValueGroupArray(value) && value.type === 'Color') {
-      throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
-    }
-  }
-  const bytes = precomputed ?? evalBytesSync(node, frame, e);
-  const isRoot = e.depth === 0;
-  const isAllowedVoid = node.name.toLowerCase() === 'if';
-  if (isRoot && bytes.length === 0 && !isAllowedVoid) {
-    throw ERR.rootCallWithoutRoot({
-      node,
-      ...callSiteLocation(node, e),
-      meta: { name: node.name }
+    return mapMaybe(value, (resolved) => {
+      if (!isValueGroupArray(resolved) && resolved.type === 'Color') {
+        throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
+      }
+      return evalAndEmit();
     });
   }
-  if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
-    throw ERR.rootCallWithoutRoot({
-      node,
-      ...callSiteLocation(node, e),
-      meta: { name: node.name }
-    });
-  }
-  if (bytes.length === 0) {
-    return;
-  }
-  if (e.depth > 0) {
-    put(e, INDENT.repeat(e.depth));
-  }
-  put(e, bytes);
-  put(e, '\n');
-  if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
-  }
+  return evalAndEmit();
 }
 
 /**
@@ -11767,7 +11794,15 @@ function emitNestedBody(
         case 'FunctionCall':
           flushBuf();
           emitBeforeRootStatement(node);
-          emitCallStatement(node, frame, e);
+          {
+            const emitted = emitCallStatement(node, frame, e);
+            if (isThenable(emitted)) {
+              return emitted.then(() => {
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
+            }
+          }
           markAfterRootStatement(node);
           break;
         case 'MixinDef':

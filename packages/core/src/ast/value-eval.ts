@@ -4,8 +4,9 @@
  * Two things live here, both boundary-clean (imports only pure types):
  *
  *  1. The runtime VALUE DOMAIN (`ValueObj`) — the typed *results* an evaluation
- *     produces and operates on (`Dimension`/`Color`/`Quoted`/`Keyword`/`List`/
- *     `Bool`/`Nil`), distinct from the value AST (`Operation`/`FunctionCall`/…)
+ *     produces and operates on (`Dimension`/`Color`/`Quoted`/`Keyword`/
+ *     `Anonymous`/`List`/`Bool`/`Nil`), distinct from the value AST
+ *     (`Operation`/`FunctionCall`/…)
  *     that describes HOW to compute. The value `Dimension` is module-qualified
  *     against the AST `Dimension` node in `nodes.ts` — the split is perf-justified
  *     (a static `3px` is a bare literal string, never a value `Dimension`).
@@ -125,6 +126,12 @@ export interface Keyword {
   readonly bytes: string;
 }
 
+/** Raw unquoted bytes produced by explicit unquote APIs such as Less `e()`. */
+export interface Anonymous {
+  readonly type: 'Anonymous';
+  readonly bytes: string;
+}
+
 /**
  * The separator fact carried by a materialized list value.
  *
@@ -223,7 +230,7 @@ export interface Collection {
   readonly bytes: string;
 }
 
-export type ValueObj = Dimension | Color | Quoted | Keyword | List | Block | Bool | Nil | Collection;
+export type ValueObj = Dimension | Color | Quoted | Keyword | Anonymous | List | Block | Bool | Nil | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default

@@ -58,6 +58,7 @@ export function serializeValue(v: ValueGroup): string {
     case 'Color': return serializeColor(v);
     case 'Quoted': return serializeQuoted(v);
     case 'Keyword': return v.text;
+    case 'Anonymous': return v.bytes;
     case 'Bool': return v.value ? 'true' : 'false';
     case 'Nil': return v.bytes;
     case 'List': return v.value.map(serializeValue).join(sepGlue(v.sep));
