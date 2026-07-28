@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@jesscss/compiler": "workspace:*",
-    "@jesscss/compiler-defaults": "workspace:*",
+    "@jesscss/compiler-preset": "workspace:*",
     "@jesscss/core": "workspace:*",
     "@jesscss/lint": "workspace:*",
     "@jesscss/patch-css": "workspace:*",

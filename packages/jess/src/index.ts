@@ -1,9 +1,9 @@
 import {
   DefaultCompiler,
   type ConfigOptions
-} from '@jesscss/compiler-defaults';
+} from '@jesscss/compiler-preset';
 
-export type { ConfigOptions } from '@jesscss/compiler-defaults';
+export type { ConfigOptions } from '@jesscss/compiler-preset';
 
 /**
  * Batteries-included Jess compiler. The reusable render engine lives in

@@ -156,8 +156,8 @@ Before semantic lint or CLI wiring, extract the default Jess compiler stack belo
 both `jess` and `@jesscss/lint`. The preferred shape is a small reusable package:
 
 ```text
-packages/compiler-defaults/
-  package.json              # name: @jesscss/compiler-defaults
+packages/compiler-preset/
+  package.json              # name: @jesscss/compiler-preset
   src/index.ts
 ```
 
@@ -189,7 +189,7 @@ Allowed dependencies:
 Then:
 
 - `jess` becomes a thin `Compiler extends BaseCompiler` wrapper that consumes
-  `@jesscss/compiler-defaults`;
+  `@jesscss/compiler-preset`;
 - `@jesscss/lint` consumes the same default stack for semantic analysis;
 - neither package imports the other;
 - the plugin stack is implemented once.
@@ -293,7 +293,7 @@ Package name: `@jesscss/lint`.
 
 Dependencies after the prerequisites:
 
-- depends on `@jesscss/compiler`, `@jesscss/compiler-defaults`,
+- depends on `@jesscss/compiler`, `@jesscss/compiler-preset`,
   `@jesscss/core`, `@jesscss/diagnostics-core` or `@jesscss/language-core`, and
   `styles-config` as needed;
 - may depend on `@jesscss/style-resolver` only for path-resolution helpers that
@@ -721,7 +721,7 @@ pnpm --filter @jesscss/plugin-less build
 pnpm --filter @jesscss/plugin-scss build
 pnpm --filter @jesscss/plugin-node-modules build
 pnpm --filter @jesscss/compiler build
-pnpm --filter @jesscss/compiler-defaults build
+pnpm --filter @jesscss/compiler-preset build
 pnpm --filter @jesscss/diagnostics-core build
 pnpm --filter @jesscss/lint build
 pnpm --filter @jesscss/lint test

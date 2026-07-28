@@ -176,7 +176,7 @@ importers:
         specifier: ^4.17.8
         version: 4.17.12
 
-  packages/compiler-defaults:
+  packages/compiler-preset:
     dependencies:
       '@jesscss/compiler':
         specifier: workspace:*
@@ -523,9 +523,9 @@ importers:
       '@jesscss/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@jesscss/compiler-defaults':
+      '@jesscss/compiler-preset':
         specifier: workspace:*
-        version: link:../compiler-defaults
+        version: link:../compiler-preset
       '@jesscss/core':
         specifier: workspace:*
         version: link:../core

@@ -4,8 +4,8 @@
 
 ```ts
 
-import { ConfigOptions } from '@jesscss/compiler-defaults';
-import { DefaultCompiler } from '@jesscss/compiler-defaults';
+import { ConfigOptions } from '@jesscss/compiler-preset';
+import { DefaultCompiler } from '@jesscss/compiler-preset';
 
 // @public
 export class Compiler extends DefaultCompiler {
