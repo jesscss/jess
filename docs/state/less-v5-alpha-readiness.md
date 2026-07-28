@@ -243,10 +243,11 @@ the publish-script files, so treat the remote-tag comment as fixed by the
 `fix(release): abort on remote tag mismatch` commit but not yet bot-resolved.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: `pnpm run test:publish-dry-run` passes, and
-`pnpm run verify:alpha:packed-consumer` passes. The packed consumer installs the
-direct Jess runtime closure and does not install the batteries-included `jess`
-package. `packages/less/package.json` uses published `@jesscss/*` alpha
+`2.0.0-alpha.10`: on PR head `0cf35355`, `pnpm run test:alpha` passes the
+Less package typecheck, build, `lessc` smoke tests, alpha support contract,
+publish dry-run tests, and packed-consumer proof. The packed consumer installs
+the direct Jess runtime closure and does not install the batteries-included
+`jess` package. `packages/less/package.json` uses published `@jesscss/*` alpha
 dependencies, has no direct `jess` dependency, and keeps `@jesscss/plugin-js`
 as an optional peer only.
 
