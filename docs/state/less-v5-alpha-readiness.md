@@ -137,10 +137,12 @@ with **94 / 94**. Recursive variable/property fixtures are no longer skipped:
 unproductive cycles now throw `eval/recursive-reference`, while same-name
 references that can make progress to another in-scope definition remain legal.
 The duplicate unhandled `plugin/function-threw` rejection channel remains
-closed. Error quality is still the next alpha-hardening lane: improve diagnostic
-locations, expected-token messages, and eval/runtime classification without
-weakening syntax conformance or adding compatibility catches around real parser
-failures.
+closed. Unit arithmetic errors now report `eval/invalid-unit-arithmetic`
+instead of leaking as `internal/unknown`, with public-route tests covering
+mixed-unit add/divide/multiply fixtures at the operator span. Error quality is
+still the next alpha-hardening lane: improve diagnostic locations,
+expected-token messages, and eval/runtime classification without weakening
+syntax conformance or adding compatibility catches around real parser failures.
 
 Current error-blocker audit (2026-07-27): the named Less error fixtures that
 recently mattered are not current acceptances. `color-func-invalid-color.less`
@@ -157,7 +159,8 @@ are still too raw. Next source targets are
 `packages/syntax/less/less-parser/src/parse-error.ts`,
 `packages/syntax/less/less-parser/src/index.ts`, and
 `packages/core/src/error/diagnostics.ts` for better Parseman failure labeling,
-plus eval helpers that still fall through `internal/unknown`.
+plus remaining eval helpers that still fall through `internal/unknown` outside
+the now-structured unit arithmetic path.
 
 Public parser diagnostics now preserve parser-provided end ranges on diagnostic
 records. `packages/jess/test/less/parser-error-public-semantics.test.ts`
