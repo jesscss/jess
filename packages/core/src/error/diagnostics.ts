@@ -127,6 +127,12 @@ type ParserExpectedSummary = {
   readonly fix: string;
 };
 
+type ParserSourceSummary = ParserExpectedSummary & {
+  readonly offset: number;
+};
+
+const SINGLE_QUOTE = '\u0027';
+
 function hasExpected(expected: ReadonlySet<string>, value: string): boolean {
   return expected.has(value);
 }
@@ -215,6 +221,136 @@ function expectedSyntaxSummary(
   );
 }
 
+function matchingCloser(opener: string): string | undefined {
+  switch (opener) {
+    case '(':
+      return ')';
+    case '[':
+      return ']';
+    case '{':
+      return '}';
+    default:
+      return undefined;
+  }
+}
+
+function isOpeningDelimiter(value: string): boolean {
+  return value === '(' || value === '[' || value === '{';
+}
+
+function isClosingDelimiter(value: string): boolean {
+  return value === ')' || value === ']' || value === '}';
+}
+
+function delimiterConflictSummary(
+  dialect: string,
+  source: string
+): ParserSourceSummary | undefined {
+  const stack: string[] = [];
+  let quote: string | undefined;
+  let inBlockComment = false;
+  let inLineComment = false;
+
+  for (let i = 0; i < source.length; i++) {
+    const current = source[i]!;
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      if (current === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (current === '*' && next === '/') {
+        inBlockComment = false;
+        i++;
+      }
+      continue;
+    }
+
+    if (quote !== undefined) {
+      if (current === '\\') {
+        i++;
+        continue;
+      }
+      if (current === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+
+    if (current === '/' && next === '/') {
+      inLineComment = true;
+      i++;
+      continue;
+    }
+    if (current === '/' && next === '*') {
+      inBlockComment = true;
+      i++;
+      continue;
+    }
+    if (current === '"' || current === SINGLE_QUOTE) {
+      quote = current;
+      continue;
+    }
+    if (isOpeningDelimiter(current)) {
+      const closer = matchingCloser(current);
+      if (closer === undefined) {
+        continue;
+      }
+      const top = stack[stack.length - 1];
+      const insideBlock = stack.includes('}');
+      if (
+        top !== undefined
+        && top !== '}'
+        && current === '{'
+        && !insideBlock
+      ) {
+        const summary = expectedClosingDelimiterSummary(dialect, [`"${top}"`]);
+        return summary === undefined ? undefined : { ...summary, offset: i };
+      }
+      stack.push(closer);
+      continue;
+    }
+    if (isClosingDelimiter(current)) {
+      const top = stack[stack.length - 1];
+      if (top === undefined) {
+        continue;
+      }
+      if (top !== current) {
+        const summary = expectedClosingDelimiterSummary(dialect, [`"${top}"`]);
+        return summary === undefined ? undefined : { ...summary, offset: i };
+      }
+      stack.pop();
+    }
+  }
+
+  const top = stack[stack.length - 1];
+  if (top === undefined) {
+    return undefined;
+  }
+  const summary = expectedClosingDelimiterSummary(dialect, [`"${top}"`]);
+  return summary === undefined ? undefined : { ...summary, offset: source.length };
+}
+
+function sourceSyntaxSummary(
+  dialect: string,
+  source: string,
+  failure: ParserFailure | undefined
+): ParserSourceSummary | undefined {
+  if (
+    failure === undefined
+    || (failure.code !== undefined && failure.code !== 'parse/syntax-error')
+    || failure.offset !== 0
+    || (failure.expected !== undefined && failure.expected.length > 0)
+  ) {
+    return undefined;
+  }
+  return delimiterConflictSummary(dialect, source);
+}
+
 /**
  * Convert a direct-parser failure into the compiler's source-backed diagnostic
  * contract. Parser packages expose recognition facts only; plugins call this
@@ -228,7 +364,11 @@ export function parserDiagnostic({
   source
 }: ParserDiagnosticOptions): ErrorDiagnostic {
   const failure = parserFailureFrom(error);
-  const offset = Math.max(0, Math.min(source.length, failure?.offset ?? 0));
+  const sourceSummary = sourceSyntaxSummary(dialect, source, failure);
+  const offset = Math.max(
+    0,
+    Math.min(source.length, sourceSummary?.offset ?? failure?.offset ?? 0)
+  );
   const endOffset =
     failure?.endOffset === undefined
       ? undefined
@@ -243,18 +383,21 @@ export function parserDiagnostic({
     failure?.code === undefined || failure.code === 'parse/syntax-error'
       ? expectedSyntaxSummary(dialect, expected)
       : undefined;
+  const syntaxSummary = expectedSummary ?? sourceSummary;
   return {
-    code: expectedSummary?.code ?? failure?.code ?? 'parse/syntax-error',
+    code: syntaxSummary?.code ?? failure?.code ?? 'parse/syntax-error',
     phase: 'parse',
-    message: expectedSummary?.message ?? message,
+    message: syntaxSummary?.message ?? message,
     reason:
-      failure?.reason
+      sourceSummary?.reason
+      ?? failure?.reason
       ?? expectedSummary?.reason
       ?? (expected && expected.length > 0
         ? `The parser expected ${expected.join(', ')}.`
         : 'The parser could not continue at this source location.'),
     fix:
-      failure?.fix
+      sourceSummary?.fix
+      ?? failure?.fix
       ?? expectedSummary?.fix
       ?? `Check the ${dialect} source against the supported grammar.`,
     file: { name: filePath, path: filePath, fullPath: filePath, source },
