@@ -7,9 +7,16 @@ import { describe, expect, it } from 'vitest';
 
 const bin = path.resolve(fileURLToPath(new URL('../bin/cli.mjs', import.meta.url)));
 
+function cliEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.NODE_OPTIONS;
+  delete env.VSCODE_INSPECTOR_OPTIONS;
+  return env;
+}
+
 function run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    execFile(process.execPath, [bin, ...args], (error, stdout, stderr) => {
+    execFile(process.execPath, [bin, ...args], { env: cliEnv() }, (error, stdout, stderr) => {
       resolve({
         code: error && typeof error.code === 'number' ? error.code : 0,
         stdout,
