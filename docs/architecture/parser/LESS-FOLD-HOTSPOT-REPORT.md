@@ -93,7 +93,7 @@ comments should not become semantic value text.
 Priority Less cleanup queue:
 
 1. **Custom-property comment parts are true semantic debt.**
-   `DirectLessCustomInnerPart` / `DirectLessCustomPart` admit `blockComment` as
+   `CustomInnerPart` / `CustomPart` admit `blockComment` as
    `CustomValuePart` and reduce it into custom-value text. Custom properties may
    need permissive token structure, but comments still belong to trivia.
 2. **Declaration-head comment facts are a render/trivia integration issue.**

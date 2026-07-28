@@ -125,16 +125,16 @@ type LessRules = {
   VariableValue: Combinator<ValueSlot>;
   ImportantValue: Combinator<Important>;
   ValueListWithPriority: Combinator<ValueSlot>;
-  DirectLessCustomPropertyName: Combinator<string | Interpolation>;
+  CustomPropertyName: Combinator<string | Interpolation>;
   CustomAtKeywordText: Combinator<string>;
-  DirectLessCustomPart: Combinator<CustomValuePart>;
-  DirectLessCustomInnerPart: Combinator<CustomValuePart>;
-  DirectLessCustomParen: Combinator<readonly CustomValuePart[]>;
-  DirectLessCustomSquare: Combinator<readonly CustomValuePart[]>;
-  DirectLessCustomCurly: Combinator<readonly CustomValuePart[]>;
-  DirectLessCustomValue: Combinator<ValueNode>;
+  CustomPart: Combinator<CustomValuePart>;
+  CustomInnerPart: Combinator<CustomValuePart>;
+  CustomParen: Combinator<readonly CustomValuePart[]>;
+  CustomSquare: Combinator<readonly CustomValuePart[]>;
+  CustomCurly: Combinator<readonly CustomValuePart[]>;
+  CustomValue: Combinator<ValueNode>;
   CssCustomPropertyValue: Combinator<Keyword>;
-  DirectLessCustomDeclaration: Combinator<Declaration>;
+  CustomDeclaration: Combinator<Declaration>;
   DirectLessPunctuationMapDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
   DirectLessMixinParam: Combinator<Param>;
@@ -3193,8 +3193,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Gating note: the static and interpolated `--*` name arms share `-`. Do not
   // left-factor this until the custom-value comment/trivia slice can remove
   // grammar-owned comment text from the same family and bless the CST movement.
-  const DirectLessCustomPropertyName = node<string | Interpolation>(
-    'DirectLessCustomPropertyName',
+  const CustomPropertyName = node<string | Interpolation>(
+    'CustomPropertyName',
     choice(
       noTrivia(sequence(
         literal('--'),
@@ -3211,27 +3211,27 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return interpolation(interpolationPartsFrom(children, false));
     }
   );
-  const DirectLessCustomParen = node<readonly CustomValuePart[]>(
-    'DirectLessCustomParen',
+  const CustomParen = node<readonly CustomValuePart[]>(
+    'CustomParen',
     parser(
       { trivia: customValueCommentTrivia },
-      sequence(literal('('), many(g.DirectLessCustomInnerPart), literal(')'))
+      sequence(literal('('), many(g.CustomInnerPart), literal(')'))
     ),
     children => customPartsFromChildren(children)
   );
-  const DirectLessCustomSquare = node<readonly CustomValuePart[]>(
-    'DirectLessCustomSquare',
+  const CustomSquare = node<readonly CustomValuePart[]>(
+    'CustomSquare',
     parser(
       { trivia: customValueCommentTrivia },
-      sequence(literal('['), many(g.DirectLessCustomInnerPart), literal(']'))
+      sequence(literal('['), many(g.CustomInnerPart), literal(']'))
     ),
     children => customPartsFromChildren(children)
   );
-  const DirectLessCustomCurly = node<readonly CustomValuePart[]>(
-    'DirectLessCustomCurly',
+  const CustomCurly = node<readonly CustomValuePart[]>(
+    'CustomCurly',
     parser(
       { trivia: customValueCommentTrivia },
-      sequence(literal('{'), many(g.DirectLessCustomInnerPart), literal('}'))
+      sequence(literal('{'), many(g.CustomInnerPart), literal('}'))
     ),
     children => customPartsFromChildren(children)
   );
@@ -3240,33 +3240,33 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     token(customValueAtKeyword),
     children => requireToken(children[0]).value
   );
-  const DirectLessCustomInnerPart: Combinator<CustomValuePart> = choice(
+  const CustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     g.LessSyntaxCustomInnerContent,
     g.LessSyntaxCustomSingleQuoted,
     g.LessSyntaxCustomDoubleQuoted,
-    g.DirectLessCustomParen,
-    g.DirectLessCustomSquare,
-    g.DirectLessCustomCurly,
+    g.CustomParen,
+    g.CustomSquare,
+    g.CustomCurly,
     g.CustomAtKeywordText,
     g.VariableReference
   );
-  const DirectLessCustomPart: Combinator<CustomValuePart> = choice(
+  const CustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     g.LessSyntaxCustomOuterContent,
     g.LessSyntaxCustomSingleQuoted,
     g.LessSyntaxCustomDoubleQuoted,
-    g.DirectLessCustomParen,
-    g.DirectLessCustomSquare,
-    g.DirectLessCustomCurly,
+    g.CustomParen,
+    g.CustomSquare,
+    g.CustomCurly,
     g.CustomAtKeywordText,
     g.VariableReference
   );
-  const DirectLessCustomValue = node<ValueNode>(
-    'DirectLessCustomValue',
+  const CustomValue = node<ValueNode>(
+    'CustomValue',
     parser(
       { trivia: customValueCommentTrivia },
-      many(g.DirectLessCustomPart)
+      many(g.CustomPart)
     ),
     (children, _fields, span) => withSourceSpan(
       customValueFromParts(customPartsFromChildren(children)),
@@ -3283,7 +3283,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.LessSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectLessCustomDeclaration = node<Declaration>(
+  const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
     // A trailing `!important` is declaration priority, not value text: css-syntax-3
     // §5.5.6 strips it before the custom-property original-text step. The value leaf
@@ -3291,9 +3291,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     // this tail simply claims it. It mirrors the ordinary-declaration tail exactly:
     // `!`, trivia, `important`.
     sequence(
-      g.DirectLessCustomPropertyName,
+      g.CustomPropertyName,
       literal(':'),
-      g.DirectLessCustomValue,
+      g.CustomValue,
       optional(sequence(literal('!'), g.CssSyntaxImportant))
     ),
     (children) => {
@@ -3427,7 +3427,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `--*`; the real fix is the custom-property factoring/trivia pass above,
   // not a zero-width dispatch wrapper around the same ambiguous opener.
   const Declaration: Combinator<Declaration> = choice(
-    g.DirectLessCustomDeclaration,
+    g.CustomDeclaration,
     StandardDeclaration
   );
   /** Less detached maps can use punctuation members (`<: %3c; #: %23;`).
@@ -5767,16 +5767,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     VariableValue,
     ImportantValue,
     ValueListWithPriority,
-    DirectLessCustomPropertyName,
+    CustomPropertyName,
     CustomAtKeywordText,
-    DirectLessCustomPart,
-    DirectLessCustomInnerPart,
-    DirectLessCustomParen,
-    DirectLessCustomSquare,
-    DirectLessCustomCurly,
-    DirectLessCustomValue,
+    CustomPart,
+    CustomInnerPart,
+    CustomParen,
+    CustomSquare,
+    CustomCurly,
+    CustomValue,
     CssCustomPropertyValue,
-    DirectLessCustomDeclaration,
+    CustomDeclaration,
     DirectLessPunctuationMapDeclaration,
     Declaration,
     DirectLessMixinParam,

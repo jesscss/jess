@@ -157,11 +157,12 @@ at-rules, pseudo arguments, or balanced groups.
 Less grammar cleanup also moved in the current pass. A small reviewed naming
 slice removed several local `DirectLess*` migration identifiers without changing
 public CST/AST node labels: call arguments, mixin arguments, static pseudo
-quoted segments, interpolated nth pseudos, and the ruleset-with-extend wrapper
-now have shorter local names. The remaining `DirectLess*` families are still
-real cleanup debt, especially function/condition, custom-property, mixin,
-guard, selector, static-pseudo, and general-enclosed routes. Burn them down by
-family with macro/compose verification, not by broad mechanical replacement.
+quoted segments, interpolated nth pseudos, the ruleset-with-extend wrapper, and
+custom-property internals now have shorter local names. The remaining
+`DirectLess*` families are still real cleanup debt, especially
+function/condition, mixin, guard, selector, static-pseudo, and
+general-enclosed routes. Burn them down by family with macro/compose
+verification, not by broad mechanical replacement.
 
 Focused parser/eval error work also moved: `all-less-error.test.ts` now passes
 with **94 / 94**. Recursive variable/property fixtures are no longer skipped:
@@ -209,9 +210,13 @@ extending that parse-with-error shape to other migrations.
 surface baseline. Current output is 711 corpus entries, AST
 `8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d` with
 116 throws and 217 moved entries, and CST
-`67cf6614c3aecd4f71e5965510d556d8da0ea2591948f0681392bc0a3963eb4c` with
-0 throws and 634 moved entries. The CST throw regression from unsupported
-legacy Less variable names is fixed; remaining movement is still broad
+`3596049629b1441bed7f93100374c23330bf02d60994c65582741cd11d94b491` with
+0 throws and 634 moved entries. The custom-property `DirectLess*` rename was
+checked by reversing the local patch and rerunning the oracle: the AST aggregate
+and moved set were unchanged, while the CST aggregate moved from
+`67cf6614c3aecd4f71e5965510d556d8da0ea2591948f0681392bc0a3963eb4c` to the
+current value because internal CST node labels changed. The CST throw regression
+from unsupported legacy Less variable names is fixed; remaining movement is still broad
 AST/CST digest churn that requires named-set review before any baseline update.
 The current named-set split and baseline rules are recorded in
 [`LESS-ORACLE-MOVER-CLASSIFICATION.md`](../architecture/parser/LESS-ORACLE-MOVER-CLASSIFICATION.md);
@@ -647,6 +652,12 @@ earlier, before a manual publish attempt.
   `node scripts/verify-parser-runtime-boundary.mjs`, `pnpm run check:macro`,
   `pnpm run verify:compose-integrity`, and `pnpm run verify:less-alpha`.
   `pnpm run oracle:less:byte-identity` remains red, but CST throws are 0.
+- 2026-07-28: Custom-property Less grammar internals dropped the local
+  `DirectLess*` migration prefix. Verification passed focused custom-property
+  Less parser tests, `pnpm run check:macro`, `pnpm run verify:compose-integrity`,
+  and `pnpm run verify:less-alpha`. The byte-identity oracle remains red from
+  the known baseline drift; reverse-patch comparison showed this slice adds
+  CST-only digest movement and no AST movement.
 - 2026-07-27: Pushed the folded-grammar/compiler/diagnostic batch to `origin/dev`
   at `fb13eef67`. Verification on the committed tree passed `pnpm run
   check:macro` (0 interpreter fallbacks), `pnpm run verify:compose-integrity`,
