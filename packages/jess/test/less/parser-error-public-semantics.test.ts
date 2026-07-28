@@ -270,4 +270,26 @@ describe('Less parser errors through the public AST route', () => {
     expect(result.errors[0]?.reason).not.toContain('CssSyntaxNumber');
     expect(result.errors[0]?.reason).not.toContain('not(peek)');
   });
+
+  it('summarizes missing closing delimiters without raw expected-token text', async () => {
+    const source = '.entry { color: rgb(1,2; }';
+    const result = await new Compiler().renderToResult(
+      { source, filePath: 'delimiter.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: 'Missing closing parenthesis.',
+      reason: 'Less expected \')\' to close the open construct before this token.',
+      fix: 'Add the missing \')\' or remove the unmatched \'(\'.',
+      line: 1,
+      column: 26,
+      file: { source }
+    });
+    expect(result.errors[0]?.message).not.toContain('Expected:');
+    expect(result.errors[0]?.reason).not.toContain('The parser expected');
+  });
 });

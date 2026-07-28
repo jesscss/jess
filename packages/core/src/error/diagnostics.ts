@@ -121,7 +121,7 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
 }
 
 type ParserExpectedSummary = {
-  readonly code: 'parse/invalid-value';
+  readonly code: 'parse/invalid-value' | 'parse/syntax-error';
   readonly message: string;
   readonly reason: string;
   readonly fix: string;
@@ -155,6 +155,50 @@ function expectedValueSummary(
   };
 }
 
+function expectedClosingDelimiterSummary(
+  dialect: string,
+  expected: readonly string[] | undefined
+): ParserExpectedSummary | undefined {
+  if (expected === undefined || expected.length !== 1) {
+    return undefined;
+  }
+  switch (expected[0]) {
+    case '")"':
+      return {
+        code: 'parse/syntax-error',
+        message: 'Missing closing parenthesis.',
+        reason: `${dialect} expected ')' to close the open construct before this token.`,
+        fix: 'Add the missing \')\' or remove the unmatched \'(\'.'
+      };
+    case '"]"':
+      return {
+        code: 'parse/syntax-error',
+        message: 'Missing closing bracket.',
+        reason: `${dialect} expected ']' to close the open construct before this token.`,
+        fix: 'Add the missing \']\' or remove the unmatched \'[\'.'
+      };
+    case '"}"':
+      return {
+        code: 'parse/syntax-error',
+        message: 'Missing closing brace.',
+        reason: `${dialect} expected '}' to close the open construct before this token.`,
+        fix: 'Add the missing \'}\' or remove the unmatched \'{\'.'
+      };
+    default:
+      return undefined;
+  }
+}
+
+function expectedSyntaxSummary(
+  dialect: string,
+  expected: readonly string[] | undefined
+): ParserExpectedSummary | undefined {
+  return (
+    expectedValueSummary(dialect, expected)
+    ?? expectedClosingDelimiterSummary(dialect, expected)
+  );
+}
+
 /**
  * Convert a direct-parser failure into the compiler's source-backed diagnostic
  * contract. Parser packages expose recognition facts only; plugins call this
@@ -181,7 +225,7 @@ export function parserDiagnostic({
   const expected = failure?.expected;
   const expectedSummary =
     failure?.code === undefined || failure.code === 'parse/syntax-error'
-      ? expectedValueSummary(dialect, expected)
+      ? expectedSyntaxSummary(dialect, expected)
       : undefined;
   return {
     code: expectedSummary?.code ?? failure?.code ?? 'parse/syntax-error',
