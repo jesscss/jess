@@ -121,6 +121,11 @@ const skippedFixtures: SkippedFixture[] = (
     "tests-config/sourcemaps-variable-selector/basic.less", // source-map output suite needs dedicated output artifact checks
     "tests-config/sourcemaps-variable-selector/vars.less", // source-map output suite needs dedicated output artifact checks
     "tests-config/visitorPlugin/visitor.less", // Less visitor plugin API needs scope decision
+    {
+      file: 'tests-unit/import/import-remote.less',
+      reason:
+        'remote URL imports require an explicit network/IO allowlist, which is not part of the alpha harness policy'
+    }
   ] as Array<string | SkippedFixture>
 ).map((entry): SkippedFixture => {
   if (typeof entry === "string") {
