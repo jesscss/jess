@@ -197,6 +197,25 @@ Every written rule must answer:
    and put the bare identifier in `otherwise(...)`. A closed keyword list with no
    generic continuation is not this pattern; use `word(...)` / `keywords(...)`.
 
+   Custom-property values are a structured token-stream grammar family, not a
+   permanently raw string family and not an ordinary interpreted value grammar.
+   CSS Syntax defines `<declaration-value>` as a permissive token sequence with
+   only the spec's forbidden tokens and unmatched delimiters rejected; CSS
+   Variables says custom properties are left as an unresolved stream of CSS
+   tokens, with valid `var()` functions, until substituted into a known property.
+   The target Jess shape is therefore a first-class `CustomValue` made from
+   nested matching group/block rules, spec-token components (`url(...)`,
+   `var(...)`, function tokens, quoted strings, dimensions, colors, keywords,
+   list/sequence punctuation), and explicit custom-only unknown-token fallback
+   parts. Do not special-case a `url(...)` or other real token shape as a custom
+   workaround; route it through the same opener/component shape where that keeps
+   the token stream faithful. Do not drop the custom container and use a normal
+   `ValueList` wholesale either: custom-property emission is inert CSS token
+   preservation with explicit dialect dynamic slots, not ordinary Less/Jess
+   value evaluation. Comments remain trivia, and nested groups/blocks must be
+   parsed once by matching grammar structure rather than recovered by a second
+   source scan.
+
 9. **Does it avoid reparsing and broad lookahead?** A rule may recurse through
    Parseman grammar structure, but it must not parse a source region, then send
    the same region through another selector/value/at-rule recognizer to recover
