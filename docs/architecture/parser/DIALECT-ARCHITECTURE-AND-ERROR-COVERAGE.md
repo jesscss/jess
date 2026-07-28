@@ -1,48 +1,45 @@
 # Parser dialect architecture + error-coverage program
 
-Owner-directed program (2026-07-17). Canonical sequencing/tracking doc for the
+Owner-directed program (2026-07-17). Historical design record for the
 css/less/scss/jess parser dialect-architecture re-base and the cross-parser
-error-coverage burn-down. Update this doc as items land; do not duplicate its
-status elsewhere.
+error-coverage burn-down. The physical re-base has landed: the active status is
+now in
+[`GRAMMAR-SEQUENCE-ORCHESTRATION.md`](./GRAMMAR-SEQUENCE-ORCHESTRATION.md).
+Keep this document useful as architecture evidence, but do not let old problem
+statements override the current four-host-mode-grammar plan.
 
 ## Problem (why this exists)
 
-1. **Dialects sibling-inherit.** `scss = compose([lessGrammar, …])` +
-   `class ScssGrammar extends LessGrammar` (`scss-parser/src/grammar.ts:34`,
-   `builders.ts:126`). SCSS and Less are siblings over CSS — SCSS must NOT inherit
-   Less. This leaks the entire Less surface into SCSS and caused a concrete bug:
-   Less's builder dispatch (`less-parser/src/builders.ts:129`) hard-routes
-   `'QueryAtRuleBlock'` to `_buildLessQueryAtRuleBlock`, which SCSS never overrides,
-   so `scss builders.ts:1148 _buildQueryAtRuleBlock` is DEAD CODE (Less builds
-   SCSS's `@media`). Symptom already fixed once via a workaround node name
-   (`ScssQueryInterpBlock`, commit 1d160dae1).
+1. **Historical sibling-inheritance bug.** SCSS previously composed on Less
+   (`scss = compose([lessGrammar, …])`) and inherited Less builder dispatch.
+   SCSS and Less are siblings over CSS — SCSS must not inherit Less. The old
+   shape leaked the entire Less surface into SCSS and caused a concrete bug:
+   Less's builder dispatch hard-routed `'QueryAtRuleBlock'` to a Less builder,
+   so the SCSS query-at-rule builder was dead code and Less built SCSS
+   `@media`. The physical fold removed this topology; do not restore it.
 
 2. **"Green" has been hiding wrong-accepts.** SCSS passed its suite while silently
    accepting Less-isms and with unreachable rules. Each parser has the same class
    of holes. Reference implementations are authoritative: dart-sass (sass-spec) for
    SCSS, less.js for Less.
 
-3. **The inversion BLOCKS cleanups in Less, not just in SCSS** — added 2026-07-25,
-   verified by building it. Because `scssGrammar = compose([lessGrammar, …])`,
-   `lessGrammar` may not itself become a non-final carried piece: composing the shared
-   recognition map into the Less CST (`compose([cssGrammar, lessAstSyntax, rules(…)])`
-   — the shape scss-parser's own CST already uses) compiles fine in less-parser, but
-   scss-parser then reports `compose(): argument 0 isn't a build-resolvable grammar`
-   and **degrades to the runtime interpreter, which emits a different tree**
+3. **Historical Less cleanup blocker.** Added 2026-07-25, verified by building
+   it. Because `scssGrammar = compose([lessGrammar, …])`, `lessGrammar` could
+   not itself become a non-final carried piece: composing the shared recognition
+   map into the Less CST (`compose([cssGrammar, lessSyntax, rules(…)])`) compiled
+   fine in less-parser, but scss-parser then reported `compose(): argument 0
+   isn't a build-resolvable grammar` and degraded to the runtime interpreter,
+   which emits a different tree
    ([`PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md`](./PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md)
-   §1). So the Less CST cannot reach the shared recognition surface at all while the
-   inversion stands.
+   §1). The current folded topology pays this blocker; keep the failure mode as
+   evidence for why SCSS must remain a sibling.
 
-   First concrete casualty: the Less CST keeps a 150-name copy of the CSS named-colour
-   list (`less-parser/src/grammar.ts`, `TODO(parseman-compose-depth)`) that the Less
-   **AST** grammar already gets from the shared rule. The copy is not a design choice
-   and not merely redundant — it is also **wrong**: it admits `currentcolor`, which the
-   shared rule correctly excludes (owner ruling 2026-07-25 — not computable, so not a
-   named colour). Deleting it is a fix, and the re-base is what unblocks it.
-
-   **This makes the re-base load-bearing rather than cosmetic.** Expect more of this
-   class: any CSS-recognition duplicate in the Less CST is stuck for the same reason.
-   Unblocked by EITHER Phase 3 or a parseman that resolves deeper compose chains.
+   First concrete casualty at the time: the Less CST kept a 150-name copy of the
+   CSS named-colour list that the Less AST grammar already got from the shared
+   rule. The copy was not a design choice and not merely redundant; it admitted
+   `currentcolor`, which the shared rule correctly excluded (owner ruling
+   2026-07-25 — not computable, so not a named colour). The re-base was
+   load-bearing rather than cosmetic.
 
 ## Target architecture (owner: shared macro-compiled base, NO sibling inheritance)
 
@@ -58,10 +55,10 @@ status elsewhere.
   [`GRAMMAR-REVIEW-STANDARD.md`](./GRAMMAR-REVIEW-STANDARD.md) item 14 is what
   keeps them that way: a rule shared by more than one dialect does not take a
   dialect prefix, and `Ast`/`Cst` is a compile mode rather than an identity. The
-  prefix is what hides a duplicate — `LessAstSyntaxNamedColor` and its Less-CST
-  copy (§Problem 3) are the same defect named twice. Rule identity in this
-  architecture is *what the rule accepts*; the shared base only collapses if the
-  names stop asserting divergence that is not there.
+  prefix is what hides a duplicate — historically, `LessAstSyntaxNamedColor`
+  and its Less-CST copy (§Problem 3) were the same defect named twice. Rule
+  identity in this architecture is *what the rule accepts*; the shared base only
+  collapses if the names stop asserting divergence that is not there.
 - `less  = compose([preprocessorBase, lessSigilDelta])` — `@var`, `@{}`, `~"…"`,
   `.mixin()`, guards, `@import (options)`.
 - `scss  = compose([preprocessorBase, scssSigilDelta])` — `$var`, `#{}`,

@@ -35,42 +35,47 @@ hence Phase D, last.
 
 ## Versioned language retirements
 
-The following Less 4 compatibility spellings remain accepted with a deprecation
-diagnostic. Less 5 rejects them at parse time; they must not become permanent
-canonical-AST capabilities.
+Less 4 compatibility spellings split into two lanes. Some remain accepted with a
+deprecation diagnostic; others are removed in Less 5 but should still be
+recognized well enough to report a precise migration diagnostic and recover in
+language services. Neither lane makes the legacy spelling a permanent
+canonical-AST capability.
 
-| Compatibility spelling | Less 4 behavior | Less 5 behavior |
-|---|---|---|
-| Numeric-leading variable name, such as `@1` or `@{1}` | Accept and warn | Reject |
-| Dash-only mixin name, `.-()` | Accept and warn | Reject |
+| Compatibility spelling                                | Less 4 behavior | Less 5 behavior                                                     |
+| ----------------------------------------------------- | --------------- | ------------------------------------------------------------------- |
+| Numeric-leading variable name, such as `@1` or `@{1}` | Accept and warn | Removed: report the precise unsupported-syntax diagnostic.          |
+| Dash-only mixin name, `.-()`                          | Accept and warn | Removed: report the precise unsupported-syntax diagnostic.          |
+| Plain `@name` in an interpolated position             | Accept and warn | Removed: recognize it, report the exact `@{name}` fix, and recover. |
+| Whitespace between a mixin name and call parens       | Accept          | Accepted with deprecation diagnostic.                               |
+| Paren-less mixin call                                 | Accept          | Accepted with deprecation diagnostic.                               |
 
-The parser must retain structured recognition long enough for Less 4 to report
-the right diagnostic. The warning is a plugin/context diagnostic, not a parser
-side effect; the Less 5 grammar simply excludes the spelling. The source forms
-were verified against Less 4.6.3 before this policy was recorded.
+The warning/fatal diagnostic is a plugin/context diagnostic, not a parser side
+effect. The parser still owns enough structure for removed syntax to produce a
+better message than a generic expected-token failure. The source forms were
+verified against Less 4.6.3 before this policy was recorded.
 
 ## Phase C — config-lane URL / import features
 
-| Fixture | Feature | Why deferred | Target |
-|---|---|---|---|
-| `rewrite-urls-all`, `rewrite-urls-local` | `rewriteUrls` mode (all / local) — rebase `url()` paths relative to the importing file | URL rebasing not implemented | Phase C |
-| `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined | depends on rewriteUrls | Phase C |
-| `static-urls/urls` | static `url()` handling under rewrite | depends on rewriteUrls | Phase C |
-| `url-args/urls` | `urlArgs` — append a cache-busting arg to every `url()` | not implemented | Phase C |
-| `process-imports/google.less` | `processImports: false` — leave remote/CSS imports un-inlined | remote-CSS import handling not implemented | Phase C |
+| Fixture                                                    | Feature                                                                                | Why deferred                               | Target  |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------ | ------- |
+| `rewrite-urls-all`, `rewrite-urls-local`                   | `rewriteUrls` mode (all / local) — rebase `url()` paths relative to the importing file | URL rebasing not implemented               | Phase C |
+| `rootpath-rewrite-urls-all`, `rootpath-rewrite-urls-local` | `rootpath` + `rewriteUrls` combined                                                    | depends on rewriteUrls                     | Phase C |
+| `static-urls/urls`                                         | static `url()` handling under rewrite                                                  | depends on rewriteUrls                     | Phase C |
+| `url-args/urls`                                            | `urlArgs` — append a cache-busting arg to every `url()`                                | not implemented                            | Phase C |
+| `process-imports/google.less`                              | `processImports: false` — leave remote/CSS imports un-inlined                          | remote-CSS import handling not implemented | Phase C |
 
 These are option-plumbing over the URL/import handling that the core already does;
 each is a contained addition once the render pipeline is stable post-flip.
 
 ## Phase D — source maps
 
-| Fixture | Feature | Why deferred | Target |
-|---|---|---|---|
-| `sourcemaps-basepath` | `sourceMapBasepath` | needs `.map` emission + a source-map output harness | Phase D |
-| `sourcemaps-include-source` | `sourceMapIncludeSource` (inline sources in the map) | same | Phase D |
-| `sourcemaps-rootpath` | `sourceMapRootpath` | same | Phase D |
-| `sourcemaps-url` | `sourceMapURL` (annotation) | same | Phase D |
-| (suite) `sourcemaps/basic`, `sourcemaps/custom-props`, `sourcemaps-disable-annotation`, `sourcemaps-empty` | general `.map` output correctness | the render API emits CSS only today; no `.map` artifact | Phase D |
+| Fixture                                                                                                    | Feature                                              | Why deferred                                            | Target  |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------- | ------- |
+| `sourcemaps-basepath`                                                                                      | `sourceMapBasepath`                                  | needs `.map` emission + a source-map output harness     | Phase D |
+| `sourcemaps-include-source`                                                                                | `sourceMapIncludeSource` (inline sources in the map) | same                                                    | Phase D |
+| `sourcemaps-rootpath`                                                                                      | `sourceMapRootpath`                                  | same                                                    | Phase D |
+| `sourcemaps-url`                                                                                           | `sourceMapURL` (annotation)                          | same                                                    | Phase D |
+| (suite) `sourcemaps/basic`, `sourcemaps/custom-props`, `sourcemaps-disable-annotation`, `sourcemaps-empty` | general `.map` output correctness                    | the render API emits CSS only today; no `.map` artifact | Phase D |
 
 **Hard dependency:** source-map output maps generated CSS bytes back to source
 positions. On the projecting spine that requires a **decided emit-time provenance

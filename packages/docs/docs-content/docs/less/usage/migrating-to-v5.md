@@ -5,6 +5,7 @@ audiences:
   - less
 origin: less
 ---
+
 This guide focuses on practical migration from Less 4.x to the 5.x track.
 
 ## Browser usage status
@@ -79,8 +80,12 @@ Example:
 
 ```less
 .col {
-  &-1 { width: 8.333%; }
-  &-2 { width: 16.666%; }
+  &-1 {
+    width: 8.333%;
+  }
+  &-2 {
+    width: 16.666%;
+  }
 }
 ```
 
@@ -115,17 +120,21 @@ Syntax note: per-selector `all` in multi-target extends is deprecated in favor o
 
 ```less
 // Deprecated:
-&:extend(.a all, .b all);
+&:extend(.a all,
+.b all);
 
 // Preferred:
-&:extend(.a, .b !all);
+&:extend(.a,
+.b !all);
 ```
 
 Example (mirrors core fixture patterns):
 
 ```less
 .sidebar {
-  .box { margin: 10px 0; }
+  .box {
+    margin: 10px 0;
+  }
 }
 
 .sidebar2 {
@@ -195,7 +204,7 @@ Example migration path:
 
 ```less
 // 4.x-era pattern (legacy):
-@columns: `Math.max(12, 8)`;
+@columns: `Math.max(12, 8) `;
 ```
 
 Prefer explicit Less expressions/functions where possible:
@@ -210,16 +219,19 @@ If your project still requires JS evaluation, move that usage behind the optiona
 
 These are the migration-impact items that frequently break older workflows:
 
-### Inline JavaScript defaults
+### Inline JavaScript removed
 
-- Inline JavaScript is disabled by default.
-- Existing code that relies on backtick JS must explicitly opt in where supported.
+- Inline backtick JavaScript is removed entirely.
+- It reports a fatal unsupported-syntax diagnostic; `javascriptEnabled` does not
+  opt it back in.
+- Existing code that relies on backtick JS must move to a plain Less expression,
+  an explicit script/module boundary, or a plugin function.
 
 Example:
 
 ```less
 // legacy
-@assetVersion: `"2026-03"`;
+@assetVersion: ` "2026-03" `;
 
 // preferred
 @assetVersion: "2026-03";

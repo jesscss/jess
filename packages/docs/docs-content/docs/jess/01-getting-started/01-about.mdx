@@ -35,6 +35,12 @@ In practice, it can cover most day-to-day use cases people typically reach for:
 
 Jess is both a compiler and a language. It started as a re-write of Less from the ground up, then kept evolving into its own language model. That means you can migrate `.scss` and `.less` incrementally to `.jess` while still using cross-language composition when needed.
 
+The deeper architecture is a common runtime for stylesheet languages. CSS, Less,
+SCSS/Sass+, and Jess keep their own syntax, but they are meant to lower into the
+same canonical stylesheet model and then use one evaluator, one output pipeline,
+and one language-service foundation. It is not a bytecode VM, but the intent is
+similar to the CLR or LLVM: many front ends, one strong shared core.
+
 [^1]: Sass is quite a bloated language, so there is some lesser-used syntax that is not supported, and some Jess features are exposed while compiling `.scss` files. Therefore, Jess defines the supported language as "Sass+".
 
 ## Speed and build ergonomics

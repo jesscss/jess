@@ -351,7 +351,8 @@ worktree, so no result here comes from the main checkout's sources.
 | `options` | `ResolvedOptions` | no |
 | `opts` | `ContextOptions` | no |
 | `entryFilePath` | `string` | no |
-| `valueEvaluator` | `ValueEvaluator \| undefined` | no |
+| `evaluator` | `ValueEvaluator \| undefined` | no |
+| `registerValueEvaluator` | `(evaluator: ValueEvaluator) => void` | no |
 | `warn` | `(warning: WarningDiagnostic \| JessError, options?: { code?: string }) => void` | no |
 | `transformUrl` | `(value: string, quoted: boolean) => string` | no |
 | `loadImport` | `(importPath: string, importOptions?: ImportOptions) => Promise<{ node: Stylesheet \| null; triedPaths: string[]; resolvedPath: string } \| undefined>` | no |
@@ -365,7 +366,7 @@ worktree, so no result here comes from the main checkout's sources.
 **Context members accessed at runtime from `jess` / plugins / `fns` — 15, none tree-typed:**
 `errors`, `warnings`, `finalizeWarnings`, `getPluginModule`, `getTree`,
 `parseString`, `resolveImportPath`, `sourceTrees`, `pluginHost`, `plugins`,
-`setOption`, `opts`, `readBinary`, `valueEvaluator`, `withDocument`.
+`setOption`, `opts`, `readBinary`, `evaluator`, `registerValueEvaluator`, `withDocument`.
 
 Union (four overlap): **25 distinct externally-reachable members, zero
 tree-typed.** The constructor is `(opts?: ContextOptions, plugins?: PluginInterface[])`

@@ -10,7 +10,8 @@ slug: /guides/migrating-less-4-to-5
 facing_paths:
   less: usage/less-v5-breaking-changes
 ---
-import AudienceGate from '@theme/AudienceGate';
+
+import AudienceGate from "@theme/AudienceGate";
 
 <AudienceGate include={['less']}>
 
@@ -24,7 +25,7 @@ checklist) see <a href="/docs/next/usage/migrating-to-v5">Migrating to v5</a>.
 
 <AudienceGate include={['jess']}>
 
-Coming to **Jess** from **Less 4.x**? Jess *is* the engine behind Less 5.x, so
+Coming to **Jess** from **Less 4.x**? Jess _is_ the engine behind Less 5.x, so
 the same breaking changes apply when you move existing Less sources onto Jess.
 This page lists the ones that most often need attention.
 
@@ -32,21 +33,23 @@ This page lists the ones that most often need attention.
 
 ## Removed: inline backtick JavaScript
 
-Inline backtick JavaScript is **removed entirely**. It is now a parse error — not
-a flag you can opt back into.
+Inline backtick JavaScript is **removed entirely**. It now reports a fatal
+unsupported-syntax diagnostic — not a flag you can opt back into.
 
 ```less
-// No longer valid — this is a parse error:
-@columns: `Math.max(12, 8)`;
+// No longer valid — this reports an unsupported-syntax diagnostic:
+@columns: `Math.max(12, 8) `;
 ```
 
 <AudienceGate include={['less']}>
 
-Where you relied on backtick JS, migrate to a plain expression or to a plugin:
+Where you relied on backtick JS, migrate to a plain expression or to an explicit
+script/module boundary:
 
 - Prefer a plain Less expression or function when one exists
   (`@columns: max(12, 8);`).
-- For genuine scripting, move the logic behind `@plugin` / `@-use`.
+- For genuine scripting, move the logic behind `@from` / `@-from`,
+  `@use` / `@-use`, or a plugin function.
 
 `javascriptEnabled` no longer re-enables inline backticks; at most it gates
 `@plugin` loading. To turn executable scripts off entirely use
@@ -68,7 +71,7 @@ a module you pull in with `@-use`, or express them with built-in functions
 <AudienceGate include={['less']}>
 
 `@import` (and its explicit source-fold form `@-import`) are **discouraged** in
-Less 5.x and warn — they use the old leaky scope, and bare `@import` is *heuristic*
+Less 5.x and warn — they use the old leaky scope, and bare `@import` is _heuristic_
 (extension and options decide passthrough-vs-fold). The fix for either is the
 module system, **`@compose`** — a namespaced import with isolated scope. Write it
 bare or dashed (`@compose` / `@-compose` are the same rule; the dash is the
@@ -98,7 +101,7 @@ being finalized; the direction above is settled.
 
 Jess's module system is `@-compose` (namespaced import, isolated scope, optional
 `as` alias). In `.jess` a bare `@import` is **always** a plain CSS
-at-rule (passed through — no extension heuristic); it is *never* a source include.
+at-rule (passed through — no extension heuristic); it is _never_ a source include.
 To fold a stylesheet in and evaluate it, use an explicit dash-prefixed rule:
 `@-compose` (preferred) or `@-import` (mechanical port; warns). The compiler
 at-rules require the dash — bare `@use`/`@compose` are not valid Jess.
@@ -127,7 +130,9 @@ explicitly opt into collapsing.
 ```less
 .card {
   padding: 1rem;
-  .title { font-weight: 600; }
+  .title {
+    font-weight: 600;
+  }
 }
 ```
 
@@ -159,10 +164,12 @@ in favor of a single `!all` flag:
 
 ```less
 // Deprecated:
-&:extend(.a all, .b all);
+&:extend(.a all,
+.b all);
 
 // Preferred:
-&:extend(.a, .b !all);
+&:extend(.a,
+.b !all);
 ```
 
 With `collapseNesting: true`, `extend … !all` in nested selector-list cases may
@@ -177,9 +184,11 @@ side effect does not rewrite an already-evaluated sibling declaration.
 
 ```less
 @mix: blue;
-.mixin() { @mix: #989; }
+.mixin() {
+  @mix: #989;
+}
 .tiny-scope {
-  color: @mix;   // blue — resolved before .mixin() runs
+  color: @mix; // blue — resolved before .mixin() runs
   .mixin();
 }
 ```

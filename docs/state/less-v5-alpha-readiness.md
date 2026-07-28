@@ -30,18 +30,19 @@ and generated reducer identifiers include the absolute worktree path. Until a
 matched, clean artifact protocol exists, timing movement is reported as a
 baseline only and never as a performance acceptance claim.
 
-## Current verification snapshot (2026-07-22)
+## Verification snapshot
 
-- Core behavior: the complete `@jesscss/core` suite is **3,194 passed, 9
+- Core behavior, recorded 2026-07-22: the complete `@jesscss/core` suite is **3,194 passed, 9
   skipped, and 2 todo**. The skipped/todo cases remain visible and are not
   converted into passing evidence.
-- Source quality: the repository-wide production ESLint audit reports **0
+- Source quality, recorded 2026-07-22: the repository-wide production ESLint audit reports **0
   errors and 319 warnings**. The warnings are tracked lint debt; there is no
   current ESLint-error blocker.
-- Strict types: the current local alpha candidate resolves the published
-  `parseman@0.30.0` package and its recorded `pnpm run release:alpha:check`
-  passes all **22** strict type configurations. The current candidate evidence lives in
-  [`HANDOFF.md`](../architecture/core/HANDOFF.md#current-alpha9-candidate-evidence-2026-07-22-not-authorized-to-publish).
+- Parser dependency floor, verified 2026-07-27: the active grammar checkout
+  resolves published `parseman@0.41.0`; `pnpm run check:macro` and
+  `pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks; and
+  `pnpm run verify:less-alpha` passes. The full strict-type release chain still
+  belongs to `pnpm run release:alpha:check` before publishing.
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
   allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
   excluded because it depends on `jess` and is not part of the runtime closure.
@@ -58,6 +59,181 @@ not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
 74.022 ms versus 73.772 ms (noise), so no production change remains. The next
 choice investigation is the opt-in stable choice-arm trace design in
 [`parseman-diagnostic-trace-design.md`](../design/parseman-diagnostic-trace-design.md).
+
+## Current alpha.1 stabilization snapshot (2026-07-27)
+
+The active alpha.1 blocker has shifted from the grammar fold itself to
+CSS/Less stability, the public Less fixture flow, and parser/eval error quality.
+The four parser dialects are folded to one `src/grammar.ts` each; do not
+recreate duplicate AST/CST grammar bodies to make a fixture pass.
+
+`parseman@0.41.0` is published and installed from the registry in the active
+checkout; the root, `@jesscss/parser-shared`, and all four parser packages now
+depend on `^0.41.0`. A registry-backed dependency-order build completed, and
+`pnpm run check:macro` plus `pnpm run verify:compose-integrity` both pass with
+0 interpreter fallbacks.
+
+Release tooling now has a narrow `pnpm run test:release` gate. The alpha
+publish-set scanner recurses through `packages/**`, so nested syntax packages
+are included in the same release plan as top-level runtime packages instead of
+being silently missed by the alpha allowlist validator.
+
+Current alpha readiness verification is green. Rerun 2026-07-27 after the
+latest Less grammar naming slice, diagnostic-range work, and compiler package
+entrypoint fix, `pnpm run check:macro` reports parser-shared, CSS, Less, SCSS,
+and Jess fully compiled with 0 interpreter fallbacks; `pnpm run
+verify:compose-integrity` passes after a dependency-ordered rebuild; and
+`pnpm run verify:less-alpha` passes. The alpha gate builds the Less parser,
+Less plugin, `@jesscss/compiler`, and `jess`; verifies package exports and the
+public Jess API; passes the path-resolution suite; and passes the Less
+test-data lanes (`tests-unit/`: 80 / 80, `tests-config/`: 29 / 29).
+
+Graduated in the current pass:
+
+- extend behavior: `extend-exact`, `extend-selector`, and `extend`;
+- imported reference comment preservation:
+  `import/import-reference-issues`.
+
+Comment/trivia preservation is no longer an alpha fixture blocker. Comments are
+parser trivia, and render/eval behavior should use source spans and trivia
+replay. Remaining parser cleanup should remove surviving semantic comment
+productions family by family, with the empty-rule check repaired against trivia
+spans rather than comment AST children.
+
+Current comment-trivia cleanup order, audited 2026-07-27: CSS/Less no longer
+have a public `Comment` grammar node, and ordinary Less value comments are on
+the intended trivia-map/render-replay path. The remaining grammar-level comment
+facts are temporary serialization carriers, not endorsed AST shape. Remove them
+only with the matching trivia-span replay in the same patch:
+
+- Less declaration-head comment/whitespace facts between property/merge tokens
+  and `:`; otherwise `color/*x*/:` loses its authored gap.
+- Less custom-property inner/outer comment children; custom-value serialization
+  must replay comments from source trivia spans before those arms disappear.
+- Less opaque/general at-rule prelude comment arms; unknown at-rules and
+  general-enclosed syntax still need authored prelude/body bytes preserved.
+- selector/static-pseudo raw comment text; prove comment-only selector gaps do
+  not become descendant combinators, and pseudo arguments still round-trip.
+
+Keep scanner-local `blockComment` skips inside `scanTo(...)` / `balanced(...)`
+until Parseman has the replacement capture/skip helper for those regions; those
+skips prevent comments from prematurely terminating custom properties, opaque
+at-rules, pseudo arguments, or balanced groups.
+
+Less grammar cleanup also moved in the current pass. A small reviewed naming
+slice removed several local `DirectLess*` migration identifiers without changing
+public CST/AST node labels: call arguments, mixin arguments, static pseudo
+quoted segments, interpolated nth pseudos, and the ruleset-with-extend wrapper
+now have shorter local names. The remaining `DirectLess*` families are still
+real cleanup debt, especially function/condition, custom-property, mixin,
+guard, selector, static-pseudo, and general-enclosed routes. Burn them down by
+family with macro/compose verification, not by broad mechanical replacement.
+
+Focused parser/eval error work also moved: `all-less-error.test.ts` now passes
+with **94 / 94**. Recursive variable/property fixtures are no longer skipped:
+unproductive cycles now throw `eval/recursive-reference`, while same-name
+references that can make progress to another in-scope definition remain legal.
+The duplicate unhandled `plugin/function-threw` rejection channel remains
+closed. Error quality is still the next alpha-hardening lane: improve diagnostic
+locations, expected-token messages, and eval/runtime classification without
+weakening syntax conformance or adding compatibility catches around real parser
+failures.
+
+Current error-blocker audit (2026-07-27): the named Less error fixtures that
+recently mattered are not current acceptances. `color-func-invalid-color.less`
+and `svg-gradient1.less` through `svg-gradient6.less` now surface errors under
+the Less-4-parity error options used by `all-less-error.test.ts`; the remaining
+accepted color fixture is `color-func-invalid-color-2.less`, intentionally
+preserved because `darken(var(--x), ...)` cannot be evaluated at build time.
+The public plugin parse boundary converts generic `LessParseError` recognition
+facts into source-backed `parse/syntax-error` diagnostics with line, column,
+reason, fix, and code-frame lines. The remaining weakness is message quality,
+not raw offset leakage: broad parse failures now distinguish leading invalid
+syntax from trailing text after a complete stylesheet, but expected-token lists
+are still too raw. Next source targets are
+`packages/syntax/less/less-parser/src/parse-error.ts`,
+`packages/syntax/less/less-parser/src/index.ts`, and
+`packages/core/src/error/diagnostics.ts` for better Parseman failure labeling,
+plus eval helpers that still fall through `internal/unknown`.
+
+Public parser diagnostics now preserve parser-provided end ranges on diagnostic
+records. `packages/jess/test/less/parser-error-public-semantics.test.ts`
+covers inline backtick JavaScript as an unsupported Less 4 construct that is
+recognized enough to produce a targeted parse diagnostic and code-frame range,
+not accepted as valid Less v5 syntax. It also covers deprecated bare at-name
+variables in interpolation positions: the parser understands the construct
+well enough to report the exact replacement range and fix while still treating
+the Less v5 source as invalid. Dynamic `@charset` interpolation also reports
+`parse/dynamic-charset` with the parser-provided range plus the actionable
+reason/fix instead of falling back to generic parser guidance. Continue
+extending that parse-with-error shape to other migrations.
+
+`pnpm run oracle:less:byte-identity` remains red against the committed parser
+surface baseline. Current output is 711 corpus entries, AST
+`59cd0a3f0c2e20faee92b2b51db4a7684338b80ac24a4338819936e69dce3dc1` with
+115 throws and 214 moved entries, and CST
+`583c845553f06ffae07e548c379a64e5c8a440aba357484475b047744d90c1c0` with
+0 throws and 592 moved entries. The AST mover count is larger than the prior
+same-day classification because 104 additional entries now move only by
+normalized `LessParseError` diagnostic shape; no previously classified AST
+mover resolved, and the CST aggregate moved from the stale same-day
+classification. The current named-set split
+and baseline rules are recorded in
+[`LESS-ORACLE-MOVER-CLASSIFICATION.md`](../architecture/parser/LESS-ORACLE-MOVER-CLASSIFICATION.md);
+do not move the baseline until that queue is resolved.
+
+## External Less `5.0.0-alpha.1` package audit (2026-07-27)
+
+The target review PR is
+[`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
+`less-5-alpha.1` into the fork-local `alpha` branch. Remote PR checks are
+green across the GitHub Actions matrix, and CodeRabbit reports success but is
+rate-limited. The local sibling checkout is ahead of the remote PR head by
+three commits (`dded69cc`, `f09d0363`, `931cacbd`) and still has uncommitted
+Less API/test-data work, so the remote green checks do not yet prove the local
+latest state.
+
+Local package/release gates passed before the compiler-package split against
+published Jess `2.0.0-alpha.9`: `pnpm --dir packages/less run test:alpha`,
+`pnpm run test:publish-dry-run`, `pnpm run verify:alpha:packed-consumer`,
+`DRY_RUN=true GITHUB_REF_NAME=alpha pnpm run publish`, and `git diff --check`.
+That evidence is now stale for the current local `less.js` checkout because
+`packages/less/package.json` has moved from the batteries-included `jess`
+dependency to the direct compiler/plugin closure. Re-run it after the compiler
+package is published and the external Less lockfile is refreshed.
+
+Jess-side package layering now uses a generic compiler host:
+`@jesscss/compiler` owns the render pipeline, while the `jess` package supplies
+the batteries-included Jess/Less/SCSS plugin stack and CLI. The Less plugin no
+longer exports a dialect-named compiler facade; it registers Less behavior as a
+plugin. The sibling `less.js` checkout has been updated to import
+`Compiler` from `@jesscss/compiler`, assemble the Less plugin stack directly,
+and remove its direct `jess` dependency. Its alpha release checks now assert
+the actual Jess runtime package closure (`@jesscss/compiler`, core, Less
+plugins, and node-modules resolver) and reject a consumer install that pulls in
+the batteries-included `jess` package. Script-module and Less `@plugin` support
+is a resolver hook, not a shipped Deno runtime: both `jess` and the external
+`less` package may declare `@jesscss/plugin-js` only as an optional peer
+(`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
+dependency or `optionalDependencies` entry. Registry-based packed-consumer
+tests must wait until `@jesscss/compiler` is published at the same alpha
+version as the other Jess runtime packages; current npm resolution returns 404
+for `@jesscss/compiler@2.0.0-alpha.9`. The external Less `pnpm-lock.yaml` is
+also stale: frozen install reports that `@jesscss/compiler`,
+`@jesscss/plugin-node-modules`, and the optional peer `@jesscss/plugin-js` were
+added while `jess` was removed. `@jesscss/compiler` now builds each exported
+subpath (`.`, `./config`, and `./diagnostics`) rather than relying on a package
+manifest entry without matching JS output.
+
+Before treating PR #19 as alpha.1-mergeable, port or consciously classify the
+upstream fixture/test-data gap from `upstream/master` after the PR's current
+base. The must-port fixture families are selectors, media parentheses,
+function/condition parsing, container regressions, color-calc behavior, bare
+`@var` deprecation/migration coverage, named-argument mixins, variadic default
+mixins, and CSS `var()` math. The upstream `alpha` drift is only release
+automation (`330e9d71`) and has no test-data changes. Classify CJS/browser
+export tests, debug line-number crash coverage, and version/release churn
+separately from fixture sync.
 
 ## External Less `5.0.0-alpha.1` package audit (2026-07-22)
 
@@ -152,11 +328,12 @@ The alpha blocks only on these advertised correctness and release-safety gates:
 - a release-note known-limitations section that links the complete
   [`less-v5-corpus-inventory.md`](./less-v5-corpus-inventory.md) and states the
   unsupported or divergent behavior honestly.
-- `[x]` **Strict source quality.** Published `parseman@0.30.0` is the current
-  parser dependency; the alpha snapshot's forced frozen install and
-  `verify:types` pass 22/22 configurations. Production
-  ESLint reports 0 errors and 319 warnings. Warnings remain tracked debt and
-  neither types nor lint errors may be hidden by bundlers' `--noCheck` builds.
+- `[x]` **Strict source quality.** Published `parseman@0.41.0` is the current
+  parser dependency. `check:macro` and `verify:compose-integrity` pass with
+  0 interpreter fallbacks, and the Less alpha verifier passes. Production ESLint
+  and full strict-type release checks remain required by the release gate;
+  warnings remain tracked debt, and neither types nor lint errors may be hidden
+  by bundlers' `--noCheck` builds.
 - `[x]` **F5 deferred CSS color-call gate.** Through the public Less/Jess route,
   CSS-shaped `rgb()`/`rgba()`/`hsl()`/`hsla()` calls with three or more argument
   slots remain authored, verbatim CSS calls even under `functionMode: 'error'`;

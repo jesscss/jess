@@ -1,7 +1,7 @@
 # V5 Output-Formatting + Evaluation-Semantics Reference (STEP 0)
 
 The **single scannable cheat sheet** every render / DIFF / eval agent reads
-*before* debugging an output or evaluation mismatch — so these rules stop being
+_before_ debugging an output or evaluation mismatch — so these rules stop being
 re-derived (and mis-called) one at a time.
 
 - **Correctness = the documented intended v5 design** (DD `E1`), NOT less@4, NOT
@@ -18,6 +18,7 @@ re-derived (and mis-called) one at a time.
 ## A. Output formatting (serialization)
 
 ### A1 · Un-operated VALUES = source-verbatim
+
 **Rule.** Un-operated value literals — dimensions, colors, keywords, quoted
 strings — emit their **source bytes**. Only **COMPUTED** results (values that an
 operation actually touched) and **`compress` mode** canonicalize.
@@ -30,6 +31,7 @@ operation actually touched) and **`compress` mode** canonicalize.
 rgb(50%,0,0)     → rgb(50%,0,0)     (verbatim; see A6)
 (2px + 3px)      → 5px              (computed → canonical)
 ```
+
 **Why.** v5 treats valid CSS as a superset that passes through unchanged;
 round-tripping un-operated literals through the numeric/color model mangles
 precision + spelling for zero benefit. Diverges from 4.x (which canonicalizes
@@ -38,6 +40,7 @@ un-operated dimensions).
 `memory:v5-preserve-unoperated-values-verbatim`, `memory:css-superset-verbatim-passthrough`
 
 ### A2 · OPERATORS / SEPARATORS = SPACED
+
 **Rule.** `/`, `+`, `-`, `*` and list commas emit **with spaces around them**,
 regardless of source spacing. They are **separators, not values** — the
 verbatim-value rule (A1) does NOT govern them. Do **not** copy 4.x's tight
@@ -49,12 +52,14 @@ verbatim-value rule (A1) does NOT govern them. Do **not** copy 4.x's tight
 grid-area:1/2/3/4       → grid-area: 1 / 2 / 3 / 4
 a,b,c                   → a, b, c
 ```
+
 **Why.** Separators are structural tokens the parser owns (DD `C2`); their
 spacing is a formatting decision of the emitter, not source-verbatim data. 4.x's
 tight slash was a legacy quirk, not the v5 target.
 **Ref.** DD `F1`
 
 ### A3 · EXCEPTION — `:nth-*()` An+B microsyntax stays unspaced
+
 **Rule.** The `An+B` microsyntax inside `:nth-child()` / `:nth-of-type()` / etc.
 is **selector syntax**: unspaced, never evaluated, never routed through the
 value/operator path (so A2 does NOT apply).
@@ -63,12 +68,14 @@ value/operator path (so A2 does NOT apply).
 :nth-child(2n+1)   → :nth-child(2n+1)   (not 2n + 1)
 :nth-child(-n+3)   → :nth-child(-n+3)
 ```
+
 **Why.** `2n+1` is one grammar token-run in the selector, not an arithmetic
 expression; treating its `+` as an operator would both mis-space it and risk
 evaluating it.
 **Ref.** DD `F2`
 
 ### A4 · CSS-function-SHAPE = verbatim
+
 **Rule.** `name(...)` with **NO space** before `(` passes through **verbatim**,
 even when `name` is not a real CSS function.
 
@@ -76,12 +83,14 @@ even when `name` is not a real CSS function.
 solid(#a8000b)   → solid(#a8000b)
 translateX(3px)  → translateX(3px)
 ```
+
 **Why.** The no-space call shape is unambiguously a function token; the engine
 must not "helpfully" evaluate or reformat an unknown function. Contrast A5 (a
 **space** before `(` is grouping, not a call).
 **Ref.** DD `F3` · `memory:css-superset-verbatim-passthrough`
 
 ### A5 · Grouping-parens dissolve after evaluation
+
 **Rule.** `keyword (expr)` — a **SPACE** then parens — is **math grouping**. Once
 the expression computes, the grouping-parens do **NOT** survive to output.
 
@@ -89,6 +98,7 @@ the expression computes, the grouping-parens do **NOT** survive to output.
 solid (@a*.66 + @b*.33)   → solid #a8000b      (parens gone)
 width: (2px + 3px)        → 5px                (never (5px))
 ```
+
 Corollary for `ast/`: a **space** before `(` must stay grouping — `solid (x)`
 must **not** collapse into the no-space function shape `solid(x)` (A4).
 **Why.** Grouping-parens exist only to control evaluation order; they are not
@@ -99,6 +109,7 @@ tests + `.less` fixtures. Distinct from A4.
 **Ref.** DD `F4`
 
 ### A6 · CSS value-functions un-operated = bare verbatim Call
+
 **Rule.** CSS-shaped `rgb` / `rgba` / `hsl` / `hsla` calls with **three or more
 argument slots and no enclosing operation** emit **VERBATIM** (a `Call` node
 tagged as a color, NOT an eager-invoked native fn). Modern space/slash and
@@ -116,11 +127,13 @@ rgba(#fff)                → computed Less color      (one-slot overload → in
 lighten(hsl(200,50%,40%)) → #.. (computed)          (operated → invoke)
 hsl(@h, 50%, 40%)         → #.. (computed)          (Less arg → invoke)
 ```
+
 **Why.** Eager-invoking + round-tripping through rgb mangles precision and
 spelling (A1 for functions). Only a real Less operation forces the compute.
 **Ref.** DD `F5`, `V2` · `memory:css-superset-verbatim-passthrough`
 
 ### A7 · `:is()` compaction — compact PREFIX-FACTORED nesting join
+
 **Rule.** Collapsing a nested `&`-less descendant `B` onto its accumulated
 ancestor `A` emits `<A> <combinator> render(B)`, where **each side** wraps in a
 single `:is(...)` **iff it is a multi-branch comma list** (a single selector joins
@@ -149,6 +162,7 @@ render(side) = side.isMultiBranchList ? `:is(${branches.join(', ')})` : side
    → #…#deux :is(#fourth, #five, #six) :is(.seven, .eight > #nine) {…}
    → #…#deux :is(#fourth, #five, #six) #ten {…}
 ```
+
 **Why.** v5 keeps output nested + compact instead of 4.x's fully-expanded
 cartesian cascade; the prefix is factored so a deep multi-selector block stays one
 row per rule instead of a combinatorial explosion. **Supersedes** the earlier
@@ -159,6 +173,7 @@ owner ruling 2026-07-18; the corpus `rulesets` golden was reconciled to this for
 `memory:v5-is-compaction-rule` · `serialize.ts` `opaqueJoin`/`wrapIsList`/`flatten`
 
 ### A8 · collapseNesting + adjacent-sibling merge
+
 **Rule.** Nesting collapse is **per-fixture** (`styles.config`): the less.js
 `.css` expected output defaults **FLAT**; the Jess CLI defaults **NESTED**
 (`collapseNesting:false`). Adjacent same-selector sibling merge is **NARROW** —
@@ -170,6 +185,7 @@ Jess CLI default:      .a { .b {…} }     stays nested
 less.js expected `.css`: flattened
 merge chain a; …; a:   emits at LAST a's position
 ```
+
 **Why.** v5's default is authored-structure-preserving; 4.x flatten is an opt-in
 flag owned by `jess-plugin-less`.
 **Ref.** DD `O1`, `O2`, `M1` · `memory:less-v5-default-collapsenesting-false`,
@@ -209,8 +225,10 @@ under-trims large ones.
 ## B. Evaluation semantics
 
 ### B1 · Escaped `~"..."` = opaque Anonymous (never numeric-sniffed)
+
 **Rule.** An escaped string `~"..."` is an **opaque Anonymous** value — never
 parsed as a number for comparison.
+
 - `=` cross-compares by **content**: `3 = ~"3"` → **true**.
 - `<` / `>` against a number = **not-comparable** → the guard does **not** fire.
 
@@ -218,11 +236,13 @@ parsed as a number for comparison.
 guard (3 = ~"3")   → true   (content match)
 guard (~"3" > 2)   → guard does not fire (not comparable)
 ```
+
 **Why.** Escaping opts the value OUT of the numeric model; sniffing it back into
 a number would defeat the escape.
 **Ref.** DD `V3`
 
 ### B2 · Mixin self-reference = parent-exclusion (no-op, never errors)
+
 **Rule.** A non-parametric ruleset self-call excludes the **enclosing** mixin
 from its own candidate set — it is a **no-op**, and **NEVER** an error. (A
 parametric self-call with different args legitimately recurses; a genuine runaway
@@ -231,11 +251,13 @@ with a bad guard is the only error, via a high depth backstop.)
 ```
 .a { color: red; .a(); }   → .a { color: red; }   (self-call excluded, no error)
 ```
+
 **Why.** Same "excluded because it can't make progress" principle as no-cyclic-vars
 (DD `R4`) — not "recursion detection".
 **Ref.** DD `R8`
 
 ### B3 · Mixin var-unlock = low-priority leak
+
 **Rule.** A variable unlocked by a mixin call is a **low-priority** binding: a
 **lexical** binding always wins; the leaked var is used **only** where nothing
 lexical binds.
@@ -245,24 +267,30 @@ lexical binds.
 .m() { @c: red; }
 .x { .m(); color: @c; }   → color: blue   (lexical @c wins over the leak)
 ```
+
 **Why.** Mixin-injected bindings must not silently override the caller's own
 lexical scope; they fill gaps, not shadow.
 **Ref.** DD `R9`
 
 ### B4 · Bare `@var` in an at-rule prelude = HARD ERROR
+
 **Rule.** A bare `@var` in an at-rule prelude is a **hard error** in v5
-(stricter than 4.x's warning). The migration target is `@{var}` interpolation.
+(stricter than 4.x's warning). The parser should recognize the removed shape,
+report a fatal unsupported-syntax diagnostic, and give `@{var}` interpolation as
+the exact migration target.
 **Exception:** a `@var` inside a **declaration-value paren** is fine.
 
 ```
 @supports (@cond) {…}      → ERROR   (bare @var in prelude)
 @supports (@{cond}) {…}    → ok      (interpolation is the migration target)
 ```
+
 **Why.** Preludes are structured, parser-owned token streams (DD `C2`, `P2`); a
 bare `@var` there is ambiguous, so v5 rejects rather than guesses.
 **Ref.** DD `P7` · `memory:less-supports-variable-prelude-strict`
 
 ### B5 · `if()` / `boolean()` / `not()` = structured conditions, branch-lazy
+
 **Rule.** These are **first-class structured conditions** (no parse-time
 name-special-casing), and they are **branch-lazy** — the **untaken** branch is
 **not evaluated**.
@@ -271,11 +299,13 @@ name-special-casing), and they are **branch-lazy** — the **untaken** branch is
 if(true, @a, @undefined)   → @a         (@undefined never evaluated)
 if(false, 1/0, 7)          → 7          (1/0 never evaluated)
 ```
+
 **Why.** Conditions are control flow; evaluating the dead branch would surface
 errors/side-effects that never logically run.
 **Ref.** DD `P3`, `P8`
 
 ### B6 · `@import (reference)` = hidden rules, visible only where pulled in
+
 **Rule.** Rules from an `@import (reference)` are **hidden** from normal output;
 they become visible **only** where pulled in via `:extend` or a mixin call —
 **per-branch** visibility. Implemented as a **cheap flag**, not by marking nodes.
@@ -284,11 +314,13 @@ they become visible **only** where pulled in via `:extend` or a mixin call —
 @import (reference) "lib";   → emits nothing on its own
 .x:extend(.lib-thing) {…}    → the referenced rule surfaces here only
 ```
+
 **Why.** `reference` imports are a dependency surface, not output; visibility is
-a property of the *pull site*, so a flag (not node mutation) is the leanest model.
+a property of the _pull site_, so a flag (not node mutation) is the leanest model.
 **Ref.** DD `A7`
 
 ### B7 · Resolve-failure = eval error unless explicitly optional; NO cyclic vars
+
 **Rule.** ANY failed resolve is a **hard EVAL ERROR**, except an explicitly
 **OPTIONAL** resolve (→ sentinel). There are **NO cyclic variables** — cycles are
 handled by per-declaration-node **exclusion** (`@a:1; @a:@a+1` → `2`), not a
@@ -298,6 +330,7 @@ recursion depth-cap.
 color: @undefined;    → EVAL ERROR
 @a: 1; @a: @a + 1;    → 2   (second decl excludes only itself)
 ```
+
 **Why.** No silent `@name`-as-literal passthrough; failures must surface. The
 depth-cap in `ast/` is a load-bearing STOPGAP until exclusion fully lands.
 **Ref.** DD `R3`, `R4` · `memory:v5-resolve-failure-is-eval-error-unless-optional`

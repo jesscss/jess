@@ -98,6 +98,12 @@ grammar reduction to `Stylesheet` through its package `parse()` operation. A
 CST may still be exposed for explicit language-service/document use, but it is
 not an AST bridge or a production parser route.
 
+That is the important boundary for dialect plugins: a language front end owns
+syntax and import conventions, then hands the compiler the same canonical
+stylesheet document every other dialect hands it. Jess is designed as a common
+stylesheet runtime in that sense, not as a set of parallel compilers with
+parallel output semantics.
+
 **Customizes import resolution.** `expandImport` turns a bare specifier into the
 candidate filenames to try (e.g. `foo` → `./foo.less`), and `resolve` maps
 specifiers to concrete paths. A plugin whose sole job is resolution can implement

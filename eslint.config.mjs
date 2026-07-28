@@ -48,10 +48,8 @@ const { default: grammarRules } = await import('./scripts/eslint-rules/grammar-r
  * Grammar sources: the four dialect parsers plus the shared recognition surface
  * they are supposed to COMPOSE rather than reimplement.
  *
- * Each parser has TWO grammars — the direct-AST one and the CST one the
- * language service uses — and both are in scope. A rule enforced on one and not
- * the other is how they drifted apart before (`${…}` shipped in the AST grammar
- * and errored in the editor for exactly that reason).
+ * Each parser owns one grammar source that is compiled for AST and CST host
+ * modes. Linting applies to the source shape, not to duplicated grammar bodies.
  */
 const GRAMMAR_FILES = [
   'packages/syntax/css/css-parser/src/**/*.ts',
@@ -439,34 +437,15 @@ export default tseslint.config([
       'grammar/no-macro-hazards': 'error',
 
       /*
-       * MATCHING PARENS. Every `(` that opens a multi-line call has its `)` at
-       * the indentation of the line that opened it, so parens pair visually
-       * down the left edge and nesting depth reads straight off the
-       * indentation. The stacked-closer form (`literal(';')));`) destroys
-       * that, and is the single biggest reason these files read like assembly.
-       *
-       * Single-argument calls are untouched by `function-call-argument-newline`,
-       * so `regex(/…/)` and `literal(';')` stay one-liners.
+       * Grammar readability is mostly semantic: use the combinator shape that
+       * makes the production obvious. Tiny calls such as `choice(foo, bar)` and
+       * `sequence(literal('{'), body, literal('}'))` should stay compact when
+       * they read better that way. Larger calls can expand around the parts
+       * that need documentation or visual grouping without forcing every short
+       * argument onto its own line.
        */
-      /*
-       * `multiline-arguments`, NOT `multiline`. `multiline` actively COLLAPSES
-       * a single-argument wrapper — it rewrites the preferred
-       *
-       *   node(
-       *     sequence(…)
-       *   )
-       *
-       * back into `node(sequence(…)`, which is the stacked-closer form this is
-       * meant to eliminate. `multiline-arguments` permits the expanded wrapper
-       * and still requires expansion once multiple arguments span lines.
-       *
-       * Known limit, stated plainly: no `@stylistic` option can REQUIRE the
-       * expanded wrapper for a single argument without also exploding
-       * `regex(/…/)` into three lines. The one-argument-per-line rule below is
-       * what does the real work; this one just stops the collapse.
-       */
-      '@stylistic/function-paren-newline': ['error', 'multiline-arguments'],
-      '@stylistic/function-call-argument-newline': ['error', 'always']
+      '@stylistic/function-paren-newline': 'off',
+      '@stylistic/function-call-argument-newline': 'off'
 
       /*
        * Deliberately NOT re-declaring `@stylistic/indent` here. The base config
@@ -479,24 +458,18 @@ export default tseslint.config([
   },
 
   /*
-   * TEMPORARY, and deliberately narrow: `less-parser`'s two grammars are being
-   * rewritten right now, and reformatting them underneath that pass would
-   * collide with it. The rules above are LANDED for these files — this block
-   * only defers the layout ones, which are the churny autofixable ones. The
-   * correctness rules (non-ASCII regex, hand-rolled keywords, macro hazards)
-   * stay ON, because those are the defects the cleanup is meant to remove.
+   * TEMPORARY, and deliberately narrow: `less-parser` is still in a heavy
+   * grammar-shaping pass. Keep parser-correctness rules on, but defer line
+   * comment and non-ASCII cleanup until the remaining Less productions stop
+   * churning.
    *
-   * Outstanding at the time of writing: 1403 function-call-argument-newline,
-   * 276 no-line-comments, 103 function-paren-newline, 21 indent, all
-   * autofixable. DELETE THIS BLOCK once that pass lands and `pnpm lint:fix`
- * has been run over `packages/less-parser/src`.
- */
+   * DELETE THIS BLOCK once that pass lands and `pnpm lint:fix` has been run
+   * over `packages/syntax/less/less-parser/src`.
+   */
   {
     files: ['packages/syntax/less/less-parser/src/**/*.ts'],
     rules: {
       'grammar/no-line-comments': 'off',
-      '@stylistic/function-paren-newline': 'off',
-      '@stylistic/function-call-argument-newline': 'off',
       '@stylistic/lines-around-comment': 'off',
 
       /*

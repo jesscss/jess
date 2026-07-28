@@ -106,7 +106,7 @@ When a Jess value crosses from Node to Deno:
 This preserves common Less plugin ergonomics inside Deno:
 
 ```js
-value instanceof less.tree.Dimension
+value instanceof less.tree.Dimension;
 ```
 
 That check can be true because the Deno bridge provides a Deno-side
@@ -119,12 +119,12 @@ The bridge payload should cover plugin-facing value classes first:
 
 ```ts
 type JsBridgeValue =
-  | { kind: 'dimension'; value: number; unit?: string }
-  | { kind: 'color'; rgb: [number, number, number]; alpha?: number }
-  | { kind: 'quoted'; value: string; escaped?: boolean }
-  | { kind: 'keyword'; value: string }
-  | { kind: 'list'; items: JsBridgeValue[]; separator: ',' | ' ' | '/' }
-  | { kind: 'call'; name: string; args: JsBridgeValue[] };
+  | { kind: "dimension"; value: number; unit?: string }
+  | { kind: "color"; rgb: [number, number, number]; alpha?: number }
+  | { kind: "quoted"; value: string; escaped?: boolean }
+  | { kind: "keyword"; value: string }
+  | { kind: "list"; items: JsBridgeValue[]; separator: "," | " " | "/" }
+  | { kind: "call"; name: string; args: JsBridgeValue[] };
 ```
 
 Rules:
@@ -172,7 +172,7 @@ new Function(
   "less",
   "fileInfo",
   source
-)
+);
 ```
 
 That wrapper belongs only to the legacy `@plugin` path. The Deno worker should
@@ -197,7 +197,6 @@ import and export handling.
 - This plugin is also the required runtime bridge for:
   - Sass and future Less `@use`,
   - Jess `@-use` and `@-from`,
-  - Less inline JavaScript,
   - Less `@plugin`.
 
 ### 2) Deno runtime strategy (required when plugin is used)
@@ -234,14 +233,15 @@ Exemption:
 - These exemptions only apply to trusted built-in function imports and JSON data, not arbitrary Node modules.
 
 If plugin is absent and JS import is requested, fail with deterministic error:
+
 - `JavaScript plugin not installed. Install @jesscss/plugin-js to enable script execution features.`
 
 If a script-capable feature is encountered and the plugin is not installed/configured:
 
 - Throw a feature-level error with consistent wording:
   - `Feature not supported. Install @jesscss/plugin-js to enable script execution features.`
-- This applies to executable `@-use` / `@-from` imports, Less inline JavaScript,
-  and file-based Less `@plugin`.
+- This applies to executable `@-use` / `@-from` imports and file-based Less
+  `@plugin`.
 - `@jesscss/fns`, `#less/*`, `#sass/*`, and `.json` imports are excluded from
   this error path.
 
@@ -280,7 +280,7 @@ Runner script responsibilities:
 - On explicit JS plugin configuration or explicit plugin prewarm:
   - start broker + Deno worker initialization asynchronously,
   - store one shared promise on context/runtime state.
-- At first script-required operation (`@-use`, `@-from`, inline JS, `@plugin`, non-`@jesscss/fns` module import):
+- At first script-required operation (`@-use`, `@-from`, `@plugin`, non-`@jesscss/fns` module import):
   - await the same shared initialization promise,
   - then execute request through worker bridge.
 - If no script features are used, initialization must not be started by the default lazy path.
@@ -494,7 +494,8 @@ All errors should include:
   - compile start does not trigger runtime prewarm when no script features are used.
   - first script operation awaits runtime readiness and succeeds after async startup completes.
   - broker disconnect mid-compile results in deterministic fail-closed diagnostics.
-  - `@-use`/`@-from`/inline JS/`@plugin` throw `Feature not supported` with install guidance when plugin is absent.
+  - `@-use`/`@-from`/`@plugin` throw `Feature not supported` with install guidance when plugin is absent.
+  - Inline backtick JavaScript is not a script-required operation; the parser recognizes it as removed syntax and reports the migration diagnostic before runtime startup.
 
 ### Cross-package checks
 
@@ -646,7 +647,7 @@ All errors should include:
 
 - **Files**
   - `packages/core/src/context.ts`
-  - (if needed) parser/eval files handling `@-use`, `@-from`, inline JS, `@plugin`
+  - (if needed) parser/eval files handling `@-use`, `@-from`, `@plugin`
 - **Changes**
   - Ensure `@jesscss/fns` imports bypass Deno requirements.
   - Keep non-`@jesscss/fns` paths gated by plugin + runtime availability.
@@ -700,9 +701,9 @@ All errors should include:
 
 ## Suggested execution order
 
-1. Task 1 -> Task 2 -> Task 3  
-2. Task 4 -> Task 5  
-3. Task 6 -> Task 7 -> Task 8  
+1. Task 1 -> Task 2 -> Task 3
+2. Task 4 -> Task 5
+3. Task 6 -> Task 7 -> Task 8
 4. Task 9 -> Task 10
 
 ## Verification matrix for PR

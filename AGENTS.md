@@ -16,10 +16,10 @@ required to read them.
 **The four-grammar rewrite.** Each of the four dialect parsers (`css`, `less`,
 `scss`, `jess`) started with two hand-maintained grammars — `src/grammar.ts`
 (positioned CST, consumed by the language service) and `src/ast/grammar.ts` (the
-shipping compile path). **Eight files are becoming four.** CSS is now
-single-source, and Less has moved its direct AST body into `src/grammar.ts` while
-retaining a compatibility re-export. Less still needs the real one-factory
-hostMode collapse; SCSS and Jess remain split.
+shipping compile path). **The physical eight-to-four fold has landed:** each
+dialect now ships AST and CST from one host-mode grammar source. The active work
+is polishing the surviving grammars so they are small, readable, spec-shaped,
+well documented, and idiomatic Parseman 0.41.
 
 **The spec is [`docs/design/GRAMMAR-REBUILD-SPEC.md`](docs/design/GRAMMAR-REBUILD-SPEC.md).
 Read its §0 first** — it states the goal in the owner's own words, the current
@@ -31,10 +31,29 @@ Two things to know before you plan anything:
 
 - **The parseman hostMode floor is paid.** The mechanism that lets one grammar
   file serve both the AST and the CST is parseman's `hostMode`, and the repo now
-  pins a parseman version that carries it. Publishing future parseman releases is
-  still owner-only. Spec §0.2 says exactly what to check and how.
+  resolves registry `parseman@0.41.0` through `^0.41.0` ranges. Publishing
+  future parseman releases is still owner-only. Spec §0.2 says exactly what to
+  check and how.
 - **Order is `css` → `less` → `scss` → `jess`.** CSS is the base; the dialects
   link back to it rather than restating it; no copy-paste from the old grammars.
+- **Use Parseman `dispatch(...)` narrowly and deliberately.** It is the right
+  shape when one routed same-family opener has already been consumed, such as
+  `url(`/generic `name(`, pseudo-functions, or known/generic at-keywords. Keep
+  `choice(...)` for body/list item families, closed keyword/operator tables,
+  and context decisions whose delimiter has not been consumed yet. The quick
+  reference is
+  [`docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md`](docs/architecture/parser/PARSEMAN-COMBINATOR-CHEAT-SHEET.md).
+- **Comments are trivia.** Do not preserve grammar-level `Comment` nodes,
+  value-comment leaves, or repeated `many(blockComment)` plumbing as the target
+  parser architecture. Those shapes are migration debt unless a scanner-local
+  `scanTo(...)` / `balanced(...)` skip needs to avoid terminating inside a
+  comment. Opaque unknown at-rules and custom-property values still should not
+  capture comments as semantic bytes; the parser should extract comment trivia
+  once into the source/document trivia index, and render/language-service
+  consumers should query that index by source offsets. Less's block-comment-only
+  rulesets still need to render; implement that as a trivia-backed
+  empty/renderability check, not by keeping `Comment` children in grammar
+  bodies.
 
 A **separate, parallel track** is the deletion of `packages/core/src/tree/` —
 inventory in [`docs/architecture/core/TREE-CUTOVER-SURFACE.md`](docs/architecture/core/TREE-CUTOVER-SURFACE.md).
@@ -183,14 +202,15 @@ the same language. In particular, Less `:extend(...)` must be collected as a
 contextual selector tail while parsing the selector once, not by reparsing
 selector branches through an inline-extend route.
 
-When several grammar arms begin by recognizing the same broad token family and
-then branch by the value already read, use Parseman's `dispatch(combinator,
-when(...), otherwise(...))` shape instead of speculative `choice(...)`
-backtracking. The first combinator parses once; `when()` handles exact or
-matcher cases; `otherwise()` owns the generic continuation; `routed()` lets the
-selected branch place the already-consumed value/span inside its CST/AST node.
-This is the canonical shape for CSS at-rules, identifier-or-function values,
-pseudos, contextual keywords, and Less/SCSS/Jess dialect-extension splits.
+When sibling arms re-recognize the same broad token family, and the
+already-consumed routed value itself decides exact known cases plus a same-family
+generic fallback, use Parseman's `dispatch(combinator, when(...),
+otherwise(...))` shape. The first combinator parses once; `when()` handles exact
+or matcher cases; `otherwise()` owns the generic continuation; `routed()` lets
+the selected branch place the already-consumed value/span inside its CST/AST
+node. Keep `choice(...)` or left-factor/context-helper shapes when the real
+decision is a later delimiter, caller context, closed table, or body/list
+construct family.
 Use one `makeWhen(...)` / `makeWord(...)` helper per real matching policy in the
 actual grammars; avoid separate helper names for pseudos, functions, at-rules, or
 words when the case-sensitivity and boundary policy are the same.
@@ -358,27 +378,3 @@ Tool-specific rule systems should stay thin:
 - avoid copying branch summaries, active stage snapshots, or large architectural explanations
 
 When a tool-specific rule becomes stale, replace it with a pointer to the canonical source instead of refreshing a duplicate summary.
-
-<!-- BEGIN Guildhall MCP bridge -->
-## Guildhall MCP Bridge
-
-Jess is a Guildhall project. When Guildhall MCP tools are available, use them as the first source of project context before reading raw `.guildhall/` files.
-
-Start with these MCP resources:
-
-- `guildhall://project`
-- `guildhall://project/tasks`
-- `guildhall://project/artifacts`
-- `guildhall://project/decisions`
-- `guildhall://project/memory`
-
-For artifact-scoped work, resolve IDs through `guildhall://project/artifacts` and prefer `guildhall.read_artifact` over guessing paths. If the task changes project state, use `guildhall.append_task_evidence` for audit notes when there is an active Guildhall task. If an external agent needs permission, tools, or host access it does not have, use `guildhall.create_capability_request` instead of silently working around the missing capability.
-
-To start the local MCP server from this project root:
-
-```sh
-guildhall mcp serve .
-```
-
-If Guildhall MCP tools are not configured in the current agent session, say so explicitly and fall back to normal repository inspection. Do not imply that filesystem reads came from Guildhall MCP.
-<!-- END Guildhall MCP bridge -->

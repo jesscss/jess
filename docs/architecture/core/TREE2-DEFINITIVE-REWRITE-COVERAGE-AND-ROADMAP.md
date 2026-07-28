@@ -56,8 +56,8 @@ Rungs done: selectors+nesting (3-4), mixin canonical-body+overlay (5), parser br
 inline (9b), guards+pattern+named/default dispatch (9c). **Extend is BUILT** (`tree2/extend.ts`,
 wired into `serialize.ts` — `computeExtends(root)`, zero-cost when no `:extend()` present).
 
-**Critical distinction:** the doc `AST-FROM-SCRATCH-DESIGN.md` describes a *different,
-older* arena POC (`adapter.ts`/`render.ts`/`types.ts`, emit-only after full eval, reused
+**Critical distinction:** the doc `AST-FROM-SCRATCH-DESIGN.md` describes a _different,
+older_ arena POC (`adapter.ts`/`render.ts`/`types.ts`, emit-only after full eval, reused
 `../tree`) — the **anti-pattern** preserved on `feature/greenfield-ast-design-20260714`,
 NOT the clean-room tree2 on this branch. Do not conflate them; that doc's "three-layer
 design target" section is a useful north star, but its "implemented" section is not this
@@ -78,8 +78,8 @@ code.
    (e.g. an eval-vs-spine inconsistency), judged against Jess intent.
 
 Consequence for tree2: its tests currently use the **legacy `tree` render as the
-byte-identity reference** (`oracle.ts`, `import-oracle.ts`). That is a valid *proxy for
-intended-v5* only where the legacy render agrees with the owner `.css` expected output / less.js
+byte-identity reference** (`oracle.ts`, `import-oracle.ts`). That is a valid _proxy for
+intended-v5_ only where the legacy render agrees with the owner `.css` expected output / less.js
 alpha. §4 flags exactly where that proxy is unsafe.
 
 ---
@@ -94,39 +94,39 @@ free/cleanly · **NOTYET** = deferred but straightforward on current design · *
 
 ### Less 4.x language
 
-| Feature | Tag | Evidence (tree2) | Note |
-|---|---|---|---|
-| Variables + lexical scope, lazy, last-wins, shadowing | INCORP | `serialize.ts` `collectVars`/`lookupVar`/`valueText`; rung 7 | Reference substitution correct; scope is a Map-chain, zero clone. |
-| Nesting + `&` composition | INCORP | `serialize.ts` `compose`/`composeOne`; `Compound/Complex.canonical` | Interned-string composition; **but only the flattened form** — see collapseNesting row. |
-| Selector lists / compound / combinators / `:is()` grouping | INCORP | `nodes.ts` selector model; `parentToken` | `& > .x` under a *complex* parent still a known gap (rung 3-4 log). |
-| Mixins (def + call, positional params) | INCORP | `MixinDef/MixinCall`; `expandCall` canonical-body+overlay | The decisive rung: zero clone/inherit. |
-| Pattern-matching mixins | INCORP | `mixin-dispatch.ts` `bindArgs` pattern params | Byte-equality on eager-resolved args. |
-| Named args / default params | INCORP | `bindArgs`; bridge `callArgs`/`mixinParams` | |
-| `@arguments` / `@rest` (`...`) | INCORP | `bindArgs` (`arguments` Word, rest param) | |
-| Mixin guards (`when`, and/or/not, cmp, type-fns) | INCORP | `guard.ts` `evalGuard`; `selectDefinitions` | Leaf truth delegated to `ValueService.evaluateGuardCondition`. |
-| `default()` mixin | INCORP | `guard.ts` `guardUsesDefault`; two-pass select | |
-| Mixin recursion / loops | INCORP (bounded) | `expandCall` unbounded in eval mode; record mode capped `MAX_RECORD_DEPTH=64` | Eval terminates via guards; record cap is a value-service scaffold artifact. |
-| Operations (arithmetic, color) | INCORP-via-service | `Operation` node; `valueText` → `ValueService.evaluateOperation` | **Math not native** — see cross-cutting note. |
-| Built-in functions (~120, `@jesscss/fns`) | INCORP-via-service | `FunctionCall`; `ValueService.callFunction`; `value-service.ts` wraps fns render | Same shortcut. |
-| `@import` + once/multiple/optional, cross-scope vars | INCORP | `import-bridge.ts` `resolveImportStatements` | reference/inline/css/url() deferred (raise `UnsupportedShape`). |
-| `!important` (declaration) | INCORP (as bytes) | bridge `rawDeclValue` keeps `!important` in the value text | No `important` field; carried in value bytes. Risk: no structured control (§4 R-important). |
-| `@media` block + `@charset`/statement at-rules | INCORP | `at-rule.ts`; `emitAtRuleBlock`/`emitAtRuleStatement` | v5 does NOT merge sibling `@media` — matches intent. |
-| `@import (reference)` / inline / `(css)` / url()/remote | NOTYET | `import-bridge.ts` raises `UnsupportedShape` | reference-mode needs visibility/suppression state (§4 R-ref). |
-| Extend (`:extend`, `&:extend`, `all`, selector-attached) | INCORP | `tree2/extend.ts` (`computeExtends`); wired into `serialize.ts` (zero-cost when no `:extend()`) | Ported from `tree/extend/{plan,solve,emit,pipeline}.ts`. |
-| Detached rulesets | NEEDS-DESIGN | none | Ruleset-as-value; tree2 value model has no ruleset value. |
-| Merge `+` / `+_` | NEEDS-DESIGN | none | v5 last-occurrence anchor (owner) — build to Jess intent, not Less. |
-| Namespaces / accessors `#ns.mixin()`, chained lookups | NEEDS-DESIGN | none; dispatch is flat-name only (`lookupMixinCandidates`) | Needs namespace-path resolution. Reference-CALL/member-call machinery scoped in `REFERENCE-CALL-PLAN.md` (unblocks `@use`/`@compose` `.name()` member access; module semantics gated on R6 Part D). |
-| Maps `#map[key]`, ruleset/collection indexing | READ LANDED (`MapAccessor`); chained/member-CALL NEEDS-DESIGN | `MapAccessor` read (`nodes.ts`, `evalMapAccessor`); no `.name(args)` member-call node | Chained accessor + member-call scoped in `REFERENCE-CALL-PLAN.md`. |
-| Interpolation `@{var}` (selector/value/property) | INCORP | bridge builds `Interp` value nodes (`parseValue`/`interpFromString`); `serialize.ts` `evalInterp` resolves + renders them | Landed (selector/value/property-name interpolation render). |
-| Escaping `~"..."`, string interpolation, `e()`/`%()` | NEEDS-DESIGN | none (escape via fns service partial) | |
-| `@plugin` | NEEDS-DESIGN | none | v5-deprecated but must parse/gate. |
-| Inline JS backtick | BYCON (removed) | n/a | Removed in v5 → parse error; nothing to build. |
-| Math modes / unit modes | NEEDS-DESIGN | none in tree2 (parse-time in parser) | Governs how `/` parses; the ValueService must honor the configured mode. |
-| `calc()` simplification (v5) | NOTYET | none | Isolated; deferred rung. |
+| Feature                                                    | Tag                                                           | Evidence (tree2)                                                                                                          | Note                                                                                                                                                                                                         |
+| ---------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Variables + lexical scope, lazy, last-wins, shadowing      | INCORP                                                        | `serialize.ts` `collectVars`/`lookupVar`/`valueText`; rung 7                                                              | Reference substitution correct; scope is a Map-chain, zero clone.                                                                                                                                            |
+| Nesting + `&` composition                                  | INCORP                                                        | `serialize.ts` `compose`/`composeOne`; `Compound/Complex.canonical`                                                       | Interned-string composition; **but only the flattened form** — see collapseNesting row.                                                                                                                      |
+| Selector lists / compound / combinators / `:is()` grouping | INCORP                                                        | `nodes.ts` selector model; `parentToken`                                                                                  | `& > .x` under a _complex_ parent still a known gap (rung 3-4 log).                                                                                                                                          |
+| Mixins (def + call, positional params)                     | INCORP                                                        | `MixinDef/MixinCall`; `expandCall` canonical-body+overlay                                                                 | The decisive rung: zero clone/inherit.                                                                                                                                                                       |
+| Pattern-matching mixins                                    | INCORP                                                        | `mixin-dispatch.ts` `bindArgs` pattern params                                                                             | Byte-equality on eager-resolved args.                                                                                                                                                                        |
+| Named args / default params                                | INCORP                                                        | `bindArgs`; bridge `callArgs`/`mixinParams`                                                                               |                                                                                                                                                                                                              |
+| `@arguments` / `@rest` (`...`)                             | INCORP                                                        | `bindArgs` (`arguments` Word, rest param)                                                                                 |                                                                                                                                                                                                              |
+| Mixin guards (`when`, and/or/not, cmp, type-fns)           | INCORP                                                        | `guard.ts` `evalGuard`; `selectDefinitions`                                                                               | Leaf truth delegated to `ValueService.evaluateGuardCondition`.                                                                                                                                               |
+| `default()` mixin                                          | INCORP                                                        | `guard.ts` `guardUsesDefault`; two-pass select                                                                            |                                                                                                                                                                                                              |
+| Mixin recursion / loops                                    | INCORP (bounded)                                              | `expandCall` unbounded in eval mode; record mode capped `MAX_RECORD_DEPTH=64`                                             | Eval terminates via guards; record cap is a value-service scaffold artifact.                                                                                                                                 |
+| Operations (arithmetic, color)                             | INCORP-via-service                                            | `Operation` node; `valueText` → `ValueService.evaluateOperation`                                                          | **Math not native** — see cross-cutting note.                                                                                                                                                                |
+| Built-in functions (~120, `@jesscss/fns`)                  | INCORP-via-service                                            | `FunctionCall`; `ValueService.callFunction`; `value-service.ts` wraps fns render                                          | Same shortcut.                                                                                                                                                                                               |
+| `@import` + once/multiple/optional, cross-scope vars       | INCORP                                                        | `import-bridge.ts` `resolveImportStatements`                                                                              | reference/inline/css/url() deferred (raise `UnsupportedShape`).                                                                                                                                              |
+| `!important` (declaration)                                 | INCORP (as bytes)                                             | bridge `rawDeclValue` keeps `!important` in the value text                                                                | No `important` field; carried in value bytes. Risk: no structured control (§4 R-important).                                                                                                                  |
+| `@media` block + `@charset`/statement at-rules             | INCORP                                                        | `at-rule.ts`; `emitAtRuleBlock`/`emitAtRuleStatement`                                                                     | v5 does NOT merge sibling `@media` — matches intent.                                                                                                                                                         |
+| `@import (reference)` / inline / `(css)` / url()/remote    | NOTYET                                                        | `import-bridge.ts` raises `UnsupportedShape`                                                                              | reference-mode needs visibility/suppression state (§4 R-ref).                                                                                                                                                |
+| Extend (`:extend`, `&:extend`, `all`, selector-attached)   | INCORP                                                        | `tree2/extend.ts` (`computeExtends`); wired into `serialize.ts` (zero-cost when no `:extend()`)                           | Ported from `tree/extend/{plan,solve,emit,pipeline}.ts`.                                                                                                                                                     |
+| Detached rulesets                                          | NEEDS-DESIGN                                                  | none                                                                                                                      | Ruleset-as-value; tree2 value model has no ruleset value.                                                                                                                                                    |
+| Merge `+` / `+_`                                           | NEEDS-DESIGN                                                  | none                                                                                                                      | v5 last-occurrence anchor (owner) — build to Jess intent, not Less.                                                                                                                                          |
+| Namespaces / accessors `#ns.mixin()`, chained lookups      | NEEDS-DESIGN                                                  | none; dispatch is flat-name only (`lookupMixinCandidates`)                                                                | Needs namespace-path resolution. Reference-CALL/member-call machinery scoped in `REFERENCE-CALL-PLAN.md` (unblocks `@use`/`@compose` `.name()` member access; module semantics gated on R6 Part D).          |
+| Maps `#map[key]`, ruleset/collection indexing              | READ LANDED (`MapAccessor`); chained/member-CALL NEEDS-DESIGN | `MapAccessor` read (`nodes.ts`, `evalMapAccessor`); no `.name(args)` member-call node                                     | Chained accessor + member-call scoped in `REFERENCE-CALL-PLAN.md`.                                                                                                                                           |
+| Interpolation `@{var}` (selector/value/property)           | INCORP                                                        | bridge builds `Interp` value nodes (`parseValue`/`interpFromString`); `serialize.ts` `evalInterp` resolves + renders them | Landed (selector/value/property-name interpolation render).                                                                                                                                                  |
+| Escaping `~"..."`, string interpolation, `e()`/`%()`       | NEEDS-DESIGN                                                  | none (escape via fns service partial)                                                                                     |                                                                                                                                                                                                              |
+| `@plugin`                                                  | NEEDS-DESIGN                                                  | none                                                                                                                      | v5-deprecated but must parse/gate.                                                                                                                                                                           |
+| Inline JS backtick                                         | BYCON (removed)                                               | parser diagnostic/recovery shape still needed                                                                             | Removed in v5, but not as random unrecognized text: the parser should recognize the backtick expression as unsupported syntax, report the migration diagnostic, and keep language-service recovery possible. |
+| Math modes / unit modes                                    | NEEDS-DESIGN                                                  | none in tree2 (parse-time in parser)                                                                                      | Governs how `/` parses; the ValueService must honor the configured mode.                                                                                                                                     |
+| `calc()` simplification (v5)                               | NOTYET                                                        | none                                                                                                                      | Isolated; deferred rung.                                                                                                                                                                                     |
 
 **Cross-cutting NEEDS-DESIGN on value math:** the ValueService impl
 (`tree2-frontend/value-service.ts`) computes math/functions by an **async record pass →
-sync replay** that re-wraps and re-renders through the *legacy* fns-registered path. This is
+sync replay** that re-wraps and re-renders through the _legacy_ fns-registered path. This is
 byte-identical-by-construction and honored the owner's "shared value service" seam, but it
 is a benchmark-tuned scaffold: it reparses expression source per key, needs a whole record
 pre-pass, and re-enters the very engine tree2 replaces. For "done right" (and the
@@ -136,17 +136,18 @@ render.
 
 ### Less v5 changes
 
-| Feature | Tag | Evidence | Note |
-|---|---|---|---|
-| **`collapseNesting:false` default (NESTED v5 output)** | **NEEDS-DESIGN** | `serialize.ts` `flatten`/`compose` only produce the *flattened* form | **Biggest silent gap.** tree2 emits only collapsed/flattened selectors (4.x / `collapseNesting:true`). The v5 *default* is nested output; tree2 has no nested-emit mode. Emit-time policy (arch E1), same walk, two forms. **R0.** |
-| Deprecation system + warnings on `result.warnings` | NOTYET | none in tree2 | Infra exists in `core/deprecation.ts`,`warnings.ts`; only some fire. |
-| `@use`/`@-use`/`@compose`/`@-import` semantics | NEEDS-DESIGN | @import handled; module semantics not | `@compose`/`@use` = module; `@-import`/`@import` = leaky fold + warn. |
-| Backtick removal | BYCON | n/a | Nothing to build. |
-| Permissive custom-prop `--*` + unknown at-rule preludes | NOTYET | at-rule prelude kept literal bytes; custom-prop not special-cased | Base CSS permissiveness; bridge opaque-bytes, likely fine but unverified. |
+| Feature                                                                           | Tag                                           | Evidence                                                                                                                                                                                                                                                                                                             | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`collapseNesting:false` default (NESTED v5 output)**                            | **NEEDS-DESIGN**                              | `serialize.ts` `flatten`/`compose` only produce the _flattened_ form                                                                                                                                                                                                                                                 | **Biggest silent gap.** tree2 emits only collapsed/flattened selectors (4.x / `collapseNesting:true`). The v5 _default_ is nested output; tree2 has no nested-emit mode. Emit-time policy (arch E1), same walk, two forms. **R0.**                                                                                                                                                                                                                                                                                              |
+| Deprecation system + warnings on `result.warnings`                                | NOTYET                                        | none in tree2                                                                                                                                                                                                                                                                                                        | Infra exists in `core/deprecation.ts`,`warnings.ts`; only some fire.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `@use`/`@-use`/`@compose`/`@-import` semantics                                    | NEEDS-DESIGN                                  | @import handled; module semantics not                                                                                                                                                                                                                                                                                | `@compose`/`@use` = module; `@-import`/`@import` = leaky fold + warn.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Backtick removal                                                                  | BYCON                                         | n/a                                                                                                                                                                                                                                                                                                                  | Nothing to build.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Permissive custom-prop `--*` + unknown at-rule preludes                           | NOTYET                                        | at-rule prelude kept literal bytes; custom-prop not special-cased                                                                                                                                                                                                                                                    | Base CSS permissiveness; bridge opaque-bytes, likely fine but unverified.                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | **Bare `@var` in at-rule prelude → hard error; `@{var}` is the migration target** | **PARSER-LANDED · tree2-INCORP · legacy-GAP** | parser: `less-parser` `AtRuleMalformed` + `preludeTokenTop` (rejects top-level bare `@var`/`@@var`, keeps decl-value `@var` inside `(…)`); tree2: `parse-host/actions/at-rules.ts` `parsePreludeValue`+`blockBraceIndex` resolve `@{var}` (`atrule-interp-prelude.test.ts`, 5 green — `@media @{q}`→`@media screen`) | **Owner rule: a plain `@var` ANYWHERE in an at-rule prelude errors in v5 (deprecated-but-works in 4.x), EXCEPT a `@var` inside a declaration value (`@media (min-width:@v)`, `@foo (x:@v)`). Parser change LANDED on `origin/dev`. `@{var}` resolution is DONE in tree2 but MISSING in the legacy production render (Compiler+plugin-less emits `@{var}` verbatim, 0 errors — VERIFIED 2026-07-17). So v5 has no working var-in-prelude on the legacy path; closes on the front-end flip to tree2. See sequencing note below.** |
-| calc simplification | NOTYET | none | |
+| calc simplification                                                               | NOTYET                                        | none                                                                                                                                                                                                                                                                                                                 |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 **Sequencing — at-rule bare-`@var` (opened 2026-07-17):**
+
 - **Jess parser**: hard-error landed on `origin/dev` (`63663e900`/`db02867dd`/`91f0690b2`); native error + interp tests green.
 - **tree2 render**: resolves `@{var}` preludes (test-only host today). **Blocker to finishing the fixture migration is purely the legacy→tree2 front-end flip** — no new resolution work needed; it already works in tree2.
 - **less.js fixtures (unpushed branches, awaiting owner push):**
@@ -158,37 +159,37 @@ render.
 
 ### Sass+ dialect
 
-| Feature | Tag | Evidence | Note |
-|---|---|---|---|
-| SCSS engine, reject-invalid-CSS stance | NEEDS-DESIGN | none | SCSS is a perf NON-GOAL but a *coverage* target; the bridge is Less-parser-only today. |
-| `!default` (`$foo?:`), `!global`, `:=` nearestOuter (`setDefined` vs nearestOuter) | NEEDS-DESIGN | none | Distinct scope-write semantics; tree2 scope is read-substitution only, no live reassignment. |
+| Feature                                                                            | Tag          | Evidence | Note                                                                                         |
+| ---------------------------------------------------------------------------------- | ------------ | -------- | -------------------------------------------------------------------------------------------- |
+| SCSS engine, reject-invalid-CSS stance                                             | NEEDS-DESIGN | none     | SCSS is a perf NON-GOAL but a _coverage_ target; the bridge is Less-parser-only today.       |
+| `!default` (`$foo?:`), `!global`, `:=` nearestOuter (`setDefined` vs nearestOuter) | NEEDS-DESIGN | none     | Distinct scope-write semantics; tree2 scope is read-substitution only, no live reassignment. |
 
 ### .jess dialect
 
-| Feature | Tag | Evidence | Note |
-|---|---|---|---|
-| `$var` live read, `$$var` scoped/final read, `$foo:`/`$$foo:` create or update both bindings; `$foo?:` tests live and `$$foo?:` tests scoped/final; `$foo :=` updates live and `$$foo :=` updates scoped/final; readonly `!$`, private `_name` | NEEDS-DESIGN | none | Needs live-binding cells and a scoped declaration index (arch A5/B4), not just a var Map. `$!` is retired. |
-| `$ > mixin()` / `$apply` / chained namespaced apply | NEEDS-DESIGN | none | |
-| `$extend`, `*.name`, anonymous mixins, `$content()` | NEEDS-DESIGN | none | |
-| Interpolation `$(...)`/`$[key]`, selector capture `*[...]` | NEEDS-DESIGN | none | |
-| Collections/maps `$x:{…}`, dot/index access, negative index | NEEDS-DESIGN | none | |
-| `$if/$else`, `$for`, ranges, destructuring | NEEDS-DESIGN | none | Control flow; needs live counters (arch A5). |
-| `@-use`/`@-from`/`@-export`/`@-compose` | NEEDS-DESIGN | none | |
-| `.jess` parser deliberately trails | BYCON | memory `jess-parser-intentionally-trails` | Wire after Less+SCSS leave alpha. |
+| Feature                                                                                                                                                                                                                                        | Tag          | Evidence                                  | Note                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `$var` live read, `$$var` scoped/final read, `$foo:`/`$$foo:` create or update both bindings; `$foo?:` tests live and `$$foo?:` tests scoped/final; `$foo :=` updates live and `$$foo :=` updates scoped/final; readonly `!$`, private `_name` | NEEDS-DESIGN | none                                      | Needs live-binding cells and a scoped declaration index (arch A5/B4), not just a var Map. `$!` is retired. |
+| `$ > mixin()` / `$apply` / chained namespaced apply                                                                                                                                                                                            | NEEDS-DESIGN | none                                      |                                                                                                            |
+| `$extend`, `*.name`, anonymous mixins, `$content()`                                                                                                                                                                                            | NEEDS-DESIGN | none                                      |                                                                                                            |
+| Interpolation `$(...)`/`$[key]`, selector capture `*[...]`                                                                                                                                                                                     | NEEDS-DESIGN | none                                      |                                                                                                            |
+| Collections/maps `$x:{…}`, dot/index access, negative index                                                                                                                                                                                    | NEEDS-DESIGN | none                                      |                                                                                                            |
+| `$if/$else`, `$for`, ranges, destructuring                                                                                                                                                                                                     | NEEDS-DESIGN | none                                      | Control flow; needs live counters (arch A5).                                                               |
+| `@-use`/`@-from`/`@-export`/`@-compose`                                                                                                                                                                                                        | NEEDS-DESIGN | none                                      |                                                                                                            |
+| `.jess` parser deliberately trails                                                                                                                                                                                                             | BYCON        | memory `jess-parser-intentionally-trails` | Wire after Less+SCSS leave alpha.                                                                          |
 
 ### Cross-cutting
 
-| Feature | Tag | Evidence | Note |
-|---|---|---|---|
-| Plugin/visitor API (projection, enter + optional exit) | NOTYET / BYCON-friendly | none wired; but tree2 IS a projection serializer | Settled design (arch F1–F5) is `(node)=>Node\|void`, node in *output* form — tree2's per-emit-position node is exactly that. One exit consumer (`less-plugin-inline-urls`). Whole-tree mutate-then-observe deliberately unserved (arch G2). |
-| Pre-eval visitors | NEEDS-DESIGN | none | Cannot fold into the single resolve-and-emit pass (arch F6/G1); keep as a separate gated pre-walk. |
-| **less-compat bridge (`less.functions`/`less.tree`)** — the ONE external contract | NEEDS-DESIGN | none in tree2 | `less.functions`: custom fns resolve against live bindings via their own Call-eval — can plug into the ValueService seam. `less.tree`: 4.x node ctors are a real external API tree2's clean-room nodes don't expose; needs an adapter that is NOT a `../tree` import inside `tree2/`. |
-| Source maps / sourcemap identity | NEEDS-DESIGN | `serialize.ts` `trackPositions` → coarse node→offset `Position[]` | Coarse rule-granularity lane exists; **sourcemap identity is the #1 divergence risk** (arch I.1); fieldSpans/valueSpans backend is an open measured fork (perf #9). Not proven. |
-| Deprecation emission | NOTYET | none | |
-| Error reporting (single-error vs tolerant) | NOTYET | tree2 raises `UnsupportedShape`; no diagnostic model | Grammar dual-use (strict-single-error / tolerant) is a compiler-mode concern. |
-| CSS Modules | NEEDS-DESIGN | none | Positioning/roadmap; alpha-exit bar per memory. |
-| CSS-in-JS / tree-shaken JS-module output | NEEDS-DESIGN | none — but tree2's lean-data + external-serializer + tagged nodes is the *right substrate* | The endgame the clean-room shape is aimed at; nothing emits JS modules yet. |
-| PostCSS-like permissiveness | NOTYET | at-rule/custom-prop kept as bytes | |
+| Feature                                                                           | Tag                     | Evidence                                                                                   | Note                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Plugin/visitor API (projection, enter + optional exit)                            | NOTYET / BYCON-friendly | none wired; but tree2 IS a projection serializer                                           | Settled design (arch F1–F5) is `(node)=>Node\|void`, node in _output_ form — tree2's per-emit-position node is exactly that. One exit consumer (`less-plugin-inline-urls`). Whole-tree mutate-then-observe deliberately unserved (arch G2).                                           |
+| Pre-eval visitors                                                                 | NEEDS-DESIGN            | none                                                                                       | Cannot fold into the single resolve-and-emit pass (arch F6/G1); keep as a separate gated pre-walk.                                                                                                                                                                                    |
+| **less-compat bridge (`less.functions`/`less.tree`)** — the ONE external contract | NEEDS-DESIGN            | none in tree2                                                                              | `less.functions`: custom fns resolve against live bindings via their own Call-eval — can plug into the ValueService seam. `less.tree`: 4.x node ctors are a real external API tree2's clean-room nodes don't expose; needs an adapter that is NOT a `../tree` import inside `tree2/`. |
+| Source maps / sourcemap identity                                                  | NEEDS-DESIGN            | `serialize.ts` `trackPositions` → coarse node→offset `Position[]`                          | Coarse rule-granularity lane exists; **sourcemap identity is the #1 divergence risk** (arch I.1); fieldSpans/valueSpans backend is an open measured fork (perf #9). Not proven.                                                                                                       |
+| Deprecation emission                                                              | NOTYET                  | none                                                                                       |                                                                                                                                                                                                                                                                                       |
+| Error reporting (single-error vs tolerant)                                        | NOTYET                  | tree2 raises `UnsupportedShape`; no diagnostic model                                       | Grammar dual-use (strict-single-error / tolerant) is a compiler-mode concern.                                                                                                                                                                                                         |
+| CSS Modules                                                                       | NEEDS-DESIGN            | none                                                                                       | Positioning/roadmap; alpha-exit bar per memory.                                                                                                                                                                                                                                       |
+| CSS-in-JS / tree-shaken JS-module output                                          | NEEDS-DESIGN            | none — but tree2's lean-data + external-serializer + tagged nodes is the _right substrate_ | The endgame the clean-room shape is aimed at; nothing emits JS modules yet.                                                                                                                                                                                                           |
+| PostCSS-like permissiveness                                                       | NOTYET                  | at-rule/custom-prop kept as bytes                                                          |                                                                                                                                                                                                                                                                                       |
 
 ## 1(b) Deferred core perf levers
 
@@ -198,40 +199,40 @@ constructions + ~35,033 `inherit` per render, flat profile, selectors ≈86% of 
 allocation** (`AST-ARENA-EXPERIMENT-HANDOFF.md`; `AST-FROM-SCRATCH-DESIGN.md` §Q-40). Extend
 `processExtends` ≈47ms is the one concentrated hotspot.
 
-| Lever | tree2 status | Evidence | Note |
-|---|---|---|---|
-| Structural sharing / no per-placement clone/inherit (the #1 measured cost) | **BYCON — satisfied** | `serialize.ts` `expandCall` walks shared body; clone/inherit columns structurally zero (rungs 5,7,8 races) | tree2's whole thesis and its proven win. |
-| strings-over-nodes (leaf tokens as strings) | BYCON | interned selector strings; static values captured as bytes | Interning from the start; producer-flip debt is on the *legacy* tree, moot here. |
-| Provenance-inline span (kill PROV WeakMap) | BYCON | tree2 has no PROV WeakMap; `Position` computed at emit | External serializer owns offsets. |
-| Single-writer / writer-fragment sharing; incremental refreshPositions; emit header/span | BYCON | `serialize.ts` one `chunks[]` buffer | External serializer is the end-state these retrofits converged toward. |
-| Field-budget / FAST-V8 monomorphic / frozen→flag / rulesFlags / drop always-true fields / absent-metadata / lazy caches / ref-nuke | BYCON | `node.ts` base = one `kind`; nodes minimal fixed-shape classes | Debt-repayment on the fat legacy `Rules`/`Node`; a clean build never accretes them. Construction discipline, not features. |
-| de-generatorify hot walk | BYCON | `serialize.ts` is plain recursion, no generators | |
-| callable-lookup caching | BYCON (do NOT add) | — | Measured neutral-to-slower twice; a clean design should not add it. |
-| **value-literal type tag (VALUE-LITERAL-TAG-SPEC)** | **NEEDS-DESIGN — OPEN** | tree2 has `Dimension`(num+unit) + byte-captured `Word`; no (string,tag) lazy leaf | Still must *decide* the encoding, N=1 vs N≥2 packing, `1.0`→`1` verbatim-vs-canonical byte call. **The arena diagnosis corrects the old fixation: hot allocation is SELECTORS, not values** — so this is a memory/cleanliness lever, not the decisive perf lever. |
-| selector-containers-as-nested-arrays | NEEDS-DESIGN — OPEN/risky | tree2 uses selector *classes* with cached canonical strings | Parked (match-path regression risk); if tree2 ever flattens selector containers to arrays, measure on the extend-match bench specifically. |
-| **D-EVAL flip principle** (eval does VALUES; STRUCTURE→emit; `F_STATIC` fast path) | **BYCON — embodied** | tree2 is one emit walk; structure (composition) is emit-time, values resolve per-leaf | tree2 *is* the flip done natively — the single most load-bearing open decision on the old tree is already tree2's architecture. Ratified moot-under-tree2 as a *migration step*. |
-| fieldSpans/valueSpans three-way fork | **NEEDS-DESIGN — OPEN** | tree2's `trackPositions` is coarse; no sub-node delimiter trivia | Interned strings + coarse spans do NOT resolve sub-node trivia offsets. Backend (WeakMap / unified / serialize-time recovery) still a measured, correctness-trap-laden owner fork. |
-| source-order / merge-coalescer / doc-order admission gates | SEMI-OPEN | tree2 lacks these passes (no merge, no extend yet) | The *fact-carrying* pattern (a bit + admission predicate) must be re-instantiated deliberately when merge/extend land; some may be reframed since structure is already emit-time. |
-| "Predict before building" + cost-contract governance | CARRY | `CORE-CLEANUP.md` §Predict; `AGGRESSIVE-CUTTING-REVIEW.md` | Meta-lever tree2 already follows (predict → same-worktree A/B → byte-identity gate). Keep it. |
+| Lever                                                                                                                              | tree2 status              | Evidence                                                                                                   | Note                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structural sharing / no per-placement clone/inherit (the #1 measured cost)                                                         | **BYCON — satisfied**     | `serialize.ts` `expandCall` walks shared body; clone/inherit columns structurally zero (rungs 5,7,8 races) | tree2's whole thesis and its proven win.                                                                                                                                                                                                                          |
+| strings-over-nodes (leaf tokens as strings)                                                                                        | BYCON                     | interned selector strings; static values captured as bytes                                                 | Interning from the start; producer-flip debt is on the _legacy_ tree, moot here.                                                                                                                                                                                  |
+| Provenance-inline span (kill PROV WeakMap)                                                                                         | BYCON                     | tree2 has no PROV WeakMap; `Position` computed at emit                                                     | External serializer owns offsets.                                                                                                                                                                                                                                 |
+| Single-writer / writer-fragment sharing; incremental refreshPositions; emit header/span                                            | BYCON                     | `serialize.ts` one `chunks[]` buffer                                                                       | External serializer is the end-state these retrofits converged toward.                                                                                                                                                                                            |
+| Field-budget / FAST-V8 monomorphic / frozen→flag / rulesFlags / drop always-true fields / absent-metadata / lazy caches / ref-nuke | BYCON                     | `node.ts` base = one `kind`; nodes minimal fixed-shape classes                                             | Debt-repayment on the fat legacy `Rules`/`Node`; a clean build never accretes them. Construction discipline, not features.                                                                                                                                        |
+| de-generatorify hot walk                                                                                                           | BYCON                     | `serialize.ts` is plain recursion, no generators                                                           |                                                                                                                                                                                                                                                                   |
+| callable-lookup caching                                                                                                            | BYCON (do NOT add)        | —                                                                                                          | Measured neutral-to-slower twice; a clean design should not add it.                                                                                                                                                                                               |
+| **value-literal type tag (VALUE-LITERAL-TAG-SPEC)**                                                                                | **NEEDS-DESIGN — OPEN**   | tree2 has `Dimension`(num+unit) + byte-captured `Word`; no (string,tag) lazy leaf                          | Still must _decide_ the encoding, N=1 vs N≥2 packing, `1.0`→`1` verbatim-vs-canonical byte call. **The arena diagnosis corrects the old fixation: hot allocation is SELECTORS, not values** — so this is a memory/cleanliness lever, not the decisive perf lever. |
+| selector-containers-as-nested-arrays                                                                                               | NEEDS-DESIGN — OPEN/risky | tree2 uses selector _classes_ with cached canonical strings                                                | Parked (match-path regression risk); if tree2 ever flattens selector containers to arrays, measure on the extend-match bench specifically.                                                                                                                        |
+| **D-EVAL flip principle** (eval does VALUES; STRUCTURE→emit; `F_STATIC` fast path)                                                 | **BYCON — embodied**      | tree2 is one emit walk; structure (composition) is emit-time, values resolve per-leaf                      | tree2 _is_ the flip done natively — the single most load-bearing open decision on the old tree is already tree2's architecture. Ratified moot-under-tree2 as a _migration step_.                                                                                  |
+| fieldSpans/valueSpans three-way fork                                                                                               | **NEEDS-DESIGN — OPEN**   | tree2's `trackPositions` is coarse; no sub-node delimiter trivia                                           | Interned strings + coarse spans do NOT resolve sub-node trivia offsets. Backend (WeakMap / unified / serialize-time recovery) still a measured, correctness-trap-laden owner fork.                                                                                |
+| source-order / merge-coalescer / doc-order admission gates                                                                         | SEMI-OPEN                 | tree2 lacks these passes (no merge, no extend yet)                                                         | The _fact-carrying_ pattern (a bit + admission predicate) must be re-instantiated deliberately when merge/extend land; some may be reframed since structure is already emit-time.                                                                                 |
+| "Predict before building" + cost-contract governance                                                                               | CARRY                     | `CORE-CLEANUP.md` §Predict; `AGGRESSIVE-CUTTING-REVIEW.md`                                                 | Meta-lever tree2 already follows (predict → same-worktree A/B → byte-identity gate). Keep it.                                                                                                                                                                     |
 
 ## 1(c) Architecture learnings
 
-| Principle | tree2 status | Evidence | Note |
-|---|---|---|---|
-| One downward resolve-and-emit pass, no second output tree (A1) | **EMBODIED** | `serialize.ts` single walk | |
-| Frame-threading spine is monolithic; value-frame lives the whole pass (A2/A3) | EMBODIED (partial) | `Frame` chain threaded through walk | Threads a scope frame; but read-substitution only, lacks live-cell mutation. |
-| Value-frame uses call-site lexical chain, not `.parent` (A4) | EMBODIED | mixin call frame `parent: frame` = lexical chain | Args eager-resolved in caller frame (Less semantics). |
-| **Live cells mutate in place (`$while` counter, `!global`, `:=`) (A5/B4)** | **MISSING — NEEDS-DESIGN** | tree2 `vars: Map<string,ValueNode>` immutable per frame | No `BindingCell`. Required for Sass+ `:=`/`!global`, `.jess` live `$`, `$for`/`$while`; `$$` remains the scoped lookup. |
-| Canonical nodes immutable templates; placements thin surfaces; no deep clone (B1) | **EMBODIED** | overlay frame; body stored once | tree2's foundational win. |
-| Loosened invariant: output-invisible in-place mutation permitted (B2) | AVAILABLE-BYCON | cached `_canon`/`_hasAmp` on Complex/Compound | tree2 already memoizes canonical strings on the node — the permitted output-invisible cache. |
-| Never reparent (`adopt`/`setParent` dissolved) (B3/B5) | BYCON | tree2 nodes have no `.parent`/`adopt`/`frozen` | The reparenting problem is designed out. |
-| Async: sync by default, async only on genuine thenable (C1) | PARTIAL-DIVERGENCE | `serialize.ts` fully sync; async pushed into the value-service record pre-pass | tree2 sidesteps async by precomputing; the done-right value path must keep sync-by-default without a whole record pre-pass. |
-| Extend = PLAN/SOLVE/EMIT woven in one pass; structural layer decoupled from value-frame; list-append order, no sort; zero-cost gate (D1–D7) | INCORP | `tree2/extend.ts` (`computeExtends`), wired into `serialize.ts` | Ported from `tree/extend/{plan,solve,emit,pipeline}.ts` and wired (zero-cost gate live). |
-| collapseNesting is an emit-time policy; same walk, both forms (E1) | **MISSING — NEEDS-DESIGN** | tree2 does only the collapsed form | The key gap — R0. |
-| Plugin/visitor = projection read model, `(node)=>Node\|void`, node in output form; exit optional; whole-tree machinery deleted; whole-tree mutate-observe unserved (F1–F5, G2) | ALIGNED-BYCON (unwired) | tree2 per-emit-position node = the settled contract | Wire a hook edge, don't build a walk framework. |
-| Pre-eval visitors kept as separate gated pre-walk (F6/G1) | CARRY | — | Cannot fold into the single pass. |
-| Sourcemap attribution to SOURCE node; shared leaf must not re-emit authored trivia; warnings v5-native (I.1–I.3) | NEEDS-DESIGN | coarse `Position` lane | Divergence risks; each slice needs a sourcemap-identity check, not just CSS-identity. |
-| Governance: drive to target not match old code; no permanent eval fallback; ratchet; reference = intended v5 (H1–H8) | CARRY | tree2 harness ratchets byte-identity + boundary-guard + `composeStats` op-counts | Keep ratchets; add a nested-output ratchet and a sourcemap-identity ratchet. |
+| Principle                                                                                                                                                                      | tree2 status               | Evidence                                                                         | Note                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| One downward resolve-and-emit pass, no second output tree (A1)                                                                                                                 | **EMBODIED**               | `serialize.ts` single walk                                                       |                                                                                                                             |
+| Frame-threading spine is monolithic; value-frame lives the whole pass (A2/A3)                                                                                                  | EMBODIED (partial)         | `Frame` chain threaded through walk                                              | Threads a scope frame; but read-substitution only, lacks live-cell mutation.                                                |
+| Value-frame uses call-site lexical chain, not `.parent` (A4)                                                                                                                   | EMBODIED                   | mixin call frame `parent: frame` = lexical chain                                 | Args eager-resolved in caller frame (Less semantics).                                                                       |
+| **Live cells mutate in place (`$while` counter, `!global`, `:=`) (A5/B4)**                                                                                                     | **MISSING — NEEDS-DESIGN** | tree2 `vars: Map<string,ValueNode>` immutable per frame                          | No `BindingCell`. Required for Sass+ `:=`/`!global`, `.jess` live `$`, `$for`/`$while`; `$$` remains the scoped lookup.     |
+| Canonical nodes immutable templates; placements thin surfaces; no deep clone (B1)                                                                                              | **EMBODIED**               | overlay frame; body stored once                                                  | tree2's foundational win.                                                                                                   |
+| Loosened invariant: output-invisible in-place mutation permitted (B2)                                                                                                          | AVAILABLE-BYCON            | cached `_canon`/`_hasAmp` on Complex/Compound                                    | tree2 already memoizes canonical strings on the node — the permitted output-invisible cache.                                |
+| Never reparent (`adopt`/`setParent` dissolved) (B3/B5)                                                                                                                         | BYCON                      | tree2 nodes have no `.parent`/`adopt`/`frozen`                                   | The reparenting problem is designed out.                                                                                    |
+| Async: sync by default, async only on genuine thenable (C1)                                                                                                                    | PARTIAL-DIVERGENCE         | `serialize.ts` fully sync; async pushed into the value-service record pre-pass   | tree2 sidesteps async by precomputing; the done-right value path must keep sync-by-default without a whole record pre-pass. |
+| Extend = PLAN/SOLVE/EMIT woven in one pass; structural layer decoupled from value-frame; list-append order, no sort; zero-cost gate (D1–D7)                                    | INCORP                     | `tree2/extend.ts` (`computeExtends`), wired into `serialize.ts`                  | Ported from `tree/extend/{plan,solve,emit,pipeline}.ts` and wired (zero-cost gate live).                                    |
+| collapseNesting is an emit-time policy; same walk, both forms (E1)                                                                                                             | **MISSING — NEEDS-DESIGN** | tree2 does only the collapsed form                                               | The key gap — R0.                                                                                                           |
+| Plugin/visitor = projection read model, `(node)=>Node\|void`, node in output form; exit optional; whole-tree machinery deleted; whole-tree mutate-observe unserved (F1–F5, G2) | ALIGNED-BYCON (unwired)    | tree2 per-emit-position node = the settled contract                              | Wire a hook edge, don't build a walk framework.                                                                             |
+| Pre-eval visitors kept as separate gated pre-walk (F6/G1)                                                                                                                      | CARRY                      | —                                                                                | Cannot fold into the single pass.                                                                                           |
+| Sourcemap attribution to SOURCE node; shared leaf must not re-emit authored trivia; warnings v5-native (I.1–I.3)                                                               | NEEDS-DESIGN               | coarse `Position` lane                                                           | Divergence risks; each slice needs a sourcemap-identity check, not just CSS-identity.                                       |
+| Governance: drive to target not match old code; no permanent eval fallback; ratchet; reference = intended v5 (H1–H8)                                                           | CARRY                      | tree2 harness ratchets byte-identity + boundary-guard + `composeStats` op-counts | Keep ratchets; add a nested-output ratchet and a sourcemap-identity ratchet.                                                |
 
 ---
 
@@ -252,6 +253,7 @@ its **validated design source and interim shipping path** — not a parallel des
   investing in them as a destination.**
 
 - **What MUST port into tree2 (do not lose) — DESIGNS, not the node API:**
+
   1. The **PLAN/SOLVE/EMIT extend pipeline** (`tree/extend/*.ts`) — already
      differential-validated; port the algorithm.
   2. The **projection visitor contract** (arch F) + the less-compat proof that only enter
@@ -264,8 +266,9 @@ its **validated design source and interim shipping path** — not a parallel des
   5. The **governance/ratchets and intended-design stance** (H1–H8).
 
 - **What the existing core does that tree2's model genuinely cannot (yet), with limits:**
+
   - **Whole-tree mutate-then-observe plugins (arch G2).** The projection model deliberately
-    cannot serve this — but the published-plugin audit found *no* plugin needs it; accepted
+    cannot serve this — but the published-plugin audit found _no_ plugin needs it; accepted
     non-goal, not a blocker.
   - **Pre-eval visitors (G1).** Need an un-evaluated whole tree the single pass never
     materializes — keep a separate gated pre-walk (tree2 can host it on the bridge output
@@ -274,7 +277,7 @@ its **validated design source and interim shipping path** — not a parallel des
     "fresh context per compile" production shape makes this moot, but tree2 must emit the
     document prelude at depth 0 deliberately.
   - **`less.tree` node-ctor external API.** tree2's clean-room nodes aren't 4.x nodes; the
-    compat bridge needs an adapter layer *outside* the boundary.
+    compat bridge needs an adapter layer _outside_ the boundary.
 
 - **Sequencing (ratified).** Keep the origin/dev spine as the **interim shipping alpha**
   (112/112 all-less spine-clean per `archive/CUTOVER-STATUS-2026-07-18.md`; only `benchmark.less` throws on two
@@ -292,9 +295,10 @@ its **validated design source and interim shipping path** — not a parallel des
 Each rung: what it adds · matrix rows closed · where the current tree2 design must change.
 
 **R0 — collapseNesting:false nested-output mode (RATIFIED to precede extend). BUILT ✓.**
-- Adds: the v5 *default* nested emit form; second emit policy on the same walk (arch E1).
+
+- Adds: the v5 _default_ nested emit form; second emit policy on the same walk (arch E1).
 - Closes: 1(a)/1(b) collapseNesting rows; 1(c) E1.
-- Design change: `serialize.ts` `flatten`/`compose` currently *only* build flattened
+- Design change: `serialize.ts` `flatten`/`compose` currently _only_ build flattened
   selector strings. Add a nested-emit path that preserves block structure and emits
   parent/child as nested rulesets, sharing `Compound/Complex.canonical`. Load-bearing
   because **extend's EMIT phase must project through the same collapse policy** (arch E1,
@@ -313,6 +317,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   combinator — a pre-existing bridge/selector-model gap, orthogonal to the collapse policy.
 
 **R1 — Extend (PLAN/SOLVE/EMIT as an emit-time index over composed selector strings).**
+
 - Adds: `:extend`, `&:extend`, `all`, selector-attached extend, reference/import-scope
   reachability, `:is()`/nested projection.
 - Closes: extend + `@import (reference)` visibility rows.
@@ -336,6 +341,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   eval-vs-spine disagreements against Jess intent only.
 
 **R2 — Value evaluation done native (retire the record/replay scaffold).**
+
 - Adds: real synchronous operation/function evaluation over typed value nodes; honors
   math/unit/function modes.
 - Closes: operations/functions "via-service shortcut"; unblocks pattern-match by typed
@@ -348,6 +354,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   needs object behavior. Keep sync-by-default (arch C1); no whole record pre-pass.
 
 **R3 — Live bindings + control flow.**
+
 - Adds: `BindingCell` live cells; Sass+ `:=` nearestOuter, `!global`/`setDefined`,
   `!default`; `.jess` live `$` and scoped/final `$$` reads/assignments, readonly `!$`; `$if/$else`, `$for/$while`,
   ranges, destructuring.
@@ -356,6 +363,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   re-read each iteration; `$while` counter mutates in place, no per-iteration body copy.
 
 **R4 — Interpolation, escaping, detached rulesets, merge, namespaces/maps.**
+
 - Adds: `@{}`/`$(...)`/`$[key]` interpolation everywhere, `~"..."`/`e()`/string interp,
   detached rulesets as a value type, `+`/`+_` merge (v5 last-occurrence anchor, owner),
   `#ns.mixin()`/`#map[key]`/indexed access.
@@ -366,6 +374,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   `lookupMixinCandidates`.
 
 **R5 — Sourcemaps + trivia (the divergence-risk rung).**
+
 - Adds: sourcemap identity; sub-node trivia; deprecation/warning emission on
   `result.warnings`.
 - Closes: source maps, deprecation emission, error reporting rows; arch I.1–I.3.
@@ -376,6 +385,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   CSS-identity.
 
 **R6 — Plugin/visitor hook + less-compat + module semantics.**
+
 - Adds: the `(node)=>Node|void` enter(+optional exit) hook on the emit walk;
   `less.functions` custom fns via the value seam; `less.tree` adapter (outside the boundary);
   `@use`/`@compose`/`@-import` module semantics; pre-eval pre-walk (gated).
@@ -386,6 +396,7 @@ Each rung: what it adds · matrix rows closed · where the current tree2 design 
   importing `../tree` into `tree2/`.
 
 **R7 — Dialect front ends + endgame outputs.**
+
 - Adds: SCSS bridge (Sass+ reject-invalid-CSS), `.jess` bridge (after Less+SCSS leave
   alpha), CSS Modules, tree-shaken JS-module / patchable-CSS output.
 - Closes: dialect + cross-cutting endgame rows.
@@ -405,8 +416,8 @@ record pre-pass (R2); (6) coarse rule-granularity positions (R5).
 
 ## Where "legacy `tree` render == reference" is INVALID
 
-tree2's tests use the legacy render as the byte-identity reference. That is a valid *proxy for
-intended-v5* only where the legacy render agrees with the owner `.css` v5 expected output and the
+tree2's tests use the legacy render as the byte-identity reference. That is a valid _proxy for
+intended-v5_ only where the legacy render agrees with the owner `.css` v5 expected output and the
 less.js **alpha** output. It is unsafe — the reference must instead be the intended-v5 expected `.css` /
 alpha output — in these places:
 
@@ -421,7 +432,7 @@ alpha output — in these places:
   deliberate divergence from Less). An expected `.css` or legacy render anchoring first-occurrence is
   wrong for Jess; build to Jess intent.
 - **R-nested (collapseNesting:false).** Every tree2 rung so far was benched under
-  `collapseNesting:true`, so the legacy-render reference only ever validated the *flattened*
+  `collapseNesting:true`, so the legacy-render reference only ever validated the _flattened_
   form. The v5 **default nested** output is unproven against any reference in tree2 — R0 must
   add nested-output byte-identity against the v5 expected `.css`/alpha.
 - **R-media.** v5 does **not** merge sibling `@media` blocks; a 4.x-style merging

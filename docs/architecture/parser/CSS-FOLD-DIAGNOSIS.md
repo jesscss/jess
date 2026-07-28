@@ -10,7 +10,7 @@ Measured (at `be272a577`):
 | grammar | lines | bytes | entry shape |
 |---|---|---|---|
 | CST (`src/grammar.ts`) | **1,527** | 54,943 | `export const cssGrammar = rules({ trivia, scanSkip }, (g) => ({ ... }))` exported via a trailing `const { Stylesheet, Ruleset, ... } = cssGrammar;` destructure |
-| AST (`src/ast/grammar.ts`) | **3,455** | 117,775 | `export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<CssAstLocalRules>(..., (g) => ({ ... }))])` |
+| AST (`src/ast/grammar.ts`) | **3,455** | 117,775 | Historical shape: `export const cssAstGrammar = composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<CssAstLocalRules>(..., (g) => ({ ... }))])`. Superseded 2026-07-26 for shared recognition names: the live source now composes `cssSyntax` and `cssPseudoSyntax`. |
 | ratio | **2.26×** | 2.14× | — |
 
 Counts match spec §0.2 at `92d38af4f` (3,455 / 1,527); nothing has drifted.
@@ -21,7 +21,7 @@ Top-down scan of `src/ast/grammar.ts`:
 
 | section | approx lines | content |
 |---|---|---|
-| header + imports | ~70 | Docstring; `import { ... } from 'parseman' with { type: 'macro' }` (~25 combinators); `import type { Combinator, FieldMap }`; `import { cssAstSyntax } from '@jesscss/parser-shared/recognition'`; `import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule'`; `import { cssAstPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts'`; **`import { stylesheet, rule, selist, complexCanonical, compoundSelectorOf, complexSelector, pseudoSelector, simpleSelector, decl, color, dimension, quoted, url, funcCall, call, keyword, list, block, atRuleBlock, atRuleStatement, opaqueAtRuleBlock, operation, generalEnclosed, interpolation, spaced, withValueLayout, ... }` from `@jesscss/core/ast`** (30+ core AST constructors) |
+| header + imports | ~70 | Docstring; `import { ... } from 'parseman' with { type: 'macro' }` (~25 combinators); `import type { Combinator, FieldMap }`; historical `cssAstSyntax` / `cssAstPseudoSyntax` imports, now superseded by `cssSyntax` / `cssPseudoSyntax`; `import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule'`; **`import { stylesheet, rule, selist, complexCanonical, compoundSelectorOf, complexSelector, pseudoSelector, simpleSelector, decl, color, dimension, quoted, url, funcCall, call, keyword, list, block, atRuleBlock, atRuleStatement, opaqueAtRuleBlock, operation, generalEnclosed, interpolation, spaced, withValueLayout, ... }` from `@jesscss/core/ast`** (30+ core AST constructors) |
 | `CssAstLocalRules` interface — 97 typed rule declarations | ~160 | One `CssAstFoo: Combinator<Type>;` line per rule, hand-typed to the AST shape it builds. **No analogue in the CST grammar** — CST emits structure through `node(parser)` and lets parseman infer the rule key. |
 | Type-guard helpers + classification functions | ~610 | 30+ functions such as `isCompound`, `isComplex`, `isNodeType`, `isSelectorList` (lines ~230–840). They pattern-match on the AST node-shape produced by the core constructors below. **No analogue in the CST grammar.** |
 | Recognition terminals + helpers | ~120 | `regex` / `literal` consts — `whitespace`, `blockComment`, `interstitialTrivia`, `calcWhitespace`, `calcProductOperator`, `calcSumOperator`, `genericFunctionName`, `declarationAnyCharacter`, `importAtKeyword`, `urlName`, `combinator`, `pseudoColon`, `simpleSelectorToken`, `hexColor`, `numberValue`, `customDoubleQuoted`, etc. **Same kind of terminal list as the CST grammar carries at the top of its file**, but only about the same size — recognition is NOT the bulk. |
@@ -47,7 +47,7 @@ cleanly:
 | class | line share | CST | AST |
 |---|---|---|---|
 | (a) `node<Type>('Name', ...)` wrapper noise (typed reducer boilerplate) | **the bulk of the divergence** | none | 82 wrapper invocations + 100+ core-constructor calls + ~610 type-guard helper lines + 97 typed rule declarations (~890 lines net) |
-| (b) recognition re-expansion (re-stating what `cssAstSyntax`/`opaqueAtRuleRecognition`/`cssAstPseudoSyntax` already declare in parser-shared) | **minor** | inline (~80 lines of terminals/helpers) | shared via `composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, ...])` (line 844) — saves the re-expansion but **adds** the type-guard/helper layer above |
+| (b) recognition re-expansion (re-stating what the shared CSS syntax, opaque at-rule, and pseudo-argument recognition artifacts already declare in parser-shared) | **minor** | inline (~80 lines of terminals/helpers) | shared via `composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, ...])` in the live source — saves the re-expansion but **adds** the type-guard/helper layer above |
 | (c) real divergence (notably different recogniser rules or distinct node shapes) | small | none | AST-specific `CalcVar*` family (`CssAstCalcVarCall`, `CssAstCalcVarFallback{Punctuation,Paren,Bracket,Brace,Call,Term,Empty,Item}`, `CssAstCalcParen`) — explicit substructure that the CST grammar absorbs via raw `scanTo`/`balanced` capture |
 
 **The CSS AST grammar is overwhelmingly reducer noise.** Its recognition shares
@@ -253,13 +253,13 @@ shrinkage.
    structural capture) are SUPERSEDED — their recognition paths are the same
    as the AST rules' bodies (modulo type-key/name-key), and hostMode
    `'cst'` takes over the build arrow at compile time.
-3. The shared-recognizer pieces (cssAstSyntax via parser-shared, etc.)
+3. The shared-recognizer pieces (`cssSyntax` via parser-shared, etc.)
    stay as-is — they're not local to either grammar.
 4. `src/cst.ts`/`cst-css.ts` re-route `parseCssCst` to `cssCstGrammar`; the
    `parse()` AST entry re-routes to `cssGrammar`. Driver imports → `parseman/run`.
 5. DELETE src/ast/grammar.ts (its contents are now in cssFactory, exported
    via `cssGrammar` with `hostMode: 'ast'` default).
-6. The composeLeaf shape `composeLeaf([cssAstSyntax, opaqueAtRuleRecognition, cssAstPseudoSyntax, rules<...>(..., factory)])`
+6. The composeLeaf shape `composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<...>(..., factory)])`
    stays — BOTH exports wrap the single cssFactory in the same composeLeaf
    invocation, with `hostMode` distinguishing them.
 

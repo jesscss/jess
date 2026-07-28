@@ -128,8 +128,8 @@ export default [
       'grammar/no-regex-outside-combinator': 'error',
       'grammar/no-macro-hazards': 'error',
       '@stylistic/max-len': ['error', { code: 100, ignoreUrls: true }],
-      '@stylistic/function-paren-newline': ['error', 'multiline-arguments'],
-      '@stylistic/function-call-argument-newline': ['error', 'always'],
+      '@stylistic/function-paren-newline': 'off',
+      '@stylistic/function-call-argument-newline': 'off',
       'jsdoc/require-jsdoc': ['error', {
         contexts: [
           'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator',

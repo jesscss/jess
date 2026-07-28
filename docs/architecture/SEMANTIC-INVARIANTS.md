@@ -4,8 +4,8 @@ Canonical, tool-neutral checklist for anyone (human or agent) deciding **what
 Jess emits** — value serialization, selector composition, dialect recognition,
 and any behavior a user could observe in output CSS. The sibling of
 [`docs/perf/V8-ARCHITECTURE.md`](../perf/V8-ARCHITECTURE.md), which governs what
-Jess *costs*. Same contract: every entry is a reviewer question that needs
-**evidence, not a verdict** — **RULE** · *why* · **INCIDENT** · **DETECTOR** ·
+Jess _costs_. Same contract: every entry is a reviewer question that needs
+**evidence, not a verdict** — **RULE** · _why_ · **INCIDENT** · **DETECTOR** ·
 **STATUS**.
 
 This document does not restate owner rulings. The rulings live in the ledger,
@@ -40,15 +40,15 @@ a check could have stood and none did:
 1. **Justified from the reference implementation.** The commit message reads
    "less.js applies its 8-dp numPrecision rounding only when a Dimension is
    emitted as a declaration VALUE… An interpolated dimension is serialized at
-   EVAL time with no numPrecision." That is a description of a *leak* in
+   EVAL time with no numPrecision." That is a description of a _leak_ in
    less.js's context threading. Ledger rows **E1**, **E2**, and **E5** already
    forbade this justification. Nothing asked.
 2. **Pinned by six tests that pinned the divergence.** The tests asserted that
-   the two positions print *differently*. A test suite can lock in a defect as
+   the two positions print _differently_. A test suite can lock in a defect as
    firmly as it locks in a rule.
 3. **The pins were deleted.** `interp-number-precision.test.ts` was removed in
    `2bd16eb89` ("delete parse host bridge") — an unrelated refactor. `grep -rn
-   emitValueInterp packages --include=*.test.ts` returns nothing. The behavior
+emitValueInterp packages --include=*.test.ts` returns nothing. The behavior
    ships today with no test.
 4. **The cited evidence was deleted too.** The commit's proof was "alpha-oracle
    differential MATCH 64 unchanged". `alpha-oracle-differential.test.ts` and
@@ -62,7 +62,7 @@ a check could have stood and none did:
    Jess is a new language. "Mirrors less.js" is not available to it as a reason.
 6. **The code does more than the rule says.** `evalBytesInterp`
    ([`serialize.ts:3717`](../../packages/core/src/ast/serialize.ts)) diverges
-   from `evalBytes` (`:3703`) in *three* ways, not the one that was documented:
+   from `evalBytes` (`:3703`) in _three_ ways, not the one that was documented:
    it emits at full precision, it calls `evalValue` instead of `evalValueSlot`
    (losing authored slot layout), and **it never calls
    `validateValueGroupUnits`** — so a unit error that is a hard error in a
@@ -83,15 +83,15 @@ evaluation stage, or bug that prompted it. If the sentence needs the words
 "when it reaches", "at eval time", "on the … path", or "because the context
 carries no …", it is a description of the implementation, not a rule.
 
-*Why:* this is the difference between a language and an accretion of
+_Why:_ this is the difference between a language and an accretion of
 special cases. A rule stated over a construct can be checked against every
 other construct; a rule stated over a path can only be checked against itself,
 so it never conflicts with anything and never gets caught.
 
-**INCIDENT:** S1. Note that the *draft* form of this invariant — "statable
+**INCIDENT:** S1. Note that the _draft_ form of this invariant — "statable
 without naming the case that prompted it" — does **not** catch it: "an
 interpolated dimension keeps full precision" is a perfectly general sentence
-that names no case. It names a *path*. The path/construct distinction is the
+that names no case. It names a _path_. The path/construct distinction is the
 whole content of this invariant.
 
 **DETECTOR:** none. Read the rule as written in the JSDoc, the ledger row, or
@@ -104,12 +104,12 @@ the user-facing doc, and ask whether it survives being restated as "a
 
 **RULE:** a value that compares equal emits identical bytes in every position —
 declaration value, interpolation splice, property name, selector, at-rule
-prelude, guard operand. Position may change *whether* a value is emitted; it
-must not change *how* it is spelled. Provenance may legitimately change
+prelude, guard operand. Position may change _whether_ a value is emitted; it
+must not change _how_ it is spelled. Provenance may legitimately change
 spelling (an un-operated `1.0px` stays `1.0px` per ledger **V1**) — but that is
 a property of the value, and it therefore travels with it into every position.
 
-*Why:* this is the user-visible definition of a language having a value model
+_Why:_ this is the user-visible definition of a language having a value model
 at all. Once bytes depend on position, every downstream comparison —
 deduplication, extend matching, `Map` keys built from canonical text — silently
 depends on where the value was standing.
@@ -136,7 +136,7 @@ module that decides it, and every emit site reads that decision. A policy
 constant appearing at a call site is a violation even when its value happens to
 match every other call site.
 
-*Why:* invariant 2 is the symptom; this is the cause. Distributed constants do
+_Why:_ invariant 2 is the symptom; this is the cause. Distributed constants do
 not diverge on the day they are written — they diverge on the day someone
 changes one of them for a good local reason. This invariant is what makes the
 next S1 impossible rather than merely detectable.
@@ -172,14 +172,14 @@ emits identical bytes from all four**. AST shape may differ where a dialect
 genuinely carries extra structure; output may not. There is no such thing as a
 dialect-specific reading of plain CSS.
 
-*Why:* CSS is the shared floor, not four parallel re-implementations of a
+_Why:_ CSS is the shared floor, not four parallel re-implementations of a
 common subset. Divergence here is never a feature — no dialect's definition
 says anything about CSS that another's contradicts — so every instance is a
 bug by construction. That is what makes this invariant unusually strong: unlike
 invariant 5, it needs no judgement call.
 
 **INCIDENT:** S3, S4 — currently the only two documented valid-CSS divergences,
-and *both* are caused by invariant-6 violations (parser-side joins and SCSS's
+and _both_ are caused by invariant-6 violations (parser-side joins and SCSS's
 text-valued pseudo arguments). That is the whole-system finding: fixing 6
 closes 4 for free.
 
@@ -195,13 +195,13 @@ imports only three parsers and uses **per-dialect disjoint corpora**.
 
 ## 5. Divergence is licensed by the dialect's own definition, and recorded where it is introduced
 
-**RULE:** where dialects differ *above* the CSS floor, the difference must be
+**RULE:** where dialects differ _above_ the CSS floor, the difference must be
 demanded by that dialect's own definition — its syntax, its type model, its
 compatibility contract — and must be recorded in the ledger at the moment it is
 introduced, not reconstructed later. "Dialect X's parser happens to do this" is
 not a definition.
 
-*Why:* invariant 4 is the floor; this governs the superset above it. Unlicensed
+_Why:_ invariant 4 is the floor; this governs the superset above it. Unlicensed
 divergence is how four grammars become four languages. Recording is half the
 rule: a divergence discovered by archaeology has already cost more than it
 would have to write down.
@@ -214,7 +214,7 @@ invariant 4's bug.
 **INCIDENT:** the four tracked pseudo-argument divergences (D1–D3, plus the
 `nth-of-type` `of S` restriction) in
 [`PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md`](./core/PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md)
-§7a. All four are on *invalid* CSS, all four are recorded, and the tracker's own
+§7a. All four are on _invalid_ CSS, all four are recorded, and the tracker's own
 verdict on each is that no dialect definition licenses it — which is the correct
 shape of an answer: recorded, and marked unjustified rather than rationalized.
 
@@ -231,7 +231,7 @@ scans the string to recover structure; (b) **the parser never joins structure
 into text either.** A grammar that emits `` `${nth} of ${list.map(complexCanonical).join(', ')}` ``
 has destroyed the structure at the only point in the system that had it.
 
-*Why:* re-derivation is not merely wasteful — it is **lossy in a way that
+_Why:_ re-derivation is not merely wasteful — it is **lossy in a way that
 changes semantics**. A byte scan cannot distinguish a structural token from the
 same character inside a string. `compoundHasAmpersand`
 ([`nodes.ts:527`](../../packages/core/src/ast/nodes.ts)) decides whether a
@@ -259,7 +259,7 @@ The existing pin does not see any of it, and the reason is quotable:
 `eslint.config.mjs:273-286` scopes `local/no-serialize-rederivation` to
 `packages/*/src/ast/**` and then sets `ignores: ['**/serialize*.{ts,tsx}', …]`,
 with the comment "serializers/debug are the legitimate owners of byte scanning,
-so they are excluded." For a *perf* rule that is defensible. For this invariant
+so they are excluded." For a _perf_ rule that is defensible. For this invariant
 it is backwards: the serializer is precisely where structure gets flattened,
 and ~36 of the ~57 scans live in the excluded file. The rule is also `warn`, and
 same-function taint only, so the dominant shape here —
@@ -282,18 +282,19 @@ evaluation, where they can be reported without stopping the parse.
 
 **This is not "the parser never rejects on semantic grounds."** The ledger
 already settles three cases where it does, and they are all the same kind:
-a construct the dialect's *definition* removes or forbids, decidable from
-syntax alone — **A3** (backtick JS removed in v5; the grammar rejects with one
-shared diagnostic), **P7** (bare `@var` in an at-rule prelude is a hard error),
+a construct the dialect's _definition_ removes or forbids, decidable from
+syntax alone — **A3** (backtick JS removed in v5; the grammar recognizes the
+shape and reports a fatal unsupported-syntax diagnostic), **P7** (bare `@var`
+in an at-rule prelude is a hard error with the exact `@{var}` migration),
 **P4** (Sass+ rejects invalid CSS that Sass tolerates). Contrast **P2**:
 custom-property values and unknown at-rule preludes are permissive token
-streams precisely because *unknown* is not *ill-formed*.
+streams precisely because _unknown_ is not _ill-formed_.
 
 The line is: **the grammar decides grammaticality; nothing else.** Rejecting
 `@unknown-thing` because we do not recognize the name is a violation; rejecting
 `` `js` `` because v5 has no such production is not.
 
-*Why:* a parser that rejects on meaning cannot produce a tree for tooling to
+_Why:_ a parser that rejects on meaning cannot produce a tree for tooling to
 work on, which costs completions and diagnostics on exactly the broken input
 where a user needs them most.
 
@@ -309,17 +310,17 @@ input fails to match. **STATUS: REVIEWER-ONLY.**
 observations, not justifications. A semantic decision cites the CSS spec, a
 SETTLED ledger row, or a coherence argument against the rest of the language.
 Ledger **E1**/**E2**/**E5** already say this; this invariant is the obligation
-to *demonstrate* it, which is what was missing.
+to _demonstrate_ it, which is what was missing.
 
 **A green differential is the trap.** The corpus is an imperfect encoding of the
 intended design (**E1**), and it encodes 4.x behavior wherever v5 diverges
-deliberately. So a fixture flipping `DIFF → MATCH` is *ambiguous*: it is either
+deliberately. So a fixture flipping `DIFF → MATCH` is _ambiguous_: it is either
 a fix or the erasure of an intended divergence. It must be read against the
 recorded expectation, never taken as a pass on its own.
 
 **INCIDENT:** S1 and **S2**. S2 is why this invariant is not hypothetical:
 `23b78263e` re-anchored `+:`/`+_:` merge to first-occurrence, justified as
-"Port the ast/ engine's +/+_ merge fold to less.js 4.x `_mergeRules` semantics",
+"Port the ast/ engine's +/+\_ merge fold to less.js 4.x `_mergeRules` semantics",
 with the evidence "Differential oracle: merge/merge.less DIFF -> MATCH
 (byte-identical to alpha)" and the explicit line "Supersedes the earlier v5
 last-occurrence intent". It also edited the design docs to agree. It was caught
@@ -342,15 +343,15 @@ fixture whose status changed, with its recorded expectation. **STATUS: GATE-READ
 These are real. Every review states, with evidence, whether its diff
 reintroduces each applicable shape.
 
-| # | Incident | Invariant | Shape to catch |
-|---|----------|-----------|----------------|
-| S1 | **`emitValueInterp` precision split** (`3031131ce`) — **FIXED**, see below | 1, 2, 3, 8 | A behavior conditioned on which code path reached the serializer; justified from the reference implementation's context threading; no ledger row. |
-| S2 | **Merge anchor flipped to less.js 4.x** (`23b78263e`, reverted) | 8 | A settled v5 divergence overwritten because porting the 4.x behavior turned a corpus fixture green. Caught only because M1 existed in writing. |
-| S3 | **Parser-side selector-argument joins** | 2, 4, 6 | The grammar joining a `SelectorList` into text. `css-parser` `grammar.ts:365` joins with `','` (6 uses); `jess-parser` `grammar.ts:376` joins with `', '` (2 uses); core's `pseudoCanonical` (`nodes.ts:598`) joins with `', '` and its own JSDoc says "grammar NEVER computes this". Same valid CSS, two byte outputs. |
-| S4 | **SCSS text-valued pseudo arguments** | 4, 6 | SCSS keeps pseudo arguments as raw text, so `:not( .b )` and `:is( .b, .c )` retain authored inner whitespace where the other three normalize. A valid-CSS divergence that is a direct consequence of not holding structure. |
-| S5 | **`compoundHasAmpersand` byte-scan** | 6 | Deciding a *structural* fact (is there a parent reference?) by substring-scanning canonical text, where the scan cannot distinguish a token from the same character inside a string. |
-| S6 | **Two precisions for one quantity** | 3 | `fadein.ts:30` (`1e12`) vs `color-helper.ts:46` (`round(…, 8)`) for alpha, in two implementations of one function family that C6 requires be merged. The merge will have to pick one, and nothing records which. |
-| S7 | **The pin that vanished** (`2bd16eb89`) | governance | A semantic rule surviving only as a JSDoc comment because its tests — and the differential harness its commit cited as evidence — were deleted by an unrelated refactor. A rule whose only pin is a comment is undefended. |
+| #   | Incident                                                                   | Invariant  | Shape to catch                                                                                                                                                                                                                                                                                                          |
+| --- | -------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | **`emitValueInterp` precision split** (`3031131ce`) — **FIXED**, see below | 1, 2, 3, 8 | A behavior conditioned on which code path reached the serializer; justified from the reference implementation's context threading; no ledger row.                                                                                                                                                                       |
+| S2  | **Merge anchor flipped to less.js 4.x** (`23b78263e`, reverted)            | 8          | A settled v5 divergence overwritten because porting the 4.x behavior turned a corpus fixture green. Caught only because M1 existed in writing.                                                                                                                                                                          |
+| S3  | **Parser-side selector-argument joins**                                    | 2, 4, 6    | The grammar joining a `SelectorList` into text. `css-parser` `grammar.ts:365` joins with `','` (6 uses); `jess-parser` `grammar.ts:376` joins with `', '` (2 uses); core's `pseudoCanonical` (`nodes.ts:598`) joins with `', '` and its own JSDoc says "grammar NEVER computes this". Same valid CSS, two byte outputs. |
+| S4  | **SCSS text-valued pseudo arguments**                                      | 4, 6       | SCSS keeps pseudo arguments as raw text, so `:not( .b )` and `:is( .b, .c )` retain authored inner whitespace where the other three normalize. A valid-CSS divergence that is a direct consequence of not holding structure.                                                                                            |
+| S5  | **`compoundHasAmpersand` byte-scan**                                       | 6          | Deciding a _structural_ fact (is there a parent reference?) by substring-scanning canonical text, where the scan cannot distinguish a token from the same character inside a string.                                                                                                                                    |
+| S6  | **Two precisions for one quantity**                                        | 3          | `fadein.ts:30` (`1e12`) vs `color-helper.ts:46` (`round(…, 8)`) for alpha, in two implementations of one function family that C6 requires be merged. The merge will have to pick one, and nothing records which.                                                                                                        |
+| S7  | **The pin that vanished** (`2bd16eb89`)                                    | governance | A semantic rule surviving only as a JSDoc comment because its tests — and the differential harness its commit cited as evidence — were deleted by an unrelated refactor. A rule whose only pin is a comment is undefended.                                                                                              |
 
 When a semantic incident is fixed, add a row and, where possible, a detector.
 The catalogue stays grounded in lived incidents, not style preference.
@@ -368,7 +369,7 @@ Each of the five stages in the incident write-up above is answered:
 2. **The rule is stated over the construct** (invariant 1): "a computed number emits
    the shortest decimal within `1e-10` relative." No splice site appears in it.
 3. **It is pinned** (invariant 2, and S7's lesson): `format-number.test.ts` and
-   `packages/jess/test/less/number-precision.test.ts` assert the *equality* of the
+   `packages/jess/test/less/number-precision.test.ts` assert the _equality_ of the
    two positions, plus the property-name position — the inverse of the six tests
    that pinned the divergence and were deleted.
 4. **The two undocumented riders are recorded, not silently fixed.** `evalBytesInterp`
@@ -385,7 +386,7 @@ Each of the five stages in the incident write-up above is answered:
 **Invariant 3's baseline moves with it.** The `grep -rn "round(" packages/core/src/ast/*.ts`
 count drops from **7 literal-`8` sites to 5**: `serialize-value.ts:25` and
 `literal-tag.ts` (whose 8-dp denoise is deleted outright) no longer appear.
-Separately, the *decimal* branch of
+Separately, the _decimal_ branch of
 `color.ts`'s `alphaText` — which emitted a raw unrounded double, a second
 unintentional bypass, safe only because `fns` happened to pre-round it — reads the
 policy module too; its `%` branch is one of the survivors, so that site is fixed

@@ -42,6 +42,20 @@
 These lanes have an agent or a live branch on them. Coordinate; do not start them fresh.
 Delete a row the moment it lands or is abandoned.
 
+### 2026-07-27 update — grammar fold complete; Less alpha guard green on parseman 0.41.0
+
+The four parser dialects now ship from one host-mode `src/grammar.ts` each; the
+old `src/ast/grammar.ts` files are deleted. The active grammar/parser floor is
+registry `parseman@0.41.0`, resolved through `^0.41.0` ranges in the root,
+`@jesscss/parser-shared`, and the four parser packages. Current evidence:
+dependency-order parser/plugin/jess builds pass, `pnpm run check:macro` and
+`pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks, `pnpm run
+verify:less-alpha` passes, `all-less.test.ts` is 108 / 108, and
+`all-less-error.test.ts` is 94 / 94 after recursive variable/property fixtures
+graduated from the worker-hang skip list. The Less byte-identity oracle
+is still red against the committed baseline and must be treated as a named
+classification queue before any baseline update.
+
 ### 2026-07-25 update — four-grammar rewrite, Stages 0–1 LANDED on `dev`
 
 **Stage 0 (WIP salvage)** — settled. Previously-listed salvage candidates confirmed already
@@ -236,9 +250,11 @@ when it goes green; do not let one rot into folklore.
   twin lives at `packages/core/src/tree/extend/spine-extend.ts:1241`.
 - **Extend bitset fast-reject never landed.** `packages/core/src/ast/extend/` contains
   `compose/conflict/emit/ir/match/plan/solve` and no bitset of any spelling.
-- **`jess-parser` still text-joins the nth-`of` tail.** `staticSelectorText`
-  (`packages/jess-parser/src/ast/grammar.ts:376`, used at `:1692` and `:1770`) is the last
-  `*SelectorText` join site and the remaining gap to always-structured pseudo arguments.
+- **`jess-parser` still text-joins selector-bearing pseudo arguments.** The
+  folded grammar still has `staticSelectorText`
+  (`packages/syntax/jess/jess-parser/src/grammar.ts:394`, used by nth-`of` and
+  generic pseudo arguments). This is the remaining gap to always-structured
+  pseudo arguments.
 - **`literal-tag.ts:104`** applies the old 8-dp floor to un-operated SOURCE literals
   (`dimensionFromFields` does `round(number, 8)` before the verbatim-spelling logic), so
   `0.00000000123456789` denoises to `0`. Contradicts ruling V1.
@@ -267,10 +283,10 @@ when it goes green; do not let one rot into folklore.
 - **`extend-exact.less` flake is real cross-compile state contamination**, not test flakiness.
   Two sharing channels: the per-`Compiler` plugin instance caches
   (`packages/jess/src/index.ts:482-485`, plus the `jessPluginInstance` / `scssPluginInstance`
-  singletons at `:491`/`:492`) and the module-scope value evaluators
-  (now `valueEvaluators` in `packages/jess/src/index.ts`, one per dialect) shared by *all*
-  Compilers. The evaluators hold only an immutable dispatch table, so they carry no per-render
-  state to leak; the plugin caches remain the live suspect. Diagnostic: a fresh `Compiler`
+  singletons at `:491`/`:492`) and the module-scope dialect evaluators registered by
+  `@jesscss/plugin-less` / `@jesscss/plugin-scss`. The evaluators hold only an immutable
+  dispatch table, so they carry no per-render state to leak; the plugin caches remain the
+  live suspect. Diagnostic: a fresh `Compiler`
   per file isolates which channel. **Constraint on any fix:** a `Compiler` must stay reusable
   across many files. "New Compiler each time" is not an acceptable fix, and neither is a
   `reset()` that callers have to remember. A separate session is on this.
@@ -343,9 +359,9 @@ Recorded so the next reader does not re-derive it from the log:
   recognition artifact (`89917ce8f`), all four parsers migrated (`00778bac1`, `a6760c89e`,
   `d974aede3`), divergences unified (`e4b46ac45`), `of S` restricted to `:nth-child` per
   Selectors-4 §6.6.2 (`c6c0ea567`). Designs: `PSEUDO-ARGUMENT-CONSOLIDATION-DESIGN.md`,
-  `PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md`. **Residual:** `jess-parser` still joins the
-  nth-`of` tail through `staticSelectorText` (`grammar.ts:376`, used at `:1692` and `:1770`) —
-  the last `*SelectorText` text-join site, and the remaining gap to
+  `PSEUDO-ARGUMENT-ALWAYS-STRUCTURE-DESIGN.md`. **Residual:** `jess-parser` still joins
+  selector-bearing pseudo arguments through `staticSelectorText`
+  (`packages/syntax/jess/jess-parser/src/grammar.ts:394`) — the remaining gap to
   [[parser-pseudo-args-always-structured]].
 - **Structured pseudo-selectors, structure-only** (`c5f327ee7`, `dc6040d5e`, `5f95ac6d4`,
   `7e3cf042b`) with serialization relocated from grammar to core (`d0d77d22c`).
@@ -689,7 +705,7 @@ section is the authoritative full-scope companion to the compact task goal.
 | Feature/eval closure | [`AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md`](./AST-FEATURE-COMPLETENESS-AND-ENGINE-CUTOVER.md) |
 | Eval/render allocation, lookup, and traversal cuts | [`CORE-CLEANUP.md`](./CORE-CLEANUP.md) |
 | Deleting `packages/core/src/tree/` — public-surface inventory, `Context` decomposition, value-boundary options, extraction order | [`TREE-CUTOVER-SURFACE.md`](./TREE-CUTOVER-SURFACE.md) |
-| **The four-grammar rewrite** — eight grammar files to four, `hostMode`, dispatchable units, acceptance gates. Start at its §0 | [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) |
+| **The four-grammar rewrite** — the eight-to-four physical fold is complete; continue the spec/naming/documentation and current Parseman cleanup on the four surviving host-mode grammars. Start at its §0 | [`../../design/GRAMMAR-REBUILD-SPEC.md`](../../design/GRAMMAR-REBUILD-SPEC.md) |
 | The per-`const` grammar review checklist and the naming law (item 14) | [`../parser/GRAMMAR-REVIEW-STANDARD.md`](../parser/GRAMMAR-REVIEW-STANDARD.md) |
 | Patch-shape review | [`AGGRESSIVE-CUTTING-REVIEW.md`](./AGGRESSIVE-CUTTING-REVIEW.md) |
 | Owner semantic/architecture questions and rulings | [`DESIGN-DECISIONS.md`](./DESIGN-DECISIONS.md) — the canonical OPEN/SETTLED decision ledger |
@@ -1126,8 +1142,9 @@ or a completion milestone.
   carried directly by the existing canonical
   at-rule facts, including terminal static generic CSS opaque blocks through a
   shared recognition-only Parseman artifact. Jess collection literals lower to the canonical
-  `Collection` node, not a CST-shaped map or opaque source fallback (verified 2026-07-24:
-  `jess-parser/src/ast/grammar.ts:66` `DirectJessCollection: Combinator<Collection>`). This
+  `Collection` node, not a CST-shaped map or opaque source fallback (current folded grammar:
+  `packages/syntax/jess/jess-parser/src/grammar.ts:78`
+  `DirectJessCollection: Combinator<Collection>`). This
   sentence previously named the AST `DetachedRuleset` node, which `b7f413d08` DELETED in
   favour of the `Collection` / `AnonymousMixin` split — see
   [[collection-vs-detached-ruleset-model]]. Block-bodied lambdas reduce to `AnonymousMixin`
@@ -1500,28 +1517,130 @@ involved.
 
 ## Aggressive Cutting Self-Prosecution
 
-- Latest pass: cold-start reconciliation against `e34bb24b3` (2026-07-24). Added COLD START and
-  WORK IN FLIGHT sections so a fresh agent with no context can pick up without duplicating a
-  running lane, added an OPEN DEFECTS section with a verified file:line for every row, and
-  pruned claims that no longer hold.
-- Architecture surface: unchanged. No compiler, parser, evaluator, or serializer surface was
-  touched; this diff contains no runtime code.
-- Separation/duplication: reduced. The five new owner decisions of 2026-07-24 were recorded
-  once each in the canonical ledger (`DESIGN-DECISIONS.md` E6/E7/V4/V5/O4) rather than restated
-  in prose here. The two stale `file-resolution.ts` claims this pass also corrected were landed
-  independently by `2039165db` with better evidence; that version was kept on rebase.
-- Cumulative node weight: unchanged; no AST node, field, or shape was added or removed.
-- New traversal: none.
-- New node/materialization: none.
-- Render path: untouched.
-- Helper/API surface: none added. Documentation files only.
-- Metadata mutations: none.
-- Review-flagged diff tokens: none.
-- Evidence: measured in this worktree on `e34bb24b3` after `pnpm install --frozen-lockfile` +
-  `pnpm run build:release`. `pnpm run verify:types` — GREEN, 22/22 configs.
-  `pnpm run test:less:test-data` — 108/108, with `css-3.less` and `variable-advanced.less` now
-  registered as named expected failures. An earlier measurement on `93e1aa49d` (types RED with
-  1 diagnostic; corpus 106/108) is recorded in the body as the before-state, because the corpus
-  moved without any jess-side change and that is the durable lesson. Every OPEN DEFECTS row was
-  re-checked by direct file read at the cited line. No performance claim is made or implied.
-- Verdict: documentation-only reconciliation; accepted with no runtime cost contract.
+- C16 scoped-function lookup slice on 2026-07-27: AST serialize frames now keep
+  `fns` as a strictly local function-family registry and add `fnScope` /
+  `fnScopeVersion` only as a render-local nearest-registered-frame cache. Empty
+  ordinary frames still allocate no function map; registering scoped plugin
+  functions increments the render-local version and retargets that frame to
+  itself so child caches cannot silently miss late parent registrations.
+- New traversal for this slice: `nearestFnScope` walks parent frames only on the
+  scoped-function path (`e.anyScopedFns === true`) and only until it reaches a
+  cached registered function frame. That replaces repeated per-call scans across
+  empty frames; it does not touch the no-plugin/built-in-only value hot path.
+- New node/materialization for this slice: none. The change adds two optional
+  render-frame metadata fields and one tiny cache-state interface; it creates no
+  AST nodes, no copied rules, and no shared registry with variables,
+  declarations, or mixins.
+- Behavior evidence for this slice:
+  `pnpm --filter @jesscss/core build && pnpm --filter @jesscss/fns build &&
+  pnpm --filter @jesscss/core test -- src/ast/__tests__/plugin-direct-body-scope.test.ts --run --reporter=dot`
+  passed 8/8 after rebuilding in dependency order. The focused test verifies
+  nearest registered function caching, case-insensitive lookup, no empty-frame
+  local map allocation, and cache invalidation when an intermediate parent gains
+  a scoped function.
+- Review evidence for this slice: `pnpm run verify:aggressive-cutting-review`
+  passed. The command reports the broad active diff's existing danger-token
+  inventory; this slice accounts for its added parent walk and optional frame
+  metadata above.
+- Latest pass: Less alpha parser/error integration state on 2026-07-27. The working diff includes
+  the one-grammar parser fold, Parseman 0.41 grammar cleanup, parser-owned diagnostics, trivia
+  extraction work, and the recursive reference error fix that graduated the Less recursion fixtures
+  out of the worker-hang skip list.
+- Architecture surface: changed intentionally. CSS/Less/SCSS/Jess parser packages now build AST and
+  CST from one host-mode grammar source; Less parser owns parse diagnostic facts; the Less plugin
+  forwards parser diagnostics as a thin wrapper; core eval now reports recursive variable/property
+  references through the normalized Jess error surface.
+- Separation/duplication: reduced. The duplicate `src/ast/grammar.ts` files are deleted; dialect
+  plugins should not duplicate parser error normalization; comments are treated as trivia facts
+  rather than value/comment AST children in the active Less cleanup lane.
+- Cumulative node weight: reduced in parser source by the eight-to-four grammar fold and ordinary
+  value-comment removal. The recursive-reference patch adds no AST node type or persistent runtime
+  field; it adds one diagnostic code/factory and cold structural checks for recursive reference
+  failures.
+- New traversal: bounded and cold. Recursive variable/property detection only walks frame stacks
+  after a normal lookup miss, plus a declaration-activation structural value walk for same-name
+  direct references with no earlier fallback. Grammar/trivia walks are parser/source-boundary work,
+  not render-tree rescans.
+- New node/materialization: no runtime AST materialization is added by the recursive-reference fix.
+  Parser grammar changes intentionally remove duplicated grammar files and ordinary comment value
+  nodes; generated parser artifacts and tests account for parser package materialization separately.
+- Render path: changed for error quality only. Recursive `@var`/`$prop` now throws
+  `eval/recursive-reference` instead of hanging or silently accepting; successful fallback to an
+  earlier binding remains allowed. No CSS byte-identity or speed claim is made here.
+- Helper/API surface: public error codes/diagnostic helpers gained
+  `eval/recursive-reference`; Less parser safe-parse diagnostics are parser-owned and forwarded by
+  the plugin. Parseman 0.41 grammar APIs are consumed by parser packages through their package
+  dependency floor.
+- Metadata mutations: parser provenance/trivia metadata is intentionally source-indexed. The
+  recursive-reference fix adds no parent/source mutation and reads source spans only to locate the
+  thrown diagnostic.
+- Behavior evidence: `pnpm --filter jess test -- test/less/reference-public-semantics.test.ts --run --globals --reporter=dot` passed 15/15, including recursive variable/property diagnostics and legal same-scope fallback references; `pnpm --filter jess test -- test/less/all-less-error.test.ts --run --globals --reporter=dot` passed 94/94 after removing the recursive-worker skip list.
+- Build evidence: `pnpm --filter @jesscss/core build` passed after the recursive-reference changes; prior parser/plugin verification for this integration state includes less-parser and plugin-less builds from the active slices.
+- Boundary evidence: public Jess render errors expose the normalized `eval/recursive-reference` code/phase/reason; Less plugin safe-parse forwards less-parser diagnostics rather than wrapping them with plugin-local parser classes.
+- Review-flagged diff tokens: [loop/traversal] bounded frame/value walks for recursive miss detection plus parser/trivia integration loops; [array helper] parser/test/trivia helpers and value-structure probes outside render output construction; [array spread/materialization] existing diagnostic/plugin/parser object spread and test setup in the broad dirty diff; [generator] trivia range iterators in parser provenance work, not core eval recursion; [node construction] diagnostic `JessError` creation and parser/test fixtures; [parent/source mutation] diagnostic location reads and source-span/trivia plumbing, while the recursive-reference patch performs diagnostic span reads only; [side map/set] existing/provenance trivia maps plus temporary test/parser maps, while recursive-reference state stays on the existing exclusion set; [routine error control] real diagnostics and plugin/parser failure boundaries, not expected hot-path control flow; [materialized array/object] parser/test fixtures and bounded diagnostic/value traversal scratch outside persistent render materialization.
+- Hot-path cost contracts:
+```json
+[
+  {
+    "id": "ast-semantic-runtime-cutover",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the canonical AST-v2 evaluator/value/extend owners listed by ast-semantic-runtime-cutover",
+    "cases": [
+      "ValueSlot-array-evaluation-and-authored-layout",
+      "List-value-separator-and-Block-delimiter-facts",
+      "reference-index-and-For-array-access",
+      "Less-lazy-color-call-demand-boundary",
+      "defineFunction-typed-positional-named-and-lazy-binding",
+      "mixin-dispatch-ValueSlot-argument-resolution",
+      "ValueLayout-provenance-side-table",
+      "preserve-mode-calc-result-composition",
+      "extend-composition-plan-and-fixpoint-solve",
+      "Less-eager-bare-slash-precedence-and-parens-division",
+      "recursive-ValueGroup-final-unit-validation",
+      "async-declaration-dedup-output-order"
+    ],
+    "why": "This integration changes parser-owned facts, recursive reference diagnostics, and trivia/provenance surfaces in the coordinated AST-v2 evaluator/parser cutover. It is semantic error-quality and grammar consolidation work, so the record makes no neutrality, speed, or cost-cutting claim.",
+    "dangerTokensJustification": "The flagged loops, maps, spreads, throws, and arrays belong to bounded parser/trivia integration, diagnostic construction, or cold recursive-miss checks. The recursive-reference path runs after a failed normal lookup or during declaration activation validation, and successful render references keep the existing resolver path.",
+    "behaviorEvidence": "Focused public reference semantics passed 15/15 and Less error corpus passed 94/94 with recursive-variable/property fixtures unskipped.",
+    "buildEvidence": "pnpm --filter @jesscss/core build passed after the recursive-reference changes.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "core-context-emit-selector-contract",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "owner": "the retained Context/plugin dispatcher and tree evaluation/render owners listed by core-context-emit-selector-contract",
+    "cases": [
+      "Context-plugin-source-parser-dispatch",
+      "emit-walk-context-output-option",
+      "Ruleset-interpolated-selector-boundary",
+      "selector-match-string-and-node-combinators",
+      "extend-index-tagged-graft-atoms",
+      "Sequence-subclass-preserving-evaluation",
+      "callable-output-root-property-guard",
+      "serializer-at-rule-and-selector-surface"
+    ],
+    "why": "This slice changes the Context/evaluator ownership boundary so dialect plugins register their immutable evaluator through Context instead of callers mutating a public evaluator field. It is semantic ownership and package-surface cleanup, not an optimization or neutrality claim.",
+    "dangerTokensJustification": "The flagged Context/plugin/serializer tokens are API-boundary and diagnostic/runtime integration work: Context stores one private evaluator reference, serialize reads that accessor, and plugin setContext methods register the dialect evaluator. It adds no parser host, alternate evaluator, resolver, output policy, AST materialization route, or render-output array path.",
+    "behaviorEvidence": "The focused semantic-runtime command `pnpm --filter @jesscss/core test -- --run` passed: 203 files, 3219 tests, 9 skipped, 2 todo. Plugin-level evaluator registration was separately exercised by plugin Less/SCSS tests and verify:less-alpha in the active Less facade slice.",
+    "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the Context evaluator registration change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  }
+]
+```
+- Evidence: `pnpm --filter @jesscss/core build` — GREEN; `pnpm --filter @jesscss/core test -- --run` — GREEN, 203 files / 3219 tests / 9 skipped / 2 todo; `pnpm --filter jess test -- test/less/reference-public-semantics.test.ts --run --globals --reporter=dot` — GREEN, 15/15; `pnpm --filter jess test -- test/less/all-less-error.test.ts --run --globals --reporter=dot` — GREEN, 94/94. No performance claim is made or implied.
+- Verdict: accepted as semantic parser/error-quality integration evidence for the current dirty
+  worktree; still requires slice commits and normal parser macro/compose/oracle gates before merge.

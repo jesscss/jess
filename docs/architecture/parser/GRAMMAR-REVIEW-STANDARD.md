@@ -1,34 +1,35 @@
 # Grammar review standard
 
-The standing brief for work on the eight grammar files. Attach it to the task;
-do not reconstruct it.
+The standing brief for work on the four surviving grammar files. Attach it to
+the task; do not reconstruct it.
 
-| CST (`src/grammar.ts`) | consts | AST (`src/ast/grammar.ts`) | consts |
-| --- | --- | --- | --- |
-| `css-parser` | 131 | `css-parser` | 246 |
-| `less-parser` | 222 | `less-parser` | 575 |
-| `scss-parser` | 166 | `scss-parser` | 361 |
-| `jess-parser` | 107 | `jess-parser` | 406 |
+Each dialect now has one host-mode grammar source:
 
-(Counts as of 2026-07-25 @ `bcb3107a1`; they drift, the method does not.)
+- `packages/syntax/css/css-parser/src/grammar.ts`
+- `packages/syntax/less/less-parser/src/grammar.ts`
+- `packages/syntax/scss/scss-parser/src/grammar.ts`
+- `packages/syntax/jess/jess-parser/src/grammar.ts`
+
+Rule counts drift too quickly to belong here. Re-measure the exact file under
+review with the same method you intend to use for the change.
 
 These grammars are parseman's reference implementation. "Exemplary" has been
-asked for repeatedly and has not stuck, because *make it good* is not checkable
+asked for repeatedly and has not stuck, because _make it good_ is not checkable
 and a passing test ends the job. This document replaces that instruction with
-fourteen questions and a rule about how many things you ask them of.
+sixteen questions and a rule about how many things you ask them of.
 
 ---
 
 ## 1. The method — every `const`, no sampling
 
 **The checklist is applied to every `const` in the file.** Not sampled, not "the
-ones that look suspicious". In these files a rule *is* a `const` — the CST
-grammars declare them inside the `rules()` closure, the AST grammars at module
-scope — so "every const" is literally every rule, terminal, and helper.
+ones that look suspicious". In these files a rule _is_ a `const` inside the
+host-mode `rules()` factory, so "every const" is literally every rule, terminal,
+and helper.
 
-The exhaustiveness *is* the method. The failure mode being fixed is an agent
+The exhaustiveness _is_ the method. The failure mode being fixed is an agent
 reading linearly, pattern-matching locally, and stopping when the immediate task
-looks done. "Review the grammar" gets skimmed. "Answer these fourteen questions
+looks done. "Review the grammar" gets skimmed. "Answer these sixteen questions
 for every `const` in this file" cannot be.
 
 Two things make this tractable rather than crushing:
@@ -37,8 +38,8 @@ Two things make this tractable rather than crushing:
   is documented, and duplicates nothing gets a one-word verdict. Volume is not
   the same as effort. A 200-const file is mostly a fast scroll.
 - **"Conforms" is a claim, not a default.** The `less-parser` pass found a
-  byte-identical copy of a shared rule *whose own docstring named the local
-  copy* — trivially visible the moment someone actually read that const, and
+  byte-identical copy of a shared rule _whose own docstring named the local
+  copy_ — trivially visible the moment someone actually read that const, and
   invisible for however long nobody did. If you write "conforms" you are
   asserting you read it.
 
@@ -46,12 +47,12 @@ Two things make this tractable rather than crushing:
 
 One of exactly four per const, so reports are comparable across files and agents:
 
-| outcome | means |
-| --- | --- |
-| **conforms** | read, nothing to do. One line. |
-| **converted** | changed — cite the commit. |
-| **blocked** | should change, can't yet — cite the *specific* reason (reducer stride, separator capture, AST movement, missing 0.34 export). |
-| **deliberate exception** | should not change — cite the justification. |
+| outcome                  | means                                                                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **conforms**             | read, nothing to do. One line.                                                                                                                                                                    |
+| **converted**            | changed — cite the commit.                                                                                                                                                                        |
+| **blocked**              | should change, can't yet — cite the _specific_ reason (macro-static reducer limit, CST consumer shape, compose/hostMode constraint, missing parser primitive, separator ownership, AST movement). |
+| **deliberate exception** | should not change — cite the justification.                                                                                                                                                       |
 
 **`blocked` and `deliberate exception` are the load-bearing ones.** A documented
 non-collapse is worth as much as a collapse: it stops the next agent
@@ -67,29 +68,33 @@ Every written rule must answer:
 
 1. **Is this from CSS?** Does it need to be duplicated? Is it called a different
    name — and if so, why, and is that justified? This is a question about
-   *duplication*, not about naming style. A production that restates a CSS
+   _duplication_, not about naming style. A production that restates a CSS
    construct the base grammar already defines should compose on it, not re-spell
    it. `less-parser` carried a byte-identical copy of a shared rule; the shared
    rule's docstring even named the local copy.
 
 2. **Is it readable and well formatted?** In practice this splits into items 3
-   and 4, which fail differently — see *the floor and the bar* below.
+   and 4, which fail differently — see _the floor and the bar_ below.
 
-3. **Is this pretty?** A judgement call, and it stays one. The bar: *a screenshot
+3. **Is this pretty?** A judgement call, and it stays one. The bar: _a screenshot
    of this code should be blown up to lecture-hall size for its elegance and
-   formatting.* Per const, the test is whether the rule's shape **teaches what it
+   formatting._ Per const, the test is whether the rule's shape **teaches what it
    does when projected on a wall**, or needs narration. Nesting readable as
    indentation, matching parens down the left edge, no twenty-combinator
    one-liners, consistent with its neighbours. This cannot be mechanised and
    should not pretend to be — say what you judged and why.
 
-4. **Does it pass our rigid ESLint stylistic formatting?** Purely mechanical, a
-   hard gate rather than an opinion. A max-strictness config covers all eight
-   grammar files: `@stylistic/function-paren-newline` and
-   `@stylistic/function-call-argument-newline` (expanded call form — one argument
-   per line, closing paren aligned with its opener), `eslint-plugin-regexp`,
-   JSDoc requirements, no multi-line `//` comments, blank line before comments,
-   no literal non-ASCII in regexes, no factories or hoisted consts.
+4. **Does it pass our ESLint grammar floor?** Purely mechanical, a hard gate
+   rather than an opinion. The config covers all four grammar files and the
+   shared recognition sources. It deliberately does **not** force every function
+   argument in a multi-line combinator call onto its own line: short Parseman
+   calls such as `choice(foo, bar)`, `keywords(['+', '-'])`, and
+   `sequence(literal('{'), body, literal('}'))` are allowed when they read
+   better compact. The mechanical floor remains strict where it protects parser
+   correctness and reviewability: JSDoc requirements, no multi-line `//`
+   comments, blank line before comments, no literal non-ASCII in regexes, no
+   regex outside combinators, no factories or hoisted combinator construction,
+   and no macro hazards.
 
 5. **Does it have a JSDoc block?**
 
@@ -101,17 +106,96 @@ Every written rule must answer:
 
 8. **Does it use the API instead of hand-rolling it?** Real instances in
    `less-parser`: keyword regexes carrying a hand-written `(?![-\w])` boundary
-   where `word()`/`keywords()` is the API (15 found in the first pass; the
-   boundary appears 32 times across the two Less grammar files, so re-count);
-  39 hand-rolled separated-list sites against 6 uses of `sepBy`; and
-  special/generic alternatives that first parse the same opener instead of
-  routing that opener once with `dispatch(combinator, when(...),
-  otherwise(...))`. Use `routed()` inside branch nodes when the selected form
-  should own the already-consumed value/span. When several `when(...)` or
-  `word(...)` cases share the same case-sensitivity and boundary policy, create
-  one grammar-local `makeWhen(...)` or `makeWord(...)` helper for that real
-  policy; do not multiply domain-named helpers such as `pseudoCase`, `fnCase`,
-  and `atCase` unless their matching policy actually differs.
+   where `word()`/`keywords()` is the API; hand-rolled separated-list sites where
+   `oneOrMoreSep(...)` is clearer; and special/generic alternatives that first
+   parse the same opener instead of routing that opener once with
+   `dispatch(combinator, when(...), otherwise(...))`. Use
+   `PARSEMAN-COMBINATOR-CHEAT-SHEET.md` as the quick decision table. When sibling
+   `choice(...)` arms consume the same broad opener, branch by that matched value
+   or suffix, and include a generic fallback for the same token family,
+   `dispatch(...)` is the default shape unless a const-level note proves a
+   smaller or more accurate Parseman form. Keep `choice(...)` for genuine
+   alternatives whose first sets are disjoint, literal-led, first-arm-dominant
+   with cheap tails, or otherwise cheap for Parseman's choice strategies; do not
+   rewrite literal-to-literal tables as dispatch just because dispatch exists.
+   Parse shared structure outside the dispatcher, route on
+   the smallest meaningful combinator whose value decides the branch, and put the
+   generic continuation in `otherwise(...)`. Use `routed()` inside branch nodes
+   when the selected form should own the already-consumed value/span.
+
+   Fast decision check:
+
+   - Same broad token opener, different exact/matcher continuations, and a
+     generic continuation for that same token family: use `dispatch(...)`.
+   - Already distinct starts, closed keyword tables, literal punctuation tables,
+     or a short choice where Parseman can first-set gate the arms: use
+     `choice(...)`, `word(...)`, or `keywords(...)`.
+   - Shared opener but the real decision is a later delimiter or parse context:
+     left-factor the shared structure or write a context-owned helper; do not
+     move the opener into `dispatch(...)` unless the routed combinator also
+     consumes the delimiter/context that decides the branch.
+
+   Analyzer overlap is a prompt for review, not a command to dispatch. The
+   accepted outcome may be a routed opener, a left-factored helper, or an
+   intentionally preserved `choice(...)` when the alternatives are real language
+   constructs and Parseman's first-set strategy already handles them.
+
+   For CSS and Less, classify every touched `choice(...)` before changing it:
+   routed token family, closed spelling table, separated list, construct family,
+   or context decision. Only the first category is automatically a
+   `dispatch(...)` candidate. Closed tables stay `word(...)` / `keywords(...)` /
+   small literal `choice(...)`; separated lists use separator helpers; construct
+   families stay `choice(...)` unless their shared prefix can be left-factored;
+   context decisions need the deciding delimiter or caller fact in the routed
+   combinator before `dispatch(...)` is appropriate.
+
+   Dispatch review proof:
+
+   - Name the exact routed value produced by the first combinator (`url(`,
+     `@media`, `:not(`, bare `red`, etc.).
+   - Prove that value already contains the syntax that chooses the branch.
+     If the proof needs a later `{`, `;`, `:`, selector delimiter, or contextual
+     body rule, use left-factoring or a context helper instead.
+   - Prove `otherwise(...)` is the generic continuation for the same token
+     family, not a catch-all for unrelated body/list constructs.
+
+   Applied CSS/Less rule:
+
+   - Use `dispatch(...)` for identifier-or-function families, known/generic
+     function openers, pseudo-function openers, at-keyword families with a
+     generic at-rule fallback, and Less `@name` families only when the routed
+     opener includes enough syntax to decide the branch.
+   - Keep `choice(...)` for disjoint statement/body items, literal punctuation
+     tables, closed keyword lists, and delimiter decisions that happen after the
+     opener has already been accepted.
+   - It is valid to dispatch on a CSS at-keyword to select the legal tail family,
+     then keep a local `choice(...)` between statement and block tails. It is not
+     valid to dispatch on bare `@` in Less and pretend that at-rule, variable,
+     reference-call, and mixin-like continuations are already decided.
+   - Less `@name` and mixin families are dispatch candidates only after the
+     routed opener includes the deciding delimiter or suffix. Bare `@`, bare
+     `.foo`, and bare `#foo` are not enough.
+
+   Do not use dispatch for a family whose real decision is a later delimiter
+   unless that delimiter is part of the routed combinator; for example, a
+   generic at-rule block-vs-statement split decided by `{` vs `;` must not
+   commit on the at-keyword alone. When glue is part of the token shape, the
+   routed combinator must own the glue too: CSS `url(`, `calc(`, `var(`, generic
+   functions, Less `each(`, and pseudo-functions are not `ident` followed later
+   by ambient trivia and `(`. The same rule applies to negative adjacency
+   guards: a trailing `not(literal('('))` after a routed opener runs under
+   ambient trivia and can reject both `name(` and `name (`. If adjacency matters,
+   encode it in the routed opener or let the higher-priority grammar route own
+   the glued form. When
+   several `when(...)` or `word(...)` cases share the same case-sensitivity and
+   boundary policy, create one grammar-local `makeWhen(...)` or `makeWord(...)`
+   helper for that real policy; do not multiply domain-named helpers such as
+   `pseudoCase`, `fnCase`, and `atCase` unless their matching policy actually
+   differs. Current exemplars are CSS `IdentOrFunction` and Less
+   `IdentifierOrFunction`: consume `ident` or glued `name(` once, route exact
+   known openers, route `when(endsWith('('), ...)` to the generic function tail,
+   and put the bare identifier in `otherwise(...)`. A closed keyword list with no
+   generic continuation is not this pattern; use `word(...)` / `keywords(...)`.
 
 9. **Does it avoid reparsing and broad lookahead?** A rule may recurse through
    Parseman grammar structure, but it must not parse a source region, then send
@@ -121,42 +205,101 @@ Every written rule must answer:
    `dispatch(...)`, `routed()`, context-parameterized rules, explicit recursive
    grammar structure, and separator/list helpers. Less inline `:extend(...)` is
    the standing example: it must become a context-owned selector tail that
-   collects extend facts while parsing selector branches once, not a
-   `DirectLessInlineExtendRule`-style selector reparse guarded by broad
-   lookahead.
+   collects extend facts while parsing selector branches once, not a second
+   selector parse guarded by broad lookahead.
 
-10. **Are its regexes correct?** Three defects found, each of which a reviewer
-   can only catch by reading the pattern character by character:
-   - `\uXXXX` escapes instead of the literal non-ASCII character — a reviewer
-     cannot verify a range they cannot see.
-   - the `u` flag alongside `i`, or non-ASCII case folding that is simply wrong.
-   - ranges that stop at the BMP, which break astral characters.
+### Unsupported Syntax Policy
 
-11. **Does it consume its own separator?** `optional(literal(';'))` inside a
-    declaration — 24 sites in `less-parser`. `;` *separates*; the list owns it.
-    Pending an owner ruling, so today these are `blocked`, not `converted`.
+Unsupported syntax is not one bucket. When a grammar rule rejects a feature,
+classify the rejection before choosing the Parseman shape:
 
-12. **Is it gated?** A leading `not()` is the anti-pattern — 18 sites. So is
+| class                             | parser shape                                                                                                                                                                                                                     | use for                                                                                         | examples                                                                                                                                                                                                                                                                              |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Unrecognized invalid syntax**   | Recognition fails at the real grammar boundary. No semantic node or unsupported fact is needed.                                                                                                                                  | Syntax that is simply outside the language and has no useful migration or recovery structure.   | Invalid CSS `calc()` shapes, impossible delimiters, CSS-only placement errors.                                                                                                                                                                                                        |
+| **Recognized unsupported syntax** | Recognition consumes the removed feature into a meaningful unsupported fact or node, then reports a fatal parse diagnostic. Public parse may still throw, but language-service recovery can keep a useful tree around the error. | Removed legacy features with a useful explanation or migration target.                          | Less inline backtick JavaScript: recognize `` `expr` ``, reject it, and point users toward `@from` / `@-from` or a script-module/plugin route. Recently deprecated plain `@name` variables in interpolated positions: understand the reference and report the exact `@{name}` change. |
+| **Deprecated supported syntax**   | Parse normally and attach a warning/deprecation diagnostic when that diagnostic lane is wired.                                                                                                                                   | Supported compatibility forms that should move users to newer syntax without breaking the file. | `@plugin` to `@use`/`@-use`; discouraged leaky `@import` to `@compose`/`@-compose`; whitespace between a Less mixin name and call parens; paren-less Less mixin calls.                                                                                                                |
+| **Eval/runtime invalid syntax**   | Parse structurally, then fail during eval/render with a source-backed diagnostic.                                                                                                                                                | Syntax that is grammatically valid but semantically invalid in its evaluated context.           | Undefined variables, recursive variable/property references, mixin/namespace lookup failures.                                                                                                                                                                                         |
+
+Do not call every removed feature a raw parse error. If the source shape can
+support a better diagnostic, migration hint, or language-service recovery, parse
+that shape intentionally and fail with the richer diagnostic.
+
+10. **Does it keep comments as trivia?** CSS comments are trivia. A grammar
+    production that repeats `many(blockComment)`, builds a renderable `Comment`
+    node, or treats comments as value/list/selector children is a finding by
+    default. The target AST/render contract is not "comments are not trivia"; it
+    is "extract trivia once into a source/document trivia index, and let
+    render/language-service consumers query that trivia channel by source
+    offsets when they need authored gaps."
+
+    Accepted exceptions must be narrow and explicitly named:
+
+    - scanner-local skips for `scanTo(...)` / `balanced(...)`, where comments
+      must not terminate an opaque run;
+    - syntax-preserving opaque text captures for non-trivia bytes, such as
+      unknown at-rule preludes/bodies or custom-property values. Opaque does not
+      make comments semantic payload; comments in those regions still belong to
+      the source trivia index and are reintroduced by source-offset queries when
+      byte preservation requires it;
+    - temporary compatibility while existing consumers still expect lifted
+      `Comment` nodes. This is migration debt, not a grammar model.
+
+    Do not hide this debt behind a helper named `comments(...)`. The cleanup
+    target is to delete grammar-level comment nodes and production-local
+    `many(blockComment)` plumbing once the parser-owned trivia map carries the
+    needed source ranges.
+
+    Less's visible-empty behavior does not change this. A block comment can make
+    an otherwise empty ruleset renderable, while a line comment does not survive
+    CSS output; that is a body-span trivia/renderability check, not evidence that
+    a `Comment` node belongs in the rules list. The cleanup must move the empty
+    ruleset check to the trivia channel at the same time it removes lifted
+    comment children.
+
+    Permissive CSS holes still share the ordinary component/value grammar.
+    Unknown at-rules and custom-property values may allow otherwise-unknown
+    tokens in their local context, but they should opportunistically parse known
+    value/list/group/declaration/ruleset structure instead of becoming bespoke
+    raw-string languages. Model that as a context or policy on the shared
+    grammar; do not invent separate unknown-at-rule/custom-property scanners for
+    every place the same component syntax appears.
+
+11. **Are its regexes correct?** Three defects found, each of which a reviewer
+    can only catch by reading the pattern character by character:
+
+- `\uXXXX` escapes instead of the literal non-ASCII character — a reviewer
+  cannot verify a range they cannot see.
+- the `u` flag alongside `i`, or non-ASCII case folding that is simply wrong.
+- ranges that stop at the BMP, which break astral characters.
+
+12. **Does it consume its own separator?** A declaration does not own an optional
+    semicolon. `;` separates block-list items, so the list owns it. A list may
+    allow a final semicolonless declaration or extra empty semicolon items only
+    where the language permits that shape; it must not allow a declaration to
+    run directly into a nested at-rule or qualified rule unless that dialect
+    explicitly documents the deviation.
+
+13. **Is it gated?** A leading `not()` is the anti-pattern — 18 sites. So is
     `not(regex(...))` used as an end-of-value assertion: that is gating work
     done by hand where a first-set gate is the mechanism. Less carries roughly
     an order of magnitude more `not()` than the CSS grammar for the same surface
     (owner measurement: ~460 against 21); re-measure rather than quoting the
     figure.
 
-13. **Is it reachable and covered?** One production was CST-only, dead, and had
+14. **Is it reachable and covered?** One production was CST-only, dead, and had
     zero tests. Ask which entry rule reaches this const and which test exercises
     it. If neither answer exists, that is the finding.
 
-14. **If changed, does the AST stay byte-identical?** The oracle answers this
+15. **If changed, does the AST stay byte-identical?** The oracle answers this
     mechanically (§4). **A change that moves the tree is a failed change, not a
     judgement call.**
 
-15. **Does its name claim a divergence it does not have?** Item 1 asks whether
-    the rule is duplicated. This asks whether the rule's *name* is what let the
+16. **Does its name claim a divergence it does not have?** Item 1 asks whether
+    the rule is duplicated. This asks whether the rule's _name_ is what let the
     duplicate survive. A dialect prefix (`css…`, `less…`, `scss…`, `jess…`) is a
     claim that this rule accepts a different language than its unprefixed
     counterpart. **Either show the accepted languages actually differ, or it is
-    one rule.** See *naming is a duplication mechanism* below.
+    one rule.** See _naming is a duplication mechanism_ below.
 
 ### Naming is a duplication mechanism, not a style preference
 
@@ -165,25 +308,40 @@ It is not a style guide, and it must not be applied as one — the repo has
 rejected codified style guides, and a reviewer who turns this into an
 identifier-aesthetics pass has misread it.
 
-**The mechanism.** A dialect prefix makes two identical rules *look* different.
+**The mechanism.** A dialect prefix makes two identical rules _look_ different.
 Nobody ever diffs `cssDeclaration` against `lessDeclaration`, because the names
 assert they are different things. The name does not merely fail to advertise the
 duplication — it **hides** it. And it is self-reinforcing: once `cssDeclaration`
-exists, writing `lessDeclaration` feels like *following the convention* rather
-than like copy-pasting. That is how a codebase reaches eight grammar files
-totalling 24,305 lines where four would do (observation, `a74131e8f`: CST
-1527/1281/1379/1210, AST 3455/4750/5116/5587 for css/less/scss/jess).
+exists, writing `lessDeclaration` feels like _following the convention_ rather
+than like copy-pasting. That is how this codebase historically reached eight
+grammar files totalling 24,305 lines where four would do (observation,
+`a74131e8f`: CST 1527/1281/1379/1210, AST 3455/4750/5116/5587 for
+css/less/scss/jess).
 
 The rule:
 
+- **Use the language's own term first.** If CSS, Less, Sass, or Jess specs/name
+  ledgers already name the construct, use that term. Invented local vocabulary
+  is a finding unless the spec has no usable name.
 - **Default to a plain, undecorated name** — `declaration`, `selector`,
-  `atRule`, `block`. Most productions are not dialect-specific at all.
+  `atRule`, `block`, `value`. Most productions are not dialect-specific at all.
+- **Do not preserve a whole compound spec phrase as a prefix.** Use the spec
+  term at the node that actually parses that construct, then let surrounding
+  rules be plain. Even when the CSS spec uses a repeated phrase like
+  `component value`, do not turn `Component` into `ComponentValueSequence`,
+  `ComponentValueList`, `ComponentFunction`, or any other helper prefix. Prefer
+  `Value`, `ValueSequence`, `ValueList`, `Function`, or another smaller language
+  term. The spec phrase is evidence for the construct, not a namespace.
+- **Do not prefix a child with its caller.** A value used by a declaration is a
+  value, not `DeclarationValue`; a compound selector used by a ruleset is a
+  compound selector, not `RulesetCompoundSelector`. Context belongs in the
+  parent production unless the child accepts a genuinely different language.
 - **A prefix is a claim of genuine divergence and must be earned.** The rule has
-  to actually differ in what it *accepts*.
+  to actually differ in what it _accepts_.
 - **Never prefix a shared rule.** A `Declaration` used by more than one dialect
   is `declaration`.
 - **`Ast` / `Cst` in a name is the same error one axis over.** That is a compile
-  *mode*, not an identity; one grammar serves both modes, so the mode does not
+  _mode_, not an identity; one grammar serves both modes, so the mode does not
   belong in the rule's name.
 - **When divergence is real, name the divergence, not the owner.**
   `declarationWithInterpolatedName` beats `lessDeclaration`.
@@ -194,44 +352,36 @@ or it is a finding.
 
 #### Standing evidence
 
-Observations, each re-checkable at `a74131e8f`:
+Observations, each re-checkable from the current grammar files:
 
-- The four AST grammars carry **735 distinct prefixed rule names** across four
-  mutually incompatible prefixes: `CssAst*` 157, `DirectLess*` 243,
-  `DirectScss*` 167, `DirectJess*` 168. No rule in any one of them can match a
-  rule in any other by name, because each uses a different prefix — and the
-  schemes do not even agree with each other (`Ast` in one, `Direct` in three).
-  *Interpretation:* this is the mechanism at full scale. Name-keyed sharing is
-  arithmetically impossible here; the base cannot supply `Declaration` to a
-  dialect that calls it `DirectLessDeclaration`.
-- `packages/parser-shared/src/` exports four names — `cssSyntax`,
-  `lessAstSyntax` (`recognition.ts`), `cssPseudoSyntax` (`pseudo-consts.ts`),
-  `opaqueAtRuleRecognition` (`opaque-at-rule.ts`). The CSS recognition artifact
-  names were cleaned on 2026-07-26 from `cssAstSyntax` / `cssAstPseudoSyntax` to
-  remove the false compile-mode word. `lessAstSyntax` remains the same defect on
-  the Less side and should be paid during the Less rebuild. `cssSyntax` and
-  `cssPseudoSyntax` still carry a CSS language prefix because they define the
-  base language consumed by every dialect; if they become the one canonical base
-  module during the four-grammar collapse, that prefix can disappear too.
-- Before the 2026-07-26 cleanup, `scss-parser/src/grammar.ts` imported
-  `cssAstSyntax` from a **CST** grammar. That mode word was simply false at that
-  call site. The live import is now `cssSyntax`, so the remaining lesson is the
-  one the cleanup paid: compile mode does not belong in shared rule names.
-- `lessAstSyntax` contains the rule key `LessAstSyntaxNamedColor`
-  (`recognition.ts:361`) — the CSS named-colour list, triple-decorated with a
-  dialect, a mode, and a surface. `less-parser/src/grammar.ts:712` carries a
-  copy of it and its own `TODO` says: CSS named colours "are not a Less
-  extension and this list does not belong here."
-- A grammar-local `requireToken` helper is defined **three times** —
-  `less-parser/src/ast/grammar.ts:260`, `scss-parser/…:190`,
-  `jess-parser/…:227` — with **310 call sites** (98/107/108 minus the three
-  definitions). The Less and SCSS bodies differ only in the dialect name inside
-  the error string; the Jess one has drifted structurally. *Interpretation:* the
-  same phenomenon one level down — duplication survives wherever nothing gives
-  the shared thing a single name and a single home, and once duplicated it
-  begins to diverge.
+- The physical fold paid the `src/ast/grammar.ts` split, but dialect- and
+  mode-flavoured rule names can still survive inside the four `src/grammar.ts`
+  files. Treat `CssAst*`, `DirectLess*`, `DirectScss*`, `DirectJess*`, `Ast`, and
+  `Cst` as findings unless the rule accepts a genuinely different language.
+  _Interpretation:_ a shared base cannot supply `Declaration` to a dialect that
+  still calls the same concept `DirectLessDeclaration`.
+- `packages/parser-shared/src/` exports four current shared-recognition
+  artifacts — `cssSyntax`, `lessSyntax` (`recognition.ts`), `cssPseudoSyntax`
+  (`pseudo-consts.ts`), and `opaqueAtRuleRecognition` (`opaque-at-rule.ts`). The
+  CSS and Less recognition artifacts were cleaned on 2026-07-26 from
+  `cssAstSyntax` / `cssAstPseudoSyntax` and `lessAstSyntax` to remove false
+  compile-mode words. `cssSyntax`, `lessSyntax`, and `cssPseudoSyntax` still
+  carry language prefixes because they define language-scoped terminal surfaces;
+  that prefix is acceptable only while it describes the accepted language rather
+  than the compile mode or current owner.
+- Compile mode does not belong in shared rule names. `cssSyntax`,
+  `cssPseudoSyntax`, and `lessSyntax` are the accepted shape: the prefix
+  describes the language surface, not AST/CST ownership.
+- Naming defect example: a CSS named-colour list triple-decorated with a dialect,
+  a mode, and a surface hides the shared construct. The remaining review
+  question for language-prefixed recognition leaves is whether the prefix still
+  describes a genuinely language-scoped surface.
+- Grammar-local value extraction helpers are another place this happens. If two
+  dialects carry the same helper with only the dialect name changed in the error
+  string, either move the shared helper to the right home or rename the local
+  divergence so it says what is actually different.
 
-*Interpretation, not observation:* the target architecture in
+_Interpretation, not observation:_ the target architecture in
 [`DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`](./DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md)
 already names its seams correctly — `stylesheetItem`, `blockItem`,
 `interpolation`, `variableRef`, `preprocessorBase`. The convention this item
@@ -259,11 +409,10 @@ These override anything the checklist might suggest.
 parameterless combinator `const`s inside them, and plain reducers only.** Do not
 add helper factories, wrapper functions, `[...spread]`, or hoisted config
 `const`s — including plain strings — inside grammar bodies unless a focused
-macro gate proves the exact shape. The accepted exception is the final
-module-level `cssFactory` shape recorded in both CSS grammar modules in
-`GRAMMAR-SEQUENCE-ORCHESTRATION.md`: a named factory passed directly to
-`rules(...)` so Parseman can still see the whole rule map. This is a
-*correctness* rule, not a style preference. When `compose()` cannot statically
+macro gate proves the exact shape. The accepted shape is a named module-level
+factory passed directly to `rules(...)` so Parseman can still see the whole rule
+map. This is a
+_correctness_ rule, not a style preference. When `compose()` cannot statically
 resolve its argument, parseman falls back to the interpreter, and **a
 macro-fallback build is not AST-equivalent to a macro-compiled build** — it emits
 a different tree for the same input. Reproduced end to end in
@@ -281,7 +430,7 @@ nowhere else.
 
 **The gating diagnostic depends on what you feed it.** The parseman analysis
 surface **can** analyse these grammars when given their `rules()` map, captured
-*before* `compose()`. It is the fused compiled artifact that throws — and it now
+_before_ `compose()`. It is the fused compiled artifact that throws — and it now
 throws with an actionable message rather than reporting empty. So "the diagnostic
 cannot see our grammars" is wrong as a blanket statement; the input matters.
 Feed it the pre-compose map, and never read a clean result obtained from the
@@ -309,6 +458,7 @@ In that order, one conversion class at a time.
    be unchanged. Parse failures are hashed too, so error behaviour is in the
    differential. A grammar touching one surface should move neither — the
    untouched surface is the control.
+
 3. **Measure** if the change was motivated by cost. Do not claim a win you did
    not measure.
 4. **Keep** only what survives 2 and 3. Otherwise revert, or record it as
@@ -317,10 +467,9 @@ In that order, one conversion class at a time.
 The byte-identity oracle currently exists as `pnpm run
 oracle:less:byte-identity`, backed by the Less parser corpus under
 `packages/syntax/less/less-parser/test/`. There is no equivalent script for the
-other three dialects. Because `less-parser` composes on `css-parser` and
-`scss-parser` composes on `less-parser`, a `css-parser` change is partly covered
-by the Less oracle — but say plainly which surfaces you actually hashed rather
-than implying full coverage.
+other three dialects. A `css-parser` change is partly covered by the Less oracle
+because Less composes on the CSS base; say plainly which surfaces you actually
+hashed rather than implying full coverage.
 
 ---
 
