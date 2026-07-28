@@ -14,6 +14,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 describe('pre-push dispatcher', () => {
+  it('keeps the legacy precommit script name on the fast staged-line lint gate', () => {
+    const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const packageJson = JSON.parse(readFileSync(resolve(repo, 'package.json'), 'utf8'));
+
+    expect(packageJson.scripts['precommit:staged']).toBe('node scripts/precommit-staged-lint.mjs');
+    expect(packageJson.scripts['precommit:staged']).toBe(packageJson.scripts['precommit:lint']);
+  });
+
   it.each([
     ['alpha', 'release:alpha:push-check'],
     ['dev', undefined]

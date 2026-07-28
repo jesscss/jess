@@ -53,7 +53,7 @@
   "scripts": {
     "ci": "pnpm run -r ci && pnpm run lint",
     "prepare": "husky install",
-    "precommit:staged": "node scripts/precommit-changed-checks.mjs --mode=staged",
+    "precommit:staged": "node scripts/precommit-staged-lint.mjs",
     "precommit:lint": "node scripts/precommit-staged-lint.mjs",
     "verify:pr": "node scripts/verify-pr.mjs",
     "verify:compose-integrity": "node scripts/verify-compose-integrity.mjs",
