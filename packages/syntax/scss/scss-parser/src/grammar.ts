@@ -18,7 +18,7 @@ import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
@@ -31,7 +31,7 @@ const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.
 
 function isScriptModulePath(path: string): boolean {
   const normalized = path.toLowerCase();
-  return scriptModuleExtensions.some(extension => normalized.endsWith(extension));
+  return scriptModuleExtensions.some(extension => normalized.slice(-extension.length) === extension);
 }
 
 type ScssRules = {
@@ -937,7 +937,7 @@ function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorL
 }
 
 function scssPseudoName(opener: string): string {
-  return opener.endsWith('(') ? opener.slice(0, -1) : opener;
+  return opener.slice(-1) === '(' ? opener.slice(0, -1) : opener;
 }
 
 /*
@@ -1240,7 +1240,10 @@ export const scssFactory = (g: ScssRules) => {
     const DirectScssComment = node<Comment>(
       'DirectScssComment',
       blockComment,
-      children => comment(requireToken(children[0]).value)
+    (children, _fields, span) => withSourceSpan(
+      comment(requireToken(children[0]).value),
+      span
+    )
     );
     const DirectScssKeyword = node<Keyword>(
       'DirectScssKeyword',
