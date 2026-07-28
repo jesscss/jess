@@ -1,8 +1,8 @@
-# Canonical AST inspection design
+# Canonical AST visitation design
 
-Status: reviewed design, updated after adversarial review. Do not implement a
-broader traversal surface than the phase-1 slice described here without another
-review.
+Status: reviewed direction, revised after adversarial review. This supersedes
+the prior value-dimension-only proposal; `forEachDimensionInValueSlot` is
+rejected as too overfit. Implementation still requires the tests/gates below.
 
 ## 1. Problem
 
@@ -10,382 +10,533 @@ review.
 lint package should own configuration, severity policy, output formatting, and
 CLI/editor presentation. It should not own unique problem detection.
 
-The common detector layer should be able to consume authored-source syntax facts
-from the canonical AST when the parse is clean, and tolerant CST facts when the
-file is invalid or the canonical AST cannot provide a fact yet. Parser packages
-must remain recognizers and AST builders, not lint engines.
+The common detector layer needs a real canonical traversal shape. The immediate
+symptom was CSS `zero-units` in `packages/diagnostics-core/src/tolerant-cst.ts`
+walking declaration values with diagnostics-local `Object.values(...)`. Replacing
+that with `forEachDimensionInValueSlot(...)` would remove one bad crawl but leave
+the architecture wrong: it hard-codes one detector instead of defining how Jess
+code observes canonical AST facts.
 
-The immediate smell is the CSS `zero-units` fast path in
-`packages/diagnostics-core/src/tolerant-cst.ts`: it currently finds nested
-`Dimension` leaves by recursively calling `Object.values(...)` over declaration
-value objects. That is diagnostics-local structural rediscovery. The AST already
-has typed value leaves; diagnostics should inspect them through a reviewed
-canonical-AST traversal shape.
+The design must serve two related but different needs:
 
-The design must account for all of these existing surfaces:
+- **Authored canonical visitation**: read-only traversal over the AST v2 source
+  tree for diagnostics, language-service facts, refactors, and lint migration
+  rules.
+- **Eval/render visitation**: hooks at the points where eval/render already
+  visits resolved nodes or values, without adding a second walk or materializing
+  output trees.
 
-- AST v2 in `packages/core/src/ast/nodes.ts` is plain data: PascalCase
-  `type`, no base class, no `new`, no methods on nodes.
-- AST value leaves carry parser facts such as
-  `Dimension { number, unit, src }`; eval/render materializes value-domain
-  objects only when typed value semantics are demanded.
-- The current render hook in `packages/core/src/context.ts` is an emit-time
-  callback over resolved legacy output `Node`s. It is useful evidence, but a
-  different phase.
-- Less 4 visitors are a compatibility ABI with `visit${Type}` methods,
-  `visit${Type}Out`, `visitArray`, `isReplacing`, `visitDeeper`, and
-  node-owned `accept(visitor)` traversal. That is not the lint/IDE fact model.
+The shared piece is vocabulary and child-edge ownership, not a single Less-style
+visitor ABI.
+
+## 2. Current Evidence
+
+- AST v2 in `packages/core/src/ast/nodes.ts` is plain data: PascalCase `type`,
+  no base class, no `new`, no methods on nodes.
+- Value leaves are already cheap authored objects. A dimension is currently
+  `Dimension { type, number, unit, src }`, not a string that needs lint to
+  materialize it.
+- `packages/core/src/ast/serialize.ts` still has materialization, but that means
+  "turn an authored AST value into a value-domain object for eval semantics."
+  Authored diagnostics do not need value-domain materialization.
+- Eval may materialize cheap typed leaves at existing resolution points even in
+  value emission, for example `Dimension` can become a value-domain dimension
+  when an evaluator exists. The important boundary is that diagnostics do not
+  force this materialization.
+- The older plan to store literals as strings plus side-table type tags is
+  historical context, not the current shape. If that lane is revived for
+  allocation reasons, traversal should expose the same authored facts through a
+  core-owned view so diagnostics do not care whether a dimension is an object or
+  a string/tag pair.
+- The current render hook in `packages/core/src/context.ts` is an emit-time hook
+  over resolved legacy output `Node`s. It has the right performance instinct:
+  zero cost when unregistered and no whole-tree output walk. Its implementation
+  name should not become the general API.
+- Less 4 visitors are a compatibility ABI with `visit${Type}`,
+  `visit${Type}Out`, `visitArray`, `isReplacing`, `visitDeeper`, and node-owned
+  `accept(visitor)`. That is a separate bridge problem.
 - The removed Jess visitor ABI had `ABORT`, `REMOVE`, `SKIP`, per-type methods,
-  `enter`/`exit`, and a `TreeVisitor` auto-walk over legacy `Node`s. It was
-  intentionally deleted and should not be recreated for diagnostics.
+  `enter`/`exit`, and a `TreeVisitor` auto-walk over legacy `Node`s. It should
+  not be recreated for AST v2.
 
-## 2. Design Goals
+## 3. Design Goals
 
 - One detector implementation feeds both language service diagnostics and
   `@jesscss/lint`.
-- Lint policy is separate from detection: a rule config can disable, demote, or
-  promote surfaced diagnostics, but not re-implement the detector.
-- Clean CSS gets a canonical AST fast path, because AST v2 already contains more
-  structure than Stylelint/PostCSS need to infer from generic nodes.
-- Invalid CSS keeps the tolerant CST fallback so the editor can still surface
-  useful diagnostics while the user is typing.
-- No parser package source changes in the first implementation slice.
-- No parse/eval/render hot path cost when diagnostics are not being collected.
-- No node methods, `accept()`, mutation signals, parent stacks, eval frames, or
-  Less-shaped wrappers in the canonical inspection API.
+- Parser packages remain recognizers/builders. They do not run CSS metadata
+  checks, custom-property checks, unknown-property checks, duplicate policies, or
+  lint rules in grammar reductions.
+- Authored traversal is typed and explicit: no diagnostics-local object crawls,
+  no `Object.values(...)`, no structural rediscovery.
+- Eval/render visitation is pass-integrated: the pass that already resolves or
+  emits a node is the driver. No new whole-tree render walk.
+- No AST node methods, no `accept()`, no Less-shaped wrappers, and no per-type
+  `visitFoo` public surface.
+- No parse/eval/render hot-path cost when visitation is not requested.
+- The design remains compatible with current cheap value-node objects and with a
+  possible future string/tag representation.
 
-## 3. Phase Boundaries
+## 4. Phase Model
 
-### Parser Packages
+Jess should have one traversal vocabulary with phase-specific authority:
 
-Parser packages own recognition, grammar reductions, and parser-local AST
-construction. They may report parse errors and source ranges they already own.
-They must not run CSS metadata checks, custom-property value validation, unknown
-property checks, duplicate-declaration policies, zero-unit policies, or other
-lint-like detectors from grammar reductions.
+| Phase | Driver | Sees | May replace? | Normal consumers |
+|---|---|---|---|---|
+| `authored` | self-driven canonical AST walk | parsed source AST facts | no | diagnostics, LS, lint, refactors |
+| `eval` | existing eval/value-resolution pass | authored values plus resolved values at existing call sites | no | semantic facts, telemetry, future compiler metadata |
+| `emit` | existing render/output pass | resolved output node/value at serialization edge | yes, only through explicit output-transform hook | Less compat proof plugins, output transforms |
 
-The first lint performance slice must not edit parser source. If a future
-source-span mode is proposed for value leaves, it needs a separate design and an
-explicit before/after parser benchmark. The default parser path must preserve the
-pre-lint performance profile.
+The phases share node-kind names, child-edge names, and source-span helpers. They
+do not share authority. A read-only authored diagnostic hook must not inherit
+emit replacement semantics. An emit transform must not self-drive a second
+authored walk.
 
-### Canonical AST Inspection
+## 5. Authored Traversal Surface
 
-Canonical AST inspection is read-only, pre-eval, authored-source inspection. It
-observes the AST shape and existing source/body windows. It does not:
+Add a canonical traversal module owned by core AST, but keep initial exports
+internal until a package-boundary decision is reviewed.
 
-- evaluate variables, functions, mixins, guards, imports, or control flow;
-- call `serialize`, `evalValue`, `evalTyped`, or value materializers;
-- construct legacy `tree/Node` instances;
-- construct Less-compatible wrappers;
-- mutate AST nodes;
-- return replacements, removal signals, skip signals, or abort signals.
+Authored traversal has three target families because the current AST has three
+real shapes:
 
-This layer is eventually for authored syntax facts: statements, declarations,
-at-rules, selectors, value leaves, interpolation presence, and source ranges
-where those facts can be mapped without parser changes. Phase 1 is deliberately
-smaller: value-slot dimensions only.
+- typed AST nodes with `type`;
+- recursive `ValueSlot` arrays, which are semantic structure but not nodes;
+- guard nodes with `g`, not `type`.
 
-### Compiler Semantic Facts
-
-Facts that depend on scope, imports, variable resolution, mixin dispatch,
-computed values, or metadata-driven custom-property semantics belong in a
-compiler/language-service semantic fact provider. Diagnostics-core should consume
-those facts when they exist. It should not duplicate compiler semantics.
-
-This is the answer to the lint/language-service coupling question: the common
-layer is not "lint calls the language service" and not "the language service
-calls lint." Both consume shared detector/fact providers. The language service
-adds document lifecycle, incremental state, and IDE mapping. Lint adds config,
-severity, file walking, and CLI output.
-
-### Render Hooks
-
-The current emit hook in `packages/core/src/context.ts` receives resolved output
-legacy `Node`s during render. Its contract is phase-specific: `void` means
-inspect/unchanged, returning a node means replace the output node, optional exit
-exists for an output visitor proof, and the zero-registered case is fast.
-
-That hook's code name is implementation-scented and should be renamed in a
-separate cleanup if it remains public-ish, but the API shape should not be reused
-for diagnostics. Diagnostics need authored source locations, need to run on files
-that cannot render, and must not materialize output just to find source issues.
-
-### Less 4 Visitor Compatibility
-
-Less visitor compatibility is a bridge problem, not the canonical inspection
-problem. Less 4's `Visitor` driver dispatches `visit${node.type}` and
-`visit${node.type}Out`, uses `visitArgs.visitDeeper`, honors
-`implementation.isReplacing`, and rewrites arrays through `visitArray`.
-Less nodes own child traversal with `accept(visitor)` methods such as
-Ruleset's selector/rule replacement logic.
-
-Current active Jess coverage does not claim this ABI is supported:
-
-- `packages/jess/test/less/at-plugin.test.ts` has the `@plugin` visitor tests as
-  `describe.todo`.
-- `packages/jess/test/less/all-less.test.ts` skips
-  `tests-config/visitorPlugin/visitor.less`.
-- `packages/jess/test/less/all-less.test.ts` tracks a legacy visitor ABI case as
-  an expected failure.
-- `packages/syntax/less/jess-plugin-less-compat/README.md` says Less 4 visitors,
-  postprocessors, file managers, and a full Less tree adapter are unsupported.
-
-A future Less visitor bridge needs lazy Less-shaped facades, bidirectional
-conversion for replacements, `visitArray`, `isReplacing`, enter/out callbacks,
-and probably a pre-eval driver. It may use canonical AST inspection internally
-for read-only authored structure, but it cannot be implemented by the lint/IDE
-inspection API.
-
-## 4. Phase-1 Shape
-
-Use inspection vocabulary, not visitor vocabulary. The name matters because
-"visitor" already means mutation/replacement compatibility in Less and output
-replacement in render.
-
-Phase 1 should not add a public `AstInspector` object or a stylesheet walker.
-`@jesscss/core/ast` is already an exported subpath; putting an optional-method
-inspector there would create public API gravity before the shape is proven.
+Shape:
 
 ```ts
-type DimensionVisit = (node: Dimension) => void;
+export type AstVisitNode =
+  | Stylesheet
+  | Statement
+  | ValueNode
+  | SelectorList
+  | ComplexSelector
+  | CompoundSelector
+  | SimpleToken
+  | AtRuleBlock
+  | AtRuleStatement
+  | ImportAtRule
+  | Plugin
+  | OpaqueAtRuleBlock;
 
-function forEachDimensionInValueSlot(value: ValueSlot, visit: DimensionVisit): void;
+export type AstEdge =
+  | 'root'
+  | 'stylesheet.children'
+  | 'rule.selector'
+  | 'rule.guard'
+  | 'rule.body'
+  | 'declaration.value'
+  | 'value-slot.item'
+  | 'value.list.item'
+  | 'value.operation.left'
+  | 'value.operation.right'
+  | 'selector.pseudo.args'
+  | 'guard.cmp.left'
+  | 'guard.cmp.right'
+  // closed table in implementation; see edge matrix below.
+
+export interface AstCursor {
+  readonly phase: 'authored';
+  readonly edge: AstEdge;
+  readonly parentKind: 'node' | 'slot' | 'guard' | null;
+  readonly parent: AstVisitNode | readonly ValueSlot[] | GuardNode | null;
+  readonly index: number;
+  readonly depth: number;
+}
+
+export type AstVisitDecision = void | 'skip-children';
+
+export interface AstVisitHooks {
+  enterNode?(node: AstVisitNode, cursor: AstCursor): AstVisitDecision;
+  leaveNode?(node: AstVisitNode, cursor: AstCursor): void;
+  enterSlot?(slot: readonly ValueSlot[], cursor: AstCursor): AstVisitDecision;
+  leaveSlot?(slot: readonly ValueSlot[], cursor: AstCursor): void;
+  enterGuard?(guard: GuardNode, cursor: AstCursor): AstVisitDecision;
+  leaveGuard?(guard: GuardNode, cursor: AstCursor): void;
+}
+
+export function walkAuthoredAst(root: Stylesheet, hooks: AstVisitHooks): void;
+export function walkAuthoredValue(value: ValueSlot, hooks: AstVisitHooks): void;
 ```
 
-Contract:
+Important details:
 
-- the helper is internal to the common diagnostics implementation for phase 1;
-- no callback/event object is allocated per node;
-- callback returns `void`; returns are ignored by type;
-- traversal is source-order and depth-first;
-- no parent/path arrays are passed;
-- no eval/render context is passed;
-- no skip, abort, remove, replace, or descend-control values exist;
-- no `accept()` methods are added to AST nodes;
-- implementation is explicit `switch (node.type)` traversal, not
-  `Object.values(...)`;
-- new node types require updating traversal and tests.
+- Consumers switch on `node.type` for typed nodes and `guard.g` for guards. Core
+  does not provide `dimension?`, `declaration?`, or `visitDimension` methods.
+- `ValueSlot` arrays are first-class traversal targets via `enterSlot` /
+  `leaveSlot`. A root `ValueSlot` array is entered with edge `root`.
+- `AstCursor` is reusable traversal state. Cursor fields are valid only during
+  the synchronous callback currently receiving it. Consumers must copy any cursor
+  fields they retain.
+- `skip-children` is allowed for read-only pruning. It is not Less
+  `visitDeeper`: there is no mutation, replacement, flattening, or node-owned
+  `accept()`.
+- No callback can replace, remove, insert, or reorder authored AST nodes.
+- Child ownership is explicit in core switches. A new AST node or child field
+  fails traversal tests until its edge is classified.
+- `walkAuthoredValue` is not dimension-specific. It exists because values are a
+  natural boundary for diagnostics and semantic facts.
 
-If a later second detector needs more than dimensions, write the broader
-authored-AST inspection design then. Do not promote this helper to
-`@jesscss/core/ast` merely for convenience.
+This is a traversal surface, not a materialization surface. A diagnostic that
+wants dimensions reads the current cheap `Dimension` object. If a future
+string/tag lane removes that object, this module becomes the compatibility layer
+that yields the same authored fact to consumers.
 
-### Value Edge Table
+## 6. Child Edge Matrix
 
-The phase-1 helper must make an explicit decision for every current
-`ValueNode` member. This is the table tests should pin:
+Core must own the child-edge table. Consumers must never recurse with
+`Object.values(...)`.
 
-| Value node | Phase-1 dimension traversal |
+### Value Slots And Values
+
+| Shape | Authored child edges |
 |---|---|
-| `Dimension` | visit the node |
-| `Keyword`, `Color`, `Quoted`, `Any`, `Comment`, `SelectorCapture` | no children |
-| `Url` | `value` |
-| `SpacedValue`, `Sequence` | `parts[]` |
-| `List` | `value[]` |
-| `Important`, `Block` | `inner` |
-| `Operation` | `left`, `right` |
-| `FunctionCall` | `args[]` |
-| `Interpolation` | every `part.ref` |
-| `GeneralEnclosed` | `content` |
-| `VarIndirect` | `nameRef` |
-| `Condition` | guard value operands (`cmp.left/right`, `truth.value`, `call.args[]`) |
-| `Reference` | `base` when it is a `ValueNode`; bracket keys that are `ValueNode`; call args whose values are `ValueSlot` |
-| `Range` | `start`, `end`, `step` when present |
-| `Collection` | `base` when present; entry declaration values only, no statement-body descent |
-| `AnonymousMixin` | no descent in phase 1; executable bodies need dialect semantic review |
+| `ValueSlot[]` | `value-slot.item` for each item |
+| `Keyword`, `Color`, `Quoted`, `Any`, `Comment`, `SelectorCapture` | none |
+| `Url` | `value.url.value` |
+| `SpacedValue`, `Sequence` | `value.parts` for each part |
+| `List` | `value.list.item` for each item |
+| `Important`, `Block` | `value.inner` |
+| `Operation` | `value.operation.left`, `value.operation.right` |
+| `FunctionCall` | `value.function.arg` for each arg |
+| `Interpolation` | `value.interpolation.ref` for every part with `ref` |
+| `GeneralEnclosed` | `value.general.content` |
+| `VarIndirect` | `value.var-indirect.name` |
+| `Condition` | `value.condition.guard` |
+| `Reference` | `value.reference.base`; `value.reference.bracket-key` for value keys; `value.reference.call-arg` for call args whose values are `ValueSlot` |
+| `Range` | `value.range.start`, `value.range.end`, `value.range.step` when present |
+| `Collection` | `value.collection.base` when present; `value.collection.entry` for declaration/variable entry values |
+| `AnonymousMixin` | `value.anonymous-mixin.param-default`, `value.anonymous-mixin.param-pattern`, `value.anonymous-mixin.body` |
 
-That last row is intentional: a zero-unit inside an anonymous mixin body is not a
-CSS authored declaration in the current clean-CSS fast path, and walking it would
-silently cross into unevaluated dialect semantics. A future dialect facts pass
-can revisit this with its own review.
+### Guards
 
-## 5. Diagnostics Integration
+Guards are not `node.type` nodes. They are traversed through `enterGuard` and
+`guard.g`.
 
-Diagnostics-core should expose detectors over facts, not over parser internals:
+| Guard shape | Authored child edges |
+|---|---|
+| `cmp` | `guard.cmp.left`, `guard.cmp.right` |
+| `and`, `or` | `guard.logical.left`, `guard.logical.right` |
+| `not` | `guard.not.inner` |
+| `truth` | `guard.truth.value` |
+| `call` | `guard.call.arg` for each arg |
+| `default` | none |
 
-```ts
-collectAuthoredCssDiagnostics({
-  root,
-  source,
-  metadata,
-  filePath
-})
-```
+### Statements And At-Rules
 
-Clean CSS path:
+| Shape | Authored child edges |
+|---|---|
+| `Stylesheet` | `stylesheet.children` |
+| `Rule` | `rule.selector`, `rule.guard` when present, `rule.body`; `extendInstructions` are selector facts, not statement body |
+| `Declaration` | `declaration.value` |
+| `VariableDeclaration` | `variable.value` when value is `ValueSlot`; `variable.mixin-call` when value is `MixinCall` |
+| `MixinDef` | param defaults/patterns, `mixin.guard`, `mixin.body` |
+| `MixinCall` | `mixin-call.arg` for each arg value; path segments are raw selector/name facts |
+| `Apply` | `apply.selector` |
+| `For` | `for.iterable`, `for.body` |
+| `If` | `if.branch.guard`, `if.branch.body` |
+| `StyleImport`, `ModuleImport` | import paths are typed `Quoted` values where modeled; import specifier names are raw facts |
+| `AtRuleBlock` | `atrule.prelude` when present, `atrule.body` |
+| `AtRuleStatement` | `atrule-statement.prelude` when present |
+| `ImportAtRule` | `import.options`, `import.target`, `import.alias`, `import.tail` when present |
+| `Plugin` | `plugin.target`, `plugin.options` when present |
+| `FunctionCall` as statement | same as value `FunctionCall` |
+| `Reference` as statement | same as value `Reference` |
+| `Comment`, `RawInline`, `OpaqueAtRuleBlock` | terminal; raw text/body is not traversed |
+
+### Selectors
+
+| Shape | Authored child edges |
+|---|---|
+| `SelectorList` | `selector.branch` |
+| `ComplexSelector` | `selector.head`, `selector.tail.compound` |
+| `CompoundSelector` | `selector.simple` |
+| `SimpleSelector` | `selector.simple.interp` when present |
+| `PseudoSelector` | `selector.pseudo.interp` when present; `selector.pseudo.args` when structured |
+
+Memo/cache fields such as `_canon`, `_hasAmp`, `_hasInterp`, raw text fields,
+names, flags, `src`, `unit`, and `number` are facts, not child edges.
+
+## 7. Authored Diagnostics Flow
+
+Clean CSS:
 
 1. parse canonical CSS AST;
-2. iterate declarations already selected by the CSS diagnostics path;
-3. inspect each declaration value slot for dimensions;
-4. emit `SourceDiagnostic` records with source offsets;
-5. language-service and lint adapters apply user-facing policy/presentation.
+2. run shared diagnostics collectors over `walkAuthoredAst`;
+3. collectors observe typed facts (`Declaration`, `Dimension`, `AtRuleBlock`,
+   selectors, etc.) and source spans;
+4. language-service and lint adapters apply policy/presentation.
 
-Invalid CSS or recovery-heavy path:
+Invalid CSS or recovery-heavy text:
 
 1. parse tolerant CST;
 2. report parse diagnostics;
-3. run tolerant CST detectors for facts unavailable from AST.
+3. run tolerant CST collectors where canonical AST facts are unavailable.
 
-Less/SCSS/Jess path:
+Less/SCSS/Jess:
 
-- keep current tolerant CST diagnostics until canonical AST fact collection is
-  reviewed per dialect;
-- move semantic diagnostics to shared compiler/language-service facts rather
-  than duplicating eval or metadata lookup in lint.
+- use authored traversal for syntax facts that do not require evaluation;
+- semantic diagnostics wait for compiler/language-service facts rather than
+  duplicating eval in lint;
+- detectors can prune deferred semantic edges with `skip-children` until the
+  dialect has reviewed what authored facts should mean.
 
-## 6. Immediate CSS Lint Slice
+For `zero-units`, the collector is just one consumer:
 
-The first implementation after review should do only this:
+- on `enterNode`, if `node.type === 'Dimension'`, check `number === 0` and unit
+  policy;
+- use source-span mapping below;
+- emit the shared diagnostic code;
+- lint may disable/demote/promote it; the language service sees the same
+  detector output.
 
-- add the narrow internal value-dimension inspection helper;
-- replace diagnostics-core's `Object.values(...)` value crawl with
-  `forEachDimensionInValueSlot`;
-- keep the CSS AST fast path and CST fallback behavior unchanged;
-- keep `@jesscss/lint` as policy/presentation only;
-- run focused diagnostics, language-service, lint, type, and export checks;
-- rerun the Stylelint comparison benchmark before making any speed claim.
+## 8. Eval/Render Visitation
 
-For `zero-units`, diagnostics should observe actual typed `Dimension` leaves
-where `number === 0` and `unit` is a removable length unit.
+Eval visitation uses the same edge names where possible, but it is not a
+self-driven authored AST walk. It is an observer list invoked by existing pass
+points only when registered.
 
-Span recovery must not be a repeated unbounded `indexOf` by `src`. Use one
-locator per declaration value window:
+Initial eval observer surface is internal and synchronous:
 
-1. Prefer `sourceSpanOf(dimension)` if the parser side table has an exact span
-   inside the declaration value window.
-2. Otherwise scan forward from the previous matched dimension in the same value
-   window, not from the start each time.
-3. The scan is token-aware for CSS presentation: skip strings and comments,
-   require dimension-token boundaries, and require the candidate text to equal
-   the dimension's exact `src`.
+```ts
+export interface EvalCursor {
+  readonly phase: 'eval';
+  readonly edge: AstEdge;
+  readonly lane: 'value' | 'typed' | 'statement' | 'guard';
+  readonly origin: 'authored' | 'synthetic';
+  readonly authored: AstVisitNode | readonly ValueSlot[] | GuardNode | null;
+}
+
+export interface EvalVisitHooks {
+  beforeValueSlot?(slot: ValueSlot, cursor: EvalCursor): void;
+  afterValueSlot?(slot: ValueSlot, resolved: Value | ValueGroup, cursor: EvalCursor): void;
+  beforeValueNode?(node: ValueNode, cursor: EvalCursor): void;
+  afterValueNode?(node: ValueNode, resolved: Value | ValueGroup, cursor: EvalCursor): void;
+  beforeStatement?(node: Statement, cursor: EvalCursor): void;
+  afterStatement?(node: Statement, cursor: EvalCursor): void;
+}
+```
+
+Exact event map for a future eval-observer slice:
+
+| Call site | Event | Semantics |
+|---|---|---|
+| `evalValueSlot` entry for `ValueSlot[]` | `beforeValueSlot`, lane `value` | observes authored array before slash promotion or child resolution |
+| `evalValueSlot` completion | `afterValueSlot`, lane `value` | observes resolved `Value`; if the result is thenable, fires in the continuation |
+| `evalTypedSlot` entry for `ValueSlot[]` | `beforeValueSlot`, lane `typed` | observes authored array before typed child resolution |
+| `evalTypedSlot` completion | `afterValueSlot`, lane `typed` | observes resolved `ValueGroup`; continuation-preserving for `MaybePromise` |
+| `evalValue` entry for scalar `ValueNode` | `beforeValueNode`, lane `value` | observes scalar authored node or synthetic node with `origin` set |
+| `evalValue` completion | `afterValueNode`, lane `value` | observes resolved value without forcing extra materialization |
+| `evalTyped` entry for scalar `ValueNode` | `beforeValueNode`, lane `typed` | observes typed-resolution entry |
+| `evalTyped` completion | `afterValueNode`, lane `typed` | observes resolved `ValueGroup` |
+| statement loops in `emitNestedBody` and `emitAtRuleBody` | `beforeStatement` / `afterStatement`, lane `statement` | observes statements as the render/eval pass already reaches them; async children fire `after` in their completion continuation |
+
+Rules:
+
+- Hooks are synchronous. They may throw, and throws follow the existing error
+  path. They must not return promises.
+- Hook dispatch has a zero-registered fast path.
+- Hook dispatch must not materialize value-domain objects just to notify a hook.
+  It can only pass values the existing eval path already produced.
+- Synthetic nodes created by existing normalization, such as slash promotion,
+  are marked `origin: 'synthetic'`. Consumers that want authored-only facts must
+  ignore them.
+- Some internal helper evaluations may intentionally remain unobserved until a
+  concrete consumer needs them. The implementation must document each skipped
+  site next to the event map.
+- Eval observers cannot replace output. Compiler-internal transforms need a
+  separate design.
+
+Emit/output transforms remain an output phase surface:
+
+```ts
+export type OutputTransformEnter = (node: Node) => Node | void;
+```
+
+That existing shape is allowed to replace because it operates at the resolved
+serialization edge. It should be renamed away from implementation vocabulary in
+a later cleanup, but not folded into authored diagnostics.
+
+## 9. Materialization Decision
+
+Do not resurrect the string-plus-side-table literal plan for lint.
+
+Current AST v2 already gives diagnostics cheap typed authored facts:
+
+- `Dimension` has `number`, `unit`, and `src`;
+- `Color` and `Quoted` keep parsed fields;
+- `Any` is the intentionally opaque fallback.
+
+Value-domain materialization remains an eval concern. It happens where existing
+eval semantics need a `ValueObj` or typed evaluator result, including some value
+emission paths. Authored diagnostics do not call materializers and do not depend
+on value-domain objects.
+
+The traversal API should phrase its contract in terms of authored facts, not
+allocation shape. Today that fact is a cheap object. If a future performance lane
+proves literal objects should be replaced by strings plus tags, core traversal
+owns the compatibility view and diagnostics do not change.
+
+## 10. Source Spans
+
+Diagnostics should prefer parser-authored side-table spans:
+
+1. Use `sourceSpanOf(node)` when present and inside the relevant source window.
+2. For `ValueSlot` arrays or nodes without spans, use a monotonic locator scoped
+   to the owning declaration/prelude/body window.
+3. The fallback locator must be token-aware for presentation: skip strings and
+   comments, respect CSS token boundaries, and scan forward from the previous
+   match in that same value window.
 4. If no exact token range is found, do not emit a guessed AST diagnostic for
-   that leaf. A missing diagnostic is preferable to underlining the wrong bytes.
+   that leaf. Missing one hint is better than underlining the wrong source.
 
-That locator is presentation mapping only. It does not decide whether a
-dimension is semantically a zero-unit problem; the typed AST leaf already decided
-that fact.
+Longer term, if span lookup becomes measurable cost or too ambiguous, design a
+parser/Parseman span mode separately. Do not add parser work in the lint slice.
 
-This is not an implementation of Less visitor compatibility. It is also not a
-rename of the existing render hook.
+The fallback locator should be a core-owned helper used by diagnostics and LS
+callers. It should not be reimplemented in lint.
 
-## 7. Source Spans
+## 11. Less Visitor Compatibility
 
-Phase 1 does not add source spans to value leaves. It first uses existing
-parser-authored side-table spans via `sourceSpanOf`, then falls back to the
-ordered token-aware locator described above.
+Less visitor compatibility remains separate.
 
-This is acceptable for the first slice because:
+A real Less bridge needs:
 
-- the typed leaf supplies the semantic fact;
-- source text is used only to map that known fact back to a display range;
-- no parser runtime changes are required;
-- the fallback CST path still handles invalid text and recovery cases.
+- Less-shaped lazy facades;
+- `accept(visitor)` on facades, not on canonical AST nodes;
+- `visitArray`;
+- `visit${Type}` and `visit${Type}Out`;
+- `isReplacing`;
+- conversion from Less replacement values back into Jess values;
+- pre-eval visitor support if that compatibility surface is accepted.
 
-If source lookup becomes measurable cost or produces ambiguous ranges for new
-rules, the next design should be an optional source-span mode owned by
-Parseman/parser integration. It must be default-off or proven no-regression on
-parser benchmarks. It is not part of this design.
+The bridge should be guided by a tracking table of visitor shapes actually used
+by published Less packages. That table is evidence, not a ceiling: Jess may
+support shapes beyond the observed corpus when they are cheap, coherent, or
+needed for compatibility goals. But every supported visitor affordance should be
+traceable to either an observed package shape or an explicit owner decision.
 
-## 8. Why Not Alternatives
+The tracking table should record at least:
 
-### Generic Object Walker
+| Field | Purpose |
+|---|---|
+| package/version | pins the observed public package behavior |
+| visitor entrypoints | `install`, `manager.addVisitor`, `isPreEvalVisitor`, direct `visitors.Visitor`, etc. |
+| methods used | `visitRuleset`, `visitDeclaration`, `visitRuleOut`, generic `run`, and so on |
+| traversal controls | `visitArgs.visitDeeper`, `node.accept`, `visitor.visitArray`, non-replacing arrays |
+| replacement behavior | returns same node, new Less node, `undefined`, array/flattened output |
+| node surface read/written | selector fields, declaration value/name, rules arrays, visibility flags, imports |
+| phase | pre-eval, eval/render, postprocessor-like, unknown |
+| Jess decision | support now, support later, reject, or emulate through a narrower native hook |
 
-Rejected. It encodes AST shape outside the AST model, traverses accidental
-implementation fields if memo/cache fields grow, and gives diagnostics-core a
-private traversal vocabulary that the language service cannot safely share.
+The canonical traversal vocabulary may help the bridge find authored children,
+but it is not the Less visitor ABI and should not expose Less control semantics.
 
-### Broad `AstInspector`
+Current active coverage still treats Less visitors as unsupported/todo/skipped,
+so implementing the canonical traversal must not claim to close that gap.
 
-Rejected for phase 1. A stylesheet-level inspector with optional callbacks is
-not Less ABI by itself, but it looks extensible and would become public API if
-exported through `@jesscss/core/ast`. Start with the narrow internal dimension
-helper; design the larger surface only when a second detector needs it.
+## 12. Implementation Slices
 
-### Node Methods Or `accept()`
+### Slice 1: Authored Traversal, Internal
 
-Rejected for AST v2 inspection. AST v2 nodes are plain data and their object
-shapes are intentionally simple. Adding methods to every node would import the
-legacy tree model into the canonical AST and would make a read-only diagnostics
-surface look like Less's mutation-capable visitor contract.
+- Add the generic authored traversal module.
+- Keep it internal to packages that need it unless a package-export review
+  explicitly approves public `@jesscss/core/ast` exposure.
+- Replace diagnostics-core's value `Object.values(...)` crawl with
+  `walkAuthoredValue` or `walkAuthoredAst`, not a dimension-specific helper.
+- Add traversal exhaustiveness tests and source-location tests.
+- Do not edit parser package source.
+- Do not edit eval/render hooks.
 
-### Reusing Render Hooks
+### Slice 2: Diagnostics Consolidation
 
-Rejected. Render hooks run after eval on resolved output nodes and may replace
-what gets serialized. Lint/IDE diagnostics need authored source facts before
-render, including while a file is broken.
+- Move CSS lint collectors onto authored traversal.
+- Ensure language service and `@jesscss/lint` consume the same collector output.
+- Keep lint configuration as policy/presentation only.
+- Keep CST fallback for invalid/recovery text.
 
-### Reusing Less Visitor Compatibility
+### Slice 3: Eval Observer
 
-Rejected. Less visitors are a user compatibility ABI with replacement,
-flattening, node-specific child traversal, and optional pre-eval behavior. That
-surface is too large and too mutation-oriented for diagnostics.
+- Add eval observers only after a concrete semantic-fact consumer needs them.
+- Implement the exact event map in section 8, or update and re-review that map
+  before coding.
+- Preserve `MaybePromise` behavior: after-hooks fire in the same sync or async
+  completion lane as the value/statement they observe.
+- Preserve the zero-registered fast path.
 
-### Recreating The Removed Jess TreeVisitor
+### Slice 4: Emit Hook Cleanup
 
-Rejected. The old Jess visitor ABI had control tokens, per-type methods, exit
-hooks, auto-walk machinery, and legacy `Node` assumptions. It was deleted as
-unreleased/internal machinery. Diagnostics should not revive it under AST v2.
+- Rename the current output hook away from implementation-specific vocabulary if
+  it remains part of the supported surface.
+- Preserve the zero-registered fast path and no-second-walk rule.
 
-## 9. Tests And Gates
+## 13. Tests And Gates
 
 Before implementation:
 
 - adversarial review recorded below;
 - review blockers resolved in this document.
 
-For the first implementation:
+For Slice 1:
 
-- focused tests prove value traversal order and the edge table above;
-- source-location tests cover duplicate values, substring traps such as
-  `10px 0px`, quoted strings, comments, and repeated zero dimensions;
-- diagnostics-core tests prove CSS lint findings are unchanged;
+- traversal tests prove source order, `skip-children`, cursor lifetime notes,
+  root `ValueSlot[]` behavior, and exhaustive edge classification;
+- tests prove memo/cache/raw fields are not traversed;
+- guard tests prove `guard.g` traversal, not fake `node.type` traversal;
+- source-location tests cover duplicate values, substring traps, quoted strings,
+  comments, and repeated zero dimensions;
+- diagnostics-core tests prove findings are unchanged;
 - language-service lint-rule tests prove IDE diagnostics use the same detector
   path;
 - lint tests prove policy/presentation remains in `@jesscss/lint`;
 - no parser package source diff against `origin/dev`;
-- `pnpm run verify:package-exports` only if a package boundary is touched;
+- `pnpm run verify:package-exports` if a package boundary is touched;
 - `pnpm run verify:types`;
 - `pnpm --filter @jesscss/lint bench:stylelint` only after the code is stable,
   and only then claim performance.
 
-## 10. Adversarial Review Questions
+For Slice 3:
 
-The reviewer should try to falsify this design with these questions:
+- event-map tests prove each listed eval call site fires once in the intended
+  lane;
+- sync and async tests prove `MaybePromise` behavior is preserved;
+- tests prove no hook dispatch occurs when no observer is registered;
+- tests prove hooks do not force materialization beyond existing eval results.
 
-- Is this overbuilding for lint when the immediate need is just dimensions?
-- Does the shape accidentally become a Less visitor ABI?
-- Does it add cost to parse, eval, or render when diagnostics are not running?
-- Does exporting it create public API churn before the shape is proven?
-- Does source-span recovery remain honest, or does it become a hidden parser?
-- Can the language service and lint truly share detectors without one depending
-  on the other's lifecycle?
-- Is the value traversal exhaustive enough to prevent another diagnostics-local
-  object crawl from appearing later?
+## 14. Rejected Shapes
 
-## 11. Current Branch Note
+- `forEachDimensionInValueSlot`: rejected as overfit to one lint rule.
+- Diagnostics-local `Object.values(...)`: rejected because it rediscovers AST
+  shape outside core.
+- Public optional-method `AstInspector`: too close to visitor-framework gravity
+  and too easy to export prematurely.
+- Pretending guards are `node.type` AST nodes: rejected; they use `g`.
+- Node methods / `accept()`: rejected for canonical AST v2 plain data.
+- Reusing emit/output transforms for authored diagnostics: wrong phase.
+- Recreating the removed Jess `TreeVisitor`: wrong node model and deleted
+  machinery.
+- Implementing Less visitor compatibility as part of lint traversal: wrong
+  contract.
 
-The current unpushed lint performance commit still contains the generic
-diagnostics-core value crawl that motivated this design. Do not push that commit
-as the final shape without either replacing it with the reviewed inspection API
-or explicitly shelving CSS lint performance work until the inspection API lands.
+## 15. Review Record
 
-## 12. Review Record
-
-Adversarial review completed by subagent `019faab2-f787-7572-9c87-507da7b1b75e`.
+Adversarial review completed by subagent `019faabd-9cae-7f11-979b-ff414867183a`.
+Verdict: reject for immediate implementation, approve the direction.
 
 Findings accepted into this revision:
 
-- Source-span recovery needed a stronger design than declaration-window
-  `src` search. The design now requires `sourceSpanOf` first, then a monotonic
-  token-aware locator, and forbids guessed spans.
-- `inspectStylesheet` was too broad for the immediate slice. The design now
-  limits phase 1 to value-slot dimensions and defers stylesheet inspection.
-- Exporting `AstInspector` through `@jesscss/core/ast` would create public API
-  gravity. The phase-1 helper is internal.
-- Exhaustiveness needed a concrete edge table. The design now lists the
-  `ValueNode` traversal decision per node type.
-
-The review agreed that the phase split is correct: parser recognition,
-authored-AST inspection, semantic facts, render hooks, and Less visitor
-compatibility should remain separate.
+- Eval visitation was too vague. Section 8 now names exact future event
+  call-sites, before/after semantics, `MaybePromise` behavior, and skipped-site
+  discipline.
+- Guard traversal was internally inconsistent. Guards now use `enterGuard` /
+  `leaveGuard` and `guard.g`, not fake `node.type`.
+- Root `ValueSlot[]` arrays were underspecified. Slots are now first-class
+  traversal targets with `enterSlot` / `leaveSlot`.
+- The edge table was illustrative. Section 6 now records the value, guard,
+  statement, at-rule, and selector edge matrix.
+- The materialization section overstated the split. It now says authored
+  diagnostics do not need value-domain materialization, while eval may
+  materialize at existing resolution points.
+- Cursor reuse needed a lifetime rule. Section 5 now states the cursor is valid
+  only during the synchronous callback.
