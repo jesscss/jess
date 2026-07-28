@@ -4146,10 +4146,14 @@ describe("Less AST grammar facts", () => {
     for (const source of [
       '@1: red;',
       '.entry { color: @1; }',
+      '.entry { color: @@-; }',
       '@{1}: red;',
       '@-: red;',
       '.entry { color: @-; }',
-      '@{-}: red;'
+      '@{-}: red;',
+      '.m(@-) { color: red; }',
+      '.m(@x) { color: @x; } .entry { .m(@-: red); }',
+      'each(1, .(@-) { color: red; });'
     ]) {
       expect(
         () =>

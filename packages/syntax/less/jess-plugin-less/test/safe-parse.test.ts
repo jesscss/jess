@@ -108,24 +108,28 @@ describe("@jesscss/plugin-less", () => {
   });
 
   it('reports unsupported legacy Less variable names', () => {
-    const source = '.entry { color: @1; }';
-    const result = lessPlugin().safeParse!('entry.less', source);
+    for (const { source, name } of [
+      { source: '.entry { color: @1; }', name: '@1' },
+      { source: '@-: red;', name: '@-' }
+    ]) {
+      const result = lessPlugin().safeParse!('entry.less', source);
 
-    expect(result.document).toBeUndefined();
-    expect(result.errors).toMatchObject([
-      {
-        code: 'parse/unsupported-variable-name',
-        phase: 'parse',
-        message: 'This Less variable name is not supported.',
-        reason: 'Less variable names must not be numeric-leading or dash-only.',
-        fix: expect.stringContaining('descriptive variable name'),
-        filePath: 'entry.less',
-        line: 1,
-        column: source.indexOf('@1') + 1,
-        file: { source }
-      }
-    ]);
-    expect(result.errors[0]?.lines?.[1]).toBe(source);
+      expect(result.document).toBeUndefined();
+      expect(result.errors).toMatchObject([
+        {
+          code: 'parse/unsupported-variable-name',
+          phase: 'parse',
+          message: 'This Less variable name is not supported.',
+          reason: 'Less variable names must not be numeric-leading or dash-only.',
+          fix: expect.stringContaining('descriptive variable name'),
+          filePath: 'entry.less',
+          line: 1,
+          column: source.indexOf(name) + 1,
+          file: { source }
+        }
+      ]);
+      expect(result.errors[0]?.lines?.[1]).toBe(source);
+    }
   });
 
   it('reports unsupported legacy Less mixin names', () => {

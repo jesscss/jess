@@ -33,6 +33,7 @@ import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInline
 // ---------------------------------------------------------------------------
 
 type Token = { readonly value: string };
+type ChildContainer = { readonly children: readonly unknown[] };
 type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
 type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
 /** A typed continuation of a left-associated public Reference chain. */
@@ -61,6 +62,7 @@ type FunctionConditionFact = {
   readonly grouped: boolean;
   readonly hasComparison: boolean;
 };
+type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
 
 /** Rules this file defines; macro-fused recognition inputs are not local output. */
 type LessRules = {
@@ -310,6 +312,95 @@ function functionNameFromOpener(value: unknown): string {
 
 function requireTerminalText(value: unknown): string {
   return typeof value === 'string' ? value : requireToken(value).value;
+}
+
+function isUnsupportedVariableNameFact(value: unknown): value is UnsupportedVariableNameFact {
+  return typeof value === 'object'
+    && value !== null
+    && 'unsupportedVariableName' in value
+    && typeof value.unsupportedVariableName === 'string';
+}
+
+function hasChildren(value: unknown): value is ChildContainer {
+  return typeof value === 'object'
+    && value !== null
+    && 'children' in value
+    && Array.isArray(value.children);
+}
+
+function hasGrammarType(value: unknown, grammarType: string): boolean {
+  return typeof value === 'object'
+    && value !== null
+    && 'grammarType' in value
+    && value.grammarType === grammarType;
+}
+
+function variableNameTerminalText(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (isToken(value)) {
+    return value.value;
+  }
+  if (Array.isArray(value)) {
+    let text = '';
+    let found = false;
+    for (const child of value) {
+      const childText = variableNameTerminalText(child);
+      if (childText !== undefined) {
+        text += childText;
+        found = true;
+      }
+    }
+    return found ? text : undefined;
+  }
+  if (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string') {
+    return value.value;
+  }
+  if (hasChildren(value)) {
+    return variableNameTerminalText(value.children);
+  }
+  return undefined;
+}
+
+function unsupportedVariableNameFrom(value: unknown): string | undefined {
+  if (isUnsupportedVariableNameFact(value)) {
+    return value.unsupportedVariableName;
+  }
+  if (isTerminalText(value, '-')) {
+    return '-';
+  }
+  if (hasGrammarType(value, 'UnsupportedVariableName') && hasChildren(value)) {
+    return variableNameTerminalText(value.children);
+  }
+  if (Array.isArray(value)) {
+    for (const child of value) {
+      const unsupported = unsupportedVariableNameFrom(child);
+      if (unsupported !== undefined) {
+        return unsupported;
+      }
+    }
+    return undefined;
+  }
+  if (typeof value === 'object' && value !== null && 'value' in value) {
+    return unsupportedVariableNameFrom(value.value);
+  }
+  if (hasChildren(value)) {
+    return unsupportedVariableNameFrom(value.children);
+  }
+  return undefined;
+}
+
+function variableNameText(value: unknown): string {
+  return unsupportedVariableNameFrom(value) ?? variableNameTerminalText(value) ?? requireTerminalText(value);
+}
+
+function requireSupportedVariableName(value: unknown, start: number, end: number): string {
+  const unsupported = unsupportedVariableNameFrom(value);
+  if (unsupported !== undefined) {
+    throw new LessUnsupportedVariableNameError(start, end, unsupported);
+  }
+  return variableNameTerminalText(value) ?? requireTerminalText(value);
 }
 
 function requireString(value: unknown): string {
@@ -594,24 +685,11 @@ function requireReferenceTailFact(value: unknown): ReferenceTailFact {
   return value;
 }
 
-function isUnsupportedVariableName(name: string): boolean {
-  const first = name.charCodeAt(0);
-  return name === '-' || (first >= 48 && first <= 57);
-}
-
-function assertSupportedVariableName(name: string, start: number, end: number): string {
-  if (isUnsupportedVariableName(name)) {
-    throw new LessUnsupportedVariableNameError(start, end, name);
-  }
-  return name;
-}
-
 function interpolationFactFromChildren(children: readonly unknown[], span: SourceSpan): InterpolationFact {
   const opener = requireToken(children[0]).value;
-  const head = requireToken(children[1]).value;
-  if (opener === '@{') {
-    assertSupportedVariableName(head, span.start, span.end);
-  }
+  const head = opener === '@{'
+    ? requireSupportedVariableName(children[1], span.start, span.end)
+    : requireToken(children[1]).value;
   let src = `${opener}${head}`;
   for (const child of children.slice(2, -1)) {
     src += `[${requireInterpolationAccessorFact(child).src}]`;
@@ -1929,6 +2007,25 @@ const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])
 const directLessGeneralEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
 const directLessGeneralEnclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
 const directLessGeneralEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
+const lessSupportedVariableName = regex(/[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+const lessUnsupportedNumericVariableName = node<UnsupportedVariableNameFact>(
+  'UnsupportedVariableName',
+  regex(/[0-9][-_a-zA-Z0-9\u0080-\uffff]*/),
+  children => ({ unsupportedVariableName: requireToken(children[0]).value })
+);
+const lessDashVariableName = leaf(
+  noTrivia(sequence(literal('-'), optional(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/)))),
+  (children) => {
+    if (!Array.isArray(children)) {
+      throw new TypeError('Direct Less dash variable name lost its grammar facts.');
+    }
+    const tail = children[1];
+    return tail === undefined || tail === null
+      ? { unsupportedVariableName: '-' }
+      : `-${requireTerminalText(tail)}`;
+  }
+);
+const lessVariableName = choice(lessUnsupportedNumericVariableName, lessSupportedVariableName, lessDashVariableName);
 
 const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
@@ -1942,9 +2039,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // it into two unrelated tokens.
   const IndirectVariableReference = node<VarIndirect>(
     'Reference',
-    noTrivia(sequence(literal('@@'), g.LessSyntaxVariableName)),
+    noTrivia(sequence(literal('@@'), lessVariableName)),
     (children, _fields, span) => {
-      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end);
+      const name = requireSupportedVariableName(children[1], span.start, span.end);
       return withSourceSpan(
         varIndirect(variableReference(name, 'scoped'), 'scoped'),
         span
@@ -1953,17 +2050,17 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const VariableReference = node<VariableReference>(
     'Reference',
-    sequence(literal('@'), g.LessSyntaxVariableName),
+    sequence(literal('@'), lessVariableName),
     (children, _fields, span) => withSourceSpan(
-      variableReference(assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end), 'scoped'),
+      variableReference(requireSupportedVariableName(children[1], span.start, span.end), 'scoped'),
       span
     )
   );
   const BareVariableInterpolation = node<never>(
     'BareVariableInterpolation',
-    noTrivia(sequence(literal('@'), g.LessSyntaxVariableName)),
+    noTrivia(sequence(literal('@'), lessVariableName)),
     (children, _fields, span) => {
-      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end);
+      const name = requireSupportedVariableName(children[1], span.start, span.end);
       throw new LessBareVariableInterpolationError(span.start, span.end, name);
     }
   );
@@ -2035,9 +2132,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Reference node; without, to the plain VariableReference (identical shapes).
   const VariableReferenceChain = node<ValueNode>(
     'Reference',
-    noTrivia(sequence(literal('@'), g.LessSyntaxVariableName, optional(oneOrMore(g.ReferenceTail)))),
+    noTrivia(sequence(literal('@'), lessVariableName, optional(oneOrMore(g.ReferenceTail)))),
     (children, _fields, span) => {
-      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end);
+      const name = requireSupportedVariableName(children[1], span.start, span.end);
       const base = variableReference(name, 'scoped');
       return children.length > 2
         ? withSourceSpan(referenceWithTails(base, `@${name}`, children.slice(2)), span)
@@ -2066,7 +2163,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'VariableInterpolation',
     choice(
       UnsupportedDashVariableInterpolation,
-      noTrivia(sequence(literal('@{'), g.LessSyntaxInterpHead, many(g.InterpolationAccessor), literal('}')))
+      noTrivia(sequence(literal('@{'), lessVariableName, many(g.InterpolationAccessor), literal('}')))
     ),
     (children, _fields, span) => interpolationFactFromChildren(children, span)
   );
@@ -2352,13 +2449,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // even though Value already recognizes the whole reference —
   // which is why the same value parsed in property position and not here.
   const directMixinValueWithoutLookup = not(noTrivia(literal('[')));
-  const directVariableName = token(noTrivia(sequence(literal('@'), g.LessSyntaxVariableName)));
+  const directVariableName = leaf(
+    noTrivia(sequence(literal('@'), lessVariableName)),
+    (children, span) => `@${requireSupportedVariableName(Array.isArray(children) ? children[1] : children, span.start, span.end)}`
+  );
   const VarDeclaration = node<VariableDeclaration>(
     'VarDeclaration',
     sequence(directVariableName, literal(':'), choice(sequence(g.DirectLessNamespacedMixinValue, directMixinValueWithoutLookup), g.ImportantValue, sequence(g.DirectLessFlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
     (children, _fields, span) => {
-      const name = requireToken(children[0]).value.slice(1);
-      assertSupportedVariableName(name, span.start, span.start + name.length + 1);
+      const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
       return withSourceSpan(
         variableDeclaration(name, isMixinCall(value) ? value : variableValueSlot(value), { mode: 'declare' }),
@@ -2374,8 +2473,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.ValueBlock
     ),
     (children, _fields, span) => {
-      const name = requireToken(children[0]).value.slice(1);
-      assertSupportedVariableName(name, span.start, span.start + name.length + 1);
+      const name = requireTerminalText(children[0]).slice(1);
       return withSourceSpan(
         variableDeclaration(
           name,
@@ -3311,9 +3409,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessMixinParam: Combinator<Param> = choice(
     node<Param>(
       'DirectLessMixinRestParam',
-      sequence(literal('@'), g.LessSyntaxVariableName, literal('...')),
+      sequence(literal('@'), lessVariableName, literal('...')),
       (children, _fields, span) => ({
-        name: assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1),
+        name: requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1),
         rest: true
       })
     ),
@@ -3322,7 +3420,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       'DirectLessMixinBoundParam',
       sequence(
         literal('@'),
-        g.LessSyntaxVariableName,
+        lessVariableName,
         optional(sequence(
           literal(':'),
           choice(g.ValueBlock, DirectLessMixinParamValueTerm),
@@ -3330,7 +3428,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         ))
       ),
       (children, _fields, span) => {
-        const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1);
+        const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
         const value = children.at(-1);
         return isValueSlotValue(value) ? { name, default: value } : { name };
       }
@@ -3396,9 +3494,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessMixinCallArgument: Combinator<MixinCallArgument> = choice(
     node<MixinCallArgument>(
       'DirectLessNamedMixinArgument',
-      sequence(literal('@'), g.LessSyntaxVariableName, literal(':'), g.CallArgumentValue),
+      sequence(literal('@'), lessVariableName, literal(':'), g.CallArgumentValue),
       (children, _fields, span) => {
-        const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1);
+        const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
         return { name, value: requireMixinCallArgumentValue(children[3]) };
       }
     ),
@@ -3638,12 +3736,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         'supports',
         '-_0-9A-Za-z',
         { caseInsensitive: true }
-      )), g.LessSyntaxVariableName, literal('('),
+      )), lessVariableName, literal('('),
       optional(g.MixinArguments),
       literal(')'), optional(literal(';'))
     ),
     (children, _fields, span) => {
-      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1);
+      const name = requireSupportedVariableName(children[1], span.start, span.start + variableNameText(children[1]).length + 1);
       const args = mixinArgumentsFromChildren(children);
       return withSourceSpan(reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`), span);
     }
@@ -3983,8 +4081,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const DirectLessEachName = node<string>(
     'DirectLessEachName',
-    sequence(literal('@'), g.LessSyntaxVariableName),
-    children => requireToken(children[1]).value
+    sequence(literal('@'), lessVariableName),
+    (children, _fields, span) => requireSupportedVariableName(
+      children[1],
+      span.start,
+      span.start + variableNameText(children[1]).length + 1
+    )
   );
   // Detached rulesets and `each()` callbacks are both statement containers.
   // Keep their accepted content on the same direct grammar path as normal Less

@@ -86,41 +86,70 @@ describe('Less parser errors through the public AST route', () => {
   });
 
   it('reports unsupported legacy Less variable names through the public compiler route', async () => {
-    const source = [
-      '@theme: red;',
-      '.entry {',
-      '  color: @1;',
-      '}'
-    ].join('\n');
     const compiler = new Compiler();
-    const result = await compiler.renderToResult(
-      { source, filePath: 'legacy-variable.less', extension: '.less' },
-      { breakOnError: false }
-    );
+    const cases = [
+      {
+        source: [
+          '@theme: red;',
+          '.entry {',
+          '  color: @1;',
+          '}'
+        ].join('\n'),
+        line: 3,
+        column: 10,
+        endLine: 3,
+        endColumn: 12
+      },
+      {
+        source: '@-: red;',
+        line: 1,
+        column: 1,
+        endLine: 1,
+        endColumn: 3
+      },
+      {
+        source: 'each(1, .(@-) { color: red; });',
+        line: 1,
+        column: 11,
+        endLine: 1,
+        endColumn: 13
+      }
+    ] as const;
 
-    expect(result.errors).toHaveLength(1);
-    expect(result.errors[0]).toMatchObject({
-      code: 'parse/unsupported-variable-name',
-      phase: 'parse',
-      message: 'This Less variable name is not supported.',
-      reason: 'Less variable names must not be numeric-leading or dash-only.',
-      fix: expect.stringContaining('descriptive variable name'),
-      line: 3,
-      column: 10,
-      endLine: 3,
-      endColumn: 12,
-      file: { source }
-    });
+    for (const testCase of cases) {
+      const result = await compiler.renderToResult(
+        {
+          source: testCase.source,
+          filePath: 'legacy-variable.less',
+          extension: '.less'
+        },
+        { breakOnError: false }
+      );
 
-    await expect(compiler.renderString(source, {
+      expect(result.errors, testCase.source).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        code: 'parse/unsupported-variable-name',
+        phase: 'parse',
+        message: 'This Less variable name is not supported.',
+        reason: 'Less variable names must not be numeric-leading or dash-only.',
+        fix: expect.stringContaining('descriptive variable name'),
+        line: testCase.line,
+        column: testCase.column,
+        endLine: testCase.endLine,
+        endColumn: testCase.endColumn,
+        file: { source: testCase.source }
+      });
+    }
+
+    await expect(compiler.renderString(cases[0].source, {
       filePath: 'legacy-variable.less',
       extension: '.less'
     })).rejects.toMatchObject({
       code: 'parse/unsupported-variable-name',
-      line: 3,
-      column: 10,
-      endLine: 3,
-      endColumn: 12
+      line: cases[0].line,
+      column: cases[0].column,
+      endLine: cases[0].endLine,
+      endColumn: cases[0].endColumn
     });
   });
 

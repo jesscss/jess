@@ -9,6 +9,7 @@ import {
 import { serialize } from "../../../../core/src/ast/serialize.js";
 import {
   LessBareVariableInterpolationError,
+  LessUnsupportedVariableNameError,
   parse,
 } from "@jesscss/less-parser";
 import { parseLessCst, parseLessDoc } from "@jesscss/less-parser/cst";
@@ -2411,6 +2412,19 @@ describe("public Less parse()", () => {
         },
       ],
     });
+  });
+
+  it('rejects unsupported legacy Less variable names with targeted parser errors', () => {
+    for (const source of [
+      '@1: red;',
+      '@-: red;',
+      '.entry { color: @-; }',
+      'each(1, .(@-) { color: red; });'
+    ]) {
+      expect(() => parse(source), source).toThrow(
+        LessUnsupportedVariableNameError
+      );
+    }
   });
 
   it("keeps interpolated Less media-query terms structural in a multi-term header", () => {
