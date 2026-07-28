@@ -165,6 +165,24 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
   });
 
+  it('keeps selector :extend() as an ordinary pseudo without Less extend semantics', () => {
+    const source = '.a:extend(.b) { color: red; }';
+    const cst = parseScssCst(source);
+    const root = parse(source);
+    const rule = root.children[0];
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(rule).toMatchObject({
+      type: 'Rule',
+      selector: { selectors: [{ head: { simples: [{ text: '.a' }, { text: ':extend(.b)' }] } }] },
+      body: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
+    });
+    expect(rule).not.toMatchObject({
+      extendInstructions: expect.any(Array)
+    });
+  });
+
   it('parses SCSS declaration merge modifiers through the public Stylesheet route', () => {
     expect(parse('.card { font+: Arial; font+_: sans-serif; }')).toMatchObject({
       type: 'Stylesheet',
