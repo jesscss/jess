@@ -166,8 +166,8 @@ type LessRules = {
   DirectLessEach: Combinator<For>;
   SupportsValue: Combinator<ValueNode>;
   SupportsFeature: Combinator<ValueNode>;
-  DirectLessSupportsInParens: Combinator<ValueNode>;
-  DirectLessSupportsCondition: Combinator<ValueNode>;
+  SupportsInParens: Combinator<ValueNode>;
+  SupportsCondition: Combinator<ValueNode>;
   GeneralEnclosedContent: Combinator<Interpolation>;
   GeneralEnclosedGroup: Combinator<Interpolation>;
   GeneralEnclosedQuoted: Combinator<Interpolation>;
@@ -4331,10 +4331,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         : block(operation(':', property, value));
     }
   );
-  const DirectLessSupportsInParens = node<ValueNode>(
+  const SupportsInParens = node<ValueNode>(
     'SupportsInParens',
     choice(
-      sequence(literal('('), g.DirectLessSupportsCondition, literal(')')),
+      sequence(literal('('), g.SupportsCondition, literal(')')),
       g.SupportsFeature,
       g.GeneralEnclosed
     ),
@@ -4342,11 +4342,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ? requireValueNode(children[0])
       : block(requireValueNode(children[1]))
   );
-  const DirectLessSupportsCondition = node<ValueNode>(
+  const SupportsCondition = node<ValueNode>(
     'SupportsCondition',
     choice(
-      sequence(g.CssSyntaxQueryNot, g.DirectLessSupportsInParens),
-      sequence(g.DirectLessSupportsInParens, many(sequence(g.CssSyntaxQueryAndOr, g.DirectLessSupportsInParens)))
+      sequence(g.CssSyntaxQueryNot, g.SupportsInParens),
+      sequence(g.SupportsInParens, many(sequence(g.CssSyntaxQueryAndOr, g.SupportsInParens)))
     ),
     (children) => {
       const values = children.map(child => isValueNode(child)
@@ -4359,7 +4359,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'SupportsBlock',
     sequence(
       g.CssSyntaxSupportsAtKeyword,
-      choice(g.AtRuleInterpolation, BareVariableInterpolation, g.DirectLessSupportsCondition),
+      choice(g.AtRuleInterpolation, BareVariableInterpolation, g.SupportsCondition),
       literal('{'),
       blockBody,
       optional(g.Call),
@@ -5807,8 +5807,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     DirectLessEach,
     SupportsValue,
     SupportsFeature,
-    DirectLessSupportsInParens,
-    DirectLessSupportsCondition,
+    SupportsInParens,
+    SupportsCondition,
     GeneralEnclosedContent,
     GeneralEnclosedGroup,
     GeneralEnclosedQuoted,

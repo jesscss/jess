@@ -158,7 +158,7 @@ Less grammar cleanup also moved in the current pass. A small reviewed naming
 slice removed several local `DirectLess*` migration identifiers without changing
 public CST/AST node labels: call arguments, mixin arguments, static pseudo
 quoted segments, interpolated nth pseudos, the ruleset-with-extend wrapper, and
-custom-property internals now have shorter local names. The remaining
+custom-property/supports-condition internals now have shorter local names. The remaining
 `DirectLess*` families are still real cleanup debt, especially
 function/condition, mixin, guard, selector, static-pseudo, and
 general-enclosed routes. Burn them down by family with macro/compose
@@ -658,6 +658,10 @@ earlier, before a manual publish attempt.
   and `pnpm run verify:less-alpha`. The byte-identity oracle remains red from
   the known baseline drift; reverse-patch comparison showed this slice adds
   CST-only digest movement and no AST movement.
+- 2026-07-28: Less `@supports` condition helpers dropped their local
+  `DirectLess*` migration prefix while keeping the same public CST node labels.
+  Verification passed the focused Less parser support/public parse tests,
+  `pnpm run check:macro`, and `pnpm run verify:compose-integrity`.
 - 2026-07-27: Pushed the folded-grammar/compiler/diagnostic batch to `origin/dev`
   at `fb13eef67`. Verification on the committed tree passed `pnpm run
   check:macro` (0 interpreter fallbacks), `pnpm run verify:compose-integrity`,
