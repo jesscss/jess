@@ -33,6 +33,7 @@ The alpha stream publishes only allowlisted packages in `scripts/release/alpha-a
 - `@jesscss/plugin-node-modules`
 - `@jesscss/plugin-js`
 - `@jesscss/plugin-less-compat`
+- `@jesscss/compiler`
 - `@jesscss/patch-css`
 - `jess`
 
@@ -85,18 +86,21 @@ for ordinary `dev` pushes.
 ## Publish order for the external Less alpha
 
 The Jess alpha and the external `less@5.0.0-alpha.1` package are separate
-releases. Jess `2.0.0-alpha.9` must be published and verified in the packed
-consumer first. The sibling Less repository keeps `link:` dependencies during
-local development; its alpha publish script requires `JESS_VERSION` and
-temporarily rewrites the direct Jess runtime closure (`@jesscss/compiler`,
-`@jesscss/core`, `@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and
+releases. Publish and verify the Jess alpha's direct runtime closure first. The
+sibling Less repository keeps `link:` dependencies during local development;
+its alpha publish script requires `JESS_VERSION` and temporarily rewrites the
+direct Jess runtime closure (`@jesscss/compiler`, `@jesscss/core`,
+`@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and
 `@jesscss/plugin-node-modules`) to that exact registry version while
 packing/publishing, then restores the local manifest. `@jesscss/plugin-js`
 must remain an optional peer for script-module support, not a shipped runtime
-dependency. Publish Less only after the Jess alpha.9 artifacts are queryable:
+dependency. Publish Less only after the selected Jess alpha artifacts are
+queryable. As of 2026-07-28, the Jess release resolver selects
+`2.0.0-alpha.10` because `2.0.0-alpha.9` is already published for the existing
+allowlist and `@jesscss/compiler` is new in the closure:
 
 ```bash
-JESS_VERSION=2.0.0-alpha.9 npm publish --tag alpha --access public
+JESS_VERSION=2.0.0-alpha.10 npm publish --tag alpha --access public
 ```
 
 The Less package's built `lessc` smoke test and typecheck are the publish
@@ -114,15 +118,15 @@ must not be used. Follow the verified two-tree snapshot procedure recorded in
 the [Core Architecture Handoff](../architecture/core/HANDOFF.md):
 
 1. Fetch the current refs, create a recovery ref such as
-   `alpha-pre-alpha9-cut` from `alpha`, and work in an isolated `alpha`
+   `alpha-pre-refresh` from `alpha`, and work in an isolated `alpha`
    worktree.
 2. Import the pushed source tree with a binary two-tree patch, using
-   `git diff --binary alpha-pre-alpha9-cut..origin/dev` followed by `git apply --index`.
+   `git diff --binary alpha-pre-refresh..origin/dev` followed by `git apply --index`.
 3. Preserve **only each package manifest's `version` field** from the recovery
    ref, after the patch has imported the current `dev` manifests:
 
    ```bash
-   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage
+   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-refresh --stage
    node scripts/release/record-alpha-source-provenance.mjs --stage
    ```
 
@@ -152,14 +156,12 @@ errors) is classified compatibility evidence, not a requirement to drain before
 the Jess alpha. Do not omit it or call it passing; block only on the advertised
 public-route, package/CLI, and core-safety gates.
 
-The current draft source is
-[`docs/releases/jess-2.0.0-alpha.9.md`](../releases/jess-2.0.0-alpha.9.md).
-The controlled alpha snapshot at `564b65615` has passed
-`pnpm run release:alpha:check` with published `parseman@0.28.1`, an 18-package
-closure, packed-consumer proof, and alpha.9 dry-run publish. It is not yet
-published. It awaits explicit owner approval to run the full
-`pnpm run release:alpha` command from the clean `alpha` worktree; do not invoke
-the publish-only command as a substitute.
+The previous alpha.9 draft note at
+[`docs/releases/jess-2.0.0-alpha.9.md`](../releases/jess-2.0.0-alpha.9.md) is
+historical evidence, not the current release note. Reconcile fresh release notes
+from the final gate evidence on `dev` before the controlled alpha snapshot. Do
+not invoke the publish-only command as a substitute for the full
+`pnpm run release:alpha` flow from the clean `alpha` worktree.
 
 The current `release:alpha` scripts do **not** run `changeset version` or
 generate package `CHANGELOG.md` files. They resolve a fresh lockstep alpha

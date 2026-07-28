@@ -646,55 +646,34 @@ section is the authoritative full-scope companion to the compact task goal.
   `plugin-jess`. CSS is a Context-parsed/inlined document route, not a Jess CSS
   compiler merely because a CSS plugin exists. Delete only machinery proven
   unreachable after direct-route coverage; do not manufacture deletion work.
-- Prepare and release compatible Parseman `0.28` from its release branch only
-  after review, tests, public docs/changelog, and coverage/trace API proof.
-  Normal compiler/plugin/CLI parses never enable coverage or trace. Replace
-  local Parseman links only with that published version and prove clean install.
+- Current grammar/parser work targets published Parseman `0.41.x`. The active
+  follow-up is the Parseman `0.41.1` dispatch aggregate-elision candidate; adopt
+  it in Jess only after owner publication, registry install, macro/compose
+  proof, and matched parser measurements. Normal compiler/plugin/CLI parses
+  never enable coverage or trace.
 - Treat current direct-Less parsing performance as a release concern. Establish
   reproducible generated-bundle/hash baselines and investigate AST allocation,
   grammar choice/backtracking, metadata/trivia/provenance, emitted
   `composeLeaf()` shape, and historical feature equivalence independently.
   Optimize only with semantic/output proof and matched parse plus end-to-end
   measurements; never restore legacy architecture for speed.
-- Prepare `jess@2.0.0-alpha.9`: identify its actual publishable runtime closure
-  (including the correct CSS and Jess plugin roles), remove runtime `link:` and
-  unnecessary internal dependencies, build and pack the candidate, and run
-  parser/plugin/Compiler/rollup, Less-alpha, package/API, cutting-review,
-  `lessc`, and clean-consumer gates. Validate final `dev`, prepare
-  owner-reviewed release notes, then squash-merge it onto `alpha` for the
-  release cut; do not ordinary-merge/rebase shared alpha history or publish
-  before every gate passes.
+- Prepare the next Jess alpha from pushed `dev`. Current release tooling
+  resolves the next registry-safe lockstep publish to `2.0.0-alpha.10` because
+  `2.0.0-alpha.9` is already published for the existing allowlist while
+  `@jesscss/compiler` is new in the runtime closure. Validate final `dev`,
+  prepare owner-reviewed release notes, then use the controlled alpha refresh
+  flow; do not ordinary-merge/rebase shared alpha history or publish before
+  every gate passes.
 
-### Current Less v5 alpha readiness evidence (2026-07-22)
+### Current Less v5 alpha readiness evidence
 
-- The committed Less `alpha` branch is exactly `5.0.0-alpha.1`; its guarded
-  release dry-run and release-guard unit tests pass. This proves the release
-  shape only, not package readiness.
-- The external Less `alpha` tip is `48c7f5bb`, four committed but unpushed
-  changes ahead of `origin/alpha`: source-order collapsed-output fixtures
-  (`fbea7e3e`), the explicit `collapseNesting` / `lessc --collapse-nesting`
-  public route and its tests (`6ebb0784`), the packed-consumer verifier
-  (`0f78066e`), and the prepared `5.0.0-alpha.1` release notes and known
-  limitations (`48c7f5bb`). At that tip, `npm run test:lessc` and
-  `npm run verify:alpha:packed-consumer` pass. The latter packs a temporary
-  Less tarball with the 18-package local Jess alpha closure, rejects a Jess
-  `lessc` bin, and proves clean-install `lessc` file, stdin, import, and error
-  behavior. This is real built-artifact evidence; it does not publish.
-- The external Less worktree is now clean, but a guarded real release still
-  cannot start: local `alpha` is four commits ahead of `origin/alpha`, while
-  the release guard requires an exact remote match; `jess@2.0.0-alpha.9` is not
-  yet available from npm; and explicit owner authorization is still required.
-  The external `alpha` tip is currently zero commits behind `origin/master`.
-  After the local commits are pushed and Jess is registry-available, run the
-  registry-backed consumer proof in addition to the local-tarball proof; then
-  Less's own `prepublishOnly` runs typecheck, distribution build, and the built
-  `lessc` alpha test. Do not substitute a historical raw test-runner count for
-  those release gates.
-- Neither `jess@2.0.0-alpha.9` nor `less@5.0.0-alpha.1` is on npm. Do not
-  publish Less until Jess alpha.9 is published, Less has been rebuilt/relinked
-  against that exact package, and a publish-shaped clean-consumer install has
-  passed. Local Less manifests deliberately retain `link:` specs; the guarded
-  publish path rewrites them only for the publish window.
+Use [`docs/state/less-v5-alpha-readiness.md`](../../state/less-v5-alpha-readiness.md)
+as the current source of truth. As of 2026-07-28, the external Less branch has
+the desired direct compiler/plugin dependency shape, but its lockfile and
+`lessc` smoke cannot be refreshed until `@jesscss/compiler` is published in the
+next Jess alpha closure. Do not publish Less until Jess's selected alpha version
+is queryable from npm, Less has been rebuilt/relinked against that exact
+package set, and the registry-backed packed-consumer proof passes.
 
 ## Router
 
