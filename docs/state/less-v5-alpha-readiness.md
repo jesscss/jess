@@ -235,7 +235,7 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blocker, verified 2026-07-27: the local Jess workspace has
+Current package-flow blocker, verified 2026-07-28: the local Jess workspace has
 `@jesscss/compiler`, and `pnpm --filter @jesscss/compiler build` plus
 `pnpm run verify:package-exports` pass, but the local package version is
 `2.0.0-alpha.5` while the sibling Less PR branch depends on
@@ -278,24 +278,27 @@ failure diagnostics. `less` is the sole public owner of `lessc`; the separate
 publish-version/dependency-rewrite tests pass.
 
 The local packed-consumer proof now passes: it makes a temporary Less tarball,
-substitutes the local 18-package Jess alpha closure for the four development
+substitutes the local 18-package Jess alpha closure for the development
 `link:` dependencies, and proves clean-install `lessc` file, stdin, import, and
 error behavior. It is deliberately a local closure proof, not the final
-registry-backed consumer proof. The alpha publish script requires
-`jess@2.0.0-alpha.9` to be available from npm and temporarily rewrites the four
-runtime dependencies during publish, restoring the workspace-linked manifest
-afterward. After Jess is published, the registry-backed proof must install that
-published package rather than local tarballs.
+registry-backed consumer proof. The alpha publish script requires the direct
+Jess runtime closure (`@jesscss/compiler`, core, Less plugins, and
+node-modules resolver) to be available at `2.0.0-alpha.9` from npm and
+temporarily rewrites those runtime dependencies during publish, restoring the
+workspace-linked manifest afterward. After Jess is published, the
+registry-backed proof must install those published packages rather than local
+tarballs.
 
 The recorded full Less node-corpus audit is **not alpha-green**: it reported
 legacy plugin-global/registry and visitor assumptions, unsupported advanced
 parser fixtures, import/process-URL behavior, source-map artifacts, and other
 output divergences. These failures remain visible compatibility evidence; they
 must not be hidden or relabeled as passing behavior. The remaining release
-blockers are branch remote parity, a published `jess@2.0.0-alpha.9`, the
-registry-backed consumer proof, and explicit owner authorization. Publication
-remains contingent on the controlled alpha workflow, the exact Jess dependency
-version, and those release gates.
+blockers are branch remote parity, a published direct Jess runtime closure at
+`2.0.0-alpha.9` (including `@jesscss/compiler`), the registry-backed consumer
+proof, and explicit owner authorization. Publication remains contingent on the
+controlled alpha workflow, the exact Jess dependency version, and those release
+gates.
 
 With no Deno/plugin execution on `benchmark.less`, three repeated 8-run/3-warmup
 rounds measured Less alpha render medians of `99.44`, `98.56`, and `92.80` ms

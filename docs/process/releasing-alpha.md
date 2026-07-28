@@ -88,10 +88,12 @@ The Jess alpha and the external `less@5.0.0-alpha.1` package are separate
 releases. Jess `2.0.0-alpha.9` must be published and verified in the packed
 consumer first. The sibling Less repository keeps `link:` dependencies during
 local development; its alpha publish script requires `JESS_VERSION` and
-temporarily rewrites the four Jess runtime dependencies (`@jesscss/core`,
-`@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and `jess`) to that
-exact registry version while packing/publishing, then restores the local
-manifest. Publish Less only after the Jess alpha.9 artifacts are queryable:
+temporarily rewrites the direct Jess runtime closure (`@jesscss/compiler`,
+`@jesscss/core`, `@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and
+`@jesscss/plugin-node-modules`) to that exact registry version while
+packing/publishing, then restores the local manifest. `@jesscss/plugin-js`
+must remain an optional peer for script-module support, not a shipped runtime
+dependency. Publish Less only after the Jess alpha.9 artifacts are queryable:
 
 ```bash
 JESS_VERSION=2.0.0-alpha.9 npm publish --tag alpha --access public
