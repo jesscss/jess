@@ -65,4 +65,73 @@ describe('jess CLI', () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('surfaces lint diagnostics through the jess lint command', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-lint-'));
+    try {
+      const input = path.join(directory, 'entry.css');
+      fs.writeFileSync(input, '.entry { colr: red; width: 0px; }');
+
+      const result = await run(['lint', input]);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toContain('lint/unknown-property');
+      expect(result.stdout).toContain('lint/zero-units');
+      expect(result.stdout).toContain('0 error(s), 2 warning(s)');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('supports jess lint json output', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-lint-json-'));
+    try {
+      const input = path.join(directory, 'entry.css');
+      fs.writeFileSync(input, '.entry { colr: red; }');
+
+      const result = await run(['lint', input, '--format', 'json']);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe('');
+
+      const json = JSON.parse(result.stdout) as {
+        results: Array<{
+          diagnostics: Array<{ code: string; severity: string }>;
+        }>;
+        warningCount: number;
+        errorCount: number;
+      };
+      expect(json.warningCount).toBe(1);
+      expect(json.errorCount).toBe(0);
+      expect(json.results[0]?.diagnostics).toEqual([
+        expect.objectContaining({
+          code: 'lint/unknown-property',
+          severity: 'warning'
+        })
+      ]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('honors lint exit policy flags', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-lint-policy-'));
+    try {
+      const input = path.join(directory, 'entry.css');
+      fs.writeFileSync(input, '.entry { colr: red; width: 0px; }');
+
+      const maxWarnings = await run(['lint', input, '--max-warnings', '0']);
+      expect(maxWarnings.code).toBe(1);
+      expect(maxWarnings.stderr).toBe('');
+      expect(maxWarnings.stdout).toContain('0 error(s), 2 warning(s)');
+
+      const quiet = await run(['lint', input, '--quiet']);
+      expect(quiet.code).toBe(0);
+      expect(quiet.stderr).toBe('');
+      expect(quiet.stdout).not.toContain('lint/unknown-property');
+      expect(quiet.stdout).not.toContain('lint/zero-units');
+      expect(quiet.stdout).toContain('0 error(s), 2 warning(s)');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
