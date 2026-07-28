@@ -41,18 +41,31 @@ describe('canonical AST source provenance', () => {
     const src = '/* keep */\n.a { color: red; }\n';
     const gaps = [
       { start: 0, end: 11 },
-      { start: 0, end: 11 },
+      { start: 27, end: 28 }
+    ];
+    const rawEntries = [
+      { start: 0, end: 2 },
+      { start: 2, end: 11 },
       { start: 27, end: 28 }
     ];
     const trivia = createTriviaMapFromRootIndex(src, {
       entries: {
-        length: gaps.length,
+        length: rawEntries.length,
         start(index) {
-          return gaps[index]?.start ?? 0;
+          return rawEntries[index]?.start ?? 0;
         },
         end(index) {
-          return gaps[index]?.end ?? 0;
+          return rawEntries[index]?.end ?? 0;
         }
+      },
+      gapBefore(offset) {
+        return gaps.find(gap => gap.end === offset);
+      },
+      gapAfter(offset) {
+        return gaps.find(gap => gap.start === offset);
+      },
+      gaps() {
+        return gaps;
       }
     });
 

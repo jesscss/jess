@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { run, triviaEntries } from 'parseman';
-import { createTriviaMapFromRanges, triviaMapOf, valueLayoutOf, withSourceSpan, withTriviaMap } from '@jesscss/core/ast';
-import type { AstTriviaRange } from '@jesscss/core/ast';
+import { run } from 'parseman';
+import { createTriviaMapFromRootIndex, triviaMapOf, valueLayoutOf, withSourceSpan, withTriviaMap } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
@@ -25,17 +24,8 @@ function parseAst(input: string): Stylesheet {
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromRanges(input, triviaRanges(result.triviaLog))
+    createTriviaMapFromRootIndex(input, result.triviaMap)
   );
-}
-
-function triviaRanges(log: readonly number[]): readonly AstTriviaRange[] {
-  const entries = triviaEntries(log);
-  const ranges: AstTriviaRange[] = [];
-  for (let i = 0; i < entries.length; i++) {
-    ranges.push({ start: entries.start(i), end: entries.end(i) });
-  }
-  return ranges;
 }
 
 function cstIssueCount(input: string): number {

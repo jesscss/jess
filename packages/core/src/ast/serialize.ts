@@ -5620,7 +5620,7 @@ function emittedTriviaRunForRange(e: Emit, start: number, end: number): Trivia |
     return undefined;
   }
   for (const run of trivia.commentRuns()) {
-    if (run.start === start && run.end === end) {
+    if (run.start <= start && run.end >= end) {
       return e.emittedBlockTrivia.has(run) ? run : undefined;
     }
     if (run.start > start) {
@@ -5636,7 +5636,7 @@ function markTriviaRunForRange(e: Emit, start: number, end: number): void {
     return;
   }
   for (const run of trivia.commentRuns()) {
-    if (run.start === start && run.end === end) {
+    if (run.start <= start && run.end >= end && blockCommentsIn(run).length === 1) {
       e.emittedBlockTrivia.add(run);
       return;
     }

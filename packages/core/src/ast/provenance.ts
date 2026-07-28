@@ -14,8 +14,15 @@ export interface ParserTriviaEntriesView {
   start(index: number): number;
   end(index: number): number;
 }
+export interface ParserRootTriviaGap {
+  readonly start: number;
+  readonly end: number;
+}
 export interface ParserRootTriviaIndex {
   readonly entries: ParserTriviaEntriesView;
+  gapBefore(offset: number): ParserRootTriviaGap | undefined;
+  gapAfter(offset: number): ParserRootTriviaGap | undefined;
+  gaps(): readonly ParserRootTriviaGap[];
 }
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
@@ -130,7 +137,6 @@ export function createTriviaMapFromRootIndex(
   src: string,
   index: ParserRootTriviaIndex
 ): TriviaMap {
-  const cache = new Map<number, Trivia>();
   const canonicalByRange = new Map<string, Trivia>();
   let maps: {
     readonly before: Map<number, Trivia>;
@@ -138,21 +144,17 @@ export function createTriviaMapFromRootIndex(
   } | undefined;
   let sortedComments: readonly Trivia[] | undefined;
 
-  const runAt = (entryIndex: number): Trivia | undefined => {
-    const start = index.entries.start(entryIndex);
-    const end = index.entries.end(entryIndex);
+  const triviaForGap = (gap: ParserRootTriviaGap | undefined): Trivia | undefined => {
+    const start = gap?.start ?? 0;
+    const end = gap?.end ?? 0;
     if (end <= start) {
       return undefined;
     }
-    let run = cache.get(entryIndex);
+    const key = `${start}:${end}`;
+    let run = canonicalByRange.get(key);
     if (run === undefined) {
-      const key = `${start}:${end}`;
-      run = canonicalByRange.get(key);
-      if (run === undefined) {
-        run = makeAstTrivia(src, start, end);
-        canonicalByRange.set(key, run);
-      }
-      cache.set(entryIndex, run);
+      run = makeAstTrivia(src, start, end);
+      canonicalByRange.set(key, run);
     }
     return run;
   };
@@ -163,8 +165,8 @@ export function createTriviaMapFromRootIndex(
     }
     const before = new Map<number, Trivia>();
     const after = new Map<number, Trivia>();
-    for (let entryIndex = 0; entryIndex < index.entries.length; entryIndex++) {
-      const run = runAt(entryIndex);
+    for (const gap of index.gaps()) {
+      const run = triviaForGap(gap);
       if (run === undefined) {
         continue;
       }
@@ -180,10 +182,9 @@ export function createTriviaMapFromRootIndex(
       if (offset === undefined) {
         return undefined;
       }
-      const entries = getMaps();
-      return direction === 'before'
-        ? entries.before.get(offset)
-        : entries.after.get(offset);
+      return triviaForGap(direction === 'before'
+        ? index.gapBefore(offset)
+        : index.gapAfter(offset));
     },
     *entries(direction) {
       yield* (direction === 'before' ? getMaps().before : getMaps().after).entries();
@@ -192,17 +193,16 @@ export function createTriviaMapFromRootIndex(
       if (offset === undefined) {
         return false;
       }
-      const entries = getMaps();
       return direction === 'before'
-        ? entries.before.has(offset)
-        : entries.after.has(offset);
+        ? index.gapBefore(offset) !== undefined
+        : index.gapAfter(offset) !== undefined;
     },
     commentRuns() {
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
         const seen = new Set<string>();
-        for (let entryIndex = 0; entryIndex < index.entries.length; entryIndex++) {
-          const run = runAt(entryIndex);
+        for (const gap of index.gaps()) {
+          const run = triviaForGap(gap);
           if (run?.hasComment === true) {
             const key = `${run.start}:${run.end}`;
             if (seen.has(key)) {
