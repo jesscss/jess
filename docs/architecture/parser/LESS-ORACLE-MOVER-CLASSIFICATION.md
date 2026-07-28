@@ -28,23 +28,24 @@ Resolved package versions and paths for the current report:
 | `@jesscss/plugin-less` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/syntax/less/jess-plugin-less` |
 | `jess` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/jess` |
 
-Latest report generated from the post-trivia-transfer, mixin-guard diagnostic,
-`processImports: false`, Less query-prelude separator-helper, and custom-property
-variable-value source state:
+Latest report generated from the post-trivia-transfer hardening,
+unsupported-variable CST recovery, mixin-guard diagnostic, `processImports:
+false`, Less query-prelude separator-helper, and custom-property variable-value
+source state:
 
 ```sh
 pnpm --filter @jesscss/parser-shared build
 pnpm run oracle:less:byte-identity
 node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs \
-  > /tmp/jess-less-oracle-current-20260728-after-custom-values.json
+  > /tmp/jess-less-oracle-current-20260728-trivia-transfer.json
 ```
 
 `pnpm run oracle:less:byte-identity` currently reports:
 
 | surface | committed baseline | current aggregate | throws | common entries moved |
 | --- | --- | --- | ---: | ---: |
-| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `349674c59d3fcc6ba42a4b762423761ff19c2880d2830df43ca2006aa0f4a6cb` | 116 | 217 |
-| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `222fc59f188db86f5e58126f4efe8ccf55a2c343a72e86b4a4b56434472189e5` | 0 | 595 |
+| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d` | 116 | 217 |
+| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `c67b4c38444ecceddd48e50b1c209d12e512ce4d1fe3f43f336076ac3f58763d` | 0 | 634 |
 
 Corpus shape:
 
@@ -64,20 +65,20 @@ Raw changed-entry counts, including corpus growth:
 
 | subset | count | current read |
 | --- | ---: | --- |
-| changed entries on either surface | 667 | 665 common movers across either surface plus the 2 gained corpus entries. |
-| common AST movers | 217 | 147 also move on CST; 70 move only on AST. |
+| changed entries on either surface | 705 | 703 common movers across either surface plus the 2 gained corpus entries. |
+| common AST movers | 217 | 148 also move on CST; 69 move only on AST. |
 | changed-or-added AST entries | 219 | Common AST movers plus the 2 gained corpus entries. |
-| AST-only movers | 70 | Mostly error-projection hash movement after parser diagnostic normalization. |
-| common CST-only movers | 448 | Broad public CST owner/name/span churn from the fold, routed opener cleanup, and grammar reshaping. |
+| AST-only movers | 69 | Mostly error-projection hash movement after parser diagnostic normalization. |
+| common CST-only movers | 486 | Broad public CST owner/name/span churn from the fold, routed opener cleanup, and grammar reshaping. |
 | common AST movers containing comments | 122 | Mostly comment/trivia/source ownership plus parser-error projection; review before baseline. |
 | common AST movers without comments | 95 | Mostly syntax-error diagnostic hash movement plus custom-property variable-value structural parsing. |
 | changed-or-added AST entries with comments | 123 | Adds `math-css-vars.less`, which is a new upstream fixture with leading `//` comments. |
 | changed-or-added AST entries without comments | 96 | Adds `math-css-vars.css`, a new upstream expected CSS fixture. |
 
-The custom-property variable-value fix keeps the AST throw count and CST mover
-count stable, while adding three AST movers from newly structural custom
-property `@name` value handling. This still belongs to the named mover review
-and CST projection/minimization queue rather than a baseline update.
+The Parseman trivia-transfer hardening keeps CST throws at 0 after the
+unsupported-variable CST recovery regression, but it does move the broad CST
+aggregate. This still belongs to the named mover review and CST
+projection/minimization queue rather than a baseline update.
 
 ## AST Mover Buckets
 
@@ -85,25 +86,26 @@ Current AST mover surface by direct built-parser classification:
 
 | bucket | count | comments | current read |
 | --- | ---: | ---: | --- |
-| Parses as `Stylesheet` | 99 | 95 | Valid or opaque syntax now accepted by the AST route, usually with comment/source ownership movement. |
-| Throws `LessParseError` / `parse/syntax-error` | 110 | 23 | Syntax-error diagnostics changed shape or message; these are failures, not accepted syntax. |
+| Parses as `Stylesheet` | 101 | 96 | Valid or opaque syntax now accepted by the AST route, usually with comment/source ownership movement. |
+| Throws `LessParseError` / `parse/syntax-error` | 107 | 22 | Syntax-error diagnostics changed shape or message; these are failures, not accepted syntax. |
 | Throws `LessInlineJavaScriptError` / `parse/unsupported-inline-javascript` | 4 | 1 | Removed-but-recognized Less v5 policy for inline backtick JavaScript. |
 | Throws `LessBareVariableInterpolationError` / `parse/unsupported-bare-variable-interpolation` | 1 | 1 | Removed-but-recognized migration diagnostic for bare `@name` interpolation. |
+| Throws `LessUnsupportedVariableNameError` / `parse/unsupported-variable-name` | 4 | 2 | Removed legacy Less variable names are recognized on the AST route for targeted diagnostics while CST stays recoverable. |
 
 Path-level split:
 
 | set | count | parses | syntax errors | other diagnostics | comments |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| Bootstrap port Less | 3 | 3 | 0 | 0 | 3 |
-| Less tests-config fixtures | 28 | 13 | 13 | 2 | 20 |
+| Bootstrap port Less | 4 | 4 | 0 | 0 | 4 |
+| Less tests-config fixtures | 29 | 14 | 12 | 3 | 21 |
 | Less tests-error eval fixtures | 6 | 1 | 4 | 1 | 2 |
 | Less tests-error parse fixtures | 26 | 0 | 26 | 0 | 1 |
-| Less tests-unit fixtures | 89 | 71 | 16 | 2 | 80 |
+| Less tests-unit fixtures | 90 | 71 | 15 | 4 | 80 |
 | Jess test fixtures | 1 | 0 | 1 | 0 | 0 |
 | CSS parser non-error fixtures | 13 | 11 | 2 | 0 | 11 |
-| CSS parser error fixtures | 48 | 0 | 48 | 0 | 3 |
+| CSS parser error fixtures | 48 | 0 | 47 | 1 | 3 |
 
-The four parsed AST movers without comments remain the highest-signal
+The five parsed AST movers without comments remain the highest-signal
 acceptance review queue:
 
 | entry | current AST surface | classification |
@@ -111,12 +113,14 @@ acceptance review queue:
 | `node_modules/@less/test-data/tests-unit/color-functions/modern.css` | Parses as a `Stylesheet`. | Newer valid CSS expected-output fixture now accepted by the Less AST grammar. Review against the current Less v5 CSS-pass-through contract before baseline. |
 | `node_modules/@less/test-data/tests-unit/container/container.css` | Parses as a `Stylesheet`. | Valid CSS expected-output fixture. This reflects `@container` acceptance; baseline only after focused container coverage remains green. |
 | `node_modules/@less/test-data/tests-unit/plugin/plugin.css` | Parses as a `Stylesheet`. | Valid CSS output fixture and plugin-scoping sentinel. Keep dialect-owned function registration tests green before any baseline move. |
+| `node_modules/@less/test-data/tests-unit/plugin-preeval/plugin-preeval.less` | Parses as a `Stylesheet`. | Plugin pre-eval Less fixture now reaches the AST route. Keep plugin pre-eval diagnostics and function registration behavior covered before baseline. |
 | `packages/syntax/css/css-parser/test/css/atrule-unknown.css` | Parses as an opaque `@future` block. | Likely intended opaque at-rule ownership movement. Needs focused CSS/Less unknown-at-rule conformance coverage before baseline. |
 
 Diagnostic-only non-comment movers are large but less semantically ambiguous:
-87 of the 94 non-comment common AST movers currently throw
-`LessParseError` / `parse/syntax-error`, and 3 throw
-`LessInlineJavaScriptError` / `parse/unsupported-inline-javascript`.
+85 of the 95 non-comment common AST movers currently throw
+`LessParseError` / `parse/syntax-error`, 3 throw
+`LessInlineJavaScriptError` / `parse/unsupported-inline-javascript`, and 2 throw
+`LessUnsupportedVariableNameError` / `parse/unsupported-variable-name`.
 
 ## Gained Corpus Entries
 
@@ -130,7 +134,7 @@ corpus growth, not as common-entry parser movement.
 
 ## Comment-Bearing AST Movers
 
-120 common AST movers contain `/* ... */` or `//` in the source. These are not
+122 common AST movers contain `/* ... */` or `//` in the source. These are not
 safe to wave through as "just comments," but comments remain parser trivia, not
 AST leaves.
 
@@ -138,12 +142,12 @@ Path-level classification:
 
 | set | count | parses | throws | current read |
 | --- | ---: | ---: | ---: | --- |
-| Bootstrap port Less | 3 | 3 | 0 | Large third-party fixtures; broad CST ownership plus comment/source attachment. |
-| Less tests-config fixtures | 20 | 13 | 7 | Config fixtures with comments in expected CSS, source, or source-map/debug fixtures. |
+| Bootstrap port Less | 4 | 4 | 0 | Large third-party fixtures; broad CST ownership plus comment/source attachment. |
+| Less tests-config fixtures | 21 | 14 | 7 | Config fixtures with comments in expected CSS, source, or source-map/debug fixtures. |
 | Less tests-error eval fixtures | 2 | 1 | 1 | Error fixtures where comments affect diagnostic/source ownership. |
 | Less tests-error parse fixtures | 1 | 0 | 1 | Parser-error fixture with comments; diagnostic projection only. |
-| Less tests-unit fixtures | 80 | 71 | 9 | Main comment/render corpus, imports, legacy expected CSS, mixins, selectors, and removed syntax. |
-| CSS parser non-error fixtures | 11 | 11 | 0 | Focused CSS syntax fixtures; keep as conformance sentinels. |
+| Less tests-unit fixtures | 80 | 67 | 13 | Main comment/render corpus, imports, legacy expected CSS, mixins, selectors, and removed syntax. |
+| CSS parser non-error fixtures | 11 | 10 | 1 | Focused CSS syntax fixtures; keep as conformance sentinels. |
 | CSS parser error fixtures | 3 | 0 | 3 | Invalid CSS fixtures whose Less parse diagnostics moved. |
 
 Same-state comment-erasure probe:
@@ -161,7 +165,7 @@ Same-state comment-erasure probe:
 
 ## CST-Only Movers
 
-451 common entries move only on the CST surface. Current CST throws remain 0, so
+486 common entries move only on the CST surface. Current CST throws remain 0, so
 this is not a parser acceptance regression by itself.
 
 Representative causes to project or minimize:

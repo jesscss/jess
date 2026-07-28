@@ -38,7 +38,7 @@ baseline only and never as a performance acceptance claim.
 - Source quality, recorded 2026-07-22: the repository-wide production ESLint audit reports **0
   errors and 319 warnings**. The warnings are tracked lint debt; there is no
   current ESLint-error blocker.
-- Parser dependency floor, verified 2026-07-27: the active grammar checkout
+- Parser dependency floor, verified 2026-07-28: the active grammar checkout
   resolves published `parseman@0.41.0`; `pnpm run check:macro` and
   `pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks; and
   `pnpm run verify:less-alpha` passes. The full strict-type release chain still
@@ -60,7 +60,7 @@ not land: direct parse was 62.881 ms versus its 59.502 ms baseline and compiler
 choice investigation is the opt-in stable choice-arm trace design in
 [`parseman-diagnostic-trace-design.md`](../design/parseman-diagnostic-trace-design.md).
 
-## Current alpha.1 stabilization snapshot (2026-07-27)
+## Current alpha.1 stabilization snapshot (2026-07-28)
 
 The active alpha.1 blocker has shifted from the grammar fold itself to
 CSS/Less stability, the public Less fixture flow, and parser/eval error quality.
@@ -78,8 +78,9 @@ publish-set scanner recurses through `packages/**`, so nested syntax packages
 are included in the same release plan as top-level runtime packages instead of
 being silently missed by the alpha allowlist validator.
 
-Current alpha readiness verification is green. Rerun 2026-07-27 after the
-latest Less grammar naming slice, diagnostic-range work, compiler package
+Current alpha readiness verification is green. Rerun 2026-07-28 after the
+latest Parseman-trivia transfer hardening, Less unsupported-variable CST
+recovery, Less grammar trivia cleanup, diagnostic-range work, compiler package
 entrypoint fix, and Less alpha verifier dependency-order fix, `pnpm run
 check:macro` reports parser-shared, CSS, Less, SCSS, and Jess fully compiled
 with 0 interpreter fallbacks; `pnpm run verify:compose-integrity` passes after
@@ -97,15 +98,20 @@ Graduated in the current pass:
 
 Comment/trivia preservation is no longer an alpha fixture blocker. Comments are
 parser trivia, and render/eval behavior should use source spans and trivia
-replay. Remaining parser cleanup should remove surviving semantic comment
-productions family by family, with the empty-rule check repaired against trivia
-spans rather than comment AST children.
+replay. Core now adapts Parseman's sparse root trivia index through
+`createTriviaMapFromParseman(...)`; labels are a positive fast path, and the
+adapter falls back to source detection if a grammar-local label table drifts.
+Remaining parser cleanup should remove surviving semantic comment productions
+family by family, with the empty-rule check repaired against trivia spans
+rather than comment AST children.
 
-Current comment-trivia cleanup order, audited 2026-07-27: CSS/Less no longer
-have a public `Comment` grammar node, and ordinary Less value comments are on
-the intended trivia-map/render-replay path. The remaining grammar-level comment
-facts are temporary serialization carriers, not endorsed AST shape. Remove them
-only with the matching trivia-span replay in the same patch:
+Current comment-trivia cleanup order, audited 2026-07-28: CSS/Less no longer
+have a public `Comment` grammar node, ordinary Less value comments are on the
+intended trivia-map/render-replay path, and unsupported legacy Less variable
+names remain recoverable in CST host mode while AST mode emits the targeted
+diagnostic. The remaining grammar-level comment facts are temporary
+serialization carriers, not endorsed AST shape. Remove them only with the
+matching trivia-span replay in the same patch:
 
 - Less declaration-head comment/whitespace facts between property/merge tokens
   and `:`; otherwise `color/*x*/:` loses its authored gap.
@@ -184,15 +190,13 @@ extending that parse-with-error shape to other migrations.
 
 `pnpm run oracle:less:byte-identity` remains red against the committed parser
 surface baseline. Current output is 711 corpus entries, AST
-`59cd0a3f0c2e20faee92b2b51db4a7684338b80ac24a4338819936e69dce3dc1` with
-115 throws and 214 moved entries, and CST
-`583c845553f06ffae07e548c379a64e5c8a440aba357484475b047744d90c1c0` with
-0 throws and 592 moved entries. The AST mover count is larger than the prior
-same-day classification because 104 additional entries now move only by
-normalized `LessParseError` diagnostic shape; no previously classified AST
-mover resolved, and the CST aggregate moved from the stale same-day
-classification. The current named-set split
-and baseline rules are recorded in
+`8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d` with
+116 throws and 217 moved entries, and CST
+`c67b4c38444ecceddd48e50b1c209d12e512ce4d1fe3f43f336076ac3f58763d` with
+0 throws and 634 moved entries. The CST throw regression from unsupported
+legacy Less variable names is fixed; remaining movement is still broad
+AST/CST digest churn that requires named-set review before any baseline update.
+The current named-set split and baseline rules are recorded in
 [`LESS-ORACLE-MOVER-CLASSIFICATION.md`](../architecture/parser/LESS-ORACLE-MOVER-CLASSIFICATION.md);
 do not move the baseline until that queue is resolved.
 
@@ -622,6 +626,14 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
+- 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
+  parser cleanup through `2bb1674e8`. Verification passed
+  `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,
+  `pnpm --filter @jesscss/less-parser test -- --run` (479 / 479),
+  `pnpm --filter @jesscss/scss-parser test` (294 / 294),
+  `node scripts/verify-parser-runtime-boundary.mjs`, `pnpm run check:macro`,
+  `pnpm run verify:compose-integrity`, and `pnpm run verify:less-alpha`.
+  `pnpm run oracle:less:byte-identity` remains red, but CST throws are 0.
 - 2026-07-27: Pushed the folded-grammar/compiler/diagnostic batch to `origin/dev`
   at `fb13eef67`. Verification on the committed tree passed `pnpm run
   check:macro` (0 interpreter fallbacks), `pnpm run verify:compose-integrity`,

@@ -133,7 +133,7 @@ aggregate is recorded below and classified in
 SCSS now ships from one host-mode grammar source too;
 `packages/syntax/scss/scss-parser/src/ast/grammar.ts` is absent,
 `pnpm --filter @jesscss/scss-parser build` passes, and the full SCSS parser
-suite passes (8 files / 291 tests). The SCSS fold intentionally removed the old
+suite passes (8 files / 294 tests). The SCSS fold intentionally removed the old
 CST-only acceptance path; public CST and direct parsing now share the same
 accepted language. Jess also now ships from one host-mode grammar source:
 `packages/syntax/jess/jess-parser/src/ast/grammar.ts` is absent,
@@ -150,10 +150,10 @@ with exit code 0; and `pnpm run verify:less-alpha` passes its Less parser,
 Less plugin, `jess`, package-export, public-API, path-resolution, Less
 test-data unit, and Less test-data config lanes. The Less oracle fails against
 the checked-in baseline with the current integration aggregates
-`ast=349674c59d3fcc6ba42a4b762423761ff19c2880d2830df43ca2006aa0f4a6cb`
+`ast=8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d`
 with 116 throws and 217 moved entries, and
-`cst=222fc59f188db86f5e58126f4efe8ccf55a2c343a72e86b4a4b56434472189e5`
-with 0 throws and 595 moved entries over 711 entries. Do not update the
+`cst=c67b4c38444ecceddd48e50b1c209d12e512ce4d1fe3f43f336076ac3f58763d`
+with 0 throws and 634 moved entries over 711 entries. Do not update the
 baseline until the AST movers are reviewed and the broad CST ownership movement
 is either projected as intended host-mode shape churn or minimized. The active
 named-set split is

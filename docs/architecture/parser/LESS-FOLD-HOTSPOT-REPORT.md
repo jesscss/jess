@@ -35,23 +35,19 @@ comments should not become semantic value text.
 
 Priority Less cleanup queue:
 
-1. **`ValueComment` is true semantic debt.** It constructs real `Comment` AST
-   nodes from `blockComment`, participates in `valuePiece`, and then
-   `variableValueWithoutComments` strips those nodes later. Replace this with
-   trivia/layout-backed preservation, not comment value nodes.
-2. **Custom-property comment parts are true semantic debt.**
+1. **Custom-property comment parts are true semantic debt.**
    `DirectLessCustomInnerPart` / `DirectLessCustomPart` admit `blockComment` as
    `CustomValuePart` and reduce it into custom-value text. Custom properties may
    need permissive token structure, but comments still belong to trivia.
-3. **Declaration-head comment facts are a render/trivia integration issue.**
+2. **Declaration-head comment facts are a render/trivia integration issue.**
    `DirectLessDeclarationHeadBlockComment` captures comment bytes and appends
    them into declaration-name construction. The target is source-span/trivia
    replay, not semantic declaration-name bytes.
-4. **At-rule prelude comment capture is likely semantic debt.**
+3. **At-rule prelude comment capture is likely semantic debt.**
    `directLessAtPreludeComment` participates in CSS/Less opaque at-rule prelude
    capture. Unknown at-rules can opportunistically parse structure, but comments
    should not be assembled into semantic prelude text.
-5. **General-enclosed raw comments are likely semantic debt.**
+4. **General-enclosed raw comments are likely semantic debt.**
    `DirectLessGeneralEnclosedRaw` includes `CssSyntaxBlockComment` as raw text;
    preserve balanced recognition, but do not make comments part of interpolation
    or general-enclosed payloads.
@@ -67,15 +63,17 @@ Mostly legitimate exceptions:
   but parser-local comment text querying should eventually collapse into the
   shared source/document trivia path.
 
-Smallest next implementation slice: **ordinary value comments**. `ValueComment`
-is the lowest-risk family to delete first because existing Less parser coverage
-already asserts declaration and function value comments are trivia, not rendered
-value facts. The safe target is to remove `ValueComment` from `valuePiece` /
-`ValueSequence` / parameter value tails, let ambient value/function trivia own
-those comments, and keep separator replay through `triviaLog` where comments
-affect layout. Do not include custom-property value comments or declaration-head
-comments in this slice: both currently feed authored comment bytes into semantic
-payloads and need separate render/trivia ownership decisions.
+Most recent completed slice: **ordinary value comments and Less trivia transfer
+hardening**. `ValueComment` is gone from the current grammar; ordinary value and
+function-boundary comments flow through Parseman's trivia log and core's
+`createTriviaMapFromParseman(...)` adapter. Unsupported legacy Less variable
+names are also CST-recoverable again because the unsupported-name diagnostic is
+owned by AST host-mode reduction, not CST recognition.
+
+Smallest next implementation slice: **custom-property comment carriers**. Remove
+custom-property `blockComment` semantic parts only with matching source-trivia
+replay, because custom values still need permissive token structure and
+byte-faithful serialization.
 
 Proof for that slice:
 
