@@ -58,6 +58,7 @@ export interface ErrorDiagnostic {
 export interface ParserFailure {
   readonly code?:
     | 'parse/syntax-error'
+    | 'parse/invalid-value'
     | 'parse/dynamic-charset'
     | 'parse/unsupported-inline-javascript'
     | 'parse/unsupported-bare-variable-interpolation';
@@ -98,6 +99,7 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
   const code =
     'code' in error
     && (error.code === 'parse/syntax-error'
+      || error.code === 'parse/invalid-value'
       || error.code === 'parse/dynamic-charset'
       || error.code === 'parse/unsupported-inline-javascript'
       || error.code === 'parse/unsupported-bare-variable-interpolation')
@@ -110,6 +112,41 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
   const fix =
     'fix' in error && typeof error.fix === 'string' ? error.fix : undefined;
   return { code, offset, endOffset, expected, reason, fix };
+}
+
+type ParserExpectedSummary = {
+  readonly code: 'parse/invalid-value';
+  readonly message: string;
+  readonly reason: string;
+  readonly fix: string;
+};
+
+function hasExpected(expected: ReadonlySet<string>, value: string): boolean {
+  return expected.has(value);
+}
+
+function expectedValueSummary(
+  dialect: string,
+  expected: readonly string[] | undefined
+): ParserExpectedSummary | undefined {
+  if (expected === undefined || expected.length === 0) {
+    return undefined;
+  }
+  const expectedSet = new Set(expected);
+  const looksLikeValueProduction =
+    hasExpected(expectedSet, 'CssSyntaxNumber')
+    && hasExpected(expectedSet, 'CssSyntaxDimensionUnit')
+    && hasExpected(expectedSet, 'LessSyntaxKeyword')
+    && hasExpected(expectedSet, 'not(peek)');
+  if (!looksLikeValueProduction) {
+    return undefined;
+  }
+  return {
+    code: 'parse/invalid-value',
+    message: 'Invalid value.',
+    reason: `${dialect} expected a value here, but this token cannot start one.`,
+    fix: 'Rewrite this position as a valid value or move the syntax into a statement position.'
+  };
 }
 
 /**
@@ -136,17 +173,23 @@ export function parserDiagnostic({
   const message =
     error instanceof Error ? error.message : `${dialect} parser error.`;
   const expected = failure?.expected;
+  const expectedSummary =
+    failure?.code === undefined || failure.code === 'parse/syntax-error'
+      ? expectedValueSummary(dialect, expected)
+      : undefined;
   return {
-    code: failure?.code ?? 'parse/syntax-error',
+    code: expectedSummary?.code ?? failure?.code ?? 'parse/syntax-error',
     phase: 'parse',
-    message,
+    message: expectedSummary?.message ?? message,
     reason:
       failure?.reason
+      ?? expectedSummary?.reason
       ?? (expected && expected.length > 0
         ? `The parser expected ${expected.join(', ')}.`
         : 'The parser could not continue at this source location.'),
     fix:
       failure?.fix
+      ?? expectedSummary?.fix
       ?? `Check the ${dialect} source against the supported grammar.`,
     file: { name: filePath, path: filePath, fullPath: filePath, source },
     filePath,

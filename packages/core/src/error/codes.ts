@@ -14,6 +14,7 @@ export type JessErrorCode =
   | "parse/unterminated-string"
   | "parse/unexpected-syntax"
   | "parse/syntax-error"
+  | 'parse/invalid-value'
   | "parse/dynamic-charset"
   | "parse/unsupported-inline-javascript"
   | "parse/unsupported-bare-variable-interpolation"
@@ -86,6 +87,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason: "${message}",
       fix: "Check surrounding tokens near this location.",
     },
+  ],
+  [
+    'parse/invalid-value',
+    {
+      summary: 'Invalid value',
+      reason: '${dialect} expected a value here, but this token cannot start one.',
+      fix: 'Rewrite this position as a valid value or move the syntax into a statement position.'
+    }
   ],
   [
     "parse/dynamic-charset",

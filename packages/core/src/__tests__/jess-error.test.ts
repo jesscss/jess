@@ -3,6 +3,7 @@ import { createToken, createTokenInstance, NoViableAltException } from 'chevrota
 import {
   getErrorFromParser,
   makeJessErrorFromDiagnostic,
+  parserDiagnostic,
   toDiagnostic,
   type ErrorDiagnostic
 } from '../jess-error.js';
@@ -110,5 +111,40 @@ describe('JessError diagnostics', () => {
     });
     expect(Number.isFinite(diagnostic.line)).toBe(true);
     expect(Number.isFinite(diagnostic.column)).toBe(true);
+  });
+
+  it('summarizes value-production expected sets without leaking parser internals', () => {
+    const source = '.entry {\n  value: .bad;\n}';
+    const error = {
+      code: 'parse/syntax-error',
+      offset: source.indexOf('.bad'),
+      expected: [
+        '"\\""',
+        'CssSyntaxNumber',
+        'CssSyntaxDimensionUnit',
+        'LessSyntaxKeyword',
+        '/-?[_a-zA-Z\\u0080-\\uffff][-_a-zA-Z0-9\\u0080-\\uffff]*/',
+        'not(peek)'
+      ]
+    };
+
+    const diagnostic = parserDiagnostic({
+      dialect: 'Less',
+      error,
+      filePath: 'entry.less',
+      source
+    });
+
+    expect(diagnostic).toMatchObject({
+      code: 'parse/invalid-value',
+      phase: 'parse',
+      message: 'Invalid value.',
+      reason: 'Less expected a value here, but this token cannot start one.',
+      fix: 'Rewrite this position as a valid value or move the syntax into a statement position.',
+      line: 2,
+      column: 10
+    });
+    expect(diagnostic.reason).not.toContain('CssSyntaxNumber');
+    expect(diagnostic.reason).not.toContain('not(peek)');
   });
 });

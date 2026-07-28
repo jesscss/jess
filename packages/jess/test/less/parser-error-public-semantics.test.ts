@@ -84,4 +84,35 @@ describe('Less parser errors through the public AST route', () => {
       file: { source }
     });
   });
+
+  it('summarizes value-position parser failures without leaking atom internals', async () => {
+    const source = [
+      '.theme() {',
+      '  foo: bar;',
+      '}',
+      '',
+      '.val {',
+      '  @alias: .theme;',
+      '  foo: @alias[foo];',
+      '}'
+    ].join('\n');
+    const result = await new Compiler().renderToResult(
+      { source, filePath: 'namespacing.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/invalid-value',
+      phase: 'parse',
+      message: 'Invalid value.',
+      reason: 'Less expected a value here, but this token cannot start one.',
+      fix: 'Rewrite this position as a valid value or move the syntax into a statement position.',
+      line: 6,
+      column: 9,
+      file: { source }
+    });
+    expect(result.errors[0]?.reason).not.toContain('CssSyntaxNumber');
+    expect(result.errors[0]?.reason).not.toContain('not(peek)');
+  });
 });
