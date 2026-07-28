@@ -284,6 +284,14 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
 ]);
 
+const expectedFailureTimeouts = new Map<string, number>([
+  /*
+   * First-use JS plugin/import setup currently settles as a diagnostic-bearing
+   * expected failure, but it can exceed the default 5s hang sentinel.
+   */
+  ['tests-unit/import/import.less', 15_000]
+]);
+
 // Allow specific fixtures even when they are listed in shared invalidLess.
 const forcedIncludes = new Set<string>([]);
 
@@ -399,7 +407,7 @@ describe("Can render Less files to CSS", () => {
               failed,
               `${file} is expected to fail until: ${expectedFailureReason}`
             ).toBe(true);
-          }, 5000); // 5 second timeout to catch infinite loops
+          }, expectedFailureTimeouts.get(file) ?? 5000); // Default remains a short hang sentinel.
         });
       } catch (error: any) {
         // If getTestCases throws (no files found), create a failing test
