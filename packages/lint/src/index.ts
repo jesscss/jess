@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { glob } from 'glob';
+import { Region, type LineContent, type TextStyle } from 'linecraft';
 import {
   collectTolerantDiagnostics,
   type DiagnosticSeverityName,
@@ -72,7 +73,21 @@ export interface LintRunResult {
   readonly errorCount: number;
 }
 
+export interface LintFormatOptions {
+  readonly colors?: boolean;
+  readonly cwd?: string;
+}
+
 interface LinePosition {
+  readonly line: number;
+  readonly column: number;
+}
+
+interface DisplayDiagnostic {
+  readonly code: string;
+  readonly severity: DiagnosticSeverityName;
+  readonly message: string;
+  readonly filePath?: string;
   readonly line: number;
   readonly column: number;
 }
@@ -337,13 +352,144 @@ export async function lintFiles(patterns: string | readonly string[], options: L
 }
 
 export function formatLintResult(result: LintRunResult): string {
+  const rows = formatLintRows(result, {
+    colors: false,
+    cwd: process.cwd()
+  }).map(row => row.text);
+  return rows.join('\n');
+}
+
+export function formatStyledLintResult(result: LintRunResult, options: LintFormatOptions = {}): string {
+  const colors = options.colors ?? true;
+  const rows = formatLintRows(result, {
+    colors,
+    cwd: options.cwd ?? process.cwd()
+  });
+  if (!colors) {
+    return rows.map(row => row.text).join('\n');
+  }
+
+  const region = Region({ disableRendering: true, width: terminalWidth() });
+  region.set(rows);
   const lines: string[] = [];
+  for (let line = 1; line <= region.height; line++) {
+    lines.push(region.getLine(line));
+  }
+  region.destroy(false);
+  return lines.join('\n');
+}
+
+function formatLintRows(result: LintRunResult, options: Required<LintFormatOptions>): LineContent[] {
+  const rows: LineContent[] = [];
   for (const file of result.results) {
-    for (const diagnostic of file.diagnostics) {
-      const loc = `${file.filePath ?? '<input>'}:${diagnostic.start}`;
-      lines.push(`${loc} ${diagnostic.severity} ${diagnostic.code} ${diagnostic.message}`);
+    const diagnostics = displayDiagnostics(file);
+    if (diagnostics.length === 0) {
+      continue;
+    }
+
+    const filePath = file.filePath ?? diagnostics[0]?.filePath;
+    const fileLabel = filePath ? displayPath(options.cwd, filePath) : '<input>';
+    rows.push({
+      text: linkIfEnabled(options.colors, filePath, fileLabel),
+      style: { color: 'cyan', bold: true }
+    });
+
+    const locWidth = Math.max(...diagnostics.map(diagnostic => locOf(diagnostic).length));
+    const severityWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.severity.length));
+    const codeWidth = Math.max(...diagnostics.map(diagnostic => diagnostic.code.length));
+    for (const diagnostic of diagnostics) {
+      const loc = locOf(diagnostic).padStart(locWidth);
+      const severity = diagnostic.severity.padEnd(severityWidth);
+      const code = diagnostic.code.padEnd(codeWidth);
+      rows.push({
+        text: `  ${linkIfEnabled(options.colors, diagnostic.filePath, loc, diagnostic.line, diagnostic.column)}  ${severity}  ${code}  ${diagnostic.message}`,
+        style: severityStyle(diagnostic.severity)
+      });
     }
   }
-  lines.push(`Linted ${result.results.length} file(s): ${result.errorCount} error(s), ${result.warningCount} warning(s)`);
-  return lines.join('\n');
+  rows.push({
+    text: `Linted ${result.results.length} file(s): ${result.errorCount} error(s), ${result.warningCount} warning(s)`,
+    style: result.errorCount > 0
+      ? { color: 'red', bold: true }
+      : result.warningCount > 0
+        ? { color: 'yellow', bold: true }
+        : { color: 'green', bold: true }
+  });
+  return rows;
+}
+
+function displayDiagnostics(file: LintResult): DisplayDiagnostic[] {
+  const diagnostics: DisplayDiagnostic[] = [
+    ...file.errors.map(diagnostic => ({
+      code: diagnostic.code,
+      severity: 'error' as const,
+      message: diagnostic.message,
+      filePath: diagnostic.filePath,
+      line: diagnostic.line,
+      column: diagnostic.column
+    })),
+    ...file.warnings.map(diagnostic => ({
+      code: diagnostic.code,
+      severity: 'warning' as const,
+      message: diagnostic.message,
+      filePath: diagnostic.filePath,
+      line: diagnostic.line,
+      column: diagnostic.column
+    }))
+  ];
+  if (diagnostics.length > 0) {
+    return diagnostics;
+  }
+  return file.diagnostics.map(diagnostic => ({
+    code: diagnostic.code,
+    severity: diagnostic.severity,
+    message: diagnostic.message,
+    filePath: diagnostic.filePath,
+    line: 0,
+    column: diagnostic.start
+  }));
+}
+
+function locOf(diagnostic: DisplayDiagnostic): string {
+  return diagnostic.line > 0
+    ? `${diagnostic.line}:${diagnostic.column}`
+    : String(diagnostic.column);
+}
+
+function severityStyle(severity: DiagnosticSeverityName): TextStyle {
+  if (severity === 'error') {
+    return { color: 'red' };
+  }
+  if (severity === 'warning') {
+    return { color: 'yellow' };
+  }
+  return { color: 'brightBlack' };
+}
+
+function terminalWidth(): number {
+  return typeof process.stdout.columns === 'number' && process.stdout.columns > 0
+    ? process.stdout.columns
+    : 100;
+}
+
+function displayPath(cwd: string, filePath: string): string {
+  const relativePath = path.relative(cwd, filePath);
+  return relativePath.startsWith('..') || path.isAbsolute(relativePath)
+    ? filePath
+    : relativePath;
+}
+
+function linkIfEnabled(
+  enabled: boolean,
+  filePath: string | undefined,
+  label: string,
+  line?: number,
+  column?: number
+): string {
+  if (!enabled || !filePath) {
+    return label;
+  }
+  const resolved = path.resolve(filePath);
+  const suffix = line && column ? `:${line}:${column}` : '';
+  return `\x1b]8;;vscode://file/${resolved}${suffix}\x1b\\${label}\x1b]8;;\x1b\\`;
 }

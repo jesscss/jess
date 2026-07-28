@@ -7,6 +7,7 @@ import {
   PARSE_SYNTAX_ERROR_CODE,
   STABLE_LINT_RULES,
   STYLELINT_COMPARISON_LINT_CONFIG,
+  formatStyledLintResult,
   lintFiles,
   lintText,
   recommendedLintDiagnostics,
@@ -134,5 +135,29 @@ describe('lintFiles', () => {
 
     expect(result.results.map(file => path.basename(file.filePath ?? ''))).toEqual(['included.css']);
     expect(result.warningCount).toBeGreaterThan(0);
+  });
+});
+
+describe('formatStyledLintResult', () => {
+  it('renders compact per-file line diagnostics without source excerpts', async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), 'jess-lint-format-'));
+    const filePath = path.join(cwd, 'bad.css');
+    await writeFile(filePath, '.a {\n  colr: red;\n  width: 0px;\n}\n');
+
+    const result = await lintFiles([filePath], {
+      cwd,
+      includeLegacyDiagnostics: true,
+      stylesConfig: {}
+    });
+    const output = formatStyledLintResult(result, { colors: false, cwd });
+
+    expect(output).toContain('bad.css');
+    expect(output).toContain('2:3');
+    expect(output).toContain('3:10');
+    expect(output).toContain('warning');
+    expect(output).toContain(LINT_CODES.unknownProperties);
+    expect(output).toContain(LINT_CODES.zeroUnits);
+    expect(output).not.toContain('colr: red;');
+    expect(output).not.toContain('width: 0px;');
   });
 });

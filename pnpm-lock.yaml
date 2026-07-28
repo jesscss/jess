@@ -646,6 +646,9 @@ importers:
       glob:
         specifier: ^10.2.1
         version: 10.5.0
+      linecraft:
+        specifier: 0.2.6
+        version: 0.2.6
       styles-config:
         specifier: workspace:*
         version: link:../config

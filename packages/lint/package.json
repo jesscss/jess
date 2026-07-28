@@ -33,6 +33,7 @@
     "@jesscss/core": "workspace:*",
     "@jesscss/diagnostics-core": "workspace:*",
     "glob": "^10.2.1",
+    "linecraft": "0.2.6",
     "styles-config": "workspace:*"
   },
   "devDependencies": {

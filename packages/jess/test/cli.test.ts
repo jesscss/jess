@@ -134,4 +134,26 @@ describe('jess CLI', () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('prints lint findings as compact line diagnostics without color', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-cli-lint-lines-'));
+    try {
+      const input = path.join(directory, 'entry.css');
+      fs.writeFileSync(input, '.entry {\n  colr: red;\n  width: 0px;\n}\n');
+
+      const result = await run(['lint', input, '--no-color']);
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toContain(input);
+      expect(result.stdout).toContain('2:3');
+      expect(result.stdout).toContain('3:10');
+      expect(result.stdout).toContain('lint/unknown-property');
+      expect(result.stdout).toContain('lint/zero-units');
+      expect(result.stdout).not.toContain('\u001B');
+      expect(result.stdout).not.toContain('colr: red;');
+      expect(result.stdout).not.toContain('width: 0px;');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
