@@ -5,7 +5,7 @@
  * dev manifests in every other field.
  *
  * Usage:
- *   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage
+ *   node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-refresh --stage
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';

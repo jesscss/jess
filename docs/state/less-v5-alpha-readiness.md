@@ -306,7 +306,7 @@ substitutes the local 18-package Jess alpha closure for the development
 error behavior. It is deliberately a local closure proof, not the final
 registry-backed consumer proof. The alpha publish script requires the direct
 Jess runtime closure (`@jesscss/compiler`, core, Less plugins, and
-node-modules resolver) to be available at `2.0.0-alpha.9` from npm and
+node-modules resolver) to be available at `2.0.0-alpha.10` from npm and
 temporarily rewrites those runtime dependencies during publish, restoring the
 workspace-linked manifest afterward. After Jess is published, the
 registry-backed proof must install those published packages rather than local
@@ -318,7 +318,7 @@ parser fixtures, import/process-URL behavior, source-map artifacts, and other
 output divergences. These failures remain visible compatibility evidence; they
 must not be hidden or relabeled as passing behavior. The remaining release
 blockers are branch remote parity, a published direct Jess runtime closure at
-`2.0.0-alpha.9` (including `@jesscss/compiler`), the registry-backed consumer
+`2.0.0-alpha.10` (including `@jesscss/compiler`), the registry-backed consumer
 proof, and explicit owner authorization. Publication remains contingent on the
 controlled alpha workflow, the exact Jess dependency version, and those release
 gates.

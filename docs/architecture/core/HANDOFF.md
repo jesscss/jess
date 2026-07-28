@@ -750,10 +750,10 @@ these are history-topology conflicts, not a semantic queue to resolve by hand.
 Do not ordinary-merge or rebase `dev` into `alpha`.
 
 For the refresh, first fetch `origin/dev`, create a recovery ref such as
-`git branch alpha-pre-alpha9-cut alpha`, and work in an isolated `alpha`
+`git branch alpha-pre-refresh alpha`, and work in an isolated `alpha`
 worktree. Import the exact pushed source tree with a two-tree patch
-(`git diff --binary alpha-pre-alpha9-cut..origin/dev` and `git apply --index`), then run
-`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-alpha9-cut --stage`
+(`git diff --binary alpha-pre-refresh..origin/dev` and `git apply --index`), then run
+`node scripts/release/restore-alpha-package-versions.mjs --from alpha-pre-refresh --stage`
 followed by `node scripts/release/record-alpha-source-provenance.mjs --stage`.
 The required `--stage` makes that tool restore and stage only each
 `packages/*/package.json` `.version` field from the
