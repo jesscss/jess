@@ -1772,7 +1772,7 @@ export function createEngine(): JessLanguageServiceEngine {
         const cstDiagnostics = cstLintDiagnostics(tree, text, tracked.lang, {
           isKnownProperty: name => CSS_PROPERTY_SET.has(name) || PROPERTIES_MAP.has(name),
           isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
-        });
+        }, undefined, cstDoc.errors.length > 0 || cstDoc.unconsumedFrom !== null);
         for (const diagnostic of cstDiagnostics) {
           const configured = semanticDiagnosticSeverities[diagnostic.code];
           if (typeof configured !== 'number') {

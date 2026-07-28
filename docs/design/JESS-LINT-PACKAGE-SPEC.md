@@ -112,6 +112,18 @@ pnpm --filter @jesscss/less-parser bench:postcss-less
 pnpm --filter @jesscss/lint bench:stylelint
 ```
 
+`@jesscss/lint` compares against Stylelint using the stable Stylelint-comparable
+rule set exported from `packages/lint/src/rules.ts`. The hot lint result is the
+flat offset diagnostic list; legacy Jess `ErrorDiagnostic`/`WarningDiagnostic`
+frame objects are opt-in through `includeLegacyDiagnostics` because building
+code-frame objects is presentation work, not rule detection.
+
+For plain CSS files that parse cleanly, diagnostics-core uses the canonical CSS
+AST and its source/body spans for the shared rule set. Invalid or recovery-heavy
+CSS falls back to the tolerant CST path so editor diagnostics keep firing on
+broken input. Dialect files continue to use the CST diagnostics path until the
+compiler-owned semantic fact layer exists.
+
 ## 4. Existing Jess surfaces to reuse
 
 - `packages/core/src/error/diagnostics.ts` already defines

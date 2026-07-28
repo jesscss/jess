@@ -61,12 +61,29 @@ describe('lintText', () => {
               [LINT_CODES.zeroUnits]: 'off'
             }
           }
-        }
+        },
+        includeLegacyDiagnostics: true
       }
     );
 
     expect(result.errors.map(diagnostic => diagnostic.code)).toContain(LINT_CODES.unknownProperties);
     expect(result.diagnostics.some(diagnostic => diagnostic.code === LINT_CODES.zeroUnits)).toBe(false);
+  });
+
+  it('keeps legacy framed diagnostics opt-in', async () => {
+    const result = await lintText(
+      {
+        source: '.a { colr: red; }',
+        filePath: '/tmp/input.css'
+      },
+      {
+        stylesConfig: {}
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([LINT_CODES.unknownProperties]);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
   it('can surface only parser diagnostics', async () => {

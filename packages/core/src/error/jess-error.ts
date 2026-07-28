@@ -75,7 +75,9 @@ export type JessErrorInit = {
  * compiler-host job (`@jesscss/compiler` `outputDiagnostics`), driven off
  * `toDiagnostic()`.
  */
-export class JessError extends Error {
+export class JessError {
+  name = 'JessError';
+  message: string;
   severity: Severity = 'error';
   code: JessErrorCode = 'parse/syntax-error';
   phase: Phase = 'parse';
@@ -109,9 +111,7 @@ export class JessError extends Error {
       : undefined;
 
     const t = resolveTemplate(init.code, init.meta ?? {});
-    super(init.summary ?? t.summary);
-
-    this.name = 'JessError';
+    this.message = init.summary ?? t.summary;
     this.severity = init.severity ?? 'error';
     this.code = init.code;
     this.phase = init.phase;
@@ -134,7 +134,7 @@ export class JessError extends Error {
   }
 
   /** Plain-text diagnostic: header + reason/fix. No colors, links, or frame. */
-  override toString(): string {
+  toString(): string {
     const loc = this.filePath ? `${this.filePath}:${this.line}:${this.column}` : '(unknown)';
     return [
       `${this.severity} ${this.code} [${this.phase}] ${loc} — ${this.message}`,

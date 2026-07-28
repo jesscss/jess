@@ -742,7 +742,14 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
           : ERR.pluginLoadFailed({
               node: statement,
               ...callSiteLocation(statement, e),
-              meta: { specifier, reason: error instanceof Error ? error.message : String(error) }
+              meta: {
+                specifier,
+                reason: error instanceof JessError
+                  ? error.message
+                  : error instanceof Error
+                    ? error.message
+                    : String(error)
+              }
             });
       };
       let loaded: MaybePromise<readonly Fn[]>;
@@ -4340,7 +4347,11 @@ function evalCall(
     const args: ValueGroup = sep === ',' ? makeList(vals, ',') : vals;
     try {
       const result = ev.call(node.name, args, e.modes, scope, e.io, (error) => {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = error instanceof JessError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : String(error);
         e.context?.warn(WARN.unresolvedFunction({
           node,
           ...callSiteLocation(node, e),
@@ -4376,7 +4387,11 @@ function pluginCallFailure(
   if (error instanceof JessError) {
     throw error;
   }
-  const reason = error instanceof Error ? error.message : String(error);
+  const reason = error instanceof JessError
+    ? error.message
+    : error instanceof Error
+      ? error.message
+      : String(error);
   const stack = error instanceof Error && typeof error.stack === 'string' ? error.stack : undefined;
   const attribution = {
     node,
@@ -4411,7 +4426,11 @@ function invalidFunctionCall(node: FunctionCall, error: unknown, e: EvalCtx): ne
   if (error instanceof JessError) {
     throw error;
   }
-  const reason = error instanceof Error ? error.message : String(error);
+  const reason = error instanceof JessError
+    ? error.message
+    : error instanceof Error
+      ? error.message
+      : String(error);
   throw ERR.invalidFunction({
     node,
     ...callSiteLocation(node, e),

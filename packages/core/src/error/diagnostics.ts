@@ -392,8 +392,11 @@ export function parserDiagnostic({
   const { line, column } = lineColAt(source, offset);
   const endLoc =
     endOffset === undefined ? undefined : lineColAt(source, endOffset);
-  const message =
-    error instanceof Error ? error.message : `${dialect} parser error.`;
+  const message = error instanceof JessError
+    ? error.message
+    : error instanceof Error
+      ? error.message
+      : `${dialect} parser error.`;
   const expected = failure?.expected;
   const expectedSummary =
     failure?.code === undefined || failure.code === 'parse/syntax-error'

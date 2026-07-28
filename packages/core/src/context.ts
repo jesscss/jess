@@ -1646,9 +1646,10 @@ export class Context {
         lastError = err;
       }
     }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error(`Plugin not found: ${importPath} (tried ${tried.join(', ')})`);
+    if (lastError instanceof JessError || lastError instanceof Error) {
+      throw lastError;
+    }
+    throw new Error(`Plugin not found: ${importPath} (tried ${tried.join(', ')})`);
   }
 
   /**

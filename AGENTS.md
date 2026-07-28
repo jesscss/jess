@@ -233,6 +233,10 @@ When information is volatile, point to the canonical source instead of restating
 - Do not weaken tests, lower baselines, or redefine expected semantics just to make a refactor appear complete.
 - Prefer small, verifiable changes over broad speculative rewrites.
 - If a fix depends on undocumented behavior, stop and ask instead of inventing semantics.
+- Before adding or exporting a canonical-AST visitor/traversal API, write the
+  design and get an adversarial review against the materialization/eval/render
+  story and the historical Less/Jess visitor surfaces. Do not introduce
+  diagnostics-only object crawls as a substitute for a reviewed traversal shape.
 
 ## Branch And Sync Model
 
