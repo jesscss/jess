@@ -6,7 +6,7 @@ import { coerceNodeArray } from './util/evaluate-node-array.js';
 import { N } from './node-type.js';
 import { cast } from './util/cast.js';
 import { callWithContext } from '../define-function.js';
-import { WARN } from '../jess-error.js';
+import { JessError, WARN } from '../jess-error.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
 import { Paren } from './paren.js';
 import { isThenable, type MaybePromise } from '@jesscss/awaitable-pipe';
@@ -637,7 +637,16 @@ export class Call extends Node<CallValue, CallOptions> {
     context.warn(WARN.unresolvedFunction({
       ctx: file ? { file } : undefined,
       filePath: file?.fullPath,
-      meta: { name: fnName, reason: (error instanceof Error ? error.message : String(error)).split('\n')[0] ?? '' }
+      meta: {
+        name: fnName,
+        reason: (
+          error instanceof JessError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : String(error)
+        ).split('\n')[0] ?? ''
+      }
     }));
   }
 

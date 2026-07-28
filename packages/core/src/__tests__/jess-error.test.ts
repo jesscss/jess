@@ -9,6 +9,21 @@ import {
 } from '../jess-error.js';
 
 describe('JessError diagnostics', () => {
+  it('does not inherit from JavaScript Error or capture a stack', () => {
+    const error = makeJessErrorFromDiagnostic({
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: 'Syntax error',
+      reason: 'Expected value.',
+      fix: 'Add a value.',
+      line: 1,
+      column: 1
+    });
+
+    expect(error).not.toBeInstanceOf(Error);
+    expect('stack' in error).toBe(false);
+  });
+
   it('falls back to parse/syntax-error for unknown diagnostic codes', () => {
     const error = makeJessErrorFromDiagnostic({
       code: 'plugin/custom-error',

@@ -60,6 +60,14 @@ export type ConfigOptions = StylesConfig & {
 
 const { isArray } = Array;
 
+function thrownMessage(err: unknown): string {
+  return err instanceof JessError
+    ? err.message
+    : err instanceof Error
+      ? err.message
+      : String(err);
+}
+
 /**
  * Build the `internal/unknown` diagnostic for a generic (non-`JessError`) error
  * that escaped eval. The eval dispatch stamps the offending node's source span
@@ -1133,7 +1141,7 @@ export class Compiler {
         errors: context.errors.length,
         warnings: context.warnings.length,
         failed: true,
-        errorMessage: err instanceof Error ? err.message : String(err)
+        errorMessage: thrownMessage(err)
       });
       throw err;
     }
@@ -1187,7 +1195,7 @@ export class Compiler {
         errors: context.errors.length,
         warnings: context.warnings.length,
         failed: true,
-        errorMessage: err instanceof Error ? err.message : String(err)
+        errorMessage: thrownMessage(err)
       });
       throw err;
     }
@@ -1227,7 +1235,7 @@ export class Compiler {
         errors: context.errors.length,
         warnings: context.warnings.length,
         failed: true,
-        errorMessage: err instanceof Error ? err.message : String(err)
+        errorMessage: thrownMessage(err)
       });
       throw err;
     }
@@ -1281,7 +1289,7 @@ export class Compiler {
     } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
       const warnings: WarningDiagnostic[] = [...context.warnings];
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = thrownMessage(err);
 
       if (err instanceof JessError) {
         appendThrownJessDiagnostic(errors, warnings, err);
@@ -1355,7 +1363,7 @@ export class Compiler {
     } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
       const warnings: WarningDiagnostic[] = [...context.warnings];
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = thrownMessage(err);
 
       if (err instanceof JessError) {
         appendThrownJessDiagnostic(errors, warnings, err);
@@ -1414,7 +1422,7 @@ export class Compiler {
     } catch (err: unknown) {
       const errors: ErrorDiagnostic[] = [...context.errors];
       const warnings: WarningDiagnostic[] = [...context.warnings];
-      const errMsg = err instanceof Error ? err.message : String(err);
+      const errMsg = thrownMessage(err);
 
       if (err instanceof JessError) {
         appendThrownJessDiagnostic(errors, warnings, err);
