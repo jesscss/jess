@@ -106,3 +106,19 @@ export class LessUnsupportedMixinNameError extends SyntaxError {
     this.endOffset = endOffset;
   }
 }
+
+/** Ungrouped Less mixin guards are recognized so diagnostics can point at the guard. */
+export class LessUnparenthesizedMixinGuardError extends SyntaxError {
+  readonly code = 'parse/unparenthesized-mixin-guard' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'Top-level Less mixin guards require each condition after when to be wrapped in parentheses.';
+  readonly fix = 'Wrap the guard condition, for example: when (default()).';
+
+  constructor(offset: number, endOffset: number) {
+    super('Less mixin guard conditions must be parenthesized.');
+    this.name = 'LessUnparenthesizedMixinGuardError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}

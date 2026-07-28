@@ -167,6 +167,50 @@ describe('Less parser errors through the public AST route', () => {
     }
   });
 
+  it('reports unparenthesized Less mixin guards at the guard condition', async () => {
+    const source = '.m() when default() { color: red; }\n.entry { .m(); }';
+    const compiler = new Compiler();
+    const result = await compiler.renderToResult(
+      { source, filePath: 'guard.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/unparenthesized-mixin-guard',
+      phase: 'parse',
+      message: 'Less mixin guard conditions must be parenthesized.',
+      reason: 'Top-level Less mixin guards require each condition after when to be wrapped in parentheses.',
+      fix: 'Wrap the guard condition, for example: when (default()).',
+      line: 1,
+      column: 11,
+      endLine: 1,
+      endColumn: 20,
+      file: { source }
+    });
+
+    await expect(compiler.renderString(source, {
+      filePath: 'guard.less',
+      extension: '.less'
+    })).rejects.toMatchObject({
+      code: 'parse/unparenthesized-mixin-guard',
+      line: 1,
+      column: 11,
+      endLine: 1,
+      endColumn: 20
+    });
+
+    const valid = await compiler.renderToResult(
+      {
+        source: '.m() when (default()) { color: red; }\n.entry { .m(); }',
+        filePath: 'guard.less',
+        extension: '.less'
+      },
+      { breakOnError: false }
+    );
+    expect(valid.errors).toEqual([]);
+  });
+
   it('summarizes value-position parser failures without leaking atom internals', async () => {
     const source = [
       '.theme() {',

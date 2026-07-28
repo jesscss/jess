@@ -14,6 +14,7 @@ export {
   LessDynamicCharsetError,
   LessInlineJavaScriptError,
   LessParseError,
+  LessUnparenthesizedMixinGuardError,
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
 } from "./parse-error.js";

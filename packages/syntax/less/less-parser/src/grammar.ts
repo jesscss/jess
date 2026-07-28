@@ -26,7 +26,7 @@ import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnparenthesizedMixinGuardError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
 // Grammar — Less host-mode grammar.
@@ -3711,9 +3711,29 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(g.DirectLessMixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.DirectLessMixinGuardAnd))),
     children => foldMixinGuards('or', children)
   );
+  const DirectLessUnparenthesizedMixinGuard = node<MixinGuard>(
+    'DirectLessUnparenthesizedMixinGuard',
+    choice(
+      sequence(
+        optional(lessWord('not')),
+        choice(DirectLessMixinGuardDefaultOperand, g.Call),
+        optional(sequence(mixinGuardOperator, g.DirectLessMixinGuardOperand))
+      ),
+      sequence(
+        optional(lessWord('not')),
+        g.DirectLessMixinGuardOperand,
+        mixinGuardOperator,
+        g.DirectLessMixinGuardOperand
+      )
+    ),
+    (_children, _fields, span) => {
+      throw new LessUnparenthesizedMixinGuardError(span.start, span.end);
+    }
+  );
   const DirectLessMixinGuardTopTerm = node<MixinGuard>(
     'DirectLessMixinGuardTopTerm',
     choice(
+      DirectLessUnparenthesizedMixinGuard,
       sequence(optional(lessWord('not')), literal('('), g.DirectLessMixinGuardOr, literal(')')),
       sequence(lessWord('not'), g.DirectLessMixinGuardTerm)
     ),

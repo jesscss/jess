@@ -63,7 +63,8 @@ export interface ParserFailure {
     | 'parse/unsupported-inline-javascript'
     | 'parse/unsupported-bare-variable-interpolation'
     | 'parse/unsupported-variable-name'
-    | 'parse/unsupported-mixin-name';
+    | 'parse/unsupported-mixin-name'
+    | 'parse/unparenthesized-mixin-guard';
   readonly offset: number;
   readonly endOffset?: number;
   readonly expected?: readonly string[];
@@ -106,7 +107,8 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
       || error.code === 'parse/unsupported-inline-javascript'
       || error.code === 'parse/unsupported-bare-variable-interpolation'
       || error.code === 'parse/unsupported-variable-name'
-      || error.code === 'parse/unsupported-mixin-name')
+      || error.code === 'parse/unsupported-mixin-name'
+      || error.code === 'parse/unparenthesized-mixin-guard')
       ? error.code
       : undefined;
   const reason =

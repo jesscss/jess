@@ -20,6 +20,7 @@ export type JessErrorCode =
   | "parse/unsupported-bare-variable-interpolation"
   | 'parse/unsupported-variable-name'
   | 'parse/unsupported-mixin-name'
+  | 'parse/unparenthesized-mixin-guard'
   | "resolve/name-not-found"
   | "import/circular-compose"
   | "import/not-found"
@@ -137,6 +138,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       summary: 'Unsupported Less mixin name',
       reason: 'Dash-only Less mixin names are not supported.',
       fix: 'Rename the mixin to a descriptive selector-like name, for example .mixin().'
+    }
+  ],
+  [
+    'parse/unparenthesized-mixin-guard',
+    {
+      summary: 'Less mixin guard conditions must be parenthesized',
+      reason: 'Top-level Less mixin guards require each condition after when to be wrapped in parentheses.',
+      fix: 'Wrap the guard condition, for example: when (default()).'
     }
   ],
 
