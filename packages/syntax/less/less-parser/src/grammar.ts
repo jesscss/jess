@@ -2698,11 +2698,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.FunctionArgument
   );
   const FunctionArguments = optional(sequence(
-    functionArgument,
-    many(sequence(
-      functionArgumentSeparator,
-      functionArgument
-    )),
+    oneOrMoreSep(functionArgument, functionArgumentSeparator),
     optional(trailingFunctionArgumentSeparator)
   ));
   // Value-position identifiers and glued function openers share one lexical
@@ -2748,11 +2744,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const callArgumentFunctionSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
   const trailingCallArgumentFunctionSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
   const CallArgumentFunctionArguments = optional(sequence(
-    g.CallArgumentValue,
-    many(sequence(
-      callArgumentFunctionSeparator,
-      g.CallArgumentValue
-    )),
+    oneOrMoreSep(g.CallArgumentValue, callArgumentFunctionSeparator),
     optional(trailingCallArgumentFunctionSeparator)
   ));
   const ArgumentFunction = node<FunctionCall>(
