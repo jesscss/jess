@@ -4,14 +4,12 @@
 
 ```ts
 
-import { Compiler as Compiler_2 } from '@jesscss/compiler';
-import { ConfigOptions } from '@jesscss/compiler';
+import { ConfigOptions } from '@jesscss/compiler-defaults';
+import { DefaultCompiler } from '@jesscss/compiler-defaults';
 
 // @public
-export class Compiler extends Compiler_2 {
+export class Compiler extends DefaultCompiler {
     constructor(opts?: ConfigOptions);
-    // (undocumented)
-    dispose(): void;
     // @internal (undocumented)
     opts: ConfigOptions;
 }

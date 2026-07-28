@@ -387,6 +387,34 @@ export interface OutputOptions extends FileMatchOptions {
   [key: string]: any;
 }
 
+export type LintSeverity = 'off' | 'warn' | 'error';
+
+export interface LintConfig {
+  /**
+   * File paths or glob patterns to lint when the CLI is run without positional
+   * patterns.
+   */
+  files?: string | string[];
+
+  /**
+   * File paths or glob patterns excluded from linting.
+   */
+  ignoreFiles?: string | string[];
+
+  /**
+   * Whether parser syntax diagnostics are surfaced by lint.
+   *
+   * @default true
+   */
+  reportSyntax?: boolean;
+
+  /**
+   * Per-diagnostic policy. `off` suppresses a diagnostic, `warn` and `error`
+   * override the detector's default severity.
+   */
+  diagnostics?: Record<string, LintSeverity>;
+}
+
 export interface StylesConfig {
   compile?: {
     /**
@@ -444,6 +472,7 @@ export interface StylesConfig {
    * Entries without a `file` property serve as defaults.
    */
   output?: OutputOptions | OutputOptions[];
+  lint?: LintConfig;
   language?: {
     less?: LessOptions;
     scss?: ScssOptions;

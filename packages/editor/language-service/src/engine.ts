@@ -6,17 +6,20 @@ import { parseCssDoc, type CssCstNode, type ParseDoc } from '@jesscss/css-parser
  */
 import { parseLessDoc } from '@jesscss/less-parser/cst';
 import { parseScssDoc } from '@jesscss/scss-parser/cst';
-import { parseJessDoc } from '@jesscss/jess-parser';
+import { parseJessDoc } from '@jesscss/jess-parser/cst';
 import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { extractImports, resolveImport } from '@jesscss/style-resolver';
+import {
+  cstLintDiagnostics,
+  LINT_CODES
+} from '@jesscss/diagnostics-core';
 import * as colorUtils from './color-utils.js';
 import { buildCstIndex, cstDocumentSymbols, cstFoldingRanges, cstSelectionRanges } from './cst-analysis.js';
 import { cstSymbolAtOffset, cstFindDefinitionInDoc, cstCollectReferencesInDoc, type CstSymbol } from './cst-symbols.js';
 import { cstSemanticTokens, cstVariableNames, cstDeclaredSymbols } from './cst-syntactic.js';
-import { cstLintDiagnostics, LINT_CODES } from './cst-lint.js';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import {
   CompletionItem,
@@ -1766,14 +1769,23 @@ export function createEngine(): JessLanguageServiceEngine {
 
       const tree = cstDoc.tree;
       if (tree) {
-        diagnostics.push(...cstLintDiagnostics(tree, doc, tracked.lang, {
-          severityOf: (code) => {
-            const severity = semanticDiagnosticSeverities[code];
-            return typeof severity === 'number' ? severity : null;
-          },
+        const cstDiagnostics = cstLintDiagnostics(tree, text, tracked.lang, {
           isKnownProperty: name => CSS_PROPERTY_SET.has(name) || PROPERTIES_MAP.has(name),
           isKnownAtRule: name => AT_RULES_MAP.has(`@${name}`)
-        }));
+        });
+        for (const diagnostic of cstDiagnostics) {
+          const configured = semanticDiagnosticSeverities[diagnostic.code];
+          if (typeof configured !== 'number') {
+            continue;
+          }
+          diagnostics.push({
+            code: diagnostic.code,
+            source: diagnostic.source,
+            message: diagnostic.message,
+            severity: configured,
+            range: diagnosticRange(diagnostic.start, diagnostic.end)
+          });
+        }
 
         /*
          * Undefined-name diagnostics are editor heuristics, not compiler
