@@ -14,7 +14,7 @@
  * route via Parseman's `hostMode`.
  */
 import { attempt, balanced, choice, composeLeaf, dispatch, field, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, regex, routed, rules, scanTo, sequence, startsWith, token, trivia, when } from 'parseman' with { type: 'macro' };
-import type { Combinator, FieldCapture, FieldMap, FusedRule } from 'parseman';
+import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
@@ -5586,14 +5586,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     };
 };
 
-export const jessGrammar: Record<keyof JessRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+export const jessGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace },
   jessFactory
 )]);
 
 export const jessAstGrammar = jessGrammar;
 
-export const jessCstGrammar: Record<keyof JessRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
+export const jessCstGrammar = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<JessRules>(
   { trivia: whitespace, hostMode: 'cst' },
   jessFactory
 )]);
