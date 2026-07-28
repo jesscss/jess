@@ -79,17 +79,15 @@ are included in the same release plan as top-level runtime packages instead of
 being silently missed by the alpha allowlist validator.
 
 Current alpha readiness verification is green. Rerun 2026-07-27 after the
-latest Less grammar naming slice, diagnostic-range work, and compiler package
-entrypoint fix, `pnpm run check:macro` reports parser-shared, CSS, Less, SCSS,
-and Jess fully compiled with 0 interpreter fallbacks; `pnpm run
-verify:compose-integrity` passes after a dependency-ordered rebuild; and
-`pnpm run verify:less-alpha` passes. The alpha gate builds the Less parser,
-Less plugin, `@jesscss/compiler`, and `jess`; verifies package exports and the
-public Jess API; passes the path-resolution suite; and passes the Less
-test-data lanes (`tests-unit/`: 80 / 80, `tests-config/`: 29 / 29).
-This evidence is recorded against pushed `dev` commit `fb13eef67`: macro,
-compose-integrity, package-export verification, and `verify:less-alpha` all
-passed on the committed tree before the push to `origin/dev`.
+latest Less grammar naming slice, diagnostic-range work, compiler package
+entrypoint fix, and Less alpha verifier dependency-order fix, `pnpm run
+check:macro` reports parser-shared, CSS, Less, SCSS, and Jess fully compiled
+with 0 interpreter fallbacks; `pnpm run verify:compose-integrity` passes after
+a dependency-ordered rebuild; and `pnpm run verify:less-alpha` passes. The
+alpha gate now builds the parser-shared/CSS/Less parser chain, core/fns/config
+packages, Less plugin stack, `@jesscss/compiler`, and `jess` before running
+package exports, the public Jess API, path resolution, and the Less test-data
+lanes (`tests-unit/`: 80 / 80, `tests-config/`: 29 / 29).
 
 Graduated in the current pass:
 
@@ -113,10 +111,20 @@ only with the matching trivia-span replay in the same patch:
   and `:`; otherwise `color/*x*/:` loses its authored gap.
 - Less custom-property inner/outer comment children; custom-value serialization
   must replay comments from source trivia spans before those arms disappear.
-- Less opaque/general at-rule prelude comment arms; unknown at-rules and
-  general-enclosed syntax still need authored prelude/body bytes preserved.
+- Less opaque/general at-rule body comment arms; unknown at-rules and
+  general-enclosed syntax still need authored body bytes preserved. Fallback CSS
+  at-rule prelude comments have started moving to parser trivia while preserving
+  semantic gaps.
 - selector/static-pseudo raw comment text; prove comment-only selector gaps do
   not become descendant combinators, and pseudo arguments still round-trip.
+
+Detached clean-dev verification on 2026-07-27 confirmed the Less alpha fixture
+flow is green once dependency artifacts are built, and also showed
+`oracle:less:byte-identity` is not current against the linked external
+`@less/test-data` corpus. The corpus gained `math-css-vars` entries from the
+sibling Less checkout, and broad AST/CST oracle hashes moved. Treat this as an
+oracle/baseline classification task; do not accept new oracle baselines until
+the linked corpus state and parser-shape movement are reviewed.
 
 Keep scanner-local `blockComment` skips inside `scanTo(...)` / `balanced(...)`
 until Parseman has the replacement capture/skip helper for those regions; those
