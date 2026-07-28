@@ -48,7 +48,8 @@ These are the 21 cases exercised by the alpha fixture command today:
 - Callable, namespace, and nested-render semantics:
   `namespacing/namespacing-8`, `namespacing/namespacing-functions`,
   `namespacing/namespacing-media`, `detached-rulesets/detached-rulesets`, and
-  `mixins/mixins`.
+  `mixins/mixins` (currently fixture-local nested output vs flattened golden;
+  the `.recursion` outer-mixin lookup is covered by core).
 - Source-map artifacts: `sourcemaps-basepath/sourcemaps-basepath`,
   `sourcemaps-include-source/sourcemaps-include-source`,
   `sourcemaps-rootpath/sourcemaps-rootpath`, and `sourcemaps-url/sourcemaps-url`.

@@ -205,8 +205,8 @@ const expectedFailureFixtures = new Map<string, string>([
     "detached-ruleset argument closure now matches Less; nested @media query merging still differs",
   ],
   [
-    "tests-unit/mixins/mixins.less",
-    "group-selector member call (.bar) now resolves; remaining blocker is same-named nested ruleset calling an outer mixin (.recursion) — nearest-scope-frame lookup does not continue past the self-excluded enclosing ruleset",
+    'tests-unit/mixins/mixins.less',
+    'same-named nested ruleset now resolves the outer .recursion() mixin; remaining mismatch is fixture-local collapseNesting=false rendering nested CSS against the maintained flattened Less golden'
   ],
   [
     "tests-unit/property-name-interp/property-name-interp.less",

@@ -79,6 +79,17 @@ describe('Mixin canonical AST emission', () => {
     expect(render(document)).toBe('.out {\n  step: 3;\n  step: 2;\n  step: 1;\n}\n');
   });
 
+  it('continues past an enclosing same-name ruleset mixin to an outer mixin definition', () => {
+    const document = stylesheet([
+      mixin('.recursion', [], [decl('color', keyword('black'))]),
+      rule('.test-rule-rec', [
+        rule('.recursion', [call('.recursion')])
+      ])
+    ]);
+
+    expect(render(document)).toBe('.test-rule-rec .recursion {\n  color: black;\n}\n');
+  });
+
   it('selects an overload while evaluating a default in the callee closure', () => {
     const small = mixin('.space', [{ name: 'n' }, { name: 'gap', default: operation('+', variableReference('n', 'scoped'), dimension(1)) }], [
       decl('kind', { type: 'Keyword', src: 'small' }),
