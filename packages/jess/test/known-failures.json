@@ -72,12 +72,6 @@
   ],
   "knownFlakyElsewhere": [
     {
-      "test": "test/less/all-less.test.ts > Can render Less files to CSS tests-unit/import/import-remote.less",
-      "lane": "same suite as the gating entries above",
-      "status": "NOT allowlisted — deliberately left to gate.",
-      "reason": "Fetches a remote import, so it fails on a machine without network. It failed on the pristine origin/dev baseline run and passed here. Listed so the next reader knows it is environment-dependent rather than assuming a regression; if it starts failing in CI, that is a real signal about the network-dependent import path, not noise to allowlist. Its two sibling pre-existing failures (css-3.less, variable-advanced.less) are NOT here: they moved into all-less.test.ts's own `expectedFailureFixtures` map, which asserts they DO fail and so demands deletion the moment precision is fixed."
-    },
-    {
       "test": "tests-unit/extend-exact/extend-exact.less",
       "lane": "pnpm run test:less:test-data (packages/jess/test/less/all-less.test.ts, vitest.less-test-data.config.ts)",
       "status": "NOT allowlisted anywhere — that lane still gates on it at full strength.",
