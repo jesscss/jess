@@ -104,7 +104,7 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     {
       summary: "Dynamic @charset is not valid",
       reason: "Interpolation is not valid inside the CSS @charset token.",
-      fix: 'Use a static declaration such as @charset "UTF-8";.',
+      fix: 'Use a static declaration such as @charset "UTF-8";'
     },
   ],
   [

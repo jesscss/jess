@@ -302,12 +302,12 @@ describe("Jess restricted script runtime integration", () => {
       suppressWarnings: true,
     });
     expect(css).toBe("");
-    expect(
-      errors.some(
-        (error) =>
-          error.message === "Less @plugin is disabled by disableScriptModules."
-      )
-    ).toBe(true);
+    expect(errors).toContainEqual(expect.objectContaining({
+      code: 'plugin/load-failed',
+      message: expect.stringContaining('script module execution is disabled by disableScriptModules'),
+      reason: expect.stringContaining('loads and executes a script module'),
+      fix: expect.stringContaining('disableScriptModules')
+    }));
   });
 
   it("treats disablePluginRule as a deprecated alias for disableScriptModules for Less @plugin", async () => {
@@ -343,11 +343,11 @@ describe("Jess restricted script runtime integration", () => {
       suppressWarnings: true,
     });
     expect(css).toBe("");
-    expect(
-      errors.some(
-        (error) =>
-          error.message === "Less @plugin is disabled by disableScriptModules."
-      )
-    ).toBe(true);
+    expect(errors).toContainEqual(expect.objectContaining({
+      code: 'plugin/load-failed',
+      message: expect.stringContaining('script module execution is disabled by disableScriptModules'),
+      reason: expect.stringContaining('loads and executes a script module'),
+      fix: expect.stringContaining('disableScriptModules')
+    }));
   });
 });

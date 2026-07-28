@@ -54,6 +54,7 @@ describe("@jesscss/plugin-less", () => {
         code: "parse/dynamic-charset",
         phase: "parse",
         message: "Interpolation is not valid in @charset.",
+        fix: 'Use a static declaration such as @charset "UTF-8";',
         filePath: "entry.less",
         line: 2,
         column: 1,

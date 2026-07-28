@@ -28,7 +28,7 @@ export class LessDynamicCharsetError extends SyntaxError {
   readonly offset: number;
   readonly endOffset: number;
   readonly reason = "Interpolation is not valid inside the CSS @charset token.";
-  readonly fix = 'Use a static declaration such as @charset "UTF-8";.';
+  readonly fix = 'Use a static declaration such as @charset "UTF-8";';
 
   constructor(offset: number, endOffset: number) {
     super("Interpolation is not valid in @charset.");

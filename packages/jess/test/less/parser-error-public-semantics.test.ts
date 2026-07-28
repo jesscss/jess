@@ -76,7 +76,7 @@ describe('Less parser errors through the public AST route', () => {
       phase: 'parse',
       message: 'Interpolation is not valid in @charset.',
       reason: 'Interpolation is not valid inside the CSS @charset token.',
-      fix: 'Use a static declaration such as @charset "UTF-8";.',
+      fix: 'Use a static declaration such as @charset "UTF-8";',
       line: 2,
       column: 1,
       endLine: 2,
