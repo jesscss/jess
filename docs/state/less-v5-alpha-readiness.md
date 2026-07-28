@@ -349,7 +349,7 @@ substitutes the local 18-package Jess alpha closure for the development
 error behavior. It is deliberately a local closure proof, not the final
 registry-backed consumer proof. The alpha publish script requires the direct
 Jess runtime closure (`@jesscss/compiler`, core, Less plugins, and
-node-modules resolver) to be available at `2.0.0-alpha.10` from npm and
+node-modules resolver) to be available from npm at the selected Jess alpha and
 temporarily rewrites those runtime dependencies during publish, restoring the
 workspace-linked manifest afterward. After Jess is published, the
 registry-backed proof must install those published packages rather than local
@@ -360,9 +360,9 @@ legacy plugin-global/registry and visitor assumptions, unsupported advanced
 parser fixtures, import/process-URL behavior, source-map artifacts, and other
 output divergences. These failures remain visible compatibility evidence; they
 must not be hidden or relabeled as passing behavior. The remaining release
-blockers are branch remote parity, a published direct Jess runtime closure at
-`2.0.0-alpha.10` (including `@jesscss/compiler`), the registry-backed consumer
-proof, and explicit owner authorization. Publication remains contingent on the
+blockers are a published direct Jess runtime closure that includes the current
+single-frame Linecraft diagnostic renderer, the registry-backed consumer proof,
+and explicit owner authorization. Publication remains contingent on the
 controlled alpha workflow, the exact Jess dependency version, and those release
 gates.
 
@@ -703,6 +703,10 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
+- 2026-07-28: Added draft Jess `2.0.0-alpha.11` release notes on `dev` before
+  the controlled alpha projection. The next Jess alpha is needed so Less PR #19
+  can prove colored, single-frame Linecraft diagnostics against registry
+  dependencies instead of published `2.0.0-alpha.10`.
 - 2026-07-28: Updated the external Less PR #19 audit to head `872389bf`,
   including successful `lessc` warning routing to `stderr` and the blocker rule
   that public `lessc` errors must render through colored Linecraft diagnostics.

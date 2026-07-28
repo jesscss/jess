@@ -657,22 +657,23 @@ section is the authoritative full-scope companion to the compact task goal.
   `composeLeaf()` shape, and historical feature equivalence independently.
   Optimize only with semantic/output proof and matched parse plus end-to-end
   measurements; never restore legacy architecture for speed.
-- Prepare the next Jess alpha from pushed `dev`. Current release tooling
-  resolves the next registry-safe lockstep publish to `2.0.0-alpha.10` because
-  `2.0.0-alpha.9` is already published for the existing allowlist while
-  `@jesscss/compiler` is new in the runtime closure. Validate final `dev`,
-  prepare owner-reviewed release notes, then use the controlled alpha refresh
-  flow; do not ordinary-merge/rebase shared alpha history or publish before
-  every gate passes.
+- Prepare the next Jess alpha from pushed `dev`. `2.0.0-alpha.10` is already
+  published; the next registry-safe lockstep publish is expected to be
+  `2.0.0-alpha.11` so the external Less alpha can consume the single-frame
+  Linecraft diagnostic renderer from `dev`. Validate final `dev`, keep
+  owner-reviewed release notes in the source tree, then use the controlled
+  alpha refresh flow; do not ordinary-merge/rebase shared alpha history or
+  publish before every gate passes.
 
 ### Current Less v5 alpha readiness evidence
 
 Use [`docs/state/less-v5-alpha-readiness.md`](../../state/less-v5-alpha-readiness.md)
 as the current source of truth. As of 2026-07-28, the external Less branch has
-the desired direct compiler/plugin dependency shape and resolves the direct
-Jess runtime closure from published `2.0.0-alpha.10` registry packages,
-including `@jesscss/compiler`. Do not publish Less until the final PR-head
-release preflight passes and the owner authorizes the Less release flow.
+the desired direct compiler/plugin dependency shape and passes CI, but still
+resolves the direct Jess runtime closure from published `2.0.0-alpha.10`
+registry packages. Do not publish Less until the next Jess alpha is published,
+the PR branch consumes that exact dependency set, the final PR-head release
+preflight passes, and the owner authorizes the Less release flow.
 
 ## Router
 
