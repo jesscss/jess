@@ -10,7 +10,7 @@
  * - SCSS: ../../../scss/scss-parser/src/grammar.ts
  * - Jess: ../../../jess/jess-parser/src/grammar.ts
  */
-import { balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, matches, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import { balanced, choice, composeLeaf, dispatch, endsWith, expect, field, keywords, literal, makeWhen, makeWord, many, noTrivia, node, not, oneOrMore, oneOrMoreSep, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sepBy, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
@@ -2082,7 +2082,6 @@ export const cssFactory = (g: CssGrammarSelf) => {
     regex(/[ \t\n\r\f]/)
   ));
   const atRuleKeyword = token(noTrivia(g.CssSyntaxRoutedAtRuleKeyword));
-  const keyframesAtRuleCase = matches(/^@(?:-[a-z]+-)?keyframes$/i);
   const identOrFunction = token(noTrivia(
     sequence(
       genericIdentifier,
@@ -3427,6 +3426,13 @@ export const cssFactory = (g: CssGrammarSelf) => {
       blockStatements(children)
     ), rawChildren)
   );
+  const keyframesAtRuleNames = [
+    '@keyframes',
+    '@-webkit-keyframes',
+    '@-moz-keyframes',
+    '@-o-keyframes',
+    '@-ms-keyframes'
+  ];
   const StylesheetAtRule = dispatch(
     atRuleKeyword,
     cssCase(
@@ -3472,8 +3478,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
         RoutedPageBlock
       )
     ),
-    when(
-      keyframesAtRuleCase,
+    cssCase(
+      keyframesAtRuleNames,
       choice(
         RoutedAtRuleStatement,
         RoutedKeyframes
@@ -3543,8 +3549,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
         RoutedPageBlock
       )
     ),
-    when(
-      keyframesAtRuleCase,
+    cssCase(
+      keyframesAtRuleNames,
       choice(
         RoutedAtRuleStatement,
         RoutedKeyframes
@@ -3599,8 +3605,8 @@ export const cssFactory = (g: CssGrammarSelf) => {
       '@page',
       RoutedPageBlock
     ),
-    when(
-      keyframesAtRuleCase,
+    cssCase(
+      keyframesAtRuleNames,
       RoutedKeyframes
     ),
     cssCase(

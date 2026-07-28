@@ -680,7 +680,7 @@ function sourceFromState(state: unknown): string | undefined {
 function triviaRunOutputText(source: string, start: number, end: number): string {
   const run = source.slice(start, end);
   if (!run.includes('/*')) {
-    return /[\n\r]/u.test(run) ? run : '';
+    return run.includes('\n') || run.includes('\r') ? run : '';
   }
 
   let out = '';
