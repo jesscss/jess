@@ -28,12 +28,12 @@ Resolved package versions and paths for the current report:
 | `@jesscss/plugin-less` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/syntax/less/jess-plugin-less` |
 | `jess` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/jess` |
 
-Latest report rerun on 2026-07-28 from local `dev` at
-`461b10463de65cf2b7214d1b352a354d2801f5e6`, after the
+Latest report rerun on 2026-07-28 from local `dev`, after the
 post-trivia-transfer hardening, unsupported-variable CST recovery,
 mixin-guard diagnostic, `processImports: false`, Less query-prelude
 separator-helper, custom-property variable-value, folded grammar type-surface,
-and structured module-resolution diagnostic source state:
+structured module-resolution diagnostic source state, Less grammar helper
+renames, and parser diagnostic message cleanup:
 
 ```sh
 pnpm --filter @jesscss/parser-shared build
@@ -46,8 +46,8 @@ node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs \
 
 | surface | committed baseline | current aggregate | throws | common entries moved |
 | --- | --- | --- | ---: | ---: |
-| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d` | 116 | 217 |
-| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `67cf6614c3aecd4f71e5965510d556d8da0ea2591948f0681392bc0a3963eb4c` | 0 | 634 |
+| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `9263d36f95280b7b8e897abbb44dc511a953bd01110b98899d92a918defcbd5a` | 116 | 217 |
+| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `3596049629b1441bed7f93100374c23330bf02d60994c65582741cd11d94b491` | 0 | 634 |
 
 Corpus shape:
 
@@ -81,6 +81,11 @@ The Parseman trivia-transfer hardening keeps CST throws at 0 after the
 unsupported-variable CST recovery regression, but it does move the broad CST
 aggregate. This still belongs to the named mover review and CST
 projection/minimization queue rather than a baseline update.
+
+The parser diagnostic message cleanup changes the AST aggregate because thrown
+direct-parser errors are part of the hashed AST surface. It does not change the
+AST throw count, common AST mover count, CST throw count, CST mover count, or
+CST aggregate.
 
 ## AST Mover Buckets
 
@@ -155,7 +160,7 @@ Path-level classification:
 Same-state comment-erasure probe:
 
 - The previous same-state comment-erasure probe covered 100 comment-bearing AST
-  movers. It is superseded by the current 120-entry set and must be rerun before
+  movers. It is superseded by the current 122-entry set and must be rerun before
   any baseline move.
 - The old result remains directional evidence only: most comment-bearing
   movement was source/trivia ownership, not semantic AST payload. It is not a
@@ -204,11 +209,11 @@ Do not update
 `packages/syntax/less/less-parser/test/oracle-byte-identity.baseline.json` from
 the current report until:
 
-1. the four parsed non-comment AST movers are covered or explicitly decided;
+1. the five parsed non-comment AST movers are covered or explicitly decided;
 2. the syntax-error mover buckets are accepted as diagnostic-shape changes, not
    parser acceptances;
 3. the two gained corpus entries are accepted as upstream fixture growth;
-4. the current 120-entry comment-erasure probe is rerun and focused
+4. the current 122-entry comment-erasure probe is rerun and focused
    comment/trivia fixtures cover comment-only mixin bodies, declaration-value
    trailing comments, selector-boundary comments, and comments inside at-rule
    preludes;

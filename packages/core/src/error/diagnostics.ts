@@ -121,7 +121,10 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
 }
 
 type ParserExpectedSummary = {
-  readonly code: 'parse/invalid-value' | 'parse/syntax-error';
+  readonly code:
+    | 'parse/invalid-value'
+    | 'parse/syntax-error'
+    | 'parse/unterminated-string';
   readonly message: string;
   readonly reason: string;
   readonly fix: string;
@@ -248,6 +251,7 @@ function delimiterConflictSummary(
 ): ParserSourceSummary | undefined {
   const stack: string[] = [];
   let quote: string | undefined;
+  let quoteOffset = -1;
   let inBlockComment = false;
   let inLineComment = false;
 
@@ -277,6 +281,7 @@ function delimiterConflictSummary(
       }
       if (current === quote) {
         quote = undefined;
+        quoteOffset = -1;
       }
       continue;
     }
@@ -293,6 +298,7 @@ function delimiterConflictSummary(
     }
     if (current === '"' || current === SINGLE_QUOTE) {
       quote = current;
+      quoteOffset = i;
       continue;
     }
     if (isOpeningDelimiter(current)) {
@@ -325,6 +331,16 @@ function delimiterConflictSummary(
       }
       stack.pop();
     }
+  }
+
+  if (quote !== undefined) {
+    return {
+      code: 'parse/unterminated-string',
+      message: 'Unterminated string.',
+      reason: `${dialect} expected the quoted string to be closed before the end of the source.`,
+      fix: 'Add the missing closing quote.',
+      offset: quoteOffset
+    };
   }
 
   const top = stack[stack.length - 1];

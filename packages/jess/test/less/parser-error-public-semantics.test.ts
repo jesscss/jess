@@ -347,6 +347,40 @@ describe('Less parser errors through the public AST route', () => {
     }
   });
 
+  it('uses source-backed string summaries for generic parser failures', async () => {
+    const compiler = new Compiler();
+    const cases = [
+      {
+        source: '@import "theme.less;',
+        column: 9
+      },
+      {
+        source: '.entry { content: \'hello; }',
+        column: 19
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const result = await compiler.renderToResult(
+        { source: testCase.source, filePath: 'string.less', extension: '.less' },
+        { breakOnError: false }
+      );
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        code: 'parse/unterminated-string',
+        phase: 'parse',
+        message: 'Unterminated string.',
+        reason: 'Less expected the quoted string to be closed before the end of the source.',
+        fix: 'Add the missing closing quote.',
+        line: 1,
+        column: testCase.column,
+        file: { source: testCase.source }
+      });
+      expect(result.errors[0]?.reason).not.toContain('rule, declaration, or at-rule');
+    }
+  });
+
   it('summarizes duplicate semicolon expectations without raw token lists', async () => {
     const source = [
       '',

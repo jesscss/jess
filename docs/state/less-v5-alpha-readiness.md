@@ -206,9 +206,15 @@ the Less v5 source as invalid. Dynamic `@charset` interpolation also reports
 reason/fix instead of falling back to generic parser guidance. Continue
 extending that parse-with-error shape to other migrations.
 
+The same public diagnostic boundary now summarizes generic unterminated string
+failures as `parse/unterminated-string` at the opening quote instead of a
+column-1 generic stylesheet failure. The direct Less `parse()` error path also
+keeps raw Parseman expected facts on `LessParseError.expected` for tooling while
+removing raw production/regex names from the thrown message.
+
 `pnpm run oracle:less:byte-identity` remains red against the committed parser
 surface baseline. Current output is 711 corpus entries, AST
-`8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d` with
+`9263d36f95280b7b8e897abbb44dc511a953bd01110b98899d92a918defcbd5a` with
 116 throws and 217 moved entries, and CST
 `3596049629b1441bed7f93100374c23330bf02d60994c65582741cd11d94b491` with
 0 throws and 634 moved entries. The custom-property `DirectLess*` rename was
@@ -662,6 +668,15 @@ earlier, before a manual publish attempt.
   `DirectLess*` migration prefix while keeping the same public CST node labels.
   Verification passed the focused Less parser support/public parse tests,
   `pnpm run check:macro`, and `pnpm run verify:compose-integrity`.
+- 2026-07-28: Less parser diagnostics gained source-backed
+  `parse/unterminated-string` summaries for generic quote failures, and direct
+  `LessParseError` messages stopped exposing raw Parseman expected-token text.
+  Verification passed the Less parser public parse test, the Jess
+  `parser-error-public-semantics`/`all-less-error` tests, and the core/Jess
+  build chain. `pnpm run check:macro`, `pnpm run verify:compose-integrity`, and
+  `pnpm run verify:less-alpha` passed; `pnpm run oracle:less:byte-identity`
+  remains red with unchanged throw/mover counts and unchanged CST aggregate, but
+  the AST aggregate moved because direct parse diagnostic text is hashed.
 - 2026-07-27: Pushed the folded-grammar/compiler/diagnostic batch to `origin/dev`
   at `fb13eef67`. Verification on the committed tree passed `pnpm run
   check:macro` (0 interpreter fallbacks), `pnpm run verify:compose-integrity`,
