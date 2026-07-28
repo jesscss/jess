@@ -233,17 +233,16 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `35633d4b88f289ab7814afac4e06e9255df73619`,
-then `0cf35355688da91c17c31e7c624be9a90ec9ccca`, clean worktree, PR
-open/non-draft with merge state `CLEAN`. GitHub Actions are green on
-`0cf35355`, and the CodeRabbit status context is green, but the latest
-complete review still lists actionable fixture comments. The later CodeRabbit
-run covering `35633d4b` -> `0cf35355` was rate-limited after selecting only
-the publish-script files, so treat the remote-tag comment as fixed by the
-`fix(release): abort on remote tag mismatch` commit but not yet bot-resolved.
+evidence: branch `less-5-alpha.1` at `6399232ba9667d83ce2f484e95e1bc6e90d3bbd2`,
+clean worktree, PR open/non-draft. GitHub Actions are green on `6399232b` after
+the container expected-CSS fix; CodeRabbit is pending on that head, so the PR
+merge state is temporarily `UNSTABLE` until the bot context settles. The older
+complete review text still lists stale comments from `35633d4b`: the remote-tag
+comment is fixed by `0cf35355`, and the two `container.css` fixture comments
+are fixed by `6399232b`.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `0cf35355`, `pnpm run test:alpha` passes the
+`2.0.0-alpha.10`: on PR head `6399232b`, `pnpm run test:alpha` passes the
 Less package typecheck, build, `lessc` smoke tests, alpha support contract,
 publish dry-run tests, and packed-consumer proof. The packed consumer installs
 the direct Jess runtime closure and does not install the batteries-included
@@ -266,14 +265,15 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are PR-review blockers, not
-Jess registry availability. Before merge/publish, resolve or explicitly
-disposition the missing `.widget.repositoriesresults` selector expansion in
-the container expected CSS, the `scroll-state (` spacing in the same fixture,
-and the intentional custom unit expectations in
-`variables/legacy/variable-advanced.css`. The remote-tag mismatch behavior in
-`scripts/bump-and-publish.js` is fixed locally on the PR branch; leave it on the
-review checklist only until the stale bot comment is resolved or superseded.
+Current package-flow blockers, verified 2026-07-28, are PR-review/status
+blockers, not Jess registry availability. The missing
+`.widget.repositoriesresults` selector expansion and `scroll-state (`
+spacing comments in `container.css` are fixed on the PR branch and the external
+alpha gate passes. The intentional custom-unit note in
+`variables/legacy/variable-advanced.css` remains a review disposition item
+rather than a code fix: this branch has no Stylelint config, no Stylelint script,
+and the file states that it is a historical Less 4.x output record that no test
+reads. Do not add suppression comments there unless a real lint gate appears.
 
 Before treating PR #19 as alpha.1-mergeable, port or consciously classify the
 upstream fixture/test-data gap from `upstream/master` after the PR's current
