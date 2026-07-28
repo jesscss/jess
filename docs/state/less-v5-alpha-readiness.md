@@ -43,7 +43,7 @@ baseline only and never as a performance acceptance claim.
   `pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks; and
   `pnpm run verify:less-alpha` passes. The full strict-type release chain still
   belongs to `pnpm run release:alpha:check` before publishing.
-- Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
+- Alpha closure: `scripts/release/alpha-allowlist.json` contains **21
   allowlisted runtime packages**, including `@jesscss/compiler`.
   `rollup-plugin-jess` is intentionally excluded because it depends on `jess`
   and is not part of the runtime closure. Current `dev` validates this publish
@@ -52,7 +52,7 @@ baseline only and never as a performance acceptance claim.
   and `jess`.
 
   Release status, verified 2026-07-28: `origin/alpha` is at `b1f276458` and
-  tagged `v2.0.0-alpha.10`. The alpha allowlist contains 18 packages including
+  tagged `v2.0.0-alpha.10`. The alpha allowlist contains 21 packages including
   `@jesscss/compiler`, and npm resolves both `jess@alpha` and
   `@jesscss/compiler@alpha` to `2.0.0-alpha.10`. The `dev` manifests remain
   placeholder `2.0.0-alpha.5`; future alpha releases still use the
@@ -238,8 +238,10 @@ conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
 Jess/Linecraft diagnostic renderer. Local verification on `c06338a4` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
-and packed-consumer proof. GitHub Actions and CodeRabbit need to be rechecked
-on this head before merge.
+and packed-consumer proof. GitHub evidence on 2026-07-28 reports PR #19
+merge-state `CLEAN`; CI is green across ubuntu/macOS/windows and Node current,
+LTS, LTS-1, and LTS-2; CodeRabbit is green; release-PR automation jobs are
+skipped as expected.
 
 Current package/release gates are registry-backed against published Jess
 `2.0.0-alpha.10`: on PR head `c06338a4`, `pnpm run test:alpha` passes the
@@ -262,6 +264,13 @@ direct Jess runtime closure and does not install the batteries-included `jess`
 package. `packages/less/package.json` uses published `@jesscss/*` alpha
 dependencies, has no direct `jess` dependency, and keeps `@jesscss/plugin-js`
 as an optional peer only.
+
+After `8b78b1afa`, Jess `dev` also removes the Less-specific
+`importLessPlugin` method from the generic `@jesscss/compiler` script-plugin
+proxy, keeps executable plugin loading behind `PluginInterface.importPlugin`,
+and routes Less `@plugin` through the canonical `deprecation/less-plugin`
+warning channel. This keeps `@jesscss/plugin-js` optional while preserving the
+legacy Less runtime inside that plugin package.
 
 Jess-side package layering now uses a generic compiler host:
 `@jesscss/compiler` owns the render pipeline, while the `jess` package supplies
@@ -715,6 +724,10 @@ earlier, before a manual publish attempt.
   Jess `dev` also has the single-frame diagnostic renderer fix; the external
   proof waits for the next Jess alpha publish/dependency bump because PR #19
   still consumes published `2.0.0-alpha.10`.
+- 2026-07-28: Rechecked PR #19 through GitHub: merge-state `CLEAN`, CI and
+  CodeRabbit green on `c06338a4`, release-PR jobs skipped as expected. Jess
+  `dev` commit `8b78b1afa` keeps the compiler script-plugin proxy generic and
+  adds the canonical `deprecation/less-plugin` warning path for Less `@plugin`.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,

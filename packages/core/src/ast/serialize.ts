@@ -125,6 +125,7 @@ import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js
 import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
+import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
@@ -719,6 +720,16 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
           ? statement.target.value.value
           : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
+      const deprecation = Deprecation.fromId('less-plugin') ?? Deprecation.userAuthored;
+      e.context?.warnDeprecation(deprecation, WARN.deprecated({
+        node: statement,
+        ...callSiteLocation(statement, e),
+        meta: {
+          what: 'Less @plugin',
+          use: '@use or @-use',
+          deprecation
+        }
+      }));
 
       /*
        * A `@plugin` that cannot be resolved, or whose script throws while
@@ -5474,6 +5485,98 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
   put(e, source.slice(start, end));
 }
 
+function firstDeclarationColon(source: string, span: AstSourceSpan): number | null {
+  let index = span.start;
+  while (index < span.end) {
+    const char = source[index]!;
+    const next = source[index + 1];
+    if (char === '/' && next === '*') {
+      const close = source.indexOf('*/', index + 2);
+      if (close < 0 || close + 2 > span.end) {
+        return null;
+      }
+      index = close + 2;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      const newline = source.indexOf('\n', index + 2);
+      index = newline < 0 || newline > span.end ? span.end : newline + 1;
+      continue;
+    }
+    if (char === '"' || char === '\'') {
+      const quote = char;
+      index++;
+      while (index < span.end) {
+        const inner = source[index]!;
+        index += inner === '\\' ? 2 : 1;
+        if (inner === quote) {
+          break;
+        }
+      }
+      continue;
+    }
+    if (char === ':') {
+      return index;
+    }
+    index++;
+  }
+  return null;
+}
+
+function declarationHeadTriviaText(node: Declaration, e: Emit): string {
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return '';
+  }
+  const source = triviaSource(trivia);
+  if (source === undefined) {
+    return '';
+  }
+  const colon = firstDeclarationColon(source, span);
+  if (colon === null) {
+    return '';
+  }
+  let text = '';
+  let cursor = span.start;
+  const runs = trivia.commentRuns();
+  for (let index = 0; index < runs.length; index++) {
+    const run = runs[index]!;
+    if (run.start < span.start) {
+      continue;
+    }
+    if (run.start < cursor) {
+      continue;
+    }
+    if (run.start >= colon) {
+      break;
+    }
+    if (run.end > colon || run.src !== source || blockCommentsIn(run).length === 0) {
+      continue;
+    }
+    let widest = run;
+    let probeIndex = index + 1;
+    while (probeIndex < runs.length) {
+      const probe = runs[probeIndex]!;
+      if (probe.start !== run.start) {
+        break;
+      }
+      if (probe.end <= colon && probe.src === source && blockCommentsIn(probe).length > 0 && probe.end > widest.end) {
+        widest = probe;
+      }
+      probeIndex++;
+    }
+    for (const contained of runs) {
+      if (contained.src === source && contained.start >= widest.start && contained.end <= widest.end) {
+        e.emittedBlockTrivia.add(contained);
+      }
+    }
+    text += source.slice(widest.start, widest.end);
+    cursor = widest.end;
+  }
+  return text;
+}
+
 function cursorAfterLiteralWithTrivia(source: string, start: number, end: number, lit: string): number | null {
   let cursor = start;
   for (let i = 0; i < lit.length; i += 1) {
@@ -9799,6 +9902,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     }
     put(e, idt);
     put(e, name); // resolve interpolated property name
+    put(e, declarationHeadTriviaText(node, e));
     const onNewLine = node.valueOnNewLine === true;
     put(e, onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
@@ -11954,6 +12058,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
       put(e, idt);
     }
     put(e, declName(node, frame, e)); // resolve interpolated property name
+    put(e, declarationHeadTriviaText(node, e));
     const onNewLine = node.valueOnNewLine === true;
     put(e, onNewLine ? ':' : ': ');
     const valStart = e.off;

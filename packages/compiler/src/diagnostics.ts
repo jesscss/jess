@@ -62,9 +62,13 @@ export function outputDiagnostics(
 
     /** Display config for errors (scalar tier or object). Default tier `frame`. */
     errors?: ErrorsConfigInput;
+
+    /** Emit ANSI color and terminal hyperlinks. Default: true. */
+    colors?: boolean;
   } = {}
 ): void {
   const { suppressWarnings = false, breakOnError = true, verbose = false } = options;
+  const colors = options.colors ?? true;
 
   const warnCfg = resolveWarningsConfig({ warnings: options.warnings, verbose });
   const errCfg = resolveErrorsConfig(options.errors);
@@ -76,7 +80,8 @@ export function outputDiagnostics(
       icon: WARN_ICON,
       type: 'warning',
       stream: process.stdout,
-      verbose
+      verbose,
+      colors
     });
   }
 
@@ -88,7 +93,8 @@ export function outputDiagnostics(
       icon: ERROR_ICON,
       type: 'error',
       stream: process.stderr,
-      verbose
+      verbose,
+      colors
     });
   }
 }
@@ -99,6 +105,7 @@ interface TierContext {
   type: 'error' | 'warning';
   stream: NodeJS.WriteStream;
   verbose: boolean;
+  colors: boolean;
 }
 
 function renderTiered(diagnostics: AnyDiagnostic[], ctx: TierContext): void {
@@ -123,10 +130,10 @@ function renderTiered(diagnostics: AnyDiagnostic[], ctx: TierContext): void {
         renderBlock(diagnostic, ctx.icon, ctx.stream);
         break;
       case 'line':
-        renderLine(diagnostic, ctx.icon, ctx.stream);
+        renderLine(diagnostic, ctx.icon, ctx.stream, ctx.colors);
         break;
       case 'frame':
-        outputDiagnostic(diagnostic, ctx.type, ctx.stream, ctx.verbose);
+        outputDiagnostic(diagnostic, ctx.type, ctx.stream, ctx.verbose, ctx.colors);
         break;
     }
   }
@@ -209,13 +216,14 @@ function renderSummary(
 function renderLine(
   diagnostic: AnyDiagnostic,
   icon: string,
-  stream: NodeJS.WriteStream
+  stream: NodeJS.WriteStream,
+  colors: boolean
 ): void {
   const { code, message, filePath, line, column } = diagnostic;
   const abs = filePath ? resolve(filePath) : '';
   const shortPath = filePath ? relative(process.cwd(), filePath) : '(unknown)';
   const label = `${shortPath}:${line}:${column}`;
-  const link = abs ? oscLink(`vscode://file/${abs}:${line}:${column}`, label) : label;
+  const link = colors && abs ? oscLink(`vscode://file/${abs}:${line}:${column}`, label) : label;
   stream.write(`${icon} ${code}  ${message}  ·  ${link}\n`);
 }
 
@@ -235,6 +243,15 @@ function diagnosticWidth(stream: NodeJS.WriteStream): number {
   return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 80;
 }
 
+const OSC8_SEQUENCE = /\x1B\]8;;.*?\x1B\\/g;
+const ANSI_SGR_SEQUENCE = /\x1B\[[0-9;]*m/g;
+
+function stripTerminalStyle(output: string): string {
+  return output
+    .replace(OSC8_SEQUENCE, '')
+    .replace(ANSI_SGR_SEQUENCE, '');
+}
+
 /**
  * `frame` tier: a full linecraft code frame. Any include/call stack the
  * diagnostic already carries (via `note`) is appended; no stack is synthesized.
@@ -244,7 +261,8 @@ function outputDiagnostic(
   diagnostic: AnyDiagnostic,
   type: 'error' | 'warning',
   stream: NodeJS.WriteStream = process.stdout,
-  verbose = false
+  verbose = false,
+  colors = true
 ): void {
   const { code, phase, message, reason, fix, filePath, line, column, lines, note } = diagnostic;
   const endLine = 'endLine' in diagnostic ? diagnostic.endLine : undefined;
@@ -301,7 +319,8 @@ function outputDiagnostic(
   }));
 
   for (let lineIndex = 1; lineIndex <= region.height; lineIndex++) {
-    stream.write(`${region.getLine(lineIndex)}\n`);
+    const line = region.getLine(lineIndex);
+    stream.write(`${colors ? line : stripTerminalStyle(line)}\n`);
   }
 
   region.destroy(false);

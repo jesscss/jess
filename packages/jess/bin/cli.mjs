@@ -19,6 +19,9 @@ function printCompileUsage() {
 
 Compile .less / .jess files to CSS.
 
+Options:
+  --no-color    Disable ANSI color and terminal hyperlinks in diagnostics.
+
 Examples:
   jess input.less
   jess input.less output.css
@@ -60,8 +63,10 @@ async function runCompile(args) {
   const { values, positionals } = parseCliArgs({
     args,
     allowPositionals: true,
+    allowNegative: true,
     options: {
       out: { type: 'string', short: 'o' },
+      color: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' }
     }
   });
@@ -82,7 +87,9 @@ async function runCompile(args) {
   const startTime = Date.now();
 
   try {
-    const css = await compiler.render(path.resolve(inFile));
+    const css = await compiler.render(path.resolve(inFile), {
+      colors: values.color ?? true
+    });
     await writeFile(path.join(outDir, outName), css);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`Compiled ${inFile} → ${path.join(outDir, outName)} (${elapsed}s)`);

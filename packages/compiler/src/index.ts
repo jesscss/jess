@@ -45,6 +45,9 @@ export type ConfigOptions = StylesConfig & {
   /** Show detailed reason and fix in diagnostics. Default: false */
   verbose?: boolean;
 
+  /** Emit ANSI color and terminal hyperlinks in diagnostics. Default: true */
+  colors?: boolean;
+
   /** Deprecation warnings of these types will cause an error to be thrown */
   fatalDeprecations?: Iterable<Deprecation>;
 
@@ -130,6 +133,9 @@ function appendThrownJessDiagnostic(
 
 type PluginFactoryCacheKey = string;
 type LazyPluginInterface = PluginInterface;
+type ExecutablePluginInterface = PluginInterface & {
+  importPlugin(absoluteFilePath: string, options?: string | null): Promise<unknown>;
+};
 type ProfileMemorySnapshot = {
   rss: number;
   heapTotal: number;
@@ -235,6 +241,10 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function isPluginInterface(value: unknown): value is PluginInterface {
   return isObjectRecord(value) && typeof value.name === 'string';
+}
+
+function isExecutablePluginInterface(value: PluginInterface): value is ExecutablePluginInterface {
+  return typeof value.importPlugin === 'function';
 }
 
 function getSearchPaths(options: Record<string, unknown>): string[] | undefined {
@@ -779,23 +789,12 @@ export class Compiler {
         }
         return plugin.import(absoluteFilePath);
       },
-      importLessPlugin: async (absoluteFilePath: string) => {
-        const plugin = await getScriptRuntimePlugin() as PluginInterface & {
-          importLessPlugin?: (absoluteFilePath: string, options?: string | null) => Promise<unknown>;
-        };
-        if (!plugin.importLessPlugin) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable Less @plugin script execution.`);
-        }
-        return plugin.importLessPlugin(absoluteFilePath);
-      },
       importPlugin: async (absoluteFilePath: string, options?: string | null) => {
-        const plugin = await getScriptRuntimePlugin() as PluginInterface & {
-          importLessPlugin?: (absoluteFilePath: string, options?: string | null) => Promise<unknown>;
-        };
-        if (!plugin.importLessPlugin) {
+        const plugin = await getScriptRuntimePlugin();
+        if (!isExecutablePluginInterface(plugin)) {
           throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable executable plugin modules.`);
         }
-        return plugin.importLessPlugin(absoluteFilePath, options);
+        return plugin.importPlugin(absoluteFilePath, options);
       },
       dispose: async () => {
         const plugins = await Promise.all([
@@ -806,9 +805,6 @@ export class Compiler {
           await plugin?.dispose?.();
         }
       }
-    } as LazyPluginInterface & {
-      importLessPlugin(absoluteFilePath: string): Promise<unknown>;
-      importPlugin(absoluteFilePath: string, options?: string | null): Promise<unknown>;
     };
     this.jsPluginProxyCache.set(factoryRecord.key, proxy);
     return proxy;
@@ -1112,7 +1108,8 @@ export class Compiler {
           breakOnError: options?.breakOnError ?? true,
           verbose: options?.verbose ?? false,
           warnings: options?.warnings,
-          errors: options?.errors
+          errors: options?.errors,
+          colors: options?.colors
         });
       }
 
@@ -1130,7 +1127,8 @@ export class Compiler {
           breakOnError: options?.breakOnError ?? true,
           verbose: options?.verbose ?? false,
           warnings: options?.warnings,
-          errors: options?.errors
+          errors: options?.errors,
+          colors: options?.colors
         });
       } else {
         logger.error(String(err));
@@ -1162,7 +1160,8 @@ export class Compiler {
       breakOnError: options?.breakOnError ?? true,
       verbose: options?.verbose ?? false,
       warnings: options?.warnings,
-      errors: options?.errors
+      errors: options?.errors,
+      colors: options?.colors
     });
   }
 
@@ -1308,7 +1307,8 @@ export class Compiler {
           breakOnError: renderOptions?.breakOnError ?? true,
           verbose: renderOptions?.verbose ?? false,
           warnings: renderOptions?.warnings,
-          errors: renderOptions?.errors
+          errors: renderOptions?.errors,
+          colors: renderOptions?.colors
         });
       }
 

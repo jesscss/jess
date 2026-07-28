@@ -78,9 +78,10 @@ describe("Jess restricted script runtime integration", () => {
     ]);
   });
 
-  it("@plugin-registered function runs and accesses process when in Node (pluginRegistry path)", async () => {
+  it('configured Less compatibility functions run in-process', async () => {
     /*
-     * Uses pluginRegistry to bypass file-based @plugin loading (which requires plugin-js/Deno).
+     * Configured compatibility plugins bypass file-based @plugin loading (which
+     * requires plugin-js/Deno).
      * In Node (Vitest), the function runs in-process and can access process.env → LEAKED.
      * When @plugin file loading runs in Deno (via plugin-js), it would return DENIED.
      */
@@ -90,26 +91,26 @@ describe("Jess restricted script runtime integration", () => {
         _manager: unknown,
         functions: { add: (name: string, fn: () => string) => void }
       ) {
-        functions.add("evil", function () {
+        functions.add('evil', function() {
           try {
             const p =
-              typeof process !== "undefined" && process.env
+              typeof process !== 'undefined' && process.env
                 ? process.env.HOME
                 : null;
-            return p ?? "LEAKED";
+            return p ?? 'LEAKED';
           } catch {
-            return "DENIED";
+            return 'DENIED';
           }
         });
       },
     };
 
     const root = makeTmpDir();
-    const lessPath = path.join(root, "main.less");
+    const lessPath = path.join(root, 'main.less');
     fs.writeFileSync(
       lessPath,
-      ['@plugin "evil-plugin";', ".x { value: evil(); }"].join("\n"),
-      "utf8"
+      '.x { value: evil(); }',
+      'utf8'
     );
     const compiler = new Compiler({
       output: { collapseNesting: true },
@@ -117,11 +118,10 @@ describe("Jess restricted script runtime integration", () => {
         plugins: [
           lessPlugin(),
           lessCompatPlugin({
-            // eslint-disable-next-line @typescript-eslint/naming-convention -- Less @plugin path must match registry key
-            pluginRegistry: { "evil-plugin": evilPlugin },
-          }),
-        ],
-      },
+            plugins: [evilPlugin]
+          })
+        ]
+      }
     });
     const { css } = await compiler.renderToResult(lessPath);
 
@@ -172,13 +172,11 @@ describe("Jess restricted script runtime integration", () => {
       },
     });
 
-    const { css, warnings, errors } = await compiler.renderToResult(lessPath, {
-      suppressWarnings: true,
-    });
+    const { css, warnings, errors } = await compiler.renderToResult(lessPath);
     expect(errors).toEqual([]);
     expect(css).toContain("value: DENIED;");
     expect(css).toContain("width: 6px;");
-    expect(warnings.some((warning) => warning.code === "eval/deprecated")).toBe(
+    expect(warnings.some(warning => warning.code === 'deprecation/less-plugin')).toBe(
       true
     );
   });
