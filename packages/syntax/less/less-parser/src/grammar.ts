@@ -2735,7 +2735,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     functionArgument,
     many(sequence(
       functionArgumentSeparator,
-      functionArgument,
+      functionArgument
     )),
     optional(trailingFunctionArgumentSeparator)
   ));
@@ -2767,7 +2767,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.CallArgumentValue,
     many(sequence(
       callArgumentFunctionSeparator,
-      g.CallArgumentValue,
+      g.CallArgumentValue
     )),
     optional(trailingCallArgumentFunctionSeparator)
   ));
@@ -3372,11 +3372,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       noTrivia(sequence(
         field('valueGap', regex(/[ \t\n\r\f]*/)),
         // Less accepts an explicit empty declaration value (`margin: ;`). Keep
-	        // it as a canonical empty opaque value rather than dropping the
-	        // declaration or falling back to a second parser.
-	        optional(g.ValueListWithPriority)
-	      ))
-	    )),
+        // it as a canonical empty opaque value rather than dropping the
+        // declaration or falling back to a second parser.
+        optional(g.ValueListWithPriority)
+      ))
+    )),
     (children, fields, span) => {
       // Property, delimiter, and value are independently recognized grammar
       // children; AST construction does not split or reclassify authored text.
@@ -3435,10 +3435,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessPunctuationMapDeclaration = node<Declaration>(
     'DirectLessPunctuationMapDeclaration',
     sequence(
-	      g.LessSyntaxPunctuationMapKey,
-	      literal(':'),
-	      optional(g.ValueListWithPriority)
-	    ),
+      g.LessSyntaxPunctuationMapKey,
+      literal(':'),
+      optional(g.ValueListWithPriority)
+    ),
     (children, _fields, span) => {
       const value = children.find(isValueSlotValue);
       return withSourceSpan(
@@ -4058,7 +4058,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         peek(literal('}'))
       )
     ),
-    children => {
+    (children) => {
       const declaration = children.find(isDeclaration);
       if (declaration === undefined) {
         throw new TypeError('Direct Less declaration-list item lost its declaration fact.');
@@ -4077,7 +4077,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         stylesheetEnd
       )
     ),
-    children => {
+    (children) => {
       const declaration = children.find(isDeclaration);
       if (declaration === undefined) {
         throw new TypeError('Direct Less root declaration item lost its declaration fact.');
@@ -4095,7 +4095,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         peek(literal('}'))
       )
     ),
-    children => {
+    (children) => {
       const declaration = children.find(isDeclaration);
       if (declaration === undefined) {
         throw new TypeError('Direct Less punctuation map item lost its declaration fact.');
@@ -5223,7 +5223,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessStaticSelectorPseudoRouted = node<SimpleToken>(
     'DirectLessStaticSelectorPseudo',
     sequence(routed(), DirectLessStaticPseudoArgument, literal(')')),
-    (children) => staticSelectorPseudoFrom(
+    children => staticSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
       children[1]
     )
@@ -5247,7 +5247,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessStaticNonSelectorPseudoRouted = node<SimpleSelector>(
     'DirectLessStaticNonSelectorPseudo',
     sequence(routed(), g.DirectLessStaticNonSelectorPseudoArgument, literal(')')),
-    (children) => staticNonSelectorPseudoFrom(
+    children => staticNonSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
       requireString(children[1])
     )
@@ -5832,16 +5832,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ContainerCondition,
     MediaContainerBody,
     MediaContainerBlock,
-  KeyframeSelector,
-  KeyframeBlock,
-  Keyframes,
-  DottedAtRuleKeyword,
-  StaticAtRuleAtom,
-  StaticAtRuleTerm,
-  StaticAtRulePrelude,
-  CssAtRulePrelude,
-  NamespacePrelude,
-  AtRuleBlock,
+    KeyframeSelector,
+    KeyframeBlock,
+    Keyframes,
+    DottedAtRuleKeyword,
+    StaticAtRuleAtom,
+    StaticAtRuleTerm,
+    StaticAtRulePrelude,
+    CssAtRulePrelude,
+    NamespacePrelude,
+    AtRuleBlock,
     OpaqueAtPrelude,
     OpaqueBody,
     OpaqueAtRuleBlock,

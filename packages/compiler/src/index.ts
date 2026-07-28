@@ -469,7 +469,7 @@ export class Compiler {
       output: {},
       language: {}
     },
-    private readonly hooks: CompilerHooks = {}
+  private readonly hooks: CompilerHooks = {}
   ) {
     this.opts = opts;
     this.baseOptsNormalized = mergeWith(
@@ -1003,31 +1003,31 @@ export class Compiler {
           filePath,
           type: language,
           extension
-      }));
+        }));
       return parsed.node;
     }
     const loaded = this.hooks.prepareSource
       ? await measureProfileAsync(profile, 'getPreparedRootTree', async () => {
-        const { resolvedPath } = await context.resolveImportPath(filePath!);
-        const sourceGetter = context.plugins.find(plugin => plugin.getSource);
-        if (!sourceGetter?.getSource) {
-          throw new Error('No source getter found');
-        }
-        const rootSource = await sourceGetter.getSource(resolvedPath);
-        const preparedSource = this.hooks.prepareSource?.(rootSource, {
-          ...pluginContext,
-          filePath: resolvedPath
-        }) ?? rootSource;
-        const parsed = await context.parseString(preparedSource, {
-          filePath: resolvedPath,
-          type: language,
-          extension
-        });
-        if (parsed.node) {
-          context.sourceTrees.set(resolvedPath, parsed.node);
-        }
-        return parsed;
-      })
+          const { resolvedPath } = await context.resolveImportPath(filePath!);
+          const sourceGetter = context.plugins.find(plugin => plugin.getSource);
+          if (!sourceGetter?.getSource) {
+            throw new Error('No source getter found');
+          }
+          const rootSource = await sourceGetter.getSource(resolvedPath);
+          const preparedSource = this.hooks.prepareSource?.(rootSource, {
+            ...pluginContext,
+            filePath: resolvedPath
+          }) ?? rootSource;
+          const parsed = await context.parseString(preparedSource, {
+            filePath: resolvedPath,
+            type: language,
+            extension
+          });
+          if (parsed.node) {
+            context.sourceTrees.set(resolvedPath, parsed.node);
+          }
+          return parsed;
+        })
       : await measureProfileAsync(profile, 'getTree', () => context.getTree(filePath!));
     if (!loaded.node) {
       throw new Error(`Failed to load ${filePath!}`);

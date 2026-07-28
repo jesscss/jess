@@ -1,55 +1,55 @@
-import type { DiagnosticDisplay } from "../warnings.js";
+import type { DiagnosticDisplay } from '../warnings.js';
 
 export type Phase =
-  | "parse"
-  | "resolve"
-  | "import"
-  | "eval"
-  | "extend"
-  | "plugin";
-export type Severity = "error" | "warn";
+  | 'parse'
+  | 'resolve'
+  | 'import'
+  | 'eval'
+  | 'extend'
+  | 'plugin';
+export type Severity = 'error' | 'warn';
 
 export type JessErrorCode =
-  | "parse/unexpected-token"
-  | "parse/unterminated-string"
-  | "parse/unexpected-syntax"
-  | "parse/syntax-error"
+  | 'parse/unexpected-token'
+  | 'parse/unterminated-string'
+  | 'parse/unexpected-syntax'
+  | 'parse/syntax-error'
   | 'parse/invalid-value'
-  | "parse/dynamic-charset"
-  | "parse/unsupported-inline-javascript"
-  | "parse/unsupported-bare-variable-interpolation"
+  | 'parse/dynamic-charset'
+  | 'parse/unsupported-inline-javascript'
+  | 'parse/unsupported-bare-variable-interpolation'
   | 'parse/unsupported-variable-name'
   | 'parse/unsupported-mixin-name'
   | 'parse/unparenthesized-mixin-guard'
-  | "resolve/name-not-found"
-  | "import/circular-compose"
-  | "import/not-found"
-  | "eval/bad-call-arity"
-  | "eval/type-mismatch"
-  | "eval/invalid-function"
-  | "eval/ambiguous-default"
-  | "eval/invalid-statement"
-  | "eval/property-in-root"
-  | "eval/root-call-without-root"
-  | "eval/guarded-selector-list"
-  | "eval/ruleset-on-property"
-  | "eval/async-in-sync-position"
-  | "eval/recursive-reference"
+  | 'resolve/name-not-found'
+  | 'import/circular-compose'
+  | 'import/not-found'
+  | 'eval/bad-call-arity'
+  | 'eval/type-mismatch'
+  | 'eval/invalid-function'
+  | 'eval/ambiguous-default'
+  | 'eval/invalid-statement'
+  | 'eval/property-in-root'
+  | 'eval/root-call-without-root'
+  | 'eval/guarded-selector-list'
+  | 'eval/ruleset-on-property'
+  | 'eval/async-in-sync-position'
+  | 'eval/recursive-reference'
   | 'eval/invalid-unit-arithmetic'
-  | "eval/unit-conversion"
-  | "extend/protected-boundary"
-  | "extend/not-found"
-  | "extend/not-accessible"
-  | "plugin/unsupported-feature"
-  | "plugin/function-threw"
-  | "plugin/load-failed"
-  | "plugin/log"
-  | "eval/deprecated"
-  | "resolve/unused-variable"
-  | "selector/duplicate"
-  | "selector/parentless-ampersand"
-  | "selector/comma-list-interpolation"
-  | "function/unresolved";
+  | 'eval/unit-conversion'
+  | 'extend/protected-boundary'
+  | 'extend/not-found'
+  | 'extend/not-accessible'
+  | 'plugin/unsupported-feature'
+  | 'plugin/function-threw'
+  | 'plugin/load-failed'
+  | 'plugin/log'
+  | 'eval/deprecated'
+  | 'resolve/unused-variable'
+  | 'selector/duplicate'
+  | 'selector/parentless-ampersand'
+  | 'selector/comma-list-interpolation'
+  | 'function/unresolved';
 
 /**
  * Template record for codes. Keep these short and actionable.
@@ -60,36 +60,36 @@ type Template = { summary: string; reason: string; fix: string };
 const TEMPLATES = new Map<JessErrorCode, Template>([
   // Parse/Lex
   [
-    "parse/unexpected-token",
+    'parse/unexpected-token',
     {
-      summary: "Unexpected token",
+      summary: 'Unexpected token',
       reason: 'Token "${token}" is not valid here.',
-      fix: "Check for a missing quote/comma or wrong operator.",
-    },
+      fix: 'Check for a missing quote/comma or wrong operator.'
+    }
   ],
   [
-    "parse/unterminated-string",
+    'parse/unterminated-string',
     {
-      summary: "Unterminated string",
-      reason: "Missing closing quote.",
-      fix: 'Close the string, e.g. url("hero.jpg").',
-    },
+      summary: 'Unterminated string',
+      reason: 'Missing closing quote.',
+      fix: 'Close the string, e.g. url("hero.jpg").'
+    }
   ],
   [
-    "parse/unexpected-syntax",
+    'parse/unexpected-syntax',
     {
-      summary: "Unexpected syntax",
-      reason: "Expected ${expected}, got ${got}.",
-      fix: "Add the expected token or remove the unexpected one.",
-    },
+      summary: 'Unexpected syntax',
+      reason: 'Expected ${expected}, got ${got}.',
+      fix: 'Add the expected token or remove the unexpected one.'
+    }
   ],
   [
-    "parse/syntax-error",
+    'parse/syntax-error',
     {
-      summary: "Syntax error",
-      reason: "${message}",
-      fix: "Check surrounding tokens near this location.",
-    },
+      summary: 'Syntax error',
+      reason: '${message}',
+      fix: 'Check surrounding tokens near this location.'
+    }
   ],
   [
     'parse/invalid-value',
@@ -100,29 +100,29 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
-    "parse/dynamic-charset",
+    'parse/dynamic-charset',
     {
-      summary: "Dynamic @charset is not valid",
-      reason: "Interpolation is not valid inside the CSS @charset token.",
+      summary: 'Dynamic @charset is not valid',
+      reason: 'Interpolation is not valid inside the CSS @charset token.',
       fix: 'Use a static declaration such as @charset "UTF-8";'
-    },
+    }
   ],
   [
-    "parse/unsupported-inline-javascript",
+    'parse/unsupported-inline-javascript',
     {
-      summary: "Inline JavaScript is not supported",
-      reason: "Backtick JavaScript expressions are not evaluated.",
-      fix: "Move the expression into an explicit @from/@-from script import or a plugin function.",
-    },
+      summary: 'Inline JavaScript is not supported',
+      reason: 'Backtick JavaScript expressions are not evaluated.',
+      fix: 'Move the expression into an explicit @from/@-from script import or a plugin function.'
+    }
   ],
   [
-    "parse/unsupported-bare-variable-interpolation",
+    'parse/unsupported-bare-variable-interpolation',
     {
-      summary: "Bare variable interpolation is not valid here",
+      summary: 'Bare variable interpolation is not valid here',
       reason:
-        "Bare @variable references are values; syntax and prelude interpolation must use @{variable}.",
-      fix: "Wrap the variable name in interpolation braces, for example @{name}.",
-    },
+        'Bare @variable references are values; syntax and prelude interpolation must use @{variable}.',
+      fix: 'Wrap the variable name in interpolation braces, for example @{name}.'
+    }
   ],
   [
     'parse/unsupported-variable-name',
@@ -151,116 +151,116 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
 
   // Resolve/Import
   [
-    "resolve/name-not-found",
+    'resolve/name-not-found',
     {
-      summary: "Name not found",
+      summary: 'Name not found',
       reason: 'Symbol "${symbol}" is undefined in this scope.',
-      fix: 'Define "${symbol}" or import a file that provides it.',
-    },
+      fix: 'Define "${symbol}" or import a file that provides it.'
+    }
   ],
   [
-    "import/circular-compose",
+    'import/circular-compose',
     {
-      summary: "Circular @-compose detected",
-      reason: "${chain}",
-      fix: "Break the cycle (extract shared bits and compose that).",
-    },
+      summary: 'Circular @-compose detected',
+      reason: '${chain}',
+      fix: 'Break the cycle (extract shared bits and compose that).'
+    }
   ],
   [
-    "import/not-found",
+    'import/not-found',
     {
-      summary: "Import not found",
+      summary: 'Import not found',
       reason: 'Could not resolve "${specifier}" from "${from}".',
-      fix: "Check the import path, extension, and configured include paths.",
-    },
+      fix: 'Check the import path, extension, and configured include paths.'
+    }
   ],
 
   // Eval
   [
-    "eval/bad-call-arity",
+    'eval/bad-call-arity',
     {
-      summary: "Bad call: wrong arity",
-      reason: "${callee} expects ${expectedCount} args, got ${gotCount}.",
-      fix: "Add/remove arguments to match the signature.",
-    },
+      summary: 'Bad call: wrong arity',
+      reason: '${callee} expects ${expectedCount} args, got ${gotCount}.',
+      fix: 'Add/remove arguments to match the signature.'
+    }
   ],
   [
-    "eval/type-mismatch",
+    'eval/type-mismatch',
     {
-      summary: "Type mismatch",
-      reason: "${callee} expects ${expected}, got ${got}.",
-      fix: "Pass a ${expected}; convert or choose a compatible value.",
-    },
+      summary: 'Type mismatch',
+      reason: '${callee} expects ${expected}, got ${got}.',
+      fix: 'Pass a ${expected}; convert or choose a compatible value.'
+    }
   ],
   [
-    "eval/invalid-function",
+    'eval/invalid-function',
     {
-      summary: "Invalid function call",
+      summary: 'Invalid function call',
       reason: '"${name}" could not be evaluated: ${reason}',
-      fix: "Pass arguments accepted by the function, or use functionMode: 'preserve' to retain the CSS call.",
-    },
+      fix: 'Pass arguments accepted by the function, or use functionMode: \'preserve\' to retain the CSS call.'
+    }
   ],
   [
-    "eval/ambiguous-default",
+    'eval/ambiguous-default',
     {
-      summary: "Ambiguous default() mixin guard",
+      summary: 'Ambiguous default() mixin guard',
       reason: 'More than one default() decision can match "${callee}".',
-      fix: "Make the default() guard select exactly one mixin definition.",
-    },
+      fix: 'Make the default() guard select exactly one mixin definition.'
+    }
   ],
   [
-    "eval/invalid-statement",
+    'eval/invalid-statement',
     {
-      summary: "Value node is not valid as a statement",
+      summary: 'Value node is not valid as a statement',
       reason:
-        "${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.",
-      fix: "Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).",
-    },
+        '${what} is a value; it cannot stand on its own in a rules body — it was likely returned by a function/mixin or leaked from a detached ruleset.',
+      fix: 'Wrap it in a declaration (property: value) or return a valid statement node (ruleset, declaration, at-rule).'
+    }
   ],
   [
-    "eval/property-in-root",
+    'eval/property-in-root',
     {
       summary:
-        "Properties must be inside selector blocks. They cannot be in the root",
+        'Properties must be inside selector blocks. They cannot be in the root',
       reason:
         'The property "${what}" was evaluated at the root — most often a mixin or detached ruleset call that dropped its declarations into the top level.',
-      fix: "Put the property inside a selector block (e.g. call the mixin/detached ruleset from within a ruleset).",
-    },
+      fix: 'Put the property inside a selector block (e.g. call the mixin/detached ruleset from within a ruleset).'
+    }
   ],
   [
-    "eval/root-call-without-root",
+    'eval/root-call-without-root',
     {
-      summary: "Function did not return a root node",
+      summary: 'Function did not return a root node',
       reason:
         'The root-level function call "${name}" evaluated to a value or void result instead of a root-level statement.',
-      fix: "Call the function from a value position, or return a ruleset/declaration block that can be emitted at the root.",
-    },
+      fix: 'Call the function from a value position, or return a ruleset/declaration block that can be emitted at the root.'
+    }
   ],
   [
-    "eval/guarded-selector-list",
+    'eval/guarded-selector-list',
     {
-      summary: "Guarded selector lists are not supported",
+      summary: 'Guarded selector lists are not supported',
       reason:
-        "A when guard applies to ${count} selectors. Less guards are only allowed on a single CSS selector.",
-      fix: "Split the selector list into separate guarded rulesets.",
-    },
+        'A when guard applies to ${count} selectors. Less guards are only allowed on a single CSS selector.',
+      fix: 'Split the selector list into separate guarded rulesets.'
+    }
   ],
   [
-    "eval/ruleset-on-property",
+    'eval/ruleset-on-property',
     {
-      summary: "Rulesets cannot be evaluated on a property",
+      summary: 'Rulesets cannot be evaluated on a property',
       reason:
         'The value of "${what}" evaluated to a detached ruleset; a detached ruleset can only be called (e.g. `@dr();` inside a block), not used as a property value.',
-      fix: "Call the detached ruleset in statement position instead of assigning it to a property.",
-    },
+      fix: 'Call the detached ruleset in statement position instead of assigning it to a property.'
+    }
   ],
   [
-    "eval/recursive-reference",
+    'eval/recursive-reference',
     {
-      summary: "Recursive reference",
-      reason: "${kind} ${symbol} refers to itself while it is being evaluated.",
-      fix: "Break the cycle by assigning through an earlier value or a different name.",
-    },
+      summary: 'Recursive reference',
+      reason: '${kind} ${symbol} refers to itself while it is being evaluated.',
+      fix: 'Break the cycle by assigning through an earlier value or a different name.'
+    }
   ],
   [
     'eval/invalid-unit-arithmetic',
@@ -271,124 +271,124 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
     }
   ],
   [
-    "eval/unit-conversion",
+    'eval/unit-conversion',
     {
       summary: 'Cannot convert "${value}" to a color',
-      reason: "A dimension with a unit cannot be compared against a color.",
-      fix: "Drop the unit, or compare compatible types.",
-    },
+      reason: 'A dimension with a unit cannot be compared against a color.',
+      fix: 'Drop the unit, or compare compatible types.'
+    }
   ],
 
   // Extend
   [
-    "extend/protected-boundary",
+    'extend/protected-boundary',
     {
-      summary: "Extend blocked by protected boundary",
+      summary: 'Extend blocked by protected boundary',
       reason: '"${target}" is defined behind a protected compose boundary.',
-      fix: 'Move "${target}" to a shared file or create a local shim.',
-    },
+      fix: 'Move "${target}" to a shared file or create a local shim.'
+    }
   ],
   [
-    "extend/not-found",
+    'extend/not-found',
     {
       summary: 'Extend target "${target}" not found',
       reason:
         'No ruleset found matching "${target}" in accessible extend roots.',
-      fix: 'Ensure "${target}" exists and is accessible from the current extend root.',
-    },
+      fix: 'Ensure "${target}" exists and is accessible from the current extend root.'
+    }
   ],
   [
-    "extend/not-accessible",
+    'extend/not-accessible',
     {
       summary: 'Extend target "${target}" not accessible',
       reason:
         '"${target}" exists but is not accessible from the current extend root (blocked by at-rule or compose boundary).',
-      fix: "Move the extend or the target to a shared extend root, or use a different approach.",
-    },
+      fix: 'Move the extend or the target to a shared extend root, or use a different approach.'
+    }
   ],
 
   // Plugin
   [
-    "plugin/unsupported-feature",
+    'plugin/unsupported-feature',
     {
-      summary: "Unsupported feature",
+      summary: 'Unsupported feature',
       reason: 'Plugin "${plugin}" does not implement ${feature}.',
-      fix: "Use a supported alternative or enable a fallback.",
-    },
+      fix: 'Use a supported alternative or enable a fallback.'
+    }
   ],
 
   // Warnings
   [
-    "eval/deprecated",
+    'eval/deprecated',
     {
-      summary: "Deprecated feature",
+      summary: 'Deprecated feature',
       reason: '"${what}" is deprecated.',
-      fix: 'Use "${use}" instead.',
-    },
+      fix: 'Use "${use}" instead.'
+    }
   ],
   [
-    "resolve/unused-variable",
+    'resolve/unused-variable',
     {
-      summary: "Unused variable",
+      summary: 'Unused variable',
       reason: '"${symbol}" is declared but its value is never used.',
-      fix: 'Remove it or prefix with "_" to silence.',
-    },
+      fix: 'Remove it or prefix with "_" to silence.'
+    }
   ],
   [
-    "selector/duplicate",
+    'selector/duplicate',
     {
-      summary: "Duplicate selector",
+      summary: 'Duplicate selector',
       reason: 'Selector "${selector}" is defined multiple times.',
-      fix: "Consolidate rules or remove the duplicate.",
-    },
+      fix: 'Consolidate rules or remove the duplicate.'
+    }
   ],
   [
-    "selector/parentless-ampersand",
+    'selector/parentless-ampersand',
     {
-      summary: "Parentless ampersand ignored",
+      summary: 'Parentless ampersand ignored',
       reason:
         'Selector "${selector}" uses "&" without an available parent selector in this context.',
-      fix: 'Move the selector under a real parent selector, or remove the stray "&".',
-    },
+      fix: 'Move the selector under a real parent selector, or remove the stray "&".'
+    }
   ],
   [
-    "selector/comma-list-interpolation",
+    'selector/comma-list-interpolation',
     {
-      summary: "Comma-list value in a selector",
+      summary: 'Comma-list value in a selector',
       reason:
         'The value interpolated into selector "${selector}" is a comma-separated list; a list can\'t be spliced into a selector position.',
-      fix: "Use each() to distribute a rule over a list instead of interpolating the list into the selector.",
-    },
+      fix: 'Use each() to distribute a rule over a list instead of interpolating the list into the selector.'
+    }
   ],
   [
-    "function/unresolved",
+    'function/unresolved',
     {
       summary: 'Function "${name}" left as-is',
       reason:
         '"${name}" matched a registered function but could not be evaluated: ${reason}',
-      fix: "Fix the arguments, or set functionMode: 'error' to make this fail.",
-    },
+      fix: 'Fix the arguments, or set functionMode: \'error\' to make this fail.'
+    }
   ],
   [
-    "plugin/function-threw",
+    'plugin/function-threw',
     {
       summary: 'Plugin function "${name}" threw',
       reason:
         'The @plugin function "${name}" failed while evaluating this call: ${reason}',
-      fix: "Fix the plugin function (its stack is attached), or stop calling it here. Run with breakOnError to stop at the first failure.",
-    },
+      fix: 'Fix the plugin function (its stack is attached), or stop calling it here. Run with breakOnError to stop at the first failure.'
+    }
   ],
   [
-    "eval/async-in-sync-position",
+    'eval/async-in-sync-position',
     {
-      summary: "Value needs to be awaited in a position that cannot wait",
+      summary: 'Value needs to be awaited in a position that cannot wait',
       reason:
-        "The ${where} still requires an already-settled value, but this one resolves asynchronously (typically a function call that returns a promise).",
-      fix: "Bind the value to a variable evaluated outside this position, or call the mixin directly instead of through a namespace path.",
-    },
+        'The ${where} still requires an already-settled value, but this one resolves asynchronously (typically a function call that returns a promise).',
+      fix: 'Bind the value to a variable evaluated outside this position, or call the mixin directly instead of through a namespace path.'
+    }
   ],
   [
-    "plugin/load-failed",
+    'plugin/load-failed',
     {
       /*
        * The summary carries the underlying failure verbatim: a load error is only
@@ -396,18 +396,18 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
        * message shows.
        */
       summary: 'Plugin "${specifier}" could not be loaded: ${reason}',
-      reason: "Loading the @plugin failed: ${reason}",
-      fix: "Check the plugin path and that the script runs without throwing at load time.",
-    },
+      reason: 'Loading the @plugin failed: ${reason}',
+      fix: 'Check the plugin path and that the script runs without throwing at load time.'
+    }
   ],
   [
-    "plugin/log",
+    'plugin/log',
     {
       summary: 'Plugin function "${name}" reported a problem',
-      reason: "${level}: ${message}",
-      fix: "Address what the plugin reported, or stop calling it here.",
-    },
-  ],
+      reason: '${level}: ${message}',
+      fix: 'Address what the plugin reported, or stop calling it here.'
+    }
+  ]
 ]);
 
 const JESS_ERROR_CODE_SET: ReadonlySet<string> = new Set(TEMPLATES.keys());
@@ -424,11 +424,11 @@ export function resolveTemplate(
   code: JessErrorCode,
   meta: Record<string, unknown>
 ): Template {
-  const t = TEMPLATES.get(code) ?? TEMPLATES.get("parse/syntax-error")!;
+  const t = TEMPLATES.get(code) ?? TEMPLATES.get('parse/syntax-error')!;
   return {
     summary: interpolate(t.summary, meta),
     reason: interpolate(t.reason, meta),
-    fix: interpolate(t.fix, meta),
+    fix: interpolate(t.fix, meta)
   };
 }
 
@@ -448,7 +448,7 @@ const DISPLAY_OVERRIDES = new Map<string, DiagnosticDisplay>([
    * A comma-list spliced into a selector is subtle enough to always warrant the
    * full frame, even though it is only a warning.
    */
-  ["selector/comma-list-interpolation", "frame"],
+  ['selector/comma-list-interpolation', 'frame']
 ]);
 
 /** The pinned display tier for a diagnostic `code`, if any. */

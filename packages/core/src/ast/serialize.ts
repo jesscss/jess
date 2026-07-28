@@ -1913,7 +1913,7 @@ function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' 
       return callValueContainsVarRef(value.nameRef, name, lookup);
     case 'Reference':
       return callValueContainsVarRef(value.base, name, lookup)
-        || value.steps.some(step => {
+        || value.steps.some((step) => {
           if (step.type === 'Call') {
             return step.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
           }
@@ -3757,6 +3757,7 @@ function resolveReferenceResult(
         value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.key.name, step.key.lookup, e)
       )) {
         missingSymbol = `@${step.key.name}`;
+
         /*
          * A namespace/mixin-call accessor is a callee result: `#ns.m[@key]`
          * names that result's `@key` member even if the caller has an `@key`.
@@ -3779,6 +3780,7 @@ function resolveReferenceResult(
         matched = map.byVar.get(name) ?? lookupVarMember(map, name, e);
       } else if (step.keyKind === 'prop' && step.key.type === 'PropertyReference') {
         missingSymbol = `$${step.key.name}`;
+
         /*
          * In a map bracket, `$name` selects the property member named `name`.
          * It is not a `$name` read from the caller's declaration timeline.
@@ -9289,7 +9291,7 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
   const emit = (kept: Leaf[], merged = false): void => {
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
     const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-    const authoredHeader = parentKey === null && selNode !== undefined && sel.length === selNode.selectors.length
+    const authoredHeader = parentKey === null && sel.length === selNode?.selectors.length
       ? authoredSelectorHeaderWithTrivia(selNode, sel, e)
       : null;
     const header = authoredHeader ?? (idt ? sel.join(',\n' + idt) : sel.join(',\n'));
@@ -9325,18 +9327,18 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
     } else {
       const body = owner === undefined ? undefined : bodySpanOf(owner);
       let bodyTriviaCursor = body?.start ?? 0;
-        for (const leaf of kept) {
-          if (body !== undefined) {
-            emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1));
-            bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
-          }
-          for (const comment of leaf.leadingBlockComments ?? []) {
-            put(e, INDENT.repeat(e.depth + 1));
-            put(e, comment);
-            put(e, '\n');
-          }
-          emitLeaf(leaf, e);
+      for (const leaf of kept) {
+        if (body !== undefined) {
+          emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1));
+          bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
         }
+        for (const comment of leaf.leadingBlockComments ?? []) {
+          put(e, INDENT.repeat(e.depth + 1));
+          put(e, comment);
+          put(e, '\n');
+        }
+        emitLeaf(leaf, e);
+      }
       if (body !== undefined) {
         emitBlockCommentTriviaBetween(e, bodyTriviaCursor, body.end, INDENT.repeat(e.depth + 1));
       }
@@ -11540,11 +11542,11 @@ function emitNestedBody(
   let rootTriviaSuppressedByDefinition = false;
   const rootTriviaExclusions = rootTriviaCursor === undefined
     ? []
-    : statements.map(statement => {
-      const start = statementStartOf(statement);
-      const end = statementEndOf(statement);
-      return start === undefined || end === undefined ? undefined : { start, end };
-    }).filter(isReplaySpan);
+    : statements.map((statement) => {
+        const start = statementStartOf(statement);
+        const end = statementEndOf(statement);
+        return start === undefined || end === undefined ? undefined : { start, end };
+      }).filter(isReplaySpan);
   const emitBeforeRootStatement = (node: Statement): void => {
     if (rootTriviaCursor === undefined) {
       return;

@@ -206,6 +206,7 @@ export class LessPlugin extends AbstractPlugin {
     if (context.documentContext?.plugin !== this) {
       return;
     }
+
     /*
      * The Less adapter owns the language defaults, while Context owns the
      * session-level option store consumed by the AST evaluator.  A caller's
@@ -270,13 +271,13 @@ export class LessPlugin extends AbstractPlugin {
       ...host,
       ...(globalFns.length === 0 ? {} : { globalFns }),
       loadPlugin: host.loadPlugin || existingHost?.loadPlugin
-        ? (request) => Promise.all([
-            existingHost?.loadPlugin?.(request) ?? [],
-            host.loadPlugin?.(request) ?? []
-          ]).then(([existingFns, hostFns]) => [
-            ...existingFns,
-            ...hostFns
-          ])
+        ? request => Promise.all([
+          existingHost?.loadPlugin?.(request) ?? [],
+          host.loadPlugin?.(request) ?? []
+        ]).then(([existingFns, hostFns]) => [
+          ...existingFns,
+          ...hostFns
+        ])
         : undefined,
       invokeRawFunction: (fn, args, ctx) =>
         host.invokeRawFunction?.(fn, args, ctx) ?? existingHost?.invokeRawFunction?.(fn, args, ctx)
