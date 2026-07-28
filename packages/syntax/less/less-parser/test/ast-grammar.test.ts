@@ -3166,7 +3166,7 @@ describe('Less AST grammar facts', () => {
       || result.unconsumedFrom !== null
       || !isStylesheet(result.value)
     ) {
-      throw new Error('Direct Less AST grammar did not make a Stylesheet.');
+      throw new Error('Less grammar did not make a Stylesheet.');
     }
     expect(serialize(result.value).css).toBe('.a {\n  color: red;\n}\n');
   });
