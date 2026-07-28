@@ -12,14 +12,14 @@
  *   be reparsed to discover extends.
  *
  * Its structural `node(parser)` entries are consumed by the CST runner or by
- * parser-local direct AST reductions; core supplies neither a parse host nor a
+ * parser-local AST reductions; core supplies neither a parse host nor a
  * parse entry.
  */
 import {
   attempt, rules, composeLeaf,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, parser, trivia, noTrivia, label, word, keywords, field, leaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, transform, when
+  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
@@ -159,7 +159,7 @@ type LessRules = {
   MixinGuardTerm: Combinator<MixinGuard>;
   MixinGuardOperand: Combinator<ValueNode>;
   EachName: Combinator<string>;
-  /** A complete direct Less statement body, shared by detached rulesets and `each()` callbacks. */
+  /** A complete Less statement body, shared by detached rulesets and `each()` callbacks. */
   BodyStatement: Combinator<Statement | string>;
   EachCallback: Combinator<LessEachCallback>;
   Each: Combinator<For>;
@@ -629,7 +629,7 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
   return reference(base, steps, raw);
 }
 
-/** Source fallback for a direct grammar fact. This deliberately walks already
+/** Source fallback for a grammar fact. This deliberately walks already
  * reduced facts; it never inspects or re-parses source bytes. */
 function mixinArgumentSource(value: CallValue): string {
   if (isMixinCall(value)) {
@@ -1911,17 +1911,17 @@ const customValueCommentTrivia = trivia(oneOrMore(label('blockComment', blockCom
 // comment simple selectors.
 const outerSelectorTrivia = trivia(lessTriviaGap);
 const staticSimpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
-const directStaticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 // A selector simple that contains Less interpolation stays one selector atom.
 // Its literal runs deliberately exclude `.`, `#`, `[`, `:`, whitespace, and
 // combinators: those have separate selector grammar roles and must not be
 // flattened into an interpolation template.
-const directInterpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
-const directInterpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
+const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 // A bare `@{name}` is a whole-selector interpolation only. Keeping the
 // delimiter lookahead here prevents it from consuming the interpolation prefix
 // of an unmodelled namespace/attribute selector such as `@{ns}|a`.
-const directBareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
+const bareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
 // Semantically identical to the production Less `ampToken` terminal. A static ampersand
 // is already the canonical AST representation: `SimpleSelector.text` retains `&` and
 // core's selector path identifies parent references from that text.  The
@@ -2494,15 +2494,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // choice commits to the bare call and the trailing `[…]` can never be read,
   // even though Value already recognizes the whole reference —
   // which is why the same value parsed in property position and not here.
-  const directMixinValueWithoutLookup = not(noTrivia(literal('[')));
-  const directVariableName = node<string>(
+  const mixinValueWithoutLookup = not(noTrivia(literal('[')));
+  const variableName = node<string>(
     'VariableName',
     noTrivia(sequence(literal('@'), lessVariableName)),
     (children, _fields, span) => `@${requireSupportedVariableName(children[1], span.start, span.end)}`
   );
   const VarDeclaration = node<VariableDeclaration>(
     'VarDeclaration',
-    sequence(directVariableName, literal(':'), choice(sequence(g.NamespacedMixinValue, directMixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
+    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
@@ -2515,7 +2515,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const ValueBlockDeclaration = node<VariableDeclaration>(
     'VarDeclaration',
     sequence(
-      directVariableName,
+      variableName,
       literal(':'),
       g.ValueBlock
     ),
@@ -2765,11 +2765,6 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     oneOrMoreSep(g.CallArgumentValue, callArgumentFunctionSeparator),
     optional(trailingCallArgumentFunctionSeparator)
   ));
-  const ArgumentFunction = node<FunctionCall>(
-    'Call',
-    sequence(routed(), CallArgumentFunctionArguments, literal(')')),
-    argumentFunctionFromChildren
-  );
   const CallArgumentFunction = node<FunctionCall>(
     'Call',
     sequence(genericFunctionOpen, CallArgumentFunctionArguments, literal(')')),
@@ -2899,15 +2894,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // common path the doomed `attempt` already rejected at its first byte. The
   // predicate emits a throwaway token, so consumers select the real value node
   // by type rather than by fixed position.
-  const directMixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
+  const mixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
   const Value = node<ValueNode>(
     'Value',
-    choice(sequence(directMixinReferenceAhead, attempt(g.MixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.SelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
+    choice(sequence(mixinReferenceAhead, attempt(g.MixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.SelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
     children => requireValueNode(children.find(isValueNode))
   );
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
   // is glued to a variable or grouping (`-@x`, `-(...)`); `- @x` is instead a
-  // preserved space-list.  The direct grammar keeps that source-order/spacing
+  // preserved space-list. The grammar keeps that source-order/spacing
   // distinction rather than normalizing both spellings to negation.
   const MathUnary = node<ValueNode>(
     'MathUnary',
@@ -3087,7 +3082,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required bracket fact has been established.
-      sequence(directMixinReferenceAhead, attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator))))),
+      sequence(mixinReferenceAhead, attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator))))),
       oneOrMoreSep(
         g.ValueSequence,
         field('separator', regex(/,[ \t\n\r\f]*/))
@@ -3595,7 +3590,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   // Less permits a zero-argument mixin call without parentheses only when the
   // semicolon fixes the statement boundary. Keep the no-semicolon spelling out
-  // of this direct route: it is ambiguous with a selector/ruleset prefix.
+  // of this route: it is ambiguous with a selector/ruleset prefix.
   const BareMixinCall = node<MixinCall>(
     'BareMixinCall',
     sequence(mixinName, many(MixinPathTail), optional(literal('!important')), literal(';')),
@@ -4083,7 +4078,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )
   );
   // Detached rulesets and `each()` callbacks are both statement containers.
-  // Keep their accepted content on the same direct grammar path as normal Less
+  // Keep their accepted content on the same grammar path as normal Less
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
@@ -4726,7 +4721,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // a post-parse string shape. Keep its spelling in the ordinary Keyword node.
   const DottedAtRuleKeyword = node<ValueNode>(
     'DottedAtRuleKeyword',
-    sequence(directStaticIdentifier, oneOrMore(sequence(noTrivia(literal('.')), noTrivia(directStaticIdentifier)))),
+    sequence(staticIdentifier, oneOrMore(sequence(noTrivia(literal('.')), noTrivia(staticIdentifier)))),
     children => keyword(children.map(requireTerminalText).join(''))
   );
   const StaticAtRuleCustomProperty = node<ValueNode>(
@@ -4855,7 +4850,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     attempt(sequence(
       // Generic headers serialize as ordinary bytes. Their interpolation and
       // parenthesized forms need a dedicated syntax-preserving model, so this
-      // direct route deliberately leaves them closed.
+      // This route deliberately leaves them closed.
       attempt(g.StaticAtRulePrelude),
       atRuleBlockBody
     )),
@@ -5263,7 +5258,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // `|=` is the CSS attribute operator, not a namespace separator. Guard
       // the namespace arm before consuming `|` so a quoted interpolation after
       // `prop|=` remains on the ordinary attribute-value route.
-      sequence(directStaticIdentifier, literal('|'), not(literal('='))),
+      sequence(staticIdentifier, literal('|'), not(literal('='))),
       literal('*|'),
       literal('|')
     ),
@@ -5271,12 +5266,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const StaticNamespaceType = node<SimpleSelector>(
     'StaticNamespaceType',
-    sequence(g.StaticAttributeNamespace, choice(directStaticIdentifier, literal('*'))),
+    sequence(g.StaticAttributeNamespace, choice(staticIdentifier, literal('*'))),
     children => simpleSelector(children.map(requireTerminalText).join(''))
   );
   const StaticAttributeName = node<StaticAttributeNameFact>(
     'StaticAttributeName',
-    sequence(optional(g.StaticAttributeNamespace), directStaticIdentifier),
+    sequence(optional(g.StaticAttributeNamespace), staticIdentifier),
     children => ({
       namespace: children.find((child): child is string => typeof child === 'string') ?? '',
       name: requireToken(children.at(-1)).value
@@ -5294,19 +5289,19 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Attribute name and value interpolation share one grammar body; the reducers
   // differ only by whether each reference part is unquoted (name) or kept quoted
   // (value, so `[data=@{value}]` retains its source spelling).
-  const directAttributeInterpolationTokenBody = noTrivia(sequence(
+  const attributeInterpolationTokenBody = noTrivia(sequence(
     optional(choice(g.LessSyntaxInterpolatedValueStart, g.LessSyntaxInterpolatedValueDash)),
     g.Interpolation,
     many(interpolatedValueTail)
   ));
   const InterpolatedAttributeToken = node<Interpolation>(
     'InterpolatedAttributeToken',
-    directAttributeInterpolationTokenBody,
+    attributeInterpolationTokenBody,
     children => interpolation(interpolationPartsFrom(children, true))
   );
   const InterpolatedAttributeValueToken = node<Interpolation>(
     'InterpolatedAttributeValueToken',
-    directAttributeInterpolationTokenBody,
+    attributeInterpolationTokenBody,
     children => interpolation(interpolationPartsFrom(children, false))
   );
   const InterpolatedAttributeQuoted = node<Interpolation>(
@@ -5321,7 +5316,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'StaticAttributeMatch',
     sequence(
       g.CssSyntaxAttributeOperator,
-      choice(directStaticIdentifier, g.StaticAttributeQuoted),
+      choice(staticIdentifier, g.StaticAttributeQuoted),
       optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
     ),
     children => ({
@@ -5394,7 +5389,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const BareInterpolatedSelector = node<SimpleSelector>(
     'BareInterpolatedSelector',
-    sequence(g.VariableInterpolation, directBareInterpolatedSelectorEnd),
+    sequence(g.VariableInterpolation, bareInterpolatedSelectorEnd),
     (children) => {
       const fact = requireInterpolationFact(children[0]);
       return interpolatedSimpleSelector(interpolation([{ ref: fact.ref, unquote: true }]));
@@ -5414,15 +5409,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // than recovering a completed selector string after parse.
   const BareInterpolatedSelectorWithSuffix = node<SimpleSelector>(
     'BareInterpolatedSelectorWithSuffix',
-    noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(directInterpolatedSelectorTail, staticSimpleSelector)))),
+    noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(interpolatedSelectorTail, staticSimpleSelector)))),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   const InterpolatedSimpleSelector = node<SimpleSelector>(
     'InterpolatedSimpleSelector',
     noTrivia(sequence(
-      directInterpolatedSelectorPrefix,
+      interpolatedSelectorPrefix,
       g.VariableInterpolation,
-      many(choice(directInterpolatedSelectorTail, g.VariableInterpolation))
+      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
     )),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
@@ -5434,7 +5429,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     noTrivia(sequence(
       staticAmpersand,
       g.VariableInterpolation,
-      many(choice(directInterpolatedSelectorTail, g.VariableInterpolation))
+      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
     )),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
@@ -5521,7 +5516,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: outerSelectorTrivia }, sequence(g.Complex, many(g.SelectorTail))),
     (children, _fields, span) => withSourceSpan(selist(...requireComplexes(children)), span)
   );
-  const directExtendAll = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+  const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const StaticExtendCompound = node<CompoundSelector>(
     'StaticExtendCompound',
     parser(
@@ -5569,7 +5564,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const ExtendTarget = node<ExtendTargetFact>(
     'ExtendTarget',
-    sequence(ExtendTargetComplex, optional(directExtendAll)),
+    sequence(ExtendTargetComplex, optional(extendAllFlag)),
     children => ({
       target: selist(requireComplex(children[0])),
       partial: children.some(child => isTerminalText(child, 'all') || isTerminalText(child, '!all'))
@@ -5587,7 +5582,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => children.filter(isExtendTargetFact)
   );
-  const directSelectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
+  const selectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
   const ExtendStatement = node<ExtendInstruction[]>(
     'ExtendStatement',
     sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
@@ -5595,13 +5590,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
       .map(target => ({ target: target.target, partial: target.partial }))
   );
-  const directSelectorBranchContinuation = choice(
-    sequence(ExtendPseudo, directSelectorBranchBoundary),
-    directSelectorBranchBoundary
+  const selectorBranchContinuation = choice(
+    sequence(ExtendPseudo, selectorBranchBoundary),
+    selectorBranchBoundary
   );
   const SelectorBranch = node<SelectorBranchFact>(
     'SelectorBranch',
-    sequence(ExtendComplex, directSelectorBranchContinuation),
+    sequence(ExtendComplex, selectorBranchContinuation),
     (children) => {
       const subject = requireComplex(children[0]);
       const extensions = children

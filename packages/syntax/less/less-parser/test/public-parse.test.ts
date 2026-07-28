@@ -2916,7 +2916,7 @@ describe("public Less parse()", () => {
 
   it("does not mistake a condition operator hidden inside a string function argument (ambient scanSkip)", () => {
     /*
-     * Regression for the raw-scanTo footgun: `directFunctionConditionAhead` scanned
+     * Regression for the raw-scanTo footgun: the condition-ahead guard scanned
      * a function argument for a comparison/logical operator and matched the `or`
      * INSIDE the quoted string, mis-committing the argument to a Less condition.
      * The grammar-level `scanSkip` now treats the string as opaque during the scan.
