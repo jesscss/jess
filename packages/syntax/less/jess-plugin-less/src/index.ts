@@ -6,6 +6,7 @@ import {
   ERR,
   type ISafeParseResult,
   type SafeParseOptions,
+  type PluginInterface,
   buildEvaluator
 } from '@jesscss/core';
 import { type PluginHost } from '@jesscss/core/value';
@@ -37,6 +38,185 @@ export const lessPluginDefaults = {
 } as const;
 
 const lessValueEvaluator = buildEvaluator(makeLessRegistry());
+type LessPluginInput = LessPluginOptions & { plugins?: readonly unknown[] };
+type LessPluginCacheKey = string;
+
+export type LessSourcePreparationContext = {
+  language?: string;
+  activeOptions: Record<string, unknown>;
+};
+
+export type LessPluginResolverContext = {
+  optionsFor(language?: string): Record<string, unknown>;
+};
+
+function stableStringify(value: unknown): string {
+  if (value == null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+  if (!isObjectRecord(value)) {
+    return JSON.stringify(value);
+  }
+  const entries = Object.keys(value)
+    .sort()
+    .map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
+  return `{${entries.join(',')}}`;
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isPluginInterface(value: unknown): value is PluginInterface {
+  return isObjectRecord(value) && typeof value.name === 'string';
+}
+
+function normalizeVariableName(name: string): string {
+  return name.startsWith('@') ? name : `@${name}`;
+}
+
+function renderVariableOverrides(vars: Record<string, unknown> | null | undefined): string {
+  if (!vars) {
+    return '';
+  }
+  return Object.entries(vars)
+    .map(([name, value]) => `${normalizeVariableName(name)}: ${String(value)};`)
+    .join('\n');
+}
+
+function getVariableOverrides(value: unknown): Record<string, unknown> | null {
+  return isObjectRecord(value) ? value : null;
+}
+
+function cloneConfiguredPlugin(plugin: PluginInterface): PluginInterface {
+  if (plugin.name !== 'less-compat' || typeof plugin.constructor !== 'function') {
+    return plugin;
+  }
+  try {
+    const opts = isObjectRecord(plugin) ? plugin.opts : undefined;
+    const freshPlugin: unknown = Reflect.construct(plugin.constructor, [opts]);
+    return isPluginInterface(freshPlugin) ? freshPlugin : plugin;
+  } catch {
+    return plugin;
+  }
+}
+
+export function prepareLessRootSource(
+  source: string,
+  context: LessSourcePreparationContext
+): string {
+  if (context.language !== undefined && context.language !== 'less') {
+    return source;
+  }
+  const prefix = [
+    typeof context.activeOptions.banner === 'string' ? context.activeOptions.banner : undefined,
+    renderVariableOverrides(getVariableOverrides(context.activeOptions.globalVars))
+  ].filter(Boolean).join('\n');
+  const suffix = renderVariableOverrides(getVariableOverrides(context.activeOptions.modifyVars));
+
+  return [
+    prefix,
+    source,
+    suffix
+  ].filter(Boolean).join('\n');
+}
+
+export class LessPluginResolver {
+  private pluginInstanceCache = new Map<LessPluginCacheKey, PluginInterface>();
+
+  /*
+   * Native Less plugin hooks are consumer objects. Their identity and order
+   * affect registered functions, so they are part of the Less adapter cache key.
+   */
+  private nativePluginIds = new Map<unknown, number>();
+  private nextNativePluginId = 0;
+
+  private getCacheKey(
+    lessOptions: Record<string, unknown>,
+    nativePlugins: readonly unknown[] = []
+  ): LessPluginCacheKey {
+    const optionsKey = stableStringify({
+      math: lessOptions.math,
+      mathMode: lessOptions.mathMode,
+      strictUnits: lessOptions.strictUnits,
+      unitMode: lessOptions.unitMode,
+      equalityMode: lessOptions.equalityMode,
+      allowExtendSelectors: lessOptions.allowExtendSelectors,
+      leakyScope: lessOptions.leakyScope,
+      bubbleRootAtRules: lessOptions.bubbleRootAtRules,
+      collapseNesting: lessOptions.collapseNesting,
+      rootpath: lessOptions.rootpath,
+      rewriteUrls: lessOptions.rewriteUrls,
+      urlArgs: lessOptions.urlArgs,
+      processImports: lessOptions.processImports
+    });
+    if (nativePlugins.length === 0) {
+      return optionsKey;
+    }
+    const nativePluginKey = nativePlugins.map((plugin) => {
+      let id = this.nativePluginIds.get(plugin);
+      if (id === undefined) {
+        id = ++this.nextNativePluginId;
+        this.nativePluginIds.set(plugin, id);
+      }
+      return id;
+    });
+    return `${optionsKey}|native-plugins:${nativePluginKey.join(',')}`;
+  }
+
+  getOrCreate(
+    lessOptions: Record<string, unknown>,
+    nativePlugins: readonly unknown[] = []
+  ): PluginInterface {
+    const key = this.getCacheKey(lessOptions, nativePlugins);
+    let plugin = this.pluginInstanceCache.get(key);
+    if (!plugin) {
+      const pluginOptions: LessPluginInput = {
+        ...lessOptions,
+        ...(nativePlugins.length === 0 ? {} : { plugins: nativePlugins })
+      };
+      plugin = lessPlugin(pluginOptions);
+      this.pluginInstanceCache.set(key, plugin);
+    }
+    return plugin;
+  }
+
+  normalizeConfiguredPlugin(
+    plugin: PluginInterface,
+    context: LessPluginResolverContext
+  ): PluginInterface {
+    if (plugin.name !== 'less') {
+      return cloneConfiguredPlugin(plugin);
+    }
+    const pluginOptions = isObjectRecord(plugin) && isObjectRecord(plugin.opts)
+      ? plugin.opts
+      : {};
+    const resolvedLessOptions = Object.fromEntries(
+      Object.entries(context.optionsFor('less')).filter(([, value]) => value !== undefined)
+    );
+    const nativePlugins = Array.isArray(pluginOptions.plugins) ? pluginOptions.plugins : [];
+    return this.getOrCreate({
+      ...pluginOptions,
+      ...resolvedLessOptions
+    }, nativePlugins);
+  }
+
+  dispose(): void {
+    for (const plugin of this.pluginInstanceCache.values()) {
+      try {
+        void plugin.dispose?.();
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+    this.pluginInstanceCache.clear();
+    this.nativePluginIds.clear();
+    this.nextNativePluginId = 0;
+  }
+}
 
 /** Match Less's URL normalization without treating URL text as an import path. */
 function normalizeUrlPath(url: string): string {

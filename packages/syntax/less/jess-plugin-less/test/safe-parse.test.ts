@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import lessPlugin from "../src/index.js";
+import lessPlugin, { LessPluginResolver, prepareLessRootSource } from '../src/index.js';
 
 describe("@jesscss/plugin-less", () => {
   it("returns a source-backed parser diagnostic for invalid Less", () => {
@@ -161,5 +161,46 @@ describe("@jesscss/plugin-less", () => {
       type: "Stylesheet",
       children: [{ type: "AtRuleStatement", name: "@charset" }],
     });
+  });
+
+  it('reuses Less plugin instances by effective Less options', () => {
+    const resolver = new LessPluginResolver();
+
+    const first = resolver.getOrCreate({ mathMode: 'always' });
+    const second = resolver.getOrCreate({ mathMode: 'always' });
+    const third = resolver.getOrCreate({ mathMode: 'parens' });
+
+    expect(first).toBe(second);
+    expect(first).not.toBe(third);
+    resolver.dispose();
+  });
+
+  it('normalizes configured Less plugins with resolved language options', () => {
+    const resolver = new LessPluginResolver();
+
+    const configured = lessPlugin({ mathMode: 'always' });
+    const normalized = resolver.normalizeConfiguredPlugin(configured, {
+      optionsFor: () => ({ mathMode: 'parens' })
+    });
+
+    expect(normalized).not.toBe(configured);
+    expect(normalized).toMatchObject({ name: 'less', mathMode: 'parens' });
+    resolver.dispose();
+  });
+
+  it('prepares only Less root source with Less variable override options', () => {
+    expect(prepareLessRootSource('.a { color: @tone; }', {
+      language: 'less',
+      activeOptions: {
+        banner: '/* banner */',
+        globalVars: { tone: 'red' },
+        modifyVars: { tone: 'blue' }
+      }
+    })).toBe('/* banner */\n@tone: red;\n.a { color: @tone; }\n@tone: blue;');
+
+    expect(prepareLessRootSource('.a { color: $tone; }', {
+      language: 'scss',
+      activeOptions: { banner: '/* banner */' }
+    })).toBe('.a { color: $tone; }');
   });
 });
