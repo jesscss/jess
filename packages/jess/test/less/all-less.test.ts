@@ -4,7 +4,7 @@ import * as path from "path";
 import { readFileSync } from "fs";
 import { invalidLess } from "@jesscss/shared";
 import { Compiler } from "../../src/index.js";
-import { outputDiagnostics } from "../../src/diagnostics.js";
+import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import { getTestCases, resolveLessTestDataRoot } from "../test-utils.js";
 import lessPlugin from "@jesscss/plugin-less";
 

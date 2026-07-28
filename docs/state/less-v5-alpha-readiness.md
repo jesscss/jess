@@ -562,7 +562,9 @@ Initial likely-internal or quarantine candidates:
 - `[?]` `packages/jess/src/config.ts` helpers such as `getConfig`,
   `getConfigWithMeta`, and `getExpectedOutputFiles`
 - `[?]` `packages/jess/src/output.ts` `OutputCollector`
-- `[?]` `packages/jess/src/diagnostics.ts` `outputDiagnostics`
+- `[x]` Jess-local diagnostic renderer quarantine: `outputDiagnostics` now lives
+  in `@jesscss/compiler/diagnostics`; `jess` consumes the shared compiler host
+  renderer instead of carrying `packages/jess/src/diagnostics.ts`.
 - `[?]` `packages/jess/src/visitor/index.ts` `Visitor`
 
 Implementation options to evaluate:

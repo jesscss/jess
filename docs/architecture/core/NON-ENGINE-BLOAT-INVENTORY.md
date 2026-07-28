@@ -1,8 +1,9 @@
 # Non-Engine Bloat Inventory (ranked kill-list)
 
 > ✅ **LARGELY RESOLVED (2026-07-17).** The top targets in this sweep were demolished:
-> jess-error decomposed to a 45-line data model with rendering moved to CLI
-> `packages/jess/src/diagnostics.ts` using linecraft (`6c0f1bfa6`); `plugin.ts`
+> jess-error decomposed to a 45-line data model with rendering moved to the
+> compiler host's diagnostics entrypoint using linecraft (`6c0f1bfa6` plus the
+> later `@jesscss/compiler/diagnostics` extraction); `plugin.ts`
 > as-any casts removed (`2f5401d1c`/`56b2ef3cd`) → 0 `any`; `context.ts` last 2 `any`
 > removed (`d7b2955cd`). The counts below are the PRE-demolition state — historical.
 > **Remaining genuine non-engine debt:** ~136 baseline `tsc` errors (repo builds with
@@ -262,8 +263,8 @@ These are large-ish but each is **one concern**; size is inherent, not bloat:
 - `packages/core/src/warnings.ts` (207) — warnings/errors config normalize + match + summary.
   Cohesive. (Note: it is the *natural home* for the warnings-finalization block currently
   stranded in `context.ts` — see Rank 3.)
-- `packages/jess/src/diagnostics.ts` (283) — tiered diagnostic output rendering. Cohesive set
-  of renderers for one job.
+- `packages/compiler/src/diagnostics.ts` — tiered diagnostic output rendering.
+  Cohesive set of renderers for one job.
 - `packages/awaitable-pipe/src/pipe.ts` (287) — `pipe`/`safePipe` with typed overloads. The
   overload ladder is inherent ceremony for a typed variadic pipe, not bloat.
 - `packages/fns/src/util/relative-color.ts` (377) — relative-color-syntax channel evaluation.

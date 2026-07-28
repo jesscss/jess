@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
-import { outputDiagnostics } from '../src/diagnostics.js';
+import { outputDiagnostics } from '@jesscss/compiler/diagnostics';
 import type { ErrorDiagnostic, WarningDiagnostic } from '@jesscss/core';
 import lessPlugin from '@jesscss/plugin-less';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
@@ -291,7 +291,26 @@ async function captureAsync<T>(fn: () => Promise<T>): Promise<{ value: T; out: s
   }
 }
 
-const OSC8 = '\x1b]8;;';
+const ESC = String.fromCharCode(0x1B);
+const OSC8 = `${ESC}]8;;`;
+const LIVE_TERMINAL_CONTROLS = [
+  `${ESC}[?1049h`,
+  `${ESC}[?1049l`,
+  `${ESC}[?25h`,
+  `${ESC}[?25l`,
+  `${ESC}[K`,
+  `${ESC}[0K`,
+  `${ESC}[1K`,
+  `${ESC}[2K`
+] as const;
+const CURSOR_MOTION_CONTROL = new RegExp(`${ESC}\\[[0-9]*(?:A|B|G)`);
+
+function expectNoLiveTerminalControls(output: string): void {
+  for (const control of LIVE_TERMINAL_CONTROLS) {
+    expect(output).not.toContain(control);
+  }
+  expect(output).not.toMatch(CURSOR_MOTION_CONTROL);
+}
 
 function warn(
   code: string,
@@ -362,7 +381,7 @@ describe('Diagnostic display tiers', () => {
     );
     expect(stderr).toContain('ERR_SRC'); // code frame includes the source line
     expect(stderr.match(/parse\/syntax-error/g)).toHaveLength(1);
-    expect(stderr).not.toContain('\x1B[?1049h');
+    expectNoLiveTerminalControls(stderr);
   });
 
   it('warnings: \'summary\' collapses to one line per code with count + files', () => {

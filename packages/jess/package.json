@@ -31,7 +31,6 @@
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",
     "@jesscss/plugin-scss": "workspace:*",
-    "linecraft": "0.2.6",
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },
