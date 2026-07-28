@@ -7,11 +7,17 @@ function expectedDetail(expected: readonly string[]): string {
     return '';
   }
   const expectedSet = new Set(expected);
-  const looksLikeValueProduction =
+  const hasValueCore =
     expectedIncludes(expectedSet, 'CssSyntaxNumber')
     && expectedIncludes(expectedSet, 'CssSyntaxDimensionUnit')
-    && expectedIncludes(expectedSet, 'LessSyntaxKeyword')
     && expectedIncludes(expectedSet, 'not(peek)');
+  const looksLikeValueProduction =
+    hasValueCore
+    && (
+      expectedIncludes(expectedSet, 'LessSyntaxKeyword')
+      || expectedIncludes(expectedSet, 'LessSyntaxNamedColor')
+      || expectedIncludes(expectedSet, 'CssSyntaxHexColor')
+    );
   if (looksLikeValueProduction) {
     return ' Expected a Less value.';
   }

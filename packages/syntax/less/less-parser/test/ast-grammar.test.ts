@@ -285,6 +285,39 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps generic at-rule calc preludes as glued function calls', () => {
+    const result = run(
+      lessAstGrammar.Document,
+      '@unknown calc(1px + 2px) { a { color: red; } }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        {
+          type: 'AtRuleBlock',
+          name: '@unknown',
+          prelude: {
+            type: 'FunctionCall',
+            name: 'calc',
+            args: [
+              {
+                type: 'Operation',
+                operator: '+',
+                left: { type: 'Dimension', number: 1, unit: 'px', src: '1px' },
+                right: { type: 'Dimension', number: 2, unit: 'px', src: '2px' }
+              }
+            ]
+          },
+          body: [{ type: 'Rule' }]
+        }
+      ]
+    });
+  });
+
   it('uses the CSS component fallback for generic prelude syntax outside the typed Less subset', () => {
     const block = run(
       lessAstGrammar.Document,

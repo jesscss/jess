@@ -4729,12 +4729,36 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.LessSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
+  const staticIdentOrFunction = token(noTrivia(sequence(staticIdentifier, optional(literal('(')))));
+  const StaticAtRuleIdentifier = node<ValueNode>(
+    'Keyword',
+    routed(),
+    children => keyword(requireToken(children[0]).value)
+  );
+  const StaticAtRuleIdentOrFunction = dispatch(
+    staticIdentOrFunction,
+    caseOf('url(', RoutedStaticUrl),
+    caseOf('calc(', CalcFunction),
+    when(endsWith('('), GenericFunction),
+    otherwise(StaticAtRuleIdentifier)
+  );
   // Generic at-rule headers have no parser-owned syntax-preserving evaluation
   // model for interpolation or parenthesized forms. Their direct subset stays
   // static; `@layer` gets its own typed interpolation alternative below.
   const StaticAtRuleAtom = node<ValueNode>(
     'StaticAtRuleAtom',
-    choice(g.EscapedQuoted, g.StaticQuoted, g.Color, g.NamedColor, g.Dimension, g.StaticUrl, g.PagePseudo, g.Call, g.Paren, g.DottedAtRuleKeyword, StaticAtRuleCustomProperty, g.Keyword),
+    choice(
+      g.EscapedQuoted,
+      g.StaticQuoted,
+      g.Color,
+      g.NamedColor,
+      g.Dimension,
+      g.PagePseudo,
+      g.Paren,
+      g.DottedAtRuleKeyword,
+      StaticAtRuleCustomProperty,
+      StaticAtRuleIdentOrFunction
+    ),
     children => requireValueNode(children[0])
   );
   const StaticAtRuleTerm = node<ValueNode>(
@@ -4782,7 +4806,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     scanSkipDoubleString,
     scanSkipSingleString
   ));
-  const atPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/));
+  const atPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
   const CssAtRulePrelude = node<ValueNode | null>(
     'CssAtRulePrelude',
     parser(
