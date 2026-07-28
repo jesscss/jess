@@ -94,6 +94,23 @@ function main() {
 
   const rootDir = process.cwd();
   const packages = listWorkspacePackages(rootDir);
+  const recoveryByPath = new Map();
+  let recoveryVersion = null;
+  for (const pkg of packages.values()) {
+    const relativePath = path
+      .relative(rootDir, pkg.packageJsonPath)
+      .replaceAll(path.sep, '/');
+    const recoveryRaw = gitShow(rootDir, from, relativePath);
+    if (recoveryRaw === null) {
+      continue;
+    }
+    recoveryByPath.set(relativePath, recoveryRaw);
+    const version = JSON.parse(recoveryRaw).version;
+    if (typeof version === 'string' && version.length > 0) {
+      recoveryVersion ??= version;
+    }
+  }
+
   let changed = 0;
   const changedPaths = [];
   for (const pkg of packages.values()) {
@@ -102,10 +119,22 @@ function main() {
       .replaceAll(path.sep, '/');
     const importedRaw = readFileSync(pkg.packageJsonPath, 'utf8');
     const importedManifest = JSON.parse(importedRaw);
-    const recoveryRaw = gitShow(rootDir, from, relativePath);
+    const recoveryRaw = recoveryByPath.get(relativePath) ?? null;
     if (recoveryRaw === null) {
-      console.log(`${relativePath}: new in imported source; keeping ${
-        importedManifest.version ?? '(missing)'
+      if (recoveryVersion === null || importedManifest.version === recoveryVersion) {
+        console.log(`${relativePath}: new in imported source; keeping ${
+          importedManifest.version ?? '(missing)'
+        }`);
+        continue;
+      }
+      writeFileSync(
+        pkg.packageJsonPath,
+        `${JSON.stringify({ ...importedManifest, version: recoveryVersion }, null, 2)}\n`
+      );
+      changed += 1;
+      changedPaths.push(relativePath);
+      console.log(`${relativePath}: new in imported source; ${importedManifest.version ?? '(missing)'} -> ${
+        recoveryVersion
       }`);
       continue;
     }

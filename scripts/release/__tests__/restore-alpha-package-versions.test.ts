@@ -91,7 +91,7 @@ describe('preserveRecoveryManifestVersion', () => {
     expect(run('git', ['diff', '--', 'packages/fixture/package.json'], root)).toBe('');
   });
 
-  it('keeps imported versions for packages added after the recovery ref', () => {
+  it('assigns the recovery lockstep version to packages added after the recovery ref', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'jess-alpha-restore-new-'));
     temporaryRoots.push(root);
     writeManifest(root, { name: '@fixture/package', version: '2.0.0-alpha.10' });
@@ -120,8 +120,8 @@ describe('preserveRecoveryManifestVersion', () => {
     });
 
     expect(restored.status).toBe(0);
-    expect(restored.stdout).toMatch(/packages\/new\/package\.json: new in imported source; keeping 2\.0\.0-alpha\.5/u);
-    expect(restored.stdout).toMatch(/Preserved and staged recovery alpha versions in 1 package manifest/u);
+    expect(restored.stdout).toMatch(/packages\/new\/package\.json: new in imported source; 2\.0\.0-alpha\.5 -> 2\.0\.0-alpha\.10/u);
+    expect(restored.stdout).toMatch(/Preserved and staged recovery alpha versions in 2 package manifest/u);
 
     expect(JSON.parse(run('git', ['show', ':packages/fixture/package.json'], root))).toEqual({
       name: '@fixture/package',
@@ -130,7 +130,7 @@ describe('preserveRecoveryManifestVersion', () => {
     });
     expect(JSON.parse(run('git', ['show', ':packages/new/package.json'], root))).toEqual({
       name: '@fixture/new',
-      version: '2.0.0-alpha.5',
+      version: '2.0.0-alpha.10',
       exports: { ['.']: './lib/index.js' }
     });
   });
