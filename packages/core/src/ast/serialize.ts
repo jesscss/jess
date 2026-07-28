@@ -5601,6 +5601,157 @@ function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
   }
 }
 
+function triviaSource(trivia: TriviaMap | undefined): string | undefined {
+  const commentSource = trivia?.commentRuns()[0]?.src;
+  if (commentSource !== undefined) {
+    return commentSource;
+  }
+  const firstEntry = trivia?.entries('after').next();
+  return firstEntry?.done === false ? firstEntry.value[1].src : undefined;
+}
+
+function isTriviaByte(char: number): boolean {
+  return char === 32 || char === 9 || char === 10 || char === 13 || char === 12;
+}
+
+function emittedTriviaRunForRange(e: Emit, start: number, end: number): Trivia | undefined {
+  const trivia = e.trivia;
+  if (trivia === undefined) {
+    return undefined;
+  }
+  for (const run of trivia.commentRuns()) {
+    if (run.start === start && run.end === end) {
+      return e.emittedBlockTrivia.has(run) ? run : undefined;
+    }
+    if (run.start > start) {
+      break;
+    }
+  }
+  return undefined;
+}
+
+function markTriviaRunForRange(e: Emit, start: number, end: number): void {
+  const trivia = e.trivia;
+  if (trivia === undefined) {
+    return;
+  }
+  for (const run of trivia.commentRuns()) {
+    if (run.start === start && run.end === end) {
+      e.emittedBlockTrivia.add(run);
+      return;
+    }
+    if (run.start > start) {
+      return;
+    }
+  }
+}
+
+function emitTopLevelBlockCommentsBetween(
+  e: Emit,
+  start: number,
+  end: number,
+  indent: string
+): number {
+  const source = triviaSource(e.trivia);
+  if (source === undefined) {
+    return 0;
+  }
+  let emitted = 0;
+  let index = Math.max(0, start);
+  const limit = Math.min(end, source.length);
+  let parens = 0;
+  let brackets = 0;
+  let braces = 0;
+  let canEmitTopLevelComment = true;
+  while (index < limit) {
+    const char = source[index]!;
+    const next = source[index + 1];
+    if (char === '/' && next === '/') {
+      const newline = source.indexOf('\n', index + 2);
+      index = newline < 0 ? limit : newline + 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      const close = source.indexOf('*/', index + 2);
+      if (close < 0 || close + 2 > limit) {
+        break;
+      }
+      const commentEnd = close + 2;
+      if (
+        canEmitTopLevelComment
+        && parens === 0
+        && brackets === 0
+        && braces === 0
+        && emittedTriviaRunForRange(e, index, commentEnd) === undefined
+      ) {
+        put(e, indent);
+        put(e, source.slice(index, commentEnd));
+        put(e, '\n');
+        markTriviaRunForRange(e, index, commentEnd);
+        emitted++;
+      }
+      index = commentEnd;
+      continue;
+    }
+    if (char === '"' || char === '\'') {
+      const quote = char;
+      index++;
+      while (index < limit) {
+        const inner = source[index]!;
+        index += inner === '\\' ? 2 : 1;
+        if (inner === quote) {
+          break;
+        }
+      }
+      continue;
+    }
+    switch (char) {
+      case '(':
+        if (braces === 0 && brackets === 0 && parens === 0) {
+          canEmitTopLevelComment = false;
+        }
+        parens++;
+        break;
+      case ')':
+        parens = Math.max(0, parens - 1);
+        break;
+      case '[':
+        if (braces === 0 && brackets === 0 && parens === 0) {
+          canEmitTopLevelComment = false;
+        }
+        brackets++;
+        break;
+      case ']':
+        brackets = Math.max(0, brackets - 1);
+        break;
+      case '{':
+        if (braces === 0 && brackets === 0 && parens === 0) {
+          canEmitTopLevelComment = false;
+        }
+        braces++;
+        break;
+      case '}':
+        braces = Math.max(0, braces - 1);
+        if (braces === 0 && brackets === 0 && parens === 0) {
+          canEmitTopLevelComment = true;
+        }
+        break;
+      case ';':
+        if (braces === 0 && brackets === 0 && parens === 0) {
+          canEmitTopLevelComment = true;
+        }
+        break;
+      default:
+        if (!isTriviaByte(char.charCodeAt(0)) && braces === 0 && brackets === 0 && parens === 0) {
+          canEmitTopLevelComment = false;
+        }
+        break;
+    }
+    index++;
+  }
+  return emitted;
+}
+
 function withDocumentTrivia<T>(e: Emit, document: Stylesheet, run: () => MaybePromise<T>): MaybePromise<T> {
   const previous = e.trivia;
   const next = triviaMapOf(document);
@@ -6752,7 +6903,7 @@ function emitDocumentStatements(
   };
   const emitTrailingDocumentTrivia = (): void => {
     if (e.referenceImportDepth === 0) {
-      emitBlockCommentTriviaBetween(e, documentTriviaCursor, Number.MAX_SAFE_INTEGER, '');
+      emitTopLevelBlockCommentsBetween(e, documentTriviaCursor, Number.MAX_SAFE_INTEGER, '');
     }
   };
   const finish = (): MaybePromise<void> => {
@@ -11219,7 +11370,7 @@ function emitNestedBody(
     if (rootTriviaCursor === undefined) {
       return;
     }
-    emitBlockCommentTriviaBetween(e, rootTriviaCursor, Number.MAX_SAFE_INTEGER, '', rootTriviaExclusions);
+    emitTopLevelBlockCommentsBetween(e, rootTriviaCursor, Number.MAX_SAFE_INTEGER, '');
   };
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < statements.length; index++) {
@@ -11472,6 +11623,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
     const valStart = e.off;
     const important = node.important === true || leaf.important === true;
     putValue(e, node.value, frame, isValueSlotArray(node.value) ? undefined : node.value, idt + INDENT, important, onNewLine); // [whitespace] continuation indent
+    markSilentStatementBlockCommentTrivia(node, e);
     if (e.positions) {
       if (!isValueSlotArray(node.value)) {
         e.positions.push({ node: node.value, type: node.value.type, start: valStart, end: e.off });

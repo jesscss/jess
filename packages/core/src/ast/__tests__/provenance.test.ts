@@ -41,6 +41,7 @@ describe('canonical AST source provenance', () => {
     const src = '/* keep */\n.a { color: red; }\n';
     const gaps = [
       { start: 0, end: 11 },
+      { start: 0, end: 11 },
       { start: 27, end: 28 }
     ];
     const trivia = createTriviaMapFromRootIndex(src, {
@@ -63,12 +64,14 @@ describe('canonical AST source provenance', () => {
       hasComment: true
     });
     expect(trivia.lookup(0, 'after')).toBe(leading);
+    const commentRuns = trivia.commentRuns();
     expect(trivia.has(28, 'before')).toBe(true);
     expect([...trivia.entries('after')].map(([offset, run]) => [offset, run.start, run.end])).toEqual([
       [0, 0, 11],
       [27, 27, 28]
     ]);
-    expect(trivia.commentRuns()).toEqual([leading]);
+    expect(commentRuns).toEqual([leading]);
+    expect(trivia.lookup(0, 'after')).toBe(commentRuns[0]);
   });
 
   it('retains a block body span without changing the rule shape', () => {

@@ -131,6 +131,7 @@ export function createTriviaMapFromRootIndex(
   index: ParserRootTriviaIndex
 ): TriviaMap {
   const cache = new Map<number, Trivia>();
+  const canonicalByRange = new Map<string, Trivia>();
   let maps: {
     readonly before: Map<number, Trivia>;
     readonly after: Map<number, Trivia>;
@@ -145,7 +146,12 @@ export function createTriviaMapFromRootIndex(
     }
     let run = cache.get(entryIndex);
     if (run === undefined) {
-      run = makeAstTrivia(src, start, end);
+      const key = `${start}:${end}`;
+      run = canonicalByRange.get(key);
+      if (run === undefined) {
+        run = makeAstTrivia(src, start, end);
+        canonicalByRange.set(key, run);
+      }
       cache.set(entryIndex, run);
     }
     return run;
@@ -194,9 +200,15 @@ export function createTriviaMapFromRootIndex(
     commentRuns() {
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
+        const seen = new Set<string>();
         for (let entryIndex = 0; entryIndex < index.entries.length; entryIndex++) {
           const run = runAt(entryIndex);
           if (run?.hasComment === true) {
+            const key = `${run.start}:${run.end}`;
+            if (seen.has(key)) {
+              continue;
+            }
+            seen.add(key);
             runs.push(run);
           }
         }
