@@ -228,6 +228,13 @@ function renderBlock(
   stream.write(`${icon} ${diagnostic.code}  ${diagnostic.message}\n`);
 }
 
+function diagnosticWidth(stream: NodeJS.WriteStream): number {
+  const width = typeof stream.columns === 'number' && Number.isFinite(stream.columns)
+    ? stream.columns
+    : process.stdout.columns;
+  return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 80;
+}
+
 /**
  * `frame` tier: a full linecraft code frame. Any include/call stack the
  * diagnostic already carries (via `note`) is appended; no stack is synthesized.
@@ -277,8 +284,8 @@ function outputDiagnostic(
   }
   const fullMessage = messageLines.join('\n');
 
-  // Create CodeDebug component and output it to the specified stream
-  const region = Region({ stdout: stream });
+  const width = diagnosticWidth(stream);
+  const region = Region({ stdout: stream, disableRendering: true, width });
   region.set(CodeDebug({
     startLine: errorLineNum,
     startColumn: column,
@@ -293,7 +300,9 @@ function outputDiagnostic(
     type
   }));
 
-  // Flush to ensure rendering, then destroy without clearing to persist output.
-  void region.flush();
-  void region.destroy(false); // false = don't clear, persist the output
+  for (let lineIndex = 1; lineIndex <= region.height; lineIndex++) {
+    stream.write(`${region.getLine(lineIndex)}\n`);
+  }
+
+  region.destroy(false);
 }
