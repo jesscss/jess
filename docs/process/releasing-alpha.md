@@ -226,11 +226,11 @@ What it does for you:
 
 1) Safety checks (`alpha` branch + clean working tree except `.cursor/*`)
 2) Registry-aware lockstep alpha-version resolution (without mutating manifests)
-3) Full preflight (`release:alpha:check`: release build, strict production
+3) Full preflight (`release:alpha:preflight`: release build, strict production
    types, bounded production-source lint, Less-alpha, the direct public
    `jess-parser`, `plugin-jess`, and `rollup-plugin-jess` tests, AST-v2
    production-route ratchet, baseline, aggressive-cutting, allowlist, packed
-   clean-consumer, and dry-run publish checks) against that resolved candidate
+   clean-consumer) against that resolved candidate
 4) Apply the lockstep version and update the lockfile
 5) Commit + annotated tag (`vX.Y.Z-alpha.N`)
 6) Push branch + tag to origin
@@ -242,6 +242,9 @@ Practice first without touching git/npm:
 ```bash
 pnpm run release:alpha:dry-run
 ```
+
+The dry-run command runs the same preflight and then invokes the dry-run publish
+check with the internally forwarded registry-resolved candidate.
 
 ### Packed clean-consumer proof
 

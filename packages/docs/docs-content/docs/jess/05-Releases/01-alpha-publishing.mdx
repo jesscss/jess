@@ -19,8 +19,10 @@ The publish set includes the direct parser/plugin closure installed by `jess`:
 Jess, Less, and SCSS parser plugins plus their parser packages. CSS is available
 only when a consumer explicitly configures a CSS document plugin; Jess does not
 install or route `.css` entries by default. `@jesscss/css-parser` remains in the
-set because the shipped dialect grammars use its shared CSS grammar. Packages
-with private runtime dependencies remain intentionally excluded.
+set because the shipped dialect grammars use its shared CSS grammar. The set
+also includes `@jesscss/compiler`, which owns the shared render pipeline used by
+the root `jess` package and the Less plugin stack. Packages with private runtime
+dependencies remain intentionally excluded.
 
 ## Branch/tag guardrails
 
