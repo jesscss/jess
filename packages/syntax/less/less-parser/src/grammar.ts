@@ -164,11 +164,11 @@ type LessRules = {
   SupportsFeature: Combinator<ValueNode>;
   DirectLessSupportsInParens: Combinator<ValueNode>;
   DirectLessSupportsCondition: Combinator<ValueNode>;
-  DirectLessGeneralEnclosedContent: Combinator<Interpolation>;
-  DirectLessGeneralEnclosedGroup: Combinator<Interpolation>;
-  DirectLessGeneralEnclosedQuoted: Combinator<Interpolation>;
-  DirectLessGeneralEnclosedFunctionName: Combinator<GeneralEnclosedNameFact>;
-  DirectLessGeneralEnclosed: Combinator<GeneralEnclosed>;
+  GeneralEnclosedContent: Combinator<Interpolation>;
+  GeneralEnclosedGroup: Combinator<Interpolation>;
+  GeneralEnclosedQuoted: Combinator<Interpolation>;
+  GeneralEnclosedFunctionName: Combinator<GeneralEnclosedNameFact>;
+  GeneralEnclosed: Combinator<GeneralEnclosed>;
   SupportsBlock: Combinator<AtRuleBlock>;
   QueryValue: Combinator<ValueNode>;
   QueryLogicalGroup: Combinator<ValueNode>;
@@ -2323,7 +2323,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         '-_0-9A-Za-z',
         { caseInsensitive: true }
       ),
-      optional(sequence(literal('('), field('options', g.DirectLessGeneralEnclosedContent), literal(')'))),
+      optional(sequence(literal('('), field('options', g.GeneralEnclosedContent), literal(')'))),
       field('target', quotedOrUrlTarget),
       literal(';')
     ),
@@ -4080,7 +4080,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     noTrivia(choice(g.CssSyntaxBlockComment, directLessGeneralEnclosedText)),
     children => requireToken(children[0]).value
   );
-  const DirectLessGeneralEnclosedQuoted = node<Interpolation>(
+  const GeneralEnclosedQuoted = node<Interpolation>(
     'DirectLessGeneralEnclosedQuoted',
     choice(
       noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, BareVariableInterpolation, directLessGeneralEnclosedDoubleChunk)), literal('"'))),
@@ -4088,36 +4088,36 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     generalEnclosedInterpolationFromChildren
   );
-  const DirectLessGeneralEnclosedGroup = node<Interpolation>(
+  const GeneralEnclosedGroup = node<Interpolation>(
     'DirectLessGeneralEnclosedGroup',
     choice(
-      noTrivia(sequence(literal('('), g.DirectLessGeneralEnclosedContent, literal(')'))),
-      noTrivia(sequence(literal('['), g.DirectLessGeneralEnclosedContent, literal(']'))),
-      noTrivia(sequence(literal('{'), g.DirectLessGeneralEnclosedContent, literal('}')))
+      noTrivia(sequence(literal('('), g.GeneralEnclosedContent, literal(')'))),
+      noTrivia(sequence(literal('['), g.GeneralEnclosedContent, literal(']'))),
+      noTrivia(sequence(literal('{'), g.GeneralEnclosedContent, literal('}')))
     ),
     generalEnclosedInterpolationFromChildren
   );
-  const DirectLessGeneralEnclosedContent = node<Interpolation>(
+  const GeneralEnclosedContent = node<Interpolation>(
     'DirectLessGeneralEnclosedContent',
     noTrivia(many(choice(
       BareVariableInterpolation,
       DirectLessGeneralEnclosedRaw,
       g.VariableInterpolation,
-      g.DirectLessGeneralEnclosedQuoted,
-      g.DirectLessGeneralEnclosedGroup
+      g.GeneralEnclosedQuoted,
+      g.GeneralEnclosedGroup
     ))),
     generalEnclosedInterpolationFromChildren
   );
-  const DirectLessGeneralEnclosedFunctionName = node<GeneralEnclosedNameFact>(
+  const GeneralEnclosedFunctionName = node<GeneralEnclosedNameFact>(
     'DirectLessGeneralEnclosedFunctionName',
     token(noTrivia(sequence(g.CssSyntaxQueryFunctionName, literal('(')))),
     children => ({ name: functionNameFromOpener(children[0]) })
   );
-  const DirectLessGeneralEnclosed = node<GeneralEnclosed>(
+  const GeneralEnclosed = node<GeneralEnclosed>(
     'DirectLessGeneralEnclosed',
     choice(
-      noTrivia(sequence(g.DirectLessGeneralEnclosedFunctionName, g.DirectLessGeneralEnclosedContent, literal(')'))),
-      noTrivia(sequence(literal('('), g.DirectLessGeneralEnclosedContent, literal(')')))
+      noTrivia(sequence(g.GeneralEnclosedFunctionName, g.GeneralEnclosedContent, literal(')'))),
+      noTrivia(sequence(literal('('), g.GeneralEnclosedContent, literal(')')))
     ),
     (children) => {
       const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
@@ -4164,7 +4164,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     choice(
       sequence(literal('('), g.DirectLessSupportsCondition, literal(')')),
       g.SupportsFeature,
-      g.DirectLessGeneralEnclosed
+      g.GeneralEnclosed
     ),
     children => children.length === 1
       ? requireValueNode(children[0])
@@ -5619,11 +5619,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     SupportsFeature,
     DirectLessSupportsInParens,
     DirectLessSupportsCondition,
-    DirectLessGeneralEnclosedContent,
-    DirectLessGeneralEnclosedGroup,
-    DirectLessGeneralEnclosedQuoted,
-    DirectLessGeneralEnclosedFunctionName,
-    DirectLessGeneralEnclosed,
+    GeneralEnclosedContent,
+    GeneralEnclosedGroup,
+    GeneralEnclosedQuoted,
+    GeneralEnclosedFunctionName,
+    GeneralEnclosed,
     SupportsBlock,
     QueryValue,
     QueryLogicalGroup,
