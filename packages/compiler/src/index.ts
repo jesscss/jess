@@ -125,6 +125,9 @@ function appendThrownJessDiagnostic(
 
 type PluginFactoryCacheKey = string;
 type LazyPluginInterface = PluginInterface;
+type ExecutablePluginInterface = PluginInterface & {
+  importPlugin(absoluteFilePath: string, options?: string | null): Promise<unknown>;
+};
 type ProfileMemorySnapshot = {
   rss: number;
   heapTotal: number;
@@ -230,6 +233,10 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function isPluginInterface(value: unknown): value is PluginInterface {
   return isObjectRecord(value) && typeof value.name === 'string';
+}
+
+function isExecutablePluginInterface(value: PluginInterface): value is ExecutablePluginInterface {
+  return typeof value.importPlugin === 'function';
 }
 
 function getSearchPaths(options: Record<string, unknown>): string[] | undefined {
@@ -774,23 +781,12 @@ export class Compiler {
         }
         return plugin.import(absoluteFilePath);
       },
-      importLessPlugin: async (absoluteFilePath: string) => {
-        const plugin = await getScriptRuntimePlugin() as PluginInterface & {
-          importLessPlugin?: (absoluteFilePath: string, options?: string | null) => Promise<unknown>;
-        };
-        if (!plugin.importLessPlugin) {
-          throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable Less @plugin script execution.`);
-        }
-        return plugin.importLessPlugin(absoluteFilePath);
-      },
       importPlugin: async (absoluteFilePath: string, options?: string | null) => {
-        const plugin = await getScriptRuntimePlugin() as PluginInterface & {
-          importLessPlugin?: (absoluteFilePath: string, options?: string | null) => Promise<unknown>;
-        };
-        if (!plugin.importLessPlugin) {
+        const plugin = await getScriptRuntimePlugin();
+        if (!isExecutablePluginInterface(plugin)) {
           throw new Error(`Feature not supported. Install ${scriptPluginLabel} to enable executable plugin modules.`);
         }
-        return plugin.importLessPlugin(absoluteFilePath, options);
+        return plugin.importPlugin(absoluteFilePath, options);
       },
       dispose: async () => {
         const plugins = await Promise.all([
@@ -801,9 +797,6 @@ export class Compiler {
           await plugin?.dispose?.();
         }
       }
-    } as LazyPluginInterface & {
-      importLessPlugin(absoluteFilePath: string): Promise<unknown>;
-      importPlugin(absoluteFilePath: string, options?: string | null): Promise<unknown>;
     };
     this.jsPluginProxyCache.set(factoryRecord.key, proxy);
     return proxy;

@@ -125,6 +125,7 @@ import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js
 import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
+import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
@@ -719,6 +720,16 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
           ? statement.target.value.value
           : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
+      const deprecation = Deprecation.fromId('less-plugin') ?? Deprecation.userAuthored;
+      e.context?.warnDeprecation(deprecation, WARN.deprecated({
+        node: statement,
+        ...callSiteLocation(statement, e),
+        meta: {
+          what: 'Less @plugin',
+          use: '@use or @-use',
+          deprecation
+        }
+      }));
 
       /*
        * A `@plugin` that cannot be resolved, or whose script throws while

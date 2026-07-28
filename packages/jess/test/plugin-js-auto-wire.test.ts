@@ -59,12 +59,15 @@ describe('@jesscss/plugin-js optional auto-wiring', () => {
     expect(typeof loader).toBe('function');
 
     const jsPlugin = (await loader?.('.js')) as PluginInterface & {
+      importPlugin?: unknown;
       importLessPlugin?: unknown;
     } | undefined;
     expect(jsPlugin).toBeDefined();
     expect(jsPlugin?.supportedExtensions).toContain('.js');
-    // The proxy exposes the Less @plugin executor once plugin-js is loaded.
-    expect(typeof jsPlugin?.importLessPlugin).toBe('function');
+
+    // The compiler proxy exposes the generic executable-plugin capability.
+    expect(typeof jsPlugin?.importPlugin).toBe('function');
+    expect(jsPlugin?.importLessPlugin).toBeUndefined();
 
     // A non-script extension is not something plugin-js handles.
     expect(await loader?.('.css')).toBeUndefined();
