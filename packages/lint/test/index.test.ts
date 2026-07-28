@@ -100,6 +100,20 @@ describe('lintText', () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it('routes SCSS inputs through shared diagnostics policy', async () => {
+    const result = await lintText(
+      {
+        source: '$color: red; .a { color: $color; width: 0px; }',
+        filePath: '/tmp/input.scss'
+      },
+      {
+        stylesConfig: {}
+      }
+    );
+
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual([LINT_CODES.zeroUnits]);
+  });
 });
 
 describe('lintFiles', () => {

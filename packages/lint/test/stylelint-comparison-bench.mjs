@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import lessSyntax from 'postcss-less';
+import scssSyntax from 'postcss-scss';
 import stylelint from 'stylelint';
 import {
   STYLELINT_COMPARISON_LINT_CONFIG,
@@ -35,6 +36,31 @@ const STYLELINT_LESS_RULES = {
   'at-rule-no-unknown': [true, { ignoreAtRules: ['plugin'] }]
 };
 
+const STYLELINT_SCSS_RULES = {
+  ...STYLELINT_RULES,
+  'at-rule-no-unknown': [true, {
+    ignoreAtRules: [
+      'at-root',
+      'content',
+      'debug',
+      'each',
+      'else',
+      'error',
+      'extend',
+      'for',
+      'forward',
+      'function',
+      'if',
+      'include',
+      'mixin',
+      'return',
+      'use',
+      'warn',
+      'while'
+    ]
+  }]
+};
+
 function resolveInputFile(input) {
   if (path.isAbsolute(input)) {
     return input;
@@ -47,7 +73,14 @@ function resolveInputFile(input) {
 }
 
 function languageFromPath(filePath) {
-  return path.extname(filePath).toLowerCase() === '.less' ? 'less' : 'css';
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.less') {
+    return 'less';
+  }
+  if (extension === '.scss') {
+    return 'scss';
+  }
+  return 'css';
 }
 
 function validateBenchNumber(name, value) {
@@ -137,14 +170,25 @@ function stylelintOptions(source, filePath, language) {
   const options = {
     code: source,
     codeFilename: filePath,
+    disableDefaultIgnores: true,
     config: {
-      rules: language === 'less' ? STYLELINT_LESS_RULES : STYLELINT_RULES
+      rules: language === 'less'
+        ? STYLELINT_LESS_RULES
+        : language === 'scss'
+          ? STYLELINT_SCSS_RULES
+          : STYLELINT_RULES
     }
   };
   if (language === 'less') {
     return {
       ...options,
       customSyntax: lessSyntax
+    };
+  }
+  if (language === 'scss') {
+    return {
+      ...options,
+      customSyntax: scssSyntax
     };
   }
   return options;

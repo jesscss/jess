@@ -38,6 +38,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "postcss-less": "~6.0.0",
+    "postcss-scss": "~4.0.9",
     "stylelint": "~17.14.1",
     "typescript": "~5.8.2",
     "vitest": "^4.1.0"
