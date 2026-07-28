@@ -234,9 +234,13 @@ The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
 evidence: branch `less-5-alpha.1` at `35633d4b88f289ab7814afac4e06e9255df73619`,
-clean worktree, PR open/non-draft with merge state `CLEAN`. GitHub Actions are
-green, and the CodeRabbit status context is green, but the latest review still
-lists actionable comments.
+then `0cf35355688da91c17c31e7c624be9a90ec9ccca`, clean worktree, PR
+open/non-draft with merge state `CLEAN`. GitHub Actions are green on
+`0cf35355`, and the CodeRabbit status context is green, but the latest
+complete review still lists actionable fixture comments. The later CodeRabbit
+run covering `35633d4b` -> `0cf35355` was rate-limited after selecting only
+the publish-script files, so treat the remote-tag comment as fixed by the
+`fix(release): abort on remote tag mismatch` commit but not yet bot-resolved.
 
 Current package/release gates are registry-backed against published Jess
 `2.0.0-alpha.10`: `pnpm run test:publish-dry-run` passes, and
@@ -262,12 +266,13 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 dependency or `optionalDependencies` entry.
 
 Current package-flow blockers, verified 2026-07-28, are PR-review blockers, not
-Jess registry availability: CodeRabbit's actionable comments still match the
-tree. Before merge/publish, resolve or explicitly disposition the remote tag
-mismatch behavior in `scripts/bump-and-publish.js`, the missing
-`.widget.repositoriesresults` selector expansion in the container expected CSS,
-the `scroll-state (` spacing in the same fixture, and the intentional custom
-unit expectations in `variables/legacy/variable-advanced.css`.
+Jess registry availability. Before merge/publish, resolve or explicitly
+disposition the missing `.widget.repositoriesresults` selector expansion in
+the container expected CSS, the `scroll-state (` spacing in the same fixture,
+and the intentional custom unit expectations in
+`variables/legacy/variable-advanced.css`. The remote-tag mismatch behavior in
+`scripts/bump-and-publish.js` is fixed locally on the PR branch; leave it on the
+review checklist only until the stale bot comment is resolved or superseded.
 
 Before treating PR #19 as alpha.1-mergeable, port or consciously classify the
 upstream fixture/test-data gap from `upstream/master` after the PR's current
