@@ -528,6 +528,10 @@ export class Context {
     return `${this.pluginCacheKey(plugin)}\0${resolvedPath}\0${pluginModuleOptionsCacheKey(options)}`;
   }
 
+  private parsedSourceTreeKey(plugin: PluginInterface, resolvedPath: string): string {
+    return `${this.pluginCacheKey(plugin)}\0${resolvedPath}`;
+  }
+
   /**
    * Change a compile-level option and refresh the resolved-options cache. Prefer
    * passing options at construction; this exists for dynamic reconfiguration (and
@@ -1030,6 +1034,7 @@ export class Context {
 
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
+  private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
   evaldTrees = new Map<string, Rules>();
 
   /** Record the parser/source identity once, when an AST document enters this session. */
@@ -1294,9 +1299,10 @@ export class Context {
     const { type } = importOptions;
 
     /**
-     * We already have resolved this file and parsed it.
+     * Legacy/default cache: a path-only seed is valid only for extension-driven
+     * parsing. Explicit parser overrides must use parser identity below.
      */
-    if (this.sourceTrees.has(resolvedPath)) {
+    if (type === undefined && this.sourceTrees.has(resolvedPath)) {
       return {
         node: this.sourceTrees.get(resolvedPath)!,
         triedPaths,
@@ -1306,14 +1312,23 @@ export class Context {
 
     const plugins = this.plugins;
 
+    const ext = path.extname(resolvedPath);
+    const plugin = this.findParserPlugin(type, ext);
+    const parsedSourceKey = this.parsedSourceTreeKey(plugin, resolvedPath);
+    const cachedDocument = this.parsedSourceTrees.get(parsedSourceKey);
+    if (cachedDocument) {
+      return {
+        node: cachedDocument,
+        triedPaths,
+        resolvedPath
+      };
+    }
+
     const sourceGetter = plugins.find(plugin => plugin.getSource);
     if (!sourceGetter) {
       /** If we can't actually load files, bail. */
       throw new Error('No source getter found');
     }
-
-    const ext = path.extname(resolvedPath);
-    const plugin = this.findParserPlugin(type, ext);
     const source = await sourceGetter.getSource!(resolvedPath);
     const parseResult = this.parseSource(plugin, resolvedPath, source, {
       importOptions,
@@ -1338,7 +1353,10 @@ export class Context {
       }
       this.rememberDocumentContext(document, resolvedPath, source, plugin);
 
-      this.sourceTrees.set(resolvedPath, document);
+      this.parsedSourceTrees.set(parsedSourceKey, document);
+      if (type === undefined) {
+        this.sourceTrees.set(resolvedPath, document);
+      }
       return {
         node: document,
         triedPaths,

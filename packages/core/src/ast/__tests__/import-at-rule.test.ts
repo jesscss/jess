@@ -224,6 +224,66 @@ describe('ImportAtRule', () => {
     expect(plugin.importPluginCalls).toBe(2);
   });
 
+  it('keeps explicit parser override imports distinct from extension-parsed documents', async () => {
+    const filePath = '/virtual/tokens.css';
+    const cssDocument = stylesheet([
+      rule('.css', [decl('color', keyword('blue'))])
+    ]);
+    const lessDocument = stylesheet([
+      rule('.less', [decl('color', keyword('red'))])
+    ]);
+
+    class MemoryCssPlugin extends AbstractPlugin {
+      name = 'css';
+      supportedExtensions = ['.css'];
+      parseCalls = 0;
+
+      override locate(paths: string[]) {
+        return paths.includes(filePath) ? filePath : null;
+      }
+
+      override async getSource() {
+        return '.css { color: blue; }\n';
+      }
+
+      safeParse() {
+        this.parseCalls++;
+        return { document: cssDocument, errors: [], warnings: [] };
+      }
+    }
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'less';
+      supportedExtensions = ['.less'];
+      parseCalls = 0;
+
+      safeParse() {
+        this.parseCalls++;
+        return { document: lessDocument, errors: [], warnings: [] };
+      }
+    }
+
+    const css = new MemoryCssPlugin();
+    const less = new MemoryLessPlugin();
+    const context = new Context({}, [css, less]);
+
+    await expect(context.getTree(filePath)).resolves.toMatchObject({ node: cssDocument });
+    await expect(context.getTree(filePath, { type: 'less' })).resolves.toMatchObject({ node: lessDocument });
+    await expect(context.getTree(filePath)).resolves.toMatchObject({ node: cssDocument });
+    await expect(context.getTree(filePath, { type: 'less' })).resolves.toMatchObject({ node: lessDocument });
+    expect(css.parseCalls).toBe(1);
+    expect(less.parseCalls).toBe(1);
+
+    const cssAgain = new MemoryCssPlugin();
+    const lessAgain = new MemoryLessPlugin();
+    const reverseContext = new Context({}, [cssAgain, lessAgain]);
+
+    await expect(reverseContext.getTree(filePath, { type: 'less' })).resolves.toMatchObject({ node: lessDocument });
+    await expect(reverseContext.getTree(filePath)).resolves.toMatchObject({ node: cssDocument });
+    expect(cssAgain.parseCalls).toBe(1);
+    expect(lessAgain.parseCalls).toBe(1);
+  });
+
   it('loads a claimed external import through Context without a core network resolver', async () => {
     const remoteSpecifier = 'https://styles.example.test/tokens.less';
     const mappedPath = '/virtual/tokens.less';
