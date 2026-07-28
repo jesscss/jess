@@ -56,8 +56,15 @@ function gitShow(rootDir, ref, relativePath) {
     shell: process.platform === 'win32'
   });
   if (result.status !== 0) {
+    const stderr = result.stderr.trim();
+    if (
+      stderr.includes(`path '${relativePath}' exists on disk, but not in '${ref}'`)
+      || stderr.includes(`Path '${relativePath}' does not exist in '${ref}'`)
+    ) {
+      return null;
+    }
     throw new Error(`Could not read ${relativePath} from recovery ref '${ref}': ${
-      result.stderr.trim() || 'git show failed'
+      stderr || 'git show failed'
     }`);
   }
   return result.stdout;
@@ -95,7 +102,14 @@ function main() {
       .replaceAll(path.sep, '/');
     const importedRaw = readFileSync(pkg.packageJsonPath, 'utf8');
     const importedManifest = JSON.parse(importedRaw);
-    const recoveryManifest = JSON.parse(gitShow(rootDir, from, relativePath));
+    const recoveryRaw = gitShow(rootDir, from, relativePath);
+    if (recoveryRaw === null) {
+      console.log(`${relativePath}: new in imported source; keeping ${
+        importedManifest.version ?? '(missing)'
+      }`);
+      continue;
+    }
+    const recoveryManifest = JSON.parse(recoveryRaw);
     const restoredManifest = preserveRecoveryManifestVersion(
       importedManifest,
       recoveryManifest
