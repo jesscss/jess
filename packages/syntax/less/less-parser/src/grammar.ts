@@ -19,7 +19,7 @@ import {
   attempt, rules, composeLeaf,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, parser, trivia, noTrivia, label, word, keywords, field, leaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
+  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, transform, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
@@ -1930,11 +1930,6 @@ const importOption = keywords(
   ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
   { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
 );
-// The folded Less grammar intentionally uses the same bare identifier
-// boundary as its property/keyword facts.  `url()` has its own typed node and
-// is excluded so an unsupported dynamic URL cannot fall through as a generic call.
-const functionName = regex(/(?!(?:url|calc)(?=\())-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-const functionOpener = token(noTrivia(sequence(functionName, literal('('))));
 const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
@@ -2710,9 +2705,20 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     optional(trailingFunctionArgumentSeparator)
   ));
-  const Call = node<FunctionCall>(
+  // Value-position identifiers and glued function openers share one lexical
+  // family. Parse that opener once, then route by the returned text. Branch
+  // nodes own `routed()` so the consumed opener remains inside the selected CST
+  // node, and `foo (` still stays keyword + paren because the `(` is not glued
+  // into the opener.
+  const identOrFunction = token(noTrivia(sequence(g.LessSyntaxInterpolatedValueStart, optional(literal('(')))));
+  const genericFunctionOpen = token(noTrivia(sequence(
+    not(keywords(['url(', 'calc('], { caseInsensitive: true })),
+    g.LessSyntaxInterpolatedValueStart,
+    literal('(')
+  )));
+  const GenericFunction = node<FunctionCall>(
     'Call',
-    parser({ trivia: functionTrivia }, sequence(functionOpener, FunctionArguments, literal(')'))),
+    parser({ trivia: functionTrivia }, sequence(routed(), FunctionArguments, literal(')'))),
     (children, fields, span, _rawChildren, triviaLog, state) => {
       const name = functionNameFromOpener(children[0]);
       const args: ValueSlot[] = [];
@@ -2729,6 +2735,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return withSourceSpan(call, span);
     }
   );
+  const Call = transform(
+    dispatch(
+      genericFunctionOpen,
+      when(endsWith('('), GenericFunction)
+    ),
+    ([, call]) => call
+  );
   // A detached ruleset is a call-argument form, not a general value piece.
   // Keep this argument-enabled function production out of Value
   // so a declaration value cannot acquire the call-only `{ … }` first set.
@@ -2742,9 +2755,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     optional(trailingCallArgumentFunctionSeparator)
   ));
-  const CallArgumentFunction = node<FunctionCall>(
+  const ArgumentFunction = node<FunctionCall>(
     'Call',
-    sequence(functionOpener, CallArgumentFunctionArguments, literal(')')),
+    sequence(routed(), CallArgumentFunctionArguments, literal(')')),
     (children, fields, span) => {
       const name = functionNameFromOpener(children[0]);
       const args = children.slice(1, -1).filter(isValueSlotValue);
@@ -2755,6 +2768,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
       return withSourceSpan(call, span);
     }
+  );
+  const CallArgumentFunction = transform(
+    dispatch(
+      genericFunctionOpen,
+      when(endsWith('('), ArgumentFunction)
+    ),
+    ([, call]) => call
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
   // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
@@ -2777,38 +2797,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return call;
     }
   );
-  // ValueList-position identifiers and glued function openers share one lexical
-  // family. Parse that opener once, then route by the returned text: `url(` and
-  // `calc(` keep their dedicated typed bodies, any other glued opener is a
-  // generic function call, and a bare identifier remains the keyword /
-  // interpolation-bearing value production. This is the canonical Parseman 0.40
-  // dispatch shape: no `url(` / `calc(` / generic function / keyword sibling
-  // reparsing, and `foo (` still stays keyword + paren because the `(` is not
-  // glued into the opener.
-  const identOrFunction = token(noTrivia(sequence(g.LessSyntaxInterpolatedValueStart, optional(literal('(')))));
   const CalcFunction = node<FunctionCall>(
     'CalcCall',
     noTrivia(sequence(routed(), g.MathSum, literal(')'))),
     children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children[1])])
-  );
-  const GenericFunction = node<FunctionCall>(
-    'Call',
-    parser({ trivia: functionTrivia }, sequence(routed(), FunctionArguments, literal(')'))),
-    (children, fields, span, _rawChildren, triviaLog, state) => {
-      const name = functionNameFromOpener(children[0]);
-      const args: ValueSlot[] = [];
-      for (const child of children.slice(1, -1)) {
-        if (isValueSlotValue(child)) {
-          args.push(child);
-        }
-      }
-      const call = funcCall(name, args);
-      const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
-      if (separators.length === args.length - 1) {
-        withValueLayout(call.args, separators);
-      }
-      return withSourceSpan(call, span);
-    }
   );
   const Identifier = node<ValueNode>(
     'Identifier',
