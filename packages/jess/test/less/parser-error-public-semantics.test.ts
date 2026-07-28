@@ -85,6 +85,88 @@ describe('Less parser errors through the public AST route', () => {
     });
   });
 
+  it('reports unsupported legacy Less variable names through the public compiler route', async () => {
+    const source = [
+      '@theme: red;',
+      '.entry {',
+      '  color: @1;',
+      '}'
+    ].join('\n');
+    const compiler = new Compiler();
+    const result = await compiler.renderToResult(
+      { source, filePath: 'legacy-variable.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/unsupported-variable-name',
+      phase: 'parse',
+      message: 'This Less variable name is not supported.',
+      reason: 'Less variable names must not be numeric-leading or dash-only.',
+      fix: expect.stringContaining('descriptive variable name'),
+      line: 3,
+      column: 10,
+      endLine: 3,
+      endColumn: 12,
+      file: { source }
+    });
+
+    await expect(compiler.renderString(source, {
+      filePath: 'legacy-variable.less',
+      extension: '.less'
+    })).rejects.toMatchObject({
+      code: 'parse/unsupported-variable-name',
+      line: 3,
+      column: 10,
+      endLine: 3,
+      endColumn: 12
+    });
+  });
+
+  it('reports unsupported legacy Less interpolation and mixin names precisely', async () => {
+    const compiler = new Compiler();
+    const cases = [
+      {
+        source: '.@{1} { color: red; }',
+        code: 'parse/unsupported-variable-name',
+        message: 'This Less variable name is not supported.',
+        column: 2,
+        endColumn: 6
+      },
+      {
+        source: '.-() { color: red; }',
+        code: 'parse/unsupported-mixin-name',
+        message: 'This Less mixin name is not supported.',
+        column: 1,
+        endColumn: 5
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const result = await compiler.renderToResult(
+        {
+          source: testCase.source,
+          filePath: 'legacy-syntax.less',
+          extension: '.less'
+        },
+        { breakOnError: false }
+      );
+
+      expect(result.errors, testCase.source).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        code: testCase.code,
+        phase: 'parse',
+        message: testCase.message,
+        line: 1,
+        column: testCase.column,
+        endLine: 1,
+        endColumn: testCase.endColumn,
+        file: { source: testCase.source }
+      });
+    }
+  });
+
   it('summarizes value-position parser failures without leaking atom internals', async () => {
     const source = [
       '.theme() {',

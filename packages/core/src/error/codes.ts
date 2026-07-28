@@ -18,6 +18,8 @@ export type JessErrorCode =
   | "parse/dynamic-charset"
   | "parse/unsupported-inline-javascript"
   | "parse/unsupported-bare-variable-interpolation"
+  | 'parse/unsupported-variable-name'
+  | 'parse/unsupported-mixin-name'
   | "resolve/name-not-found"
   | "import/circular-compose"
   | "import/not-found"
@@ -120,6 +122,22 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
         "Bare @variable references are values; syntax and prelude interpolation must use @{variable}.",
       fix: "Wrap the variable name in interpolation braces, for example @{name}.",
     },
+  ],
+  [
+    'parse/unsupported-variable-name',
+    {
+      summary: 'Unsupported Less variable name',
+      reason: 'Less variable names must not be numeric-leading or dash-only.',
+      fix: 'Rename the variable to a descriptive name and update its references.'
+    }
+  ],
+  [
+    'parse/unsupported-mixin-name',
+    {
+      summary: 'Unsupported Less mixin name',
+      reason: 'Dash-only Less mixin names are not supported.',
+      fix: 'Rename the mixin to a descriptive selector-like name, for example .mixin().'
+    }
   ],
 
   // Resolve/Import

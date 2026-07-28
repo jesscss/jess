@@ -252,9 +252,10 @@ const dimensionUnit = regex(/-?[_a-zA-Z\u0080-\uFFFF](?:[_a-zA-Z0-9\u0080-\uFFFF
 const lessBareIdentifier = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 
 /*
- * Less variable names alone may begin with a digit (`@1`, `@{3}`).  Keep this
- * separate from the general identifier leaf so that permission does not leak
- * into declaration names, selectors, or ordinary value keywords.
+ * Keep legacy Less variable names (`@1`, `@{3}`, `@-`) recognizable here so
+ * dialect parsers can reject retired syntax with precise diagnostics. This
+ * stays separate from the general identifier leaf so that permissive recovery
+ * does not leak into declaration names, selectors, or ordinary value keywords.
  */
 const lessVariableName = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
 

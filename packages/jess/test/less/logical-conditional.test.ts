@@ -55,7 +55,7 @@ describe('Less logical / conditional functions', () => {
 
   it('if() invokes detached-ruleset branches (true / false / void)', async () => {
     const css = await render(`#if {
-  @1: if(not(false), {c: 3}, {d: 4}); @1();
+  @rules: if(not(false), {c: 3}, {d: 4}); @rules();
 
   if((false), {g: 7}); /* results in void */
 

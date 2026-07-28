@@ -26,7 +26,7 @@ import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
-import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError } from './parse-error.js';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError, LessUnsupportedMixinNameError, LessUnsupportedVariableNameError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
 // Grammar — Less host-mode grammar.
@@ -594,9 +594,24 @@ function requireReferenceTailFact(value: unknown): ReferenceTailFact {
   return value;
 }
 
-function interpolationFactFromChildren(children: readonly unknown[]): InterpolationFact {
+function isUnsupportedVariableName(name: string): boolean {
+  const first = name.charCodeAt(0);
+  return name === '-' || (first >= 48 && first <= 57);
+}
+
+function assertSupportedVariableName(name: string, start: number, end: number): string {
+  if (isUnsupportedVariableName(name)) {
+    throw new LessUnsupportedVariableNameError(start, end, name);
+  }
+  return name;
+}
+
+function interpolationFactFromChildren(children: readonly unknown[], span: SourceSpan): InterpolationFact {
   const opener = requireToken(children[0]).value;
   const head = requireToken(children[1]).value;
+  if (opener === '@{') {
+    assertSupportedVariableName(head, span.start, span.end);
+  }
   let src = `${opener}${head}`;
   for (const child of children.slice(2, -1)) {
     src += `[${requireInterpolationAccessorFact(child).src}]`;
@@ -1922,21 +1937,28 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const IndirectVariableReference = node<VarIndirect>(
     'Reference',
     noTrivia(sequence(literal('@@'), g.LessSyntaxVariableName)),
-    (children, _fields, span) => withSourceSpan(
-      varIndirect(variableReference(requireToken(children[1]).value, 'scoped'), 'scoped'),
-      span
-    )
+    (children, _fields, span) => {
+      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end);
+      return withSourceSpan(
+        varIndirect(variableReference(name, 'scoped'), 'scoped'),
+        span
+      );
+    }
   );
   const VariableReference = node<VariableReference>(
     'Reference',
     sequence(literal('@'), g.LessSyntaxVariableName),
-    (children, _fields, span) => withSourceSpan(variableReference(requireToken(children[1]).value, 'scoped'), span)
+    (children, _fields, span) => withSourceSpan(
+      variableReference(assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end), 'scoped'),
+      span
+    )
   );
   const BareVariableInterpolation = node<never>(
     'BareVariableInterpolation',
     noTrivia(sequence(literal('@'), g.LessSyntaxVariableName)),
     (children, _fields, span) => {
-      throw new LessBareVariableInterpolationError(span.start, span.end, requireToken(children[1]).value);
+      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end);
+      throw new LessBareVariableInterpolationError(span.start, span.end, name);
     }
   );
   const PropertyReference = node<ValueNode>(
@@ -2009,7 +2031,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'Reference',
     noTrivia(sequence(literal('@'), g.LessSyntaxVariableName, optional(oneOrMore(g.ReferenceTail)))),
     (children, _fields, span) => {
-      const name = requireToken(children[1]).value;
+      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.end);
       const base = variableReference(name, 'scoped');
       return children.length > 2
         ? withSourceSpan(referenceWithTails(base, `@${name}`, children.slice(2)), span)
@@ -2027,15 +2049,25 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       };
     }
   );
+  const UnsupportedDashVariableInterpolation = node<never>(
+    'UnsupportedVariableName',
+    noTrivia(literal('@{-}')),
+    (_children, _fields, span) => {
+      throw new LessUnsupportedVariableNameError(span.start, span.end, '-');
+    }
+  );
   const VariableInterpolation = node<InterpolationFact>(
     'VariableInterpolation',
-    noTrivia(sequence(literal('@{'), g.LessSyntaxInterpHead, many(g.InterpolationAccessor), literal('}'))),
-    interpolationFactFromChildren
+    choice(
+      UnsupportedDashVariableInterpolation,
+      noTrivia(sequence(literal('@{'), g.LessSyntaxInterpHead, many(g.InterpolationAccessor), literal('}')))
+    ),
+    (children, _fields, span) => interpolationFactFromChildren(children, span)
   );
   const PropertyInterpolation = node<InterpolationFact>(
     'PropertyInterpolation',
     noTrivia(sequence(literal('${'), g.LessSyntaxInterpHead, many(g.InterpolationAccessor), literal('}'))),
-    interpolationFactFromChildren
+    (children, _fields, span) => interpolationFactFromChildren(children, span)
   );
   const Interpolation = node<InterpolationFact>(
     'Interpolation',
@@ -2320,6 +2352,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(directVariableName, literal(':'), choice(sequence(g.DirectLessNamespacedMixinValue, directMixinValueWithoutLookup), g.ImportantValue, sequence(g.DirectLessFlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
     (children, _fields, span) => {
       const name = requireToken(children[0]).value.slice(1);
+      assertSupportedVariableName(name, span.start, span.start + name.length + 1);
       const value = children[2];
       return withSourceSpan(
         variableDeclaration(name, isMixinCall(value) ? value : variableValueSlot(value), { mode: 'declare' }),
@@ -2334,14 +2367,18 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       literal(':'),
       g.ValueBlock
     ),
-    (children, _fields, span) => withSourceSpan(
-      variableDeclaration(
-        requireToken(children[0]).value.slice(1),
-        valueSlot(requireValueNode(children[2])),
-        { mode: 'declare' }
-      ),
-      span
-    )
+    (children, _fields, span) => {
+      const name = requireToken(children[0]).value.slice(1);
+      assertSupportedVariableName(name, span.start, span.start + name.length + 1);
+      return withSourceSpan(
+        variableDeclaration(
+          name,
+          valueSlot(requireValueNode(children[2])),
+          { mode: 'declare' }
+        ),
+        span
+      );
+    }
   );
   const Keyword = node<ValueNode>(
     'Keyword',
@@ -3268,7 +3305,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     node<Param>(
       'DirectLessMixinRestParam',
       sequence(literal('@'), g.LessSyntaxVariableName, literal('...')),
-      children => ({ name: requireToken(children[1]).value, rest: true })
+      (children, _fields, span) => ({
+        name: assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1),
+        rest: true
+      })
     ),
     node<Param>('DirectLessMixinAnonymousRestParam', literal('...'), () => ({ rest: true })),
     node<Param>(
@@ -3282,8 +3322,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
           optional(whitespace)
         ))
       ),
-      (children) => {
-        const name = requireToken(children[1]).value;
+      (children, _fields, span) => {
+        const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1);
         const value = children.at(-1);
         return isValueSlotValue(value) ? { name, default: value } : { name };
       }
@@ -3350,7 +3390,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     node<MixinCallArgument>(
       'DirectLessNamedMixinArgument',
       sequence(literal('@'), g.LessSyntaxVariableName, literal(':'), g.CallArgumentValue),
-      children => ({ name: requireToken(children[1]).value, value: requireMixinCallArgumentValue(children[3]) })
+      (children, _fields, span) => {
+        const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1);
+        return { name, value: requireMixinCallArgumentValue(children[3]) };
+      }
     ),
     DirectLessPositionalMixinCallArgument
   );
@@ -3593,7 +3636,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       literal(')'), optional(literal(';'))
     ),
     (children, _fields, span) => {
-      const name = requireToken(children[1]).value;
+      const name = assertSupportedVariableName(requireToken(children[1]).value, span.start, span.start + requireToken(children[1]).value.length + 1);
       const args = mixinArgumentsFromChildren(children);
       return withSourceSpan(reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`), span);
     }
@@ -3775,6 +3818,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // parenthesized-pseudo ruleset such as `.a:not(.b){}` still falls through to
   // the ruleset arm), so PEG priority and output stay identical.
   const directLessMixinStatementAhead = not(not(regex(/[.#][^{};]*[(;]/)));
+  const UnsupportedDashOnlyMixin = node<never>(
+    'UnsupportedMixinName',
+    noTrivia(choice(
+      sequence(choice(literal('.'), literal('#')), literal('-'), literal('('), optional(g.MixinArguments), literal(')')),
+      sequence(choice(literal('.'), literal('#')), literal('-'), literal(';'))
+    )),
+    (_children, _fields, span) => {
+      throw new LessUnsupportedMixinNameError(span.start, span.end);
+    }
+  );
   // A `node()` reduction boundary keeps the gated group's single mixin fact from
   // splicing the zero-width lookahead marker into the parent statement list; the
   // reducer returns the inner MixinDef/MixinCall/MixinCall (bare) node unchanged,
@@ -3782,7 +3835,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // arms. `collapse` lets parseman drop the transparent wrapper allocation.
   const directLessMixinStatement = node<Statement>(
     'DirectLessMixinStatement',
-    sequence(directLessMixinStatementAhead, choice(g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall)),
+    sequence(directLessMixinStatementAhead, choice(UnsupportedDashOnlyMixin, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall)),
     (children) => {
       const statement = children.find(isStatement);
       if (statement === undefined) {

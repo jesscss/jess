@@ -61,7 +61,9 @@ export interface ParserFailure {
     | 'parse/invalid-value'
     | 'parse/dynamic-charset'
     | 'parse/unsupported-inline-javascript'
-    | 'parse/unsupported-bare-variable-interpolation';
+    | 'parse/unsupported-bare-variable-interpolation'
+    | 'parse/unsupported-variable-name'
+    | 'parse/unsupported-mixin-name';
   readonly offset: number;
   readonly endOffset?: number;
   readonly expected?: readonly string[];
@@ -102,7 +104,9 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
       || error.code === 'parse/invalid-value'
       || error.code === 'parse/dynamic-charset'
       || error.code === 'parse/unsupported-inline-javascript'
-      || error.code === 'parse/unsupported-bare-variable-interpolation')
+      || error.code === 'parse/unsupported-bare-variable-interpolation'
+      || error.code === 'parse/unsupported-variable-name'
+      || error.code === 'parse/unsupported-mixin-name')
       ? error.code
       : undefined;
   const reason =

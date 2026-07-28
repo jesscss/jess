@@ -106,6 +106,48 @@ describe("@jesscss/plugin-less", () => {
     expect(result.errors[0]?.lines?.[1]).toBe(source);
   });
 
+  it('reports unsupported legacy Less variable names', () => {
+    const source = '.entry { color: @1; }';
+    const result = lessPlugin().safeParse!('entry.less', source);
+
+    expect(result.document).toBeUndefined();
+    expect(result.errors).toMatchObject([
+      {
+        code: 'parse/unsupported-variable-name',
+        phase: 'parse',
+        message: 'This Less variable name is not supported.',
+        reason: 'Less variable names must not be numeric-leading or dash-only.',
+        fix: expect.stringContaining('descriptive variable name'),
+        filePath: 'entry.less',
+        line: 1,
+        column: source.indexOf('@1') + 1,
+        file: { source }
+      }
+    ]);
+    expect(result.errors[0]?.lines?.[1]).toBe(source);
+  });
+
+  it('reports unsupported legacy Less mixin names', () => {
+    const source = '.-() { color: red; }';
+    const result = lessPlugin().safeParse!('entry.less', source);
+
+    expect(result.document).toBeUndefined();
+    expect(result.errors).toMatchObject([
+      {
+        code: 'parse/unsupported-mixin-name',
+        phase: 'parse',
+        message: 'This Less mixin name is not supported.',
+        reason: 'Dash-only Less mixin names are not supported.',
+        fix: expect.stringContaining('.mixin()'),
+        filePath: 'entry.less',
+        line: 1,
+        column: 1,
+        file: { source }
+      }
+    ]);
+    expect(result.errors[0]?.lines?.[1]).toBe(source);
+  });
+
   it("continues to accept a static CSS @charset statement", () => {
     const result = lessPlugin().safeParse!("entry.less", '@charset "UTF-8";');
 

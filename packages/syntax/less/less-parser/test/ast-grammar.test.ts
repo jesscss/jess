@@ -7,6 +7,8 @@ import {
   LessBareVariableInterpolationError,
   LessDynamicCharsetError,
   LessInlineJavaScriptError,
+  LessUnsupportedMixinNameError,
+  LessUnsupportedVariableNameError
 } from "../src/parse-error.js";
 
 function isStylesheet(value: unknown): value is Stylesheet {
@@ -3526,7 +3528,7 @@ describe("Less AST grammar facts", () => {
     const statements = [
       "a: if(not(false), 1, 2);",
       "b: if(not(true), 1, 2);",
-      "@1: if(not(false), {c: 3}, {d: 4}); @1();",
+      '@rules: if(not(false), {c: 3}, {d: 4}); @rules();',
       "e: if(not(true), 5);",
       "@f: boolean(3 = 4);",
       "f: if(not(@f), 6);",
@@ -4138,6 +4140,39 @@ describe("Less AST grammar facts", () => {
     );
     expect(valid.ok).toBe(true);
     expect(valid.unconsumedFrom).toBeNull();
+  });
+
+  it('recognizes unsupported legacy Less variable and mixin names', () => {
+    for (const source of [
+      '@1: red;',
+      '.entry { color: @1; }',
+      '@{1}: red;',
+      '@-: red;',
+      '.entry { color: @-; }',
+      '@{-}: red;'
+    ]) {
+      expect(
+        () =>
+          run(lessAstGrammar.LessAstDocument, source, {
+            trivia: lessAstGrammar.whitespace
+          }),
+        source
+      ).toThrow(LessUnsupportedVariableNameError);
+    }
+
+    for (const source of [
+      '.-();',
+      '#-();',
+      '.-() { color: red; }'
+    ]) {
+      expect(
+        () =>
+          run(lessAstGrammar.LessAstDocument, source, {
+            trivia: lessAstGrammar.whitespace
+          }),
+        source
+      ).toThrow(LessUnsupportedMixinNameError);
+    }
   });
 
   it("constructs interpolated and dotted layer headers through canonical at-rule nodes", () => {

@@ -73,3 +73,36 @@ export class LessBareVariableInterpolationError extends SyntaxError {
     this.fix = `Use @{${name}} instead of @${name}.`;
   }
 }
+
+/** Legacy Less variable names are recognized so diagnostics can be precise. */
+export class LessUnsupportedVariableNameError extends SyntaxError {
+  readonly code = 'parse/unsupported-variable-name' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'Less variable names must not be numeric-leading or dash-only.';
+  readonly fix: string;
+
+  constructor(offset: number, endOffset: number, name: string) {
+    super('This Less variable name is not supported.');
+    this.name = 'LessUnsupportedVariableNameError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+    this.fix = `Rename @${name} to a descriptive variable name and update its references.`;
+  }
+}
+
+/** Legacy dash-only mixin names are recognized so diagnostics can be precise. */
+export class LessUnsupportedMixinNameError extends SyntaxError {
+  readonly code = 'parse/unsupported-mixin-name' as const;
+  readonly offset: number;
+  readonly endOffset: number;
+  readonly reason = 'Dash-only Less mixin names are not supported.';
+  readonly fix = 'Rename the mixin to a descriptive selector-like name, for example .mixin().';
+
+  constructor(offset: number, endOffset: number) {
+    super('This Less mixin name is not supported.');
+    this.name = 'LessUnsupportedMixinNameError';
+    this.offset = offset;
+    this.endOffset = endOffset;
+  }
+}

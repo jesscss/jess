@@ -14,6 +14,8 @@ export {
   LessDynamicCharsetError,
   LessInlineJavaScriptError,
   LessParseError,
+  LessUnsupportedMixinNameError,
+  LessUnsupportedVariableNameError
 } from "./parse-error.js";
 
 function isStylesheet(value: unknown): value is Stylesheet {
