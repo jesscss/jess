@@ -115,8 +115,28 @@ silently relabeled as passing.
 Do this only after the exact pushed `origin/dev` candidate has passed its intended readiness
 and release checks. The `alpha` and `dev` histories have independently added
 the same source paths, so a plain `git merge --squash origin/dev` is unsafe and
-must not be used. Follow the verified two-tree snapshot procedure recorded in
-the [Core Architecture Handoff](../architecture/core/HANDOFF.md):
+must not be used.
+
+Run the guarded updater from a clean `alpha` worktree:
+
+```bash
+pnpm run release:alpha:update-from-dev
+```
+
+To prepare and push the branch in one command after the full dry-run gate:
+
+```bash
+pnpm run release:alpha:update-from-dev -- --release-dry-run --push
+```
+
+The updater fetches the current pushed `origin/dev`, creates a recovery branch,
+imports the source tree with a binary two-tree patch, preserves only package
+manifest versions from the previous alpha snapshot, records source provenance,
+bumps the lockstep alpha version, runs `pnpm install`, commits the snapshot, and
+runs `release:alpha:push-check`. It prints the recovery branch name so the exact
+pre-refresh state remains reachable.
+
+The updater implements this controlled snapshot procedure:
 
 1. Fetch the current refs, create a recovery ref such as
    `alpha-pre-refresh` from `alpha`, and work in an isolated `alpha`
