@@ -9,6 +9,7 @@ import {
 import { serialize } from "../../../../core/src/ast/serialize.js";
 import {
   LessBareVariableInterpolationError,
+  LessParseError,
   LessUnsupportedVariableNameError,
   parse,
 } from "@jesscss/less-parser";
@@ -208,6 +209,31 @@ describe("public Less parse()", () => {
     ]);
     expect(valueLayoutOf(nestedFunction.args)).toEqual([", ", "; "]);
     expect(() => parse(".card { value: fn(red;;blue); }")).toThrow(SyntaxError);
+  });
+
+  it('keeps direct parse error messages free of raw Parseman expected tokens', () => {
+    const source =
+      '.theme(){foo:bar;} .val { @alias: .theme; foo: @alias[foo]; }';
+    let thrown: unknown;
+
+    try {
+      parse(source);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(LessParseError);
+    if (!(thrown instanceof LessParseError)) {
+      throw new Error('expected a LessParseError');
+    }
+    expect(thrown.message).toBe(
+      'Unexpected Less syntax. Expected a Less value.'
+    );
+    expect(thrown.message).not.toContain('CssSyntaxNumber');
+    expect(thrown.message).not.toContain('not(peek)');
+    expect(thrown.message).not.toContain('/(?!');
+    expect(thrown.expected).toContain('CssSyntaxNumber');
+    expect(thrown.expected).toContain('not(peek)');
   });
 
   it("returns the canonical Stylesheet directly while named CST/document APIs remain available", () => {
@@ -2380,6 +2406,27 @@ describe("public Less parse()", () => {
     ]) {
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
+  });
+
+  it('accepts unknown CSS block at-rules as opaque blocks on the public Less route', () => {
+    const source = '@future {!!:foo > ; > ?bar}';
+    const cst = parseLessCst(source);
+    const document = parse(source);
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(document).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        {
+          type: 'OpaqueAtRuleBlock',
+          name: '@future',
+          prelude: null,
+          rawBody: '!!:foo > ; > ?bar'
+        }
+      ]
+    });
+    expect(serialize(document).css).toBe('@future {!!:foo > ; > ?bar}\n');
   });
 
   it("rejects removed bare at-variable prelude interpolation with a targeted parser error", () => {

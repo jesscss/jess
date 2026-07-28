@@ -293,6 +293,94 @@ describe('Less parser errors through the public AST route', () => {
     expect(result.errors[0]?.reason).not.toContain('The parser expected');
   });
 
+  it('uses source-backed delimiter summaries for generic parser failures', async () => {
+    const compiler = new Compiler();
+    const cases = [
+      {
+        source: [
+          '@media (missing: bracket {',
+          '  body {',
+          '    color: red;',
+          '  }',
+          '}'
+        ].join('\n'),
+        message: 'Missing closing parenthesis.',
+        reason: 'Less expected \')\' to close the open construct before this token.',
+        fix: 'Add the missing \')\' or remove the unmatched \'(\'.',
+        line: 1,
+        column: 26
+      },
+      {
+        source: [
+          '.custom {',
+          '  --custom: ({',
+          '    is-unmatched: [',
+          '  })',
+          '}'
+        ].join('\n'),
+        message: 'Missing closing bracket.',
+        reason: 'Less expected \']\' to close the open construct before this token.',
+        fix: 'Add the missing \']\' or remove the unmatched \'[\'.',
+        line: 4,
+        column: 3
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const result = await compiler.renderToResult(
+        { source: testCase.source, filePath: 'delimiter.less', extension: '.less' },
+        { breakOnError: false }
+      );
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        code: 'parse/syntax-error',
+        phase: 'parse',
+        message: testCase.message,
+        reason: testCase.reason,
+        fix: testCase.fix,
+        line: testCase.line,
+        column: testCase.column,
+        file: { source: testCase.source }
+      });
+      expect(result.errors[0]?.reason).not.toContain('rule, declaration, or at-rule');
+    }
+  });
+
+  it('uses source-backed string summaries for generic parser failures', async () => {
+    const compiler = new Compiler();
+    const cases = [
+      {
+        source: '@import "theme.less;',
+        column: 9
+      },
+      {
+        source: '.entry { content: \'hello; }',
+        column: 19
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const result = await compiler.renderToResult(
+        { source: testCase.source, filePath: 'string.less', extension: '.less' },
+        { breakOnError: false }
+      );
+
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({
+        code: 'parse/unterminated-string',
+        phase: 'parse',
+        message: 'Unterminated string.',
+        reason: 'Less expected the quoted string to be closed before the end of the source.',
+        fix: 'Add the missing closing quote.',
+        line: 1,
+        column: testCase.column,
+        file: { source: testCase.source }
+      });
+      expect(result.errors[0]?.reason).not.toContain('rule, declaration, or at-rule');
+    }
+  });
+
   it('summarizes duplicate semicolon expectations without raw token lists', async () => {
     const source = [
       '',

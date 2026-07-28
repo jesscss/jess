@@ -1,8 +1,8 @@
-import { makeKeyword, defineFunction } from '@jesscss/core/value';
+import { defineFunction, emitValue, isValueGroupArray, makeAny } from '@jesscss/core/value';
 import type { Fn } from '@jesscss/core/value';
 
-/** `e(value)` — escape a quoted value (drop quotes) → bare keyword; else pass through. */
+/** `e(value)` — escape a value into opaque bytes emitted as-is. */
 export const e: Fn = defineFunction('e', {
   params: [{ kinds: 'any' }],
-  body: v => (v.type === 'Quoted' ? makeKeyword(v.value) : v)
+  body: v => makeAny(!isValueGroupArray(v) && v.type === 'Quoted' ? v.value : emitValue(v))
 });

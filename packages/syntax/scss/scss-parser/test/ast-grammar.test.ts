@@ -681,22 +681,16 @@ describe('SCSS canonical-AST grammar', () => {
     }
   });
 
-  it('constructs public SCSS declaration merge modifiers through Declaration.merge', () => {
-    const source = '.card { font: Arial; font+: sans-serif; font+_: serif !important; }';
-    const cst = parseScssCst(source);
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-
-    const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font', merge: null, important: false },
-        { type: 'Declaration', name: 'font', merge: ',', important: false },
-        { type: 'Declaration', name: 'font', merge: ' ', important: true }
-      ] }]
-    });
+  it('rejects Less declaration merge modifiers on the direct SCSS routes', () => {
+    for (const source of [
+      '.card { font+: sans-serif; }',
+      '.card { font+_: serif !important; }'
+    ]) {
+      const cst = parseScssCst(source);
+      const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
+      expect(result.ok && result.unconsumedFrom === null, source).toBe(false);
+    }
   });
 
   it('lowers static SCSS nested properties to ordered existing declarations', () => {

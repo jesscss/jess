@@ -197,14 +197,15 @@ describe('@jesscss/scss-parser public parse API', () => {
     });
   });
 
-  it('parses SCSS declaration merge modifiers through the public Stylesheet route', () => {
-    expect(parse('.card { font+: Arial; font+_: sans-serif; }')).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'font', merge: ',' },
-        { type: 'Declaration', name: 'font', merge: ' ' }
-      ] }]
-    });
+  it('rejects Less declaration merge modifiers through the public Stylesheet route', () => {
+    for (const source of [
+      '.card { font+: Arial; }',
+      '.card { font+_: sans-serif; }'
+    ]) {
+      const cst = parseScssCst(source);
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
+      expect(() => parse(source), source).toThrow();
+    }
   });
 
   it('lowers static nested SCSS properties through the public Stylesheet route', () => {

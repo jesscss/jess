@@ -1963,10 +1963,6 @@ export const scssFactory = (g: ScssInputRules) => {
           g.DirectScssInterpolatedProperty,
           propertyName
         ),
-        optional(choice(
-          literal('+_'),
-          literal('+')
-        )),
         literal(':'),
         g.DirectScssValue,
         optional(g.DirectScssImportant),
@@ -1987,8 +1983,6 @@ export const scssFactory = (g: ScssInputRules) => {
         throw new TypeError('DirectScssDeclaration produced unexpected children.');
       }
       const isImportant = children.includes(true);
-      const mergeToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && (child.value === '+' || child.value === '+_'));
-      const merge = mergeToken === undefined ? null : mergeToken.value === '+' ? ',' : ' ';
 
       /*
        * An interpolated declaration name is itself a ValueNode. The declaration
@@ -2004,7 +1998,7 @@ export const scssFactory = (g: ScssInputRules) => {
       return decl(
         name,
         requireValueSlot(value),
-        merge,
+        null,
         isImportant
       );
     }

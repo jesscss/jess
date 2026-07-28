@@ -347,7 +347,7 @@ decisive glued opener, not bare `:` / `::`, and never weaken
 
 Less declaration cleanup sequence, 2026-07-27: declarations are the next better
 target than static pseudos. Move semicolon ownership out of
-`DirectLessCustomDeclaration`, `DirectLessStandardDeclaration`, and
+`CustomDeclaration`, `DirectLessStandardDeclaration`, and
 `DirectLessPunctuationMapDeclaration` into the containing statement/list
 wrappers first. Then replace broad interpolated-property lookahead with a single
 owned property-name production that can return either a string or interpolation.

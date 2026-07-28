@@ -59,20 +59,6 @@ export interface SpineVisitor {
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
-const IMPORT_OPTION_KEYS = [
-  'type',
-  'reference',
-  'optional',
-  'inline',
-  'multiple',
-  'mutable',
-  'forward',
-  'forwardAsPrefix',
-  'forwardShow',
-  'forwardHide',
-  'readonly',
-  '_dedupe'
-] as const satisfies readonly (keyof ImportOptions)[];
 
 type LoadedImportResult = {
   node: ParsedDocument | null;
@@ -80,15 +66,30 @@ type LoadedImportResult = {
   resolvedPath: string;
 } | undefined;
 
-function importOptionsCacheKey(options: ImportOptions): string {
-  let key = '';
-  for (const name of IMPORT_OPTION_KEYS) {
-    const value = options[name];
-    if (value !== undefined) {
-      key += `${name}:${JSON.stringify(value)};`;
-    }
-  }
-  return key;
+type ResolvedPathResult = {
+  triedPaths: string[];
+  resolvedPath: string;
+  friendlyPath: string;
+};
+
+type LoadedPluginModuleResult = {
+  module: unknown;
+  triedPaths: string[];
+  resolvedPath: string;
+};
+
+type LoadedModuleResult = {
+  module: Record<string, unknown>;
+  triedPaths: string[];
+  resolvedPath: string;
+};
+
+function importParseCacheKey(options: ImportOptions): string {
+  return options.type === undefined ? '' : `type:${options.type}`;
+}
+
+function pluginModuleOptionsCacheKey(options: string | null): string {
+  return options === null ? 'null' : `string:${options}`;
 }
 
 async function importJsonModule(absoluteFilePath: string): Promise<Record<string, unknown>> {
@@ -417,6 +418,9 @@ export class Context {
   private _treeContext: TreeContext | undefined;
   private _documentContext: DocumentContext | undefined;
   private readonly loadedImportCache = new Map<string, Promise<LoadedImportResult> | LoadedImportResult>();
+  private readonly pluginPathCache = new Map<string, Promise<ResolvedPathResult> | ResolvedPathResult>();
+  private readonly pluginModuleCache = new Map<string, Promise<LoadedPluginModuleResult> | LoadedPluginModuleResult>();
+  private readonly moduleCache = new Map<string, Promise<LoadedModuleResult> | LoadedModuleResult>();
   private readonly pluginCacheIds = new WeakMap<PluginInterface, number>();
   private nextPluginCacheId = 0;
 
@@ -517,7 +521,29 @@ export class Context {
     const source = this.sourceContext;
     const file = source?.file;
     const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
-    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importOptionsCacheKey(importOptions)}`;
+    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importParseCacheKey(importOptions)}`;
+  }
+
+  private moduleCacheKey(importPath: string, importOptions: ImportOptions): string {
+    const source = this.sourceContext;
+    const file = source?.file;
+    const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
+    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importParseCacheKey(importOptions)}`;
+  }
+
+  private pluginPathCacheKey(importPath: string): string {
+    const source = this.sourceContext;
+    const file = source?.file;
+    const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
+    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}`;
+  }
+
+  private pluginModuleCacheKey(plugin: PluginInterface, resolvedPath: string, options: string | null): string {
+    return `${this.pluginCacheKey(plugin)}\0${resolvedPath}\0${pluginModuleOptionsCacheKey(options)}`;
+  }
+
+  private parsedSourceTreeKey(plugin: PluginInterface, resolvedPath: string): string {
+    return `${this.pluginCacheKey(plugin)}\0${resolvedPath}`;
   }
 
   /**
@@ -1022,6 +1048,7 @@ export class Context {
 
   /** Full resolved path -> canonical parsed document (legacy Rules during migration or AST v2 Stylesheet). */
   sourceTrees = new Map<string, ParsedDocument>();
+  private readonly parsedSourceTrees = new Map<string, ParsedDocument>();
   evaldTrees = new Map<string, Rules>();
 
   /** Record the parser/source identity once, when an AST document enters this session. */
@@ -1286,9 +1313,10 @@ export class Context {
     const { type } = importOptions;
 
     /**
-     * We already have resolved this file and parsed it.
+     * Legacy/default cache: a path-only seed is valid only for extension-driven
+     * parsing. Explicit parser overrides must use parser identity below.
      */
-    if (this.sourceTrees.has(resolvedPath)) {
+    if (type === undefined && this.sourceTrees.has(resolvedPath)) {
       return {
         node: this.sourceTrees.get(resolvedPath)!,
         triedPaths,
@@ -1298,14 +1326,23 @@ export class Context {
 
     const plugins = this.plugins;
 
+    const ext = path.extname(resolvedPath);
+    const plugin = this.findParserPlugin(type, ext);
+    const parsedSourceKey = this.parsedSourceTreeKey(plugin, resolvedPath);
+    const cachedDocument = this.parsedSourceTrees.get(parsedSourceKey);
+    if (cachedDocument) {
+      return {
+        node: cachedDocument,
+        triedPaths,
+        resolvedPath
+      };
+    }
+
     const sourceGetter = plugins.find(plugin => plugin.getSource);
     if (!sourceGetter) {
       /** If we can't actually load files, bail. */
       throw new Error('No source getter found');
     }
-
-    const ext = path.extname(resolvedPath);
-    const plugin = this.findParserPlugin(type, ext);
     const source = await sourceGetter.getSource!(resolvedPath);
     const parseResult = this.parseSource(plugin, resolvedPath, source, {
       importOptions,
@@ -1330,7 +1367,10 @@ export class Context {
       }
       this.rememberDocumentContext(document, resolvedPath, source, plugin);
 
-      this.sourceTrees.set(resolvedPath, document);
+      this.parsedSourceTrees.set(parsedSourceKey, document);
+      if (type === undefined) {
+        this.sourceTrees.set(resolvedPath, document);
+      }
       return {
         node: document,
         triedPaths,
@@ -1486,6 +1526,24 @@ export class Context {
    * @param importOptions
    */
   async getModule(importPath: string, importOptions: ImportOptions = {}) {
+    const cacheKey = this.moduleCacheKey(importPath, importOptions);
+    const cached = this.moduleCache.get(cacheKey);
+    if (cached !== undefined || this.moduleCache.has(cacheKey)) {
+      return cached;
+    }
+    const loading = this.getModuleUncached(importPath, importOptions);
+    this.moduleCache.set(cacheKey, loading);
+    try {
+      const loaded = await loading;
+      this.moduleCache.set(cacheKey, loaded);
+      return loaded;
+    } catch (error) {
+      this.moduleCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async getModuleUncached(importPath: string, importOptions: ImportOptions = {}): Promise<LoadedModuleResult> {
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
     const ext = path.extname(resolvedPath);
     const isJsonImport = ext === '.json';
@@ -1556,7 +1614,25 @@ export class Context {
    * Script extensions are therefore tried FIRST for an extensionless specifier,
    * with the literal spelling last so an explicit path still wins.
    */
-  private async _getPluginPath(importPath: string) {
+  private async _getPluginPath(importPath: string): Promise<ResolvedPathResult> {
+    const cacheKey = this.pluginPathCacheKey(importPath);
+    const cached = this.pluginPathCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const loading = this.getPluginPathUncached(importPath);
+    this.pluginPathCache.set(cacheKey, loading);
+    try {
+      const resolved = await loading;
+      this.pluginPathCache.set(cacheKey, resolved);
+      return resolved;
+    } catch (error) {
+      this.pluginPathCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async getPluginPathUncached(importPath: string): Promise<ResolvedPathResult> {
     const candidates = path.extname(importPath) === ''
       ? [...PLUGIN_SCRIPT_EXTENSIONS.map(ext => importPath + ext), importPath]
       : [importPath];
@@ -1597,11 +1673,25 @@ export class Context {
     if (!plugin?.importPlugin) {
       throw new Error(`File "${friendlyPath}" is not supported as an executable plugin module.`);
     }
-    return {
-      module: await plugin.importPlugin(resolvedPath, options),
+    const cacheKey = this.pluginModuleCacheKey(plugin, resolvedPath, options);
+    const cached = this.pluginModuleCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const loading = plugin.importPlugin(resolvedPath, options).then(module => ({
+      module,
       triedPaths,
       resolvedPath
-    };
+    }));
+    this.pluginModuleCache.set(cacheKey, loading);
+    try {
+      const loaded = await loading;
+      this.pluginModuleCache.set(cacheKey, loaded);
+      return loaded;
+    } catch (error) {
+      this.pluginModuleCache.delete(cacheKey);
+      throw error;
+    }
   }
 
   /**

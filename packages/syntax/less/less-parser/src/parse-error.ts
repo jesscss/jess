@@ -1,3 +1,23 @@
+function expectedIncludes(expected: ReadonlySet<string>, value: string): boolean {
+  return expected.has(value);
+}
+
+function expectedDetail(expected: readonly string[]): string {
+  if (expected.length === 0) {
+    return '';
+  }
+  const expectedSet = new Set(expected);
+  const looksLikeValueProduction =
+    expectedIncludes(expectedSet, 'CssSyntaxNumber')
+    && expectedIncludes(expectedSet, 'CssSyntaxDimensionUnit')
+    && expectedIncludes(expectedSet, 'LessSyntaxKeyword')
+    && expectedIncludes(expectedSet, 'not(peek)');
+  if (looksLikeValueProduction) {
+    return ' Expected a Less value.';
+  }
+  return ' Expected valid Less syntax here.';
+}
+
 /** Structured failure from the public direct Less parser. */
 export class LessParseError extends SyntaxError {
   readonly code = 'parse/syntax-error' as const;
@@ -11,8 +31,7 @@ export class LessParseError extends SyntaxError {
     expected: readonly string[],
     options: { message?: string; reason?: string; fix?: string } = {}
   ) {
-    const detail =
-      expected.length > 0 ? ` Expected: ${expected.join(', ')}.` : '';
+    const detail = expectedDetail(expected);
     super(options.message ?? `Unexpected Less syntax.${detail}`);
     this.name = 'LessParseError';
     this.offset = offset;

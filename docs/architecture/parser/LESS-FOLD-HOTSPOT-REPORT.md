@@ -18,12 +18,12 @@ with 120 throws and
 `cst=7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4`
 with 0 throws over 709 entries.
 
-The next Less work is no longer "make direct CST safe to switch"; it is quality
-cleanup on the surviving grammar. Remove `DirectLess*` migration names as each
-family is reviewed, keep public CST labels only where they are real contract
-labels, and replace duplicate known/generic routes with Parseman 0.40
-`dispatch(...)`, `makeWhen(...)`, and `routed()` shapes. The remaining gating
-warnings are a cleanup queue, not evidence to resurrect the old bridge.
+The physical fold is done. In this report, "fold" now means deleting remaining
+duplicate private recognition families inside the single host-mode
+`src/grammar.ts`, not restoring a CST bridge or recreating a second grammar
+file. Use the active Parseman 0.41 surface (`dispatch(...)`, `makeWhen(...)`,
+matcher cases, `routed()`, and `node(..., { project })`) where it removes
+repeated recognition.
 
 ## Performance checkpoint
 
@@ -93,7 +93,7 @@ comments should not become semantic value text.
 Priority Less cleanup queue:
 
 1. **Custom-property comment parts are true semantic debt.**
-   `DirectLessCustomInnerPart` / `DirectLessCustomPart` admit `blockComment` as
+   `CustomInnerPart` / `CustomPart` admit `blockComment` as
    `CustomValuePart` and reduce it into custom-value text. Custom properties may
    need permissive token structure, but comments still belong to trivia.
 2. **Declaration-head comment facts are a render/trivia integration issue.**
@@ -206,7 +206,7 @@ Preferred local vocabulary by region:
   really differ, name the context (`InlineExtendSubject`, `ExtendTarget`), not
   the migration path.
 
-## Parseman 0.40 routing targets
+## Parseman 0.41 routing targets
 
 Apply these while folding each family, not as polish on duplicate bodies:
 
@@ -359,24 +359,27 @@ SCSS-on-Less inheritance path rather than for Less syntax:
 - SCSS no longer imports or composes on `lessGrammar`; `check:macro` and
   `verify:compose-integrity` pass with SCSS as a sibling grammar. The remaining
   SCSS/Less separation cleanup is narrower: remove explicit Less compatibility
-  syntax that was copied into SCSS, such as Less-style `@import (css, once)`
-  options, and pin rejection tests so the leak does not return.
+  syntax that was copied into SCSS. SCSS now rejects Less-style
+  `@import (css, once)` options, Less rule-body mixin calls, Less inline
+  `&:extend(...)` rule-body statements, and Less declaration merge modifiers
+  (`font+:` / `font+_:`), with public CST and direct AST rejection tests pinning
+  the boundary.
 
 Recommended handling: delete or internalize these during the Less fold whenever
 the Less parser's own CST/AST/language-service contracts do not require them.
 If SCSS turns red, treat that as evidence for the SCSS sibling rebase, not as a
 reason to keep Less broad.
 
-SCSS tests to pin the sever later:
+Current SCSS proof:
 
-- Add `packages/syntax/scss/scss-parser/test/less-inheritance-rejection.test.ts`
-  with public parse rejection cases for Less-only syntax: `@color: red;`,
-  `.m() when (true) {}`, `.a { color: ~"x"; }`, `.a { &:extend(.b); }`,
-  `.a { @rules(); }`, and `.a { #ns[value]; }`.
-- Add one CST compose test asserting SCSS no longer imports
-  `@jesscss/less-parser/grammar` once it is re-pointed to a CSS/preprocessor
-  base. Today's `compose-integrity.test.ts` still documents the old
-  css -> less -> scss path.
+- `packages/syntax/scss/scss-parser/test/compose-integrity.test.ts` imports the
+  public grammar, asserts no missing-rule/runtime-fallback compose diagnostics,
+  asserts representative Less-only rules are absent from SCSS's rule map, and
+  rejects Less-only declaration/rule-body constructs through both public CST and
+  direct AST routes.
+- `packages/syntax/scss/scss-parser/test/ast-grammar.test.ts` and
+  `packages/syntax/scss/scss-parser/test/public-parse.test.ts` pin Less import
+  options and declaration merge modifiers as SCSS parse failures.
 
 ## First fold blockers
 
@@ -532,7 +535,7 @@ small. The important shape is the contract:
 - `extendTargetFlags: true` adds the terminal `all` / `!all` flag only in the
   `:extend(...)` target list. Do not let ordinary selector lists know about that
   flag.
-- `PseudoSelector` should use Parseman 0.40 `dispatch(...)` only where it routes
+- `PseudoSelector` should use Parseman 0.41 `dispatch(...)` only where it routes
   one already-consumed pseudo/function opener. Branch nodes that need the opener
   use `routed()`. The selector-list branch itself should not be an outer
   `attempt(...)` fallback.

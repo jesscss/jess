@@ -2632,7 +2632,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Quoted':
       /*
        * `~'…'` / `~"…"` are Less escaped strings: typed arithmetic must see
-       * their unquoted bytes just as ordinary value emission does.
+       * their raw bytes just as ordinary value emission does.
        */
       return node.escaped ? makeKeyword(node.value) : materializeNode(node, e);
     case 'Url':
@@ -3224,7 +3224,7 @@ function isInterpNameByte(c: number): boolean {
  * Re-resolve any `@{ident}` token that EMERGED after a first-pass splice, matching
  * less.js's iterative `Quoted.eval` (`@{box-@{suffix}}` → `@{box-large}` → `100px`;
  * `@{box}-@{suffix}}` where `@box` is `@{box` → `@{box-large}` → `100px`). Each
- * clean `@{name}` whose variable resolves is replaced with its unquoted bytes; the
+ * clean `@{name}` whose variable resolves is replaced with its raw bytes; the
  * scan repeats until the string stops changing. A token whose variable is NOT in
  * scope (or resolves asynchronously) is left literal — a non-resolving emergent
  * token never turns a value into an error. Short-circuits when no `@{` remains.
@@ -6986,7 +6986,14 @@ function emitDocumentStatements(
       // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
       case 'FunctionCall':
         emitBeforeDocumentStatement(child);
-        emitCallStatement(child, frame, e);
+        {
+          const emitted = emitCallStatement(child, frame, e);
+          if (isThenable(emitted)) {
+            return emitted.then(() => {
+              markAfterDocumentStatement(child);
+            });
+          }
+        }
         markAfterDocumentStatement(child);
         break;
     }
@@ -7218,7 +7225,15 @@ function visibleHeader(rule: Rule, header: string[], frame: Frame, e: Emit): str
   return header;
 }
 
-function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, frame: Frame, e: Emit, imp = false): MaybePromise<void> {
+function flatten(
+  rule: Rule,
+  parent: string[] | null,
+  ancestor: string | null,
+  frame: Frame,
+  e: Emit,
+  imp = false,
+  expandBubbledSelectorList = false
+): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true.
   return mapMaybe(ruleGuardPasses(rule, frame, e), (passes) => {
     if (!passes) {
@@ -7226,7 +7241,8 @@ function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, f
     }
     const rawComposed =
       parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
-    return mapMaybe(rawComposed, rawComposed => flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed));
+    return mapMaybe(rawComposed, rawComposed =>
+      flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
   });
 }
 
@@ -7240,7 +7256,8 @@ function flattenResolved(
   frame: Frame,
   e: Emit,
   imp: boolean,
-  rawComposed: string[]
+  rawComposed: string[],
+  expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
   /*
    * [nesting] `rawComposed` is the fully-cartesian parent-list carried into nested
@@ -7283,11 +7300,25 @@ function flattenResolved(
      * raw composed list is already the correct parent context for children.
      */
     childAncestor = wrapIsList(rawComposed);
+  } else if (expandBubbledSelectorList) {
+    headerComposed = rawComposed;
+    childAncestor = wrapIsList(rawComposed);
   } else {
     headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
     childAncestor = rawComposed[0] ?? '';
   }
-  return mapMaybe(headerComposed, headerComposed => flattenWithHeader(rule, parent, frame, e, imp, childComposed, headerComposed, childAncestor));
+  return mapMaybe(headerComposed, headerComposed =>
+    flattenWithHeader(
+      rule,
+      parent,
+      frame,
+      e,
+      imp,
+      childComposed,
+      headerComposed,
+      childAncestor,
+      expandBubbledSelectorList
+    ));
 }
 
 function flattenWithHeader(
@@ -7304,7 +7335,8 @@ function flattenWithHeader(
    */
   childComposed: string[] | null,
   headerComposed: string[],
-  childAncestor: string
+  childAncestor: string,
+  expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
   /*
    * [extend] the rule's HEADER uses its fully-extended composed branches;
@@ -7394,7 +7426,21 @@ function flattenWithHeader(
   };
   const executeBody = () => mapMaybe(
     prepareBodyPlugins(rule.body, childFrame, e),
-    () => walkBody(rule.body, childComposed, childComposed === null ? null : childAncestor, childFrame, group, flush, partition, e, imp, false)
+    () => walkBody(
+      rule.body,
+      childComposed,
+      childComposed === null ? null : childAncestor,
+      childFrame,
+      group,
+      flush,
+      partition,
+      e,
+      imp,
+      false,
+      childFrame,
+      false,
+      expandBubbledSelectorList
+    )
   );
 
   /*
@@ -7471,7 +7517,8 @@ function walkBody(
   imp = false, // call-level !important override
   forceLeading = false,
   propertyScope: Frame = frame, // Less `$property` visibility owner
-  applyExpansion = false
+  applyExpansion = false,
+  expandBubbledSelectorList = false
 ): MaybePromise<void> {
   for (let index = 0; index < statements.length; index++) {
     const node = statements[index]!;
@@ -7553,14 +7600,28 @@ function walkBody(
               declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
               statements: rule.body
             };
-            return walkBody(rule.body, rComposedSelf, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            return walkBody(
+              rule.body,
+              rComposedSelf,
+              ancestor,
+              selfFrame,
+              group,
+              flush,
+              partition,
+              e,
+              imp,
+              forceLeading,
+              propertyScope,
+              applyExpansion,
+              expandBubbledSelectorList
+            );
           };
           const passes = ruleGuardPasses(rule, frame, e);
           const emitted = mapMaybe(passes, emitSelf);
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
               statements.slice(index + 1), rComposedSelf, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
+              partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
             ));
           }
           break;
@@ -7575,23 +7636,23 @@ function walkBody(
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp));
+          partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
         } else {
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              flatten(rule, rComposed, rAncestor, rFrame, e, imp),
+              flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
+                partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
               )
             ));
           }
-          const emitted = flatten(rule, rComposed, rAncestor, rFrame, e, imp);
+          const emitted = flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
+              partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
             ));
           }
         }
@@ -10289,11 +10350,11 @@ function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
 /**
  * [import:inline] Emit `@import (inline)` raw bytes verbatim: the target file's
  * exact text, unparsed and unindented, followed by a single newline separating it
- * from the next statement (mirrors Less's inline splice — an `Anonymous` value
+ * from the next statement (mirrors Less's inline splice — an `Any` value
  * printed as-is with a trailing rule separator).
  *
  * [import:inline-media] With a media postlude, the splice is wrapped in an
- * `@media <media> { … }` block: Less wraps the inline `Anonymous` in a media
+ * `@media <media> { … }` block: Less wraps the inline raw bytes in a media
  * ruleset, so the raw first line is indented one level and the block closes with a
  * `\n}` — reproducing the media-feature colon spacing (`(min-width:…)` →
  * `(min-width: …)`) Less's media parser reprints.
@@ -10331,14 +10392,66 @@ function normalizeMediaFeatures(prelude: string): string {
   return prelude.replace(/\(\s*([-\w]+)\s*:\s*/gu, '($1: ');
 }
 
+function canEmitRootCallValue(value: Value): boolean {
+  return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Any');
+}
+
 /**
  * A bare value-position call in statement position (e.g. `e('…');`): Less
- * evaluates it and prints the result bytes as a standalone line (an `Anonymous`
- * at document scope — no trailing `;`), so an `e(...)` unquote emits its inner
+ * evaluates it and prints the result bytes as a standalone line (an `Any`
+ * at document scope — no trailing `;`), so an `e(...)` escape emits its inner
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
-function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): void {
+function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {
   const start = e.off;
+  const emitBytes = (bytes: string): void => {
+    const isRoot = e.depth === 0;
+    const isAllowedVoid = node.name.toLowerCase() === 'if';
+    if (isRoot && bytes.length === 0 && !isAllowedVoid) {
+      throw ERR.rootCallWithoutRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { name: node.name }
+      });
+    }
+    if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
+      throw ERR.rootCallWithoutRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { name: node.name }
+      });
+    }
+    if (bytes.length === 0) {
+      return;
+    }
+    if (e.depth > 0) {
+      put(e, INDENT.repeat(e.depth));
+    }
+    put(e, bytes);
+    put(e, '\n');
+    if (e.positions) {
+      e.positions.push({ node, type: node.type, start, end: e.off });
+    }
+  };
+  const emitValueResult = (value: Value): void => {
+    if (e.depth === 0 && !canEmitRootCallValue(value)) {
+      throw ERR.rootCallWithoutRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { name: node.name }
+      });
+    }
+    if (!isLiteral(value)) {
+      validateValueGroupUnits(value, e.modes, node, e);
+    }
+    emitBytes(emitValue(value));
+  };
+  const evalAndEmit = (): MaybePromise<void> =>
+    precomputed === undefined
+      ? e.depth === 0
+        ? mapMaybe(evalValue(node, frame, e), emitValueResult)
+        : mapMaybe(evalBytes(node, frame, e), emitBytes)
+      : emitBytes(precomputed);
 
   /*
    * A typed color is a value, not a statement surface.  Keep the normal
@@ -10348,46 +10461,14 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
    */
   if (precomputed === undefined && e.ev && DEFERRED_COLOR_CALLS.has(node.name) && hasCssColorCallShape(node)) {
     const value = evalTyped(node, frame, e);
-    if (isThenable(value)) {
-      observeRejectedThenable(value);
-      throw ERR.asyncInSyncPosition({
-        node,
-        ...callSiteLocation(node, e),
-        meta: { where: 'statement-position color validation' }
-      });
-    }
-    if (!isValueGroupArray(value) && value.type === 'Color') {
-      throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
-    }
-  }
-  const bytes = precomputed ?? evalBytesSync(node, frame, e);
-  const isRoot = e.depth === 0;
-  const isAllowedVoid = node.name.toLowerCase() === 'if';
-  if (isRoot && bytes.length === 0 && !isAllowedVoid) {
-    throw ERR.rootCallWithoutRoot({
-      node,
-      ...callSiteLocation(node, e),
-      meta: { name: node.name }
+    return mapMaybe(value, (resolved) => {
+      if (!isValueGroupArray(resolved) && resolved.type === 'Color') {
+        throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
+      }
+      return evalAndEmit();
     });
   }
-  if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
-    throw ERR.rootCallWithoutRoot({
-      node,
-      ...callSiteLocation(node, e),
-      meta: { name: node.name }
-    });
-  }
-  if (bytes.length === 0) {
-    return;
-  }
-  if (e.depth > 0) {
-    put(e, INDENT.repeat(e.depth));
-  }
-  put(e, bytes);
-  put(e, '\n');
-  if (e.positions) {
-    e.positions.push({ node, type: node.type, start, end: e.off });
-  }
+  return evalAndEmit();
 }
 
 /**
@@ -11141,7 +11222,7 @@ function emitBubbleBody(
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
-              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
               if (isThenable(emitted)) {
                 return emitted.then(() => {
                   e.depth--;
@@ -11157,7 +11238,7 @@ function emitBubbleBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 e.depth++;
-                const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+                const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
                 if (isThenable(emitted)) {
                   return emitted.then(
                     () => {
@@ -11176,7 +11257,7 @@ function emitBubbleBody(
             }
             e.depth++;
             {
-              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
               if (isThenable(emitted)) {
                 return emitted.then(
                   () => {
@@ -11767,7 +11848,15 @@ function emitNestedBody(
         case 'FunctionCall':
           flushBuf();
           emitBeforeRootStatement(node);
-          emitCallStatement(node, frame, e);
+          {
+            const emitted = emitCallStatement(node, frame, e);
+            if (isThenable(emitted)) {
+              return emitted.then(() => {
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
+            }
+          }
           markAfterRootStatement(node);
           break;
         case 'MixinDef':

@@ -657,23 +657,23 @@ section is the authoritative full-scope companion to the compact task goal.
   `composeLeaf()` shape, and historical feature equivalence independently.
   Optimize only with semantic/output proof and matched parse plus end-to-end
   measurements; never restore legacy architecture for speed.
-- Prepare the next Jess alpha from pushed `dev`. Current release tooling
-  resolves the next registry-safe lockstep publish to `2.0.0-alpha.10` because
-  `2.0.0-alpha.9` is already published for the existing allowlist while
-  `@jesscss/compiler` is new in the runtime closure. Validate final `dev`,
-  prepare owner-reviewed release notes, then use the controlled alpha refresh
-  flow; do not ordinary-merge/rebase shared alpha history or publish before
-  every gate passes.
+- Prepare the next Jess alpha from pushed `dev`. `2.0.0-alpha.10` is already
+  published; the next registry-safe lockstep publish is expected to be
+  `2.0.0-alpha.11` so the external Less alpha can consume the single-frame
+  Linecraft diagnostic renderer from `dev`. Validate final `dev`, keep
+  owner-reviewed release notes in the source tree, then use the controlled
+  alpha refresh flow; do not ordinary-merge/rebase shared alpha history or
+  publish before every gate passes.
 
 ### Current Less v5 alpha readiness evidence
 
 Use [`docs/state/less-v5-alpha-readiness.md`](../../state/less-v5-alpha-readiness.md)
 as the current source of truth. As of 2026-07-28, the external Less branch has
-the desired direct compiler/plugin dependency shape, but its lockfile and
-`lessc` smoke cannot be refreshed until `@jesscss/compiler` is published in the
-next Jess alpha closure. Do not publish Less until Jess's selected alpha version
-is queryable from npm, Less has been rebuilt/relinked against that exact
-package set, and the registry-backed packed-consumer proof passes.
+the desired direct compiler/plugin dependency shape and passes CI, but still
+resolves the direct Jess runtime closure from published `2.0.0-alpha.10`
+registry packages. Do not publish Less until the next Jess alpha is published,
+the PR branch consumes that exact dependency set, the final PR-head release
+preflight passes, and the owner authorizes the Less release flow.
 
 ## Router
 
@@ -1086,7 +1086,7 @@ or a completion milestone.
   properties, a terminal declaration without a final semicolon, typed static
   `@supports` conditions, static CSS keyframes, lone typed interpolation
   preludes for `@media`, `@supports`, and `@keyframes`, and exact opaque
-  UnicodeRange value/list leaves that remain outside arithmetic. Unquoted dynamic URL
+  UnicodeRange value/list leaves that remain outside arithmetic. Bare dynamic URL
   values and Less `@import url(...)` targets retain existing `Url(Interpolation)`
   facts. A lone `@{…}` import tail is likewise a typed `Interpolation`; mixed static/
   dynamic tails remain rejected until their segment model exists. Parser
@@ -1521,6 +1521,29 @@ involved.
   passed. The command reports the broad active diff's existing danger-token
   inventory; this slice accounts for its added parent walk and optional frame
   metadata above.
+- C17 module-cache slice on 2026-07-28: `Context.getModule(...)` now mirrors
+  stylesheet import and executable `@plugin` module loading by caching the
+  in-flight/successful ordinary module result for the current source context,
+  source plugin, authored specifier, and import type. The cache prevents a
+  script/JSON module from being resolved and loaded twice during one compile
+  context while preserving failure retry behavior.
+- New traversal/node/materialization for this slice: none beyond the existing
+  `_getPath`/plugin import work that a cache miss already performs. The added
+  `Map` is `Context`-local compile-cycle state; it stores the same
+  `{ module, triedPaths, resolvedPath }` result already returned to callers and
+  introduces no AST node, render array, parser replay, or cross-compile global
+  registry.
+- Behavior evidence for this slice:
+  `pnpm --filter @jesscss/core test -- test/context-module.test.ts --run --globals --reporter=dot`
+  passed 9/9, including a regression that proves two calls for the same script
+  module return the same result object after one resolver pass, one lazy script
+  importer load, and one module import. `pnpm --filter @jesscss/core test --
+  src/ast/__tests__/import-at-rule.test.ts --run --globals --reporter=dot`
+  passed 37/37, preserving executable `@plugin` module cache behavior.
+- Review/build evidence for this slice: `pnpm --filter @jesscss/core build`,
+  `pnpm run verify:aggressive-cutting-review`, `pnpm run verify:less-alpha`,
+  `pnpm run check:macro`, and `pnpm run verify:compose-integrity` passed. No
+  measured performance claim is made.
 - Latest pass: Less alpha parser/error integration state on 2026-07-27. The working diff includes
   the one-grammar parser fold, Parseman 0.41 grammar cleanup, parser-owned diagnostics, trivia
   extraction work, and the recursive reference error fix that graduated the Less recursion fixtures
@@ -1610,6 +1633,27 @@ involved.
     "dangerTokensJustification": "The flagged Context/plugin/serializer tokens are API-boundary and diagnostic/runtime integration work: Context stores one private evaluator reference, serialize reads that accessor, and plugin setContext methods register the dialect evaluator. It adds no parser host, alternate evaluator, resolver, output policy, AST materialization route, or render-output array path.",
     "behaviorEvidence": "The focused semantic-runtime command `pnpm --filter @jesscss/core test -- --run` passed: 203 files, 3219 tests, 9 skipped, 2 todo. Plugin-level evaluator registration was separately exercised by plugin Less/SCSS tests and verify:less-alpha in the active Less facade slice.",
     "buildEvidence": "`pnpm --filter @jesscss/core build` passed after the Context evaluator registration change.",
+    "baseline": {
+      "fixture": "benchmark.less",
+      "phase": "render",
+      "currentMedianMs": 44.031520500000056,
+      "outputSha256": "4bf785413d5a150de1ba680a07b405b9e21c50facd1672b6d9a9bd36e2308781",
+      "outputBytes": 122534
+    }
+  },
+  {
+    "id": "ast-value-guard-equality-modes",
+    "verdict": "accepted",
+    "performanceClaim": "none",
+    "cases": [
+      "less-unitless-dimension",
+      "sass-quoted-keyword",
+      "exact-structural-distinction"
+    ],
+    "why": "This slice settles on the existing Jess `Any` name for Less e() raw-byte results. The value-domain shape is `Any.bytes`; parsed AST opaque leaves remain `Any.src`. The equality branch lets raw Any bytes participate in the same emitted-byte comparison path as escaped string bytes. It is semantic value-domain correctness, not an optimization or cost-neutrality claim.",
+    "dangerTokensJustification": "The flagged diagnostic object spreads are existing error-construction shape inside root call rejection, not new normal successful render allocation. The equality branch adds one scalar type check to an already mode-gated comparison path and introduces no collection, traversal, parser replay, or node materialization loop.",
+    "behaviorEvidence": "Focused e() and Less public error tests passed, including root e() output and plugin scalar root-call rejection without eval/async-in-sync-position.",
+    "buildEvidence": "pnpm --filter @jesscss/core build, pnpm --filter @jesscss/fns build, and pnpm run verify:less-alpha passed after the Any value-domain change.",
     "baseline": {
       "fixture": "benchmark.less",
       "phase": "render",

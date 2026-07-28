@@ -103,11 +103,11 @@ const negate = (c: -1 | 0 | 1 | undefined): -1 | 0 | 1 | undefined => {
  */
 function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 | 0 | 1 | undefined {
   /*
-   * Less compares an escaped quote (and e("…"), both materialized as a
-   * Keyword) against a typed comparable by its emitted CSS bytes. Thus
-   * `3 = ~"3"` is true even though the operands have different value kinds.
-   * Keep this narrow to Keyword cross-kind equality; ordinary quoted strings
-   * retain their quote bytes and therefore remain unequal.
+   * Less compares escaped/raw bytes (`~"…"` as Keyword, `e("…")` as
+   * Any) against a typed comparable by emitted CSS bytes. Thus `3 = ~"3"`
+   * and `3 = e("3")` are true even though the operands have different value
+   * kinds. Keep this narrow to raw/keyword cross-kind equality; ordinary quoted
+   * strings retain their quote bytes and therefore remain unequal.
    */
   if (equalityMode === 'sass') {
     const quoted = a.type === 'Quoted' ? a : b.type === 'Quoted' ? b : null;
@@ -118,7 +118,7 @@ function compareNodes(a: ValueObj, b: ValueObj, equalityMode: EqualityMode): -1 
   }
   if (equalityMode === 'less'
     && (hasCompare(a) || hasCompare(b))
-    && (a.type === 'Keyword' || b.type === 'Keyword')
+    && (a.type === 'Keyword' || b.type === 'Keyword' || a.type === 'Any' || b.type === 'Any')
     && toCssStr(a) === toCssStr(b)) {
     return 0;
   }

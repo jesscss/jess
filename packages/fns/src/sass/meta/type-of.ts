@@ -33,7 +33,8 @@ const typeOf = defineFunction('type-of', {
     switch (value.type) {
       case 'Dimension': return makeKeyword('number');
       case 'Quoted':
-      case 'Keyword': return makeKeyword('string');
+      case 'Keyword':
+      case 'Any': return makeKeyword('string');
       case 'Color': return makeKeyword('color');
       case 'Bool': return makeKeyword('bool');
       case 'Nil': return makeKeyword('null');

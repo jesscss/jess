@@ -75,4 +75,12 @@ describe('Less structural errors through the public AST route', () => {
 }
 `);
   });
+
+  it('allows Less e() to emit unquoted root bytes', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('e("/* anything to unquote */");', {
+      filePath: 'entry.less',
+      extension: '.less'
+    })).resolves.toBe('/* anything to unquote */\n');
+  });
 });

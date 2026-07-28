@@ -152,7 +152,7 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/import/import.less',
-    '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)'
+    '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; remaining gap is @import media-query handling and @media query merging'
   ],
   [
     'tests-unit/urls/urls.less',
@@ -195,41 +195,44 @@ const expectedFailureFixtures = new Map<string, string>([
   ],
   [
     'tests-unit/mixins/mixins.less',
-    'same-named nested ruleset now resolves the outer .recursion() mixin; remaining mismatch is fixture-local collapseNesting=false rendering nested CSS against the maintained flattened Less golden'
+    'same-named nested ruleset resolves the outer .recursion() mixin; remaining mismatch is fixture-local collapseNesting=false rendering nested CSS against the maintained flattened expectation'
   ],
   [
-    "tests-unit/property-name-interp/property-name-interp.less",
-    "Less5 owner-set rejection of deprecated dash-only @- and @{-} variable names; Less4 deprecation is implemented in unpushed worktree commit db03543d",
+    'tests-unit/property-name-interp/property-name-interp.less',
+    'deprecated dash-only @- and @{-} variable names are rejected'
   ],
   [
     "tests-unit/variables/variables.less",
     "renders but variable output differs from Less",
   ],
   [
-    "tests-unit/plugin-module/plugin-module.less",
-    "Less5 alpha rejects clean-css: its legacy CommonJS @plugin graph uses require('./lib/clean'), which the optional jess-plugin-js Deno compatibility runtime intentionally does not support (a cold worker can instead report its explicit startup diagnostic); this is not a parser, evaluator, or Context import-resolution failure",
+    'tests-unit/plugin-module/plugin-module.less',
+    'the clean-css fixture uses a legacy CommonJS @plugin graph with require(\'./lib/clean\'), which the optional jess-plugin-js Deno compatibility runtime does not support'
   ],
-  // Explicit Less5 removals. Keep these legacy fixtures runnable so an
-  // accidental reintroduction is visible rather than silently skipped.
+
+  /*
+   * Explicit legacy removals. Keep these fixtures runnable so an accidental
+   * reintroduction is visible rather than silently skipped.
+   */
   [
-    "tests-unit/javascript-REMOVED/legacy/javascript.less",
-    "Less5 removes backtick JavaScript evaluation, including javascriptEnabled legacy configurations",
-  ],
-  [
-    "tests-unit/ie-filters-REMOVED/legacy/ie-filters.less",
-    "Less5 removes legacy IE progid:DXImageTransform filter syntax",
-  ],
-  [
-    "tests-unit/functions/legacy/functions.less",
-    "Less5 rejects this legacy fixture's non-Less $list parameter/reference syntax",
+    'tests-unit/javascript-REMOVED/legacy/javascript.less',
+    'inline backtick JavaScript evaluation is not supported, including javascriptEnabled legacy configurations'
   ],
   [
-    "tests-unit/plugin-preeval/plugin-preeval.less",
-    "Less5 does not support the legacy tree visitor ABI (isPreEvalVisitor, manager.addVisitor, visitors.Visitor); this is not an @plugin extension-resolution gap",
+    'tests-unit/ie-filters-REMOVED/legacy/ie-filters.less',
+    'legacy IE progid:DXImageTransform filter syntax is not supported'
   ],
   [
-    "tests-unit/plugin/plugin.less",
-    "@jesscss/plugin-js now auto-wires and the @plugin scripts execute; renders but Jess nests @media (no query merging) where the expected CSS merges queries (non-plugin render gap)",
+    'tests-unit/functions/legacy/functions.less',
+    'this legacy fixture\'s non-Less $list parameter/reference syntax is not supported'
+  ],
+  [
+    'tests-unit/plugin-preeval/plugin-preeval.less',
+    'the legacy tree visitor ABI is not supported (isPreEvalVisitor, manager.addVisitor, visitors.Visitor); this is not an @plugin extension-resolution gap'
+  ],
+  [
+    'tests-unit/plugin/plugin.less',
+    '@jesscss/plugin-js now auto-wires and the @plugin scripts execute; remaining gap is nested @media query merging'
   ],
   [
     "tests-unit/parse-interpolation/parse-interpolation.less",
@@ -244,18 +247,20 @@ const expectedFailureFixtures = new Map<string, string>([
     "throws on Less permissive @variable value (@this: () => {…}, VarDeclaration hot-path — scoped) + @{selectorList} comma-list selector (selector-capture agent). --* interpolation-only + unknown-at-rule prelude @{…}/var interpolation now match; two golden lines (--custom-color, --fortran bare-@) superseded by the interpolation-only owner rule, pending owner golden update",
   ],
 
-  // v5 strict at-rule preludes: a top-level bare `@variable` in a non-value at-rule
-  // prelude/name/identifier is a fatal unsupported-syntax diagnostic (4.x only
-  // warned). These upstream 4.x fixtures use the bare form (`@media @smartphone`,
-  // `@media @smartphone`); the parser should recognize the removed form well
-  // enough to report the exact `@{…}` interpolation migration target, and a `@var`
-  // inside `(...)` stays valid. Kept running (asserted to fail) so a change to the
-  // ruling trips the marker; goldens are the external less.js 4.x oracle, unedited.
-  // (layer.less GRADUATED — it uses the `@{layer-name}` interpolation form, not the
-  //  bare `@var` prelude, so v5 renders it byte-identical to the maintained `.css`.)
+  /*
+   * Strict at-rule preludes: a top-level bare `@variable` in a non-value at-rule
+   * prelude/name/identifier is a fatal unsupported-syntax diagnostic (4.x only
+   * warned). These upstream 4.x fixtures use the bare form (`@media @smartphone`,
+   * `@media @smartphone`); the parser should recognize the removed form well
+   * enough to report the exact `@{…}` interpolation migration target, and a `@var`
+   * inside `(...)` stays valid. Kept running (asserted to fail) so a change to the
+   * ruling trips the marker; goldens are the external less.js 4.x oracle, unedited.
+   * (layer.less GRADUATED — it uses the `@{layer-name}` interpolation form, not the
+   * bare `@var` prelude, so it renders byte-identical to the maintained `.css`.)
+   */
   [
-    "tests-unit/media/media.less",
-    "v5 rejects a top-level bare @var at-rule prelude (@media @smartphone / @media @all and @tv)",
+    'tests-unit/media/media.less',
+    'top-level bare @var at-rule preludes are rejected (@media @smartphone / @media @all and @tv)'
   ],
   // Previously-uncategorized hard failures — render but mismatch Less.
   // (extend.less + mixins-guards.less GRADUATED — the dev-merge extend/mixin-namespace

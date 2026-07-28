@@ -100,6 +100,7 @@ describe('Eval error source location', () => {
 
     expect(result.errors).toHaveLength(1);
     const err = result.errors[0]!;
+
     // `@nope` sits at line 2, column 10.
     expect(err.line).toBe(2);
     expect(err.column).toBe(10);
@@ -218,8 +219,11 @@ describe('Public parser diagnostic provenance', () => {
     });
     expect(captured.err).toContain('charset.less');
     expect(captured.err).toContain('@charset "UTF-@{Eight}";');
-    // linecraft renders either a point marker or a span marker, depending on
-    // whether the diagnostic carries an end location.
+
+    /*
+     * linecraft renders either a point marker or a span marker, depending on
+     * whether the diagnostic carries an end location.
+     */
     expect(captured.err).toMatch(/[╿┖]/u);
   });
 
@@ -357,6 +361,8 @@ describe('Diagnostic display tiers', () => {
       })
     );
     expect(stderr).toContain('ERR_SRC'); // code frame includes the source line
+    expect(stderr.match(/parse\/syntax-error/g)).toHaveLength(1);
+    expect(stderr).not.toContain('\x1B[?1049h');
   });
 
   it('warnings: \'summary\' collapses to one line per code with count + files', () => {
@@ -405,6 +411,7 @@ describe('Diagnostic display tiers', () => {
         { breakOnError: false }
       )
     );
+
     // Default warning tier is line, but this code is pinned to frame.
     expect(out).toContain('OVERRIDE_SRC');
   });
