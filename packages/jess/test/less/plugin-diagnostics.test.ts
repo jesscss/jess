@@ -90,6 +90,33 @@ describe('@plugin function failures are never silent', () => {
     expect(warning!.reason).toContain('PLUGIN_EXPLODED');
   }, 30000);
 
+  it('collects function-mode plugin errors without leaking an unhandled rejection', async () => {
+    const { dir, entry } = makeProject(
+      THROWING_PLUGIN,
+      '@plugin "./p";\n.a {\n  width: boom(1);\n}\n'
+    );
+    const result = await new Compiler({
+      compile: {
+        plugins: [
+          lessPlugin(),
+          jsPlugin({ jsReadRoot: dir, runtimeApi: 'less' }),
+          lessCompatPlugin()
+        ],
+        functionMode: 'error'
+      },
+      language: { less: { math: 0 } }
+    }).renderToResult(entry, {
+      suppressWarnings: true,
+      breakOnError: false
+    });
+
+    const failure = result.errors.find(e => e.code === 'plugin/function-threw');
+    expect(failure, `expected a plugin/function-threw error, got ${JSON.stringify(result.errors.map(e => e.code))}`)
+      .toBeDefined();
+    expect(failure!.reason).toContain('PLUGIN_EXPLODED');
+    expect(result.warnings.find(w => w.code === 'plugin/function-threw')).toBeUndefined();
+  }, 30000);
+
   it('never emits the failed call verbatim without saying anything', async () => {
     const { dir, entry } = makeProject(
       THROWING_PLUGIN,
@@ -100,8 +127,10 @@ describe('@plugin function failures are never silent', () => {
       breakOnError: false
     });
 
-    // The call may be preserved so the rest of the sheet still compiles, but
-    // preserving it silently is exactly the failure mode under test.
+    /*
+     * The call may be preserved so the rest of the sheet still compiles, but
+     * preserving it silently is exactly the failure mode under test.
+     */
     if (result.css.includes('boom(')) {
       expect(
         [...result.errors, ...result.warnings].some(d => d.code === 'plugin/function-threw'),
@@ -114,7 +143,8 @@ describe('@plugin function failures are never silent', () => {
   it('points the diagnostic at the real call site, not a placeholder position', async () => {
     const { dir, entry } = makeProject(
       THROWING_PLUGIN,
-      // `boom(1)` sits on line 4, after the value's `width: `.
+
+      /* `boom(1)` sits on line 4, after the value's `width: `. */
       '@plugin "./p";\n\n.a {\n  width: boom(1);\n}\n'
     );
     const result = await makeCompiler(dir).renderToResult(entry, {
@@ -126,7 +156,8 @@ describe('@plugin function failures are never silent', () => {
     expect(warning).toBeDefined();
     expect(warning!.filePath).toBe(entry);
     expect(warning!.line).toBe(4);
-    // Not the 1:1 placeholder a position-less diagnostic would carry.
+
+    /* Not the 1:1 placeholder a position-less diagnostic would carry. */
     expect(warning!.column).toBeGreaterThan(1);
   }, 30000);
 

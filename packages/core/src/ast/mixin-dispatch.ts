@@ -437,7 +437,8 @@ export function selectDefinitions(
   ev: ValueEvaluator | null,
   modes: EvalModes,
   resolveDefault?: DefaultResolver,
-  resolveDefaultBlock?: DefaultBlockResolver
+  resolveDefaultBlock?: DefaultBlockResolver,
+  onNoViable?: () => void
 ): MaybePromise<Selection[]> {
   type Viable = { def: MixinDef; bindings: Map<string, CallValue> | null; order: number };
 
@@ -574,8 +575,13 @@ export function selectDefinitions(
     );
   };
 
-  return mapMaybe(prefilter(0), () => mapMaybe(select(), (matched) => {
-    matched.sort((a, b) => a.order - b.order);
-    return matched.map(v => ({ def: v.def, bindings: v.bindings }));
-  }));
+  return mapMaybe(prefilter(0), () => {
+    if (viable.length === 0 && candidates.length > 0) {
+      onNoViable?.();
+    }
+    return mapMaybe(select(), (matched) => {
+      matched.sort((a, b) => a.order - b.order);
+      return matched.map(v => ({ def: v.def, bindings: v.bindings }));
+    });
+  });
 }

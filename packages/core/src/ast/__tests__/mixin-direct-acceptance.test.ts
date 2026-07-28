@@ -32,6 +32,16 @@ describe('Mixin canonical AST emission', () => {
       .toThrow(/Name not found/);
   });
 
+  it('errors when visible mixin definitions cannot bind the call arguments', () => {
+    const document = stylesheet([
+      mixin('.m', [{ pattern: keyword('saxofon') }], []),
+      rule('.out', [call('.m', [{ value: keyword('trumpete') }])])
+    ]);
+
+    expect(() => serialize(document, { evaluator, collapseNesting: true }))
+      .toThrow(/Name not found/);
+  });
+
   it('deduplicates exact declarations from matching overloads and repeated calls', () => {
     const first = mixin('.same', [], [decl('color', keyword('red'))]);
     const second = mixin('.same', [], [decl('color', keyword('red'))]);

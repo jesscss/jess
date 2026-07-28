@@ -37,6 +37,26 @@ describe('direct canonical value access', () => {
       + '}\n');
   });
 
+  it('errors for missing property and map accessors', () => {
+    const tokens = collection([
+      decl('gap', dimension(8, 'px')),
+      variableDeclaration('tone', keyword('navy'), { mode: 'declare' })
+    ]);
+
+    expect(() => render(stylesheet([
+      variableDeclaration('tokens', tokens, { mode: 'declare' }),
+      rule('.card', [decl('gap', reference(
+        variableReference('tokens', 'scoped'),
+        [{ type: 'BracketLookup', key: keyword('missing'), keyKind: 'prop' }],
+        '@tokens[missing]'
+      ))])
+    ]))).toThrow(/Name not found/);
+
+    expect(() => render(stylesheet([
+      rule('.card', [decl('min-width', propertyReference('width'))])
+    ]))).toThrow(/Name not found/);
+  });
+
   it('follows ordered dot then bracket reference steps without byte recovery', () => {
     const document = stylesheet([
       variableDeclaration('theme', collection([

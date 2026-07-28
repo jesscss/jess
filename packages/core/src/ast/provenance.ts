@@ -1,3 +1,5 @@
+import type { Trivia, TriviaMap } from '../types/index.js';
+
 /**
  * Parser-authored source spans for canonical AST nodes.
  *
@@ -6,6 +8,7 @@
  * the exact span; evaluation reads it only when constructing a diagnostic.
  */
 export type AstSourceSpan = Readonly<{ start: number; end: number }>;
+export type AstTriviaRange = AstSourceSpan;
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
  *
@@ -36,6 +39,84 @@ const layoutGlobal = globalThis as typeof globalThis & {
 };
 const layouts = layoutGlobal[layoutStoreKey] ??= new WeakMap<object, ValueLayout>();
 
+const triviaStoreKey = Symbol.for('jess.ast.trivia-map-store');
+const triviaGlobal = globalThis as typeof globalThis & {
+  [triviaStoreKey]?: WeakMap<object, TriviaMap>;
+};
+const triviaMaps = triviaGlobal[triviaStoreKey] ??= new WeakMap<object, TriviaMap>();
+
+const bodySpanStoreKey = Symbol.for('jess.ast.body-span-store');
+const bodySpanGlobal = globalThis as typeof globalThis & {
+  [bodySpanStoreKey]?: WeakMap<object, AstSourceSpan>;
+};
+const bodySpans = bodySpanGlobal[bodySpanStoreKey] ??= new WeakMap<object, AstSourceSpan>();
+
+function makeAstTrivia(src: string, start: number, end: number): Trivia {
+  let hasComment = false;
+  for (let i = start; i < end; i++) {
+    const c = src.charCodeAt(i);
+    if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) {
+      hasComment = true;
+      break;
+    }
+  }
+  return { start, end, src, hasComment };
+}
+
+/** Build the sparse renderer-facing trivia lookup from parser-owned source ranges. */
+export function createTriviaMapFromRanges(
+  src: string,
+  ranges: Iterable<AstTriviaRange>
+): TriviaMap {
+  const before = new Map<number, Trivia>();
+  const after = new Map<number, Trivia>();
+  let sortedComments: readonly Trivia[] | undefined;
+  for (const range of ranges) {
+    if (range.end <= range.start) {
+      continue;
+    }
+    const run = makeAstTrivia(src, range.start, range.end);
+    after.set(range.start, run);
+    before.set(range.end, run);
+  }
+  return {
+    lookup(offset, direction) {
+      if (offset === undefined) {
+        return undefined;
+      }
+      return direction === 'before'
+        ? before.get(offset)
+        : after.get(offset);
+    },
+    entries(direction) {
+      return direction === 'before'
+        ? before.entries()
+        : after.entries();
+    },
+    has(offset, direction) {
+      if (offset === undefined) {
+        return false;
+      }
+      return direction === 'before'
+        ? before.has(offset)
+        : after.has(offset);
+    },
+    commentRuns() {
+      if (sortedComments === undefined) {
+        const runs: Trivia[] = [];
+        for (const run of after.values()) {
+          if (run.hasComment) {
+            runs.push(run);
+          }
+        }
+        runs.sort((a, b) => a.start - b.start);
+        sortedComments = runs;
+      }
+      return sortedComments;
+    }
+  };
+}
+
 /** Retain the exact Parseman reduction span for an AST factory result. */
 export function withSourceSpan<T extends object>(node: T, span: AstSourceSpan): T {
   spans.set(node, span);
@@ -45,6 +126,28 @@ export function withSourceSpan<T extends object>(node: T, span: AstSourceSpan): 
 /** Read a parser-authored span, if the AST node originated in source. */
 export function sourceSpanOf(node: object): AstSourceSpan | undefined {
   return spans.get(node);
+}
+
+/** Retain parser-owned document trivia without adding fields to the AST root. */
+export function withTriviaMap<T extends object>(node: T, trivia: TriviaMap): T {
+  triviaMaps.set(node, trivia);
+  return node;
+}
+
+/** Read parser-owned document trivia attached to a canonical AST root. */
+export function triviaMapOf(node: object): TriviaMap | undefined {
+  return triviaMaps.get(node);
+}
+
+/** Retain the exact source span inside a block's braces. */
+export function withBodySpan<T extends object>(node: T, span: AstSourceSpan): T {
+  bodySpans.set(node, span);
+  return node;
+}
+
+/** Read the parser-authored source span inside a block's braces. */
+export function bodySpanOf(node: object): AstSourceSpan | undefined {
+  return bodySpans.get(node);
 }
 
 /** Retain authored separator/trivia runs for a raw ValueSlot array or List fact.

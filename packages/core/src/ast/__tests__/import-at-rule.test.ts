@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { atRuleBlock, importAtRule } from '../at-rule.js';
 import { any, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, spaced, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
+import { createTriviaMapFromRanges, withTriviaMap } from '../provenance.js';
 import { serialize } from '../serialize.js';
 import { Context } from '../../context.js';
 
@@ -365,6 +366,30 @@ describe('ImportAtRule', () => {
           : undefined)
     })).resolves.toEqual({
       css: 'show-all-content {\n  /* tralala */\n  .fix {\n    fix: fix;\n  }\n  .something {\n    inside: something;\n  }\n}\n'
+    });
+  });
+
+  it('emits leading imported block comments from document trivia at the import site', async () => {
+    const importedSource = '/* tralala */\n.fix { fix: fix; }\n';
+    const imported = withTriviaMap(
+      stylesheet([
+        rule('.fix', [decl('fix', keyword('fix'))])
+      ]),
+      createTriviaMapFromRanges(importedSource, [{ start: 0, end: '/* tralala */\n'.length }])
+    );
+    const document = stylesheet([
+      rule('show-all-content', [
+        importAtRule('@import', quoted('"multiple.less"', 'multiple.less', '"', false), list([keyword('multiple')], ','))
+      ])
+    ]);
+
+    await expect(serialize(document, {
+      collapseNesting: false,
+      importDocument: ({ specifier }) => Promise.resolve(specifier === 'multiple.less'
+        ? { document: imported, key: 'multiple.less' }
+        : undefined)
+    })).resolves.toEqual({
+      css: 'show-all-content {\n  /* tralala */\n  .fix {\n    fix: fix;\n  }\n}\n'
     });
   });
 
