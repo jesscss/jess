@@ -242,6 +242,9 @@ export interface SerializeOptions {
    * import (for example an optional missing Less file).
    */
   importDocument?: (request: ImportDocumentRequest) => MaybePromise<ImportDocument | undefined>;
+
+  /** Compile-prepared static imports, consumed by render without loading them again. */
+  preparedImports?: PreparedImports;
 }
 
 export interface ImportDocumentRequest {
@@ -279,9 +282,13 @@ export interface ImportDocumentInline {
 
 export type ImportDocument = ImportDocumentTree | ImportDocumentInline;
 
-interface PlannedImportDocument {
+export interface PlannedImportDocument {
   request: ImportDocumentRequest;
   loaded: ImportDocument | undefined;
+}
+
+export interface PreparedImports {
+  readonly documents: WeakMap<ImportAtRule, PlannedImportDocument>;
 }
 
 /**
@@ -5106,6 +5113,9 @@ interface Emit extends EvalCtx {
   /** Canonical documents already loaded by the extend planner, consumed once by emission. */
   plannedImportDocuments: WeakMap<ImportAtRule, PlannedImportDocument> | null;
 
+  /** Caller-owned prepared import plans remain reusable across renders. */
+  preparedImportsOwnedByCaller: boolean;
+
   /**
    * Planner-issued identity tokens for each concrete `$for`/`each()` iteration.
    * The token is selected by the execution index and placed on that iteration's
@@ -5151,6 +5161,7 @@ function scratchEmit(e: EvalCtx): Emit {
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     plannedImportDocuments: null,
+    preparedImportsOwnedByCaller: false,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new Set()
@@ -6370,7 +6381,8 @@ function planImportedExtends(
   root: Stylesheet,
   frame: Frame,
   e: Emit,
-  importDocument: SerializeOptions['importDocument'] | undefined
+  importDocument: SerializeOptions['importDocument'] | undefined,
+  deferUnreadyImports = false
 ): MaybePromise<ExtendPlannerInput> {
   recordAstExtendProfile?.('astExtend.preflight.calls');
 
@@ -6405,8 +6417,11 @@ function planImportedExtends(
         node: st, specifier, options,
         tail: st.tail === null ? null : evalQueryPreludeSync(st.tail, scope, e)
       };
-      const loaded = await importDocument(request);
-      e.plannedImportDocuments?.set(st, { request, loaded });
+      const prepared = e.plannedImportDocuments?.get(st);
+      const loaded = prepared === undefined ? await importDocument(request) : prepared.loaded;
+      if (prepared === undefined) {
+        e.plannedImportDocuments?.set(st, { request, loaded });
+      }
       if (loaded === undefined || 'inline' in loaded || loaded.document === null) {
         return;
       }
@@ -6492,6 +6507,9 @@ function planImportedExtends(
         await visitImport(pending);
       } catch (error) {
         if (error instanceof ImportPathNotReady) {
+          if (deferUnreadyImports) {
+            return;
+          }
           throw error.cause;
         }
         throw error;
@@ -6501,6 +6519,86 @@ function planImportedExtends(
   return visit(root.children, frame).then(() => ({
     root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay
   }));
+}
+
+export type PrepareStaticImportsOptions = Pick<
+  SerializeOptions,
+  'context' | 'evaluator' | 'modes' | 'trivia' | 'optional' | 'collapseNesting' | 'importDocument' | 'pluginHost' | 'io'
+>;
+
+export function prepareStaticImports(root: Stylesheet, options?: PrepareStaticImportsOptions): MaybePromise<PreparedImports> {
+  const pluginHost = options?.pluginHost;
+  const importDocument = options?.importDocument ?? (options?.context ? importThroughContext(options.context) : undefined);
+  const rootFns = globalScopedFns(pluginHost);
+  const documents = new WeakMap<ImportAtRule, PlannedImportDocument>();
+  const e: Emit = {
+    chunks: [],
+    off: 0,
+    positions: null,
+    ev: options?.evaluator ?? options?.context?.evaluator ?? null,
+    modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
+    context: options?.context,
+    excluded: new Set(),
+    propNames: new Set(),
+    optional: options?.optional ?? false,
+    pending: [],
+    depth: 0,
+    collapse: options?.collapseNesting !== false,
+    extends: null,
+    hoistMode: false,
+    lastBlock: { parentKey: null, header: '', depth: -1, endChunks: -1 },
+    mixinDepth: 0,
+    loadedImports: null,
+    multipleImportDepth: 0,
+    referenceImportDepth: 0,
+    importDocument,
+    plannedImportDocuments: documents,
+    preparedImportsOwnedByCaller: false,
+    plannedForExtendPlacements: null,
+    hoistedCssImports: null,
+    emittedBlockTrivia: new Set(),
+    anyScopedFns: rootFns !== null,
+    fnScopeVersion: 0,
+    pluginHost,
+    io: options?.io
+  };
+  const rootFrame: Frame = {
+    parent: null,
+    mixins: collectMixins(root.children),
+    declIndex: collectDeclIndex(root.children),
+    cells: null,
+    reassign: null,
+    statements: root.children,
+    fns: rootFns,
+    sourceOwner: e.context?.currentSourceOwner?.() ?? null
+  };
+  if (rootFns) {
+    rootFrame.fnScope = rootFrame;
+    rootFrame.fnScopeVersion = e.fnScopeVersion;
+  }
+  const plannerRootFrame: Frame = {
+    parent: null,
+    mixins: collectMixins(root.children),
+    declIndex: collectDeclIndex(root.children),
+    cells: null,
+    reassign: null,
+    statements: root.children,
+    fns: rootFns
+  };
+  if (rootFns) {
+    plannerRootFrame.fnScope = plannerRootFrame;
+    plannerRootFrame.fnScopeVersion = e.fnScopeVersion;
+  }
+  const prepare = prepareBodyPlugins(root.children, rootFrame, e);
+  const plan = (): MaybePromise<PreparedImports> => {
+    if (!importDocument) {
+      return { documents };
+    }
+    const planned = planImportedExtends(root, plannerRootFrame, e, importDocument, true);
+    return mapMaybe(planned, () => ({ documents }));
+  };
+  return mapMaybe(prepare, plan);
 }
 
 export function serialize(root: Stylesheet, options?: SerializeOptions): SerializeReturn {
@@ -6530,7 +6628,8 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     multipleImportDepth: 0,
     referenceImportDepth: 0,
     importDocument,
-    plannedImportDocuments: importDocument ? new WeakMap() : null,
+    plannedImportDocuments: options?.preparedImports?.documents ?? (importDocument ? new WeakMap() : null),
+    preparedImportsOwnedByCaller: options?.preparedImports !== undefined,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
     emittedBlockTrivia: new Set(),
@@ -9837,7 +9936,9 @@ function emitImportAtRule(
     const plannedImport = planned?.has(node)
       ? (() => {
           const loaded = planned.get(node)!;
-          planned.delete(node);
+          if (!e.preparedImportsOwnedByCaller) {
+            planned.delete(node);
+          }
           return loaded;
         })()
       : null;

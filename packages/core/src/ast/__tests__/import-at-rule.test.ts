@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { atRuleBlock, importAtRule } from '../at-rule.js';
 import { any, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, spaced, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
 import { createTriviaMapFromRanges, withTriviaMap } from '../provenance.js';
-import { serialize } from '../serialize.js';
+import { prepareStaticImports, serialize } from '../serialize.js';
 import { Context } from '../../context.js';
 import { AbstractPlugin } from '../../plugin.js';
 
@@ -58,6 +58,65 @@ describe('ImportAtRule', () => {
     expect(plugin.locateCalls).toBe(2);
     expect(plugin.parseCalls).toBe(2);
 
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+  });
+
+  it('uses prepared static imports without reloading during render', async () => {
+    const entryPath = '/virtual/entry.less';
+    const tokensPath = '/virtual/tokens.less';
+    const entry = stylesheet([
+      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      rule('.entry', [decl('color', keyword('red'))])
+    ]);
+    const tokens = stylesheet([
+      rule('.tokens', [decl('color', keyword('blue'))])
+    ]);
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'memory-less';
+      supportedExtensions = ['.less'];
+      locateCalls = 0;
+      parseCalls = 0;
+      private readonly documents = new Map([
+        [entryPath, entry],
+        [tokensPath, tokens]
+      ]);
+
+      override locate(paths: string[]) {
+        this.locateCalls++;
+        return paths.find(candidate => this.documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath === entryPath ? '@import "tokens.less";\n.entry { color: red; }\n' : '.tokens { color: blue; }\n';
+      }
+
+      safeParse(filePath: string) {
+        this.parseCalls++;
+        const document = this.documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+    }
+
+    const plugin = new MemoryLessPlugin();
+    const context = new Context({}, [plugin]);
+    const loadedEntry = await context.getTree(entryPath);
+    expect(loadedEntry.node).toBe(entry);
+    expect(plugin.locateCalls).toBe(1);
+    expect(plugin.parseCalls).toBe(1);
+
+    const preparedImports = await context.withDocument(entry, () => prepareStaticImports(entry, { context }));
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+
+    const render = () => Promise.resolve(context.withDocument(entry, () => serialize(entry, { context, preparedImports })));
+    await expect(render()).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
     await expect(render()).resolves.toEqual({
       css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
     });
@@ -509,6 +568,36 @@ describe('ImportAtRule', () => {
       ]))
     ]);
     let loads = 0;
+
+    await expect(Promise.resolve(serialize(document, {
+      importDocument: () => {
+        loads++;
+        return { document: null };
+      }
+    }))).rejects.toMatchObject({
+      code: 'resolve/name-not-found',
+      reason: 'Symbol "@never" is undefined in this scope.'
+    });
+    expect(loads).toBe(0);
+  });
+
+  it('leaves unresolved dynamic import targets for render-time handling during static prep', async () => {
+    const document = stylesheet([
+      importAtRule('@import', interpolation([
+        { lit: '"target-' },
+        { ref: variableReference('never', 'scoped'), unquote: true },
+        { lit: '.less"' }
+      ]))
+    ]);
+    let loads = 0;
+
+    await expect(Promise.resolve(prepareStaticImports(document, {
+      importDocument: () => {
+        loads++;
+        return { document: null };
+      }
+    }))).resolves.toBeTruthy();
+    expect(loads).toBe(0);
 
     await expect(Promise.resolve(serialize(document, {
       importDocument: () => {

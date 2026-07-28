@@ -70,14 +70,17 @@ Sidecar investigations tightened that target:
 Parallel core/compiler lane:
 
 - Current `Compiler.compile()` prepares only the root document. Bootstrap's first
-  compiled-document render then loads the static import graph, while later
-  renders can reuse parsed documents from the same `Context`.
+  prepared-import slice now returns a reusable static import plan. A render that
+  receives that plan avoids `Context.loadImport(...)` / `Context.getTree(...)`
+  calls for prepared imports, while later renders can still reuse parsed
+  documents from the same `Context`.
 - A context-local `loadImport(...)` memo now avoids re-resolving an already
   loaded static import on repeated renders of the same compiled document. That
   is useful session caching, not the Less alpha one-shot render fix.
-- The larger first-render target is for compile to prepare the static import
-  graph once, respecting Less import options and deferring dynamic import targets
-  that require render-time bindings.
+- The larger first-render target is to remove the remaining duplicate planner
+  work after compile-time preparation, while still respecting Less import
+  options and deferring dynamic import targets that require render-time
+  bindings.
 
 ## Comment-as-trivia debt audit
 

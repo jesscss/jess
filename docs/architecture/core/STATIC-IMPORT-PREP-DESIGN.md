@@ -1,15 +1,23 @@
 # Static Import Preparation Design
 
-Status: active design note for Less alpha performance work.
+Status: active design note for Less alpha performance work. The first slice has
+landed: core exposes a reusable prepared-import plan, `serialize(...)` can
+consume it, and `Compiler.compile()` returns it. Further work is still needed
+before this becomes a one-shot render speedup.
 
 ## Problem
 
-`Compiler.compile()` currently prepares only the entry stylesheet. The first
-render of that compiled document still asks `serialize()` to evaluate import
-facts and call `Context.loadImport(...)` for the static import graph. Later
-renders can reuse parsed `Context.sourceTrees`, and `Context.loadImport(...)`
-also memoizes already-loaded imports for the same authoring source, but the
-first render still owns the graph load.
+`Compiler.compile()` prepares the entry stylesheet and now returns a
+prepared-import plan for static import facts it can resolve during compile. A
+caller that passes that plan to `serialize(...)` avoids calling
+`Context.loadImport(...)` again during that render. Later renders can also reuse
+parsed `Context.sourceTrees`, and `Context.loadImport(...)` memoizes
+already-loaded imports for the same authoring source.
+
+This is not yet the full first-render target. The prepared plan still reuses the
+serializer's existing import planner, so it moves import loading out of render
+and removes loader calls during prepared renders, but it does not eliminate the
+planner walk or all import-related render work.
 
 That is acceptable for alpha.1, but it is not the target architecture. Compile
 should own static graph preparation; render should consume prepared typed import
@@ -71,15 +79,17 @@ nodes.
   documents may still rerun expensive extend planning.
 - A prepared plan must be scoped to one `Context` and one root document. It must
   not be global or reusable across independent compiler sessions.
+- A prepared plan is reusable across renders for the same compiled document, so
+  render must not mutate a caller-owned plan while consuming it.
 - Dynamic imports that throw `ImportPathNotReady` during preparation must remain
   render-time requests. A prepared plan needs an explicit "not prepared" state,
   not a cached failure.
 - Imported document context must remain correct for nested imports and deferred
   callable bodies. Prepared entries need the same `withinDocument` behavior that
   `importThroughContext(...)` returns today.
-- Public `Compiler.render(file)` can call the same preparation before render,
-  but that mostly moves work from `renderAstStylesheet` into preparation unless
-  it also prevents duplicate planning. The larger user-visible win is
+- Public `Compiler.render(file)` can eventually call the same preparation before
+  render, but that mostly moves work from `renderAstStylesheet` into preparation
+  unless it also prevents duplicate planning. The larger user-visible win is
   `compile()` followed by one or more renders of the compiled document.
 
 ## Proof
@@ -88,12 +98,12 @@ Add focused tests before claiming the lane:
 
 - Compiling a static root import graph populates the plan for root and nested
   imports without emitting CSS.
-- First render after compile does not call `Context.loadImport(...)` /
-  `Context.getTree(...)` for prepared static imports.
-- Second render of the same compiled document also does not call the import
-  loader for prepared static imports.
-- A dynamic interpolated import target still resolves at render time after the
-  variable or mixin that supplies it has been published.
+- Rendering with a compile-prepared plan does not call `Context.loadImport(...)`
+  / `Context.getTree(...)` for prepared static imports.
+- A caller-owned prepared plan can be reused for another render of the same
+  compiled document.
+- A dynamic interpolated import target that is not ready during preparation
+  remains a render-time request/error.
 - `reference`, `multiple`, and `(less)` imports keep current output and lookup
   behavior.
 - Nested imports resolve relative to the imported document that authored them.

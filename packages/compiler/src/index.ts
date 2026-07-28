@@ -18,6 +18,8 @@ import {
   type WarningsConfigInput,
   type ErrorsConfigInput,
   serialize,
+  prepareStaticImports,
+  type PreparedImports,
   type PluginInterface
 } from '@jesscss/core';
 import type { Stylesheet } from '@jesscss/core/ast';
@@ -634,12 +636,16 @@ export class Compiler {
   }
 
   private createConfiguredPluginProxy(specifier: string): LazyPluginInterface {
-    const factoryPromise = this.getConfiguredPluginFactory(specifier);
+    let factoryPromise: Promise<PluginFactoryRecord> | undefined;
     let pluginPromise: Promise<PluginInterface> | undefined;
     let loadedPlugin: PluginInterface | undefined;
+    const getFactory = (): Promise<PluginFactoryRecord> => {
+      factoryPromise ??= this.getConfiguredPluginFactory(specifier);
+      return factoryPromise;
+    };
     const getPlugin = async (): Promise<PluginInterface> => {
       if (!pluginPromise) {
-        pluginPromise = factoryPromise.then((factory) => {
+        pluginPromise = getFactory().then((factory) => {
           loadedPlugin = factory.create();
           return loadedPlugin;
         });
@@ -1029,21 +1035,48 @@ export class Compiler {
     return loaded.node;
   }
 
-  private async renderStylesheet(document: Stylesheet, context: Context, profile?: RenderProfile): Promise<string> {
-    const result = await measureProfileAsync(profile, 'renderAstStylesheet', () =>
+  private activateDocumentPlugins(context: Context): void {
+    const activePlugin = context.documentContext?.plugin;
+    for (const plugin of context.plugins) {
+      if (plugin !== activePlugin) {
+        plugin.setContext?.(context);
+      }
+    }
+    activePlugin?.setContext?.(context);
+  }
+
+  private prepareStaticImportsForStylesheet(
+    document: Stylesheet,
+    context: Context,
+    profile?: RenderProfile
+  ): Promise<PreparedImports> {
+    return measureProfileAsync(profile, 'prepareStaticImports', () =>
       Promise.resolve(context.withDocument(document, () => {
-        const activePlugin = context.documentContext?.plugin;
-        for (const plugin of context.plugins) {
-          if (plugin !== activePlugin) {
-            plugin.setContext?.(context);
-          }
-        }
-        activePlugin?.setContext?.(context);
-        return serialize(document, {
+        this.activateDocumentPlugins(context);
+        return prepareStaticImports(document, {
           collapseNesting: context.opts.output?.collapseNesting ?? false,
           context,
           pluginHost: context.pluginHost,
           io: { readFile: specifier => context.readBinary(specifier).catch(() => null) }
+        });
+      })));
+  }
+
+  private async renderStylesheet(
+    document: Stylesheet,
+    context: Context,
+    profile?: RenderProfile,
+    preparedImports?: PreparedImports
+  ): Promise<string> {
+    const result = await measureProfileAsync(profile, 'renderAstStylesheet', () =>
+      Promise.resolve(context.withDocument(document, () => {
+        this.activateDocumentPlugins(context);
+        return serialize(document, {
+          collapseNesting: context.opts.output?.collapseNesting ?? false,
+          context,
+          pluginHost: context.pluginHost,
+          io: { readFile: specifier => context.readBinary(specifier).catch(() => null) },
+          preparedImports
         });
       })));
     let css = result.css;
@@ -1063,6 +1096,7 @@ export class Compiler {
 
     try {
       const document = await this.prepareStylesheet(context, resolved, { filePath }, profile);
+      const preparedImports = await this.prepareStaticImportsForStylesheet(document, context, profile);
 
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {
@@ -1080,7 +1114,7 @@ export class Compiler {
         errors: context.errors.length,
         warnings: context.warnings.length
       });
-      return { document, context };
+      return { document, context, preparedImports };
     } catch (err: unknown) {
       if (context.errors.length > 0 || context.warnings.length > 0) {
         outputDiagnostics(context.errors, context.warnings, {

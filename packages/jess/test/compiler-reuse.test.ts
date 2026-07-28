@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { Compiler } from '../src/index.js';
 import { lessCompatPlugin } from '@jesscss/plugin-less-compat';
+import { serialize } from '@jesscss/core';
 
 describe('Compiler reuse', () => {
   let tempDir: string;
@@ -150,6 +151,26 @@ describe('Compiler reuse', () => {
 
     await expect(compiler.renderString('.a { color: red; }', { language: 'less' })).resolves.toContain('color: red');
     expect(receivedDocumentType).toBe('Stylesheet');
+  });
+
+  it('returns prepared static imports from compile', async () => {
+    const entryFile = path.join(tempDir, 'entry.less');
+    const tokensFile = path.join(tempDir, 'tokens.less');
+    fs.writeFileSync(entryFile, '@import "tokens.less";\n.entry { color: red; }');
+    fs.writeFileSync(tokensFile, '.tokens { color: blue; }');
+
+    const compiler = new Compiler();
+    const { document, context, preparedImports } = await compiler.compile(entryFile);
+
+    expect(preparedImports).toBeTruthy();
+    await expect(Promise.resolve(context.withDocument(document, () => serialize(document, {
+      collapseNesting: context.opts.output?.collapseNesting ?? false,
+      context,
+      pluginHost: context.pluginHost,
+      preparedImports
+    })))).resolves.toEqual({
+      css: '.tokens {\n  color: blue;\n}\n.entry {\n  color: red;\n}\n'
+    });
   });
 
   it('renders root kept output through safeRender', async () => {
