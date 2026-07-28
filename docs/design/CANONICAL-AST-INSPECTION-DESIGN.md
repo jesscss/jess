@@ -229,7 +229,8 @@ Core must own the child-edge table. Consumers must never recurse with
 | `Condition` | `value.condition.guard` |
 | `Reference` | `value.reference.base` for `ValueNode` or `MixinCall`; `value.reference.bracket-key` for value keys; `value.reference.call-arg` for call args using the shared `CallValue` rule |
 | `Range` | `value.range.start`, `value.range.end`, `value.range.step` when present |
-| `Collection` | `value.collection.base` when present; `value.collection.entry-node` for each declaration/variable entry node, then that node's normal declaration/variable edges |
+| `Collection` | `value.collection.base` when present; `value.collection.entry` for each value-keyed entry |
+| `CollectionEntry` | `value.collection.entry.key`, `value.collection.entry.value` |
 | `AnonymousMixin` | `value.anonymous-mixin.param-default`, `value.anonymous-mixin.param-pattern`, `value.anonymous-mixin.body` |
 
 ### Call Values
@@ -300,10 +301,16 @@ findings that must be resolved before a Less visitor bridge claims support:
 
 | Shape | Pressure | Current decision |
 |---|---|---|
-| `Collection.entries` as `Declaration | VariableDeclaration` | convenient for nested-property output, but SCSS map keys can lose authored typed key shape by squeezing through declaration names | pre-Slice-1 must decide whether to add first-class `CollectionEntry { key, value }` or explicitly fence map-key visitor support; Slice 1 traversal may still visit current entry nodes |
 | `Rule.extendInstructions` hoisted off body | good for serializer/extend planning, but Less may expose body-form `Extend` in source-order `rules` | add selector edges now; pre-Slice-1 must prove whether lazy synthetic `Extend` facades are acceptable or AST needs source-order extend placement |
 | `MixinCall.name` / `MixinCall.path[].sel` raw strings | fine for current eval, but may force selector reconstruction for Less `Element`/mixin visitor surfaces | block Less visitor bridge until observed plugins prove raw strings are enough or AST carries structured selector/path facts |
 | Selector model `SelectorList -> ComplexSelector -> CompoundSelector -> SimpleToken` | modern and parser-friendly, but Less exposes `Selector.elements` / `Element.combinator` / `Element.value` | pre-Slice-1 proof must show `visitSelector` / `visitElement` can be lazy without source reparse or eager synthetic subtree conversion |
+
+Collections are not an AST-pressure item for this design. The design of record
+is the value-keyed map model in `docs/design/COLLECTION-VALUE-KEYS.md`:
+`Collection.entries` are `CollectionEntry { key, value }` records, both sides are
+values, and keys compare by value equality. Traversal should target that model
+and should not encode the older declaration-backed collection shape as the
+canonical edge contract.
 
 ### Parser Construction Pressure
 
@@ -318,10 +325,10 @@ Current evidence:
 |---|---|
 | CSS `Dimension` | natural: the grammar already reduces number plus optional unit directly to `dimension(Number(numberText), unit, src)` |
 | CSS `Declaration` | natural: the grammar already reduces property/custom-property name and structured value into `decl(name, valueSlot(...))` |
-| Less `Rule` | natural for core AST: selector, guard, body statements, and extend facts are all available in the `Ruleset` reduction |
+| `Rule` statement from ruleset syntax | natural for core AST: selector, guard, body statements, and extend facts are all available in ruleset reductions |
 | `SelectorList` / `ComplexSelector` / `CompoundSelector` | mostly natural: selector grammar already produces selector facts directly; Less `Element` compatibility should be a lazy facade over these edges, not a parser obligation |
-| `Collection` for Jess maps and SCSS nested properties | natural for leaf-named entries, because the grammar already sees declaration-shaped `key: value` entries |
-| SCSS map keys | pressured: `DirectScssMapEntry` currently coerces a full `ValueNode` key through `mapKeyName(...)` into `string | Interpolation`, rejecting otherwise valid-looking value keys because `Collection.entries` has no first-class typed key |
+| `Collection` maps | natural: map grammars already see `key: value` boundaries and should reduce them directly to `CollectionEntry` records with typed value keys |
+| SCSS nested properties | natural but role-specific: the grammar sees declaration-shaped leaf names, but this is the structural nested-property role of `Collection`, not evidence that data-map entries should be declarations |
 | `Rule.extendInstructions` | natural to parse as selector facts, but hoisting body-form extends off `Rule.body` loses the source-order node shape Less visitors may expect |
 | `MixinCall.path` / `name` | current parsers deliberately preserve raw selector/name strings for dispatch; if Less plugins need element-level path visitation, the parser can carry structured facts, but the AST must ask for them explicitly |
 
@@ -613,8 +620,9 @@ so implementing the canonical traversal must not claim to close that gap.
 
 This gate happens before authored traversal implementation lands.
 
-- Build the initial published-package visitor-shape tracking table, seeded with
-  mandatory owner/reviewer proof cases even before the package corpus is broad.
+- Seed the visitor-shape tracking table with the mandatory owner/reviewer proof
+  cases. The broader published-package corpus belongs in Slice 4, not in the
+  lint/traversal critical path.
 - Prove lazy visitor invocation mechanically: registering only `visitDimension`
   reaches dimensions through rules/declarations without constructing rule or
   declaration facades and without calling no-op visitor methods for those kinds.
@@ -628,8 +636,9 @@ This gate happens before authored traversal implementation lands.
 - For each proof case, classify the mapping as direct AST edge, tolerable lazy
   facade, or AST/edge design problem.
 - Decide or explicitly fence the known AST-pressure items before Slice 1:
-  `CollectionEntry { key, value }`, source-order body-form extends, and
-  structured `MixinCall` path/name facts.
+  source-order body-form extends and structured `MixinCall` path/name facts.
+- Verify collection traversal targets the value-keyed `CollectionEntry` design
+  of record instead of the older declaration-backed transitional shape.
 - Record parser construction pressure for each decided shape: whether the grammar
   can build the node locally, whether it would need a broad lookahead/reparse,
   and whether an AST change would make the parser simpler.
@@ -701,7 +710,7 @@ For Slice 1:
 - tests prove memo/cache/raw fields are not traversed;
 - guard tests prove `guard.g` traversal, not fake `node.type` traversal;
 - traversal tests cover `declaration.name` interpolation, `rule.extend.target` /
-  `rule.extend.subject`, `Collection` entry-node traversal, and the shared
+  `rule.extend.subject`, `CollectionEntry` key/value traversal, and the shared
   `CallValue` rule for nested `MixinCall` values;
 - tests prove traversal does not require every leaf to carry a source span;
 - source-location tests cover duplicate values, substring traps, quoted strings,
@@ -797,12 +806,14 @@ Findings accepted into this revision:
   bridge-owned equivalent that consults the interest table before adaptation or
   callback.
 - The edge matrix missed real authored structure. Section 6 now includes
-  `Declaration.name` interpolation, `Rule.extend` selector edges, `Collection`
-  entry nodes, `VariableReference` / `PropertyReference`, and shared
+  `Declaration.name` interpolation, `Rule.extend` selector edges,
+  `CollectionEntry` key/value edges, `VariableReference` / `PropertyReference`,
+  and shared
   `CallValue` traversal for nested `MixinCall` values.
-- `Collection.entries` is the clearest AST weakness. SCSS map keys are full
-  values in the grammar but are squeezed through declaration names today; the
-  design now records `CollectionEntry { key, value }` as a pre-Slice-1 decision.
+- The collection finding from review was corrected by owner feedback and
+  `docs/design/COLLECTION-VALUE-KEYS.md`: collections are value-keyed maps with
+  `CollectionEntry { key, value }`; traversal targets that design and does not
+  encode declaration-backed collections as canonical.
 - Parser pressure is a first-class design test. Section 6 now records which
   desired nodes are grammar-natural and which current AST shapes force coercion,
   hoisting, or raw-string facts.
