@@ -5671,6 +5671,33 @@ describe('Less AST grammar facts', () => {
     });
   });
 
+  it('keeps a single semicolon-terminated mixin argument on the semicolon branch', () => {
+    const result = run(
+      lessAstGrammar.Document,
+      '.tone(@color) {} .card { .tone(red;); }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        { type: 'MixinDef' },
+        {
+          type: 'Rule',
+          body: [
+            {
+              type: 'MixinCall',
+              name: '.tone',
+              args: [{ value: { type: 'Color', src: 'red' } }]
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it('groups comma runs into list-valued arguments when semicolons separate Less mixin arguments', () => {
     const result = run(
       lessAstGrammar.Document,
