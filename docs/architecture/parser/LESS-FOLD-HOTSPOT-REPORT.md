@@ -299,19 +299,13 @@ SCSS-on-Less inheritance path rather than for Less syntax:
   rule map as SCSS hooks. `Stylesheet`, `declarationList`, and at-rule bodies now
   reference Less-local statement choices directly.
 - Also cut in this checkout: the old `customValue` hook has been removed from
-  Less. SCSS's `g.customValue` reference is now intentionally invalid until SCSS
-  is rebuilt as a sibling grammar.
-- The copied `NamedColor` list is kept only because `scss-parser` composes on
-  `lessGrammar`; the comment says the blocker is SCSS composing on Less, not the
-  color list (`grammar.ts:716-735`).
-- SCSS still imports and composes on `lessGrammar` at
-  `packages/syntax/scss/scss-parser/src/grammar.ts:9` and `:47`. Its remaining
-  references to removed Less-private hooks now make `check:macro` fail on the
-  old hook surface. Current first failure is `declarationList` referencing
-  removed `g.customValue`; `g.blockItem`, `g.stylesheetItem`, and `g.basicSel`
-  are the next old hooks visible in the same SCSS compose layer. This is the
-  intended forcing function for rebuilding SCSS as a sibling grammar rather than
-  widening Less again.
+  Less. SCSS now owns its custom-property and interpolation surfaces in its own
+  host-mode grammar instead of reaching through Less-private hooks.
+- SCSS no longer imports or composes on `lessGrammar`; `check:macro` and
+  `verify:compose-integrity` pass with SCSS as a sibling grammar. The remaining
+  SCSS/Less separation cleanup is narrower: remove explicit Less compatibility
+  syntax that was copied into SCSS, such as Less-style `@import (css, once)`
+  options, and pin rejection tests so the leak does not return.
 
 Recommended handling: delete or internalize these during the Less fold whenever
 the Less parser's own CST/AST/language-service contracts do not require them.
