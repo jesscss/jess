@@ -7225,7 +7225,15 @@ function visibleHeader(rule: Rule, header: string[], frame: Frame, e: Emit): str
   return header;
 }
 
-function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, frame: Frame, e: Emit, imp = false): MaybePromise<void> {
+function flatten(
+  rule: Rule,
+  parent: string[] | null,
+  ancestor: string | null,
+  frame: Frame,
+  e: Emit,
+  imp = false,
+  expandBubbledSelectorList = false
+): MaybePromise<void> {
   // [guards] a guarded ruleset emits its block only when the guard is true.
   return mapMaybe(ruleGuardPasses(rule, frame, e), (passes) => {
     if (!passes) {
@@ -7233,7 +7241,8 @@ function flatten(rule: Rule, parent: string[] | null, ancestor: string | null, f
     }
     const rawComposed =
       parent === null ? rootStrings(rule.selector, frame, e) : compose(parent, rule.selector, frame, e);
-    return mapMaybe(rawComposed, rawComposed => flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed));
+    return mapMaybe(rawComposed, rawComposed =>
+      flattenResolved(rule, parent, ancestor, frame, e, imp, rawComposed, expandBubbledSelectorList));
   });
 }
 
@@ -7247,7 +7256,8 @@ function flattenResolved(
   frame: Frame,
   e: Emit,
   imp: boolean,
-  rawComposed: string[]
+  rawComposed: string[],
+  expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
   /*
    * [nesting] `rawComposed` is the fully-cartesian parent-list carried into nested
@@ -7290,11 +7300,25 @@ function flattenResolved(
      * raw composed list is already the correct parent context for children.
      */
     childAncestor = wrapIsList(rawComposed);
+  } else if (expandBubbledSelectorList) {
+    headerComposed = rawComposed;
+    childAncestor = wrapIsList(rawComposed);
   } else {
     headerComposed = opaqueJoin(ancestor ?? wrapIsList(parent), rule.selector, frame, e);
     childAncestor = rawComposed[0] ?? '';
   }
-  return mapMaybe(headerComposed, headerComposed => flattenWithHeader(rule, parent, frame, e, imp, childComposed, headerComposed, childAncestor));
+  return mapMaybe(headerComposed, headerComposed =>
+    flattenWithHeader(
+      rule,
+      parent,
+      frame,
+      e,
+      imp,
+      childComposed,
+      headerComposed,
+      childAncestor,
+      expandBubbledSelectorList
+    ));
 }
 
 function flattenWithHeader(
@@ -7311,7 +7335,8 @@ function flattenWithHeader(
    */
   childComposed: string[] | null,
   headerComposed: string[],
-  childAncestor: string
+  childAncestor: string,
+  expandBubbledSelectorList: boolean
 ): MaybePromise<void> {
   /*
    * [extend] the rule's HEADER uses its fully-extended composed branches;
@@ -7401,7 +7426,21 @@ function flattenWithHeader(
   };
   const executeBody = () => mapMaybe(
     prepareBodyPlugins(rule.body, childFrame, e),
-    () => walkBody(rule.body, childComposed, childComposed === null ? null : childAncestor, childFrame, group, flush, partition, e, imp, false)
+    () => walkBody(
+      rule.body,
+      childComposed,
+      childComposed === null ? null : childAncestor,
+      childFrame,
+      group,
+      flush,
+      partition,
+      e,
+      imp,
+      false,
+      childFrame,
+      false,
+      expandBubbledSelectorList
+    )
   );
 
   /*
@@ -7478,7 +7517,8 @@ function walkBody(
   imp = false, // call-level !important override
   forceLeading = false,
   propertyScope: Frame = frame, // Less `$property` visibility owner
-  applyExpansion = false
+  applyExpansion = false,
+  expandBubbledSelectorList = false
 ): MaybePromise<void> {
   for (let index = 0; index < statements.length; index++) {
     const node = statements[index]!;
@@ -7560,14 +7600,28 @@ function walkBody(
               declIndex: collectDeclIndex(rule.body), cells: null, reassign: null,
               statements: rule.body
             };
-            return walkBody(rule.body, rComposedSelf, ancestor, selfFrame, group, flush, partition, e, imp, forceLeading, propertyScope, applyExpansion);
+            return walkBody(
+              rule.body,
+              rComposedSelf,
+              ancestor,
+              selfFrame,
+              group,
+              flush,
+              partition,
+              e,
+              imp,
+              forceLeading,
+              propertyScope,
+              applyExpansion,
+              expandBubbledSelectorList
+            );
           };
           const passes = ruleGuardPasses(rule, frame, e);
           const emitted = mapMaybe(passes, emitSelf);
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
               statements.slice(index + 1), rComposedSelf, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
+              partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
             ));
           }
           break;
@@ -7582,23 +7636,23 @@ function walkBody(
           queueLeadingGroup(group, partition);
           flushPending(partition);
           partition.encounteredContainer = true;
-          partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp));
+          partition.trailing.push(() => flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList));
         } else {
           const flushed = flush();
           if (isThenable(flushed)) {
             return flushed.then(() => mapMaybe(
-              flatten(rule, rComposed, rAncestor, rFrame, e, imp),
+              flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList),
               () => walkBody(
                 statements.slice(index + 1), composed, ancestor, frame, group, flush,
-                partition, e, imp, forceLeading, propertyScope, applyExpansion
+                partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
               )
             ));
           }
-          const emitted = flatten(rule, rComposed, rAncestor, rFrame, e, imp);
+          const emitted = flatten(rule, rComposed, rAncestor, rFrame, e, imp, expandBubbledSelectorList);
           if (isThenable(emitted)) {
             return emitted.then(() => walkBody(
               statements.slice(index + 1), composed, ancestor, frame, group, flush,
-              partition, e, imp, forceLeading, propertyScope, applyExpansion
+              partition, e, imp, forceLeading, propertyScope, applyExpansion, expandBubbledSelectorList
             ));
           }
         }
@@ -11168,7 +11222,7 @@ function emitBubbleBody(
           if (deferStaticChildren) {
             deferredChildren!.push(() => {
               e.depth++;
-              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
               if (isThenable(emitted)) {
                 return emitted.then(() => {
                   e.depth--;
@@ -11184,7 +11238,7 @@ function emitBubbleBody(
             if (isThenable(flushed)) {
               return flushed.then(() => {
                 e.depth++;
-                const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+                const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
                 if (isThenable(emitted)) {
                   return emitted.then(
                     () => {
@@ -11203,7 +11257,7 @@ function emitBubbleBody(
             }
             e.depth++;
             {
-              const emitted = flatten(node, ctx, ctxAncestor, frame, e);
+              const emitted = flatten(node, ctx, ctxAncestor, frame, e, false, ctx !== null);
               if (isThenable(emitted)) {
                 return emitted.then(
                   () => {

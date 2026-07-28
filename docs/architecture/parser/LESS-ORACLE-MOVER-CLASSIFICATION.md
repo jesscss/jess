@@ -113,15 +113,17 @@ Path-level split:
 | CSS parser error fixtures | 48 | 0 | 47 | 1 | 3 |
 
 The five parsed AST movers without comments remain the highest-signal
-acceptance review queue:
+acceptance review queue. Focused parser coverage now pins the riskiest
+recognition claims; this is evidence for classification, not permission to move
+the oracle baseline casually.
 
 | entry | current AST surface | classification |
 | --- | --- | --- |
-| `node_modules/@less/test-data/tests-unit/color-functions/modern.css` | Parses as a `Stylesheet`. | Newer valid CSS expected-output fixture now accepted by the Less AST grammar. Review against the current Less v5 CSS-pass-through contract before baseline. |
-| `node_modules/@less/test-data/tests-unit/container/container.css` | Parses as a `Stylesheet`. | Valid CSS expected-output fixture. This reflects `@container` acceptance; baseline only after focused container coverage remains green. |
+| `node_modules/@less/test-data/tests-unit/color-functions/modern.css` | Parses as a `Stylesheet`. | Newer valid CSS expected-output fixture accepted by the Less AST grammar. `packages/syntax/less/less-parser/test/ast-grammar.test.ts` now pins relative-color style `rgb(from ...)` / `oklch(from ...)` values as ordinary function calls with nested `calc(...)` operation facts. |
+| `node_modules/@less/test-data/tests-unit/container/container.css` | Parses as a `Stylesheet`. | Valid CSS expected-output fixture. This reflects `@container` acceptance; existing Less parser container coverage remains the focused sentinel before baseline movement. |
 | `node_modules/@less/test-data/tests-unit/plugin/plugin.css` | Parses as a `Stylesheet`. | Valid CSS output fixture and plugin-scoping sentinel. Keep dialect-owned function registration tests green before any baseline move. |
-| `node_modules/@less/test-data/tests-unit/plugin-preeval/plugin-preeval.less` | Parses as a `Stylesheet`. | Plugin pre-eval Less fixture now reaches the AST route. Keep plugin pre-eval diagnostics and function registration behavior covered before baseline. |
-| `packages/syntax/css/css-parser/test/css/atrule-unknown.css` | Parses as an opaque `@future` block. | Likely intended opaque at-rule ownership movement. Needs focused CSS/Less unknown-at-rule conformance coverage before baseline. |
+| `node_modules/@less/test-data/tests-unit/plugin-preeval/plugin-preeval.less` | Parses as a `Stylesheet`. | Plugin pre-eval Less fixture reaches the AST route. `packages/syntax/less/less-parser/test/ast-grammar.test.ts` now pins the parser-only surface: `Plugin`, detached-ruleset default, block-argument mixin call, custom-property interpolation, and trailing variable declaration. Function registration/eval behavior remains a separate plugin lane. |
+| `packages/syntax/css/css-parser/test/css/atrule-unknown.css` | Parses as an opaque `@future` block. | Intended opaque at-rule ownership movement. Existing CSS/Less parser coverage pins the narrow unknown-at-rule shape as `OpaqueAtRuleBlock` with `rawBody`; do not widen it into a raw prelude/value capture. |
 
 Diagnostic-only non-comment movers are large but less semantically ambiguous:
 85 of the 95 non-comment common AST movers currently throw

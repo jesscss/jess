@@ -1531,6 +1531,77 @@ describe("Less AST grammar facts", () => {
     }
   });
 
+  it('accepts modern CSS color functions as ordinary function values', () => {
+    const source =
+      '.modern { background: rgb(from blue calc(r + 100) g b); accent: oklch(from #0000FF calc(l / 2) c h); }';
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace
+    });
+
+    expect(cstIssueCount(cst)).toBe(0);
+    expect(findCstNodes(cst.tree, 'Call').map(cstLeafValues)).toEqual(
+      expect.arrayContaining([
+        ['rgb(', 'from', 'blue', 'calc(', 'r', ' + ', '100', ')', 'g', 'b', ')'],
+        ['oklch(', 'from', '#0000FF', 'calc(', 'l', '/', '2', ')', 'c', 'h', ')']
+      ])
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        {
+          type: 'Rule',
+          body: [
+            {
+              type: 'Declaration',
+              name: 'background',
+              value: {
+                type: 'FunctionCall',
+                name: 'rgb',
+                args: [
+                  [
+                    { type: 'Keyword', src: 'from' },
+                    { type: 'Color', src: 'blue' },
+                    {
+                      type: 'FunctionCall',
+                      name: 'calc',
+                      args: [{ type: 'Operation', operator: '+' }]
+                    },
+                    { type: 'Keyword', src: 'g' },
+                    { type: 'Keyword', src: 'b' }
+                  ]
+                ]
+              }
+            },
+            {
+              type: 'Declaration',
+              name: 'accent',
+              value: {
+                type: 'FunctionCall',
+                name: 'oklch',
+                args: [
+                  [
+                    { type: 'Keyword', src: 'from' },
+                    { type: 'Color', src: '#0000FF' },
+                    {
+                      type: 'FunctionCall',
+                      name: 'calc',
+                      args: [{ type: 'Operation', operator: '/' }]
+                    },
+                    { type: 'Keyword', src: 'c' },
+                    { type: 'Keyword', src: 'h' }
+                  ]
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("keeps comment-aware product operators as one flat arithmetic stream", () => {
     const source =
       ".math { product: 2 * // factor\n 3; modulo: 7 // divisor follows\n % 3; }";
@@ -5410,6 +5481,97 @@ describe("Less AST grammar facts", () => {
     expect(serialize(stylesheet(result.value)).css).toBe(
       ".card {\n  color: red;\n}\n"
     );
+  });
+
+  it('parses plugin-preeval shape as plugin plus block-argument mixin facts', () => {
+    const source =
+      '@plugin "../../plugin/plugin-preeval"; .two(@rules: {}) { :root.two & { @rules(); } } .one { .two({ --foo: @replace !important; }); } @stop: end;';
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace
+    });
+
+    expect(cstIssueCount(cst)).toBe(0);
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        {
+          type: 'Plugin',
+          target: {
+            type: 'Quoted',
+            value: '../../plugin/plugin-preeval'
+          }
+        },
+        {
+          type: 'MixinDef',
+          name: '.two',
+          params: [
+            {
+              name: 'rules',
+              default: { type: 'AnonymousMixin', body: [] }
+            }
+          ],
+          body: [
+            {
+              type: 'Rule',
+              body: [
+                {
+                  type: 'Reference',
+                  base: {
+                    type: 'VariableReference',
+                    name: 'rules',
+                    lookup: 'scoped'
+                  },
+                  steps: [{ type: 'Call', args: [] }]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: 'Rule',
+          body: [
+            {
+              type: 'MixinCall',
+              name: '.two',
+              args: [
+                {
+                  value: {
+                    type: 'AnonymousMixin',
+                    body: [
+                      {
+                        type: 'Declaration',
+                        name: '--foo',
+                        value: {
+                          type: 'Interpolation',
+                          parts: [
+                            {
+                              ref: {
+                                type: 'VariableReference',
+                                name: 'replace',
+                                lookup: 'scoped'
+                              }
+                            }
+                          ]
+                        },
+                        important: true
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: 'VariableDeclaration',
+          name: 'stop',
+          value: { type: 'Keyword', src: 'end' }
+        }
+      ]
+    });
   });
 
   it("constructs semicolon-separated mixin parameters with detached-ruleset defaults", () => {

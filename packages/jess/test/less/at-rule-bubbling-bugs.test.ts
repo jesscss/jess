@@ -252,6 +252,45 @@ ${atRule} (min-width: 500px) {
     `));
   });
 
+  it('preserves every parent selector branch when bubbling a nested @container block', async () => {
+    const css = await render(`
+.one, .two {
+  @container (max-width: 350px) {
+    .cite {
+      .authors {
+        display: none;
+      }
+    }
+  }
+}
+    `);
+    expect(trimLines(css)).toBe(trimLines(`
+@container (max-width: 350px) {
+  .one .cite .authors,
+  .two .cite .authors {
+    display: none;
+  }
+}
+    `));
+  });
+
+  it('keeps glued query functions tight in @container preludes', async () => {
+    const css = await render(`
+@container scroll-state(stuck: top) {
+  #sticky-child {
+    font-size: 75%;
+  }
+}
+    `);
+    expect(trimLines(css)).toBe(trimLines(`
+@container scroll-state(stuck: top) {
+  #sticky-child {
+    font-size: 75%;
+  }
+}
+    `));
+  });
+
   /**
    * Bug 5: Mixin body at-rule bubbling loses caller's selector
    * Source: at-rules-bubbling.less lines 113-126

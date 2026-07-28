@@ -186,6 +186,7 @@ type LessRules = {
   MediaQueryClause: Combinator<ValueNode>;
   MediaQueryPrelude: Combinator<ValueNode>;
   ContainerStyleQuery: Combinator<FunctionCall>;
+  ContainerScrollStateQuery: Combinator<FunctionCall>;
   ContainerName: Combinator<Keyword>;
   ContainerQueryAtom: Combinator<ValueNode>;
   ContainerCondition: Combinator<ValueNode>;
@@ -4592,9 +4593,19 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     '-_0-9A-Za-z',
     { caseInsensitive: true }
   ), literal('('))));
+  const scrollStateFunctionOpener = token(noTrivia(sequence(word(
+    'scroll-state',
+    '-_0-9A-Za-z',
+    { caseInsensitive: true }
+  ), literal('('))));
   const ContainerStyleQuery = node<FunctionCall>(
     'ContainerStyleQuery',
     sequence(styleFunctionOpener, g.LessSyntaxCustomProperty, literal(':'), g.QueryValue, literal(')')),
+    children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
+  );
+  const ContainerScrollStateQuery = node<FunctionCall>(
+    'ContainerScrollStateQuery',
+    sequence(scrollStateFunctionOpener, g.CssSyntaxProperty, literal(':'), g.QueryValue, literal(')')),
     children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
   );
   const ContainerName = node<Keyword>(
@@ -4615,6 +4626,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'ContainerQueryAtom',
     choice(
       g.ContainerStyleQuery,
+      g.ContainerScrollStateQuery,
       g.QueryFeature
     ),
     children => requireValueNode(children[0])
@@ -5827,6 +5839,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     MediaQueryClause,
     MediaQueryPrelude,
     ContainerStyleQuery,
+    ContainerScrollStateQuery,
     ContainerName,
     ContainerQueryAtom,
     ContainerCondition,
