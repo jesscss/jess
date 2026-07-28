@@ -94,6 +94,11 @@ describe('preserveRecoveryManifestVersion', () => {
   it('assigns the recovery lockstep version to packages added after the recovery ref', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'jess-alpha-restore-new-'));
     temporaryRoots.push(root);
+    writeManifest(root, {
+      name: '@fixture/private',
+      version: '2.0.0-alpha.1',
+      private: true
+    }, 'aaa-private');
     writeManifest(root, { name: '@fixture/package', version: '2.0.0-alpha.10' });
     run('git', ['init', '--quiet'], root);
     run('git', ['config', 'user.email', 'test@example.invalid'], root);

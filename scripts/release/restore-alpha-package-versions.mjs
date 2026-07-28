@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  compareSemver,
   listWorkspacePackages,
   preserveRecoveryManifestVersion
 } from './release-utils.mjs';
@@ -95,6 +96,7 @@ function main() {
   const rootDir = process.cwd();
   const packages = listWorkspacePackages(rootDir);
   const recoveryByPath = new Map();
+  const recoveryVersionCounts = new Map();
   let recoveryVersion = null;
   for (const pkg of packages.values()) {
     const relativePath = path
@@ -105,9 +107,19 @@ function main() {
       continue;
     }
     recoveryByPath.set(relativePath, recoveryRaw);
-    const version = JSON.parse(recoveryRaw).version;
-    if (typeof version === 'string' && version.length > 0) {
-      recoveryVersion ??= version;
+    const recoveryManifest = JSON.parse(recoveryRaw);
+    const version = recoveryManifest.version;
+    if (!recoveryManifest.private && typeof version === 'string' && version.length > 0) {
+      recoveryVersionCounts.set(version, (recoveryVersionCounts.get(version) ?? 0) + 1);
+    }
+  }
+  for (const [version, count] of recoveryVersionCounts) {
+    if (
+      recoveryVersion === null
+      || count > recoveryVersionCounts.get(recoveryVersion)
+      || (count === recoveryVersionCounts.get(recoveryVersion) && compareSemver(version, recoveryVersion) > 0)
+    ) {
+      recoveryVersion = version;
     }
   }
 
