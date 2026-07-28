@@ -1227,7 +1227,9 @@ export class Compiler {
       return css;
     } catch (err: unknown) {
       this.reportCollected(context, renderOptions);
-      logger.error(String(err));
+      if (!(err && typeof err === 'object' && 'code' in err)) {
+        logger.error(String(err));
+      }
       finalizeRenderProfile(profile, {
         method: 'renderString',
         filePath,

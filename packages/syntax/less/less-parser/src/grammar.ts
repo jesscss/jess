@@ -3503,18 +3503,21 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     }
   );
   const mixinSemicolonArgument = choice(g.MixinArgumentGroup, mixinCallArgument);
+  const semicolonSeparatedMixinArguments = sequence(
+    mixinSemicolonArgument,
+    literal(';'),
+    optional(sequence(
+      oneOrMoreSep(
+        mixinSemicolonArgument,
+        literal(';')
+      ),
+      optional(literal(';'))
+    ))
+  );
   const MixinArguments = node<readonly MixinCallArgument[]>(
     'MixinArguments',
     choice(
-      attempt(sequence(
-        mixinSemicolonArgument,
-        literal(';'),
-        optional(sequence(
-          mixinSemicolonArgument,
-          many(sequence(literal(';'), mixinSemicolonArgument)),
-          optional(literal(';'))
-        ))
-      )),
+      attempt(semicolonSeparatedMixinArguments),
       // A comma-only call has individual arguments. Once a semicolon appears,
       // Less switches to its semicolon-group grammar above; a mixed named
       // `@a: x, @b: y; @c: z` call is invalid and must not fall through.
