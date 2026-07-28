@@ -188,6 +188,9 @@ function assign(scope, name, kind, properties = undefined) {
 }
 
 function objectProperties(expression, scope) {
+  if (!expression) {
+    return undefined;
+  }
   if (!ts.isObjectLiteralExpression(expression)) {
     return undefined;
   }
@@ -243,6 +246,9 @@ function typeProperties(type) {
 }
 
 function objectPropertiesOf(expression, scope) {
+  if (!expression) {
+    return undefined;
+  }
   const literal = objectProperties(expression, scope);
   if (literal) {
     return literal;
@@ -306,6 +312,9 @@ function propertyKind(expression, scope) {
 }
 
 function expressionKind(expression, scope) {
+  if (!expression) {
+    return undefined;
+  }
   if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
     return 'text';
   }
