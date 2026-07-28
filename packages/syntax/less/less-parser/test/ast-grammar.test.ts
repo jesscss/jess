@@ -3644,6 +3644,7 @@ describe("Less AST grammar facts", () => {
     const source =
       '.grid { grid-template-areas:\n  "header header"\n  "content sidebar"; }';
     const result = run(lessAstGrammar.LessAstDocument, source, {
+      state: { source },
       trivia: lessAstGrammar.whitespace,
     });
 
@@ -4298,8 +4299,17 @@ describe("Less AST grammar facts", () => {
       '@keyframes fade {\n  from,\n  50% {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}\n@-webkit-keyframes "slide" {\n  0%,\n  100% {\n    left: 0;\n  }\n}\n@keyframes spin {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
+    expect(() =>
+      run(
+        lessAstGrammar.LessAstDocument,
+        "@keyframes @name { from { opacity: 0; } }",
+        {
+          trivia: lessAstGrammar.whitespace,
+        }
+      )
+    ).toThrow(LessBareVariableInterpolationError);
+
     for (const rejected of [
-      "@keyframes @name { from { opacity: 0; } }",
       "@keyframes fade { @{step} { opacity: 0; } }",
       "@keyframes fade { 10 { opacity: 0; } }",
     ]) {
