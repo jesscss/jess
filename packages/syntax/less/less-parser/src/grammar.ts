@@ -1919,11 +1919,11 @@ const directBareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
 // parenthesized and interpolation forms stay outside this static slice
 // until their typed semantic payloads are constructed by grammar reductions.
 const staticAmpersand = regex(/&[-_a-zA-Z0-9\u0080-\uffff]*/);
-const directLessKeyframeEndpoint = keywords(
+const keyframeEndpoint = keywords(
   ['from', 'to'],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
 );
-const directLessKeyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
+const keyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
 // Ordered longest-first, identical to the production Less `combinator`
 // terminal. A missing authored token between compounds is the canonical
 // descendant relation; grammar trivia provides the separating whitespace.
@@ -2052,9 +2052,9 @@ const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])
 // delimiters, strings, comments, and `@{…}` each have their own grammar arm.
 // This terminal owns only the remaining literal bytes; no completed source span
 // is scanned or re-parsed after recognition.
-const directLessGeneralEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
-const directLessGeneralEnclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
-const directLessGeneralEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
+const generalEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
+const generalEnclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
+const generalEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
 const lessSupportedVariableName = regex(/[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
 const lessUnsupportedNumericVariableName = node<UnsupportedVariableNameFact>(
   'UnsupportedVariableName',
@@ -3332,7 +3332,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
   // off the declaration reducer's `children[0]` property slot.
   const interpolatedPropertyAhead = not(not(regex(/[^:;{}]*[@$]\{/)));
-  const directLessGatedInterpolatedProperty = node<Interpolation>(
+  const gatedInterpolatedProperty = node<Interpolation>(
     'GatedInterpolatedProperty',
     sequence(interpolatedPropertyAhead, g.InterpolatedProperty),
     (children) => {
@@ -3348,7 +3348,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // syntax. Preserve it through the existing structural Interpolation name
   // representation; ordinary whitespace is retained only when such a comment
   // is present, while Less `//` comments remain non-output lexical trivia.
-  const DirectLessDeclarationHeadTrivia: Combinator<DeclarationHeadTriviaFact> = choice(
+  const declarationHeadTrivia: Combinator<DeclarationHeadTriviaFact> = choice(
     node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadBlockComment', blockComment,
       children => ({ text: requireToken(children[0]).value, outputBearing: true })),
     node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadWhitespace', regex(/[ \t\n\r\f]+/),
@@ -3361,12 +3361,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     noTrivia(sequence(
       sequence(
         choice(
-          directLessGatedInterpolatedProperty,
+          gatedInterpolatedProperty,
           g.LessSyntaxNumericMapKey,
           g.LessSyntaxDeclarationProperty
         ),
-        many(DirectLessDeclarationHeadTrivia),
-        optional(sequence(choice(literal('+_'), literal('+')), many(DirectLessDeclarationHeadTrivia))),
+        many(declarationHeadTrivia),
+        optional(sequence(choice(literal('+_'), literal('+')), many(declarationHeadTrivia))),
         literal(':')
       ),
       noTrivia(sequence(
@@ -3451,7 +3451,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // ordinary value term deliberately treats a whitespace run as the start of a
   // next value piece; guard that transition here so `@x: 1 // note\n )` leaves
   // the comment to the signature rather than committing the whitespace first.
-  const DirectLessMixinParamValueTerm = node<ValueSlot>(
+  const mixinParamValueTerm = node<ValueSlot>(
     'DirectLessMixinParamValueTerm',
     noTrivia(sequence(
       valuePiece,
@@ -3476,7 +3476,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         lessVariableName,
         optional(sequence(
           literal(':'),
-          choice(g.ValueBlock, DirectLessMixinParamValueTerm),
+          choice(g.ValueBlock, mixinParamValueTerm),
           optional(whitespace)
         ))
       ),
@@ -3488,11 +3488,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     node<Param>(
       'DirectLessMixinPatternParam',
-      sequence(DirectLessMixinParamValueTerm, optional(whitespace)),
+      sequence(mixinParamValueTerm, optional(whitespace)),
       children => ({ pattern: requireValueSlot(children[0]) })
     )
   );
-  const DirectLessMixinParamWithSignatureTrivia = node<Param>(
+  const mixinParamWithSignatureTrivia = node<Param>(
     'DirectLessMixinParamWithSignatureTrivia',
     sequence(g.DirectLessMixinParam, optional(whitespace), optional(mixinSignatureGap)),
     (children) => {
@@ -3503,9 +3503,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return param;
     }
   );
-  const DirectLessMixinParamSeparator = parser({ trivia: mixinSignatureTrivia }, commaOrSemicolon);
-  const DirectLessMixinParamTrailingSeparator = parser({ trivia: mixinSignatureTrivia }, literal(';'));
-  const DirectLessMixinParamClose = parser({ trivia: mixinSignatureTrivia }, literal(')'));
+  const mixinParamSeparator = parser({ trivia: mixinSignatureTrivia }, commaOrSemicolon);
+  const mixinParamTrailingSeparator = parser({ trivia: mixinSignatureTrivia }, literal(';'));
+  const mixinParamClose = parser({ trivia: mixinSignatureTrivia }, literal(')'));
   // The signature owns trivia at every delimiter boundary: mixin name → `(`,
   // after `(`, between params/separators, after the final param, after `)`, and
   // before `when`/`{`. Delimiters remain explicit private field facts so the
@@ -3516,14 +3516,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: mixinSignatureTrivia }, sequence(
       field('open', literal('(')),
       optional(sequence(
-        field('param', DirectLessMixinParamWithSignatureTrivia),
+        field('param', mixinParamWithSignatureTrivia),
         many(sequence(
-          field('separator', DirectLessMixinParamSeparator),
-          field('param', DirectLessMixinParamWithSignatureTrivia)
+          field('separator', mixinParamSeparator),
+          field('param', mixinParamWithSignatureTrivia)
         )),
-        optional(field('trailingSeparator', DirectLessMixinParamTrailingSeparator))
+        optional(field('trailingSeparator', mixinParamTrailingSeparator))
       )),
-      field('close', DirectLessMixinParamClose)
+      field('close', mixinParamClose)
     )),
     (_children, fields) => ({
       params: fields?.param === undefined
@@ -3544,7 +3544,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ...(children.some(child => isTerminalText(child, '...')) ? { spread: true } : {})
     })
   );
-  const DirectLessMixinCallArgument: Combinator<MixinCallArgument> = choice(
+  const mixinCallArgument: Combinator<MixinCallArgument> = choice(
     node<MixinCallArgument>(
       'DirectLessNamedMixinArgument',
       sequence(literal('@'), lessVariableName, literal(':'), g.CallArgumentValue),
@@ -3567,16 +3567,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return { value: list(args.map(argument => requireValueSlot(argument.value)), ',') };
     }
   );
-  const directLessMixinSemicolonArgument = choice(g.DirectLessMixinArgumentGroup, DirectLessMixinCallArgument);
+  const mixinSemicolonArgument = choice(g.DirectLessMixinArgumentGroup, mixinCallArgument);
   const MixinArguments = node<readonly MixinCallArgument[]>(
     'DirectLessMixinArguments',
     choice(
       attempt(sequence(
-        directLessMixinSemicolonArgument,
+        mixinSemicolonArgument,
         literal(';'),
         optional(sequence(
-          directLessMixinSemicolonArgument,
-          many(sequence(literal(';'), directLessMixinSemicolonArgument)),
+          mixinSemicolonArgument,
+          many(sequence(literal(';'), mixinSemicolonArgument)),
           optional(literal(';'))
         ))
       )),
@@ -3585,7 +3585,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // `@a: x, @b: y; @c: z` call is invalid and must not fall through.
       sequence(
         oneOrMoreSep(
-          DirectLessMixinCallArgument,
+          mixinCallArgument,
           literal(',')
         ),
         optional(literal(';'))
@@ -3799,7 +3799,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return withSourceSpan(reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`), span);
     }
   );
-  const DirectLessMixinGuardDefaultOperand = node<ValueNode>(
+  const mixinGuardDefaultOperand = node<ValueNode>(
     'DirectLessMixinGuardDefaultOperand',
     mixinGuardDefaultCall,
     () => funcCall('default', [])
@@ -3813,7 +3813,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     // less.js does (`@a: default; .m() when (@a = default)` matches there).
     // Whether that comparison means anything is a language-service fact.
     choice(
-      DirectLessMixinGuardDefaultOperand,
+      mixinGuardDefaultOperand,
       // Guard operands reuse the ordinary typed access References. The
       // namespace branch must backtrack for ordinary non-accessor colors.
       attempt(g.DirectLessMixinReference),
@@ -3879,12 +3879,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(g.DirectLessMixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.DirectLessMixinGuardAnd))),
     children => foldMixinGuards('or', children)
   );
-  const DirectLessUnparenthesizedMixinGuard = node<MixinGuard>(
+  const unparenthesizedMixinGuard = node<MixinGuard>(
     'DirectLessUnparenthesizedMixinGuard',
     choice(
       sequence(
         optional(lessWord('not')),
-        choice(DirectLessMixinGuardDefaultOperand, g.Call),
+        choice(mixinGuardDefaultOperand, g.Call),
         optional(sequence(mixinGuardOperator, g.DirectLessMixinGuardOperand))
       ),
       sequence(
@@ -3901,7 +3901,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessMixinGuardTopTerm = node<MixinGuard>(
     'DirectLessMixinGuardTopTerm',
     choice(
-      DirectLessUnparenthesizedMixinGuard,
+      unparenthesizedMixinGuard,
       sequence(optional(lessWord('not')), literal('('), g.DirectLessMixinGuardOr, literal(')')),
       sequence(lessWord('not'), g.DirectLessMixinGuardTerm)
     ),
@@ -3936,7 +3936,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   // Scope the signature-only trivia through the opening `{`, then leave the
   // body to its ordinary statement grammar where block comments are CSS output.
-  const DirectLessMixinSignature = node<MixinSignatureFact>(
+  const mixinSignature = node<MixinSignatureFact>(
     'DirectLessMixinSignature',
     parser({ trivia: mixinSignatureTrivia }, sequence(
       field('name', mixinName),
@@ -3982,7 +3982,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `dispatch(...)` yet: Less `@name` forms need more than bare `@` or bare
   // `@name` to distinguish variable declarations, reference calls, known
   // at-rules, generic blocks, and generic statements.
-  const directLessAtStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.OpaqueAtRuleBlock, g.AtRuleStatement);
+  const atStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.OpaqueAtRuleBlock, g.AtRuleStatement);
   // Chevrotain funneled every `.foo`/`#foo` block through ONE mixin-or-ruleset
   // dispatch: a cheap token-only test (`mixinStart` then `(` or `;`) chose the
   // mixin arm, otherwise the qualified-rule arm ran, so the shared class/id
@@ -3996,7 +3996,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // of three failed name re-scans. The gate only ever over-accepts (a
   // parenthesized-pseudo ruleset such as `.a:not(.b){}` still falls through to
   // the ruleset arm), so PEG priority and output stay identical.
-  const directLessMixinStatementAhead = not(not(regex(/[.#][^{};]*[(;]/)));
+  const mixinStatementAhead = not(not(regex(/[.#][^{};]*[(;]/)));
   const UnsupportedDashOnlyMixin = node<never>(
     'UnsupportedMixinName',
     noTrivia(choice(
@@ -4012,9 +4012,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // reducer returns the inner MixinDef/MixinCall/MixinCall (bare) node unchanged,
   // so the emitted AST and its `type`-keyed shape are identical to the ungrouped
   // arms. `collapse` lets parseman drop the transparent wrapper allocation.
-  const directLessMixinStatement = node<Statement>(
+  const mixinStatement = node<Statement>(
     'DirectLessMixinStatement',
-    sequence(directLessMixinStatementAhead, choice(UnsupportedDashOnlyMixin, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall)),
+    sequence(mixinStatementAhead, choice(UnsupportedDashOnlyMixin, g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall)),
     (children) => {
       const statement = children.find(isStatement);
       if (statement === undefined) {
@@ -4036,10 +4036,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Ruleset-then-Declaration path. No real selector matches `<ident>:<ws>`, so the
   // emitted AST and PEG priority are unchanged; a `node()` boundary keeps the
   // lookahead marker from splicing into the statement list.
-  const directLessRulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
-  const directLessGuardedRuleset = node<Rule>(
+  const rulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
+  const guardedRuleset = node<Rule>(
     'DirectLessGuardedRuleset',
-    sequence(directLessRulesetNotDeclaration, g.RulesetWithExtends),
+    sequence(rulesetNotDeclaration, g.RulesetWithExtends),
     (children) => {
       const ruleset = children.find(isRule);
       if (ruleset === undefined) {
@@ -4049,7 +4049,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     },
     { collapse: true }
   );
-  const directLessDeclarationItem = node<Declaration>(
+  const declarationItem = node<Declaration>(
     'DirectLessDeclarationItem',
     sequence(
       g.Declaration,
@@ -4086,7 +4086,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     },
     { collapse: true }
   );
-  const directLessPunctuationMapDeclarationItem = node<Declaration>(
+  const punctuationMapDeclarationItem = node<Declaration>(
     'DirectLessPunctuationMapDeclarationItem',
     sequence(
       DirectLessPunctuationMapDeclaration,
@@ -4104,7 +4104,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     },
     { collapse: true }
   );
-  const blockItem = choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.FunctionStatement, directLessGuardedRuleset, directLessDeclarationItem, literal(';'));
+  const blockItem = choice(atStatement, mixinStatement, g.DirectLessEach, g.FunctionStatement, guardedRuleset, declarationItem, literal(';'));
   const blockBody = many(blockItem);
   // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
@@ -4116,7 +4116,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const DirectLessMixinDefinition = node<MixinDef>(
     'MixinOrQualifiedRule',
     sequence(
-      DirectLessMixinSignature,
+      mixinSignature,
       blockBody,
       optional(g.Call),
       literal('}'),
@@ -4147,7 +4147,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
-  const DirectLessBodyStatement = choice(directLessPunctuationMapDeclarationItem, directLessAtStatement, directLessMixinStatement, directLessGuardedRuleset, g.DirectLessEach, g.FunctionStatement, directLessDeclarationItem, literal(';'));
+  const DirectLessBodyStatement = choice(punctuationMapDeclarationItem, atStatement, mixinStatement, guardedRuleset, g.DirectLessEach, g.FunctionStatement, declarationItem, literal(';'));
   const ValueBlock = node<ValueNode>(
     'ValueBlock',
     sequence(literal('{'), many(g.DirectLessBodyStatement), optional(g.Call), literal('}')),
@@ -4247,16 +4247,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding);
     }
   );
-  const DirectLessGeneralEnclosedRaw = node<string>(
+  const generalEnclosedRaw = node<string>(
     'DirectLessGeneralEnclosedRaw',
-    noTrivia(choice(g.CssSyntaxBlockComment, directLessGeneralEnclosedText)),
+    noTrivia(choice(g.CssSyntaxBlockComment, generalEnclosedText)),
     children => requireToken(children[0]).value
   );
   const GeneralEnclosedQuoted = node<Interpolation>(
     'DirectLessGeneralEnclosedQuoted',
     choice(
-      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, BareVariableInterpolation, directLessGeneralEnclosedDoubleChunk)), literal('"'))),
-      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, BareVariableInterpolation, directLessGeneralEnclosedSingleChunk)), literal('\'')))
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, BareVariableInterpolation, generalEnclosedDoubleChunk)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, BareVariableInterpolation, generalEnclosedSingleChunk)), literal('\'')))
     ),
     generalEnclosedInterpolationFromChildren
   );
@@ -4273,7 +4273,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'DirectLessGeneralEnclosedContent',
     noTrivia(many(choice(
       BareVariableInterpolation,
-      DirectLessGeneralEnclosedRaw,
+      generalEnclosedRaw,
       g.VariableInterpolation,
       g.GeneralEnclosedQuoted,
       g.GeneralEnclosedGroup
@@ -4392,14 +4392,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     otherwise(QueryKeyword)
   );
-  const directLessQueryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, g.StaticQuoted, QueryIdentOrFunction);
+  const queryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, g.StaticQuoted, QueryIdentOrFunction);
   // Media/container query syntax shares CSS's grammar-owned comparison terminal
   // and canonical `Block(paren, Operation)` shape. Less only supplies the additional
   // variable-bearing value leaves; it does not capture a query prelude as raw
   // text or run a second scanner over it.
   const QueryValue = node<ValueNode>(
     'QueryValue',
-    choice(g.PreservedDivision, directLessQueryLeaf),
+    choice(g.PreservedDivision, queryLeaf),
     children => requireValueNode(children[0])
   );
   // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
@@ -4412,7 +4412,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // declaration, so its slash stays a value-position slash group.
   const QueryFeatureValue = node<ValueNode>(
     'QueryFeatureValue',
-    sequence(directLessQueryLeaf, many(sequence(literal('/'), directLessQueryLeaf))),
+    sequence(queryLeaf, many(sequence(literal('/'), queryLeaf))),
     foldOperation
   );
   const QueryBareFeature = node<ValueNode>(
@@ -4709,7 +4709,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // the identifier would commit too early.
   const KeyframeSelector = node<SimpleSelector>(
     'KeyframeSelector',
-    choice(directLessKeyframeEndpoint, directLessKeyframePercent),
+    choice(keyframeEndpoint, keyframePercent),
     children => simpleSelector(requireToken(children[0]).value)
   );
   const KeyframeBlock = node<Rule>(
@@ -4720,7 +4720,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         literal(',')
       ),
       literal('{'),
-      many(choice(directLessDeclarationItem, g.FunctionStatement, literal(';'))),
+      many(choice(declarationItem, g.FunctionStatement, literal(';'))),
       optional(g.Call),
       literal('}')
     ),
@@ -4817,10 +4817,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
     }
   );
-  const directLessAtPreludeWhitespace = noTrivia(regex(/[ \t\n\r\f]+/));
-  const directLessAtPreludeComment = noTrivia(blockComment);
-  const directLessAtPreludeComma = noTrivia(literal(','));
-  const directLessAtPreludeGroup = noTrivia(choice(
+  const atPreludeWhitespace = noTrivia(regex(/[ \t\n\r\f]+/));
+  const atPreludeComment = noTrivia(blockComment);
+  const atPreludeComma = noTrivia(literal(','));
+  const atPreludeGroup = noTrivia(choice(
     balanced(
       '(',
       ')',
@@ -4832,22 +4832,22 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }
     )
   ));
-  const directLessAtPreludeQuoted = noTrivia(choice(
+  const atPreludeQuoted = noTrivia(choice(
     scanSkipDoubleString,
     scanSkipSingleString
   ));
-  const directLessAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/));
+  const atPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/));
   const CssAtRulePrelude = node<ValueNode | null>(
     'CssAtRulePrelude',
     parser(
       { trivia: atPreludeCommentTrivia },
       many(choice(
-        directLessAtPreludeWhitespace,
-        directLessAtPreludeComma,
-        directLessAtPreludeGroup,
-        directLessAtPreludeQuoted,
+        atPreludeWhitespace,
+        atPreludeComma,
+        atPreludeGroup,
+        atPreludeQuoted,
         BareVariableInterpolation,
-        directLessAtPreludeText
+        atPreludeText
       ))
     ),
     (children, _fields, _span, _rawChildren, triviaLog) => {
@@ -4857,11 +4857,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const lessOpaqueAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
   const lessOpaqueAtPreludeCapture = noTrivia(many(choice(
-    directLessAtPreludeWhitespace,
-    directLessAtPreludeComment,
-    directLessAtPreludeComma,
-    directLessAtPreludeGroup,
-    directLessAtPreludeQuoted,
+    atPreludeWhitespace,
+    atPreludeComment,
+    atPreludeComma,
+    atPreludeGroup,
+    atPreludeQuoted,
     BareVariableInterpolation,
     lessOpaqueAtPreludeText
   )));
@@ -5080,7 +5080,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ]));
     }
   );
-  const directLessExtendPseudoOpen = parser(
+  const extendPseudoOpen = parser(
     { trivia: staticSelectorTrivia },
     token(noTrivia(sequence(regex(/extend(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('))))
   );
@@ -5097,7 +5097,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: staticSelectorTrivia }, sequence(
       token(noTrivia(sequence(
         pseudoDelimiter,
-        not(directLessExtendPseudoOpen),
+        not(extendPseudoOpen),
         g.LessSyntaxIdentifier,
         literal('(')
       ))),
@@ -5145,7 +5145,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // `args`; `DirectLessStaticSelectorPseudo` joins the opaque `:global`/`:local`
   // fallback via `complexCanonical`. The parser never bakes the inline
   // `:is(a, b)` spelling — core serialization owns that.
-  const DirectLessStaticPseudoArgument = node<SelectorList>(
+  const staticPseudoArgument = node<SelectorList>(
     'DirectLessStaticPseudoArgument',
     parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector),
     children => requireSelectorList(children[0])
@@ -5213,22 +5213,22 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return selectorCapture(branches, `*[${branches.join(', ')}]`);
     }
   );
-  const directLessPseudoOpen = token(noTrivia(sequence(
+  const pseudoOpen = token(noTrivia(sequence(
     regex(/::?(?![ \t\n\r\f])/),
-    not(directLessExtendPseudoOpen),
+    not(extendPseudoOpen),
     not(g.CssSyntaxNthName),
     g.LessSyntaxIdentifier,
     optional(literal('('))
   )));
-  const DirectLessStaticSelectorPseudoRouted = node<SimpleToken>(
+  const staticSelectorPseudoRouted = node<SimpleToken>(
     'DirectLessStaticSelectorPseudo',
-    sequence(routed(), DirectLessStaticPseudoArgument, literal(')')),
+    sequence(routed(), staticPseudoArgument, literal(')')),
     children => staticSelectorPseudoFrom(
       requireToken(children[0]).value.slice(0, -1),
       children[1]
     )
   );
-  const DirectLessInterpolatedArgumentPseudoRouted = node<SimpleSelector>(
+  const interpolatedArgumentPseudoRouted = node<SimpleSelector>(
     'DirectLessInterpolatedArgumentPseudo',
     sequence(
       routed(),
@@ -5244,7 +5244,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return interpolatedSimpleSelector(interpolation(parts));
     }
   );
-  const DirectLessStaticNonSelectorPseudoRouted = node<SimpleSelector>(
+  const staticNonSelectorPseudoRouted = node<SimpleSelector>(
     'DirectLessStaticNonSelectorPseudo',
     sequence(routed(), g.DirectLessStaticNonSelectorPseudoArgument, literal(')')),
     children => staticNonSelectorPseudoFrom(
@@ -5252,42 +5252,42 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       requireString(children[1])
     )
   );
-  const DirectLessStaticBarePseudoRouted = node<SimpleSelector>(
+  const staticBarePseudoRouted = node<SimpleSelector>(
     'DirectLessStaticNonSelectorPseudo',
     routed(),
     children => staticNonSelectorPseudoFrom(requireToken(children[0]).value, null)
   );
-  const DirectLessPseudo = dispatch(
-    directLessPseudoOpen,
+  const pseudo = dispatch(
+    pseudoOpen,
     caseOf(
       [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
-      choice(DirectLessStaticSelectorPseudoRouted, DirectLessInterpolatedArgumentPseudoRouted)
+      choice(staticSelectorPseudoRouted, interpolatedArgumentPseudoRouted)
     ),
     when(
       endsWith('('),
-      choice(DirectLessInterpolatedArgumentPseudoRouted, DirectLessStaticNonSelectorPseudoRouted)
+      choice(interpolatedArgumentPseudoRouted, staticNonSelectorPseudoRouted)
     ),
-    otherwise(DirectLessStaticBarePseudoRouted)
+    otherwise(staticBarePseudoRouted)
   );
   // `:extend(...)` is an inline-extend production, not a pseudo. Like ordinary
   // function openers, every pseudo-function opener is glued, so
   // `:extend /*...*/ (` must not fall through as a generic pseudo or reparsed
   // selector surface.
-  const DirectLessStaticPseudoDispatch = dispatch(
-    directLessPseudoOpen,
+  const staticPseudoDispatch = dispatch(
+    pseudoOpen,
     caseOf(
       [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
-      DirectLessStaticSelectorPseudoRouted
+      staticSelectorPseudoRouted
     ),
     when(
       endsWith('('),
-      DirectLessStaticNonSelectorPseudoRouted
+      staticNonSelectorPseudoRouted
     ),
-    otherwise(DirectLessStaticBarePseudoRouted)
+    otherwise(staticBarePseudoRouted)
   );
   const DirectLessStaticPseudo = node<SimpleToken>(
     'DirectLessStaticPseudo',
-    DirectLessStaticPseudoDispatch,
+    staticPseudoDispatch,
     children => requireSimpleToken(children.find(isSimpleToken))
   );
   // A Less pseudo name may itself be interpolated (`:@{pseudo}` / `::@{pseudo}`)
@@ -5487,7 +5487,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
-  const directLessNonCommentCompoundSimple = choice(
+  const compoundSimple = choice(
     g.DirectLessInterpolatedParentSuffix,
     g.DirectLessInterpolatedSimpleSelector,
     g.DirectLessAdjacentInterpolatedSelector,
@@ -5506,7 +5506,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     // paying four failed `::?`+name re-scans through the nth/interp arms, while a
     // rare nth/interp pseudo still falls through to its arm with output and PEG
     // priority unchanged.
-    DirectLessPseudo,
+    pseudo,
     g.InterpolatedNthPseudo,
     g.DirectLessStaticNthPseudo,
     g.DirectLessInterpolatedArgumentPseudo,
@@ -5524,7 +5524,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     // remain outside this slice until their own typed payloads have reductions.
     // The functional form precedes its no-argument prefix so ordered choice does
     // not commit `:nth-child` before seeing the opening parenthesis.
-    parser({ trivia: compoundSelectorTrivia }, oneOrMore(directLessNonCommentCompoundSimple)),
+    parser({ trivia: compoundSelectorTrivia }, oneOrMore(compoundSimple)),
     (children) => {
       const simples = children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
       return compoundSelectorOf(simples);
@@ -5575,7 +5575,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'DirectLessStaticExtendCompound',
     parser(
       { trivia: compoundSelectorTrivia },
-      oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, DirectLessPseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute))
+      oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, pseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute))
     ),
     children => compoundSelectorOf(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
   );
@@ -5703,7 +5703,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
-    sequence(many(choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.FunctionStatement, directLessGuardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
+    sequence(many(choice(atStatement, mixinStatement, g.DirectLessEach, g.FunctionStatement, guardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
