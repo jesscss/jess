@@ -2632,7 +2632,7 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'Quoted':
       /*
        * `~'…'` / `~"…"` are Less escaped strings: typed arithmetic must see
-       * their unquoted bytes just as ordinary value emission does.
+       * their raw bytes just as ordinary value emission does.
        */
       return node.escaped ? makeKeyword(node.value) : materializeNode(node, e);
     case 'Url':
@@ -3224,7 +3224,7 @@ function isInterpNameByte(c: number): boolean {
  * Re-resolve any `@{ident}` token that EMERGED after a first-pass splice, matching
  * less.js's iterative `Quoted.eval` (`@{box-@{suffix}}` → `@{box-large}` → `100px`;
  * `@{box}-@{suffix}}` where `@box` is `@{box` → `@{box-large}` → `100px`). Each
- * clean `@{name}` whose variable resolves is replaced with its unquoted bytes; the
+ * clean `@{name}` whose variable resolves is replaced with its raw bytes; the
  * scan repeats until the string stops changing. A token whose variable is NOT in
  * scope (or resolves asynchronously) is left literal — a non-resolving emergent
  * token never turns a value into an error. Short-circuits when no `@{` remains.
@@ -10296,11 +10296,11 @@ function emitOpaqueAtRuleBlock(node: OpaqueAtRuleBlock, e: Emit): void {
 /**
  * [import:inline] Emit `@import (inline)` raw bytes verbatim: the target file's
  * exact text, unparsed and unindented, followed by a single newline separating it
- * from the next statement (mirrors Less's inline splice — an `Anonymous` value
+ * from the next statement (mirrors Less's inline splice — an `Any` value
  * printed as-is with a trailing rule separator).
  *
  * [import:inline-media] With a media postlude, the splice is wrapped in an
- * `@media <media> { … }` block: Less wraps the inline `Anonymous` in a media
+ * `@media <media> { … }` block: Less wraps the inline raw bytes in a media
  * ruleset, so the raw first line is indented one level and the block closes with a
  * `\n}` — reproducing the media-feature colon spacing (`(min-width:…)` →
  * `(min-width: …)`) Less's media parser reprints.
@@ -10339,13 +10339,13 @@ function normalizeMediaFeatures(prelude: string): string {
 }
 
 function canEmitRootCallValue(value: Value): boolean {
-  return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Anonymous');
+  return isLiteral(value) || (!isValueGroupArray(value) && value.type === 'Any');
 }
 
 /**
  * A bare value-position call in statement position (e.g. `e('…');`): Less
- * evaluates it and prints the result bytes as a standalone line (an `Anonymous`
- * at document scope — no trailing `;`), so an `e(...)` unquote emits its inner
+ * evaluates it and prints the result bytes as a standalone line (an `Any`
+ * at document scope — no trailing `;`), so an `e(...)` escape emits its inner
  * text. Emitted at the current indent; an empty result contributes nothing.
  */
 function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precomputed?: string): MaybePromise<void> {

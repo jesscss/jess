@@ -5,7 +5,7 @@
  *
  *  1. The runtime VALUE DOMAIN (`ValueObj`) — the typed *results* an evaluation
  *     produces and operates on (`Dimension`/`Color`/`Quoted`/`Keyword`/
- *     `Anonymous`/`List`/`Bool`/`Nil`), distinct from the value AST
+ *     `Any`/`List`/`Bool`/`Nil`), distinct from the value AST
  *     (`Operation`/`FunctionCall`/…)
  *     that describes HOW to compute. The value `Dimension` is module-qualified
  *     against the AST `Dimension` node in `nodes.ts` — the split is perf-justified
@@ -126,9 +126,13 @@ export interface Keyword {
   readonly bytes: string;
 }
 
-/** Raw unquoted bytes produced by explicit unquote APIs such as Less `e()`. */
-export interface Anonymous {
-  readonly type: 'Anonymous';
+/**
+ * Opaque evaluated bytes produced by explicit unquote APIs such as Less `e()`.
+ * Value-domain `Any.bytes` is distinct from parsed AST `Any.src`: both carry
+ * opaque CSS bytes, but this shape is already evaluated and must emit as-is.
+ */
+export interface Any {
+  readonly type: 'Any';
   readonly bytes: string;
 }
 
@@ -230,7 +234,7 @@ export interface Collection {
   readonly bytes: string;
 }
 
-export type ValueObj = Dimension | Color | Quoted | Keyword | Anonymous | List | Block | Bool | Nil | Collection;
+export type ValueObj = Dimension | Color | Quoted | Keyword | Any | List | Block | Bool | Nil | Collection;
 
 /**
  * The canonical structural value carrier. A raw array is a default

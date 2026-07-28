@@ -8,8 +8,8 @@ describe('e()', () => {
     const quoted = makeQuoted('hello');
     const ident = makeKeyword('world');
 
-    expect(e(quoted)).toMatchObject({ type: 'Anonymous', bytes: 'hello' });
-    expect(e(ident)).toMatchObject({ type: 'Anonymous', bytes: 'world' });
+    expect(e(quoted)).toMatchObject({ type: 'Any', bytes: 'hello' });
+    expect(e(ident)).toMatchObject({ type: 'Any', bytes: 'world' });
   });
 
   it('uses the canonical implementation registered for Less', () => {
