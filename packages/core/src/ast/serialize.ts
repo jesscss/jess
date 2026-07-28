@@ -125,6 +125,7 @@ import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js
 import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
+import { Deprecation } from '../deprecation.js';
 import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
@@ -719,6 +720,16 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
           ? statement.target.value.value
           : evalBytesSync(statement.target, frame, e);
       const options = statement.options === null ? null : evalBytesSync(statement.options, frame, e);
+      const deprecation = Deprecation.fromId('less-plugin') ?? Deprecation.userAuthored;
+      e.context?.warnDeprecation(deprecation, WARN.deprecated({
+        node: statement,
+        ...callSiteLocation(statement, e),
+        meta: {
+          what: 'Less @plugin',
+          use: '@use or @-use',
+          deprecation
+        }
+      }));
 
       /*
        * A `@plugin` that cannot be resolved, or whose script throws while
@@ -3630,6 +3641,7 @@ function invokeValueLambda(
   if (result === undefined) {
     throw ERR.invalidFunction({
       node: lambda,
+      ...callSiteLocation(lambda, e),
       meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
     });
   }
@@ -4883,7 +4895,11 @@ function composeOne(parents: string[], child: ComplexSelector, frame: Frame | nu
   }
   return mapMaybe(resolveComplex(child, frame, e), (text) => {
     if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
-      throw ERR.commaListInterpolation({ node: child, meta: { selector: text } });
+      throw ERR.commaListInterpolation({
+        node: child,
+        ...callSiteLocation(child, e),
+        meta: { selector: text }
+      });
     }
     return joinAmpersand(text, parents);
   });
@@ -4923,7 +4939,11 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
     if (parents.some(hasTopLevelComma)) {
       return mapMaybe(resolveComplex(c, frame, e), (canon) => {
         if (!canon.startsWith('&')) {
-          throw ERR.commaListInterpolation({ node: c, meta: { selector: canon } });
+          throw ERR.commaListInterpolation({
+            node: c,
+            ...callSiteLocation(c, e),
+            meta: { selector: canon }
+          });
         }
         return joinAmpersand(canon, parents);
       });
@@ -5444,6 +5464,98 @@ function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
     start--;
   }
   put(e, source.slice(start, end));
+}
+
+function firstDeclarationColon(source: string, span: AstSourceSpan): number | null {
+  let index = span.start;
+  while (index < span.end) {
+    const char = source[index]!;
+    const next = source[index + 1];
+    if (char === '/' && next === '*') {
+      const close = source.indexOf('*/', index + 2);
+      if (close < 0 || close + 2 > span.end) {
+        return null;
+      }
+      index = close + 2;
+      continue;
+    }
+    if (char === '/' && next === '/') {
+      const newline = source.indexOf('\n', index + 2);
+      index = newline < 0 || newline > span.end ? span.end : newline + 1;
+      continue;
+    }
+    if (char === '"' || char === '\'') {
+      const quote = char;
+      index++;
+      while (index < span.end) {
+        const inner = source[index]!;
+        index += inner === '\\' ? 2 : 1;
+        if (inner === quote) {
+          break;
+        }
+      }
+      continue;
+    }
+    if (char === ':') {
+      return index;
+    }
+    index++;
+  }
+  return null;
+}
+
+function declarationHeadTriviaText(node: Declaration, e: Emit): string {
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return '';
+  }
+  const source = triviaSource(trivia);
+  if (source === undefined) {
+    return '';
+  }
+  const colon = firstDeclarationColon(source, span);
+  if (colon === null) {
+    return '';
+  }
+  let text = '';
+  let cursor = span.start;
+  const runs = trivia.commentRuns();
+  for (let index = 0; index < runs.length; index++) {
+    const run = runs[index]!;
+    if (run.start < span.start) {
+      continue;
+    }
+    if (run.start < cursor) {
+      continue;
+    }
+    if (run.start >= colon) {
+      break;
+    }
+    if (run.end > colon || run.src !== source || blockCommentsIn(run).length === 0) {
+      continue;
+    }
+    let widest = run;
+    let probeIndex = index + 1;
+    while (probeIndex < runs.length) {
+      const probe = runs[probeIndex]!;
+      if (probe.start !== run.start) {
+        break;
+      }
+      if (probe.end <= colon && probe.src === source && blockCommentsIn(probe).length > 0 && probe.end > widest.end) {
+        widest = probe;
+      }
+      probeIndex++;
+    }
+    for (const contained of runs) {
+      if (contained.src === source && contained.start >= widest.start && contained.end <= widest.end) {
+        e.emittedBlockTrivia.add(contained);
+      }
+    }
+    text += source.slice(widest.start, widest.end);
+    cursor = widest.end;
+  }
+  return text;
 }
 
 function cursorAfterLiteralWithTrivia(source: string, start: number, end: number, lit: string): number | null {
@@ -7105,6 +7217,7 @@ function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): MaybePromise<boo
   if (guardUsesDefault(rule.guard)) {
     throw ERR.invalidFunction({
       node: rule,
+      ...callSiteLocation(rule, e),
       meta: {
         name: 'default',
         reason: 'default() is only allowed in parametric mixin guards'
@@ -8617,7 +8730,11 @@ function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | nu
   if (!resolveValueBlock(node.value, frame, e)) {
     return;
   }
-  throw ERR.rulesetOnProperty({ node, meta: { what: declName(node, frame, e) } });
+  throw ERR.rulesetOnProperty({
+    node,
+    ...callSiteLocation(node, e),
+    meta: { what: declName(node, frame, e) }
+  });
 }
 
 /** Build the overlay frame for a detached-ruleset call (definition scope has
@@ -9218,7 +9335,11 @@ function dispatch(
     const call2 = substituteClosureVarArgs(call1, frame);
     const ambiguity = (error: unknown): never => {
       if (error instanceof DefaultGuardAmbiguityError) {
-        throw ERR.ambiguousDefault({ node: call, meta: { callee: `${call.name}()` } });
+        throw ERR.ambiguousDefault({
+          node: call,
+          ...callSiteLocation(call, e),
+          meta: { callee: `${call.name}()` }
+        });
       }
       throw error;
     };
@@ -9345,7 +9466,11 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
       }
       const name = declName(leaf.node, leaf.frame, e);
       if (!name.startsWith('--')) {
-        throw ERR.propertyInRoot({ node: leaf.node, meta: { what: name } });
+        throw ERR.propertyInRoot({
+          node: leaf.node,
+          ...callSiteLocation(leaf.node, e),
+          meta: { what: name }
+        });
       }
     }
   }
@@ -9750,10 +9875,15 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     const name = declName(node, frame, e);
     if (atRoot && !name.startsWith('--')) {
-      throw ERR.propertyInRoot({ node, meta: { what: name } });
+      throw ERR.propertyInRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { what: name }
+      });
     }
     put(e, idt);
     put(e, name); // resolve interpolated property name
+    put(e, declarationHeadTriviaText(node, e));
     const onNewLine = node.valueOnNewLine === true;
     put(e, onNewLine ? ':' : ': ');
     const important = node.important === true || leaf.important === true;
@@ -10463,7 +10593,11 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
     const value = evalTyped(node, frame, e);
     return mapMaybe(value, (resolved) => {
       if (!isValueGroupArray(resolved) && resolved.type === 'Color') {
-        throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
+        throw ERR.invalidStatement({
+          node,
+          ...callSiteLocation(node, e),
+          meta: { what: 'Color' }
+        });
       }
       return evalAndEmit();
     });
@@ -11905,6 +12039,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
       put(e, idt);
     }
     put(e, declName(node, frame, e)); // resolve interpolated property name
+    put(e, declarationHeadTriviaText(node, e));
     const onNewLine = node.valueOnNewLine === true;
     put(e, onNewLine ? ':' : ': ');
     const valStart = e.off;

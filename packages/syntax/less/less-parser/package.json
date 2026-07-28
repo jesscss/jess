@@ -41,7 +41,9 @@
     "test": "cross-env TEST=true vitest --watch=false",
     "test:coverage": "cross-env TEST=true vitest --coverage",
     "lint:fix": "eslint --fix '**/*.{js,ts}'",
-    "lint": "eslint '**/*.{js,ts}'"
+    "lint": "eslint '**/*.{js,ts}'",
+    "oracle:postcss-less": "node test/postcss-less-oracle.mjs",
+    "bench:postcss-less": "node test/postcss-less-oracle.mjs --bench"
   },
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
@@ -63,6 +65,7 @@
     "@types/node": "^18.19.31",
     "less": "^4.6.3",
     "parseman": "^0.41.0",
+    "postcss-less": "~6.0.0",
     "tsx": "~4.21.0"
   },
   "author": "Matthew Dean <matthew-dean@users.noreply.github.com>",

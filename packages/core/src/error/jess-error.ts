@@ -72,7 +72,8 @@ export type JessErrorInit = {
  *
  * `toString()` yields a plain, dependency-light message (header + reason + fix);
  * rich terminal rendering — code frames, clickable links, display tiers — is the
- * CLI's job (`@jesscss/jess` `outputDiagnostics`), driven off `toDiagnostic()`.
+ * compiler-host job (`@jesscss/compiler` `outputDiagnostics`), driven off
+ * `toDiagnostic()`.
  */
 export class JessError extends Error {
   severity: Severity = 'error';

@@ -12,14 +12,14 @@
  *   be reparsed to discover extends.
  *
  * Its structural `node(parser)` entries are consumed by the CST runner or by
- * parser-local direct AST reductions; core supplies neither a parse host nor a
+ * parser-local AST reductions; core supplies neither a parse host nor a
  * parse entry.
  */
 import {
   attempt, rules, composeLeaf,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
   not, scanTo, balanced, parser, trivia, noTrivia, label, word, keywords, field, leaf, peek,
-  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, transform, when
+  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
@@ -48,7 +48,6 @@ type CallValue = ValueSlot | MixinCall;
  * MixinDef receives only the semantic Param array. */
 type MixinParameterListFact = { readonly params: readonly Param[] };
 type MixinSignatureFact = { readonly name: string; readonly params: readonly Param[]; readonly guard?: MixinGuard };
-type DeclarationHeadTriviaFact = { readonly text: string; readonly outputBearing: boolean };
 type StaticAttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type StaticAttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
@@ -160,7 +159,7 @@ type LessRules = {
   MixinGuardTerm: Combinator<MixinGuard>;
   MixinGuardOperand: Combinator<ValueNode>;
   EachName: Combinator<string>;
-  /** A complete direct Less statement body, shared by detached rulesets and `each()` callbacks. */
+  /** A complete Less statement body, shared by detached rulesets and `each()` callbacks. */
   BodyStatement: Combinator<Statement | string>;
   EachCallback: Combinator<LessEachCallback>;
   Each: Combinator<For>;
@@ -299,7 +298,7 @@ type SharedCssSyntax = {
 
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
-    throw new TypeError('Direct Less AST grammar produced a non-token child.');
+    throw new TypeError('Less grammar produced a non-token child.');
   }
   return { value: value.value };
 }
@@ -307,7 +306,7 @@ function requireToken(value: unknown): Token {
 function functionNameFromOpener(value: unknown): string {
   const opener = requireToken(value).value;
   if (!opener.endsWith('(')) {
-    throw new TypeError('Direct Less function opener lost its glued opening paren.');
+    throw new TypeError('Less function opener lost its glued opening paren.');
   }
   return opener.slice(0, -1);
 }
@@ -407,7 +406,7 @@ function requireSupportedVariableName(value: unknown, start: number, end: number
 
 function requireString(value: unknown): string {
   if (typeof value !== 'string') {
-    throw new TypeError('Direct Less AST grammar produced a non-string child.');
+    throw new TypeError('Less grammar produced a non-string child.');
   }
   return value;
 }
@@ -415,7 +414,7 @@ function requireString(value: unknown): string {
 function requireCombinator(value: unknown): AstCombinator {
   const text = requireTerminalText(value);
   if (text !== ' ' && text !== '>' && text !== '+' && text !== '~' && text !== '|' && text !== '||') {
-    throw new TypeError('Direct Less AST grammar produced an invalid selector combinator.');
+    throw new TypeError('Less grammar produced an invalid selector combinator.');
   }
   return text;
 }
@@ -428,7 +427,7 @@ function isTerminalText(value: unknown, text: string): boolean {
 function requireField(fields: FieldMap | undefined, name: string): FieldCapture {
   const field = fields?.[name];
   if (field === undefined || Array.isArray(field)) {
-    throw new TypeError(`Direct Less AST grammar lost required ${name} field.`);
+    throw new TypeError(`Less grammar lost required ${name} field.`);
   }
   return field;
 }
@@ -436,7 +435,7 @@ function requireField(fields: FieldMap | undefined, name: string): FieldCapture 
 function requireFields(fields: FieldMap | undefined, name: string): readonly FieldCapture[] {
   const field = fields?.[name];
   if (field === undefined) {
-    throw new TypeError(`Direct Less AST grammar lost required ${name} field.`);
+    throw new TypeError(`Less grammar lost required ${name} field.`);
   }
   return Array.isArray(field) ? field : [field];
 }
@@ -465,7 +464,7 @@ function staticText(value: unknown): string {
   if (Array.isArray(value)) {
     return value.map(staticText).join('');
   }
-  throw new TypeError('Direct Less AST grammar produced a non-static import fragment.');
+  throw new TypeError('Less grammar produced a non-static import fragment.');
 }
 
 function semanticGapText(text: string): string {
@@ -612,7 +611,7 @@ function isInterpolationAccessorFact(value: unknown): value is InterpolationAcce
 
 function requireInterpolationAccessorFact(value: unknown): InterpolationAccessorFact {
   if (!isInterpolationAccessorFact(value)) {
-    throw new TypeError('Direct Less AST grammar produced an invalid accessor fact.');
+    throw new TypeError('Less grammar produced an invalid accessor fact.');
   }
   return value;
 }
@@ -630,7 +629,7 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
   return reference(base, steps, raw);
 }
 
-/** Source fallback for a direct grammar fact. This deliberately walks already
+/** Source fallback for a grammar fact. This deliberately walks already
  * reduced facts; it never inspects or re-parses source bytes. */
 function mixinArgumentSource(value: CallValue): string {
   if (isMixinCall(value)) {
@@ -655,7 +654,7 @@ function mixinArgumentSource(value: CallValue): string {
     case 'SpacedValue': return node.parts.map(mixinArgumentSource).join(' ');
     case 'List': return node.value.map(mixinArgumentSource).join(node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ');
     case 'Important': return `${mixinArgumentSource(node.inner)} !important`;
-    default: throw new TypeError(`Direct Less mixin-reference raw source cannot represent ${node.type}.`);
+    default: throw new TypeError(`Less mixin-reference raw source cannot represent ${node.type}.`);
   }
 }
 
@@ -668,7 +667,7 @@ function referenceWithTails(base: ValueNode | MixinCall, baseRaw: string, tails:
   let raw = baseRaw;
   for (const child of tails) {
     if (typeof child !== 'object' || child === null || !('step' in child) || !('src' in child)) {
-      throw new TypeError('Direct Less AST grammar produced an invalid reference-tail fact.');
+      throw new TypeError('Less grammar produced an invalid reference-tail fact.');
     }
     const tail = requireReferenceTailFact(child);
     raw += tail.src;
@@ -685,7 +684,7 @@ function isReferenceTailFact(value: unknown): value is ReferenceTailFact {
 
 function requireReferenceTailFact(value: unknown): ReferenceTailFact {
   if (!isReferenceTailFact(value)) {
-    throw new TypeError('Direct Less AST grammar produced an invalid reference-tail fact.');
+    throw new TypeError('Less grammar produced an invalid reference-tail fact.');
   }
   return value;
 }
@@ -738,7 +737,7 @@ function generalEnclosedInterpolationFromChildren(children: readonly unknown[]):
       parts.push({ ref: child.ref, unquote: true });
     } else if (typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation') {
       if (!isValueNode(child) || child.type !== 'Interpolation') {
-        throw new TypeError('Direct Less general-enclosed grammar produced a non-interpolation child.');
+        throw new TypeError('Less general-enclosed grammar produced a non-interpolation child.');
       }
       for (const part of child.parts) {
         if ('lit' in part) {
@@ -777,7 +776,7 @@ function isSlashBoundaryFact(value: unknown): value is SlashBoundaryFact {
 
 function requireInterpolationFact(value: unknown): InterpolationFact {
   if (!isInterpolationFact(value)) {
-    throw new TypeError('Direct Less AST grammar produced an invalid interpolation fact.');
+    throw new TypeError('Less grammar produced an invalid interpolation fact.');
   }
   return value;
 }
@@ -1082,7 +1081,7 @@ function isComplexTailFact(value: unknown): value is ComplexTailFact {
 function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
   const compound = children.find(isCompound);
   if (compound === undefined) {
-    throw new TypeError('Direct Less AST grammar produced a selector tail without a compound.');
+    throw new TypeError('Less grammar produced a selector tail without a compound.');
   }
   const token = children.find(child => !isCompound(child));
   return { comb: token === undefined ? ' ' : requireCombinator(token), compound };
@@ -1141,7 +1140,7 @@ function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
       hasInterpolation = true;
       interpolationParts.push({ ref: part, unquote: false });
     } else {
-      throw new TypeError('Direct Less custom value retained an untyped grammar part.');
+      throw new TypeError('Less custom value retained an untyped grammar part.');
     }
   };
   for (const part of parts) {
@@ -1269,13 +1268,55 @@ function isValueSlotValue(value: unknown): value is ValueSlot {
   return Array.isArray(value) ? value.every(isValueSlotValue) : isValueNode(value);
 }
 
+function callWithLayout(
+  name: string,
+  args: ValueSlot[],
+  separators: string[],
+  hasTrailingSeparator: boolean,
+  span: SourceSpan
+): FunctionCall {
+  const call = funcCall(name, args);
+  if (separators.length === args.length - 1 || hasTrailingSeparator) {
+    withValueLayout(call.args, separators);
+  }
+  return withSourceSpan(call, span);
+}
+
+function functionCallFromChildren(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  span: SourceSpan,
+  triviaLog: readonly number[],
+  state: unknown
+): FunctionCall {
+  const name = functionNameFromOpener(children[0]);
+  const args: ValueSlot[] = [];
+  for (const child of children.slice(1, -1)) {
+    if (isValueSlotValue(child)) {
+      args.push(child);
+    }
+  }
+  const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
+  return callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span);
+}
+
+function argumentFunctionFromChildren(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  span: SourceSpan
+): FunctionCall {
+  const name = functionNameFromOpener(children[0]);
+  const args = children.slice(1, -1).filter(isValueSlotValue);
+  return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span);
+}
+
 function requireValueSlot(value: unknown): ValueSlot {
   return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValueNode(value));
 }
 
 function requireValueNode(value: unknown): ValueNode {
   if (!isValueNode(value)) {
-    throw new TypeError('Direct Less AST grammar produced a non-value child.');
+    throw new TypeError('Less grammar produced a non-value child.');
   }
   return value;
 }
@@ -1283,14 +1324,14 @@ function requireValueNode(value: unknown): ValueNode {
 function requireKeyword(value: unknown): Keyword {
   const node = requireValueNode(value);
   if (node.type !== 'Keyword') {
-    throw new TypeError('Direct Less AST grammar produced a non-keyword child.');
+    throw new TypeError('Less grammar produced a non-keyword child.');
   }
   return node;
 }
 
 function requireMixinCallArgumentValue(value: unknown): MixinCallArgument['value'] {
   if (!isValueSlotValue(value) && !isMixinCall(value)) {
-    throw new TypeError('Direct Less AST grammar produced an invalid mixin-call argument.');
+    throw new TypeError('Less grammar produced an invalid mixin-call argument.');
   }
   return value;
 }
@@ -1322,7 +1363,7 @@ function isSelectorList(value: unknown): value is SelectorList {
 
 function requireSelectorList(value: unknown): SelectorList {
   if (!isSelectorList(value)) {
-    throw new TypeError('Direct Less AST grammar produced a non-selector child.');
+    throw new TypeError('Less grammar produced a non-selector child.');
   }
   return value;
 }
@@ -1339,7 +1380,7 @@ function isComplex(value: unknown): value is ComplexSelector {
 
 function requireComplex(value: unknown): ComplexSelector {
   if (!isComplex(value)) {
-    throw new TypeError('Direct Less AST grammar produced a non-complex selector child.');
+    throw new TypeError('Less grammar produced a non-complex selector child.');
   }
   return value;
 }
@@ -1451,7 +1492,7 @@ function staticNonSelectorPseudoFrom(head: string, arg: string | null): SimpleSe
 
 function requireCompound(value: unknown): CompoundSelector {
   if (!isCompound(value)) {
-    throw new TypeError('Direct Less AST grammar produced a non-compound selector child.');
+    throw new TypeError('Less grammar produced a non-compound selector child.');
   }
   return value;
 }
@@ -1516,12 +1557,6 @@ function isMixinSignatureFact(value: unknown): value is MixinSignatureFact {
     && (!('guard' in value) || value.guard === undefined || isMixinGuard(value.guard));
 }
 
-function isDeclarationHeadTriviaFact(value: unknown): value is DeclarationHeadTriviaFact {
-  return typeof value === 'object' && value !== null && 'text' in value
-    && typeof value.text === 'string' && 'outputBearing' in value
-    && typeof value.outputBearing === 'boolean';
-}
-
 function isStaticAttributeNameFact(value: unknown): value is StaticAttributeNameFact {
   return typeof value === 'object' && value !== null
     && 'namespace' in value && typeof value.namespace === 'string'
@@ -1556,7 +1591,7 @@ function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWit
 
 function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
   if (!isSelectorListWithExtendsFact(value)) {
-    throw new TypeError('Direct Less AST grammar produced a ruleset selector without selector facts.');
+    throw new TypeError('Less grammar produced a ruleset selector without selector facts.');
   }
   return value;
 }
@@ -1631,7 +1666,7 @@ function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[]): Mixi
   const guards = children.filter(isMixinGuard);
   const head = guards[0];
   if (head === undefined) {
-    throw new TypeError('Direct Less AST grammar produced an empty logical guard.');
+    throw new TypeError('Less grammar produced an empty logical guard.');
   }
   let result = head;
   for (let index = 1; index < guards.length; index++) {
@@ -1653,7 +1688,7 @@ function functionConditionSource(value: ValueSlot): string {
     case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.inner)}${node.delimiter === 'square' ? ']' : ')'}`;
     case 'SpacedValue': return node.parts.map(functionConditionSource).join(' ');
     case 'Condition': return node.src;
-    default: throw new TypeError(`Direct Less function condition cannot preserve ${node.type}.`);
+    default: throw new TypeError(`Less function condition cannot preserve ${node.type}.`);
   }
 }
 
@@ -1661,12 +1696,12 @@ function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[])
   const facts = children.filter(isFunctionConditionFact);
   const first = facts[0];
   if (first === undefined) {
-    throw new TypeError('Direct Less function condition lost its first term.');
+    throw new TypeError('Less function condition lost its first term.');
   }
   let guard = first.guard;
   let src = first.src;
   if (facts.length > 1 && facts.some(fact => fact.hasComparison && !fact.grouped)) {
-    throw new TypeError('Direct Less function condition comparisons must be grouped before logical operators.');
+    throw new TypeError('Less function condition comparisons must be grouped before logical operators.');
   }
   let hasComparison = first.hasComparison;
   for (const right of facts.slice(1)) {
@@ -1718,7 +1753,7 @@ function isStatement(value: unknown): value is Statement {
 
 function requireStatementArray(value: unknown): Statement[] {
   if (!Array.isArray(value) || !value.every(isStatement)) {
-    throw new TypeError('Direct Less AST grammar produced an invalid statement list.');
+    throw new TypeError('Less grammar produced an invalid statement list.');
   }
   return value;
 }
@@ -1742,7 +1777,7 @@ function requireRulesetBody(children: readonly unknown[]): Statement[] {
   const body: Statement[] = [];
   for (const child of children) {
     if (!isStatement(child)) {
-      throw new TypeError('Direct Less AST grammar produced a non-ruleset-body child.');
+      throw new TypeError('Less grammar produced a non-ruleset-body child.');
     }
     body.push(child);
   }
@@ -1757,7 +1792,7 @@ function requireCallbackStatements(children: readonly unknown[]): Statement[] {
       continue;
     }
     if (!isStatement(child)) {
-      throw new TypeError('Direct Less AST grammar produced a non-statement callback-body child.');
+      throw new TypeError('Less grammar produced a non-statement callback-body child.');
     }
     statements.push(child);
   }
@@ -1769,11 +1804,11 @@ function requireValueBlockBody(children: readonly unknown[]): Statement[] {
   const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
   const bodyEnd = children.findIndex((child, index) => index > bodyStart && isTerminalText(child, '}'));
   if (bodyStart < 0 || bodyEnd < 0) {
-    throw new TypeError('Direct Less AST grammar produced a detached ruleset without a delimited body.');
+    throw new TypeError('Less grammar produced a detached ruleset without a delimited body.');
   }
   for (const child of children.slice(bodyEnd + 1)) {
     if (!isTerminalText(child, ';')) {
-      throw new TypeError('Direct Less AST grammar produced an invalid detached-ruleset suffix.');
+      throw new TypeError('Less grammar produced an invalid detached-ruleset suffix.');
     }
   }
   return requireCallbackStatements(children.slice(bodyStart + 1, bodyEnd));
@@ -1785,14 +1820,14 @@ function requireValueBlockBody(children: readonly unknown[]): Statement[] {
 function foldOperation(children: readonly unknown[]): ValueNode {
   const first = children.find(isValueNode);
   if (first === undefined) {
-    throw new TypeError('Direct Less arithmetic grammar produced no operand.');
+    throw new TypeError('Less arithmetic grammar produced no operand.');
   }
   let result = first;
   for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
     const operatorToken = children[index];
     const right = children[index + 1];
     if (operatorToken === undefined || !isValueNode(right)) {
-      throw new TypeError('Direct Less arithmetic grammar lost an operator operand.');
+      throw new TypeError('Less arithmetic grammar lost an operator operand.');
     }
     const folded = operation(requireTerminalText(operatorToken).trim(), result, right);
     const leftSpan = sourceSpanOf(result);
@@ -1876,17 +1911,17 @@ const customValueCommentTrivia = trivia(oneOrMore(label('blockComment', blockCom
 // comment simple selectors.
 const outerSelectorTrivia = trivia(lessTriviaGap);
 const staticSimpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
-const directStaticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const staticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 // A selector simple that contains Less interpolation stays one selector atom.
 // Its literal runs deliberately exclude `.`, `#`, `[`, `:`, whitespace, and
 // combinators: those have separate selector grammar roles and must not be
 // flattened into an interpolation template.
-const directInterpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
-const directInterpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+const interpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
+const interpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 // A bare `@{name}` is a whole-selector interpolation only. Keeping the
 // delimiter lookahead here prevents it from consuming the interpolation prefix
 // of an unmodelled namespace/attribute selector such as `@{ns}|a`.
-const directBareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
+const bareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
 // Semantically identical to the production Less `ampToken` terminal. A static ampersand
 // is already the canonical AST representation: `SimpleSelector.text` retains `&` and
 // core's selector path identifies parent references from that text.  The
@@ -1958,7 +1993,7 @@ const preservedSlashBoundary = leaf(
   ),
   (children) => {
     if (!Array.isArray(children)) {
-      throw new TypeError('Direct Less slash boundary produced a non-sequence value.');
+      throw new TypeError('Less slash boundary produced a non-sequence value.');
     }
     return {
       before: staticText(children[0]),
@@ -2031,7 +2066,7 @@ const lessDashVariableName = leaf(
   noTrivia(sequence(literal('-'), optional(regex(/[-_a-zA-Z0-9\u0080-\uffff]+/)))),
   (children) => {
     if (!Array.isArray(children)) {
-      throw new TypeError('Direct Less dash variable name lost its grammar facts.');
+      throw new TypeError('Less dash variable name lost its grammar facts.');
     }
     const tail = children[1];
     return tail === undefined || tail === null
@@ -2111,7 +2146,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       (children) => {
         const key = requireValueNode(children[2]);
         if (!isVarRef(key)) {
-          throw new TypeError('Direct Less property-variable map key must retain its variable reference.');
+          throw new TypeError('Less property-variable map key must retain its variable reference.');
         }
         return { key, keyKind: 'prop', src: `$@${key.name}` };
       }
@@ -2124,7 +2159,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         if (isVarIndirect(key)) {
           const nameRef = key.nameRef;
           if (!isVarRef(nameRef)) {
-            throw new TypeError('Direct Less indirect map key must retain its variable reference.');
+            throw new TypeError('Less indirect map key must retain its variable reference.');
           }
           return { key, keyKind: 'var', src: `@@${nameRef.name}` };
         }
@@ -2256,7 +2291,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const opener = requireToken(children[0]).value;
       const quote = opener[1];
       if (quote !== '"' && quote !== '\'') {
-        throw new TypeError('Direct Less escaped quote lost its quote delimiter.');
+        throw new TypeError('Less escaped quote lost its quote delimiter.');
       }
       if (children.some(isInterpolationFact)) {
         return interpolation(interpolationPartsFrom(children.slice(1, -1), true));
@@ -2277,7 +2312,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (_children, fields) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
-        throw new TypeError('Direct Less static URL produced repeated body facts.');
+        throw new TypeError('Less static URL produced repeated body facts.');
       }
       const body = captured?.value;
       if (body === undefined) {
@@ -2322,7 +2357,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (_children, fields) => {
       const captured = fields?.body;
       if (Array.isArray(captured)) {
-        throw new TypeError('Direct Less routed static URL produced repeated body facts.');
+        throw new TypeError('Less routed static URL produced repeated body facts.');
       }
       const body = captured?.value;
       if (body === undefined) {
@@ -2334,10 +2369,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return url(any(requireTerminalText(body)));
     }
   );
-  const UrlTarget = dispatch(
-    urlFunctionOpen,
-    caseOf('url(', choice(RoutedDynamicUrl, RoutedStaticUrl))
-  );
+  const UrlTarget = choice(g.DynamicUrl, g.StaticUrl);
   const ImportOption = node<Any>(
     'ImportOption',
     importOption,
@@ -2357,7 +2389,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const options = requireFields(fields, 'option').map((option) => {
         const value = option.value;
         if (!isAny(value)) {
-          throw new TypeError('Direct Less AST grammar produced a non-static import option.');
+          throw new TypeError('Less grammar produced a non-static import option.');
         }
         return value;
       });
@@ -2391,7 +2423,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const target = children.find(child => isQuoted(child) || isUrl(child) || isInterp(child));
       if (target === undefined) {
-        throw new TypeError('Direct Less import target lost its typed value.');
+        throw new TypeError('Less import target lost its typed value.');
       }
       return target;
     }
@@ -2416,7 +2448,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const options = children.find((child): child is List => typeof child === 'object' && child !== null && 'type' in child && child.type === 'List') ?? null;
       const target = children.find((child): child is Quoted | Url | Interpolation => isQuoted(child) || isUrl(child) || isInterp(child));
       if (target === undefined) {
-        throw new TypeError('Direct Less AST grammar produced no import target.');
+        throw new TypeError('Less grammar produced no import target.');
       }
       const tailField = fields?.tail;
       // The variable-bearing query feature and a complete `@{…}` tail are
@@ -2448,11 +2480,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (_children, fields) => {
       const target = requireField(fields, 'target').value;
       if (!isQuoted(target) && !isUrl(target) && !isInterp(target)) {
-        throw new TypeError('Direct Less Plugin lost its typed target.');
+        throw new TypeError('Less Plugin lost its typed target.');
       }
       const optionValue = fields?.options === undefined ? null : requireField(fields, 'options').value;
       if (optionValue !== null && !isInterp(optionValue)) {
-        throw new TypeError('Direct Less Plugin options must remain an interpolation template.');
+        throw new TypeError('Less Plugin options must remain an interpolation template.');
       }
       return { type: 'Plugin', target, options: optionValue };
     }
@@ -2462,15 +2494,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // choice commits to the bare call and the trailing `[…]` can never be read,
   // even though Value already recognizes the whole reference —
   // which is why the same value parsed in property position and not here.
-  const directMixinValueWithoutLookup = not(noTrivia(literal('[')));
-  const directVariableName = node<string>(
+  const mixinValueWithoutLookup = not(noTrivia(literal('[')));
+  const variableName = node<string>(
     'VariableName',
     noTrivia(sequence(literal('@'), lessVariableName)),
     (children, _fields, span) => `@${requireSupportedVariableName(children[1], span.start, span.end)}`
   );
   const VarDeclaration = node<VariableDeclaration>(
     'VarDeclaration',
-    sequence(directVariableName, literal(':'), choice(sequence(g.NamespacedMixinValue, directMixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
+    sequence(variableName, literal(':'), choice(sequence(g.NamespacedMixinValue, mixinValueWithoutLookup), g.ImportantValue, sequence(g.FlatMixinCall, mixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
     (children, _fields, span) => {
       const name = requireTerminalText(children[0]).slice(1);
       const value = children[2];
@@ -2483,7 +2515,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const ValueBlockDeclaration = node<VariableDeclaration>(
     'VarDeclaration',
     sequence(
-      directVariableName,
+      variableName,
       literal(':'),
       g.ValueBlock
     ),
@@ -2571,7 +2603,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const values = children.filter(isValueNode);
       if (values.length === 0) {
-        throw new TypeError('Direct Less function condition lost its operand.');
+        throw new TypeError('Less function condition lost its operand.');
       }
       return values.length === 1 ? values[0]! : spaced(values);
     }
@@ -2582,7 +2614,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const inner = children.find(isFunctionConditionFact);
       if (inner === undefined) {
-        throw new TypeError('Direct Less function condition lost its parenthesized operand.');
+        throw new TypeError('Less function condition lost its parenthesized operand.');
       }
       return { guard: inner.guard, src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
     }
@@ -2601,7 +2633,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const left = nested[0] ?? (values[0] === undefined ? undefined : { guard: { g: 'truth' as const, value: values[0] }, src: functionConditionSource(values[0]), grouped: false, hasComparison: false });
       const right = nested[1] ?? (values.length > 1 && values[1] !== undefined ? { guard: { g: 'truth' as const, value: values[1] }, src: functionConditionSource(values[1]), grouped: false, hasComparison: false } : undefined);
       if (left === undefined) {
-        throw new TypeError('Direct Less function condition term lost its left operand.');
+        throw new TypeError('Less function condition term lost its left operand.');
       }
       let guard: MixinGuard;
       let src: string;
@@ -2610,10 +2642,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         src = left.src;
       } else {
         if (right === undefined) {
-          throw new TypeError('Direct Less comparison requires value operands.');
+          throw new TypeError('Less comparison requires value operands.');
         }
         if (nested.length === 0 && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not')) {
-          throw new TypeError('Direct Less function condition `not` requires a grouped condition operand.');
+          throw new TypeError('Less function condition `not` requires a grouped condition operand.');
         }
         const leftValue = left.guard.g === 'truth' ? left.guard.value : condition(left.guard, left.src);
         const rightValue = right.guard.g === 'truth' ? right.guard.value : condition(right.guard, right.src);
@@ -2644,7 +2676,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const fact = children.find(isFunctionConditionFact);
       if (fact === undefined) {
-        throw new TypeError('Direct Less function condition lost its fact.');
+        throw new TypeError('Less function condition lost its fact.');
       }
       return condition(fact.guard, fact.src);
     }
@@ -2672,7 +2704,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const value = children.find(isValueSlotValue);
       if (value === undefined) {
-        throw new TypeError('Direct Less function argument lost its value.');
+        throw new TypeError('Less function argument lost its value.');
       }
       return value;
     }
@@ -2698,11 +2730,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.FunctionArgument
   );
   const FunctionArguments = optional(sequence(
-    functionArgument,
-    many(sequence(
-      functionArgumentSeparator,
-      functionArgument
-    )),
+    oneOrMoreSep(functionArgument, functionArgumentSeparator),
     optional(trailingFunctionArgumentSeparator)
   ));
   // Value-position identifiers and glued function openers share one lexical
@@ -2719,28 +2747,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const GenericFunction = node<FunctionCall>(
     'Call',
     parser({ trivia: functionTrivia }, sequence(routed(), FunctionArguments, literal(')'))),
-    (children, fields, span, _rawChildren, triviaLog, state) => {
-      const name = functionNameFromOpener(children[0]);
-      const args: ValueSlot[] = [];
-      for (const child of children.slice(1, -1)) {
-        if (isValueSlotValue(child)) {
-          args.push(child);
-        }
-      }
-      const call = funcCall(name, args);
-      const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
-      if (separators.length === args.length - 1 || hasField(fields, 'trailingSeparator')) {
-        withValueLayout(call.args, separators);
-      }
-      return withSourceSpan(call, span);
-    }
+    (children, fields, span, _rawChildren, triviaLog, state) =>
+      functionCallFromChildren(children, fields, span, triviaLog, state)
   );
-  const Call = transform(
-    dispatch(
-      genericFunctionOpen,
-      when(endsWith('('), GenericFunction)
-    ),
-    ([, call]) => call
+  const Call = node<FunctionCall>(
+    'Call',
+    parser({ trivia: functionTrivia }, sequence(genericFunctionOpen, FunctionArguments, literal(')'))),
+    (children, fields, span, _rawChildren, triviaLog, state) =>
+      functionCallFromChildren(children, fields, span, triviaLog, state)
   );
   // A detached ruleset is a call-argument form, not a general value piece.
   // Keep this argument-enabled function production out of Value
@@ -2748,33 +2762,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const callArgumentFunctionSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
   const trailingCallArgumentFunctionSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
   const CallArgumentFunctionArguments = optional(sequence(
-    g.CallArgumentValue,
-    many(sequence(
-      callArgumentFunctionSeparator,
-      g.CallArgumentValue
-    )),
+    oneOrMoreSep(g.CallArgumentValue, callArgumentFunctionSeparator),
     optional(trailingCallArgumentFunctionSeparator)
   ));
-  const ArgumentFunction = node<FunctionCall>(
+  const CallArgumentFunction = node<FunctionCall>(
     'Call',
-    sequence(routed(), CallArgumentFunctionArguments, literal(')')),
-    (children, fields, span) => {
-      const name = functionNameFromOpener(children[0]);
-      const args = children.slice(1, -1).filter(isValueSlotValue);
-      const call = funcCall(name, args);
-      const separators = separatorsFromFields(fields);
-      if (separators.length === args.length - 1 || hasField(fields, 'trailingSeparator')) {
-        withValueLayout(call.args, separators);
-      }
-      return withSourceSpan(call, span);
-    }
-  );
-  const CallArgumentFunction = transform(
-    dispatch(
-      genericFunctionOpen,
-      when(endsWith('('), ArgumentFunction)
-    ),
-    ([, call]) => call
+    sequence(genericFunctionOpen, CallArgumentFunctionArguments, literal(')')),
+    argumentFunctionFromChildren
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
   // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
@@ -2792,7 +2786,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const call = children.find(isFunctionCall);
       if (call === undefined) {
-        throw new TypeError('Direct Less function statement lost its call fact.');
+        throw new TypeError('Less function statement lost its call fact.');
       }
       return call;
     }
@@ -2854,7 +2848,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children, _fields, span) => {
       const inner = children.find(isValueNode);
       if (inner === undefined) {
-        throw new TypeError('Direct Less parenthesized math lost its inner value.');
+        throw new TypeError('Less parenthesized math lost its inner value.');
       }
       return withSourceSpan(block(inner), span);
     }
@@ -2868,7 +2862,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const name = requireValueNode(children[1]);
       if (name.type !== 'Keyword') {
-        throw new TypeError('Direct Less grid line name requires a keyword fact.');
+        throw new TypeError('Less grid line name requires a keyword fact.');
       }
       return any(`[${name.src}]`);
     }
@@ -2900,15 +2894,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // common path the doomed `attempt` already rejected at its first byte. The
   // predicate emits a throwaway token, so consumers select the real value node
   // by type rather than by fixed position.
-  const directMixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
+  const mixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
   const Value = node<ValueNode>(
     'Value',
-    choice(sequence(directMixinReferenceAhead, attempt(g.MixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.SelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
+    choice(sequence(mixinReferenceAhead, attempt(g.MixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.SelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
     children => requireValueNode(children.find(isValueNode))
   );
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
   // is glued to a variable or grouping (`-@x`, `-(...)`); `- @x` is instead a
-  // preserved space-list.  The direct grammar keeps that source-order/spacing
+  // preserved space-list. The grammar keeps that source-order/spacing
   // distinction rather than normalizing both spellings to negation.
   const MathUnary = node<ValueNode>(
     'MathUnary',
@@ -2967,7 +2961,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         ? []
         : requireFields(fields, 'separator').map((separator) => {
             if (!isSlashBoundaryFact(separator.value)) {
-              throw new TypeError('Direct Less preserved division produced an invalid slash boundary.');
+              throw new TypeError('Less preserved division produced an invalid slash boundary.');
             }
             return separator.value;
           });
@@ -3009,7 +3003,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
       const slashBoundaries = requireFields(fields, 'separator').map((separator) => {
         if (!isSlashBoundaryFact(separator.value)) {
-          throw new TypeError('Direct Less value piece produced an invalid slash boundary.');
+          throw new TypeError('Less value piece produced an invalid slash boundary.');
         }
         return separator.value;
       });
@@ -3088,7 +3082,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // This transaction owns the WHOLE accessor-bearing value. Keeping it out
       // of Value means its typed mixin arguments do not recurse through the
       // same candidate before the required bracket fact has been established.
-      sequence(directMixinReferenceAhead, attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator))))),
+      sequence(mixinReferenceAhead, attempt(sequence(g.MixinReference, not(choice(topProductOperator, sumOperator))))),
       oneOrMoreSep(
         g.ValueSequence,
         field('separator', regex(/,[ \t\n\r\f]*/))
@@ -3266,7 +3260,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // as the declaration value.
       const value = children.filter(isValueNode).at(-1);
       if (name === undefined || value === undefined) {
-        throw new TypeError('Direct Less AST grammar produced an incomplete custom declaration.');
+        throw new TypeError('Less grammar produced an incomplete custom declaration.');
       }
       return decl(
         isInterp(name) ? name : requireTerminalText(name),
@@ -3301,37 +3295,28 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const property = children.find(isInterp);
       if (property === undefined) {
-        throw new TypeError('Direct Less interpolated-property gate lost its interpolation.');
+        throw new TypeError('Less interpolated-property gate lost its interpolation.');
       }
       return property;
     },
     { collapse: true }
   );
-  // A block comment between a property and `:` is authored declaration-name
-  // syntax. Preserve it through the existing structural Interpolation name
-  // representation; ordinary whitespace is retained only when such a comment
-  // is present, while Less `//` comments remain non-output lexical trivia.
-  const declarationHeadTrivia: Combinator<DeclarationHeadTriviaFact> = choice(
-    node<DeclarationHeadTriviaFact>('DeclarationHeadBlockComment', blockComment,
-      children => ({ text: requireToken(children[0]).value, outputBearing: true })),
-    node<DeclarationHeadTriviaFact>('DeclarationHeadWhitespace', regex(/[ \t\n\r\f]+/),
-      children => ({ text: requireToken(children[0]).value, outputBearing: false })),
-    node<DeclarationHeadTriviaFact>('DeclarationHeadLineComment', regex(/\/\/[^\n\r]*/),
-      () => ({ text: '', outputBearing: false }))
-  );
+  // Declaration-head gaps are trivia, not declaration-name syntax. The AST keeps
+  // the semantic property name clean; rendering replays output-bearing block
+  // comments from the source trivia map before writing the colon.
+  const DeclarationHead = parser({ trivia: whitespace }, sequence(
+    choice(
+      gatedInterpolatedProperty,
+      g.LessSyntaxNumericMapKey,
+      g.LessSyntaxDeclarationProperty
+    ),
+    optional(sequence(choice(literal('+_'), literal('+')))),
+    literal(':')
+  ));
   const StandardDeclaration = node<Declaration>(
     'Declaration',
     noTrivia(sequence(
-      sequence(
-        choice(
-          gatedInterpolatedProperty,
-          g.LessSyntaxNumericMapKey,
-          g.LessSyntaxDeclarationProperty
-        ),
-        many(declarationHeadTrivia),
-        optional(sequence(choice(literal('+_'), literal('+')), many(declarationHeadTrivia))),
-        literal(':')
-      ),
+      DeclarationHead,
       noTrivia(sequence(
         field('valueGap', regex(/[ \t\n\r\f]*/)),
         // Less accepts an explicit empty declaration value (`margin: ;`). Keep
@@ -3350,7 +3335,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const mergeToken = children.find(child => isToken(child) && (child.value === '+' || child.value === '+_'));
       const colonIndex = children.findIndex(child => isTerminalText(child, ':'));
       if (colonIndex < 0) {
-        throw new TypeError('Direct Less AST grammar produced no declaration delimiter.');
+        throw new TypeError('Less grammar produced no declaration delimiter.');
       }
       const valueChild = children.slice(colonIndex + 1).find(isValueSlotValue);
       const value: ValueSlot = valueChild === undefined ? any('') : requireValueSlot(valueChild);
@@ -3363,23 +3348,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const valueOnNewLine = (valueGap.includes('\n') || valueGap.includes('\r'))
         && layout?.some(separator => separator.includes('\n') || separator.includes('\r')) === true;
       if (merge !== null && merge !== ',' && merge !== ' ') {
-        throw new TypeError('Direct Less AST grammar produced an invalid declaration merge modifier.');
+        throw new TypeError('Less grammar produced an invalid declaration merge modifier.');
       }
-      const headTrivia = children.filter(isDeclarationHeadTriviaFact);
-      const name = headTrivia.some(trivia => trivia.outputBearing)
-        ? (() => {
-            const parts: Interpolation['parts'] = isInterp(rawName)
-              ? [...rawName.parts]
-              : [{ lit: requireTerminalText(rawName) }];
-            for (const trivia of headTrivia) {
-              appendInterpolationLiteral(parts, trivia.text);
-            }
-            return interpolation(parts);
-          })()
-        : rawName;
       const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(name) ? name : requireToken(name).value, valueSlot(value.inner), merge, true, valueOnNewLine)
-        : decl(isInterp(name) ? name : requireToken(name).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
+        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, valueSlot(value.inner), merge, true, valueOnNewLine)
+        : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
       return withSourceSpan(node, span);
     }
   );
@@ -3461,7 +3434,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const param = children.find(isParam);
       if (param === undefined) {
-        throw new TypeError('Direct Less mixin signature lost a Param fact.');
+        throw new TypeError('Less mixin signature lost a Param fact.');
       }
       return param;
     }
@@ -3479,11 +3452,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: mixinSignatureTrivia }, sequence(
       field('open', literal('(')),
       optional(sequence(
-        field('param', mixinParamWithSignatureTrivia),
-        many(sequence(
-          field('separator', mixinParamSeparator),
-          field('param', mixinParamWithSignatureTrivia)
-        )),
+        oneOrMoreSep(
+          field('param', mixinParamWithSignatureTrivia),
+          field('separator', mixinParamSeparator)
+        ),
         optional(field('trailingSeparator', mixinParamTrailingSeparator))
       )),
       field('close', mixinParamClose)
@@ -3493,7 +3465,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         ? []
         : requireFields(fields, 'param').map((param) => {
             if (!isParam(param.value)) {
-              throw new TypeError('Direct Less mixin signature produced a non-Param field.');
+              throw new TypeError('Less mixin signature produced a non-Param field.');
             }
             return param.value;
           })
@@ -3618,7 +3590,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   // Less permits a zero-argument mixin call without parentheses only when the
   // semicolon fixes the statement boundary. Keep the no-semicolon spelling out
-  // of this direct route: it is ambiguous with a selector/ruleset prefix.
+  // of this route: it is ambiguous with a selector/ruleset prefix.
   const BareMixinCall = node<MixinCall>(
     'BareMixinCall',
     sequence(mixinName, many(MixinPathTail), optional(literal('!important')), literal(';')),
@@ -3675,7 +3647,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
       if (last === undefined) {
-        throw new TypeError('Direct Less namespaced iterable lost its final mixin name.');
+        throw new TypeError('Less namespaced iterable lost its final mixin name.');
       }
       const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
       return {
@@ -3703,7 +3675,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
       if (last === undefined) {
-        throw new TypeError('Direct Less namespaced variable value lost its final mixin name.');
+        throw new TypeError('Less namespaced variable value lost its final mixin name.');
       }
       const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
       const call = {
@@ -3810,7 +3782,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       } else {
         const left = values[0];
         if (left === undefined) {
-          throw new TypeError('Direct Less AST grammar produced a guard without a value.');
+          throw new TypeError('Less grammar produced a guard without a value.');
         }
         if (operator === undefined) {
           const call = isFunctionCall(left) ? left : null;
@@ -3824,7 +3796,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         } else {
           const right = values[1];
           if (right === undefined) {
-            throw new TypeError('Direct Less AST grammar produced a comparison guard without a right operand.');
+            throw new TypeError('Less grammar produced a comparison guard without a right operand.');
           }
           guard = { g: 'cmp', op: operator, left, right };
         }
@@ -3871,7 +3843,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const guard = children.find(isMixinGuard);
       if (guard === undefined) {
-        throw new TypeError('Direct Less AST grammar produced an empty top-level grouped guard.');
+        throw new TypeError('Less grammar produced an empty top-level grouped guard.');
       }
       return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
     }
@@ -3892,7 +3864,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const guard = children.find(isMixinGuard);
       if (guard === undefined) {
-        throw new TypeError('Direct Less AST grammar produced a missing mixin guard.');
+        throw new TypeError('Less grammar produced a missing mixin guard.');
       }
       return guard;
     }
@@ -3913,11 +3885,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const name = requireField(fields, 'name').value;
       const parameters = requireField(fields, 'parameters').value;
       if (!isMixinParameterListFact(parameters)) {
-        throw new TypeError('Direct Less mixin signature produced invalid header facts.');
+        throw new TypeError('Less mixin signature produced invalid header facts.');
       }
       const guardField = fields?.guard === undefined ? undefined : requireField(fields, 'guard').value;
       if (guardField !== undefined && !isMixinGuard(guardField)) {
-        throw new TypeError('Direct Less mixin signature produced an invalid guard fact.');
+        throw new TypeError('Less mixin signature produced an invalid guard fact.');
       }
       return {
         name: requireTerminalText(name),
@@ -3981,7 +3953,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const statement = children.find(isStatement);
       if (statement === undefined) {
-        throw new TypeError('Direct Less mixin-or-ruleset gate lost its mixin statement.');
+        throw new TypeError('Less mixin-or-ruleset gate lost its mixin statement.');
       }
       return statement;
     },
@@ -4006,7 +3978,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const ruleset = children.find(isRule);
       if (ruleset === undefined) {
-        throw new TypeError('Direct Less declaration-guarded ruleset lost its rule.');
+        throw new TypeError('Less declaration-guarded ruleset lost its rule.');
       }
       return ruleset;
     },
@@ -4024,7 +3996,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const declaration = children.find(isDeclaration);
       if (declaration === undefined) {
-        throw new TypeError('Direct Less declaration-list item lost its declaration fact.');
+        throw new TypeError('Less declaration-list item lost its declaration fact.');
       }
       return declaration;
     },
@@ -4043,7 +4015,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const declaration = children.find(isDeclaration);
       if (declaration === undefined) {
-        throw new TypeError('Direct Less root declaration item lost its declaration fact.');
+        throw new TypeError('Less root declaration item lost its declaration fact.');
       }
       return declaration;
     },
@@ -4061,7 +4033,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const declaration = children.find(isDeclaration);
       if (declaration === undefined) {
-        throw new TypeError('Direct Less punctuation map item lost its declaration fact.');
+        throw new TypeError('Less punctuation map item lost its declaration fact.');
       }
       return declaration;
     },
@@ -4088,7 +4060,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children, _fields, span, rawChildren) => {
       const signature = children.find(isMixinSignatureFact);
       if (signature === undefined) {
-        throw new TypeError('Direct Less mixin definition lost its signature fact.');
+        throw new TypeError('Less mixin definition lost its signature fact.');
       }
       return withSourceSpan(withBlockBody(
         mixinDef(signature.name, [...signature.params], children.filter(isStatement), signature.guard),
@@ -4106,7 +4078,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )
   );
   // Detached rulesets and `each()` callbacks are both statement containers.
-  // Keep their accepted content on the same direct grammar path as normal Less
+  // Keep their accepted content on the same grammar path as normal Less
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
@@ -4124,7 +4096,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       if (isMixinCall(value) || isValueSlotValue(value)) {
         return value;
       }
-      throw new TypeError('Direct Less call argument must reduce to a value or typed mixin call.');
+      throw new TypeError('Less call argument must reduce to a value or typed mixin call.');
     }
   );
   const EachCallback = node<LessEachCallback>(
@@ -4157,7 +4129,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const names = children.filter((child): child is string => typeof child === 'string');
       const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
       if (bodyStart < 0) {
-        throw new TypeError('Direct Less AST grammar produced a named each() callback without a body.');
+        throw new TypeError('Less grammar produced a named each() callback without a body.');
       }
       const body = requireCallbackStatements(children.slice(bodyStart + 1, -1));
       if (names.length === 1) {
@@ -4169,7 +4141,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
           rules: body
         };
       }
-      throw new TypeError('Direct Less AST grammar produced an invalid each() callback binding.');
+      throw new TypeError('Less grammar produced an invalid each() callback binding.');
     }
   );
   const Each = node<For>(
@@ -4204,7 +4176,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const callback = children[4];
       if (!isLessEachCallback(callback)) {
-        throw new TypeError('Direct Less each() reduction produced an invalid callback.');
+        throw new TypeError('Less each() reduction produced an invalid callback.');
       }
       const iterable = children[2];
       return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding);
@@ -4257,7 +4229,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
       if (content === undefined) {
-        throw new TypeError('Direct Less general-enclosed lost its grammar-owned content.');
+        throw new TypeError('Less general-enclosed lost its grammar-owned content.');
       }
       const name = children.find((child): child is GeneralEnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child);
       return name === undefined ? generalEnclosed('paren', null, content) : generalEnclosed('function', name.name, content);
@@ -4393,12 +4365,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const values = children.filter(isValueNode);
       const operators = queryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
-        throw new TypeError('Direct Less query comparison lost a value or operator.');
+        throw new TypeError('Less query comparison lost a value or operator.');
       }
       let comparison = operation(operators[0]!, keyword(requireToken(children[1]).value), values[0]!);
       if (operators.length === 2) {
         if (values[1] === undefined) {
-          throw new TypeError('Direct Less chained query comparison lost its final value.');
+          throw new TypeError('Less chained query comparison lost its final value.');
         }
         comparison = operation(operators[1]!, comparison, values[1]);
       }
@@ -4415,12 +4387,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const values = children.filter(isValueNode);
       const operators = queryComparisonOperators(children);
       if (values.length < 1 || operators.length < 1) {
-        throw new TypeError('Direct Less query range lost a value or operator.');
+        throw new TypeError('Less query range lost a value or operator.');
       }
       let comparison = operation(operators[0]!, values[0]!, keyword(requireToken(children[3]).value));
       if (operators.length === 2) {
         if (values[1] === undefined) {
-          throw new TypeError('Direct Less chained query range lost its final value.');
+          throw new TypeError('Less chained query range lost its final value.');
         }
         comparison = operation(operators[1]!, comparison, values[1]);
       }
@@ -4665,7 +4637,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children, _fields, span) => {
       const body = children.find(Array.isArray);
       if (body === undefined) {
-        throw new TypeError('Direct Less conditional at-rule lost its body facts.');
+        throw new TypeError('Less conditional at-rule lost its body facts.');
       }
       return withSourceSpan(
         atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), requireStatementArray(body)),
@@ -4702,7 +4674,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const selectors = children.filter(isSimpleSelector)
         .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
       if (selectors.length === 0) {
-        throw new TypeError('Direct Less keyframe block requires a selector.');
+        throw new TypeError('Less keyframe block requires a selector.');
       }
       return withSourceSpan(
         withBlockBody(rule(selist(...selectors), children.filter(isStatement)), rawChildren),
@@ -4729,11 +4701,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       requireField(fields, 'prelude');
       const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
       if (bodyStart < 0) {
-        throw new TypeError('Direct Less keyframes lost its body boundary.');
+        throw new TypeError('Less keyframes lost its body boundary.');
       }
       const preludeParts = children.slice(1, bodyStart).filter(isValueNode);
       if (preludeParts.length === 0) {
-        throw new TypeError('Direct Less keyframes lost their header fact.');
+        throw new TypeError('Less keyframes lost their header fact.');
       }
       return withSourceSpan(withBlockBody(
         atRuleBlock(
@@ -4749,7 +4721,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // a post-parse string shape. Keep its spelling in the ordinary Keyword node.
   const DottedAtRuleKeyword = node<ValueNode>(
     'DottedAtRuleKeyword',
-    sequence(directStaticIdentifier, oneOrMore(sequence(noTrivia(literal('.')), noTrivia(directStaticIdentifier)))),
+    sequence(staticIdentifier, oneOrMore(sequence(noTrivia(literal('.')), noTrivia(staticIdentifier)))),
     children => keyword(children.map(requireTerminalText).join(''))
   );
   const StaticAtRuleCustomProperty = node<ValueNode>(
@@ -4861,7 +4833,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const values = children.filter(isValueNode);
       const uri = values.at(-1);
       if (uri === undefined) {
-        throw new TypeError('Direct Less namespace prelude lost its URI value.');
+        throw new TypeError('Less namespace prelude lost its URI value.');
       }
       return children.length === 1
         ? uri
@@ -4878,7 +4850,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     attempt(sequence(
       // Generic headers serialize as ordinary bytes. Their interpolation and
       // parenthesized forms need a dedicated syntax-preserving model, so this
-      // direct route deliberately leaves them closed.
+      // This route deliberately leaves them closed.
       attempt(g.StaticAtRulePrelude),
       atRuleBlockBody
     )),
@@ -4940,7 +4912,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const prelude = children[1];
       const rawBody = children[3];
       if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
-        throw new TypeError('Direct Less opaque at-rule block lost its grammar-owned raw facts.');
+        throw new TypeError('Less opaque at-rule block lost its grammar-owned raw facts.');
       }
       return opaqueAtRuleBlock(
         requireToken(children[0]).value,
@@ -5092,21 +5064,21 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     staticQuotedBody,
     children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
   );
-  const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, g.StaticPseudoQuoted, blockComment, staticPseudoChunk);
+  const staticPseudoInner = choice(g.StaticPseudoGroup, g.StaticPseudoSquare, g.StaticPseudoQuoted, staticPseudoChunk);
   const StaticPseudoGroup = node<string>(
     'StaticPseudoGroup',
-    sequence(literal('('), many(staticPseudoInner), literal(')')),
-    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+    parser({ trivia: staticSelectorTrivia }, sequence(literal('('), many(staticPseudoInner), literal(')'))),
+    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const StaticPseudoSquare = node<string>(
     'StaticPseudoSquare',
-    sequence(literal('['), many(staticPseudoInner), literal(']')),
-    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+    parser({ trivia: staticSelectorTrivia }, sequence(literal('['), many(staticPseudoInner), literal(']'))),
+    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   const StaticNonSelectorPseudoArgument = node<string>(
     'StaticNonSelectorPseudoArgument',
-    oneOrMore(staticPseudoInner),
-    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+    parser({ trivia: staticSelectorTrivia }, oneOrMore(staticPseudoInner)),
+    (children, _fields, _span, _rawChildren, triviaLog) => staticTextWithTriviaGaps(children, triviaLog)
   );
   // A functional pseudo's static selector argument is the same recursive
   // selector grammar as a rule header. `rules()` names the cycle at macro
@@ -5286,7 +5258,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // `|=` is the CSS attribute operator, not a namespace separator. Guard
       // the namespace arm before consuming `|` so a quoted interpolation after
       // `prop|=` remains on the ordinary attribute-value route.
-      sequence(directStaticIdentifier, literal('|'), not(literal('='))),
+      sequence(staticIdentifier, literal('|'), not(literal('='))),
       literal('*|'),
       literal('|')
     ),
@@ -5294,12 +5266,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const StaticNamespaceType = node<SimpleSelector>(
     'StaticNamespaceType',
-    sequence(g.StaticAttributeNamespace, choice(directStaticIdentifier, literal('*'))),
+    sequence(g.StaticAttributeNamespace, choice(staticIdentifier, literal('*'))),
     children => simpleSelector(children.map(requireTerminalText).join(''))
   );
   const StaticAttributeName = node<StaticAttributeNameFact>(
     'StaticAttributeName',
-    sequence(optional(g.StaticAttributeNamespace), directStaticIdentifier),
+    sequence(optional(g.StaticAttributeNamespace), staticIdentifier),
     children => ({
       namespace: children.find((child): child is string => typeof child === 'string') ?? '',
       name: requireToken(children.at(-1)).value
@@ -5317,19 +5289,19 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // Attribute name and value interpolation share one grammar body; the reducers
   // differ only by whether each reference part is unquoted (name) or kept quoted
   // (value, so `[data=@{value}]` retains its source spelling).
-  const directAttributeInterpolationTokenBody = noTrivia(sequence(
+  const attributeInterpolationTokenBody = noTrivia(sequence(
     optional(choice(g.LessSyntaxInterpolatedValueStart, g.LessSyntaxInterpolatedValueDash)),
     g.Interpolation,
     many(interpolatedValueTail)
   ));
   const InterpolatedAttributeToken = node<Interpolation>(
     'InterpolatedAttributeToken',
-    directAttributeInterpolationTokenBody,
+    attributeInterpolationTokenBody,
     children => interpolation(interpolationPartsFrom(children, true))
   );
   const InterpolatedAttributeValueToken = node<Interpolation>(
     'InterpolatedAttributeValueToken',
-    directAttributeInterpolationTokenBody,
+    attributeInterpolationTokenBody,
     children => interpolation(interpolationPartsFrom(children, false))
   );
   const InterpolatedAttributeQuoted = node<Interpolation>(
@@ -5344,7 +5316,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'StaticAttributeMatch',
     sequence(
       g.CssSyntaxAttributeOperator,
-      choice(directStaticIdentifier, g.StaticAttributeQuoted),
+      choice(staticIdentifier, g.StaticAttributeQuoted),
       optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
     ),
     children => ({
@@ -5364,7 +5336,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         typeof child === 'object' && child !== null && 'namespace' in child && 'name' in child
       );
       if (name === undefined) {
-        throw new TypeError('Direct Less AST grammar produced an attribute selector without a name.');
+        throw new TypeError('Less grammar produced an attribute selector without a name.');
       }
       return simpleSelector(`[${name.namespace}${name.name}${match === undefined ? '' : `${match.operator}${match.value}${match.modifier === null ? '' : ` ${match.modifier}`}`}]`);
     }
@@ -5417,7 +5389,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const BareInterpolatedSelector = node<SimpleSelector>(
     'BareInterpolatedSelector',
-    sequence(g.VariableInterpolation, directBareInterpolatedSelectorEnd),
+    sequence(g.VariableInterpolation, bareInterpolatedSelectorEnd),
     (children) => {
       const fact = requireInterpolationFact(children[0]);
       return interpolatedSimpleSelector(interpolation([{ ref: fact.ref, unquote: true }]));
@@ -5437,15 +5409,15 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // than recovering a completed selector string after parse.
   const BareInterpolatedSelectorWithSuffix = node<SimpleSelector>(
     'BareInterpolatedSelectorWithSuffix',
-    noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(directInterpolatedSelectorTail, staticSimpleSelector)))),
+    noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(interpolatedSelectorTail, staticSimpleSelector)))),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
   const InterpolatedSimpleSelector = node<SimpleSelector>(
     'InterpolatedSimpleSelector',
     noTrivia(sequence(
-      directInterpolatedSelectorPrefix,
+      interpolatedSelectorPrefix,
       g.VariableInterpolation,
-      many(choice(directInterpolatedSelectorTail, g.VariableInterpolation))
+      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
     )),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
@@ -5457,7 +5429,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     noTrivia(sequence(
       staticAmpersand,
       g.VariableInterpolation,
-      many(choice(directInterpolatedSelectorTail, g.VariableInterpolation))
+      many(choice(interpolatedSelectorTail, g.VariableInterpolation))
     )),
     children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
   );
@@ -5514,12 +5486,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children, _fields, span) => {
       const head = children.find(isCompound);
       if (head === undefined) {
-        throw new TypeError('Direct Less AST grammar produced a selector without a head compound.');
+        throw new TypeError('Less grammar produced a selector without a head compound.');
       }
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
       const tails = children.filter(isComplexTailFact).map((tail): ComplexTailFact => {
         if (typeof tail !== 'object' || tail === null || !('comb' in tail) || !('compound' in tail)) {
-          throw new TypeError('Direct Less AST grammar produced an invalid selector tail.');
+          throw new TypeError('Less grammar produced an invalid selector tail.');
         }
         return tail as ComplexTailFact;
       });
@@ -5544,7 +5516,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: outerSelectorTrivia }, sequence(g.Complex, many(g.SelectorTail))),
     (children, _fields, span) => withSourceSpan(selist(...requireComplexes(children)), span)
   );
-  const directExtendAll = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+  const extendAllFlag = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
   const StaticExtendCompound = node<CompoundSelector>(
     'StaticExtendCompound',
     parser(
@@ -5592,7 +5564,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const ExtendTarget = node<ExtendTargetFact>(
     'ExtendTarget',
-    sequence(ExtendTargetComplex, optional(directExtendAll)),
+    sequence(ExtendTargetComplex, optional(extendAllFlag)),
     children => ({
       target: selist(requireComplex(children[0])),
       partial: children.some(child => isTerminalText(child, 'all') || isTerminalText(child, '!all'))
@@ -5610,7 +5582,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => children.filter(isExtendTargetFact)
   );
-  const directSelectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
+  const selectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
   const ExtendStatement = node<ExtendInstruction[]>(
     'ExtendStatement',
     sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
@@ -5618,13 +5590,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
       .map(target => ({ target: target.target, partial: target.partial }))
   );
-  const directSelectorBranchContinuation = choice(
-    sequence(ExtendPseudo, directSelectorBranchBoundary),
-    directSelectorBranchBoundary
+  const selectorBranchContinuation = choice(
+    sequence(ExtendPseudo, selectorBranchBoundary),
+    selectorBranchBoundary
   );
   const SelectorBranch = node<SelectorBranchFact>(
     'SelectorBranch',
-    sequence(ExtendComplex, directSelectorBranchContinuation),
+    sequence(ExtendComplex, selectorBranchContinuation),
     (children) => {
       const subject = requireComplex(children[0]);
       const extensions = children

@@ -75,8 +75,8 @@ export function parse(input: string): Stylesheet {
 
 /**
  * Parse Less for the product plugin path. Parser packages own recognition facts;
- * this boundary attaches file/source context once and returns the normalized
- * diagnostic shape that `@jesscss/jess` forwards and renders.
+ * this boundary attaches file/source context once and returns normalized
+ * diagnostics for compiler and CLI consumers to render.
  */
 export function safeParse(filePath: string, input: string): ISafeParseResult {
   try {

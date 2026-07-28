@@ -2,8 +2,8 @@
  * Structured compiler diagnostics for `@jesscss/core`.
  *
  * Core produces STRUCTURED diagnostics (code, phase, location, meta, severity);
- * terminal RENDERING (code frames, clickable links, colors) lives in the CLI
- * layer (`@jesscss/jess`), which drives it off `toDiagnostic()` + `linecraft`.
+ * terminal RENDERING (code frames, clickable links, colors) lives in the
+ * compiler host (`@jesscss/compiler`), which drives it off `toDiagnostic()`.
  *
  * This module is a compatibility barrel re-exporting the `error/` submodules:
  * - `error/codes.ts`      — error-code registry, templates, display overrides

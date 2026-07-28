@@ -23,6 +23,7 @@
   ],
   "dependencies": {
     "@jesscss/css-parser": "workspace:*",
+    "@jesscss/diagnostics-core": "workspace:*",
     "@jesscss/jess-parser": "workspace:*",
     "@jesscss/less-parser": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",

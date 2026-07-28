@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  compareSemver,
   listWorkspacePackages,
   preserveRecoveryManifestVersion
 } from './release-utils.mjs';
@@ -56,8 +57,15 @@ function gitShow(rootDir, ref, relativePath) {
     shell: process.platform === 'win32'
   });
   if (result.status !== 0) {
+    const stderr = result.stderr.trim();
+    if (
+      stderr.includes(`path '${relativePath}' exists on disk, but not in '${ref}'`)
+      || stderr.includes(`Path '${relativePath}' does not exist in '${ref}'`)
+    ) {
+      return null;
+    }
     throw new Error(`Could not read ${relativePath} from recovery ref '${ref}': ${
-      result.stderr.trim() || 'git show failed'
+      stderr || 'git show failed'
     }`);
   }
   return result.stdout;
@@ -87,6 +95,34 @@ function main() {
 
   const rootDir = process.cwd();
   const packages = listWorkspacePackages(rootDir);
+  const recoveryByPath = new Map();
+  const recoveryVersionCounts = new Map();
+  let recoveryVersion = null;
+  for (const pkg of packages.values()) {
+    const relativePath = path
+      .relative(rootDir, pkg.packageJsonPath)
+      .replaceAll(path.sep, '/');
+    const recoveryRaw = gitShow(rootDir, from, relativePath);
+    if (recoveryRaw === null) {
+      continue;
+    }
+    recoveryByPath.set(relativePath, recoveryRaw);
+    const recoveryManifest = JSON.parse(recoveryRaw);
+    const version = recoveryManifest.version;
+    if (!recoveryManifest.private && typeof version === 'string' && version.length > 0) {
+      recoveryVersionCounts.set(version, (recoveryVersionCounts.get(version) ?? 0) + 1);
+    }
+  }
+  for (const [version, count] of recoveryVersionCounts) {
+    if (
+      recoveryVersion === null
+      || count > recoveryVersionCounts.get(recoveryVersion)
+      || (count === recoveryVersionCounts.get(recoveryVersion) && compareSemver(version, recoveryVersion) > 0)
+    ) {
+      recoveryVersion = version;
+    }
+  }
+
   let changed = 0;
   const changedPaths = [];
   for (const pkg of packages.values()) {
@@ -95,7 +131,26 @@ function main() {
       .replaceAll(path.sep, '/');
     const importedRaw = readFileSync(pkg.packageJsonPath, 'utf8');
     const importedManifest = JSON.parse(importedRaw);
-    const recoveryManifest = JSON.parse(gitShow(rootDir, from, relativePath));
+    const recoveryRaw = recoveryByPath.get(relativePath) ?? null;
+    if (recoveryRaw === null) {
+      if (recoveryVersion === null || importedManifest.version === recoveryVersion) {
+        console.log(`${relativePath}: new in imported source; keeping ${
+          importedManifest.version ?? '(missing)'
+        }`);
+        continue;
+      }
+      writeFileSync(
+        pkg.packageJsonPath,
+        `${JSON.stringify({ ...importedManifest, version: recoveryVersion }, null, 2)}\n`
+      );
+      changed += 1;
+      changedPaths.push(relativePath);
+      console.log(`${relativePath}: new in imported source; ${importedManifest.version ?? '(missing)'} -> ${
+        recoveryVersion
+      }`);
+      continue;
+    }
+    const recoveryManifest = JSON.parse(recoveryRaw);
     const restoredManifest = preserveRecoveryManifestVersion(
       importedManifest,
       recoveryManifest

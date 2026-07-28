@@ -230,8 +230,8 @@ export interface PluginCallCapabilities {
 
 /** A `@plugin` function bound to the live call-site capabilities. */
 export type ContextualPluginFunction = (
-  args: readonly unknown[],
-  capabilities: PluginCallCapabilities
+  args?: readonly unknown[] | unknown,
+  capabilities?: PluginCallCapabilities
 ) => unknown | Promise<unknown>;
 
 /**
@@ -240,6 +240,14 @@ export type ContextualPluginFunction = (
  * unbounded number of distinct variables.
  */
 const MAX_FACT_ROUNDS = 64;
+const EMPTY_PLUGIN_CALL_CAPABILITIES: PluginCallCapabilities = {};
+
+function normalizePluginCallArgs(args: readonly unknown[] | unknown): readonly unknown[] {
+  if (args === undefined) {
+    return [];
+  }
+  return Array.isArray(args) ? args : [args];
+}
 
 type RpcRequest =
   | { id: number; type: 'load'; modulePath: string }
@@ -792,7 +800,13 @@ export class JsPlugin extends AbstractPlugin {
     const functions: Record<string, ContextualPluginFunction> = {};
     for (const functionName of loadResult.functions ?? []) {
       functions[functionName] = (args, capabilities) =>
-        this.invokePluginFunction(modulePath, options, functionName, args, capabilities);
+        this.invokePluginFunction(
+          modulePath,
+          options,
+          functionName,
+          normalizePluginCallArgs(args),
+          capabilities ?? EMPTY_PLUGIN_CALL_CAPABILITIES
+        );
     }
     return { functions };
   }

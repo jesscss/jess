@@ -43,7 +43,7 @@ baseline only and never as a performance acceptance claim.
   `pnpm run verify:compose-integrity` pass with 0 interpreter fallbacks; and
   `pnpm run verify:less-alpha` passes. The full strict-type release chain still
   belongs to `pnpm run release:alpha:check` before publishing.
-- Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
+- Alpha closure: `scripts/release/alpha-allowlist.json` contains **21
   allowlisted runtime packages**, including `@jesscss/compiler`.
   `rollup-plugin-jess` is intentionally excluded because it depends on `jess`
   and is not part of the runtime closure. Current `dev` validates this publish
@@ -52,7 +52,7 @@ baseline only and never as a performance acceptance claim.
   and `jess`.
 
   Release status, verified 2026-07-28: `origin/alpha` is at `b1f276458` and
-  tagged `v2.0.0-alpha.10`. The alpha allowlist contains 18 packages including
+  tagged `v2.0.0-alpha.10`. The alpha allowlist contains 21 packages including
   `@jesscss/compiler`, and npm resolves both `jess@alpha` and
   `@jesscss/compiler@alpha` to `2.0.0-alpha.10`. The `dev` manifests remain
   placeholder `2.0.0-alpha.5`; future alpha releases still use the
@@ -231,18 +231,22 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `872389bf8fb83565627223ec4c863aa31da0a053`,
-clean worktree, PR open/non-draft. That head merges `upstream/alpha`
+evidence: branch `less-5-alpha.1` at `4686065d20a553b1f1d91a39c9fa16ac5cf1aa57`,
+clean worktree, PR open/non-draft. The branch merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `872389bf` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `4686065d` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
-and packed-consumer proof. GitHub Actions and CodeRabbit need to be rechecked
-on this head before merge.
+and packed-consumer proof. The Less compatibility error wrapper now forwards
+canonical Jess diagnostic messages unchanged while still exposing Less-style
+fields such as `type`, `line`, `column`, `extract`, and `jessErrors`. GitHub
+evidence on 2026-07-28 reports PR #19 merge-state `CLEAN`; CI is green across
+ubuntu/macOS/windows and Node current, LTS, LTS-1, and LTS-2; CodeRabbit is
+green; release-PR automation jobs are skipped as expected.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `872389bf`, `pnpm run test:alpha` passes the
+`2.0.0-alpha.10`: on PR head `4686065d`, `pnpm run test:alpha` passes the
 Less package typecheck, build, `lessc` smoke tests, alpha support contract,
 publish dry-run tests, and packed-consumer proof. The `lessc` smoke tests pin
 Linecraft-formatted colored diagnostics by default, source framing, `--silent`
@@ -254,14 +258,21 @@ uncolored text, or a non-Linecraft frame, the package is not ready to merge.
 The remaining registry caveat is that PR #19 currently consumes published Jess
 `2.0.0-alpha.10`; the single-frame renderer fix on Jess `dev` must ship in the
 next Jess alpha and be consumed by the Less PR before the external package can
-prove that it has no duplicate code frames. The alpha support contract now pins
-the upstream-sync fixture families that are green for alpha.1:
+prove that same behavior against the final registry closure. The alpha support
+contract now pins the upstream-sync fixture families that are green for alpha.1:
 `at-rule-variable-interpolation`, `color-functions/modern`, `math-css-vars`,
 `mixins-guards`, and `mixins-named-args`. The packed consumer installs the
 direct Jess runtime closure and does not install the batteries-included `jess`
 package. `packages/less/package.json` uses published `@jesscss/*` alpha
 dependencies, has no direct `jess` dependency, and keeps `@jesscss/plugin-js`
 as an optional peer only.
+
+After `8b78b1afa`, Jess `dev` also removes the Less-specific
+`importLessPlugin` method from the generic `@jesscss/compiler` script-plugin
+proxy, keeps executable plugin loading behind `PluginInterface.importPlugin`,
+and routes Less `@plugin` through the canonical `deprecation/less-plugin`
+warning channel. This keeps `@jesscss/plugin-js` optional while preserving the
+legacy Less runtime inside that plugin package.
 
 Jess-side package layering now uses a generic compiler host:
 `@jesscss/compiler` owns the render pipeline, while the `jess` package supplies
@@ -278,9 +289,10 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are owner/release decisions,
-not Jess registry availability, pending remote CI, or an unclassified upstream
-fixture gap. The missing
+Current package-flow blockers, verified 2026-07-28, are owner/release sequencing
+decisions: publish the next Jess alpha from `dev`, bump PR #19 to that exact
+registry version, rerun the Less package alpha proofs, and then publish Less.
+They are not an unclassified upstream fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
 alpha gate passes. Greptile did not review because the PR exceeds its file
@@ -562,7 +574,9 @@ Initial likely-internal or quarantine candidates:
 - `[?]` `packages/jess/src/config.ts` helpers such as `getConfig`,
   `getConfigWithMeta`, and `getExpectedOutputFiles`
 - `[?]` `packages/jess/src/output.ts` `OutputCollector`
-- `[?]` `packages/jess/src/diagnostics.ts` `outputDiagnostics`
+- `[x]` Jess-local diagnostic renderer quarantine: `outputDiagnostics` now lives
+  in `@jesscss/compiler/diagnostics`; `jess` consumes the shared compiler host
+  renderer instead of carrying `packages/jess/src/diagnostics.ts`.
 - `[?]` `packages/jess/src/visitor/index.ts` `Visitor`
 
 Implementation options to evaluate:
@@ -707,12 +721,22 @@ earlier, before a manual publish attempt.
   the controlled alpha projection. The next Jess alpha is needed so Less PR #19
   can prove colored, single-frame Linecraft diagnostics against registry
   dependencies instead of published `2.0.0-alpha.10`.
-- 2026-07-28: Updated the external Less PR #19 audit to head `872389bf`,
+- 2026-07-28: Updated Less PR #19 to `4686065d`, deleting the compatibility
+  wrapper's diagnostic-message rewrite. `less.render()` now forwards canonical
+  Jess diagnostic messages while preserving Less-style wrapper fields. Local
+  `pnpm run test:alpha` passed, including typecheck/build, `lessc`, alpha
+  support, alpha fixtures, publish dry-run tests, and packed-consumer proof
+  against published Jess `2.0.0-alpha.10`.
+- 2026-07-28: Updated the external Less PR #19 audit to head `c06338a4`,
   including successful `lessc` warning routing to `stderr` and the blocker rule
   that public `lessc` errors must render through colored Linecraft diagnostics.
   Jess `dev` also has the single-frame diagnostic renderer fix; the external
   proof waits for the next Jess alpha publish/dependency bump because PR #19
   still consumes published `2.0.0-alpha.10`.
+- 2026-07-28: Rechecked PR #19 through GitHub: merge-state `CLEAN`, CI and
+  CodeRabbit green on `c06338a4`, release-PR jobs skipped as expected. Jess
+  `dev` commit `8b78b1afa` keeps the compiler script-plugin proxy generic and
+  adds the canonical `deprecation/less-plugin` warning path for Less `@plugin`.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,

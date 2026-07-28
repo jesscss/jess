@@ -1109,7 +1109,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('keeps dynamic, important, and semicolon namespaced mixin-call iterables out of the direct route', () => {
+  it('keeps dynamic, important, and semicolon namespaced mixin-call iterables out of the ambiguous selector route', () => {
     for (const source of [
       'each(.library > .@{name}(), { color: red; });',
       'each(.library > .values() !important, { color: red; });',
@@ -1351,7 +1351,7 @@ describe('Less AST grammar facts', () => {
       ]
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError('Expected a Less Stylesheet.');
     }
     expect(serialize(result.value).css).toBe('.card {\n  color: red;\n}\n');
   });
@@ -1467,7 +1467,7 @@ describe('Less AST grammar facts', () => {
       ]
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError('Expected a Less Stylesheet.');
     }
 
     /*
@@ -1642,7 +1642,7 @@ describe('Less AST grammar facts', () => {
       ]
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError('Expected a Less Stylesheet.');
     }
     expect(serialize(result.value).css).toBe(
       '.math {\n  product: 2 * 3;\n  modulo: 7 % 3;\n}\n'
@@ -1731,7 +1731,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError('Expected a Less Stylesheet.');
     }
     expect(
       result.value.children.find(
@@ -1771,7 +1771,7 @@ describe('Less AST grammar facts', () => {
     );
   });
 
-  it('left-factors preserved slash value pieces without changing their direct AST facts', () => {
+  it('left-factors preserved slash value pieces without changing their grammar facts', () => {
     const source = [
       '@trivia: 12px / 1.5 / 3;',
       '.case {',
@@ -2784,14 +2784,14 @@ describe('Less AST grammar facts', () => {
      */
     const rawDetachedBody = '@theme: { <: %3c; };';
     const rawLegacy = parseLessCst(rawDetachedBody);
-    const rawDirect = run(lessAstGrammar.Document, rawDetachedBody, {
+    const rawResult = run(lessAstGrammar.Document, rawDetachedBody, {
       trivia: lessAstGrammar.whitespace
     });
     expect(rawLegacy.errors).toHaveLength(0);
     expect(rawLegacy.unconsumedFrom).toBeNull();
-    expect(rawDirect.ok).toBe(true);
-    expect(rawDirect.unconsumedFrom).toBeNull();
-    expect(rawDirect.value).toMatchObject({
+    expect(rawResult.ok).toBe(true);
+    expect(rawResult.unconsumedFrom).toBeNull();
+    expect(rawResult.value).toMatchObject({
       type: 'Stylesheet',
       children: [
         {
@@ -3166,7 +3166,7 @@ describe('Less AST grammar facts', () => {
       || result.unconsumedFrom !== null
       || !isStylesheet(result.value)
     ) {
-      throw new Error('Direct Less AST grammar did not make a Stylesheet.');
+      throw new Error('Less grammar did not make a Stylesheet.');
     }
     expect(serialize(result.value).css).toBe('.a {\n  color: red;\n}\n');
   });
@@ -3213,7 +3213,7 @@ describe('Less AST grammar facts', () => {
 
     /*
      * This is the same static lexical subset the existing Less grammar accepts;
-     * the direct grammar receives each piece as a Parseman child and never
+     * the grammar receives each piece as a Parseman child and never
      * reclassifies a captured declaration string.
      */
     expect(legacy.errors).toHaveLength(0);
@@ -3818,7 +3818,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('retains declaration-head block comments while treating value comments as trivia', () => {
+  it('retains declaration-head and value comments as trivia', () => {
     const source =
       '.card { color/* property */: grey; margin /* before merge */ + /* before colon */: 0; border: /* value */ solid black; }';
     const result = run(lessAstGrammar.Document, source, {
@@ -3835,21 +3835,13 @@ describe('Less AST grammar facts', () => {
           body: [
             {
               type: 'Declaration',
-              name: {
-                type: 'Interpolation',
-                parts: [{ lit: 'color/* property */' }]
-              },
+              name: 'color',
               merge: null,
               value: { type: 'Color', src: 'grey' }
             },
             {
               type: 'Declaration',
-              name: {
-                type: 'Interpolation',
-                parts: [
-                  { lit: 'margin /* before merge */  /* before colon */' }
-                ]
-              },
+              name: 'margin',
               merge: ',',
               value: { type: 'Dimension', src: '0' }
             },
@@ -3866,9 +3858,11 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
-    expect(serialize(stylesheet(result.value)).css).toBe(
-      '.card {\n  color/* property */: grey;\n  margin /* before merge */  /* before colon */: 0;\n  border: solid black;\n}\n'
-    );
+
+    /*
+     * Grammar runs prove AST shape. Public parse() owns document trivia
+     * attachment and the render replay assertion for these comment gaps.
+     */
   });
 
   it('keeps fallback CSS at-rule prelude comments in trivia, not semantic bytes', () => {
@@ -6962,15 +6956,15 @@ describe('Less AST grammar facts', () => {
   });
 
   it('retains outer list separators, accepts newline function separators, and keeps boundary comments as trivia', () => {
-    const directList = run(
+    const listResult = run(
       lessAstGrammar.Document,
       'shadow: 0,\n  1px;',
       { trivia: lessAstGrammar.whitespace }
     );
-    expect(directList.ok).toBe(true);
-    expect(directList.unconsumedFrom).toBeNull();
-    expect(isStylesheet(directList.value)).toBe(true);
-    expect(directList.value.children[0]).toEqual({
+    expect(listResult.ok).toBe(true);
+    expect(listResult.unconsumedFrom).toBeNull();
+    expect(isStylesheet(listResult.value)).toBe(true);
+    expect(listResult.value.children[0]).toEqual({
       type: 'Declaration',
       name: 'shadow',
       merge: null,
@@ -7458,7 +7452,7 @@ describe('Less AST grammar facts', () => {
     ).toBe('.x {\n  --accent: red !important;\n  color: blue !important;\n}\n');
   });
 
-  it('keeps malformed interpolation rejected by both public CST and direct AST property/value routes', () => {
+  it('keeps malformed interpolation rejected by both public CST and AST property/value routes', () => {
     for (const source of [
       '.x { pre-@{ spaced }-post: red; }',
       '.x { --theme-${}: red; }',
@@ -8371,7 +8365,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('keeps malformed, whitespace-split, and extend selector interpolation out of the direct route', () => {
+  it('keeps malformed, whitespace-split, and extend selector interpolation out of the ambiguous selector route', () => {
     for (const source of [
       '. @{name}-item { color: red; }',
       '.@{name}:extend(.target) { color: red; }'
@@ -8530,7 +8524,7 @@ describe('Less AST grammar facts', () => {
     });
   });
 
-  it('rejects whitespace-separated static pseudo colons on the direct AST path', () => {
+  it('rejects whitespace-separated static pseudo colons on the AST path', () => {
     for (const source of [
       '.card : hover { color: red; }',
       '.card: hover { color: red; }'
@@ -8846,7 +8840,7 @@ describe('Less AST grammar facts', () => {
 
   it('constructs static non-selector functional pseudos as existing SimpleSelector text', () => {
     const source =
-      '.card:lang(en-US)::part(icon):state(foo[bar]) { color: blue; }';
+      '.card:lang(en-US)::part(icon):state(foo /* note */ [bar]) { color: blue; }';
     const cst = parseLessCst(source);
     const result = run(lessAstGrammar.Document, source, {
       trivia: lessAstGrammar.whitespace
@@ -8869,7 +8863,7 @@ describe('Less AST grammar facts', () => {
                     { type: 'SimpleSelector', text: '.card' },
                     { type: 'SimpleSelector', text: ':lang(en-US)' },
                     { type: 'SimpleSelector', text: '::part(icon)' },
-                    { type: 'SimpleSelector', text: ':state(foo[bar])' }
+                    { type: 'SimpleSelector', text: ':state(foo [bar])' }
                   ]
                 }
               }
@@ -8881,8 +8875,9 @@ describe('Less AST grammar facts', () => {
     expect(
       isStylesheet(result.value) ? serialize(result.value).css : undefined
     ).toBe(
-      '.card:lang(en-US)::part(icon):state(foo[bar]) {\n  color: blue;\n}\n'
+      '.card:lang(en-US)::part(icon):state(foo [bar]) {\n  color: blue;\n}\n'
     );
+    expect(findCstNodes(cst.tree, 'BlockComment')).toHaveLength(0);
 
     for (const invalid of [
       '.card:nth-child(2n +) { color: blue; }',
@@ -9408,7 +9403,7 @@ describe('Less AST grammar facts', () => {
       ]
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError('Expected a Less Stylesheet.');
     }
     expect(serialize(result.value).css).toBe(
       '.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n'
@@ -9440,7 +9435,7 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError('Expected a Less Stylesheet.');
     }
     expect(serialize(result.value).css).toBe(
       '.card[data="test3"] {\n  color: red;\n}\n'

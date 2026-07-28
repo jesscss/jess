@@ -693,29 +693,26 @@ describe("public Less parse()", () => {
     );
   });
 
-  it("retains declaration-head block comments structurally in the property interpolation", () => {
-    const document = parse(".card { color/* survive */ /* me too */: grey; }");
+  it('retains declaration-head block comments as trivia, not property-name bytes', () => {
+    const document = parse('.card { color/* survive */ /* me too */: grey; }');
 
     expect(document).toMatchObject({
-      type: "Stylesheet",
+      type: 'Stylesheet',
       children: [
         {
-          type: "Rule",
+          type: 'Rule',
           body: [
             {
-              type: "Declaration",
-              name: {
-                type: "Interpolation",
-                parts: [{ lit: "color/* survive */ /* me too */" }],
-              },
-              value: { type: "Color", src: "grey" },
-            },
-          ],
-        },
-      ],
+              type: 'Declaration',
+              name: 'color',
+              value: { type: 'Color', src: 'grey' }
+            }
+          ]
+        }
+      ]
     });
     expect(serialize(document).css).toBe(
-      ".card {\n  color/* survive */ /* me too */: grey;\n}\n"
+      '.card {\n  color/* survive */ /* me too */: grey;\n}\n'
     );
   });
 
@@ -2919,7 +2916,7 @@ describe("public Less parse()", () => {
 
   it("does not mistake a condition operator hidden inside a string function argument (ambient scanSkip)", () => {
     /*
-     * Regression for the raw-scanTo footgun: `directFunctionConditionAhead` scanned
+     * Regression for the raw-scanTo footgun: the condition-ahead guard scanned
      * a function argument for a comparison/logical operator and matched the `or`
      * INSIDE the quoted string, mis-committing the argument to a Less condition.
      * The grammar-level `scanSkip` now treats the string as opaque during the scan.

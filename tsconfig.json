@@ -28,8 +28,13 @@
       "@jesscss/fns/*": ["./packages/fns/src/*.ts"],
       "@jesscss/compiler": ["./packages/compiler/src/index.ts"],
       "@jesscss/compiler/*": ["./packages/compiler/src/*.ts"],
+      "@jesscss/compiler-defaults": ["./packages/compiler-defaults/src/index.ts"],
+      "@jesscss/diagnostics-core": ["./packages/diagnostics-core/src/index.ts"],
+      "@jesscss/lint": ["./packages/lint/src/index.ts"],
       "@jesscss/plugin-node-modules": ["./packages/jess-plugin-node-modules/src/index.ts"],
+      "@jesscss/plugin-jess": ["./packages/syntax/jess/jess-plugin-jess/src/index.ts"],
       "@jesscss/plugin-less": ["./packages/syntax/less/jess-plugin-less/src/index.ts"],
+      "@jesscss/plugin-scss": ["./packages/syntax/scss/jess-plugin-scss/src/index.ts"],
       "styles-config": ["./packages/config/src/index.ts"]
     },
     "plugins": [

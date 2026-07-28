@@ -25,13 +25,14 @@
   },
   "dependencies": {
     "@jesscss/compiler": "workspace:*",
+    "@jesscss/compiler-defaults": "workspace:*",
     "@jesscss/core": "workspace:*",
+    "@jesscss/lint": "workspace:*",
     "@jesscss/patch-css": "workspace:*",
     "@jesscss/plugin-jess": "workspace:*",
     "@jesscss/plugin-less": "workspace:*",
     "@jesscss/plugin-node-modules": "workspace:*",
     "@jesscss/plugin-scss": "workspace:*",
-    "linecraft": "0.2.6",
     "lodash-es": "^4.17.21",
     "styles-config": "workspace:*"
   },
