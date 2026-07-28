@@ -48,6 +48,20 @@ describe('ImportAtRule', () => {
     });
   });
 
+  it('keeps optional imports off Context resolution', async () => {
+    const context = new Context({}, [{
+      name: 'must-not-resolve',
+      resolve: () => {
+        throw new Error('optional import should not resolve');
+      }
+    }]);
+    const document = stylesheet([
+      importAtRule('@import', quoted('"missing.less"', 'missing.less', '"', false), list([keyword('optional')], ','))
+    ]);
+
+    await expect(serialize(document, { context })).resolves.toEqual({ css: '@import (optional) "missing.less";\n' });
+  });
+
   it('keeps imported loop extend placements isolated per concrete iteration', async () => {
     const loopSelector = complexSelector([{
       compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([

@@ -292,6 +292,7 @@ interface PlannedImportDocument {
 function canLoadImport(node: ImportAtRule, specifier: string, options: string | null): boolean {
   const optionWords = options === null ? [] : options.toLowerCase().split(',').map(word => word.trim());
   return !optionWords.includes('inline')
+    && !optionWords.includes('optional')
     && !optionWords.includes('css')
     && node.alias === null
     && !(specifier.toLowerCase().endsWith('.css') && !optionWords.includes('less'));
