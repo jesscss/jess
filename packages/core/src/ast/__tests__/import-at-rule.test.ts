@@ -124,6 +124,106 @@ describe('ImportAtRule', () => {
     expect(plugin.parseCalls).toBe(2);
   });
 
+  it('does not resolve or parse again when only render import options differ', async () => {
+    const entryPath = '/virtual/entry.less';
+    const tokensPath = '/virtual/tokens.less';
+    const entry = stylesheet([
+      importAtRule('@import', quoted('"tokens.less"', 'tokens.less', '"', false)),
+      rule('.entry', [decl('color', keyword('red'))])
+    ]);
+    const tokens = stylesheet([
+      rule('.tokens', [decl('color', keyword('blue'))])
+    ]);
+
+    class MemoryLessPlugin extends AbstractPlugin {
+      name = 'memory-less';
+      supportedExtensions = ['.less'];
+      locateCalls = 0;
+      parseCalls = 0;
+      private readonly documents = new Map([
+        [entryPath, entry],
+        [tokensPath, tokens]
+      ]);
+
+      override locate(paths: string[]) {
+        this.locateCalls++;
+        return paths.find(candidate => this.documents.has(candidate)) ?? null;
+      }
+
+      override async getSource(filePath: string) {
+        return filePath === entryPath ? '@import "tokens.less";\n.entry { color: red; }\n' : '.tokens { color: blue; }\n';
+      }
+
+      safeParse(filePath: string) {
+        this.parseCalls++;
+        const document = this.documents.get(filePath);
+        return document === undefined ? { errors: [], warnings: [] } : { document, errors: [], warnings: [] };
+      }
+    }
+
+    const plugin = new MemoryLessPlugin();
+    const context = new Context({}, [plugin]);
+    const loadedEntry = await context.getTree(entryPath);
+    expect(loadedEntry.node).toBe(entry);
+    expect(plugin.locateCalls).toBe(1);
+    expect(plugin.parseCalls).toBe(1);
+
+    await context.withDocument(entry, () => context.loadImport('tokens.less'));
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+
+    await context.withDocument(entry, () => context.loadImport('tokens.less', { reference: true }));
+    expect(plugin.locateCalls).toBe(2);
+    expect(plugin.parseCalls).toBe(2);
+  });
+
+  it('reuses executable plugin module resolution and imports during a compile cycle', async () => {
+    const pluginPath = '/virtual/plugins/colors.js';
+    const loadedDark = { functions: { darken: () => 'dark' } };
+    const loadedLight = { functions: { lighten: () => 'light' } };
+
+    class MemoryScriptPlugin extends AbstractPlugin {
+      name = 'memory-js';
+      supportedExtensions = ['.js'];
+      resolveCalls = 0;
+      locateCalls = 0;
+      importPluginCalls = 0;
+
+      override resolve(paths: string | string[]) {
+        this.resolveCalls++;
+        return Array.isArray(paths) ? paths : [paths];
+      }
+
+      override locate(paths: string[]) {
+        this.locateCalls++;
+        return paths.includes(pluginPath) ? pluginPath : null;
+      }
+
+      override async importPlugin(filePath: string, options: string | null = null) {
+        this.importPluginCalls++;
+        expect(filePath).toBe(pluginPath);
+        return options === 'mode=light' ? loadedLight : loadedDark;
+      }
+    }
+
+    const plugin = new MemoryScriptPlugin();
+    const context = new Context({}, [plugin]);
+    const first = await context.getPluginModule(pluginPath, 'mode=dark');
+    const second = await context.getPluginModule(pluginPath, 'mode=dark');
+
+    expect(second).toBe(first);
+    expect(plugin.resolveCalls).toBe(1);
+    expect(plugin.locateCalls).toBe(1);
+    expect(plugin.importPluginCalls).toBe(1);
+
+    const light = await context.getPluginModule(pluginPath, 'mode=light');
+
+    expect(light.module).toBe(loadedLight);
+    expect(plugin.resolveCalls).toBe(1);
+    expect(plugin.locateCalls).toBe(1);
+    expect(plugin.importPluginCalls).toBe(2);
+  });
+
   it('loads a claimed external import through Context without a core network resolver', async () => {
     const remoteSpecifier = 'https://styles.example.test/tokens.less';
     const mappedPath = '/virtual/tokens.less';
