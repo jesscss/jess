@@ -416,6 +416,23 @@ describe('Diagnostic display tiers', () => {
     });
   });
 
+  it('colors: false keeps the frame but strips ANSI styles and terminal links', () => {
+    const { err: stderr } = capture(() =>
+      outputDiagnostics([err('parse/syntax-error', 'boom', { sourceLine: 'PLAIN_SRC' })], [], {
+        breakOnError: false,
+        colors: false
+      })
+    );
+    expect(stderr).not.toMatch(ANSI_SGR);
+    expect(stderr).not.toContain(OSC8);
+    expectNoLiveTerminalControls(stderr);
+    expect(stderr).toContain('parse/syntax-error [parse]');
+    expect(stderr).toContain('/proj/src/styles.less:4:3');
+    expect(stderr).toContain('PLAIN_SRC');
+    expect(stderr).toMatch(/╭─\[/u);
+    expect(stderr).toMatch(/╰─/u);
+  });
+
   it('warnings: \'summary\' collapses to one line per code with count + files', () => {
     const warnings = [
       warn('extend/not-found', 'a missing', { filePath: '/proj/a.less' }),

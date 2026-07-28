@@ -45,6 +45,9 @@ export type ConfigOptions = StylesConfig & {
   /** Show detailed reason and fix in diagnostics. Default: false */
   verbose?: boolean;
 
+  /** Emit ANSI color and terminal hyperlinks in diagnostics. Default: true */
+  colors?: boolean;
+
   /** Deprecation warnings of these types will cause an error to be thrown */
   fatalDeprecations?: Iterable<Deprecation>;
 
@@ -1104,7 +1107,8 @@ export class Compiler {
           breakOnError: options?.breakOnError ?? true,
           verbose: options?.verbose ?? false,
           warnings: options?.warnings,
-          errors: options?.errors
+          errors: options?.errors,
+          colors: options?.colors
         });
       }
 
@@ -1122,7 +1126,8 @@ export class Compiler {
           breakOnError: options?.breakOnError ?? true,
           verbose: options?.verbose ?? false,
           warnings: options?.warnings,
-          errors: options?.errors
+          errors: options?.errors,
+          colors: options?.colors
         });
       } else {
         logger.error(String(err));
@@ -1154,7 +1159,8 @@ export class Compiler {
       breakOnError: options?.breakOnError ?? true,
       verbose: options?.verbose ?? false,
       warnings: options?.warnings,
-      errors: options?.errors
+      errors: options?.errors,
+      colors: options?.colors
     });
   }
 
@@ -1300,7 +1306,8 @@ export class Compiler {
           breakOnError: renderOptions?.breakOnError ?? true,
           verbose: renderOptions?.verbose ?? false,
           warnings: renderOptions?.warnings,
-          errors: renderOptions?.errors
+          errors: renderOptions?.errors,
+          colors: renderOptions?.colors
         });
       }
 
