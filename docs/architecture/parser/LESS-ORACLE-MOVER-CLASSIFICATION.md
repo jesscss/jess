@@ -28,10 +28,12 @@ Resolved package versions and paths for the current report:
 | `@jesscss/plugin-less` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/syntax/less/jess-plugin-less` |
 | `jess` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/jess` |
 
-Latest report generated from the post-trivia-transfer hardening,
-unsupported-variable CST recovery, mixin-guard diagnostic, `processImports:
-false`, Less query-prelude separator-helper, and custom-property variable-value
-source state:
+Latest report rerun on 2026-07-28 from local `dev` at
+`461b10463de65cf2b7214d1b352a354d2801f5e6`, after the
+post-trivia-transfer hardening, unsupported-variable CST recovery,
+mixin-guard diagnostic, `processImports: false`, Less query-prelude
+separator-helper, custom-property variable-value, folded grammar type-surface,
+and structured module-resolution diagnostic source state:
 
 ```sh
 pnpm --filter @jesscss/parser-shared build
@@ -45,7 +47,7 @@ node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs \
 | surface | committed baseline | current aggregate | throws | common entries moved |
 | --- | --- | --- | ---: | ---: |
 | AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d` | 116 | 217 |
-| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `c67b4c38444ecceddd48e50b1c209d12e512ce4d1fe3f43f336076ac3f58763d` | 0 | 634 |
+| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `67cf6614c3aecd4f71e5965510d556d8da0ea2591948f0681392bc0a3963eb4c` | 0 | 634 |
 
 Corpus shape:
 

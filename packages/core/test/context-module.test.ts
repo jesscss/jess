@@ -57,7 +57,11 @@ describe('Context.getModule', () => {
 
     const context = new Context({ searchPaths: [tmpDir] });
 
-    await expect(context.getModule('bare-module')).rejects.toThrow('File not found: bare-module');
+    await expect(context.getModule('bare-module')).rejects.toMatchObject({
+      code: 'import/not-found',
+      phase: 'import',
+      reason: `Could not resolve "bare-module" from "${process.cwd()}".`
+    });
   });
 
   it('allows @jesscss/fns imports without plugin-js', async () => {

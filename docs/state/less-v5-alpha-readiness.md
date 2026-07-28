@@ -44,13 +44,23 @@ baseline only and never as a performance acceptance claim.
   `pnpm run verify:less-alpha` passes. The full strict-type release chain still
   belongs to `pnpm run release:alpha:check` before publishing.
 - Alpha closure: `scripts/release/alpha-allowlist.json` contains **18
-  allowlisted runtime packages**. `rollup-plugin-jess` is intentionally
-  excluded because it depends on `jess` and is not part of the runtime closure.
-  The controlled alpha snapshot at `6be731a5e` passes the allowlist,
-  packed-consumer, and alpha.9 dry-run publish checks. Its repaired push gate
-  ran `pnpm run prepush:changed-packages`, which dispatches on `alpha` to the
-  full `release:alpha:check` chain. It awaits explicit owner approval for the
-  full `pnpm run release:alpha` command; it is not published.
+  allowlisted runtime packages**, including `@jesscss/compiler`.
+  `rollup-plugin-jess` is intentionally excluded because it depends on `jess`
+  and is not part of the runtime closure. Current `dev` validates this publish
+  set with `node scripts/release/validate-alpha-publish-set.mjs`, and the
+  topological order publishes `@jesscss/compiler` before `@jesscss/plugin-less`
+  and `jess`.
+
+  Release-chain blocker, verified 2026-07-28: `origin/alpha` is stale. Its
+  allowlist does **not** include `@jesscss/compiler`, and
+  `packages/compiler/package.json` does not exist on that branch. npm likewise
+  has `jess@2.0.0-alpha.9` and the other Jess runtime packages, but
+  `npm view @jesscss/compiler@alpha` and
+  `npm view @jesscss/compiler@2.0.0-alpha.9` both return 404. External
+  `less@5.0.0-alpha.1` release hygiene now correctly depends on
+  `@jesscss/compiler` directly instead of `jess`, so its lockfile refresh,
+  `lessc` smoke test, and packed-consumer proof are blocked until alpha is
+  refreshed from a pushed `dev` source and the compiler package is published.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
 instrumentation. Diagnostic coverage/trace uses a separate macro transform and
