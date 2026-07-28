@@ -120,8 +120,9 @@ expected failures, so the harness *asserts* they fail:
 Both are pending the numeric-precision landing. Because the map asserts the
 failure, fixing precision will trip the entry and demand its own deletion.
 
-A third case, `import-remote.less`, is network-dependent and left gating; it is
-documented in `known-failures.json`. It passed in this run.
+`import-remote.less` is excluded from the alpha harness until remote URL import
+loading has an explicit network/IO allowlist. It is tracked in
+`docs/process/less-v5-release-plan.md`, not in `known-failures.json`.
 
 **A Less-corpus number is only meaningful together with the less.js checkout
 SHA** — the fixtures live in `~/git/oss/less.js/packages/test-data`, which this

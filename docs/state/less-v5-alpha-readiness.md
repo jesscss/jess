@@ -108,7 +108,9 @@ a dependency-ordered rebuild; and `pnpm run verify:less-alpha` passes. The
 alpha gate now builds the parser-shared/CSS/Less parser chain, core/fns/config
 packages, Less plugin stack, `@jesscss/compiler`, and `jess` before running
 package exports, the public Jess API, path resolution, and the Less test-data
-lanes (`tests-unit/`: 80 / 80, `tests-config/`: 29 / 29).
+lanes (`tests-unit/`: 79 / 79, `tests-config/`: 29 / 29). The remote URL
+import fixture is deliberately excluded from the alpha lane until resolver
+network access has an explicit allowlist/security model.
 
 Graduated in the current pass:
 
