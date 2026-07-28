@@ -296,9 +296,9 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 dependency or `optionalDependencies` entry.
 
 Current package-flow blockers, verified 2026-07-28, are owner/release
-sequencing decisions: wait for the latest PR #19 CI after the `.11` dependency
-bump, merge PR #19 if accepted, rerun the release dry-run from `alpha`, and then
-publish Less.
+sequencing decisions: merge PR #19 if accepted, rerun the release dry-run from
+`alpha`, and then publish Less. PR #19 is already green on the `.11` dependency
+bump.
 They are not an unclassified upstream fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
