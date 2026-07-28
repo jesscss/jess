@@ -286,10 +286,12 @@ describe('@jesscss/scss-parser public parse API', () => {
     }
   });
 
-  it('parses static SCSS import options through the public Stylesheet route', () => {
-    expect(parse('@import (css, once) "theme.css";')).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'ImportAtRule', options: { type: 'List', sep: ',', value: [{ src: 'css' }, { src: 'once' }] } }]
-    });
+  it('rejects Less-style import options through the public Stylesheet route', () => {
+    const source = '@import (css, once) "theme.css";';
+    const cst = parseScssCst(source);
+
+    expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
+    expect(() => parse(source)).toThrow(SyntaxError);
   });
 
   it('preserves the bounded static SCSS CSS-import tail as ImportAtRule.tail', () => {

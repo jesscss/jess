@@ -19,7 +19,7 @@ import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
@@ -83,7 +83,6 @@ type ScssRules = {
   DirectScssUse: Combinator<StyleImport | ModuleImport>;
   DirectScssForward: Combinator<StyleImport>;
   DirectScssStaticImportUrl: Combinator<Url>;
-  DirectScssStaticImportOptions: Combinator<List>;
   DirectScssStaticImportLayer: Combinator<ValueNode>;
   DirectScssStaticImportDeclaration: Combinator<ValueNode>;
   DirectScssStaticImportSupports: Combinator<FunctionCall>;
@@ -350,13 +349,6 @@ function requireComplexSelector(value: unknown): ComplexSelector {
 
 function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
   return isQuoted(value) || isUrl(value) || isInterpolation(value);
-}
-
-function isList(value: unknown): value is List {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value && value.type === 'List'
-    && 'value' in value && Array.isArray(value.value);
 }
 
 function isParam(value: unknown): value is Param {
@@ -1181,8 +1173,8 @@ export const scssFactory = (g: ScssRules) => {
           quote
         );
         return interpolation(parts);
-      }
-    );
+    }
+  );
 
     /*
    * Module directives are classified from their literal authored path. They
@@ -2134,28 +2126,8 @@ export const scssFactory = (g: ScssRules) => {
         }
         const body = children[1];
         return url(isQuoted(body) || isInterpolation(body) ? body : any(requireToken(body).value));
-      }
-    );
-    const DirectScssStaticImportOptions = node<List>(
-      'DirectScssStaticImportOptions',
-      sequence(
-        literal('('),
-        g.DirectScssKeyword,
-        many(sequence(
-          literal(','),
-          g.DirectScssKeyword
-        )),
-        literal(')')
-      ),
-      (children) => {
-        const values = children.filter((child): child is Keyword => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Keyword');
-        return list(
-          values,
-          ','
-        );
-      }
-    );
-
+    }
+  );
     /*
    * This remains a deliberately bounded CSS-import tail. Every admitted part
    * has an existing lossless ValueNode representation: `layer`/`layer(name)`,
@@ -2402,9 +2374,8 @@ export const scssFactory = (g: ScssRules) => {
     );
     const ScssImport = node<ImportAtRule>(
       'ScssImport',
-      sequence(
-        regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-        optional(g.DirectScssStaticImportOptions),
+    sequence(
+      regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
         choice(
           g.DirectScssQuoted,
           g.DirectScssStaticImportUrl
@@ -2422,7 +2393,7 @@ export const scssFactory = (g: ScssRules) => {
         return importAtRule(
           '@import',
           target,
-          children.find(isList) ?? null,
+        null,
           null,
           tail
         );
@@ -4996,9 +4967,8 @@ export const scssFactory = (g: ScssRules) => {
       ScssImport,
       DirectScssUseAs,
       DirectScssUse,
-      DirectScssForward,
-      DirectScssStaticImportUrl,
-      DirectScssStaticImportOptions,
+    DirectScssForward,
+    DirectScssStaticImportUrl,
       DirectScssStaticImportLayer,
       DirectScssStaticImportDeclaration,
       DirectScssStaticImportSupports,

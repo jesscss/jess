@@ -323,15 +323,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe('@import url();\n');
   });
 
-  it('constructs static SCSS import option lists as canonical List facts', () => {
+  it('rejects Less-style import options in SCSS imports', () => {
     const source = '@import (css, once) "theme.css";';
     const cst = parseScssCst(source);
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'ImportAtRule', options: { type: 'List', sep: ',', value: [{ src: 'css' }, { src: 'once' }] } }] });
+
+    expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
+    expect(result.ok && result.unconsumedFrom === null).toBe(false);
   });
 
   it('constructs typed static CSS-import supports tails without raw authored text', () => {
