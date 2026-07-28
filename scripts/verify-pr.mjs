@@ -21,9 +21,10 @@
  *   5. The six structural/perf gates + node-creation audit.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removePackageLibDirs } from './clean-package-libs.mjs';
 
 const ROOT = process.cwd();
 const started = Date.now();
@@ -63,10 +64,9 @@ function run(command, args, { capture = false } = {}) {
 }
 
 // 1. Clean all package libs.
-heading('Clean: removing packages/*/lib');
-for (const entry of readdirSync(path.join(ROOT, 'packages'))) {
-  rmSync(path.join(ROOT, 'packages', entry, 'lib'), { recursive: true, force: true });
-}
+heading('Clean: removing package lib outputs');
+const removedLibDirs = removePackageLibDirs(ROOT);
+console.log(`Removed ${removedLibDirs.length} package lib dir(s).`);
 
 /*
  * 2. Clean serial build in topological order. pnpm -r builds in dependency

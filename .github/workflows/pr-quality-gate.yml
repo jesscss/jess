@@ -46,14 +46,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Clean build: delete every packages/*/lib then build the FULL chain
+      # Clean build: delete every workspace package lib then build the FULL chain
       # SERIALLY in topological order (--workspace-concurrency=1). Incremental
       # builds mask errors — a stale lib recently masked a grammar compose
       # failure. Build output is captured so the compose-integrity step can grep
       # it without rebuilding.
       - name: Clean lib output
-        run: |
-          find packages -maxdepth 2 -type d -name lib -exec rm -rf {} + || true
+        run: node scripts/clean-package-libs.mjs
 
       - name: Clean serial topological build
         run: |
