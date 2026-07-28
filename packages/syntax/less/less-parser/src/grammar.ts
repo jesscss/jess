@@ -1911,6 +1911,8 @@ const directLessGeneralEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])
 const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const caseOf = makeWhen({ caseInsensitive: true });
   const lessWord = makeWord('-_0-9A-Za-z');
+  const lessCaseWord = makeWord('-_0-9A-Za-z', { caseInsensitive: true });
+  const whenGuardAhead = sequence(optional(regex(/[ \t\n\r\f]+/)), lessCaseWord('when'));
   const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-\w])/);
   // `@@name` is a variable reference whose lookup name is the resolved value
   // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
@@ -3410,7 +3412,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       // A malformed guarded definition must not split into a bare mixin call
       // followed by a selector rule (`.m() when default { … }`). Definitions get
       // first choice above; this lookahead only blocks that invalid fallback.
-      not(regex(/[ \t\n\r\f]*when(?![-\w])/)),
+      not(whenGuardAhead),
       optional(literal('!important')),
       optional(literal(';'))
     ),
@@ -4912,7 +4914,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(
       optional(relativeSelectorCombinator),
       g.DirectLessStaticPseudoCompound,
-      many(sequence(not(regex(/[ \t\n\r\f]*when(?![-\w])/i)), g.DirectLessStaticPseudoComplexTail))
+      many(sequence(not(whenGuardAhead), g.DirectLessStaticPseudoComplexTail))
     ),
     (children) => {
       const head = requireCompound(children.find(isCompound));
@@ -5263,7 +5265,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(
       optional(relativeSelectorCombinator),
       g.DirectLessCompound,
-      many(sequence(not(regex(/[ \t\n\r\f]*when(?![-\w])/i)), g.DirectLessComplexTail))
+      many(sequence(not(whenGuardAhead), g.DirectLessComplexTail))
     ),
     (children, _fields, span) => {
       const head = children.find(isCompound);
@@ -5364,7 +5366,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => children.filter(isExtendTargetFact)
   );
-  const directSelectorBranchBoundary = peek(choice(literal(','), lessWord('when'), literal('{')));
+  const directSelectorBranchBoundary = peek(choice(literal(','), whenGuardAhead, literal('{')));
   const DirectLessExtendStatement = node<ExtendInstruction[]>(
     'ExtendStatement',
     sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
