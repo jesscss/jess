@@ -87,21 +87,18 @@ for ordinary `dev` pushes.
 
 The Jess alpha and the external `less@5.0.0-alpha.1` package are separate
 releases. Publish and verify the Jess alpha's direct runtime closure first. The
-sibling Less repository keeps `link:` dependencies during local development;
-its alpha publish script requires `JESS_VERSION` and temporarily rewrites the
+sibling Less repository commits exact published Jess alpha dependencies for the
 direct Jess runtime closure (`@jesscss/compiler`, `@jesscss/core`,
 `@jesscss/plugin-less`, `@jesscss/plugin-less-compat`, and
-`@jesscss/plugin-node-modules`) to that exact registry version while
-packing/publishing, then restores the local manifest. `@jesscss/plugin-js`
-must remain an optional peer for script-module support, not a shipped runtime
-dependency. Publish Less only after the selected Jess alpha artifacts are
-queryable. As of 2026-07-28, Jess `2.0.0-alpha.10` is published and queryable
-for the direct runtime closure, including `@jesscss/compiler`, but the current
-Less.js PR #19 evidence needs the newer Jess diagnostic renderer from `dev`.
-Publish the next Jess alpha first, then use that exact version for Less:
+`@jesscss/plugin-node-modules`) and validates that manifest during publish.
+`@jesscss/plugin-js` must remain an optional peer for script-module support,
+not a shipped runtime dependency. Publish Less only after the selected Jess
+alpha artifacts are queryable. As of 2026-07-28, the external Less PR consumes
+published Jess `2.0.0-alpha.11` direct runtime packages. After merging that PR,
+publish Less from the external Less `alpha` branch:
 
 ```bash
-JESS_VERSION=2.0.0-alpha.11 npm publish --tag alpha --access public
+npm publish --tag alpha --access public
 ```
 
 The Less package's built `lessc` smoke test and typecheck are the publish

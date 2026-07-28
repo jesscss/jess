@@ -658,12 +658,11 @@ section is the authoritative full-scope companion to the compact task goal.
   `composeLeaf()` shape, and historical feature equivalence independently.
   Optimize only with semantic/output proof and matched parse plus end-to-end
   measurements; never restore legacy architecture for speed.
-- Publish the prepared Jess alpha snapshot when the owner is ready.
-  `origin/alpha` is prepared at `dd6359ed3` for `2.0.0-alpha.11`, and
-  `release:alpha:push-check` plus `release:alpha:dry-run` passed before that
-  push. npm still resolves `jess@alpha` / `@jesscss/compiler@alpha` to
-  `2.0.0-alpha.10`, so the external Less alpha cannot consume the single-frame
-  Linecraft diagnostic renderer until `.11` is published and queryable. Future
+- Finish the external Less alpha release decision. The direct Jess runtime
+  closure consumed by Less is published and queryable at `2.0.0-alpha.11`; the
+  Less PR branch consumes that exact registry set and locally passes the alpha
+  package gates. Wait for the latest PR #19 CI after the `.11` bump, then the
+  remaining decision is owner merge/publish authorization for Less. Future Jess
   alpha snapshots should use `pnpm run release:alpha:update-from-dev` from a
   clean `alpha` worktree; do not ordinary-merge/rebase shared alpha history or
   publish before every gate passes.
@@ -672,11 +671,10 @@ section is the authoritative full-scope companion to the compact task goal.
 
 Use [`docs/state/less-v5-alpha-readiness.md`](../../state/less-v5-alpha-readiness.md)
 as the current source of truth. As of 2026-07-28, the external Less branch has
-the desired direct compiler/plugin dependency shape and passes CI, but still
-resolves the direct Jess runtime closure from published `2.0.0-alpha.10`
-registry packages. Do not publish Less until the next Jess alpha is published,
-the PR branch consumes that exact dependency set, the final PR-head release
-preflight passes, and the owner authorizes the Less release flow.
+the desired direct compiler/plugin dependency shape, consumes the published
+`2.0.0-alpha.11` Jess runtime closure, and passes local alpha package gates. Do
+not publish Less until the latest PR-head CI/release evidence is green and the
+owner authorizes the Less release flow.
 
 ## Router
 

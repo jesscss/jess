@@ -51,14 +51,13 @@ baseline only and never as a performance acceptance claim.
   topological order publishes `@jesscss/compiler` before `@jesscss/plugin-less`
   and `jess`.
 
-  Release status, verified 2026-07-28: `origin/alpha` is prepared at
-  `dd6359ed3` for `2.0.0-alpha.11` from `origin/dev`
-  `79516a0d86deb8b615fefa438aae3a89d11bcb65`; `release:alpha:push-check` and
-  `release:alpha:dry-run` passed before the push. npm still resolves both
-  `jess@alpha` and `@jesscss/compiler@alpha` to `2.0.0-alpha.10`, and
-  `@jesscss/compiler-preset@alpha` is not queryable yet, so the external Less
-  PR must remain pinned to published `2.0.0-alpha.10` until the owner publishes
-  the next Jess alpha. Future alpha snapshots should use
+  Release status, verified 2026-07-28: the direct Jess runtime closure needed
+  by external Less is published and queryable at `2.0.0-alpha.11`
+  (`@jesscss/compiler`, `@jesscss/core`, `@jesscss/plugin-less`,
+  `@jesscss/plugin-less-compat`, `@jesscss/plugin-node-modules`, and optional
+  peer `@jesscss/plugin-js`). `jess@alpha` still resolves to
+  `2.0.0-alpha.10`, but Less deliberately does not depend on the
+  batteries-included `jess` package. Future alpha snapshots should use
   `pnpm run release:alpha:update-from-dev` from a clean `alpha` worktree.
 
 Normal public parse/compile provides neither Parseman coverage nor trace
@@ -234,12 +233,12 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `36998a1d`,
+evidence: branch `less-5-alpha.1` at `fa39abf8`,
 clean worktree, PR open/non-draft. The branch merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `36998a1d` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `fa39abf8` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
 and packed-consumer proof. The packed-consumer proof derives its expected Jess
 runtime version from the committed Less manifest. The Less compatibility error
@@ -251,25 +250,22 @@ across ubuntu/macOS/windows and Node current, LTS, LTS-1, and LTS-2 on the
 previous audited head; CodeRabbit was green; release-PR automation jobs were
 skipped as expected. The current head and CI state are recorded below.
 
-Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `36998a1d`, the external Less commit hook reran
-the full `pnpm run test:alpha` gate, including typecheck, build, `lessc` smoke
-tests, alpha support contract, alpha fixtures, publish dry-run tests, and the
-packed-consumer proof. The packed-consumer verifier now derives the expected
-Jess alpha version from the committed Less manifest, so the post-Jess-publish
-dependency bump no longer needs a separate verifier constant edit. The `lessc`
-smoke tests pin
+Current package/release gates are registry-backed against the published direct
+Jess runtime closure at `2.0.0-alpha.11`: on PR head `fa39abf8`, the external
+Less commit hook reran the full `pnpm run test:alpha` gate, including
+typecheck, build, `lessc` smoke tests, alpha support contract, alpha fixtures,
+publish dry-run tests, and the packed-consumer proof. The packed-consumer
+verifier now derives the expected Jess alpha version from the committed Less
+manifest. The `lessc` smoke tests pin
 Linecraft-formatted colored diagnostics by default, source framing, `--silent`
-suppression, and `--no-color` control-sequence stripping. The PR branch also
-routes successful Jess warnings to `stderr`, keeps CSS-only output on `stdout`,
-and suppresses warning output under `--quiet`. Linecraft-colored diagnostics are
-an alpha merge blocker: if a public `lessc` error path falls back to raw offsets,
-uncolored text, or a non-Linecraft frame, the package is not ready to merge.
-The remaining registry caveat is that PR #19 currently consumes published Jess
-`2.0.0-alpha.10`; the single-frame renderer fix on Jess `dev` must ship in the
-next Jess alpha and be consumed by the Less PR before the external package can
-prove that same behavior against the final registry closure. The alpha support
-contract now pins the upstream-sync fixture families that are green for alpha.1:
+suppression, `--no-color` control-sequence stripping, and absence of
+alternate-screen / live-region terminal controls. The PR branch also routes
+successful Jess warnings to `stderr`, keeps CSS-only output on `stdout`, and
+suppresses warning output under `--quiet`. Linecraft-colored diagnostics are an
+alpha merge blocker: if a public `lessc` error path falls back to raw offsets,
+uncolored text, or a non-Linecraft frame, the package is not ready to merge. The
+alpha support contract now pins the upstream-sync fixture families that are
+green for alpha.1:
 `at-rule-variable-interpolation`, `color-functions/modern`, `math-css-vars`,
 `mixins-guards`, and `mixins-named-args`. The packed consumer installs the
 direct Jess runtime closure and does not install the batteries-included `jess`
@@ -299,9 +295,10 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are owner/release sequencing
-decisions: publish the next Jess alpha from `dev`, bump PR #19 to that exact
-registry version, rerun the Less package alpha proofs, and then publish Less.
+Current package-flow blockers, verified 2026-07-28, are owner/release
+sequencing decisions: wait for the latest PR #19 CI after the `.11` dependency
+bump, merge PR #19 if accepted, rerun the release dry-run from `alpha`, and then
+publish Less.
 They are not an unclassified upstream fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
@@ -751,9 +748,7 @@ earlier, before a manual publish attempt.
   `2.0.0-alpha.11`; `release:alpha:push-check` and `release:alpha:dry-run`
   passed. Added `pnpm run release:alpha:update-from-dev` on Jess `dev`
   (`57fcb27fa`) so future controlled alpha snapshots are scripted instead of a
-  manual two-tree patch recipe. npm still reports `jess@alpha` and
-  `@jesscss/compiler@alpha` as `2.0.0-alpha.10`, so Less PR #19 remains pinned
-  to that published registry closure until the owner publishes `.11`.
+  manual two-tree patch recipe.
 - 2026-07-28: Updated external Less PR #19 to `36998a1d`, deriving release-test
   Jess alpha assertions and the packed consumer's expected Jess version from
   `packages/less/package.json` instead of hardcoding alpha.10. The commit hook
@@ -761,6 +756,15 @@ earlier, before a manual publish attempt.
   support, alpha fixtures, publish dry-run tests, and packed-consumer proof
   against published Jess `2.0.0-alpha.10`. Updated the PR description; GitHub
   CI is running for the new head.
+- 2026-07-28: Updated external Less PR #19 to `fa39abf8`, bumping its direct
+  Jess runtime closure and optional `@jesscss/plugin-js` peer to published
+  `2.0.0-alpha.11`. The alpha fixture harness removed
+  `tests-unit/container/container.less` from expected render failures because
+  `.11` fixes that gap; the gate now reports 87 rendered and 20 expected render
+  failures. Local verification passed `pnpm install --frozen-lockfile
+  --ignore-scripts`, `pnpm run test:alpha`, `pnpm run test:release`,
+  `pnpm --dir packages/less run lint`, `npm test`, and `git diff --check`.
+  The packed-consumer proof installs Jess `2.0.0-alpha.11` from the registry.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,
