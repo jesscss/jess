@@ -40,6 +40,17 @@ describe('Less reference semantic contracts through the public AST route', () =>
     `)).resolves.toBe('.entry {\n  treat: ice cream;\n}\n');
   });
 
+  it('calls a mixin value reached through a namespace accessor alias', async () => {
+    await expect(parseAndRender(`
+      .mix2(@n) { value: @n; }
+      #lookup2 { @var: .mix2(lookup); }
+      .entry {
+        @dr: #lookup2[@var];
+        @dr();
+      }
+    `)).resolves.toBe('.entry {\n  value: lookup;\n}\n');
+  });
+
   it('reports missing imports as structured import diagnostics at the import statement', async () => {
     const source = '@import "missing-file.less";\n.entry { color: red; }';
     const result = await new Compiler({ output: { collapseNesting: true } }).renderToResult(

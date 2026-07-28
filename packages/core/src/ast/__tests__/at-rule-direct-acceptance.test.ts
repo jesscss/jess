@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { atRuleBlock, atRuleStatement } from '../at-rule.js';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, dimension, generalEnclosed, interpolation, keyword, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
+  block, decl, dimension, generalEnclosed, interpolation, keyword, operation, reference, spaced, stylesheet, rule, sel, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 import { makeLessRegistry } from '@jesscss/fns';
@@ -21,6 +21,26 @@ describe('At-rule canonical AST emission', () => {
     ]);
 
     expect(render(document)).toBe('@media 48rem {\n'
+      + '  .card {\n'
+      + '    display: grid;\n'
+      + '  }\n'
+      + '}\n');
+  });
+
+  it('preserves media feature parens when a prelude reference resolves to a block value', () => {
+    const document = stylesheet([
+      variableDeclaration('feature', block(operation(':', keyword('min-width'), dimension(480, 'px'))), { mode: 'declare' }),
+      atRuleBlock('@media', spaced([
+        keyword('not'),
+        keyword('all'),
+        keyword('and'),
+        reference(variableReference('feature', 'scoped'), [], '@feature')
+      ]), [
+        rule('.card', [decl('display', keyword('grid'))])
+      ])
+    ]);
+
+    expect(render(document)).toBe('@media not all and (min-width: 480px) {\n'
       + '  .card {\n'
       + '    display: grid;\n'
       + '  }\n'

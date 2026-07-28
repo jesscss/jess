@@ -3674,13 +3674,27 @@ function resolveReferenceResult(
        * the same callable. Follow the binding chain before deciding what a call
        * means, or the call silently becomes a no-op on the reference itself.
        */
-      while (!isValueSlotArray(value) && value.type === 'VariableReference') {
-        const aliased = resolveVarRef(valueFrame, value.name, value.lookup, e);
-        if (!aliased) {
-          break;
+      while (!isValueSlotArray(value)) {
+        if (value.type === 'VariableReference') {
+          const aliased = resolveVarRef(valueFrame, value.name, value.lookup, e);
+          if (!aliased) {
+            break;
+          }
+          value = aliased.value;
+          valueFrame = aliased.frame;
+          continue;
         }
-        value = aliased.value;
-        valueFrame = aliased.frame;
+        if (value.type === 'Reference') {
+          const aliased = resolveReferenceResult(value, valueFrame, e);
+          if (!aliased) {
+            break;
+          }
+          value = aliased.value;
+          valueFrame = aliased.frame;
+          sourceOwner = aliased.sourceOwner ?? sourceOwner;
+          continue;
+        }
+        break;
       }
       if (!isValueSlotArray(value) && value.type === 'AnonymousMixin'
         && (lambdaResultValue(value.body) !== undefined || value.params !== undefined || step.args.length > 0)) {
@@ -10551,6 +10565,23 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
         parts.push(evalQueryPrelude(node.value[index]!, frame, e));
       }
       return joinPreludeParts(parts);
+    }
+    case 'VariableReference': {
+      const hit = resolveVarRef(frame, node.name, node.lookup, e);
+      if (!hit) {
+        if (hasExcludedVarRef(frame, node.name, node.lookup, e)) {
+          recursiveReference(node, `@${node.name}`, 'Variable', e);
+        }
+        return evalBytes(node, frame, e);
+      }
+      return withExcluded(e, hit.value, () => evalQueryPrelude(hit.value, hit.frame, e));
+    }
+    case 'Reference': {
+      const resolved = resolveReferenceResult(node, frame, e);
+      if (resolved === null || isMixinCallValue(resolved.value)) {
+        return evalBytes(node, frame, e);
+      }
+      return evalQueryPrelude(resolved.value, resolved.frame, e);
     }
     default:
       return evalBytes(node, frame, e);

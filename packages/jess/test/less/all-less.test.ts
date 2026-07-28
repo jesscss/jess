@@ -150,14 +150,6 @@ const expectedFailureFixtures = new Map<string, string>([
     '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)'
   ],
   [
-    "tests-config/namespacing/namespacing-functions.less",
-    "detached ruleset callable lookup result differs from Less",
-  ],
-  [
-    "tests-config/namespacing/namespacing-media.less",
-    "namespace lookup inside media query expression differs from Less",
-  ],
-  [
     'tests-unit/urls/urls.less',
     'renders but CSS @import placement and multiline function formatting differ from Less'
   ],
