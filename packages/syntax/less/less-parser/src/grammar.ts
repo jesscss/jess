@@ -1269,6 +1269,48 @@ function isValueSlotValue(value: unknown): value is ValueSlot {
   return Array.isArray(value) ? value.every(isValueSlotValue) : isValueNode(value);
 }
 
+function callWithLayout(
+  name: string,
+  args: ValueSlot[],
+  separators: string[],
+  hasTrailingSeparator: boolean,
+  span: SourceSpan
+): FunctionCall {
+  const call = funcCall(name, args);
+  if (separators.length === args.length - 1 || hasTrailingSeparator) {
+    withValueLayout(call.args, separators);
+  }
+  return withSourceSpan(call, span);
+}
+
+function functionCallFromChildren(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  span: SourceSpan,
+  triviaLog: readonly number[],
+  state: unknown
+): FunctionCall {
+  const name = functionNameFromOpener(children[0]);
+  const args: ValueSlot[] = [];
+  for (const child of children.slice(1, -1)) {
+    if (isValueSlotValue(child)) {
+      args.push(child);
+    }
+  }
+  const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
+  return callWithLayout(name, args, separators, hasField(fields, 'trailingSeparator'), span);
+}
+
+function argumentFunctionFromChildren(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  span: SourceSpan
+): FunctionCall {
+  const name = functionNameFromOpener(children[0]);
+  const args = children.slice(1, -1).filter(isValueSlotValue);
+  return callWithLayout(name, args, separatorsFromFields(fields), hasField(fields, 'trailingSeparator'), span);
+}
+
 function requireValueSlot(value: unknown): ValueSlot {
   return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValueNode(value));
 }
@@ -2712,28 +2754,14 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const GenericFunction = node<FunctionCall>(
     'Call',
     parser({ trivia: functionTrivia }, sequence(routed(), FunctionArguments, literal(')'))),
-    (children, fields, span, _rawChildren, triviaLog, state) => {
-      const name = functionNameFromOpener(children[0]);
-      const args: ValueSlot[] = [];
-      for (const child of children.slice(1, -1)) {
-        if (isValueSlotValue(child)) {
-          args.push(child);
-        }
-      }
-      const call = funcCall(name, args);
-      const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
-      if (separators.length === args.length - 1 || hasField(fields, 'trailingSeparator')) {
-        withValueLayout(call.args, separators);
-      }
-      return withSourceSpan(call, span);
-    }
+    (children, fields, span, _rawChildren, triviaLog, state) =>
+      functionCallFromChildren(children, fields, span, triviaLog, state)
   );
-  const Call = transform(
-    dispatch(
-      genericFunctionOpen,
-      when(endsWith('('), GenericFunction)
-    ),
-    ([, call]) => call
+  const Call = node<FunctionCall>(
+    'Call',
+    parser({ trivia: functionTrivia }, sequence(genericFunctionOpen, FunctionArguments, literal(')'))),
+    (children, fields, span, _rawChildren, triviaLog, state) =>
+      functionCallFromChildren(children, fields, span, triviaLog, state)
   );
   // A detached ruleset is a call-argument form, not a general value piece.
   // Keep this argument-enabled function production out of Value
@@ -2747,23 +2775,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const ArgumentFunction = node<FunctionCall>(
     'Call',
     sequence(routed(), CallArgumentFunctionArguments, literal(')')),
-    (children, fields, span) => {
-      const name = functionNameFromOpener(children[0]);
-      const args = children.slice(1, -1).filter(isValueSlotValue);
-      const call = funcCall(name, args);
-      const separators = separatorsFromFields(fields);
-      if (separators.length === args.length - 1 || hasField(fields, 'trailingSeparator')) {
-        withValueLayout(call.args, separators);
-      }
-      return withSourceSpan(call, span);
-    }
+    argumentFunctionFromChildren
   );
-  const CallArgumentFunction = transform(
-    dispatch(
-      genericFunctionOpen,
-      when(endsWith('('), ArgumentFunction)
-    ),
-    ([, call]) => call
+  const CallArgumentFunction = node<FunctionCall>(
+    'Call',
+    sequence(genericFunctionOpen, CallArgumentFunctionArguments, literal(')')),
+    argumentFunctionFromChildren
   );
   // Deprecated Less percent-format syntax is a normal existing function fact.
   // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
