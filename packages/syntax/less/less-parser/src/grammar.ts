@@ -18,7 +18,7 @@
 import {
   attempt, rules, composeLeaf,
   node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
-  not, scanTo, balanced, parser, trivia, noTrivia, expect, sepBy, label, word, keywords, field, leaf, peek,
+  not, scanTo, balanced, parser, trivia, noTrivia, label, word, keywords, field, leaf, peek,
   dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
 } from 'parseman' with { type: 'macro' };
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
@@ -957,22 +957,6 @@ function hasField(fields: FieldMap | undefined, name: string): boolean {
   return fields?.[name] !== undefined;
 }
 
-/** Fold selected value children into a comma `List`, retaining any authored
- * separator layout, and collapse a single value to itself. */
-function commaListFromChildren<T extends ValueSlot>(
-  children: readonly unknown[],
-  fields: FieldMap | undefined,
-  pick: (child: unknown) => child is T
-): T | List {
-  const values = children.filter(pick);
-  if (values.length === 1) {
-    return values[0]!;
-  }
-  const result = list(values, ',');
-  const separators = separatorsFromFields(fields);
-  return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
-}
-
 function commaListWithTriviaFromChildren<T extends ValueSlot>(
   children: readonly unknown[],
   fields: FieldMap | undefined,
@@ -1765,17 +1749,6 @@ function requireRulesetBody(children: readonly unknown[]): Statement[] {
   return body;
 }
 
-function requireStatements(children: readonly unknown[]): Statement[] {
-  const statements: Statement[] = [];
-  for (const child of children) {
-    if (!isStatement(child)) {
-      throw new TypeError('Direct Less AST grammar produced a non-statement child.');
-    }
-    statements.push(child);
-  }
-  return statements;
-}
-
 /** Retain every callback body fact except an authored empty statement. */
 function requireCallbackStatements(children: readonly unknown[]): Statement[] {
   const statements: Statement[] = [];
@@ -1961,9 +1934,7 @@ const importOption = keywords(
 // boundary as its property/keyword facts.  `url()` has its own typed node and
 // is excluded so an unsupported dynamic URL cannot fall through as a generic call.
 const functionName = regex(/(?!(?:url|calc)(?=\())-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
-const calcFunctionName = regex(/calc(?=\()/i);
 const functionOpener = token(noTrivia(sequence(functionName, literal('('))));
-const calcFunctionOpener = token(noTrivia(sequence(calcFunctionName, literal('('))));
 const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
 // Math productions run under `noTrivia`, so their operators own precisely the
 // gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
@@ -2042,7 +2013,6 @@ const functionConditionNot = word(
 // `scanTo` sentinel, so it lands at arbitrary offsets and needs the LEADING
 // `(?<![-\w])` boundary a token-position terminal does not carry.
 const functionConditionAhead = choice(mixinGuardOperator, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
-const staticSelectorPseudoName = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
 // A non-selector functional pseudo is still one canonical SimpleSelector leaf.
 // A pseudo body cannot quietly turn a Less variable read into static bytes.
 // Keep only `@` that cannot start `@{...}`, `@@name`, or `@name`; nested
@@ -2443,7 +2413,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const ImportStatement = node<ImportAtRule>(
     'ImportAtRule',
     sequence(importKeyword, optional(g.ImportOptions), g.ImportTarget, optional(field('tail', g.ImportTail)), literal(';')),
-    (children, fields, span) => {
+    (children, fields, _span) => {
       // Every accepted import fact is a grammar child or a field capture. In
       // particular, the opaque tail is reconstructed from terminal values only
       // after the recursive grammar has closed every delimiter.
@@ -3000,7 +2970,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const PreservedDivision = node<ValueNode>(
     'PreservedDivision',
     noTrivia(sequence(g.TopSum, oneOrMore(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
-    (children, fields, span) => {
+    (children, fields, _span) => {
       const slashBoundaries = fields?.separator === undefined
         ? []
         : requireFields(fields, 'separator').map((separator) => {
