@@ -233,20 +233,24 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `6399232ba9667d83ce2f484e95e1bc6e90d3bbd2`,
-clean worktree, PR open/non-draft. GitHub Actions are green on `6399232b` after
-the container expected-CSS fix; CodeRabbit is pending on that head, so the PR
-merge state is temporarily `UNSTABLE` until the bot context settles. The older
-complete review text still lists stale comments from `35633d4b`: the remote-tag
-comment is fixed by `0cf35355`, and the two `container.css` fixture comments
-are fixed by `6399232b`.
+evidence: branch `less-5-alpha.1` at `2271f82309d127d4a44dcebe0acc235a9ebdb037`,
+clean worktree, PR open/non-draft. That head merges `upstream/alpha`
+(`330e9d71`) into the Less 5 alpha branch and resolves the release-automation
+conflicts while preserving the first unpublished `5.0.0-alpha.1` release
+candidate behavior. Local verification on `2271f823` passed the Less package
+alpha contract, root `pnpm run test:alpha`, and `pnpm run test:release`.
+GitHub Actions and CodeRabbit are re-running on the new head; the PR merge state
+is temporarily `UNSTABLE` while those queued contexts settle.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `6399232b`, `pnpm run test:alpha` passes the
+`2.0.0-alpha.10`: on PR head `2271f823`, `pnpm run test:alpha` passes the
 Less package typecheck, build, `lessc` smoke tests, alpha support contract,
-publish dry-run tests, and packed-consumer proof. The packed consumer installs
-the direct Jess runtime closure and does not install the batteries-included
-`jess` package. `packages/less/package.json` uses published `@jesscss/*` alpha
+publish dry-run tests, and packed-consumer proof. The alpha support contract now
+pins the upstream-sync fixture families that are green for alpha.1:
+`at-rule-variable-interpolation`, `color-functions/modern`, `math-css-vars`,
+`mixins-guards`, and `mixins-named-args`. The packed consumer installs the
+direct Jess runtime closure and does not install the batteries-included `jess`
+package. `packages/less/package.json` uses published `@jesscss/*` alpha
 dependencies, has no direct `jess` dependency, and keeps `@jesscss/plugin-js`
 as an optional peer only.
 
@@ -265,14 +269,14 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are owner/release decisions,
-not Jess registry availability or an unclassified upstream fixture gap. The missing
+Current package-flow blockers, verified 2026-07-28, are owner/release decisions
+and pending remote CI on the latest pushed head, not Jess registry availability
+or an unclassified upstream fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
-alpha gate passes. GitHub Actions and CodeRabbit are green on `6399232b`, and
-the PR merge state is `CLEAN`. Greptile did not review because the PR exceeds
-its file limit, and Bugbot is not enabled; those are bot-capability notes rather
-than code findings. The old no-control-regex review thread and both container
+alpha gate passes. Greptile did not review because the PR exceeds its file
+limit, and Bugbot is not enabled; those are bot-capability notes rather than
+code findings. The old no-control-regex review thread and both container
 fixture threads are resolved/outdated. The intentional custom-unit note in
 `variables/legacy/variable-advanced.css` remains a review disposition item
 rather than a code fix: this branch has no Stylelint config, no Stylelint script,
@@ -300,12 +304,12 @@ output semantics. Current classification:
   Less 4 bare-at-rule-variable warning matrix, and upstream Less 4
   `percentage(var(--x))` eval-error behavior. These are classified limitations
   or follow-up work, not unreviewed fixture gaps.
-- **Classify separately from fixture sync:** upstream `alpha` drift is release
-  automation only (`330e9d71`); CJS/browser export tests (#4424/#4444), debug
-  line-number crash coverage (#4446), dependency/security churn, and release
-  version/changelog commits are not parser fixture deltas. They may be
-  alpha-release hygiene work, but they are not evidence that the Jess-powered
-  parser is missing a language fixture.
+- **Classify separately from fixture sync:** the previous upstream `alpha` delta
+  was release automation only (`330e9d71`) and is now merged into the PR branch.
+  CJS/browser export tests (#4424/#4444), debug line-number crash coverage
+  (#4446), dependency/security churn, and release version/changelog commits are
+  not parser fixture deltas. They may be alpha-release hygiene work, but they
+  are not evidence that the Jess-powered parser is missing a language fixture.
 
 ## Historical External Less `5.0.0-alpha.1` package audit (2026-07-22)
 
