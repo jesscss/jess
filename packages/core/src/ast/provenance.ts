@@ -28,6 +28,20 @@ export interface ParserRootTriviaIndex {
   gapsWithKind?(kind: string | readonly string[]): readonly ParserRootTriviaGap[];
 }
 
+const COMMENT_TRIVIA_KINDS = ['comment', 'blockComment', 'lineComment'] as const;
+type CommentTriviaKind = typeof COMMENT_TRIVIA_KINDS[number];
+
+function isCommentTriviaKind(label: string): label is CommentTriviaKind {
+  return label === 'comment' || label === 'blockComment' || label === 'lineComment';
+}
+
+function gapHasCommentKind(gap: ParserRootTriviaGap): boolean {
+  if (typeof gap.hasKind !== 'function') {
+    return true;
+  }
+  return COMMENT_TRIVIA_KINDS.some(kind => gap.hasKind?.(kind) === true);
+}
+
 /** Authored separator/trivia facts for a raw ValueSlot array.
  *
  * ValueSlot deliberately stays a plain readonly array in the public AST.  A
@@ -142,25 +156,23 @@ export function createTriviaMapFromParseman(
   src: string,
   index: ParserRootTriviaIndex
 ): TriviaMap {
-  const canonicalByRange = new Map<string, Trivia>();
-  const hasCommentKind = index.labels?.includes('comment') === true;
-  let maps: {
-    readonly before: Map<number, Trivia>;
-    readonly after: Map<number, Trivia>;
-  } | undefined;
+  const canonicalByGap = new WeakMap<ParserRootTriviaGap, Trivia>();
+  const hasCommentKind = index.labels?.some(isCommentTriviaKind) === true;
   let sortedComments: readonly Trivia[] | undefined;
 
   const triviaForGap = (gap: ParserRootTriviaGap | undefined): Trivia | undefined => {
-    const start = gap?.start ?? 0;
-    const end = gap?.end ?? 0;
+    if (gap === undefined) {
+      return undefined;
+    }
+    const start = gap.start;
+    const end = gap.end;
     if (end <= start) {
       return undefined;
     }
-    const key = `${start}:${end}`;
-    let run = canonicalByRange.get(key);
+    let run = canonicalByGap.get(gap);
     if (run === undefined) {
-      const labeledHasComment = hasCommentKind && typeof gap?.hasKind === 'function'
-        ? gap.hasKind('comment')
+      const labeledHasComment = hasCommentKind && typeof gap.hasKind === 'function'
+        ? gapHasCommentKind(gap)
         : undefined;
       run = makeAstTrivia(
         src,
@@ -168,27 +180,9 @@ export function createTriviaMapFromParseman(
         end,
         labeledHasComment
       );
-      canonicalByRange.set(key, run);
+      canonicalByGap.set(gap, run);
     }
     return run;
-  };
-
-  const getMaps = () => {
-    if (maps !== undefined) {
-      return maps;
-    }
-    const before = new Map<number, Trivia>();
-    const after = new Map<number, Trivia>();
-    for (const gap of index.gaps()) {
-      const run = triviaForGap(gap);
-      if (run === undefined) {
-        continue;
-      }
-      after.set(run.start, run);
-      before.set(run.end, run);
-    }
-    maps = { before, after };
-    return maps;
   };
 
   return {
@@ -200,8 +194,17 @@ export function createTriviaMapFromParseman(
         ? index.gapBefore(offset)
         : index.gapAfter(offset));
     },
-    *entries(direction) {
-      yield* (direction === 'before' ? getMaps().before : getMaps().after).entries();
+    * entries(direction) {
+      for (const gap of index.gaps()) {
+        const run = triviaForGap(gap);
+        if (run === undefined) {
+          continue;
+        }
+        yield [
+          direction === 'before' ? run.end : run.start,
+          run
+        ];
+      }
     },
     has(offset, direction) {
       if (offset === undefined) {
@@ -214,18 +217,17 @@ export function createTriviaMapFromParseman(
     commentRuns() {
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
-        const seen = new Set<string>();
+        const seen = new Set<Trivia>();
         const gaps = hasCommentKind
-          ? index.gapsWithKind?.('comment') ?? index.gaps().filter(gap => typeof gap.hasKind === 'function' ? gap.hasKind('comment') : true)
+          ? index.gapsWithKind?.(COMMENT_TRIVIA_KINDS) ?? index.gaps().filter(gapHasCommentKind)
           : index.gaps();
         for (const gap of gaps) {
           const run = triviaForGap(gap);
           if (run?.hasComment === true) {
-            const key = `${run.start}:${run.end}`;
-            if (seen.has(key)) {
+            if (seen.has(run)) {
               continue;
             }
-            seen.add(key);
+            seen.add(run);
             runs.push(run);
           }
         }

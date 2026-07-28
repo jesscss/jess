@@ -87,6 +87,46 @@ describe('canonical AST source provenance', () => {
     expect(trivia.lookup(0, 'after')).toBe(commentRuns[0]);
   });
 
+  it('keeps direct boundary lookups on Parseman\'s sparse index', () => {
+    const src = '/* keep */\n.a{}';
+    const leading = { start: 0, end: 11 };
+    let gapsCalls = 0;
+    const trivia = createTriviaMapFromParseman(src, {
+      entries: {
+        length: 1,
+        start() {
+          return leading.start;
+        },
+        end() {
+          return leading.end;
+        }
+      },
+      gapBefore(offset) {
+        return offset === leading.end ? leading : undefined;
+      },
+      gapAfter(offset) {
+        return offset === leading.start ? leading : undefined;
+      },
+      gaps() {
+        gapsCalls++;
+        return [leading];
+      }
+    });
+
+    expect(trivia.has(leading.end, 'before')).toBe(true);
+    expect(trivia.lookup(leading.end, 'before')).toEqual({
+      start: 0,
+      end: 11,
+      src,
+      hasComment: true
+    });
+    expect(trivia.lookup(leading.start, 'after')).toBe(trivia.lookup(leading.end, 'before'));
+    expect(gapsCalls).toBe(0);
+
+    expect([...trivia.entries('before')]).toHaveLength(1);
+    expect(gapsCalls).toBe(1);
+  });
+
   it('uses Parseman trivia labels to find comments without scanning every gap', () => {
     const src = 'xx/* keep */\n  .a{}';
     const leadingWhitespace = {
@@ -122,7 +162,7 @@ describe('canonical AST source provenance', () => {
       },
       gapsWithKind(kind) {
         gapsWithKindCalls++;
-        expect(kind).toBe('comment');
+        expect(kind).toEqual(['comment', 'blockComment', 'lineComment']);
         return [commentGap];
       }
     });
@@ -141,6 +181,52 @@ describe('canonical AST source provenance', () => {
       }
     ]);
     expect(gapsWithKindCalls).toBe(1);
+  });
+
+  it('recognizes Parseman block and line comment trivia labels as comment-bearing', () => {
+    const src = '/* block */\n// line\n.a{}';
+    const block = {
+      start: 0,
+      end: 12,
+      hasKind: (kind: string) => kind === 'blockComment'
+    };
+    const line = {
+      start: 12,
+      end: 20,
+      hasKind: (kind: string) => kind === 'lineComment'
+    };
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['whitespace', 'blockComment', 'lineComment'],
+      entries: {
+        length: 2,
+        start(index) {
+          return index === 0 ? block.start : line.start;
+        },
+        end(index) {
+          return index === 0 ? block.end : line.end;
+        }
+      },
+      gapBefore(offset) {
+        return [block, line].find(gap => gap.end === offset);
+      },
+      gapAfter(offset) {
+        return [block, line].find(gap => gap.start === offset);
+      },
+      gaps() {
+        return [block, line];
+      },
+      gapsWithKind(kind) {
+        expect(kind).toEqual(['comment', 'blockComment', 'lineComment']);
+        return [block, line];
+      }
+    });
+
+    expect(trivia.lookup(block.end, 'before')?.hasComment).toBe(true);
+    expect(trivia.lookup(line.end, 'before')?.hasComment).toBe(true);
+    expect(trivia.commentRuns().map(run => src.slice(run.start, run.end))).toEqual([
+      '/* block */\n',
+      '// line\n'
+    ]);
   });
 
   it('retains a block body span without changing the rule shape', () => {
