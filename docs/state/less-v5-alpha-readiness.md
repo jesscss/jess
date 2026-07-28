@@ -234,12 +234,12 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `dc1a579d`,
+evidence: branch `less-5-alpha.1` at `36998a1d`,
 clean worktree, PR open/non-draft. The branch merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `dc1a579d` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `36998a1d` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
 and packed-consumer proof. The packed-consumer proof derives its expected Jess
 runtime version from the committed Less manifest. The Less compatibility error
@@ -252,7 +252,7 @@ previous audited head; CodeRabbit was green; release-PR automation jobs were
 skipped as expected. The current head and CI state are recorded below.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `dc1a579d`, the external Less commit hook reran
+`2.0.0-alpha.10`: on PR head `36998a1d`, the external Less commit hook reran
 the full `pnpm run test:alpha` gate, including typecheck, build, `lessc` smoke
 tests, alpha support contract, alpha fixtures, publish dry-run tests, and the
 packed-consumer proof. The packed-consumer verifier now derives the expected
@@ -754,14 +754,13 @@ earlier, before a manual publish attempt.
   manual two-tree patch recipe. npm still reports `jess@alpha` and
   `@jesscss/compiler@alpha` as `2.0.0-alpha.10`, so Less PR #19 remains pinned
   to that published registry closure until the owner publishes `.11`.
-- 2026-07-28: Updated external Less PR #19 to `dc1a579d`, deriving the packed
-  consumer's expected Jess version from `packages/less/package.json` instead of
-  hardcoding alpha.10. The commit hook reran `pnpm run test:alpha`, including
-  typecheck/build, `lessc`, alpha support, alpha fixtures, publish dry-run
-  tests, and packed-consumer proof against published Jess `2.0.0-alpha.10`.
-  Updated the PR description; GitHub CI is green for the new head across
-  ubuntu/macOS/windows and Node current, LTS, LTS-1, and LTS-2; CodeRabbit
-  reports success.
+- 2026-07-28: Updated external Less PR #19 to `36998a1d`, deriving release-test
+  Jess alpha assertions and the packed consumer's expected Jess version from
+  `packages/less/package.json` instead of hardcoding alpha.10. The commit hook
+  reran `pnpm run test:alpha`, including typecheck/build, `lessc`, alpha
+  support, alpha fixtures, publish dry-run tests, and packed-consumer proof
+  against published Jess `2.0.0-alpha.10`. Updated the PR description; GitHub
+  CI is running for the new head.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,
