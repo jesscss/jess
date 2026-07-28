@@ -71,6 +71,7 @@ type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
 
 type CssGrammarRuleName =
   | 'AtPrelude'
+  | 'AtRulePreludeSegments'
   | 'AtRuleStatement'
   | 'AttributeSelector'
   | 'BasicSelector'

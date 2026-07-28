@@ -193,6 +193,12 @@ type ScssRules = {
   whitespace: Combinator<unknown>;
 };
 
+type ScssInputRules =
+  ScssRules
+  & typeof cssSyntax
+  & typeof cssPseudoSyntax
+  & typeof opaqueAtRuleRecognition;
+
 function requireToken(value: unknown): Token {
   if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
     throw new TypeError('Direct SCSS AST grammar produced a non-token child.');
@@ -1072,7 +1078,7 @@ const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|fun
  */
 const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 
-export const scssFactory = (g: ScssRules) => {
+export const scssFactory = (g: ScssInputRules) => {
     const caseInsensitive = makeWhen({ caseInsensitive: true });
   /*
    * SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
@@ -4662,26 +4668,31 @@ export const scssFactory = (g: ScssRules) => {
         routed(),
         children => simpleSelector(requireToken(children[0]).value)
       );
-    const DirectScssPseudo = dispatch(
-      pseudoIdentOrFunction,
-      caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
-      caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
-      caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches('], StructuredPseudo),
-      caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
-      caseInsensitive([
-        ':nth-child',
-        ':nth-last-child',
-        ':nth-of-type',
-        ':nth-last-of-type',
-        ':is',
-        ':where',
-        ':not',
-        ':has',
-        ':matches'
-      ], not(routed())),
-      when(endsWith('('), GenericFunctionPseudo),
-      otherwise(GenericBarePseudo)
-    );
+  const DirectScssPseudoDispatch = dispatch(
+    pseudoIdentOrFunction,
+    caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
+    caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
+    caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches('], StructuredPseudo),
+    caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
+    caseInsensitive([
+      ':nth-child',
+      ':nth-last-child',
+      ':nth-of-type',
+      ':nth-last-of-type',
+      ':is',
+      ':where',
+      ':not',
+      ':has',
+      ':matches'
+    ], not(routed())),
+    when(endsWith('('), GenericFunctionPseudo),
+    otherwise(GenericBarePseudo)
+  );
+  const DirectScssPseudo = node<SimpleToken>(
+    'DirectScssPseudo',
+    DirectScssPseudoDispatch,
+    children => requireSimpleToken(children.find(isSimpleToken))
+  );
     const DirectScssNestingSelector = node<SimpleSelector>(
       'DirectScssNestingSelector',
       literal('&'),

@@ -1436,6 +1436,13 @@ function isSimpleToken(value: unknown): value is SimpleToken {
     && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
 }
 
+function requireSimpleToken(value: unknown): SimpleToken {
+  if (!isSimpleToken(value)) {
+    throw new TypeError('Less AST grammar produced a non-simple selector child.');
+  }
+  return value;
+}
+
 function pseudoNameFromHead(head: string): string {
   return head.slice(0, 2) === '::'
     ? head.slice(2)
@@ -1609,7 +1616,7 @@ function isMixinGuard(value: unknown): value is MixinGuard {
       || value.g === 'truth' || value.g === 'call' || value.g === 'default');
 }
 
-function isDefaultGuardCall(value: ValueNode): value is FunctionCall {
+function isDefaultGuardCall(value: FunctionCall): boolean {
   return value.type === 'FunctionCall' && value.name === 'default' && value.args.length === 0;
 }
 
@@ -3843,10 +3850,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
           throw new TypeError('Direct Less AST grammar produced a guard without a value.');
         }
         if (operator === undefined) {
-          if (isDefaultGuardCall(left)) {
+          const call = isFunctionCall(left) ? left : null;
+          if (call !== null && isDefaultGuardCall(call)) {
             guard = { g: 'default' };
-          } else if (left.type === 'FunctionCall') {
-            guard = { g: 'call', name: left.name, args: left.args.map(requireValueNode) };
+          } else if (call !== null) {
+            guard = { g: 'call', name: call.name, args: call.args.map(requireValueNode) };
           } else {
             guard = { g: 'truth', value: left };
           }
@@ -5265,7 +5273,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // function openers, every pseudo-function opener is glued, so
   // `:extend /*...*/ (` must not fall through as a generic pseudo or reparsed
   // selector surface.
-  const DirectLessStaticPseudo = dispatch(
+  const DirectLessStaticPseudoDispatch = dispatch(
     directLessPseudoOpen,
     caseOf(
       [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
@@ -5276,6 +5284,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       DirectLessStaticNonSelectorPseudoRouted
     ),
     otherwise(DirectLessStaticBarePseudoRouted)
+  );
+  const DirectLessStaticPseudo = node<SimpleToken>(
+    'DirectLessStaticPseudo',
+    DirectLessStaticPseudoDispatch,
+    children => requireSimpleToken(children.find(isSimpleToken))
   );
   // A Less pseudo name may itself be interpolated (`:@{pseudo}` / `::@{pseudo}`)
   // and remains one interpolation-backed selector atom. Keep the delimiter and

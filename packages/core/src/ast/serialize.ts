@@ -331,13 +331,12 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
   return async ({ node, specifier, options, tail }) => {
     const request = { node, specifier, options, tail };
     if (importHasOption(options, 'inline')) {
-      let bytes: Buffer;
       try {
-        bytes = await context.readBinary(specifier);
+        const bytes = await context.readBinary(specifier);
+        return { inline: bytes.toString(), media: tail };
       } catch (error) {
         importError(request, error);
       }
-      return { inline: bytes.toString(), media: tail };
     }
     if (!canLoadImport(node, specifier, options)) {
       return undefined;
@@ -10575,7 +10574,11 @@ function evalQueryPrelude(node: ValueSlot, frame: Frame | null, e: EvalCtx): May
         }
         return evalBytes(node, frame, e);
       }
-      return withExcluded(e, hit.value, () => evalQueryPrelude(hit.value, hit.frame, e));
+      const value = hit.value;
+      if (isMixinCallValue(value)) {
+        return evalBytes(node, frame, e);
+      }
+      return withExcluded(e, value, () => evalQueryPrelude(value, hit.frame, e));
     }
     case 'Reference': {
       const resolved = resolveReferenceResult(node, frame, e);
