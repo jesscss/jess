@@ -96,12 +96,12 @@ packing/publishing, then restores the local manifest. `@jesscss/plugin-js`
 must remain an optional peer for script-module support, not a shipped runtime
 dependency. Publish Less only after the selected Jess alpha artifacts are
 queryable. As of 2026-07-28, Jess `2.0.0-alpha.10` is published and queryable
-for the direct runtime closure, including `@jesscss/compiler`; use that version
-for Less.js PR #19 unless the owner deliberately selects and publishes a newer
-Jess alpha first:
+for the direct runtime closure, including `@jesscss/compiler`, but the current
+Less.js PR #19 evidence needs the newer Jess diagnostic renderer from `dev`.
+Publish the next Jess alpha first, then use that exact version for Less:
 
 ```bash
-JESS_VERSION=2.0.0-alpha.10 npm publish --tag alpha --access public
+JESS_VERSION=2.0.0-alpha.11 npm publish --tag alpha --access public
 ```
 
 The Less package's built `lessc` smoke test and typecheck are the publish

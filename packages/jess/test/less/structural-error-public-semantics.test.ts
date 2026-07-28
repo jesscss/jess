@@ -40,6 +40,30 @@ describe('Less structural errors through the public AST route', () => {
     })).rejects.toMatchObject({ code });
   });
 
+  it.each(cases)('keeps source-backed Jess diagnostic fields for %s', async (_label, source, code) => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    const result = await compiler.renderToResult({
+      source,
+      filePath: 'entry.less',
+      extension: '.less'
+    }, {
+      breakOnError: false,
+      suppressWarnings: true
+    });
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code,
+      phase: expect.any(String),
+      filePath: 'entry.less',
+      line: expect.any(Number),
+      column: expect.any(Number),
+      lines: expect.any(Object)
+    });
+    expect(result.errors[0]?.line).toBeGreaterThan(0);
+    expect(result.errors[0]?.column).toBeGreaterThan(0);
+  });
+
   it('allows the non-ambiguous not(default()) branch before the later conflicting call', async () => {
     const compiler = new Compiler({ output: { collapseNesting: true } });
     await expect(compiler.renderString(`

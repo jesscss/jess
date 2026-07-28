@@ -547,9 +547,6 @@ importers:
       '@jesscss/plugin-scss':
         specifier: workspace:*
         version: link:../syntax/scss/jess-plugin-scss
-      linecraft:
-        specifier: 0.2.6
-        version: 0.2.6
       lodash-es:
         specifier: ^4.17.21
         version: 4.17.23

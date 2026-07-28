@@ -19,7 +19,7 @@ function cstStructKey(node: LessCstChild): unknown {
 type CstNode = ReturnType<typeof parseLessCst>['tree'];
 type CstResult = ReturnType<typeof parseLessCst>;
 
-function parseLessDirectCst(input: string): CstResult {
+function parseLessCstResult(input: string): CstResult {
   return parseCst(lessCstGrammar as Record<string, unknown>, input);
 }
 
@@ -327,7 +327,7 @@ describe('Less direct-AST closure CST contract', () => {
   ];
 
   it.each(cases)('keeps the %s boundary in the parser-owned CST', (_label, source, grammarType) => {
-    const result = parseLessDirectCst(source);
+    const result = parseLessCstResult(source);
 
     expect(result.errors, source).toHaveLength(0);
     expect(result.unconsumedFrom, source).toBeNull();
@@ -335,7 +335,7 @@ describe('Less direct-AST closure CST contract', () => {
   });
 
   it('keeps direct inline extends under the public ExtendPseudo owner', () => {
-    const result = parseLessDirectCst('.first, .inline:extend(.target all), .sibling { color: red; }');
+    const result = parseLessCstResult('.first, .inline:extend(.target all), .sibling { color: red; }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -346,8 +346,8 @@ describe('Less direct-AST closure CST contract', () => {
   });
 
   it('routes static query identifiers and functions without widening url() into a query function', () => {
-    const result = parseLessDirectCst('@media screen and (width >= calc(10px + 1px)) and (height >= feature(1px, 2px)) { .card { color: red; } }');
-    const badUrl = parseLessDirectCst('@media (width >= url(foo)) { .card { color: red; } }');
+    const result = parseLessCstResult('@media screen and (width >= calc(10px + 1px)) and (height >= feature(1px, 2px)) { .card { color: red; } }');
+    const badUrl = parseLessCstResult('@media (width >= url(foo)) { .card { color: red; } }');
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
@@ -361,12 +361,12 @@ describe('Less direct-AST closure CST contract', () => {
   it('keeps Less function-like openers glued in public CST owners', () => {
     const cases: readonly [source: string, grammarType: string, leaves: readonly string[]][] = [
       ['e("x");', 'Call', ['e(', '"', 'x', '"', ')']],
-      ['@supports selector(a:hover) { a { color: red; } }', 'DirectLessGeneralEnclosedFunctionName', ['selector(']],
+      ['@supports selector(a:hover) { a { color: red; } }', 'GeneralEnclosedFunctionName', ['selector(']],
       ['@container style(--responsive: true) { .card { color: red; } }', 'ContainerStyleQuery', ['style(', '--responsive', ':', 'true', ')']]
     ];
 
     for (const [source, grammarType, leaves] of cases) {
-      const result = parseLessDirectCst(source);
+      const result = parseLessCstResult(source);
 
       expect(cstIssueCount(result), source).toBe(0);
       expect(findNodes(result.tree, grammarType).map(leafValues), source).toContainEqual([...leaves]);
@@ -384,7 +384,7 @@ describe('Less direct-AST closure CST contract', () => {
     ];
 
     for (const [source, grammarType] of cases) {
-      const result = parseLessDirectCst(source);
+      const result = parseLessCstResult(source);
 
       expect(result.errors, source).toHaveLength(0);
       expect(result.unconsumedFrom, source).toBeNull();
