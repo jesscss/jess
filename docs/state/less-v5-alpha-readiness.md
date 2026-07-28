@@ -154,15 +154,13 @@ until Parseman has the replacement capture/skip helper for those regions; those
 skips prevent comments from prematurely terminating custom properties, opaque
 at-rules, pseudo arguments, or balanced groups.
 
-Less grammar cleanup also moved in the current pass. A small reviewed naming
-slice removed several local `DirectLess*` migration identifiers without changing
-public CST/AST node labels: call arguments, mixin arguments, static pseudo
-quoted segments, interpolated nth pseudos, the ruleset-with-extend wrapper, and
-custom-property/supports-condition internals now have shorter local names. The remaining
-`DirectLess*` families are still real cleanup debt, especially
-function/condition, mixin, guard, selector, static-pseudo, and
-general-enclosed routes. Burn them down by family with macro/compose
-verification, not by broad mechanical replacement.
+Less grammar cleanup also moved in the current pass. The Less parser source and
+focused parser tests no longer carry the local `DirectLess*`, `LessDirect*`, or
+`LessAst*` migration prefixes; the AST/CST entry rule is the plain `Document`
+host-mode grammar. This was a naming and readability slice, not a public node
+label change. Keep future grammar naming simple and spec-shaped: use the dialect
+package path for context, override CSS rules through composition, and avoid
+restating the dialect name in every local production.
 
 Focused parser/eval error work also moved: `all-less-error.test.ts` now passes
 with **94 / 94**. Recursive variable/property fixtures are no longer skipped:
@@ -233,23 +231,31 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `e79c34743bbf0201ac43bf9e113488d56bca2239`,
+evidence: branch `less-5-alpha.1` at `872389bf8fb83565627223ec4c863aa31da0a053`,
 clean worktree, PR open/non-draft. That head merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `e79c3474` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `872389bf` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
-and packed-consumer proof. GitHub Actions and CodeRabbit are green on the same
-head, and the PR merge state is `CLEAN`.
+and packed-consumer proof. GitHub Actions and CodeRabbit need to be rechecked
+on this head before merge.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `e79c3474`, `pnpm run test:alpha` passes the
+`2.0.0-alpha.10`: on PR head `872389bf`, `pnpm run test:alpha` passes the
 Less package typecheck, build, `lessc` smoke tests, alpha support contract,
 publish dry-run tests, and packed-consumer proof. The `lessc` smoke tests pin
 Linecraft-formatted colored diagnostics by default, source framing, `--silent`
-suppression, and `--no-color` control-sequence stripping. The alpha support contract now
-pins the upstream-sync fixture families that are green for alpha.1:
+suppression, and `--no-color` control-sequence stripping. The PR branch also
+routes successful Jess warnings to `stderr`, keeps CSS-only output on `stdout`,
+and suppresses warning output under `--quiet`. Linecraft-colored diagnostics are
+an alpha merge blocker: if a public `lessc` error path falls back to raw offsets,
+uncolored text, or a non-Linecraft frame, the package is not ready to merge.
+The remaining registry caveat is that PR #19 currently consumes published Jess
+`2.0.0-alpha.10`; the single-frame renderer fix on Jess `dev` must ship in the
+next Jess alpha and be consumed by the Less PR before the external package can
+prove that it has no duplicate code frames. The alpha support contract now pins
+the upstream-sync fixture families that are green for alpha.1:
 `at-rule-variable-interpolation`, `color-functions/modern`, `math-css-vars`,
 `mixins-guards`, and `mixins-named-args`. The packed consumer installs the
 direct Jess runtime closure and does not install the batteries-included `jess`
@@ -697,6 +703,12 @@ earlier, before a manual publish attempt.
 
 ## Evidence Log
 
+- 2026-07-28: Updated the external Less PR #19 audit to head `872389bf`,
+  including successful `lessc` warning routing to `stderr` and the blocker rule
+  that public `lessc` errors must render through colored Linecraft diagnostics.
+  Jess `dev` also has the single-frame diagnostic renderer fix; the external
+  proof waits for the next Jess alpha publish/dependency bump because PR #19
+  still consumes published `2.0.0-alpha.10`.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,
