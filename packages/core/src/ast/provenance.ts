@@ -17,12 +17,15 @@ export interface ParserTriviaEntriesView {
 export interface ParserRootTriviaGap {
   readonly start: number;
   readonly end: number;
+  hasKind?(kind: string): boolean;
 }
 export interface ParserRootTriviaIndex {
+  readonly labels?: readonly string[];
   readonly entries: ParserTriviaEntriesView;
   gapBefore(offset: number): ParserRootTriviaGap | undefined;
   gapAfter(offset: number): ParserRootTriviaGap | undefined;
   gaps(): readonly ParserRootTriviaGap[];
+  gapsWithKind?(kind: string | readonly string[]): readonly ParserRootTriviaGap[];
 }
 
 /** Authored separator/trivia facts for a raw ValueSlot array.
@@ -66,15 +69,17 @@ const bodySpanGlobal = globalThis as typeof globalThis & {
 };
 const bodySpans = bodySpanGlobal[bodySpanStoreKey] ??= new WeakMap<object, AstSourceSpan>();
 
-function makeAstTrivia(src: string, start: number, end: number): Trivia {
-  let hasComment = false;
+function rangeHasComment(src: string, start: number, end: number): boolean {
   for (let i = start; i < end; i++) {
     const c = src.charCodeAt(i);
     if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) {
-      hasComment = true;
-      break;
+      return true;
     }
   }
+  return false;
+}
+
+function makeAstTrivia(src: string, start: number, end: number, hasComment = rangeHasComment(src, start, end)): Trivia {
   return { start, end, src, hasComment };
 }
 
@@ -133,11 +138,12 @@ export function createTriviaMapFromRanges(
 }
 
 /** Adapt Parseman's lazy root trivia index without rebuilding intermediate ranges. */
-export function createTriviaMapFromRootIndex(
+export function createTriviaMapFromParseman(
   src: string,
   index: ParserRootTriviaIndex
 ): TriviaMap {
   const canonicalByRange = new Map<string, Trivia>();
+  const hasCommentKind = index.labels?.includes('comment') === true;
   let maps: {
     readonly before: Map<number, Trivia>;
     readonly after: Map<number, Trivia>;
@@ -153,7 +159,15 @@ export function createTriviaMapFromRootIndex(
     const key = `${start}:${end}`;
     let run = canonicalByRange.get(key);
     if (run === undefined) {
-      run = makeAstTrivia(src, start, end);
+      const labeledHasComment = hasCommentKind && typeof gap?.hasKind === 'function'
+        ? gap.hasKind('comment')
+        : undefined;
+      run = makeAstTrivia(
+        src,
+        start,
+        end,
+        labeledHasComment
+      );
       canonicalByRange.set(key, run);
     }
     return run;
@@ -201,7 +215,10 @@ export function createTriviaMapFromRootIndex(
       if (sortedComments === undefined) {
         const runs: Trivia[] = [];
         const seen = new Set<string>();
-        for (const gap of index.gaps()) {
+        const gaps = hasCommentKind
+          ? index.gapsWithKind?.('comment') ?? index.gaps().filter(gap => typeof gap.hasKind === 'function' ? gap.hasKind('comment') : true)
+          : index.gaps();
+        for (const gap of gaps) {
           const run = triviaForGap(gap);
           if (run?.hasComment === true) {
             const key = `${run.start}:${run.end}`;
@@ -219,6 +236,9 @@ export function createTriviaMapFromRootIndex(
     }
   };
 }
+
+/** @deprecated Use `createTriviaMapFromParseman`. */
+export const createTriviaMapFromRootIndex = createTriviaMapFromParseman;
 
 /** Retain the exact Parseman reduction span for an AST factory result. */
 export function withSourceSpan<T extends object>(node: T, span: AstSourceSpan): T {

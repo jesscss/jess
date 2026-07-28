@@ -10,6 +10,7 @@ export * from './ast/at-rule.js';
 export {
   bodySpanOf,
   createTriviaMapFromRanges,
+  createTriviaMapFromParseman,
   createTriviaMapFromRootIndex,
   sourceSpanOf,
   triviaMapOf,

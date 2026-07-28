@@ -6,7 +6,7 @@ export type {
 
 import { run } from 'parseman';
 import {
-  createTriviaMapFromRootIndex,
+  createTriviaMapFromParseman,
   withSourceSpan,
   withTriviaMap,
   type Stylesheet
@@ -61,6 +61,6 @@ export function parse(input: string): Stylesheet {
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromRootIndex(input, result.triviaMap)
+    createTriviaMapFromParseman(input, result.triviaMap)
   );
 }

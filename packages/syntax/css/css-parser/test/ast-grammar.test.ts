@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
-import { createTriviaMapFromRootIndex, triviaMapOf, valueLayoutOf, withSourceSpan, withTriviaMap } from '@jesscss/core/ast';
+import { createTriviaMapFromParseman, triviaMapOf, valueLayoutOf, withSourceSpan, withTriviaMap } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
@@ -24,7 +24,7 @@ function parseAst(input: string): Stylesheet {
   }
   return withTriviaMap(
     withSourceSpan(result.value, result.span),
-    createTriviaMapFromRootIndex(input, result.triviaMap)
+    createTriviaMapFromParseman(input, result.triviaMap)
   );
 }
 

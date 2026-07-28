@@ -249,6 +249,14 @@ that shape intentionally and fail with the richer diagnostic.
     `many(blockComment)` plumbing once the parser-owned trivia map carries the
     needed source ranges.
 
+    Public parser entry points should attach trivia with
+    `createTriviaMapFromParseman(input, result.triviaMap)`. That adapter consumes
+    Parseman's sparse root trivia index directly, so parser packages should not
+    rebuild intermediate AST trivia ranges or decode raw `_triviaLog` arrays.
+    Labeled trivia is useful when a grammar can keep one coherent label policy
+    for the root trivia log; otherwise leave the grammar unlabeled and let the
+    adapter fall back to source-range comment detection.
+
     Less's visible-empty behavior does not change this. A block comment can make
     an otherwise empty ruleset renderable, while a line comment does not survive
     CSS output; that is a body-span trivia/renderability check, not evidence that

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   bodySpanOf,
+  createTriviaMapFromParseman,
   createTriviaMapFromRanges,
-  createTriviaMapFromRootIndex,
   rule,
   selist,
   sel,
@@ -48,7 +48,7 @@ describe('canonical AST source provenance', () => {
       { start: 2, end: 11 },
       { start: 27, end: 28 }
     ];
-    const trivia = createTriviaMapFromRootIndex(src, {
+    const trivia = createTriviaMapFromParseman(src, {
       entries: {
         length: rawEntries.length,
         start(index) {
@@ -85,6 +85,62 @@ describe('canonical AST source provenance', () => {
     ]);
     expect(commentRuns).toEqual([leading]);
     expect(trivia.lookup(0, 'after')).toBe(commentRuns[0]);
+  });
+
+  it('uses Parseman trivia labels to find comments without scanning every gap', () => {
+    const src = 'xx/* keep */\n  .a{}';
+    const leadingWhitespace = {
+      start: 0,
+      end: 2,
+      hasKind: () => false
+    };
+    const commentGap = {
+      start: 2,
+      end: 13,
+      hasKind: (kind: string) => kind === 'comment'
+    };
+    let gapsWithKindCalls = 0;
+    const trivia = createTriviaMapFromParseman(src, {
+      labels: ['comment'],
+      entries: {
+        length: 2,
+        start(index) {
+          return index === 0 ? leadingWhitespace.start : commentGap.start;
+        },
+        end(index) {
+          return index === 0 ? leadingWhitespace.end : commentGap.end;
+        }
+      },
+      gapBefore(offset) {
+        return [leadingWhitespace, commentGap].find(gap => gap.end === offset);
+      },
+      gapAfter(offset) {
+        return [leadingWhitespace, commentGap].find(gap => gap.start === offset);
+      },
+      gaps() {
+        return [leadingWhitespace, commentGap];
+      },
+      gapsWithKind(kind) {
+        gapsWithKindCalls++;
+        expect(kind).toBe('comment');
+        return [commentGap];
+      }
+    });
+
+    expect(trivia.lookup(0, 'after')).toMatchObject({
+      start: 0,
+      end: 2,
+      hasComment: false
+    });
+    expect(trivia.commentRuns()).toEqual([
+      {
+        start: 2,
+        end: 13,
+        src,
+        hasComment: true
+      }
+    ]);
+    expect(gapsWithKindCalls).toBe(1);
   });
 
   it('retains a block body span without changing the rule shape', () => {
