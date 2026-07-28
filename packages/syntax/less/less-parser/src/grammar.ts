@@ -92,21 +92,20 @@ type LessRules = {
   PercentEscape: Combinator<Any>;
   PagePseudo: Combinator<Any>;
   DoubledQuoteArgument: Combinator<Any>;
-  DirectLessFunctionArgument: Combinator<ValueSlot>;
-  DirectLessFunctionScalarArgument: Combinator<ValueNode>;
+  FunctionArgument: Combinator<ValueSlot>;
+  FunctionScalarArgument: Combinator<ValueNode>;
   ArgumentValueSequence: Combinator<ValueSlot>;
-  DirectLessFunctionCondition: Combinator<ValueNode>;
-  DirectLessFunctionConditionOr: Combinator<FunctionConditionFact>;
-  DirectLessFunctionConditionAnd: Combinator<FunctionConditionFact>;
-  DirectLessFunctionConditionTerm: Combinator<FunctionConditionFact>;
-  DirectLessFunctionConditionOperand: Combinator<ValueNode>;
-  DirectLessFunctionConditionParen: Combinator<FunctionConditionFact>;
-  DirectLessFunction: Combinator<FunctionCall>;
-  DirectLessCallArgumentFunction: Combinator<FunctionCall>;
+  FunctionCondition: Combinator<ValueNode>;
+  FunctionConditionOr: Combinator<FunctionConditionFact>;
+  FunctionConditionAnd: Combinator<FunctionConditionFact>;
+  FunctionConditionTerm: Combinator<FunctionConditionFact>;
+  FunctionConditionOperand: Combinator<ValueNode>;
+  FunctionConditionParen: Combinator<FunctionConditionFact>;
+  Call: Combinator<FunctionCall>;
+  CallArgumentFunction: Combinator<FunctionCall>;
   FormatFunction: Combinator<FunctionCall>;
   CallArgumentValue: Combinator<MixinCallArgument['value']>;
-  DirectLessFunctionStatement: Combinator<FunctionCall>;
-  DirectLessCalcFunction: Combinator<FunctionCall>;
+  FunctionStatement: Combinator<FunctionCall>;
   Value: Combinator<ValueNode>;
   DirectLessSelectorCapture: Combinator<SelectorCapture>;
   MathAtom: Combinator<ValueNode>;
@@ -2446,8 +2445,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // This is the AST reduction of the public Less `ArgCondition` grammar. Its
   // operands are bounded ordinary values; comparison/logical structure is added
   // only after those values have been recognized.
-  const DirectLessFunctionConditionOperand = node<ValueNode>(
-    'DirectLessFunctionConditionOperand',
+  const FunctionConditionOperand = node<ValueNode>(
+    'FunctionConditionOperand',
     oneOrMore(sequence(not(functionConditionStop), g.TopSum)),
     (children) => {
       const values = children.filter(isValueNode);
@@ -2457,9 +2456,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectLessFunctionConditionParen = node<FunctionConditionFact>(
-    'DirectLessFunctionConditionParen',
-    sequence(literal('('), g.DirectLessFunctionConditionOr, literal(')')),
+  const FunctionConditionParen = node<FunctionConditionFact>(
+    'FunctionConditionParen',
+    sequence(literal('('), g.FunctionConditionOr, literal(')')),
     (children) => {
       const inner = children.find(isFunctionConditionFact);
       if (inner === undefined) {
@@ -2468,12 +2467,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       return { guard: inner.guard, src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
     }
   );
-  const DirectLessFunctionConditionTerm = node<FunctionConditionFact>(
-    'DirectLessFunctionConditionTerm',
+  const FunctionConditionTerm = node<FunctionConditionFact>(
+    'FunctionConditionTerm',
     sequence(
       optional(functionConditionNot),
-      choice(g.DirectLessFunctionConditionParen, g.DirectLessFunctionConditionOperand),
-      optional(sequence(functionConditionOperator, choice(g.DirectLessFunctionConditionParen, g.DirectLessFunctionConditionOperand)))
+      choice(g.FunctionConditionParen, g.FunctionConditionOperand),
+      optional(sequence(functionConditionOperator, choice(g.FunctionConditionParen, g.FunctionConditionOperand)))
     ),
     (children) => {
       const nested = children.filter(isFunctionConditionFact);
@@ -2509,19 +2508,19 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         : { guard, src, grouped, hasComparison };
     }
   );
-  const DirectLessFunctionConditionAnd = node<FunctionConditionFact>(
-    'DirectLessFunctionConditionAnd',
-    sequence(g.DirectLessFunctionConditionTerm, many(sequence(functionConditionAnd, g.DirectLessFunctionConditionTerm))),
+  const FunctionConditionAnd = node<FunctionConditionFact>(
+    'FunctionConditionAnd',
+    sequence(g.FunctionConditionTerm, many(sequence(functionConditionAnd, g.FunctionConditionTerm))),
     children => foldFunctionCondition('and', children)
   );
-  const DirectLessFunctionConditionOr = node<FunctionConditionFact>(
-    'DirectLessFunctionConditionOr',
-    sequence(g.DirectLessFunctionConditionAnd, many(sequence(functionConditionOr, g.DirectLessFunctionConditionAnd))),
+  const FunctionConditionOr = node<FunctionConditionFact>(
+    'FunctionConditionOr',
+    sequence(g.FunctionConditionAnd, many(sequence(functionConditionOr, g.FunctionConditionAnd))),
     children => foldFunctionCondition('or', children)
   );
-  const DirectLessFunctionCondition = node<ValueNode>(
-    'DirectLessFunctionCondition',
-    g.DirectLessFunctionConditionOr,
+  const FunctionCondition = node<ValueNode>(
+    'FunctionCondition',
+    g.FunctionConditionOr,
     (children) => {
       const fact = children.find(isFunctionConditionFact);
       if (fact === undefined) {
@@ -2538,16 +2537,16 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     regex(/(?=[,;)])/),
     peek(parser({ trivia: functionTrivia }, choice(literal(','), literal(';'))))
   );
-  const DirectLessFunctionScalarArgument = node<ValueNode>(
-    'DirectLessFunctionScalarArgument',
+  const FunctionScalarArgument = node<ValueNode>(
+    'FunctionScalarArgument',
     sequence(g.MathSum, functionArgumentBoundaryAhead),
     children => requireValueNode(children[0])
   );
-  const DirectLessFunctionArgument = node<ValueSlot>(
-    'DirectLessFunctionArgument',
+  const FunctionArgument = node<ValueSlot>(
+    'FunctionArgument',
     choice(
-      sequence(not(not(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead))), g.DirectLessFunctionCondition),
-      g.DirectLessFunctionScalarArgument,
+      sequence(not(not(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead))), g.FunctionCondition),
+      g.FunctionScalarArgument,
       g.ArgumentValueSequence
     ),
     (children) => {
@@ -2576,7 +2575,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const functionArgument = choice(
     g.DoubledQuoteArgument,
     g.ValueBlock,
-    g.DirectLessFunctionArgument
+    g.FunctionArgument
   );
   const FunctionArguments = optional(sequence(
     functionArgument,
@@ -2586,7 +2585,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     optional(trailingFunctionArgumentSeparator)
   ));
-  const DirectLessFunction = node<FunctionCall>(
+  const Call = node<FunctionCall>(
     'Call',
     parser({ trivia: functionTrivia }, sequence(functionOpener, FunctionArguments, literal(')'))),
     (children, fields, span, _rawChildren, triviaLog, state) => {
@@ -2618,7 +2617,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     )),
     optional(trailingCallArgumentFunctionSeparator)
   ));
-  const DirectLessCallArgumentFunction = node<FunctionCall>(
+  const CallArgumentFunction = node<FunctionCall>(
     'Call',
     sequence(functionOpener, CallArgumentFunctionArguments, literal(')')),
     (children, fields, span) => {
@@ -2640,11 +2639,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     children => funcCall('%', children.slice(1, -1).filter(isValueSlotValue))
   );
   // A bare call is a Less statement only with its terminator.  Keep this
-  // distinct from DirectLessFunction, which is also a value piece and must not
+  // distinct from Call, which is also a value piece and must not
   // consume a declaration/list boundary.
-  const DirectLessFunctionStatement = node<FunctionCall>(
+  const FunctionStatement = node<FunctionCall>(
     'Call',
-    sequence(g.DirectLessCallArgumentFunction, literal(';')),
+    sequence(g.CallArgumentFunction, literal(';')),
     (children) => {
       const call = children.find(isFunctionCall);
       if (call === undefined) {
@@ -2652,14 +2651,6 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
       return call;
     }
-  );
-  // `calc()` is not an opaque generic call: its sole argument is the Less math
-  // grammar, including nested arithmetic parentheses.  This gives the runtime
-  // the existing Operation/Block tree it needs for calc-safe evaluation.
-  const DirectLessCalcFunction = node<FunctionCall>(
-    'CalcCall',
-    noTrivia(sequence(calcFunctionOpener, g.MathSum, literal(')'))),
-    children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children[1])])
   );
   // ValueList-position identifiers and glued function openers share one lexical
   // family. Parse that opener once, then route by the returned text: `url(` and
@@ -3665,7 +3656,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       g.Dimension,
       g.Color,
       g.NamedColor,
-      g.DirectLessFunction,
+      g.Call,
       g.Keyword
     ),
     children => requireValueNode(children[0])
@@ -3925,7 +3916,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     },
     { collapse: true }
   );
-  const blockItem = choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.DirectLessFunctionStatement, directLessGuardedRuleset, directLessDeclarationItem, literal(';'));
+  const blockItem = choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.FunctionStatement, directLessGuardedRuleset, directLessDeclarationItem, literal(';'));
   const blockBody = many(blockItem);
   // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
   // shared arms. Nesting the shared choice ahead of it preserves the original
@@ -3939,7 +3930,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(
       DirectLessMixinSignature,
       blockBody,
-      optional(g.DirectLessFunction),
+      optional(g.Call),
       literal('}'),
       optional(literal(';'))
     ),
@@ -3964,10 +3955,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // bodies: reductions above construct each canonical statement, and these
   // containers merely retain those typed children.  This is deliberately not a
   // CST/tree conversion or an opaque body fallback.
-  const DirectLessBodyStatement = choice(directLessPunctuationMapDeclarationItem, directLessAtStatement, directLessMixinStatement, directLessGuardedRuleset, g.DirectLessEach, g.DirectLessFunctionStatement, directLessDeclarationItem, literal(';'));
+  const DirectLessBodyStatement = choice(directLessPunctuationMapDeclarationItem, directLessAtStatement, directLessMixinStatement, directLessGuardedRuleset, g.DirectLessEach, g.FunctionStatement, directLessDeclarationItem, literal(';'));
   const ValueBlock = node<ValueNode>(
     'ValueBlock',
-    sequence(literal('{'), many(g.DirectLessBodyStatement), optional(g.DirectLessFunction), literal('}')),
+    sequence(literal('{'), many(g.DirectLessBodyStatement), optional(g.Call), literal('}')),
     children => classifyValueBlock(requireValueBlockBody(children))
   );
   const CallArgumentValue = node<MixinCallArgument['value']>(
@@ -3987,7 +3978,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       sequence(
         literal('{'),
         many(g.DirectLessBodyStatement),
-        optional(g.DirectLessFunction),
+        optional(g.Call),
         literal('}')
       ),
       sequence(
@@ -3997,7 +3988,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         optional(sequence(commaOrSemicolon, g.DirectLessEachName, optional(sequence(commaOrSemicolon, g.DirectLessEachName)))),
         literal(')'), literal('{'),
         many(g.DirectLessBodyStatement),
-        optional(g.DirectLessFunction),
+        optional(g.Call),
         literal('}')
       )
     ),
@@ -4179,7 +4170,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       choice(g.AtRuleInterpolation, BareVariableInterpolation, g.DirectLessSupportsCondition),
       literal('{'),
       blockBody,
-      optional(g.DirectLessFunction),
+      optional(g.Call),
       literal('}')
     ),
     (children, _fields, span, rawChildren) => withSourceSpan(
@@ -4485,7 +4476,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     sequence(
       literal('{'),
       blockBody,
-      optional(g.DirectLessFunction),
+      optional(g.Call),
       literal('}')
     ),
     children => children.filter(isStatement)
@@ -4528,8 +4519,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
         literal(',')
       ),
       literal('{'),
-      many(choice(directLessDeclarationItem, g.DirectLessFunctionStatement, literal(';'))),
-      optional(g.DirectLessFunction),
+      many(choice(directLessDeclarationItem, g.FunctionStatement, literal(';'))),
+      optional(g.Call),
       literal('}')
     ),
     (children, _fields, span, rawChildren) => {
@@ -4596,7 +4587,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // static; `@layer` gets its own typed interpolation alternative below.
   const StaticAtRuleAtom = node<ValueNode>(
     'StaticAtRuleAtom',
-    choice(g.EscapedQuoted, g.StaticQuoted, g.Color, g.NamedColor, g.Dimension, g.StaticUrl, g.PagePseudo, g.DirectLessFunction, g.Paren, g.DottedAtRuleKeyword, StaticAtRuleCustomProperty, g.Keyword),
+    choice(g.EscapedQuoted, g.StaticQuoted, g.Color, g.NamedColor, g.Dimension, g.StaticUrl, g.PagePseudo, g.Call, g.Paren, g.DottedAtRuleKeyword, StaticAtRuleCustomProperty, g.Keyword),
     children => requireValueNode(children[0])
   );
   const StaticAtRuleTerm = node<ValueNode>(
@@ -4702,7 +4693,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const atRuleBlockBody = sequence(
     literal('{'),
     blockBody,
-    optional(g.DirectLessFunction),
+    optional(g.Call),
     literal('}')
   );
   const genericAtRuleBlockTail = choice(
@@ -5483,7 +5474,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const RulesetWithExtends = node<Rule>(
     'Ruleset',
-    sequence(selectorListWithExtends, optional(g.DirectLessMixinGuard), literal('{'), rulesetBody, optional(g.DirectLessFunction), literal('}'), optional(literal(';'))),
+    sequence(selectorListWithExtends, optional(g.DirectLessMixinGuard), literal('{'), rulesetBody, optional(g.Call), literal('}'), optional(literal(';'))),
     (children, _fields, span, rawChildren) => {
       const selectorFact = requireSelectorListWithExtendsFact(children[0]);
       const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
@@ -5503,7 +5494,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
-    sequence(many(choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.DirectLessFunctionStatement, directLessGuardedRuleset, rootDeclarationItem, literal(';'))), optional(g.DirectLessFunction)),
+    sequence(many(choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.FunctionStatement, directLessGuardedRuleset, rootDeclarationItem, literal(';'))), optional(g.Call)),
     children => stylesheet(children.filter(isStatement)),
     { trailingTrivia: true }
   );
@@ -5537,21 +5528,20 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     PercentEscape,
     PagePseudo,
     DoubledQuoteArgument,
-    DirectLessFunctionArgument,
-    DirectLessFunctionScalarArgument,
+    FunctionArgument,
+    FunctionScalarArgument,
     ArgumentValueSequence,
-    DirectLessFunctionCondition,
-    DirectLessFunctionConditionOr,
-    DirectLessFunctionConditionAnd,
-    DirectLessFunctionConditionTerm,
-    DirectLessFunctionConditionOperand,
-    DirectLessFunctionConditionParen,
-    DirectLessFunction,
-    DirectLessCallArgumentFunction,
+    FunctionCondition,
+    FunctionConditionOr,
+    FunctionConditionAnd,
+    FunctionConditionTerm,
+    FunctionConditionOperand,
+    FunctionConditionParen,
+    Call,
+    CallArgumentFunction,
     FormatFunction,
     CallArgumentValue,
-    DirectLessFunctionStatement,
-    DirectLessCalcFunction,
+    FunctionStatement,
     Value,
     DirectLessSelectorCapture,
     MathAtom,
