@@ -63,6 +63,7 @@ type FunctionConditionFact = {
   readonly hasComparison: boolean;
 };
 type UnsupportedVariableNameFact = { readonly unsupportedVariableName: string };
+type SlashBoundaryFact = { readonly before: string; readonly after: string };
 
 /** Rules this file defines; macro-fused recognition inputs are not local output. */
 type LessRules = {
@@ -457,6 +458,9 @@ function staticText(value: unknown): string {
   if (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string') {
     return value.value;
   }
+  if (isSlashBoundaryFact(value)) {
+    return value.before + '/' + value.after;
+  }
   if (Array.isArray(value)) {
     return value.map(staticText).join('');
   }
@@ -482,8 +486,8 @@ function semanticGapText(text: string): string {
 
 function staticTextWithTriviaGaps(children: readonly unknown[], triviaLog: readonly number[]): string {
   const gapBefore = new Set<number>();
-  for (let index = 2; index < triviaLog.length; index += 3) {
-    gapBefore.add(triviaLog[index] ?? 0);
+  for (let index = 0; index < lessTriviaEntryCount(triviaLog); index += 1) {
+    gapBefore.add(lessTriviaEntryInsertIndex(triviaLog, index));
   }
 
   let text = '';
@@ -764,6 +768,12 @@ function isInterpolationFact(value: unknown): value is InterpolationFact {
     && 'src' in value && typeof value.src === 'string';
 }
 
+function isSlashBoundaryFact(value: unknown): value is SlashBoundaryFact {
+  return typeof value === 'object' && value !== null
+    && 'before' in value && typeof value.before === 'string'
+    && 'after' in value && typeof value.after === 'string';
+}
+
 function requireInterpolationFact(value: unknown): InterpolationFact {
   if (!isInterpolationFact(value)) {
     throw new TypeError('Direct Less AST grammar produced an invalid interpolation fact.');
@@ -795,7 +805,7 @@ function interpolationPartsFrom(children: readonly unknown[], unquote: boolean, 
 function separatorsFromFields(fields: FieldMap | undefined): string[] {
   return fields?.separator === undefined
     ? []
-    : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
+    : requireFields(fields, 'separator').map(separator => staticText(separator.value));
 }
 
 function sourceFromState(state: unknown): string | undefined {
@@ -807,46 +817,41 @@ function sourceFromState(state: unknown): string | undefined {
     : undefined;
 }
 
-function triviaRunOutputText(source: string, start: number, end: number): string {
-  const run = source.slice(start, end);
-  if (!run.includes('/*')) {
-    return run.includes('\n') || run.includes('\r') ? run : '';
+const lessTriviaKindLabels = ['whitespace', 'lineComment', 'blockComment'] as const;
+const LESS_NODE_TRIVIA_STRIDE = 4;
+
+function lessTriviaEntryCount(triviaLog: readonly number[]): number {
+  return Math.trunc(triviaLog.length / LESS_NODE_TRIVIA_STRIDE);
+}
+
+function lessTriviaEntryStart(triviaLog: readonly number[], index: number): number {
+  return triviaLog[index * LESS_NODE_TRIVIA_STRIDE] ?? 0;
+}
+
+function lessTriviaEntryEnd(triviaLog: readonly number[], index: number): number {
+  return triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 1] ?? 0;
+}
+
+function lessTriviaEntryInsertIndex(triviaLog: readonly number[], index: number): number {
+  return triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 2] ?? 0;
+}
+
+function lessTriviaEntryKind(triviaLog: readonly number[], index: number): typeof lessTriviaKindLabels[number] | undefined {
+  const kindIndex = triviaLog[index * LESS_NODE_TRIVIA_STRIDE + 3];
+  return kindIndex === undefined ? undefined : lessTriviaKindLabels[kindIndex];
+}
+
+function lessTriviaEntryText(triviaLog: readonly number[], source: string, index: number): string {
+  return source.slice(lessTriviaEntryStart(triviaLog, index), lessTriviaEntryEnd(triviaLog, index));
+}
+
+function lessTriviaEntryHasLineBreak(triviaLog: readonly number[], source: string, index: number): boolean {
+  for (const char of lessTriviaEntryText(triviaLog, source, index)) {
+    if (char === '\n' || char === '\r') {
+      return true;
+    }
   }
-
-  let out = '';
-  let pos = start;
-  while (pos < end) {
-    const open = source.indexOf('/*', pos);
-    if (open < 0 || open >= end) {
-      break;
-    }
-    const close = source.indexOf('*/', open + 2);
-    if (close < 0 || close + 2 > end) {
-      break;
-    }
-
-    let textStart = open;
-    while (textStart > start) {
-      const char = source.charCodeAt(textStart - 1);
-      if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
-        break;
-      }
-      textStart--;
-    }
-
-    let textEnd = close + 2;
-    while (textEnd < end) {
-      const char = source.charCodeAt(textEnd);
-      if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
-        break;
-      }
-      textEnd++;
-    }
-
-    out += source.slice(textStart, textEnd);
-    pos = textEnd;
-  }
-  return out;
+  return false;
 }
 
 function triviaTextAtInsertIndex(
@@ -859,18 +864,49 @@ function triviaTextAtInsertIndex(
     return '';
   }
 
-  let text = '';
-  for (let index = 0; index < triviaLog.length; index += 3) {
-    if (triviaLog[index + 2] !== insertIndex) {
+  const entryCount = lessTriviaEntryCount(triviaLog);
+  const selected: number[] = [];
+  let hasBlockComment = false;
+  let hasLineBreak = false;
+  for (let index = 0; index < entryCount; index += 1) {
+    if (lessTriviaEntryInsertIndex(triviaLog, index) !== insertIndex) {
       continue;
     }
-    text += triviaRunOutputText(
-      source,
-      triviaLog[index] ?? 0,
-      triviaLog[index + 1] ?? 0
-    );
+    selected.push(index);
+    if (lessTriviaEntryKind(triviaLog, index) === 'blockComment') {
+      hasBlockComment = true;
+    }
+    if (lessTriviaEntryHasLineBreak(triviaLog, source, index)) {
+      hasLineBreak = true;
+    }
   }
-  return text;
+
+  if (!hasBlockComment) {
+    return hasLineBreak
+      ? selected.map(index => lessTriviaEntryText(triviaLog, source, index)).join('')
+      : '';
+  }
+
+  const outputEntries = new Set<number>();
+  const selectedEntries = new Set(selected);
+  for (const index of selected) {
+    if (lessTriviaEntryKind(triviaLog, index) !== 'blockComment') {
+      continue;
+    }
+    const previous = index - 1;
+    const next = index + 1;
+    if (selectedEntries.has(previous) && lessTriviaEntryKind(triviaLog, previous) === 'whitespace') {
+      outputEntries.add(previous);
+    }
+    outputEntries.add(index);
+    if (selectedEntries.has(next) && lessTriviaEntryKind(triviaLog, next) === 'whitespace') {
+      outputEntries.add(next);
+    }
+  }
+  return selected
+    .filter(index => outputEntries.has(index))
+    .map(index => lessTriviaEntryText(triviaLog, source, index))
+    .join('');
 }
 
 function isFunctionSeparatorChild(child: unknown): boolean {
@@ -882,7 +918,7 @@ function isFunctionSeparatorChild(child: unknown): boolean {
       && typeof child.value === 'string'
       ? child.value
       : '';
-  return text.startsWith(',') || text.startsWith(';');
+  return text.slice(0, 1) === ',' || text.slice(0, 1) === ';';
 }
 
 function functionSeparatorsFromFields(
@@ -1401,9 +1437,9 @@ function isSimpleToken(value: unknown): value is SimpleToken {
 }
 
 function pseudoNameFromHead(head: string): string {
-  return head.startsWith('::')
+  return head.slice(0, 2) === '::'
     ? head.slice(2)
-    : head.startsWith(':')
+    : head.slice(0, 1) === ':'
       ? head.slice(1)
       : head;
 }
@@ -1787,18 +1823,20 @@ function foldOperation(children: readonly unknown[]): ValueNode {
   return result;
 }
 
+const lineComment = regex(/\/\/[^\n\r]*/);
 const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const triviaComment = regex(/\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lessTriviaGap = oneOrMore(choice(
+  label('whitespace', regex(/[ \t\n\r\f]+/)),
+  label('lineComment', lineComment),
+  label('blockComment', blockComment)
+));
 
 // Less comments are trivia. Line comments must not become renderable CSS
 // comments; block comments may still make an otherwise empty ruleset renderable
 // through body-span trivia, not through a `Comment` statement node.
 // URL bodies explicitly disable trivia below, so `url(//host/path)` remains
 // URL content rather than a comment.
-const whitespace = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  triviaComment
-)));
+const whitespace = trivia(lessTriviaGap);
 const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
 const importKeyword = keywords(
   ['@-import', '@-export', '@import'],
@@ -1830,41 +1868,32 @@ const lessOpaqueBodyCapture = noTrivia(scanTo(
 // operator position this trivia is a separator the arithmetic consumes; a comment
 // in value-LIST position (`1 /* c */ 2`, no operator char follows) makes the
 // operator loop backtrack and is left as preserved value syntax.
-const mathTrivia = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  triviaComment
-)));
+const mathTrivia = trivia(lessTriviaGap);
 // Function argument comments are trivia. Block comments stay out of the value
 // AST and are replayed through the call argument ValueLayout when they sit on an
 // argument boundary.
-const functionTrivia = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  triviaComment
-)));
+const functionTrivia = trivia(lessTriviaGap);
 // Mixin signatures and guards are invisible definition syntax. Unlike an
 // ordinary declaration value, a block comment at one of their token boundaries
 // is lexical trivia (the legacy MixinArgs production used the same rule). Keep
 // this wider trivia local: output-bearing value comments remain typed facts.
 const mixinSignatureGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
 const mixinGuardGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
-const mixinSignatureTrivia = trivia(mixinSignatureGap);
-const mixinGuardTrivia = trivia(mixinGuardGap);
+const mixinSignatureTrivia = trivia(label('whitespace', mixinSignatureGap));
+const mixinGuardTrivia = trivia(label('whitespace', mixinGuardGap));
 // Selector grammar components used inside functional pseudos retain their
 // established lexical-comment behavior.
-const staticSelectorTrivia = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  triviaComment
+const staticSelectorTrivia = trivia(lessTriviaGap);
+const compoundSelectorTrivia = trivia(oneOrMore(choice(
+  label('lineComment', lineComment),
+  label('blockComment', blockComment)
 )));
-const compoundSelectorTrivia = trivia(oneOrMore(triviaComment));
-const atPreludeCommentTrivia = trivia(oneOrMore(blockComment));
-const customValueCommentTrivia = trivia(oneOrMore(blockComment));
+const atPreludeCommentTrivia = trivia(oneOrMore(label('blockComment', blockComment)));
+const customValueCommentTrivia = trivia(oneOrMore(label('blockComment', blockComment)));
 // Outer selector comments are lexical trivia. Render-time body/source spans own
 // whether a trivia-only body remains output-bearing; selectors do not invent
 // comment simple selectors.
-const outerSelectorTrivia = trivia(oneOrMore(choice(
-  regex(/[ \t\n\r\f]+/),
-  triviaComment
-)));
+const outerSelectorTrivia = trivia(lessTriviaGap);
 const staticSimpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
 const directStaticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 // A selector simple that contains Less interpolation stays one selector atom.
@@ -1946,10 +1975,22 @@ const topProductOperator = leaf(
 // but authored whitespace around `/` is still part of that opaque value. Keep
 // the boundary explicit so `10px / 2` does not flatten into a plain ValueSlot
 // array before the evaluator can apply the math-mode rule.
-const preservedSlashBoundary = sequence(
-  optional(regex(/[ \t\n\r\f]+/)),
-  literal('/'),
-  optional(regex(/[ \t\n\r\f]+/))
+const preservedSlashGap = regex(/[ \t\n\r\f]+/);
+const preservedSlashBoundary = leaf(
+  sequence(
+    optional(preservedSlashGap),
+    literal('/'),
+    optional(preservedSlashGap)
+  ),
+  (children) => {
+    if (!Array.isArray(children)) {
+      throw new TypeError('Direct Less slash boundary produced a non-sequence value.');
+    }
+    return {
+      before: staticText(children[0]),
+      after: staticText(children[2])
+    };
+  }
 );
 // CSS rule (kept, NOT widened for comments): `+`/`-` are ambiguous between a
 // binary operator and a leading sign, so — like CSS `calc()` — they require REAL
@@ -2449,9 +2490,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   // even though Value already recognizes the whole reference —
   // which is why the same value parsed in property position and not here.
   const directMixinValueWithoutLookup = not(noTrivia(literal('[')));
-  const directVariableName = leaf(
+  const directVariableName = node<string>(
+    'VariableName',
     noTrivia(sequence(literal('@'), lessVariableName)),
-    (children, span) => `@${requireSupportedVariableName(Array.isArray(children) ? children[1] : children, span.start, span.end)}`
+    (children, _fields, span) => `@${requireSupportedVariableName(children[1], span.start, span.end)}`
   );
   const VarDeclaration = node<VariableDeclaration>(
     'VarDeclaration',
@@ -2951,21 +2993,23 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     'PreservedDivision',
     noTrivia(sequence(g.TopSum, oneOrMore(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
     (children, fields, span) => {
+      const slashBoundaries = fields?.separator === undefined
+        ? []
+        : requireFields(fields, 'separator').map((separator) => {
+            if (!isSlashBoundaryFact(separator.value)) {
+              throw new TypeError('Direct Less preserved division produced an invalid slash boundary.');
+            }
+            return separator.value;
+          });
+      const values = children.filter(isValueNode);
       const parts: ValueNode[] = [];
-      for (const child of children) {
-        if (isValueNode(child)) {
-          parts.push(child);
-        } else if (isTerminalText(child, '/')) {
+      for (let index = 0; index < values.length; index += 1) {
+        parts.push(values[index]!);
+        if (index < slashBoundaries.length) {
           parts.push(keyword('/'));
         }
       }
-      const slashBoundaries = fields?.separator === undefined
-        ? []
-        : requireFields(fields, 'separator').map(separator => staticText(separator.value));
-      const separators = slashBoundaries.flatMap((boundary) => {
-        const slash = boundary.indexOf('/');
-        return slash < 0 ? [boundary] : [boundary.slice(0, slash), boundary.slice(slash + 1)];
-      });
+      const separators = slashBoundaries.flatMap(boundary => [boundary.before, boundary.after]);
       return {
         type: 'SpacedValue',
         parts,
@@ -2993,19 +3037,21 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       if (fields?.separator === undefined) {
         return requireValueNode(children[0]);
       }
+      const slashBoundaries = requireFields(fields, 'separator').map((separator) => {
+        if (!isSlashBoundaryFact(separator.value)) {
+          throw new TypeError('Direct Less value piece produced an invalid slash boundary.');
+        }
+        return separator.value;
+      });
+      const values = children.filter(isValueNode);
       const parts: ValueNode[] = [];
-      for (const child of children) {
-        if (isValueNode(child)) {
-          parts.push(child);
-        } else if (isTerminalText(child, '/')) {
+      for (let index = 0; index < values.length; index += 1) {
+        parts.push(values[index]!);
+        if (index < slashBoundaries.length) {
           parts.push(keyword('/'));
         }
       }
-      const slashBoundaries = requireFields(fields, 'separator').map(separator => staticText(separator.value));
-      const separators = slashBoundaries.flatMap((boundary) => {
-        const slash = boundary.indexOf('/');
-        return slash < 0 ? [boundary] : [boundary.slice(0, slash), boundary.slice(slash + 1)];
-      });
+      const separators = slashBoundaries.flatMap(boundary => [boundary.before, boundary.after]);
       return {
         type: 'SpacedValue',
         parts,

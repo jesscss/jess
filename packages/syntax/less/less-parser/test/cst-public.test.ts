@@ -58,6 +58,19 @@ describe('@jesscss/less-parser/cst', () => {
     expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
   });
 
+  it('keeps unsupported Less variable names recoverable in CST mode', () => {
+    for (const input of [
+      '@1: red;',
+      '@-: red;',
+      '.entry { color: @-; }',
+      'each(1, .(@-) { color: red; });'
+    ]) {
+      const result = parseLessCst(input);
+
+      expect(result.tree.type).toBe('StyleSheet');
+    }
+  });
+
   it('ignores trailing Less trivia but reports a non-trivia tail', () => {
     const trailingTrivia = parseLessCst('@color: red; .x { color: @color; }\n// trailing\n');
     const trailingJunk = parseLessCst('@color: red; .x { color: @color; } ???');
