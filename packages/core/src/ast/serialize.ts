@@ -3630,6 +3630,7 @@ function invokeValueLambda(
   if (result === undefined) {
     throw ERR.invalidFunction({
       node: lambda,
+      ...callSiteLocation(lambda, e),
       meta: { name: 'function', reason: 'its body assigns no `result:`, so the call has no value to yield' }
     });
   }
@@ -4883,7 +4884,11 @@ function composeOne(parents: string[], child: ComplexSelector, frame: Frame | nu
   }
   return mapMaybe(resolveComplex(child, frame, e), (text) => {
     if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
-      throw ERR.commaListInterpolation({ node: child, meta: { selector: text } });
+      throw ERR.commaListInterpolation({
+        node: child,
+        ...callSiteLocation(child, e),
+        meta: { selector: text }
+      });
     }
     return joinAmpersand(text, parents);
   });
@@ -4923,7 +4928,11 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
     if (parents.some(hasTopLevelComma)) {
       return mapMaybe(resolveComplex(c, frame, e), (canon) => {
         if (!canon.startsWith('&')) {
-          throw ERR.commaListInterpolation({ node: c, meta: { selector: canon } });
+          throw ERR.commaListInterpolation({
+            node: c,
+            ...callSiteLocation(c, e),
+            meta: { selector: canon }
+          });
         }
         return joinAmpersand(canon, parents);
       });
@@ -7105,6 +7114,7 @@ function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): MaybePromise<boo
   if (guardUsesDefault(rule.guard)) {
     throw ERR.invalidFunction({
       node: rule,
+      ...callSiteLocation(rule, e),
       meta: {
         name: 'default',
         reason: 'default() is only allowed in parametric mixin guards'
@@ -8617,7 +8627,11 @@ function assertDeclarationValueIsNotRuleset(node: Declaration, frame: Frame | nu
   if (!resolveValueBlock(node.value, frame, e)) {
     return;
   }
-  throw ERR.rulesetOnProperty({ node, meta: { what: declName(node, frame, e) } });
+  throw ERR.rulesetOnProperty({
+    node,
+    ...callSiteLocation(node, e),
+    meta: { what: declName(node, frame, e) }
+  });
 }
 
 /** Build the overlay frame for a detached-ruleset call (definition scope has
@@ -9218,7 +9232,11 @@ function dispatch(
     const call2 = substituteClosureVarArgs(call1, frame);
     const ambiguity = (error: unknown): never => {
       if (error instanceof DefaultGuardAmbiguityError) {
-        throw ERR.ambiguousDefault({ node: call, meta: { callee: `${call.name}()` } });
+        throw ERR.ambiguousDefault({
+          node: call,
+          ...callSiteLocation(call, e),
+          meta: { callee: `${call.name}()` }
+        });
       }
       throw error;
     };
@@ -9345,7 +9363,11 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
       }
       const name = declName(leaf.node, leaf.frame, e);
       if (!name.startsWith('--')) {
-        throw ERR.propertyInRoot({ node: leaf.node, meta: { what: name } });
+        throw ERR.propertyInRoot({
+          node: leaf.node,
+          ...callSiteLocation(leaf.node, e),
+          meta: { what: name }
+        });
       }
     }
   }
@@ -9750,7 +9772,11 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     const name = declName(node, frame, e);
     if (atRoot && !name.startsWith('--')) {
-      throw ERR.propertyInRoot({ node, meta: { what: name } });
+      throw ERR.propertyInRoot({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { what: name }
+      });
     }
     put(e, idt);
     put(e, name); // resolve interpolated property name
@@ -10463,7 +10489,11 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
     const value = evalTyped(node, frame, e);
     return mapMaybe(value, (resolved) => {
       if (!isValueGroupArray(resolved) && resolved.type === 'Color') {
-        throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
+        throw ERR.invalidStatement({
+          node,
+          ...callSiteLocation(node, e),
+          meta: { what: 'Color' }
+        });
       }
       return evalAndEmit();
     });
