@@ -1085,7 +1085,7 @@ or a completion milestone.
   properties, a terminal declaration without a final semicolon, typed static
   `@supports` conditions, static CSS keyframes, lone typed interpolation
   preludes for `@media`, `@supports`, and `@keyframes`, and exact opaque
-  UnicodeRange value/list leaves that remain outside arithmetic. Unquoted dynamic URL
+  UnicodeRange value/list leaves that remain outside arithmetic. Bare dynamic URL
   values and Less `@import url(...)` targets retain existing `Url(Interpolation)`
   facts. A lone `@{…}` import tail is likewise a typed `Interpolation`; mixed static/
   dynamic tails remain rejected until their segment model exists. Parser

@@ -101,7 +101,7 @@ and does not expose a `map` artifact yet.
   values must accept arbitrary token streams (CSS-spec `<declaration-value>`),
   implemented at the **CSS-parser base level** so it propagates to less/scss/jess
   via grammar composition. (Fix dispatched — active, not deferred.)
-- **Unquoted selector-capture `*[...]`** (`parse-interpolation.less`) — NOT a
+- **Bare selector capture `*[...]`** (`parse-interpolation.less`) — NOT a
   deprecation. A NEW feature already implemented in the `.jess` parser
   (`jess-parser` `SelectorCapture`, `grammar.ts:369`); being **ported into `.less`**.
   A real work item, not an owner decision. (Port dispatched.)

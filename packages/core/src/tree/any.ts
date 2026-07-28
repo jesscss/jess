@@ -140,7 +140,7 @@ export function any<Role extends AnyRole = AnyRole>(
 }
 defineType(Any, 'Any');
 
-/** Legacy class - remove? */
+/** Legacy Less compatibility alias for `Any`. */
 export class Anonymous<
   Role extends AnyRole = AnyRole
 > extends Any<Role> {}
