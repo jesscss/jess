@@ -3,9 +3,9 @@
  *
  * WHAT IT IS FOR
  * --------------
- * The acceptance gate for grammar refactors. A cleanup of `src/grammar.ts` or
- * `src/ast/grammar.ts` is only accepted if BOTH aggregate hashes below are
- * unchanged. A conversion that moves either aggregate is a FAILED conversion —
+ * The acceptance gate for grammar refactors. A cleanup of `src/grammar.ts` is
+ * only accepted if BOTH aggregate hashes below are unchanged. A conversion
+ * that moves either aggregate is a FAILED conversion —
  * revert it, or (if the move is intended) it is a semantics change and needs an
  * owner decision, not a refactor commit.
  *

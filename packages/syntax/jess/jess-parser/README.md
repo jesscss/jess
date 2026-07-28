@@ -62,10 +62,10 @@ Pass a different `startRule` (any capitalized grammar rule) to parse a fragment.
 | Entry | Export | Purpose |
 | --- | --- | --- |
 | `@jesscss/jess-parser` (`.`) | `parse`, `JessParseError` | Parse Jess directly to canonical AST v2 `Stylesheet`; malformed input throws `JessParseError` with an offset and expected facts. |
-| `@jesscss/jess-parser` (`.`) | `parseJessCst`, `jessGrammar` | Convenience exports for the explicit language-service CST surface. |
+| `@jesscss/jess-parser` (`.`) | `parseJessCst`, `jessGrammar` | Convenience exports for the public CST parser and canonical grammar artifact. |
 | `@jesscss/jess-parser` (`.`) | `JessCstNode`, `JessCstLeaf`, `JessCstError`, `JessCstChild`, `JessCstParseResult`, `JessCstType` (types) | CST type definitions (aliases of the shared `@jesscss/css-parser/cst` types). |
 | `@jesscss/jess-parser/cst` | `parseJessCst`, CST types | Same core-free CST parser (explicit subpath). |
-| `@jesscss/jess-parser/grammar` | `jessGrammar` | The explicit CST/language-service grammar rule map. It is not the production compiler parser route. |
+| `@jesscss/jess-parser/grammar` | `jessFactory`, `jessGrammar`, `jessAstGrammar`, `jessCstGrammar` | The single host-mode grammar source and its AST/CST compiled artifacts. |
 
 ## Default CST shape
 
@@ -83,11 +83,11 @@ Parsing `$brand: #3366ff;` yields:
 {
   "_tag": "node", "type": "StyleSheet", "grammarType": "Stylesheet", "span": { "start": 0, "end": 16 },
   "children": [
-    { "_tag": "node", "type": "VarDeclaration", "grammarType": "VarDeclaration", "span": { "start": 0, "end": 16 },
+    { "_tag": "node", "type": "DirectJessVarDeclaration", "grammarType": "DirectJessVarDeclaration", "span": { "start": 0, "end": 16 },
       "children": [
         { "_tag": "leaf", "value": "$brand", "span": { "start": 0, "end": 6 } },
         { "_tag": "leaf", "value": ":", "span": { "start": 6, "end": 7 } },
-        { "_tag": "node", "type": "Color", "grammarType": "Color", "span": { "start": 8, "end": 15 },
+        { "_tag": "node", "type": "DirectJessColor", "grammarType": "DirectJessColor", "span": { "start": 8, "end": 15 },
           "children": [ { "_tag": "leaf", "value": "#3366ff", "span": { "start": 8, "end": 15 } } ] },
         { "_tag": "leaf", "value": ";", "span": { "start": 15, "end": 16 } }
       ] }
@@ -95,9 +95,9 @@ Parsing `$brand: #3366ff;` yields:
 }
 ```
 
-Jess-specific grammar rules the delta adds include `VarDeclaration` (`$x: …`), `Reference` (`$x`, `$x.prop`, `$x[0]`), `Expression` / `Operation` / `Condition` (inside `$(…)`), `Mixin`, `MixinCall`, `InterpolatedSelector` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
+Jess-specific grammar rules include `DirectJessVarDeclaration` (`$x: …`), `DirectJessVarReference` / `DirectJessReferenceCall` (`$x`, `$x.prop`, `$x[0]`, callable chains), `DirectJessExpression*` (inside `$(…)`), `DirectJessMixinDef`, `DirectJessMixinCall`, `DirectJessInterpolatedSimple` (`.widget-${side}`), and the `@-compose`/`@-export`/`@-from`/`@-use` import at-rules.
 
-Pass `{ collapse: true }` to unwrap single-child wrapper types (`Reference`, `NamedColor`, `InterpolatedSelector`) into their child.
+Pass `{ collapse: true }` to request parseman's transparent-wrapper collapse while preserving source leaves and grammar ownership.
 
 ### Current parse coverage
 
@@ -109,13 +109,14 @@ diagnostics.
 ## Compiler boundary
 
 Production Jess parsing is `parse()` or `@jesscss/plugin-jess` through a
-`Compiler`/`Context`. The direct grammar reductions construct canonical AST facts
-themselves; there is no BuilderHost, parser action registry, CST-to-AST bridge, or
-second parse route. `jessGrammar` and `parseJessCst()` are retained only for
-explicit language-service/document consumers that need CST fidelity. Published
-parser packages expose only their macro-compiled `lib` artifacts, so a consumer
-does not need the workspace-private recognition package.
+`Compiler`/`Context`. The single grammar source is compiled in AST and CST host
+modes. Its reductions construct canonical AST facts themselves; there is no
+BuilderHost, parser action registry, CST-to-AST bridge, or second parse route.
+`parseJessCst()` is the explicit language-service/document entry when callers
+need CST fidelity. Published parser packages expose only their macro-compiled
+`lib` artifacts, so a consumer does not need the workspace-private recognition
+package.
 
 ## Part of Jess
 
-This package is developed as part of [Jess](https://github.com/jesscss/jess). It shares its CSS base and CST machinery with `@jesscss/css-parser`, `@jesscss/less-parser`, and `@jesscss/scss-parser`.
+This package is developed as part of [Jess](https://github.com/jesscss/jess). It shares its CSS base and CST machinery through `@jesscss/css-parser` and `@jesscss/parser-shared`.

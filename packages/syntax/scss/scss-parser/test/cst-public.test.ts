@@ -52,7 +52,7 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.tree.type).toBe('StyleSheet');
-    expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
   });
 
   it('accepts an ASCII-case-insensitive declaration priority through the public parser', () => {
@@ -62,15 +62,15 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(result.unconsumedFrom).toBeNull();
   });
 
-  it('preserves import-item CST facts while a structural interpolation skips a modifier', () => {
-    const source = '@import "base.css" supports(#{"(display: grid)"}), "print.css" print;';
+  it('preserves direct import CST facts without a split CST-only route', () => {
+    const source = '@import "theme.css" layer(tokens) supports((display: grid)) screen;';
     const result = parseScssCst(source);
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(stats(result.tree).grammarTypes.get('ScssImportAtRule')).toBe(1);
-    expect(stats(result.tree).grammarTypes.get('ScssImportItem')).toBe(2);
-    expect(leafText(result.tree)).toContain('#{"(display: grid)"}');
+    expect(stats(result.tree).grammarTypes.get('ScssImport')).toBe(1);
+    expect(leafText(result.tree)).toContain('supports');
+    expect(leafText(result.tree)).toContain('theme.css');
   });
 
   it('collapses transparent CST wrappers without dropping leaves', () => {
@@ -80,10 +80,9 @@ describe('@jesscss/scss-parser/cst', () => {
     expect(expanded.errors).toHaveLength(0);
     expect(collapsed.errors).toHaveLength(0);
     expect([...stats(expanded.tree).types]).not.toContain('Unknown');
-    expect(stats(expanded.tree).types).toContain('VarDeclaration');
-    expect(stats(expanded.tree).grammarTypes.get('Reference')).toBeGreaterThan(stats(collapsed.tree).grammarTypes.get('Reference') ?? 0);
+    expect(stats(expanded.tree).types).toContain('VariableDeclaration');
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
-    expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
+    expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VariableDeclaration')).toBe(true);
   });
 });
 

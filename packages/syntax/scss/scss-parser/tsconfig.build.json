@@ -6,10 +6,9 @@
     "noEmit": false,
     "paths": {
       "@jesscss/css-parser": ["./node_modules/@jesscss/css-parser/lib/index.d.ts"],
-      "@jesscss/less-parser": ["./node_modules/@jesscss/less-parser/lib/index.d.ts"],
       "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
     }
   },
-  "include": ["src/grammar.ts", "src/index.ts", "src/cst.ts", "src/ast/grammar.ts"],
+  "include": ["src/grammar.ts", "src/index.ts", "src/cst.ts"],
   "exclude": []
 }

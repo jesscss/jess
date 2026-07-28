@@ -1,7 +1,7 @@
 # Jess Parser — build notes
 
-Living doc for the `.jess` parser build (functional Parséman grammar,
-`jessGrammar = compose([cssGrammar, <Jess delta>])`). Tracks settled syntax
+Living doc for the `.jess` parser build (functional Parseman grammar,
+`src/grammar.ts` owns one host-mode factory compiled for AST and CST). Tracks settled syntax
 decisions, **deferred work**, and known quirks so nothing lives only in an
 agent's head. Syntax comes from two sources: how core AST nodes stringify, and
 the canonical docs (`packages/docs-content/docs/jess/**` — `02-Language/**` is
@@ -292,8 +292,10 @@ rediscovered.
 
 ## Settled syntax decisions
 
-- **Base:** compose over `cssGrammar` (cleanest shapes), not Less/SCSS. Author
-  only the Jess delta + `//` comments. Selectors stay clean unless interpolated.
+- **Base:** compose over the CSS base grammar, not Less/SCSS. Author only the
+  Jess delta + `//` comments. Selectors stay clean unless interpolated. The
+  current grammar owns AST and CST through one host-mode factory; do not
+  reintroduce a CST-only Jess delta.
 - **Variables:** `$name: value;` and `$$name: value;` both create or update both
   bindings. `$name` reads live/current and `$$name` reads scoped/final. `?:` and
   `:=` use their target lookup mode. `$!` is retired.
@@ -334,15 +336,16 @@ rediscovered.
   failures are pre-existing on `dev` (confirmed by reverting this change).
 
 ## Macro-buildability (parseman)
-- parseman is the LOCAL `~/git/oss/parser-thing` **0.15.0**, linked via root
-  `pnpm.overrides` + a root devDep (npm's 0.14.0 is NOT used). `pnpm install` to
-  apply; rebuild its dist (`cd ~/git/oss/parser-thing && pnpm build`) after editing.
-- **Build guard**: `pnpm check:macro` (`scripts/check-macro-buildable.mjs`) builds
-  the five parseman-macro packages in dep order and FAILS if any emits an
-  interpreter fallback (`_rp[N].parse` in the built bundle) or a compose/rules
-  parseman warning. All five currently: 0 fallbacks. It scans every emitted ESM
-  module under each `lib/` — never a fixed entry list, which is what broke it when
-  `lib/jess.js` went away with the core-free CST entries.
+- Parseman is resolved from the workspace's pinned npm package. Current grammar
+  rewrite floor: `parseman@0.40.0`.
+- **Build guard**: `pnpm run check:macro`
+  (`scripts/check-macro-buildable.mjs`) builds parser-shared plus the four parser
+  packages in dependency order and fails if any package emits an interpreter
+  fallback or parseman macro warning. Re-run it after grammar batches before
+  quoting whole-repo fallback counts. The package-local fold evidence is:
+  `pnpm --filter @jesscss/jess-parser build` and
+  `pnpm --filter @jesscss/jess-parser test` pass after the single-source
+  host-mode fold.
 - Wired into `verify:pr` and `.github/workflows/pr-quality-gate.yml`, both with
   `--no-build`, so it reads the artifacts the clean serial build already produced
   rather than paying for a second rebuild. `verify-compose-integrity.mjs --log`

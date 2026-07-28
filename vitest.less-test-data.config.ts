@@ -21,30 +21,79 @@ const excludedExternalAliases = [
   '@types/'
 ];
 
-function readJson(filePath: string): Record<string, any> {
+type PackageJson = {
+  name?: unknown;
+  main?: unknown;
+  exports?: unknown;
+  dependencies?: unknown;
+  devDependencies?: unknown;
+  peerDependencies?: unknown;
+};
+
+type PackageMeta = {
+  relativeDir: string;
+  packageDir: string;
+  packageJsonPath: string;
+  pkg: PackageJson;
+};
+
+function readJson(filePath: string): PackageJson {
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as Record<string, any>;
+  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as PackageJson;
+}
+
+function objectKeys(value: unknown): string[] {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.keys(value)
+    : [];
+}
+
+function collectWorkspacePackages(dir: string, relativeDir = ''): PackageMeta[] {
+  const packageJsonPath = path.join(dir, 'package.json');
+  const found: PackageMeta[] = fs.existsSync(packageJsonPath)
+    ? [{
+        relativeDir,
+        packageDir: dir,
+        packageJsonPath,
+        pkg: readJson(packageJsonPath)
+      }]
+    : [];
+
+  for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!dirent.isDirectory() || dirent.name === 'node_modules' || dirent.name.startsWith('.')) {
+      continue;
+    }
+    found.push(...collectWorkspacePackages(
+      path.join(dir, dirent.name),
+      path.join(relativeDir, dirent.name)
+    ));
+  }
+
+  return found;
+}
+
+const workspacePackageMetas = collectWorkspacePackages(packagesRoot);
+const workspacePackageByName = new Map(
+  workspacePackageMetas
+    .map(meta => (typeof meta.pkg.name === 'string' ? [meta.pkg.name, meta] as const : null))
+    .filter((value): value is readonly [string, PackageMeta] => Boolean(value))
+);
+
+function builtPackageEntry(packageName: string, subpath = 'index.js'): string {
+  const meta = workspacePackageByName.get(packageName);
+  if (!meta) {
+    throw new Error(`Unable to find workspace package ${packageName}`);
+  }
+  return path.join(meta.packageDir, 'lib', subpath);
 }
 
 function createWorkspaceSourceAliases() {
   const aliases: Array<{ find: string; replacement: string }> = [];
-  const packageDirs = fs.readdirSync(packagesRoot, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory())
-    .map(dirent => ({
-      dirName: dirent.name,
-      packageDir: path.join(packagesRoot, dirent.name),
-      packageJsonPath: path.join(packagesRoot, dirent.name, 'package.json')
-    }))
-    .filter(entry => fs.existsSync(entry.packageJsonPath));
-  const packageMetas = packageDirs.map(entry => ({
-    ...entry,
-    pkg: readJson(entry.packageJsonPath)
-  }));
-  const workspaceNames = new Set<string>(packageMetas
+  const workspaceNames = new Set<string>(workspacePackageMetas
     .map(({ pkg }) => (typeof pkg.name === 'string' ? pkg.name : null))
     .filter((value): value is string => Boolean(value)));
 
-  for (const { dirName, packageDir, pkg } of packageMetas) {
+  for (const { relativeDir, packageDir, pkg } of workspacePackageMetas) {
     const packageName = typeof pkg.name === 'string' ? pkg.name : null;
     if (!packageName) {
       continue;
@@ -54,12 +103,12 @@ function createWorkspaceSourceAliases() {
     if (exportsField && typeof exportsField === 'object') {
       for (const [subpath, target] of Object.entries(exportsField)) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        if (!target || typeof target !== 'object' || typeof (target as Record<string, unknown>).source !== 'string') {
+        if (!target || typeof target !== 'object' || typeof (target as { source?: unknown }).source !== 'string') {
           continue;
         }
 
         // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-        const aliasPath = path.resolve(packageDir, (target as Record<string, string | undefined>).source!);
+        const aliasPath = path.resolve(packageDir, (target as { source: string }).source);
         const aliasName = subpath === '.' ? packageName : `${packageName}/${subpath.slice(2)}`;
         aliases.push({
           find: aliasName,
@@ -73,11 +122,11 @@ function createWorkspaceSourceAliases() {
       });
     }
 
-    const sharedPackageDir = path.join(sharedRepoRoot, 'packages', dirName);
+    const sharedPackageDir = path.join(sharedRepoRoot, 'packages', relativeDir);
     const dependencyNames = new Set<string>([
-      ...Object.keys(pkg.dependencies || {}),
-      ...Object.keys(pkg.devDependencies || {}),
-      ...Object.keys(pkg.peerDependencies || {})
+      ...objectKeys(pkg.dependencies),
+      ...objectKeys(pkg.devDependencies),
+      ...objectKeys(pkg.peerDependencies)
     ]);
 
     for (const dependencyName of dependencyNames) {
@@ -132,16 +181,16 @@ export default defineConfig({
      * parser rather than aliasing its macro source into Vite at runtime.
      */
     alias: [
-      { find: '@jesscss/less-parser/grammar', replacement: path.join(packagesRoot, 'less-parser', 'lib', 'grammar.js') },
-      { find: '@jesscss/less-parser', replacement: path.join(packagesRoot, 'less-parser', 'lib', 'index.js') },
+      { find: '@jesscss/less-parser/grammar', replacement: builtPackageEntry('@jesscss/less-parser', 'grammar.js') },
+      { find: '@jesscss/less-parser', replacement: builtPackageEntry('@jesscss/less-parser') },
 
       /*
        * Compiler imports the built-in Jess plugin even for a Less document. Its
        * parser is macro-compiled too, so this integration route must not alias
        * either package back to TypeScript source inside Vite.
        */
-      { find: '@jesscss/plugin-jess', replacement: path.join(packagesRoot, 'jess-plugin-jess', 'lib', 'index.js') },
-      { find: '@jesscss/jess-parser', replacement: path.join(packagesRoot, 'jess-parser', 'lib', 'index.js') },
+      { find: '@jesscss/plugin-jess', replacement: builtPackageEntry('@jesscss/plugin-jess') },
+      { find: '@jesscss/jess-parser', replacement: builtPackageEntry('@jesscss/jess-parser') },
       ...createWorkspaceSourceAliases().filter(alias =>
         alias.find !== '@jesscss/less-parser'
         && alias.find !== '@jesscss/plugin-jess'

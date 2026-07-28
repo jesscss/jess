@@ -6,8 +6,6 @@
     "noEmit": false,
     "paths": {
       "@jesscss/css-parser": ["./node_modules/@jesscss/css-parser/lib/index.d.ts"],
-      "@jesscss/less-parser": ["./node_modules/@jesscss/less-parser/lib/index.d.ts"],
-      "@jesscss/scss-parser": ["./node_modules/@jesscss/scss-parser/lib/index.d.ts"],
       "@jesscss/parser": ["./node_modules/@jesscss/parser/lib/index.d.ts"]
     }
   },

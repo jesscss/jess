@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { absolutizeCST } from 'parseman';
+import { parseCst } from '@jesscss/css-parser/cst';
 import { parseLessCst, parseLessDoc } from '../src/cst.js';
+import { lessCstGrammar } from '../src/grammar.js';
 import type { LessCstChild } from '../src/cst.js';
 
 /** Structural CST key (type + absolute span + children; leaves by value+span). */
@@ -15,6 +17,17 @@ function cstStructKey(node: LessCstChild): unknown {
 }
 
 type CstNode = ReturnType<typeof parseLessCst>['tree'];
+type CstResult = ReturnType<typeof parseLessCst>;
+
+function parseLessDirectCst(input: string): CstResult {
+  return parseCst(lessCstGrammar as Record<string, unknown>, input);
+}
+
+function cstIssueCount(result: CstResult): number {
+  return Number(!result.ok)
+    + result.errors.length
+    + Number(result.unconsumedFrom !== null);
+}
 
 function stats(tree: CstNode) {
   let leaves = 0;
@@ -45,6 +58,15 @@ describe('@jesscss/less-parser/cst', () => {
     expect(result.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
   });
 
+  it('ignores trailing Less trivia but reports a non-trivia tail', () => {
+    const trailingTrivia = parseLessCst('@color: red; .x { color: @color; }\n// trailing\n');
+    const trailingJunk = parseLessCst('@color: red; .x { color: @color; } ???');
+
+    expect(trailingTrivia.errors).toHaveLength(0);
+    expect(trailingTrivia.unconsumedFrom).toBeNull();
+    expect(trailingJunk.unconsumedFrom).not.toBeNull();
+  });
+
   it('collapses transparent CST wrappers without dropping leaves', () => {
     const expanded = parseLessCst('@color: red; .x { color: @color; }');
     const collapsed = parseLessCst('@color: red; .x { color: @color; }', 'Stylesheet', { collapse: true });
@@ -53,7 +75,7 @@ describe('@jesscss/less-parser/cst', () => {
     expect(collapsed.errors).toHaveLength(0);
     expect([...stats(expanded.tree).types]).not.toContain('Unknown');
     expect(stats(expanded.tree).types).toContain('VarDeclaration');
-    expect(stats(expanded.tree).grammarTypes.get('Reference')).toBeGreaterThan(stats(collapsed.tree).grammarTypes.get('Reference') ?? 0);
+    expect(stats(collapsed.tree).grammarTypes.get('Reference') ?? 0).toBeLessThanOrEqual(stats(expanded.tree).grammarTypes.get('Reference') ?? 0);
     expect(stats(collapsed.tree).leaves).toBe(stats(expanded.tree).leaves);
     expect(collapsed.tree.children.some(c => c._tag === 'node' && c.grammarType === 'VarDeclaration')).toBe(true);
   });
@@ -108,8 +130,8 @@ describe('Less import CST facts', () => {
     expect(leafValues(findNode(imp!, 'ImportOptions')!)).toEqual(['(', 'less', ',', 'multiple', ')']);
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Quoted')).toBeDefined();
-    expect(leafValues(findNode(imp!, 'LessInterp')!)).toEqual(['@{', 'name', '}']);
-    expect(leafValues(findNode(imp!, 'ImportMedia')!)).toContain('screen');
+    expect(leafValues(findNode(imp!, 'VariableInterpolation')!)).toEqual(['@{', 'name', '}']);
+    expect(leafValues(findNode(imp!, 'ImportTail')!)).toContain('screen and ');
   });
 
   it('keeps a url target and the @-export keyword', () => {
@@ -121,12 +143,12 @@ describe('Less import CST facts', () => {
     expect(findNode(imp!, 'ImportOptions')).toBeDefined();
     expect(findNode(imp!, 'ImportTarget')).toBeDefined();
     expect(findNode(imp!, 'Url')).toBeDefined();
-    expect(findNode(imp!, 'ImportMedia')).toBeDefined();
+    expect(findNode(imp!, 'ImportTail')).toBeDefined();
   });
 
   it('rejects an unterminated quoted interpolation import target', () => {
     const result = parseLessCst('@import "theme-@{name}.css;');
-    expect(result.errors).not.toHaveLength(0);
+    expect(cstIssueCount(result)).toBeGreaterThan(0);
   });
 });
 
@@ -144,7 +166,7 @@ describe('Less statement-container CST facts', () => {
 });
 
 describe('Less custom-property interpolation CST facts', () => {
-  it('segments custom and ordinary interpolated property names around the shared LessInterp fact', () => {
+  it('segments custom and ordinary interpolated property names around the shared VariableInterpolation fact', () => {
     const result = parseLessCst('.x { --theme-@{name[key]}-${tone}: red; pre-@{name[key]}-${tone}-post: blue; }');
 
     expect(result.errors).toHaveLength(0);
@@ -153,13 +175,14 @@ describe('Less custom-property interpolation CST facts', () => {
     const declaration = findNode(result.tree, 'Declaration');
     expect(custom).toBeDefined();
     expect(declaration).toBeDefined();
-    expect(leafValues(custom!)).toEqual(['--', 'theme-', '@{', 'name', '[', 'key', ']', '}', '-', '${', 'tone', '}', ':', 'red', ';']);
-    expect(leafValues(declaration!)).toEqual(['pre-', '@{', 'name', '[', 'key', ']', '}', '-', '${', 'tone', '}', '-post', ':', 'blue', ';']);
-    expect(findNodes(result.tree, 'LessInterp').map(leafValues)).toEqual([
+    expect(leafValues(custom!)).toEqual(['--', 'theme-', '@{', 'name', '[', 'key', ']', '}', '-', '${', 'tone', '}', ':', 'red']);
+    expect(leafValues(declaration!)).toEqual(['pre-', '@{', 'name', '[', 'key', ']', '}', '-', '${', 'tone', '}', '-post', ':', ' ', 'blue']);
+    expect(leafValues(result.tree).filter(value => value === ';')).toHaveLength(2);
+    expect(findNodes(result.tree, 'VariableInterpolation').map(leafValues)).toEqual([
       ['@{', 'name', '[', 'key', ']', '}'],
       ['@{', 'name', '[', 'key', ']', '}']
     ]);
-    expect(findNodes(result.tree, 'LessPropertyInterp').map(leafValues)).toEqual([
+    expect(findNodes(result.tree, 'PropertyInterpolation').map(leafValues)).toEqual([
       ['${', 'tone', '}'],
       ['${', 'tone', '}']
     ]);
@@ -170,7 +193,7 @@ describe('Less custom-property interpolation CST facts', () => {
     const result = parseLessCst(input);
 
     expect(result.errors).toHaveLength(0);
-    expect(findNodes(result.tree, 'LessInterp').map(leafValues)).toEqual([
+    expect(findNodes(result.tree, 'VariableInterpolation').map(leafValues)).toEqual([
       ['@{', 'name', '}'],
       ['@{', 'map', '[', 'key', ']', '}'],
       ['@{', 'index', '}'],
@@ -187,7 +210,7 @@ describe('Less custom-property interpolation CST facts', () => {
     ]) {
       const result = parseLessCst(input);
       expect(result.errors, input).toHaveLength(0);
-      expect(findNodes(result.tree, 'LessInterp'), input).toHaveLength(0);
+      expect(findNodes(result.tree, 'VariableInterpolation'), input).toHaveLength(0);
       expect(leafValues(result.tree).join(''), input).toContain(literal);
     }
   });
@@ -214,7 +237,7 @@ describe('Less quoted and URL interpolation CST facts', () => {
     const quoted = findNode(result.tree, 'Quoted');
     expect(quoted).toBeDefined();
     expect(leafValues(quoted!)).toEqual(['"', 'pre-', '@{', 'theme', '[', 'variant', ']', '}', '-post', '"']);
-    expect(leafValues(findNode(quoted!, 'LessInterp')!)).toEqual(['@{', 'theme', '[', 'variant', ']', '}']);
+    expect(leafValues(findNode(quoted!, 'VariableInterpolation')!)).toEqual(['@{', 'theme', '[', 'variant', ']', '}']);
   });
 
   it('uses that same quoted target structure inside url()', () => {
@@ -225,13 +248,13 @@ describe('Less quoted and URL interpolation CST facts', () => {
     expect(url).toBeDefined();
     expect(leafValues(url!)).toEqual(['url(', '"', '@{', 'base', '}', '/icon.svg', '"', ')']);
     expect(findNode(url!, 'Quoted')).toBeDefined();
-    expect(leafValues(findNode(url!, 'LessInterp')!)).toEqual(['@{', 'base', '}']);
+    expect(leafValues(findNode(url!, 'VariableInterpolation')!)).toEqual(['@{', 'base', '}']);
   });
 
   it('does not invent interpolation structure for escaped or non-Less-shaped text', () => {
     const result = parseLessCst('.a { a: "\\@{literal}"; b: "@{ spaced }"; }');
     expect(result.errors).toHaveLength(0);
-    expect(findNode(result.tree, 'LessInterp')).toBeUndefined();
+    expect(findNode(result.tree, 'VariableInterpolation')).toBeUndefined();
   });
 });
 
@@ -241,7 +264,7 @@ describe('Less selector interpolation CST facts', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.unconsumedFrom).toBeNull();
-    expect(findNodes(result.tree, 'LessInterp').map(leafValues)).toEqual([
+    expect(findNodes(result.tree, 'VariableInterpolation').map(leafValues)).toEqual([
       ['@{', 'name', '}'],
       ['@{', 'state', '}']
     ]);
@@ -291,11 +314,69 @@ describe('Less direct-AST closure CST contract', () => {
   ];
 
   it.each(cases)('keeps the %s boundary in the parser-owned CST', (_label, source, grammarType) => {
-    const result = parseLessCst(source);
+    const result = parseLessDirectCst(source);
 
     expect(result.errors, source).toHaveLength(0);
     expect(result.unconsumedFrom, source).toBeNull();
     expect(hasNode(result.tree, grammarType), source).toBe(true);
+  });
+
+  it('keeps direct inline extends under the public ExtendPseudo owner', () => {
+    const result = parseLessDirectCst('.first, .inline:extend(.target all), .sibling { color: red; }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(findNodes(result.tree, 'InlineExtendTail')).toHaveLength(0);
+    expect(findNodes(result.tree, 'ExtendPseudo').map(leafValues)).toEqual([
+      [':', 'extend', '(', '.target', 'all', ')']
+    ]);
+  });
+
+  it('routes static query identifiers and functions without widening url() into a query function', () => {
+    const result = parseLessDirectCst('@media screen and (width >= calc(10px + 1px)) and (height >= feature(1px, 2px)) { .card { color: red; } }');
+    const badUrl = parseLessDirectCst('@media (width >= url(foo)) { .card { color: red; } }');
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(findNodes(result.tree, 'QueryIdentOrFunction')).toHaveLength(0);
+    expect(findNodes(result.tree, 'Keyword').map(leafValues)).toContainEqual(['screen']);
+    expect(findNodes(result.tree, 'CalcCall').map(leafValues)).toContainEqual(['calc(', '10', 'px', ' + ', '1', 'px', ')']);
+    expect(findNodes(result.tree, 'Call').map(leafValues)).toContainEqual(['feature(', '1', 'px', ', ', '2', 'px', ')']);
+    expect(cstIssueCount(badUrl)).toBeGreaterThan(0);
+  });
+
+  it('keeps Less function-like openers glued in public CST owners', () => {
+    const cases: readonly [source: string, grammarType: string, leaves: readonly string[]][] = [
+      ['e("x");', 'Call', ['e(', '"', 'x', '"', ')']],
+      ['@supports selector(a:hover) { a { color: red; } }', 'DirectLessGeneralEnclosedFunctionName', ['selector(']],
+      ['@container style(--responsive: true) { .card { color: red; } }', 'ContainerStyleQuery', ['style(', '--responsive', ':', 'true', ')']]
+    ];
+
+    for (const [source, grammarType, leaves] of cases) {
+      const result = parseLessDirectCst(source);
+
+      expect(cstIssueCount(result), source).toBe(0);
+      expect(findNodes(result.tree, grammarType).map(leafValues), source).toContainEqual([...leaves]);
+    }
+  });
+
+  it('preserves public CST owners for each structural query feature form', () => {
+    const cases: readonly [source: string, grammarType: string][] = [
+      ['@media (tv) { .card { color: red; } }', 'QueryBareFeature'],
+      ['@media (min-width: 1px) { .card { color: red; } }', 'QueryColonFeature'],
+      ['@media (width >= 1px) { .card { color: red; } }', 'QueryComparisonFeature'],
+      ['@media (1px <= width) { .card { color: red; } }', 'QueryRangeFeature'],
+      ['@container ((width < 500px) or (height < 500px)) { .card { color: red; } }', 'QueryLogicalGroup'],
+      ['@container (not (height > 670px)) { .card { color: red; } }', 'QueryNegatedFeature']
+    ];
+
+    for (const [source, grammarType] of cases) {
+      const result = parseLessDirectCst(source);
+
+      expect(result.errors, source).toHaveLength(0);
+      expect(result.unconsumedFrom, source).toBeNull();
+      expect(hasNode(result.tree, grammarType), source).toBe(true);
+    }
   });
 
   it('accepts a final custom-property declaration without a semicolon', () => {

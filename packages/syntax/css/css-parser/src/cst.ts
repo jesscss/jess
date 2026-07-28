@@ -1,4 +1,4 @@
-import { run, parseDoc, type BuildHost, type FieldMap, type ParseDoc, type ParseError, type Registry, type Runnable, type Span } from 'parseman';
+import { run, parseDoc, cstBuildHost as parsemanCstBuildHost, type BuildHost, type ParseDoc, type ParseError, type Registry, type Runnable, type Span } from 'parseman';
 
 export type CssCstType = string;
 
@@ -42,6 +42,8 @@ export type CssCstParseOptions = {
   readonly collapse?: boolean;
 };
 
+type BuildHostArgs = Parameters<BuildHost>;
+
 const TYPE_NAMES: Record<string, CssCstType> = {
   Stylesheet: 'StyleSheet',
   Ruleset: 'QualifiedRule',
@@ -58,6 +60,7 @@ const TYPE_NAMES: Record<string, CssCstType> = {
   AttributeSelector: 'AttributeSelector',
   PseudoSelector: 'PseudoSelector',
   Dimension: 'Dimension',
+  Percentage: 'Percentage',
   Num: 'Number',
   Color: 'Color',
   Url: 'Url',
@@ -106,32 +109,156 @@ function isCssCstChild(value: unknown): value is CssCstChild {
       || (value as { _tag?: string })._tag === 'error');
 }
 
-export const cssCstBuildHost: BuildHost = (
-  grammarType: string,
-  _children: ReadonlyArray<unknown> | undefined,
-  _fields: FieldMap | undefined,
-  span: Span,
-  rawChildren: ReadonlyArray<unknown>,
-  _triviaLog: readonly number[],
-  state: unknown
-): CssCstNode => {
+function isCssCstLeaf(value: unknown): value is CssCstLeaf {
+  return typeof value === 'object'
+    && value !== null
+    && (value as { _tag?: string })._tag === 'leaf'
+    && typeof (value as { value?: unknown }).value === 'string';
+}
+
+function numericGrammarType(rawChildren: readonly unknown[]): 'Percentage' | 'Dimension' | 'Num' {
+  const leaves = rawChildren.filter(isCssCstLeaf);
+  const suffix = leaves[1]?.value;
+  if (suffix === '%') {
+    return 'Percentage';
+  }
+  return suffix === undefined ? 'Num' : 'Dimension';
+}
+
+function hasNodeChild(rawChildren: readonly unknown[], grammarType: string): boolean {
+  return rawChildren.some(child => isCssCstChild(child) && child._tag === 'node' && child.grammarType === grammarType);
+}
+
+function publicGrammarType(grammarType: string, rawChildren: readonly unknown[]): string {
+  if (grammarType === 'Numeric' || grammarType === 'Dimension') {
+    return numericGrammarType(rawChildren);
+  }
+  if (grammarType === 'Declaration' && hasNodeChild(rawChildren, 'CustomProperty')) {
+    return 'CustomDeclaration';
+  }
+  if (grammarType === 'ConditionalBlock' || grammarType === 'NestedConditionalBlock') {
+    return 'QueryAtRuleBlock';
+  }
+  if (grammarType === 'LayerStatement') {
+    return 'AtRuleStatement';
+  }
+  if (grammarType === 'TopLevelRuleset') {
+    return 'Ruleset';
+  }
+  if (grammarType === 'TopLevelSelectorList') {
+    return 'SelectorList';
+  }
+  if (grammarType === 'PunctuationValue' || grammarType === 'NonIdentifierPunctuationValue') {
+    return 'DeclarationAny';
+  }
+  if (grammarType === 'ParenValue') {
+    return 'DeclarationParen';
+  }
+  if (grammarType === 'RawParenValue') {
+    return 'DeclarationRawParen';
+  }
+  if (grammarType === 'TopLevelComplexSelector') {
+    return 'ComplexSelector';
+  }
+  if (grammarType === 'TopLevelCompoundSelector') {
+    return 'CompoundSelector';
+  }
+  if (grammarType === 'ContainerPrelude') {
+    return 'QueryPrelude';
+  }
+  if (grammarType === 'ContainerQueryPrelude') {
+    return 'QueryPrelude';
+  }
+  if (grammarType === 'ContainerQueryClause') {
+    return 'QueryClause';
+  }
+  return grammarType;
+}
+
+function shiftedLeaf(leaf: CssCstLeaf, value: string, start: number): CssCstLeaf {
+  return {
+    _tag: 'leaf',
+    value,
+    span: { start, end: leaf.span.end }
+  };
+}
+
+function publicChildren(grammarType: string, rawChildren: readonly unknown[]): CssCstChild[] {
+  const children = rawChildren.filter(isCssCstChild);
+  if (grammarType === 'Quoted') {
+    const first = children[0];
+    if (first?._tag === 'leaf' && first.value.startsWith('~')) {
+      return [
+        shiftedLeaf(
+          first,
+          first.value.slice(1),
+          first.span.start + 1
+        ),
+        ...children.slice(1)
+      ];
+    }
+  }
+  if (grammarType === 'Url') {
+    const first = children[0];
+    const second = children[1];
+    if (first?._tag === 'leaf' && second?._tag === 'leaf' && second.value === '(') {
+      return [
+        {
+          _tag: 'leaf',
+          value: `${first.value}(`,
+          span: { start: first.span.start, end: second.span.end }
+        },
+        ...children.slice(2)
+      ];
+    }
+  }
+  return children;
+}
+
+function publicSpan(grammarType: string, span: Span, rawChildren: readonly unknown[]): Span {
+  if (grammarType === 'Quoted') {
+    const first = rawChildren.find(isCssCstLeaf);
+    if (first?.value.startsWith('~')) {
+      return { start: span.start + 1, end: span.end };
+    }
+  }
+  return { start: span.start, end: span.end };
+}
+
+function buildCssCstNode(args: BuildHostArgs): CssCstNode {
+  const [grammarType, , , span, rawChildren, , state] = args;
+
   /*
-   * The unified `numeric` rule (noTrivia numPart + optional unit) surfaces in the
-   * CST-public shape as the split rules did: a Dimension when the unit leaf is
-   * present (2 leaves), otherwise a bare Num. Keeps CST type/grammarType stable.
+   * The unified `Numeric` value-position recognizer surfaces in the CST-public
+   * shape as the split rules do: Percentage for a `%` suffix, Dimension for an
+   * identifier unit, otherwise Num. Keeps CST type/grammarType stable while the
+   * grammar owns one shared numeric language.
    */
-  const type = grammarType === 'Numeric'
-    ? (rawChildren.length > 1 ? 'Dimension' : 'Num')
-    : grammarType;
+  const type = publicGrammarType(
+    grammarType,
+    rawChildren
+  );
   return {
     _tag: 'node',
     type: publicTypeName(type),
     grammarType: type,
-    span: { start: span.start, end: span.end },
+    span: publicSpan(
+      grammarType,
+      span,
+      rawChildren
+    ),
     state: state ?? null,
-    children: rawChildren.filter(isCssCstChild)
+    children: publicChildren(
+      grammarType,
+      rawChildren
+    )
   };
-};
+}
+
+export const cssCstBuildHost: BuildHost = Object.assign(
+  (...args: BuildHostArgs) => buildCssCstNode(args),
+  parsemanCstBuildHost()
+);
 
 function emptyStyleSheet(): CssCstNode {
   return {
@@ -149,26 +276,10 @@ function cssCstBuildHostFor(options: CssCstParseOptions): BuildHost {
     return cssCstBuildHost;
   }
   return Object.assign(
-    (
-      grammarType: string,
-      children: ReadonlyArray<unknown> | undefined,
-      fields: FieldMap | undefined,
-      span: Span,
-      rawChildren: ReadonlyArray<unknown>,
-      triviaLog: readonly number[],
-      state: unknown
-    ) => cssCstBuildHost(
-      grammarType,
-      children,
-      fields,
-      span,
-      rawChildren,
-      triviaLog,
-      state
-    ),
-    {
-      _parsemanCstCollapse: (grammarType: string) => COLLAPSIBLE_GRAMMAR_TYPES.has(grammarType)
-    }
+    (...args: BuildHostArgs) => cssCstBuildHost(...args),
+    parsemanCstBuildHost({
+      collapse: (grammarType: string) => COLLAPSIBLE_GRAMMAR_TYPES.has(grammarType)
+    })
   );
 }
 

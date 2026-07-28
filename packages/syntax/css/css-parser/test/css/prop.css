@@ -1,5 +1,5 @@
 a {
-    *color : black;
+    color : black;
     _background: white;
     font-size/**/: big;
     /** removed $(var)-size: 100%; */

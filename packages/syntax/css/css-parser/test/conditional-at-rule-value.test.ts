@@ -265,16 +265,9 @@ describe('CSS conditional at-rule value holes', () => {
   });
 
   /**
-   * `;` is a declaration-list SEPARATOR, not a terminator — css-syntax-3 §5.4.7
-   * "consume a list of declarations" ends a declaration at `;` OR at the end of
-   * the block, and an empty declaration between two separators is discarded
-   * rather than being an error. Valid CSS must parse in every dialect, so a
-   * missing trailing `;` cannot be a dialect difference.
-   *
-   * The nested-at-rule cases are that same rule one step further out: when the
-   * thing a declaration ends AT is a nested at-rule, the value has to stop at the
-   * at-keyword instead of swallowing it and stranding the `{` with no statement
-   * to open.
+   * `;` is a declaration-list SEPARATOR, not a terminator. A final declaration
+   * may reach the end of the block without a trailing separator, and empty
+   * declarations between separators are discarded rather than reported.
    */
   for (const [label, source] of [
     ['a block with no trailing semicolon', 'a { color: red }'],
@@ -287,9 +280,7 @@ describe('CSS conditional at-rule value holes', () => {
     ['an unterminated custom property', 'a { --x: 1px }'],
     ['an unterminated important declaration', 'a { color: red !important }'],
     ['a declaration before a nested rule', 'a { color: red; b { x: 1 } }'],
-    ['a declaration before a nested at-rule', 'a { color: red; @media all { x: 1 } }'],
-    ['an unterminated declaration before a nested at-rule', 'a { color: red @media all { x: 1 } }'],
-    ['an unterminated declaration glued to a nested at-rule', 'a { color: red@media all { x: 1 } }']
+    ['a declaration before a nested at-rule', 'a { color: red; @media all { x: 1 } }']
   ] as Array<[string, string]>) {
     it(`declaration list: accepts ${label}`, () => {
       expect(() => parse(source), source).not.toThrow();
@@ -297,34 +288,24 @@ describe('CSS conditional at-rule value holes', () => {
   }
 
   /**
-   * A declaration with no `;` directly before a nested QUALIFIED rule is the one
-   * genuinely ambiguous shape in this family, and it is INVALID. Decided here on
-   * the spec, not inherited from whichever dialect happened to accept it.
-   *
-   * css-syntax-3 §5.4.6 "consume a declaration": if the value contains a
-   * top-level simple block with an associated `{` token AND any other
-   * non-<whitespace-token> value, return nothing — the spec note names the
-   * nested-rule/declaration ambiguity as its reason. So `color: red b { x: 1 }`
-   * is not a declaration. The §5.4.4 fallback is a qualified rule, and its
-   * prelude `color: red b` is not a valid selector either: selectors-4 §3.5
-   * spells a pseudo-class as `':' <ident-token>` with NO whitespace token
-   * between, so `color` + `: red` is not a compound selector. Both readings
-   * invalid ⇒ invalid CSS. A browser drops it; a compiler reports it.
-   *
-   * This is not a `;`-separator gap: `a { color: red; b { x: 1 } }` is valid and
-   * sits in the accepted list above. css used to accept the unterminated form
-   * only because its pseudo colon tolerated a following whitespace token — which
-   * also let `a : hover { }` through — so the cell was green by accident rather
-   * than by decision. With that fixed, css, less and jess agree.
-   *
-   * SCSS is the one exception, and it is a real dialect FEATURE rather than
-   * drift: Sass nested properties give the same bytes a defined meaning — the
-   * declaration `color: red b` plus a nested `color-x: 1`, the same shape as
-   * `font: 12px/1.5 { family: serif }`. The SCSS twin of this file pins that
-   * reading instead of this rejection.
+   * CSS Syntax's declaration-list algorithms collect declaration component
+   * values until a semicolon or the end of the containing block's token list.
+   * A top-level `@` after a declaration value is therefore not a magic nested
+   * at-rule boundary; it is part of the semicolonless declaration attempt. If
+   * another body item follows a declaration, the list must have observed `;`.
    */
-  it('declaration list: rejects an unterminated declaration before a nested qualified rule', () => {
-    expect(() => parse('a { color: red b { x: 1 } }')).toThrow();
+  for (const [label, source] of [
+    ['an unterminated declaration before a nested at-rule', 'a { color: red @media all { x: 1 } }'],
+    ['an unterminated declaration glued to a nested at-rule', 'a { color: red@media all { x: 1 } }'],
+    ['an unterminated declaration before a nested qualified rule', 'a { color: red b { x: 1 } }']
+  ] as Array<[string, string]>) {
+    it(`declaration list: rejects ${label}`, () => {
+      expect(() => parse(source), source).toThrow();
+    });
+  }
+
+  it('declaration list: rejects a non-conforming legacy star property in strict CSS', () => {
+    expect(() => parse('a { *color: black; }')).toThrow();
   });
 
   /**
@@ -336,7 +317,8 @@ describe('CSS conditional at-rule value holes', () => {
    */
   for (const [label, source] of [
     ['a whitespace-separated pseudo colon', 'a : hover { x: 1 }'],
-    ['a declaration-shaped pseudo colon', 'a: hover { x: 1 }']
+    ['a declaration-shaped pseudo colon', 'a: hover { x: 1 }'],
+    ['a whitespace-separated pseudo function opener', 'a:not (.b) { x: 1 }']
   ] as Array<[string, string]>) {
     it(`declaration list: rejects ${label}`, () => {
       expect(() => parse(source), source).toThrow();

@@ -7,7 +7,7 @@
  * HOW TO RUN
  * ----------
  *   # with your grammar edit uncommitted in the working tree:
- *   node packages/less-parser/test/ab-compare.mjs [rounds=4] [runs=3] [warmup=8] [timed=25]
+ *   node packages/syntax/less/less-parser/test/ab-compare.mjs [rounds=4] [runs=3] [warmup=8] [timed=25]
  *
  * Restores the working-tree version when it finishes. Takes several minutes: it
  * runs a full macro rebuild between every block.
@@ -33,32 +33,92 @@
  * `ast-identity-oracle.mjs` plus the test suites; this harness exists to prove a
  * cleanup did not COST anything, not to manufacture a win.
  */
-import { writeFileSync, copyFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { mkdtempSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const rounds = Number(process.argv[2] ?? 4);
 const runs = Number(process.argv[3] ?? 3);
 const warmup = process.argv[4] ?? '8';
 const timed = process.argv[5] ?? '25';
 
-const FILES = ['packages/less-parser/src/grammar.ts', 'packages/less-parser/src/ast/grammar.ts'];
+const FILES = [
+  'packages/parser-shared/src/recognition.ts',
+  'packages/parser-shared/src/opaque-at-rule.ts',
+  'packages/parser-shared/src/pseudo-consts.ts',
+  'packages/syntax/css/css-parser/src/grammar.ts',
+  'packages/syntax/css/css-parser/src/ast/grammar.ts',
+  'packages/syntax/css/css-parser/src/cst-css.ts',
+  'packages/syntax/css/css-parser/src/cst.ts',
+  'packages/syntax/css/css-parser/src/index.ts',
+  'packages/syntax/less/less-parser/src/grammar.ts',
+  'packages/syntax/less/less-parser/src/ast/grammar.ts',
+  'packages/syntax/less/less-parser/src/cst.ts',
+  'packages/syntax/less/less-parser/src/index.ts',
+  'packages/syntax/less/less-parser/tsdown.config.ts'
+];
 const snapDir = mkdtempSync(join(tmpdir(), 'less-ab-'));
 const snapPath = (version, file) => join(snapDir, `${version}_${file.replace(/\//g, '_')}`);
+const presentPath = (version, file) => `${snapPath(version, file)}.present`;
+
+function snapshotWorking(version, file) {
+  if (existsSync(file)) {
+    copyFileSync(file, snapPath(version, file));
+    writeFileSync(presentPath(version, file), '1');
+  } else {
+    writeFileSync(presentPath(version, file), '0');
+  }
+}
+
+function snapshotHead(version, file) {
+  try {
+    writeFileSync(snapPath(version, file), execFileSync('git', ['show', `HEAD:${file}`], { maxBuffer: 1 << 28 }));
+    writeFileSync(presentPath(version, file), '1');
+  } catch {
+    writeFileSync(presentPath(version, file), '0');
+  }
+}
+
+function restore(version, file) {
+  if (existsSync(presentPath(version, file)) && readFileSync(presentPath(version, file), 'utf8') === '1') {
+    mkdirSync(dirname(file), { recursive: true });
+    copyFileSync(snapPath(version, file), file);
+  } else {
+    rmSync(file, { force: true });
+  }
+}
 
 for (const f of FILES) {
-  copyFileSync(f, snapPath('A', f));
-  writeFileSync(snapPath('B', f), execFileSync('git', ['show', `HEAD:${f}`], { encoding: 'utf8', maxBuffer: 1 << 28 }));
+  snapshotWorking('A', f);
+  snapshotHead('B', f);
+}
+
+function restoreSources(version) {
+  for (const f of FILES) {
+    restore(version, f);
+  }
+}
+
+function buildCandidate() {
+  execFileSync('pnpm', ['--filter', '@jesscss/parser-shared', 'build'], { stdio: 'ignore' });
+  execFileSync('pnpm', ['--filter', '@jesscss/css-parser', 'build'], { stdio: 'ignore' });
+  execFileSync('pnpm', ['--filter', '@jesscss/less-parser', 'build'], { stdio: 'ignore' });
 }
 
 function checkout(version) {
-  for (const f of FILES) {
-    copyFileSync(snapPath(version, f), f);
-  }
-  execFileSync('pnpm', ['--filter', '@jesscss/less-parser', 'build'], { stdio: 'ignore' });
+  restoreSources(version);
+  buildCandidate();
 }
+
+function restoreAndExit(signal) {
+  restoreSources('A');
+  process.stderr.write(`\ninterrupted by ${signal}; restored working-tree sources\n`);
+  process.exit(130);
+}
+
+process.once('SIGINT', restoreAndExit);
+process.once('SIGTERM', restoreAndExit);
 
 const results = { A: [], B: [] };
 try {
@@ -67,7 +127,7 @@ try {
       checkout(version);
       for (let i = 0; i < runs; i++) {
         const out = execFileSync('node', ['test/parse-bench.mjs', version, warmup, timed],
-          { cwd: 'packages/less-parser', encoding: 'utf8', maxBuffer: 1 << 28 });
+          { cwd: 'packages/syntax/less/less-parser', encoding: 'utf8', maxBuffer: 1 << 28 });
         results[version].push(JSON.parse(out).out);
       }
       process.stderr.write(`round ${r + 1}/${rounds} ${version} done\n`);

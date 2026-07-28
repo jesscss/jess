@@ -1,4 +1,5 @@
 import { parseCssCst } from '../src/cst-css.js';
+import { triviaEntries } from 'parseman';
 
 function segmentText(tree: ReturnType<typeof parseCssCst>['tree']): Array<[string, string]> {
   return tree.children.map((child) => {
@@ -22,10 +23,11 @@ describe('lossless at-rule prelude segments', () => {
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
     expect(result.unconsumedFrom).toBeNull();
+    const trivia = triviaEntries(result.triviaLog);
+    expect(Array.from({ length: trivia.length }, (_, index) => source.slice(trivia.start(index), trivia.end(index)))).toContain('/*note*/');
     expect(segmentText(result.tree)).toEqual([
       ['AtPreludeWhitespace', ' '],
       ['AtPreludeText', 'screen'],
-      ['AtPreludeComment', '/*note*/'],
       ['AtPreludeComma', ','],
       ['AtPreludeWhitespace', ' '],
       ['AtPreludeText', 'func'],

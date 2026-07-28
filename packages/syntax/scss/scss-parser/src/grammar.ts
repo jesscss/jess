@@ -1,1379 +1,5119 @@
 /**
- * SCSS grammar: `scssGrammar = compose([lessGrammar, <SCSS delta>])`.
+ * Canonical SCSS host-mode grammar.
+ *
+ * CSS base: ../../../css/css-parser/src/grammar.ts
+ *
+ * SCSS adds and overrides:
+ * - $variables, Sass interpolation, modules, mixins, functions, control rules,
+ *   placeholder selectors, @extend, and Sass import/use/forward forms.
+ * - SCSS-specific expression, map/list, nested-property, and selector syntax.
+ * - SCSS is a sibling grammar over CSS/shared syntax; it must not inherit Less
+ *   routes or keep Less-only compatibility seams.
+ *
+ * The same factory builds the package AST route and the public positioned CST
+ * route via Parseman's `hostMode`.
  */
-import {
-  rules, compose,
-  node, regex, literal, sequence, choice, optional, trivia,
-  many, expect, sepBy, oneOrMore, scanTo, balanced, label, not, withCtx
-} from 'parseman' with { type: 'macro' };
-import { lessGrammar } from '@jesscss/less-parser/grammar';
-import { cssAstSyntax } from '@jesscss/parser-shared/recognition';
+import { balanced, choice, composeLeaf, dispatch, endsWith, expect, literal, makeWhen, many, noTrivia, node, not, oneOrMore, optional, otherwise, parser, peek, regex, routed, rules, scanTo, sequence, token, trivia, when } from 'parseman' with { type: 'macro' };
+import type { Combinator, FusedRule } from 'parseman';
+import { cssSyntax } from '@jesscss/parser-shared/recognition';
+import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
+import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Collection, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+
+type Token = { readonly value: string };
+type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
+type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
+type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
+type ScssComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: CompoundSelector };
+
+const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
+
+function isScriptModulePath(path: string): boolean {
+  const normalized = path.toLowerCase();
+  return scriptModuleExtensions.some(extension => normalized.endsWith(extension));
+}
+
+type ScssRules = {
+  Stylesheet: Combinator<Stylesheet>;
+  ScssAstDocument: Combinator<Stylesheet>;
+  VariableDeclaration: Combinator<VariableDeclaration>;
+  DirectScssComment: Combinator<Comment>;
+  DirectScssVarReference: Combinator<VariableReference>;
+  SassInterpolation: Combinator<Interpolation>;
+  DirectScssQuoted: Combinator<Quoted | Interpolation>;
+  DirectScssStaticQuoted: Combinator<Quoted>;
+  DirectScssKeyword: Combinator<Keyword>;
+  DirectScssCustomPropertyValue: Combinator<Keyword>;
+  DirectScssColor: Combinator<Color>;
+  DirectScssUnicodeRange: Combinator<ValueNode>;
+  DirectScssDimension: Combinator<Dimension>;
+  DirectScssInterpolatedUrlValue: Combinator<Interpolation>;
+  DirectScssInterpolatedValue: Combinator<Interpolation>;
+  DirectScssParen: Combinator<ValueNode>;
+  DirectScssMapEntry: Combinator<Declaration>;
+  DirectScssMap: Combinator<Collection>;
+  DirectScssReturn: Combinator<Declaration>;
+  DirectScssFunction: Combinator<VariableDeclaration>;
+  DirectScssSquare: Combinator<ValueNode>;
+  ScssValueAtom: Combinator<ValueNode>;
+  DirectScssMathUnary: Combinator<ValueNode>;
+  DirectScssMathProduct: Combinator<ValueNode>;
+  DirectScssMathSum: Combinator<ValueNode>;
+  DirectScssMathTopProduct: Combinator<ValueNode>;
+  DirectScssMathTopSum: Combinator<ValueNode>;
+  DirectScssValueTerm: Combinator<ValueSlot>;
+  DirectScssValuePair: Combinator<ScssValuePair>;
+  DirectScssValue: Combinator<ValueSlot>;
+  DirectScssImportant: Combinator<true>;
+  DirectScssInterpolatedProperty: Combinator<Interpolation>;
+  DirectScssCustomPropertyName: Combinator<string | Interpolation>;
+  DirectScssCustomPart: Combinator<unknown>;
+  DirectScssCustomInnerPart: Combinator<unknown>;
+  DirectScssCustomParen: Combinator<readonly unknown[]>;
+  DirectScssCustomSquare: Combinator<readonly unknown[]>;
+  DirectScssCustomCurly: Combinator<readonly unknown[]>;
+  DirectScssCustomValue: Combinator<ValueNode>;
+  DirectScssCustomDeclaration: Combinator<Declaration>;
+  DirectScssDeclaration: Combinator<Declaration>;
+  DirectScssStaticNestedPropertyLeaf: Combinator<Declaration>;
+  DirectScssStaticNestedProperty: Combinator<Declaration>;
+  ScssImport: Combinator<ImportAtRule>;
+  DirectScssUseAs: Combinator<string>;
+  DirectScssUse: Combinator<StyleImport | ModuleImport>;
+  DirectScssForward: Combinator<StyleImport>;
+  DirectScssStaticImportUrl: Combinator<Url>;
+  DirectScssStaticImportOptions: Combinator<List>;
+  DirectScssStaticImportLayer: Combinator<ValueNode>;
+  DirectScssStaticImportDeclaration: Combinator<ValueNode>;
+  DirectScssStaticImportSupports: Combinator<FunctionCall>;
+  DirectScssStaticImportQualifier: Combinator<ValueNode>;
+  DirectScssStaticImportMediaFeature: Combinator<ValueNode>;
+  DirectScssStaticImportMediaInParens: Combinator<ValueNode>;
+  DirectScssStaticImportMediaCondition: Combinator<ValueNode>;
+  DirectScssStaticImportMediaOnlyClause: Combinator<ValueNode>;
+  DirectScssStaticImportMediaClause: Combinator<ValueNode>;
+  DirectScssStaticImportMediaPrelude: Combinator<ValueNode>;
+  DirectScssStaticImportTail: Combinator<ValueNode>;
+  DirectScssMixinParam: Combinator<Param>;
+  DirectScssMixinParams: Combinator<Param[]>;
+  ScssMixinCallArg: Combinator<ScssCallArg>;
+  DirectScssMixinCall: Combinator<MixinCall>;
+  DirectScssMixinDef: Combinator<MixinDef>;
+  DirectScssEachName: Combinator<string>;
+  DirectScssEachBinding: Combinator<ForBinding>;
+  DirectScssEach: Combinator<For>;
+  DirectScssFor: Combinator<For>;
+  DirectScssIfCondition: Combinator<GuardNode>;
+  DirectScssIfAnd: Combinator<GuardNode>;
+  DirectScssIfTerm: Combinator<GuardNode>;
+  DirectScssIfAtom: Combinator<GuardNode>;
+  DirectScssIfComparison: Combinator<GuardNode>;
+  DirectScssIfBody: Combinator<Statement[]>;
+  DirectScssIfStaticRule: Combinator<Rule>;
+  DirectScssIfStaticConditionalBlock: Combinator<AtRuleBlock>;
+  DirectScssIf: Combinator<If>;
+  DirectScssQueryFeature: Combinator<ValueNode>;
+  DirectScssQueryFunction: Combinator<FunctionCall>;
+  DirectScssQueryInParens: Combinator<ValueNode>;
+  DirectScssQueryCondition: Combinator<ValueNode>;
+  DirectScssQueryClause: Combinator<ValueNode>;
+  DirectScssQueryPreludeTail: Combinator<ValueNode>;
+  DirectScssQueryPrelude: Combinator<ValueNode>;
+  DirectScssSupportsAtom: Combinator<ValueNode>;
+  DirectScssGeneralTemplate: Combinator<Interpolation>;
+  DirectScssGeneralTemplateParen: Combinator<Interpolation>;
+  DirectScssGeneralTemplateSquare: Combinator<Interpolation>;
+  DirectScssGeneralTemplateBrace: Combinator<Interpolation>;
+  DirectScssGeneralTemplateDoubleQuoted: Combinator<Interpolation>;
+  DirectScssGeneralTemplateSingleQuoted: Combinator<Interpolation>;
+  DirectScssGeneralEnclosed: Combinator<GeneralEnclosed>;
+  DirectScssSupportsFeature: Combinator<ValueNode>;
+  DirectScssSupportsInParens: Combinator<ValueNode>;
+  DirectScssSupportsNot: Combinator<Keyword>;
+  DirectScssSupportsAndOr: Combinator<Keyword>;
+  DirectScssSupportsCondition: Combinator<ValueNode>;
+  DirectScssSupportsPrelude: Combinator<ValueNode>;
+  DirectScssStaticMediaPrelude: Combinator<ValueNode>;
+
+  /** Static-only generic CSS header capture for known passthrough blocks. */
+  DirectScssStaticAtPrelude: Combinator<ValueNode | null>;
+  DirectScssStaticAtPreludeAtom: Combinator<Token>;
+  DirectScssStaticAtPreludeParen: Combinator<Token>;
+  DirectScssStaticAtPreludeSquare: Combinator<Token>;
+  DirectScssStaticAtPreludeDoubleQuoted: Combinator<Token>;
+  DirectScssStaticAtPreludeSingleQuoted: Combinator<Token>;
+  DirectScssAtRuleStatement: Combinator<AtRuleStatement>;
+  DirectScssScopeBlock: Combinator<AtRuleBlock>;
+  DirectScssNestedScopeBlock: Combinator<AtRuleBlock>;
+  DirectScssConditionalBlock: Combinator<AtRuleBlock>;
+  DirectScssStartingStyleBlock: Combinator<AtRuleBlock>;
+  DirectScssLayerBlock: Combinator<AtRuleBlock>;
+
+  /** Static `@document` / `@-moz-document` with a frame-one stylesheet body. */
+  DirectScssDocumentBlock: Combinator<AtRuleBlock>;
+  DirectScssPageMarginBox: Combinator<AtRuleBlock>;
+  DirectScssPageBlock: Combinator<AtRuleBlock>;
+  DirectScssFontFeatureValueBlock: Combinator<AtRuleBlock>;
+  DirectScssFontFeatureValuesBlock: Combinator<AtRuleBlock>;
+  DirectScssFontFace: Combinator<AtRuleBlock>;
+  DirectScssCounterStyle: Combinator<AtRuleBlock>;
+  DirectScssPropertyName: Combinator<Keyword>;
+  DirectScssPropertyAtRule: Combinator<AtRuleBlock>;
+  DirectScssKeyframeSelector: Combinator<SimpleSelector>;
+  DirectScssKeyframeBlock: Combinator<Rule>;
+  DirectScssKeyframes: Combinator<AtRuleBlock>;
+  DirectScssNestedConditionalBlock: Combinator<AtRuleBlock>;
+  DirectScssNestedStartingStyleBlock: Combinator<AtRuleBlock>;
+  DirectScssNestedLayerBlock: Combinator<AtRuleBlock>;
+  DirectScssSimple: Combinator<SimpleSelector>;
+  DirectScssInterpolatedSimple: Combinator<SimpleSelector>;
+  DirectScssPlaceholder: Combinator<SimpleSelector>;
+  DirectScssAttribute: Combinator<SimpleSelector>;
+  DirectScssPseudoArgument: Combinator<string>;
+  DirectScssStaticSelectorPseudoArgument: Combinator<string>;
+  DirectScssStaticSelectorPseudoItem: Combinator<string>;
+  DirectScssStaticSelectorPseudoTail: Combinator<string>;
+  DirectScssStaticPseudoArgument: Combinator<string>;
+  DirectScssStaticPseudoGroup: Combinator<string>;
+  DirectScssStaticPseudoSquare: Combinator<string>;
+  DirectScssPseudo: Combinator<SimpleToken>;
+  DirectScssNestingSelector: Combinator<SimpleSelector>;
+  DirectScssCompound: Combinator<CompoundSelector>;
+  DirectScssComplexTail: Combinator<ScssComplexTail>;
+  DirectScssComplex: Combinator<ComplexSelector>;
+  DirectScssSelectorTail: Combinator<ComplexSelector>;
+  DirectScssSelector: Combinator<SelectorList>;
+  DirectScssExtend: Combinator<ExtendInstruction>;
+  DirectScssOpaquePrelude: Combinator<string | null>;
+  DirectScssOpaqueBody: Combinator<string>;
+  DirectScssOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  DirectScssOpaqueAtRuleStatement: Combinator<AtRuleStatement>;
+  DirectScssRule: Combinator<Rule>;
+  rw: Combinator<unknown>;
+  whitespace: Combinator<unknown>;
+};
+
+function requireToken(value: unknown): Token {
+  if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
+    throw new TypeError('Direct SCSS AST grammar produced a non-token child.');
+  }
+  return { value: value.value };
+}
+
+function isToken(value: unknown): value is Token {
+  return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
+}
+
+function sourceText(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'object' && value !== null && 'src' in value && typeof value.src === 'string') {
+    return value.src;
+  }
+  return requireToken(value).value;
+}
+
+/** Map query/media-prelude children to value nodes, coercing bare keyword tokens
+ *  (`and`/`or`/media types) to `Keyword`s while passing structured values through. */
+function keywordizeValues(children: readonly unknown[]): ValueNode[] {
+  return children.map(child => isValue(child) ? child : keyword(requireToken(child).value));
+}
+
+/** Concatenate the authored spelling of every child. The canonical opaque
+ *  representation for attribute selectors and non-structured pseudo arguments. */
+function joinSourceText(children: readonly unknown[]): string {
+  return children.map(sourceText).join('');
+}
+
+/** Concatenate every child token value into one opaque static-prelude token. */
+function joinTokenValue(children: readonly unknown[]): Token {
+  return { value: children.map(requireToken).map(token => token.value).join('') };
+}
+
+/** Shared reducer for a static `"…"` / `'…'` quoted value: the opening quote is
+ * `children[0]`, the raw body is `children[1]`, and both the source spelling and
+ * decoded body are preserved verbatim (never interpolation). */
+function staticQuoted(children: readonly unknown[]): Quoted {
+  const quote = requireToken(children[0]).value;
+  const value = requireToken(children[1]).value;
+  return quoted(
+    `${quote}${value}${quote}`,
+    value,
+    quote,
+    false
+  );
+}
+
+function isQuoted(value: unknown): value is Quoted {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Quoted'
+    && 'src' in value
+    && typeof value.src === 'string'
+    && 'value' in value
+    && typeof value.value === 'string'
+    && 'quote' in value
+    && typeof value.quote === 'string'
+    && 'escaped' in value
+    && typeof value.escaped === 'boolean';
+}
+
+function isUrl(value: unknown): value is Url {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value && value.type === 'Url'
+    && 'value' in value && isValue(value.value);
+}
+
+function isSimpleSelector(value: unknown): value is SimpleSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SimpleSelector'
+    && 'text' in value && (typeof value.text === 'string' || value.text === null)
+    && 'interp' in value && (isInterpolation(value.interp) || value.interp === null);
+}
+
+function isCompoundSelector(value: unknown): value is CompoundSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'CompoundSelector'
+    && 'simples' in value && Array.isArray(value.simples)
+    && value.simples.every(isSimpleToken);
+}
+
+function isComplexSelector(value: unknown): value is ComplexSelector {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'ComplexSelector'
+    && 'head' in value && isCompoundSelector(value.head)
+    && 'tail' in value && Array.isArray(value.tail);
+}
+
+function isSelectorList(value: unknown): value is SelectorList {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'SelectorList'
+    && 'selectors' in value && Array.isArray(value.selectors)
+    && value.selectors.every(isComplexSelector);
+}
+
+function requireSelectorList(value: unknown): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-selector-list child.');
+  }
+  return value;
+}
+
+function isScssComplexTail(value: unknown): value is ScssComplexTail {
+  return typeof value === 'object' && value !== null
+    && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
+    && 'compound' in value && isCompoundSelector(value.compound);
+}
+
+function requireScssComplexTail(value: unknown): ScssComplexTail {
+  if (!isScssComplexTail(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced an invalid selector tail.');
+  }
+  return value;
+}
+
+function requireCompoundSelector(value: unknown): CompoundSelector {
+  if (!isCompoundSelector(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-compound selector child.');
+  }
+  return value;
+}
 
 /*
- * ---------------------------------------------------------------------------
- * Grammar — SCSS = Less + the SCSS delta. `compose` fuses the imported compiled
- * `lessGrammar` (pieces travel on the value — no source) with the inline SCSS
- * delta; the delta's rules win by name (its `Stylesheet` etc. override Less's),
- * and its references to Less/CSS rules resolve into the fused set. One grammar =
- * one `rules()`; no fragment spreads.
- * ---------------------------------------------------------------------------
+ * A compound token is either a plain `SimpleSelector` or a structured
+ * `PseudoSelector` (`:is(.a, .b)` etc.). The structured pseudo carries its
+ * argument as a `SelectorList` in `args` and leaves `text` null; core
+ * serialization owns the inline join.
  */
+function isSimpleToken(value: unknown): value is SimpleToken {
+  return isSimpleSelector(value)
+    || (typeof value === 'object' && value !== null && 'type' in value && value.type === 'PseudoSelector');
+}
+
+function requireSimpleToken(value: unknown): SimpleToken {
+  if (!isSimpleToken(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-simple selector child.');
+  }
+  return value;
+}
+
+function requireComplexSelector(value: unknown): ComplexSelector {
+  if (!isComplexSelector(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-complex selector child.');
+  }
+  return value;
+}
+
+function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
+  return isQuoted(value) || isUrl(value) || isInterpolation(value);
+}
+
+function isList(value: unknown): value is List {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value && value.type === 'List'
+    && 'value' in value && Array.isArray(value.value);
+}
+
+function isParam(value: unknown): value is Param {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  if ('name' in value && typeof value.name !== 'string') {
+    return false;
+  }
+  if ('default' in value && !isValueSlotValue(value.default)) {
+    return false;
+  }
+  if ('pattern' in value && !isValueSlotValue(value.pattern)) {
+    return false;
+  }
+  return !('rest' in value) || typeof value.rest === 'boolean';
+}
+
+function isParamArray(value: unknown): value is Param[] {
+  return Array.isArray(value) && value.every(isParam);
+}
+
+function isForBinding(value: unknown): value is ForBinding {
+  if (typeof value !== 'object' || value === null || !('kind' in value)) {
+    return false;
+  }
+  if (value.kind === 'single') {
+    return 'name' in value && typeof value.name === 'string';
+  }
+  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
+    && 'names' in value && Array.isArray(value.names)
+    && value.names.every(name => name === undefined || typeof name === 'string');
+}
+
+function requireForBinding(value: unknown): ForBinding {
+  if (!isForBinding(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced an invalid for binding.');
+  }
+  return value;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('Direct SCSS AST grammar produced a non-string child.');
+  }
+  return value;
+}
+
+function isVarRef(value: unknown): value is VariableReference {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'VariableReference'
+    && 'name' in value
+    && typeof value.name === 'string';
+}
+
+function isColor(value: unknown): value is Color {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Color'
+    && 'src' in value
+    && typeof value.src === 'string';
+}
+
+function isDimension(value: unknown): value is Dimension {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Dimension'
+    && 'number' in value
+    && typeof value.number === 'number'
+    && 'unit' in value
+    && typeof value.unit === 'string'
+    && 'src' in value
+    && typeof value.src === 'string';
+}
+
+function isFunctionCall(value: unknown): value is FunctionCall {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'FunctionCall'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'args' in value
+    && Array.isArray(value.args);
+}
+
+function isInterpolation(value: unknown): value is Interpolation {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Interpolation'
+    && 'parts' in value
+    && Array.isArray(value.parts);
+}
+
+function requireInterpolation(value: unknown): Interpolation {
+  if (!isInterpolation(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-interpolation child.');
+  }
+  return value;
+}
+
+function appendLiteral(parts: Interpolation['parts'], text: string): void {
+  const previous = parts[parts.length - 1];
+  if (previous !== undefined && 'lit' in previous) {
+    parts[parts.length - 1] = { lit: previous.lit + text };
+  } else {
+    parts.push({ lit: text });
+  }
+}
+
+/** Flatten a grammar-owned raw template without ever reparsing its bytes. */
+function interpolationFromTemplateChildren(children: readonly unknown[]): Interpolation {
+  const parts: Interpolation['parts'] = [];
+  for (const child of children) {
+    if (isInterpolation(child)) {
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendLiteral(
+            parts,
+            part.lit
+          );
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendLiteral(
+        parts,
+        requireToken(child).value
+      );
+    }
+  }
+  return interpolation(parts);
+}
+
+/**
+ * Turn the grammar-owned parts of a custom-property value into one canonical
+ * value. Custom-property values are not evaluated: everything outside a typed
+ * `#{…}` stays literal `<declaration-value>` text, so the reduction only joins
+ * grammar children — it never rescans source. Nested balanced groups arrive as
+ * nested arrays from the paren/square/curly productions.
+ */
+function customValueFromParts(children: readonly unknown[], parts: Interpolation['parts'], seen: { interpolated: boolean }): void {
+  for (const child of children) {
+    if (Array.isArray(child)) {
+      customValueFromParts(
+        child,
+        parts,
+        seen
+      );
+    } else if (isInterpolation(child)) {
+      seen.interpolated = true;
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendLiteral(
+            parts,
+            part.lit
+          );
+        } else {
+          parts.push(part);
+        }
+      }
+    } else {
+      appendLiteral(
+        parts,
+        requireToken(child).value
+      );
+    }
+  }
+}
+
+/** Reduce a whole custom-property value to `Interpolation` (when it carries a
+ * `#{…}`) or to verbatim `Any` text. */
+function customValue(children: readonly unknown[]): ValueNode {
+  const parts: Interpolation['parts'] = [];
+  const seen = { interpolated: false };
+  customValueFromParts(
+    children,
+    parts,
+    seen
+  );
+  if (seen.interpolated) {
+    return interpolation(parts);
+  }
+  return any(parts.map(part => 'lit' in part ? part.lit : '').join(''));
+}
+
+/** Fold a grammar-produced left-associative operator chain. Precedence belongs
+ * to the caller's product/sum production, never to a source-text recovery. */
+function foldOperation(children: readonly unknown[]): ValueNode {
+  const first = children.find(isValue);
+  if (first === undefined) {
+    throw new TypeError('Direct SCSS arithmetic grammar produced no operand.');
+  }
+  let result = first;
+  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
+    const operatorToken = children[index];
+    const right = children[index + 1];
+    if (operatorToken === undefined || !isValue(right)) {
+      throw new TypeError('Direct SCSS arithmetic grammar lost an operator operand.');
+    }
+    result = operation(
+      requireToken(operatorToken).value.trim(),
+      result,
+      right
+    );
+  }
+  return result;
+}
+
+function isValue(value: unknown): value is ValueNode {
+  /*
+   * Dispatch on the node tag once instead of re-testing typeof/null/`type` in a
+   * flat `||` chain: this predicate runs on essentially every value child via
+   * `.find(isValue)`/`.filter(isValue)`. Each tag maps to exactly one shape
+   * check, so the accepted set is identical to the former ordered disjunction.
+   */
+  if (typeof value !== 'object' || value === null || !('type' in value)) {
+    return false;
+  }
+  switch (value.type) {
+    case 'Quoted':
+      return isQuoted(value);
+    case 'VariableReference':
+      return isVarRef(value);
+    case 'Color':
+      return isColor(value);
+    case 'Dimension':
+      return isDimension(value);
+    case 'FunctionCall':
+      return isFunctionCall(value);
+    case 'Interpolation':
+      return isInterpolation(value);
+    case 'GeneralEnclosed':
+      return 'content' in value && isInterpolation(value.content);
+    case 'Any':
+      return 'src' in value && typeof value.src === 'string';
+    case 'Url':
+      return 'value' in value && isValue(value.value);
+    case 'SpacedValue':
+      return 'parts' in value && Array.isArray(value.parts);
+    case 'List':
+      return 'value' in value && Array.isArray(value.value);
+    case 'Block':
+      return 'inner' in value && isValueSlotValue(value.inner);
+    case 'Operation':
+      return 'left' in value && 'right' in value && isValue(value.left) && isValue(value.right);
+    case 'Keyword':
+      return 'src' in value && typeof value.src === 'string';
+    case 'Collection':
+      return 'entries' in value && Array.isArray(value.entries);
+    case 'Reference':
+      return 'base' in value && 'steps' in value && Array.isArray(value.steps);
+    case 'AnonymousMixin':
+      return 'body' in value && Array.isArray(value.body);
+    default:
+      return false;
+  }
+}
+
+function valueSlot(value: ValueNode): ValueSlot {
+  if (value.type === 'SpacedValue') {
+    return value.parts;
+  }
+  if (value.type === 'Block' && isSpacedValue(value.inner)) {
+    return { ...value, inner: value.inner.parts };
+  }
+  return value;
+}
+
+function isSpacedValue(value: ValueSlot): value is Extract<ValueNode, { type: 'SpacedValue' }> {
+  return isValue(value) && value.type === 'SpacedValue';
+}
+
+function isValueSlotValue(value: unknown): value is ValueSlot {
+  return Array.isArray(value) ? value.every(isValueSlotValue) : isValue(value);
+}
+
+function requireValueSlot(value: unknown): ValueSlot {
+  return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValue(value));
+}
+
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration'
+    && 'name' in value
+    && (typeof value.name === 'string' || isInterpolation(value.name))
+    && 'value' in value
+    && isValueSlotValue(value.value);
+}
+
+function isRule(value: unknown): value is Rule {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Rule';
+}
+
+function isMixinDef(value: unknown): value is MixinDef {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinDef';
+}
+
+function isMixinCall(value: unknown): value is MixinCall {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'MixinCall';
+}
+
+function isFor(value: unknown): value is For {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'For';
+}
+
+function isIf(value: unknown): value is If {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'If';
+}
+
+function isAtRuleBlock(value: unknown): value is AtRuleBlock {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleBlock';
+}
+
+function isAtRuleStatement(value: unknown): value is AtRuleStatement {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'AtRuleStatement';
+}
+
+function isComment(value: unknown): value is Comment {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'Comment';
+}
+function isImport(value: unknown): value is ImportAtRule {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ImportAtRule';
+}
+function isStyleImport(value: unknown): value is StyleImport {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'StyleImport';
+}
+function isModuleImport(value: unknown): value is ModuleImport {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'ModuleImport';
+}
+
+function isExtendInstruction(value: unknown): value is ExtendInstruction {
+  return typeof value === 'object' && value !== null
+    && 'target' in value && value.target !== null && typeof value.target === 'object'
+    && 'type' in value.target && value.target.type === 'SelectorList'
+    && 'partial' in value && typeof value.partial === 'boolean';
+}
+
+function requireValue(value: unknown): ValueNode {
+  if (!isValue(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-value child.');
+  }
+  return value;
+}
+
+function requireKeyword(value: unknown): Keyword {
+  const node = requireValue(value);
+  if (node.type !== 'Keyword') {
+    throw new TypeError('Direct SCSS AST grammar produced a non-keyword child.');
+  }
+  return node;
+}
+
+/** The best-effort authored spelling of a value node for a Reference `raw`. */
+function referenceKeyRaw(node: ValueNode): string {
+  if (node.type === 'VariableReference') {
+    return `$${node.name}`;
+  }
+  if (node.type === 'Quoted') {
+    return node.src;
+  }
+  return 'src' in node && typeof node.src === 'string' ? node.src : '';
+}
+
+/** Lower `map-get($m, k)` to the shared `$[…]` accessor read `$m[k]`: a Reference
+ *  whose single BracketLookup step carries the key. A `$var` key selects the
+ *  variable-namespace lookup; every other key is a value-equality member lookup
+ *  (map keys compare by value, never by position, so `index` is never used). */
+function lowerMapGet(base: ValueNode, key: ValueNode): Reference {
+  const step: ReferenceStep = key.type === 'VariableReference'
+    ? { type: 'BracketLookup', key, keyKind: 'var' }
+    : { type: 'BracketLookup', key, keyKind: 'member' };
+  const baseRaw = base.type === 'Reference' ? base.raw : referenceKeyRaw(base);
+  return reference(
+    base,
+    [step],
+    `${baseRaw}[${referenceKeyRaw(key)}]`
+  );
+}
+
+function reduceScssCall(name: string, children: readonly unknown[], minArgumentIndex: number): FunctionCall | Reference {
+  const lastIndex = children.length - 1;
+  const firstIndex = children.findIndex((child, index) => index > minArgumentIndex && index < lastIndex && isValueSlotValue(child));
+  if (firstIndex === -1) {
+    return funcCall(
+      name,
+      []
+    );
+  }
+  const first = requireValueSlot(children[firstIndex]);
+  const args: ValueSlot[] = [first];
+  const separators: string[] = [];
+  for (let index = firstIndex + 1; index < lastIndex; index += 1) {
+    const child = children[index];
+    if (!isScssValuePair(child)) {
+      continue;
+    }
+    separators.push(String(child.separator));
+    args.push(requireValueSlot(child.value));
+  }
+  const call = funcCall(
+    name,
+    args
+  );
+  if (call.name === 'map-get' && args.length === 2 && isValue(args[0]) && isValue(args[1])) {
+    return lowerMapGet(
+      args[0],
+      args[1]
+    );
+  }
+  if (separators.length === args.length - 1) {
+    withValueLayout(
+      call.args,
+      separators
+    );
+  }
+  return call;
+}
+
+/** A Sass map key lowers to a Collection entry NAME. Collection names are
+ *  `string | Interpolation` (leaf identifiers), so identifier, string, dimension,
+ *  and interpolation keys lower cleanly; other value keys (colors aside, which
+ *  carry a `src`) are unrepresentable as a Collection name and are rejected. */
+function mapKeyName(node: ValueNode): string | Interpolation {
+  if (node.type === 'Interpolation') {
+    return node;
+  }
+  if (node.type === 'Quoted') {
+    return node.value;
+  }
+  if ('src' in node && typeof node.src === 'string') {
+    return node.src;
+  }
+  throw new TypeError('Unsupported SCSS map key: Collection entry names must be identifiers, strings, dimensions, or interpolations.');
+}
+
+function isGuardNode(value: unknown): value is GuardNode {
+  if (typeof value !== 'object' || value === null || !('g' in value)) {
+    return false;
+  }
+  switch (value.g) {
+    case 'default':
+      return true;
+    case 'truth':
+      return 'value' in value && isValue(value.value);
+    case 'cmp':
+      return 'op' in value && typeof value.op === 'string'
+        && 'left' in value && isValue(value.left)
+        && 'right' in value && isValue(value.right);
+    case 'call':
+      return 'name' in value && typeof value.name === 'string'
+        && 'args' in value && Array.isArray(value.args) && value.args.every(isValue);
+    case 'not':
+      return 'inner' in value && isGuardNode(value.inner);
+    case 'and':
+    case 'or':
+      return 'left' in value && isGuardNode(value.left)
+        && 'right' in value && isGuardNode(value.right);
+    default:
+      return false;
+  }
+}
+
+function requireGuardNode(value: unknown): GuardNode {
+  if (!isGuardNode(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-guard child.');
+  }
+  return value;
+}
+
+function optionalValue(value: unknown): ValueNode | null {
+  return value === null || value === undefined ? null : requireValue(value);
+}
+
+function isScssValuePair(value: unknown): value is ScssValuePair {
+  return typeof value === 'object'
+    && value !== null
+    && 'separator' in value
+    && typeof value.separator === 'string'
+    && 'value' in value
+    && isValueSlotValue(value.value);
+}
+
+function isScssValueTail(value: unknown): value is ScssValueTail {
+  return typeof value === 'object'
+    && value !== null
+    && 'kind' in value
+    && (value.kind === 'space' || value.kind === 'slash')
+    && 'value' in value
+    && isValue(value.value)
+    && 'separator' in value
+    && typeof value.separator === 'string';
+}
+
+function isVarDeclaration(value: unknown): value is VariableDeclaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'VariableDeclaration'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'value' in value
+    && isValueSlotValue(value.value);
+}
 
 /*
- * Trivia (`rw`) is declared ONCE on the grammar via `rules({ trivia: rw }, …)`,
- * honored through `compose()`, making it ambient in every rule — no per-rule
- * trivia-establisher wrappers are needed. Hoisted to module scope (mirroring
- * css-parser) so the options-first `rules({ trivia: rw }, …)` call below can
- * reference it. Same shape as Less/CSS (whitespace + block + `//` line comments).
+ * The single statement-membership predicate behind both body reducers:
+ * `statements` throws on the first non-statement child, `statementChildren`
+ * silently keeps only the statement children. `allowDeclarations` admits a
+ * `Declaration` in declaration-capable bodies.
  */
-const ws = regex(/[ \t\n\r\f]+/);
-const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const lineComment = regex(/\/\/[^\n\r]*/);
-const rw = trivia(oneOrMore(choice(
-  label(
-    'whitespace',
-    ws
-  ),
-  label(
-    'blockComment',
-    comment
-  ),
-  label(
-    'lineComment',
-    lineComment
-  )
+function isStatementChild(child: unknown, allowDeclarations: boolean): child is Statement {
+  return isComment(child)
+    || isImport(child)
+    || isStyleImport(child)
+    || isModuleImport(child)
+    || isAtRuleBlock(child)
+    || isAtRuleStatement(child)
+    || isVarDeclaration(child)
+    || isMixinDef(child)
+    || isMixinCall(child)
+    || isFor(child)
+    || isIf(child)
+    || isRule(child)
+    || isOpaqueAtRuleBlock(child)
+    || (allowDeclarations && isDeclaration(child));
+}
+
+function isOpaqueAtRuleBlock(value: unknown): value is OpaqueAtRuleBlock {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'OpaqueAtRuleBlock';
+}
+
+function statements(children: readonly unknown[], allowDeclarations = false): Statement[] {
+  const result: Statement[] = [];
+  for (const child of children) {
+    if (!isStatementChild(
+      child,
+      allowDeclarations
+    )) {
+      throw new TypeError('Direct SCSS AST grammar produced a non-statement child.');
+    }
+    result.push(child);
+  }
+  return result;
+}
+
+function statementChildren(children: readonly unknown[], allowDeclarations = false): Statement[] {
+  const result: Statement[] = [];
+  for (const child of children) {
+    if (isStatementChild(
+      child,
+      allowDeclarations
+    )) {
+      result.push(child);
+    }
+  }
+  return result;
+}
+
+function requireStatementList(value: unknown): Statement[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('Direct SCSS AST grammar produced a non-statement list.');
+  }
+  return statements(
+    value,
+    true
+  );
+}
+
+function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorList {
+  const selectors = children
+    .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
+    .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+  if (selectors.length === 0) {
+    throw new TypeError('Direct SCSS keyframe block requires a selector.');
+  }
+  return selist(...selectors);
+}
+
+function scssPseudoName(opener: string): string {
+  return opener.endsWith('(') ? opener.slice(0, -1) : opener;
+}
+
+/*
+ * Sass `//` comments are trivia, not CSS comments: they must be recognized
+ * between direct AST facts but must never become a renderable `Comment` node,
+ * because `//` is silent in Sass and is not valid CSS. Same shape as Less.
+ * URL bodies and quoted strings run under `noTrivia`, so `url(//host/path)`
+ * stays URL content and `"//u"` stays string content.
+ */
+const whitespace = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  regex(/\/\/[^\n\r]*/)
 )));
 
-export const scssGrammar = compose([lessGrammar, cssAstSyntax, rules(
-  { trivia: rw },
-  (g: any) => {
-  /* SCSS `$variable` token — first char may be a letter or `-` after `$`. */
-    const scssVar = regex(/\$-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-    const plainIdent = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+/*
+ * These productions run under `noTrivia`: each operator owns the precise
+ * whitespace that Sass uses to distinguish arithmetic from a space list.
+ * A whitespace-before, no-whitespace-after minus (`1 -2`) remains a list whose
+ * second item is the signed dimension, matching Dart Sass's current syntax.
+ */
+const directScssProductOperator = regex(/[ \t\n\r\f]*[*/%][ \t\n\r\f]*/);
+const directScssTopProductOperator = regex(/[ \t\n\r\f]*[*%][ \t\n\r\f]*/);
+const directScssSumOperator = regex(/(?:\+[ \t\n\r\f]*|-[ \t\n\r\f]*|[ \t\n\r\f]+\+[ \t\n\r\f]*|[ \t\n\r\f]+-[ \t\n\r\f]+)/);
+const directScssSpace = regex(/[ \t\n\r\f]+/);
+const directScssValueTrivia = regex(/(?:[ \t\n\r\f]+|\/\*(?:[^*]|\*(?!\/))*\*\/)+/);
+const directScssKeyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 
-    const VarDeclaration = node(sequence(
-      scssVar,
-      literal(':'),
-      g.valueList,
-      optional(choice(
-        literal('!default'),
-        literal('!global')
-      )),
-      optional(literal(';'))
-    ));
+/*
+ * Keep the static SCSS slice aligned with the shared CSS keyframe-selector
+ * shape: signed percentages and a trailing decimal point are valid selectors.
+ */
+const directScssKeyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
+
+/*
+ * The direct counterpart of the CST grammar's `InterpolatedSelector`: static
+ * identifier chunks and structural `#{…}` atoms only. Attribute, pseudo, and
+ * namespace interpolation each need a different AST shape and stay outside
+ * this simple-token fact.
+ */
+const directScssSelectorTextRun = regex(/[-_a-zA-Z0-9]+/);
+
+/*
+ * General-enclosed retains its body as an interpolation template. Delimiters
+ * recurse below; this leaf owns every other byte without a source reparse.
+ */
+const directScssGeneralTemplateText = regex(/(?:[^#()\[\]{}'"\\]|\\[\s\S]|#(?!\{))+/);
+
+/*
+ * Grammar-local copies of the leading pseudo-colon, hex-color and number
+ * recognizers (byte-identical to the shared CssSyntaxPseudoColon /
+ * CssSyntaxHexColor / CssSyntaxNumber). Leading a choice arm with a
+ * cross-composition `g.CssSyntax*` reference leaves that arm's first-set
+ * unresolved (`any`) across the composeLeaf artifact boundary, so the compiler
+ * enters the Pseudo / Color / Dimension node frame SPECULATIVELY at every simple
+ * selector and value atom. A grammar-local leading recognizer lets the compiler
+ * resolve the arm's first-set (`:`, `#`, a digit/sign) and first-char-gate it,
+ * skipping the doomed frame entirely.
+ */
+const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
+const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
+const numberValue = regex(/[+-]?(?:\d*\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?|\d+)/);
+
+/*
+ * Grammar-local block/line comment recognizers (byte-identical to the shared
+ * CssSyntaxBlockComment / ScssSyntaxLineComment). Both open on `/`, so a
+ * local copy lets the statement-comment arm resolve its first-set to `/` and be
+ * first-char-gated in the body-prefix choice instead of entering the comment
+ * node frame speculatively at every rule/at-statement position.
+ */
+const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const lineComment = regex(/\/\/[^\n\r]*/);
+
+/*
+ * Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: a scan
+ * with no per-call skip treats a string as one atomic unit, so a sentinel hidden
+ * inside it (an arg terminator, `with(`, etc.) is never matched. Consumes
+ * quote-to-quote including escapes; used only as a scan hole (builds nothing).
+ */
+const scssScanSkipDoubleString = noTrivia(sequence(
+  literal('"'),
+  regex(/(?:[^"\\]|\\.)*/),
+  literal('"')
+));
+const scssScanSkipSingleString = noTrivia(sequence(
+  literal('\''),
+  regex(/(?:[^'\\]|\\.)*/),
+  literal('\'')
+));
+
+/*
+ * Grammar-local CSS bubbling-at-rule keyword recognizers (byte-identical to the
+ * shared CssSyntax*AtKeyword leaves). Every nested at-statement arm must have
+ * a resolvable first-set for the whole `@`-cluster choice to first-char-gate: the
+ * mixin/control-flow arms already lead with local `@…` regexes, so spelling these
+ * CSS block keywords locally too resolves the cluster's first-set to `@` and lets
+ * the compiler skip the entire cluster on any non-`@` statement (ordinary rules,
+ * and every block-close where the cluster is otherwise entered speculatively).
+ */
+const supportsAtKeyword = regex(/@supports(?![-\w])/i);
+const mediaAtKeyword = regex(/@media(?![-\w])/i);
+const containerAtKeyword = regex(/@container(?![-\w])/i);
+const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
+const layerAtKeyword = regex(/@layer(?![-\w])/i);
+const scopeAtKeyword = regex(/@scope(?![-\w])/i);
+const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
+const pageAtKeyword = regex(/@page(?![-\w])/i);
+const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
+
+/*
+ * An at-rule this grammar has no typed production for is still well-formed CSS:
+ * which at-rules exist is a language-service fact, not a parse decision, so an
+ * unknown block (`@view-transition`, `@position-try`, anything newer than this
+ * grammar) is captured opaquely instead of failing the whole stylesheet. The
+ * exclusion list is dispatch, not vocabulary: every name here HAS a typed
+ * production above, and a malformed one must report its own error rather than
+ * silently degrade to opaque bytes. Sass's evaluated directives are excluded for
+ * the same reason — `@debug`/`@warn`/`@error`/`@else`/`@while`/`@at-root`/
+ * `@content` are not CSS output and must never be emitted verbatim. The `@-…`
+ * compiler namespace (`@-use`/`@-compose`/`@-export`/`@-import`/`@-from`, what
+ * SCSS module directives LOWER to) is excluded for the same reason, while a
+ * vendor prefix (`@-webkit-anything`) stays ordinary unknown CSS.
+ */
+const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|function|return|if|else|each|for|while|extend|at-root|content|debug|warn|error|charset|namespace|media|container|supports|starting-style|page|scope|font-face|counter-style|property|font-feature-values|layer|-moz-document|document|-use|-compose|-export|-import|-from|(?:-[a-z]+-)?keyframes)(?![-_a-zA-Z0-9\u0080-\uFFFF]))-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/i);
+
+/*
+ * Grammar-local property-name recognizer (byte-identical to CssSyntaxProperty).
+ * Declaration and StaticNestedProperty lead their arm with a `choice(interpolated
+ * property, property)`; spelling the plain property locally resolves that arm's
+ * first-set to the property opener class (`*`, `-`, an identifier char) so the
+ * declaration arms first-char-gate — an ordinary rule (`.x`, `&…`) or block-close
+ * no longer enters and rolls back the declaration/nested-property node frames.
+ */
+const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+
+export const scssFactory = (g: ScssRules) => {
+    const caseInsensitive = makeWhen({ caseInsensitive: true });
+  /*
+   * SCSS owns the token after its `$` sigil. The shared CSS keyword leaf is
+   * valid for closed value facts, but admits CSS escapes that SCSS variables do
+   * not: `scssVar` in the production grammar is deliberately unescaped.
+   * A closed static value must not split an unsupported escaped `$` reference
+   * into a valid short reference plus a following keyword in a space sequence.
+   * The legacy scanner accepts no backslash in this token either; the boundary
+   * makes that rejection atomic in this direct grammar.
+   */
+    const scssVarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?![-_a-zA-Z0-9\u0080-\uffff\\])/);
 
     /*
-   * SCSS references are bare `$var` (no Less accessor-chain syntax) — a single
-   * token, so no trivia handling is needed.
+   * The `$name` sigil + identifier pair. As a nested sequence it flattens its
+   * two tokens (`$`, name) into the enclosing sequence's children, so every
+   * reducer that reads the name at `children[1]` is unaffected.
    */
-    const Reference = node(scssVar);
-
-    /*
-   * Namespaced variable ASSIGNMENT — `ns.$var: value [!default|!global];`. Writes
-   * into another module's variable (distinct from the member READ `ns.get-x()`).
-   * The `plainIdent '.' scssVar` head can't be confused with a Declaration
-   * (`scssDeclPropName` stops before `.`) or a class-selector ruleset (`.` there
-   * is followed by an ident, not `$`), so this is safe at statement head.
-   */
-    const NsVarDeclaration = node(sequence(
-      plainIdent,
-      literal('.'),
-      scssVar,
-      literal(':'),
-      g.valueList,
-      optional(choice(
-        literal('!default'),
-        literal('!global')
-      )),
-      optional(literal(';'))
-    ));
-
-    /*
-   * ── Interpolation (#{…}) ───────────────────────────────────────────────────
-   * SCSS uses `#{expr}` (not Less `@{var}`). Override the Less interpolation
-   * hooks: bare `#{…}` values, interpolated idents in names/selectors/strings.
-   */
-    const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
-
-    /*
-   * Declaration property name \u2014 WITHOUT the `#\{\u2026\}` alternative. A name that
-   * carries interpolation is structured by `ScssInterpDeclName` (below), which the
-   * Declaration rules try FIRST; this flat token owns only interpolation-free names.
-   */
-    const scssDeclPropName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-    const important = sequence(
-      literal('!'),
-      g.CssAstSyntaxImportant
+    const scssVarSigilName = sequence(
+      literal('$'),
+      scssVarName
     );
 
-    const ScssInterpBare = node(sequence(
-      literal('#'),
-      literal('{'),
-      g.valueSequence,
-      expect(
-        literal('}'),
-        '}'
+    /*
+   * Static chunks stop at a real `#{` opener; the structural interpolation
+   * production below owns that form. Ordinary `#foo` stays literal text and
+   * escapes remain grammar-recognized.
+   */
+    const directDoubleQuotedText = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))*/);
+    const directSingleQuotedText = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))*/);
+    const DirectScssVarReference = node<VariableReference>(
+      'DirectScssVarReference',
+      scssVarSigilName,
+      children => variableReference(
+        requireToken(children[1]).value,
+        'live'
       )
-    ));
-
-    /*
-   * ── Quoted (structure `#{…}` interpolation inside a string via combinators) ──
-   * The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
-   * any interior `#{…}`. SCSS OVERRIDES it so the PARSER is the sole source of the
-   * interpolation structure (P0 KEYSTONE): a string is one `many(choice(…))` whose
-   * arms are the `#{ <expression> }` interp atom (`ScssInterpBare`, a FULL SCSS
-   * expression — unlike Less's single-ident `@{name}`) and the STRING-CONTENTS
-   * combinator primitive. The interp atom is tried FIRST so a `#{` opens
-   * interpolation before the contents run can gobble it. The value/name hosts
-   * consume the interleaved leaves + `ScssInterpBare` children with the SAME seam
-   * the bare-`#{…}` / name / selector paths use — never a byte re-scan.
-   *
-   * A contents chunk is any run up to a `"`/`'`, an escape, or a `#{` interp
-   * opener; the `#(?!\{)` negative-lookahead is the exact complement of the
-   * interp opener, so a `#` only ends a chunk when it opens `#{` — a hex color
-   * (`#fff`) or id (`#foo`) stays INSIDE the chunk as literal text. A string that
-   * carries no `#{…}` yields only content/quote leaves (no `ScssInterpBare`
-   * child); the builder then falls back to the flat css `Quoted` leaf value
-   * (byte-identical fast path, no `Interpolated` wrapper materialized).
-   */
-    const dqContents = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/);
-    const sqContents = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/);
-
-    /*
-   * FAST PATH: a COMPLETE quoted string (quotes included) that carries no `#{`
-   * interp opener matches as a SINGLE flat leaf in one regex — the common case
-   * (plain strings dominate real CSS) skips CST-array allocation + builder
-   * dispatch entirely. The `#(?!\{)` complement is IDENTICAL to `dqContents`, so
-   * the flat arm fails precisely when an opener is present and backtracks to the
-   * interp `sequence` arm (a `#{` can't be consumed → single failed regex). The
-   * flat arm builds a single-leaf `Quoted` (no `ScssInterpBare` child) → the
-   * builder's existing no-interp fallback yields the byte-identical flat value.
-   */
-    const dqFlat = regex(/"(?:[^"\\#]|\\[\s\S]|#(?!\{))*"/);
-    const sqFlat = regex(/'(?:[^'\\#]|\\[\s\S]|#(?!\{))*'/);
-    const Quoted = node(
-      'Quoted',
+    );
+    const SassInterpolation = node<Interpolation>(
+      'SassInterpolation',
+      sequence(
+        literal('#{'),
+        g.DirectScssValue,
+        literal('}')
+      ),
+      children => interpolation([{ ref: requireValue(children[1]), unquote: true }])
+    );
+    const DirectScssQuoted = node<Quoted | Interpolation>(
+      'DirectScssQuoted',
       choice(
-        dqFlat,
-        sqFlat,
+        sequence(
+          literal('"'),
+          directDoubleQuotedText,
+          literal('"')
+        ),
+        sequence(
+          literal('\''),
+          directSingleQuotedText,
+          literal('\'')
+        ),
         sequence(
           literal('"'),
           many(choice(
-            ScssInterpBare,
-            dqContents
+            g.SassInterpolation,
+            regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))+/)
           )),
           literal('"')
         ),
         sequence(
           literal('\''),
           many(choice(
-            ScssInterpBare,
-            sqContents
+            g.SassInterpolation,
+            regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))+/)
           )),
           literal('\'')
         )
-      )
+      ),
+      (children) => {
+        const quote = requireToken(children[0]).value;
+        if (children.length === 3 && !isInterpolation(children[1])) {
+          return staticQuoted(children);
+        }
+        const parts: Interpolation['parts'] = [{ lit: quote }];
+        for (const child of children.slice(
+          1,
+          -1
+        )) {
+          if (isInterpolation(child)) {
+            parts.push(...child.parts);
+          } else {
+            appendLiteral(
+              parts,
+              requireToken(child).value
+            );
+          }
+        }
+        appendLiteral(
+          parts,
+          quote
+        );
+        return interpolation(parts);
+      }
     );
 
     /*
-   * ── Welded-ident interpolation (value + name positions) ────────────────────
-   * Each production below interleaves literal chunk leaves with `#{ … }` interp
-   * atoms (`ScssInterpBare`, a FULL SCSS expression) and REQUIRES at least one
-   * atom, so an interpolation-free run never matches here and flows through the
-   * plain token path (byte-identical). The builders fold the leaves + atoms into
-   * one `Interpolated` with the SAME seam the selector/name paths use — never a
-   * byte re-scan (this is what let interp.ts's nested-parser bootstrap be deleted).
-   *
-   * Value position (`foo-#{$bar}-baz`). The leading chunk must start like an ident
-   * (letter or `-`) so a digit-led value (`123#{…}`) still routes through
-   * Dimension/Num, matching the old flat token which required an ident start.
+   * Module directives are classified from their literal authored path. They
+   * deliberately use this interpolation-free quoted production: a dynamic path
+   * or escape-bearing path has no decoded parser-time target class and must not
+   * be guessed or resolved here.
    */
-    const interpValueLead = regex(/-?[_a-zA-Z-\uFFFF][-_a-zA-Z0-9-\uFFFF]*|-/);
-    const interpValueChunk = regex(/[-_a-zA-Z0-9-\uFFFF]+/);
-    const InterpValue = node(sequence(
-      optional(interpValueLead),
-      ScssInterpBare,
-      many(choice(
-        interpValueChunk,
-        ScssInterpBare
-      ))
-    ));
+    const directStaticDoubleQuotedPath = regex(/(?:[^"\\#]|#(?!\{))*/);
+    const directStaticSingleQuotedPath = regex(/(?:[^'\\#]|#(?!\{))*/);
 
     /*
-   * Interpolated declaration NAME (`#{$p}-x`, `margin-#{$side}`). `*` covers the
-   * IE star-hack prefix; the chunk char class matches `scssDeclPropName` (escapes
-   * included) minus the interp opener.
+   * `noTrivia`: a module path is literal bytes, so the ambient `//` trivia arm
+   * must not reach inside the quotes and swallow `@use "//host/lib"` as a line
+   * comment. Both arms are closed regex/literal, so disabling trivia here
+   * cannot propagate into a shared rule.
    */
-    const declNameChunk = regex(/(?:[-_a-zA-Z0-9-\uFFFF]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-    const ScssInterpDeclName = node(sequence(
-      optional(literal('*')),
-      many(declNameChunk),
-      ScssInterpBare,
-      many(choice(
-        declNameChunk,
-        ScssInterpBare
-      ))
-    ));
-
-    /*
-   * Interpolated custom-property NAME (`--x-#{$y}`). The `--` prefix + chunk leaves
-   * fold into the same `Interpolated` (role property) as the declaration name.
-   */
-    const customPropChunk = regex(/[-_a-zA-Z0-9-\uFFFF]+/);
-    const ScssInterpCustomProp = node(sequence(
-      literal('--'),
-      many(customPropChunk),
-      ScssInterpBare,
-      many(choice(
-        customPropChunk,
-        ScssInterpBare
-      ))
-    ));
-
-    /* ── Sass map literals + module-qualified idents ──────────────────────────── */
-    const dotName = regex(/\.-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-    const ScssMapPair = node(
-      'ScssMapPair',
-      sequence(
-        g.value,
-        literal(':'),
-        g.valueSequence
-      )
-    );
-
-    /*
-   * A Sass map literal REQUIRES at least one `key: value` pair. `expect(')')`
-   * recovers in place (zero-width success), so if this rule matched an empty or
-   * pairless `(…)` it would swallow every parenthesized value before the value
-   * paren rule is tried. Requiring a real pair (the `:` is a soft `literal`) lets a
-   * non-map paren like `(15px/30px)` or `(1 + 2)` fail here and fall through.
-   */
-    const ScssMapLiteral = node(sequence(
-      literal('('),
-      ScssMapPair,
-      many(sequence(
-        literal(','),
-        ScssMapPair
-      )),
-      optional(literal(',')),
-      expect(literal(')'))
-    ));
-    const scssHashName = regex(/#-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-    const ScssIdentValue = node(sequence(
-      plainIdent,
-      optional(choice(
-        sequence(
-          literal('.'),
-          literal('\\'),
-          choice(
-            scssHashName,
-            dotName
-          ),
-          literal('('),
-          optional(g.ScssCallArgsInner),
-          expect(literal(')'))
-        ),
-        sequence(
-          literal('.'),
-          scssVar
-        ),
-        sequence(
-          dotName,
-          literal('('),
-          optional(g.ScssCallArgsInner),
-          expect(literal(')'))
-        )
-      ))
-    ));
-
-    /*
-   * Value-position paren. Unlike Less's strict single-expression `Paren`, SCSS
-   * allows space/comma-separated value lists inside parens (e.g.
-   * `(bold 15px/30px sans-serif)`). We parse permissively and let `_buildScssParen`
-   * decide: an isolated arithmetic form (`(15px/30px)`, `(1 + 2)`) becomes an
-   * `Expression(Operation)`; anything else stays a grouped `Paren`.
-   */
-    const ScssValueParen = node(
-      'Paren',
-      sequence(
-        literal('('),
-        g.permissiveParenBody
-      )
-    );
-
-    /* Sass allows trailing commas in comma-separated lists (as does Less v5, matching Less 4.x). */
-    const valueList = sequence(
-      g.valueSequence,
-      many(sequence(
-        literal(','),
-        g.valueSequence
-      )),
-      optional(literal(','))
-    );
-    const callArgSeq = choice(
-      g.AnonymousMixinDefinition,
-      g.DetachedRuleset,
-      g.valueSequence
-    );
-    const callArgList = choice(
-      g.AnonymousMixinDefinition,
-      g.DetachedRuleset,
-      valueList
-    );
-    const functionCallArgs = sequence(
-      optional(sequence(
-        callArgSeq,
-        many(sequence(
-          literal(','),
-          callArgSeq
+    const DirectScssStaticQuoted = node<Quoted>(
+      'DirectScssStaticQuoted',
+      choice(
+        noTrivia(sequence(
+          literal('"'),
+          directStaticDoubleQuotedPath,
+          literal('"')
         )),
-        optional(literal(',')),
-        many(sequence(
-          literal(';'),
-          optional(callArgList)
+        noTrivia(sequence(
+          literal('\''),
+          directStaticSingleQuotedPath,
+          literal('\'')
         ))
-      )),
-      literal(')')
-    );
-    const fnIdent = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-    const Call = node(sequence(
-      fnIdent,
-      literal('('),
-      functionCallArgs
-    ));
-
-    const value = choice(
-      ScssInterpBare,
-      InterpValue,
-      g.Reference,
-      g.Dimension,
-      g.Num,
-      g.Color,
-      g.NamedColor,
-      g.Url,
-      g.CalcCall,
-      g.Call,
-      ScssIdentValue,
-      g.EscapedValue,
-      g.GluedParen,
-      ScssMapLiteral,
-      ScssValueParen,
-      g.SquareParen,
-      g.Quoted,
-      g.anyValue
-    );
-
-    const staticSeg = regex(/[-_a-zA-Z0-9]+/);
-    const nameSegment = choice(
-      staticSeg,
-      ScssInterpBare
-    );
-    const ScssInterpolatedName = node(oneOrMore(nameSegment));
-
-    const InterpolatedSelector = node(sequence(
-      optional(regex(/[.#]/)),
-      oneOrMore(nameSegment)
-    ));
-
-    const CustomDeclaration = node(sequence(
-      choice(
-        ScssInterpCustomProp,
-        customProp
       ),
-      literal(':'),
-      choice(
-        g.customCurlyBlock,
-        g.customValue,
-        g.cpValue
-      ),
-      optional(literal(';'))
-    ));
+      staticQuoted
+    );
 
     /*
-   * A nested prop (`size: 1rem`) is built AS a `Declaration` (structural node →
-   * ctx.build('Declaration')); `_buildScssNestedProps` filters children for
-   * Declaration nodes. The rule's own name stays local (`many(ScssNestedDecl)`).
+   * Static values retain escapes, unlike module paths (whose classification
+   * deliberately rejects them). A real `#{` opener remains outside this fact
+   * so a supports condition can never flatten interpolation into a Quoted node.
+   * `noTrivia` for the same reason as the module-path fact above: a supports
+   * condition's string is literal bytes, not a place the `//` trivia arm may
+   * reach. Closed regex/literal arms, so nothing shared is affected.
    */
-    const ScssNestedDecl = node(
-      'Declaration',
+    const StaticValueQuoted = node<Quoted>(
+      'DirectScssStaticValueQuoted',
+      choice(
+        noTrivia(sequence(
+          literal('"'),
+          directDoubleQuotedText,
+          literal('"')
+        )),
+        noTrivia(sequence(
+          literal('\''),
+          directSingleQuotedText,
+          literal('\'')
+        ))
+      ),
+      staticQuoted
+    );
+
+    /*
+   * Only a block comment is CSS output. A `//` line comment is lexical trivia
+   * (see `whitespace`) and is dropped, matching Sass and Less.
+   */
+    const DirectScssComment = node<Comment>(
+      'DirectScssComment',
+      blockComment,
+      children => comment(requireToken(children[0]).value)
+    );
+    const DirectScssKeyword = node<Keyword>(
+      'DirectScssKeyword',
+      g.CssSyntaxKeyword,
+      children => keyword(requireToken(children[0]).value)
+    );
+    const DirectScssCustomPropertyValue = node<Keyword>(
+      'DirectScssCustomPropertyValue',
+      g.CssSyntaxCustomProperty,
+      children => keyword(requireToken(children[0]).value)
+    );
+    const DirectScssColor = node<Color>(
+      'DirectScssColor',
+      hexColor,
+      children => color(requireToken(children[0]).value)
+    );
+
+    /*
+   * A `<urange>` is one opaque CSS token, so it must be recognized before the
+   * keyword atom: `U+0-7F` split at the `+` leaves `+0`/`-7F` to be folded as
+   * SCSS arithmetic, which serializes valid CSS back out as `U + 0 - 7F`.
+   */
+    const DirectScssUnicodeRange = node<ValueNode>(
+      'DirectScssUnicodeRange',
+      g.CssSyntaxUnicodeRange,
+      children => any(requireToken(children[0]).value)
+    );
+    const DirectScssDimension = node<Dimension>(
+      'DirectScssDimension',
+      noTrivia(sequence(
+        numberValue,
+        optional(g.CssSyntaxDimensionUnit)
+      )),
+      (children) => {
+        const numberText = requireToken(children[0]).value;
+        const unit = children.length > 1 ? requireToken(children[1]).value : '';
+        return dimension(
+          Number(numberText),
+          unit,
+          `${numberText}${unit}`
+        );
+      }
+    );
+
+    /*
+   * The legacy URL lexical body permits ordinary `#` bytes, but an interpolation
+   * opener has its own typed SCSS production. This closed static branch must not
+   * flatten it into `Any`, so `#{` is excluded by grammar rather than a post-parse
+   * inspection.
+   */
+    const staticUrlInner = regex(/(?:[^\"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
+
+    /*
+   * URL chunks reserve a real interpolation opener for the structural branch,
+   * while retaining CSS URL escaping and ordinary `#` bytes as literal text.
+   */
+    const directScssUrlInterpolatedChunk = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F#]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f])|#(?!\{))+/);
+    const DirectScssInterpolatedUrlValue = node<Interpolation>(
+      'DirectScssInterpolatedUrlValue',
       sequence(
-        choice(
-          ScssInterpDeclName,
-          scssDeclPropName
-        ),
-        literal(':'),
-        g.valueList,
-        optional(literal(';'))
+        optional(directScssUrlInterpolatedChunk),
+        g.SassInterpolation,
+        many(choice(
+          directScssUrlInterpolatedChunk,
+          g.SassInterpolation
+        ))
+      ),
+      children => interpolation(children.flatMap(child => isInterpolation(child)
+        ? child.parts
+        : [{ lit: requireToken(child).value }]))
+    );
+    /*
+   * Interpolation-LED value leaf: an interpolation at the value start, then any
+   * mix of identifier chunks and further interpolations (`#{$x}foo#{$y}`). The
+   * identifier-LED spelling (`foo#{$x}bar`) and the plain keyword are both owned
+   * by the merged `DirectScssKeywordOrInterpolatedValue` terminal below, so this
+   * production never speculatively scans a leading identifier for an ordinary
+   * keyword value and then backtracks. Because it requires `#{` first, it also
+   * cannot capture a `--name#{...}` token, which the old leading-identifier arm
+   * had to exclude with a dedicated `not(--\u2026#{)` guard.
+   */
+    const DirectScssInterpolatedValue = node<Interpolation>(
+      'DirectScssInterpolatedValue',
+      sequence(
+        g.SassInterpolation,
+        many(choice(
+          regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
+          g.SassInterpolation
+        ))
+      ),
+      children => interpolation(children.flatMap(child => isInterpolation(child)
+        ? child.parts
+        : [{ lit: requireToken(child).value }]))
+    );
+
+    /*
+   * A parenthesized SCSS value can either enforce arithmetic precedence or hold
+   * an ordinary list. Try the fully structured arithmetic form first; the list
+   * branch is deliberately separate so `(1 2)` stays a paren Block around a list
+   * rather than being invented as math.
+   */
+    const DirectScssParen = node<ValueNode>(
+      'DirectScssParen',
+      choice(
+        noTrivia(sequence(
+          literal('('),
+          g.DirectScssMathSum,
+          literal(')')
+        )),
+        noTrivia(sequence(
+          literal('('),
+          g.DirectScssValue,
+          literal(')')
+        ))
+      ),
+      children => block(requireValueSlot(children[1]))
+    );
+
+    /*
+   * Sass bracketed lists carry the square delimiter as a first-class Block fact;
+   * the inner value uses the same separator-aware list grammar as ordinary values.
+   */
+    const DirectScssSquare = node<ValueNode>(
+      'DirectScssSquare',
+      noTrivia(sequence(
+        literal('['),
+        g.DirectScssValue,
+        literal(']')
+      )),
+      children => block(
+        requireValue(children[1]),
+        'square'
       )
     );
 
     /*
-   * A nested-properties block (`font: { … }`) normally holds inner
-   * sub-declarations, but Sass also allows control flow (`@for`, `@if`, …) and
-   * namespaced variable ASSIGNMENTS inside it. Try those before the plain
-   * sub-declaration.
+   * A Sass map entry `key: value`. The key is a single arithmetic term (an
+   * identifier, string, number, or `#{…}`); the value is an ordinary value term
+   * (a space/slash list, never a comma list — commas separate entries). It lowers
+   * to a Collection entry: a leaf-named Declaration.
    */
-    const ScssNestedProps = node(sequence(
-      literal('{'),
-      many(choice(
-        g.ScssIf,
-        g.ScssEach,
-        g.ScssFor,
-        g.ScssWhile,
-        g.NsVarDeclaration,
-        g.VarDeclaration,
-        ScssNestedDecl
+    const DirectScssMapEntry = node<Declaration>(
+      'DirectScssMapEntry',
+      noTrivia(sequence(
+        g.DirectScssMathTopSum,
+        optional(directScssValueTrivia),
+        literal(':'),
+        optional(directScssValueTrivia),
+        g.DirectScssValueTerm
       )),
-      expect(literal('}'))
-    ));
-
-    const Declaration = node(sequence(
-      choice(
-        ScssInterpDeclName,
-        scssDeclPropName
-      ),
-      optional(choice(
-        literal('+_'),
-        literal('+')
-      )),
-      literal(':'),
-      choice(
-        ScssNestedProps,
-        sequence(
-          optional(g.valueList),
-          optional(ScssNestedProps)
-        )
-      ),
-      optional(important),
-      optional(literal(';'))
-    ));
-
-    /*
-   * ── Control flow: @if / @else if / @else ───────────────────────────────────
-   * Faithful port of the Chevrotain scssCondition* / scssIfAtRule productions
-   * (productions/conditions.ts, productions/atRules.ts). The condition sub-
-   * grammar is structurally the Less guard grammar (or → and → term → parens /
-   * comparison), so the SCSS builders mirror LessGrammar's guard builders.
-   */
-    const scssCompareOp = regex(/==|!=|>=|<=|=|>|</);
-    const kwOr = regex(/or(?![-\w])/i);
-    const kwAnd = regex(/and(?![-\w])/i);
-    const kwNot = regex(/not(?![-\w])/i);
-
-    /*
-   * A single comparison operand. Specific value rules first; `anyValue` last —
-   * it stops at whitespace so it cannot swallow a spaced ` == ` / `and` / `{`.
-   */
-    const condOperand = choice(
-      g.Reference,
-      g.Dimension,
-      g.Num,
-      g.Color,
-      g.NamedColor,
-      g.Quoted,
-      g.Call,
-      g.Paren,
-      g.anyValue
+      children => decl(
+        mapKeyName(requireValue(children[0])),
+        requireValueSlot(children[children.length - 1])
+      )
     );
-    const ScssComparison = node(sequence(
-      condOperand,
-      optional(sequence(
-        scssCompareOp,
-        condOperand
-      ))
-    ));
 
-    /* `(` condOr `)` (Paren-wrapped) OR a bare comparison. */
-    const ScssCondInParens = node(choice(
+    /*
+   * A Sass map literal `(a: 1, b: 2)` lowers to the shared `Collection` (the same
+   * key/value-entries node used for SCSS nested properties), disambiguated from a
+   * paren value-list `(1 2 3)` by the `key: value` entry shape. Empty `()` and a
+   * single `(a: 1)` are both maps. This arm sits before `DirectScssParen` in the
+   * value-atom choice; when no entry carries a colon it backtracks to the paren
+   * list/arithmetic form.
+   */
+    const DirectScssMap = node<Collection>(
+      'DirectScssMap',
+      choice(
+        noTrivia(sequence(
+          literal('('),
+          optional(directScssValueTrivia),
+          g.DirectScssMapEntry,
+          many(noTrivia(sequence(
+            optional(directScssValueTrivia),
+            literal(','),
+            optional(directScssValueTrivia),
+            g.DirectScssMapEntry
+          ))),
+          optional(noTrivia(sequence(
+            optional(directScssValueTrivia),
+            literal(',')
+          ))),
+          optional(directScssValueTrivia),
+          literal(')')
+        )),
+        noTrivia(sequence(
+          literal('('),
+          optional(directScssValueTrivia),
+          literal(')')
+        ))
+      ),
+      children => collection(children.filter(isDeclaration))
+    );
+
+    /*
+     * Identifier/function values share the same glued opener. Parse it once, then
+     * route the owned token to the dedicated URL, generic function, or keyword /
+     * identifier-led interpolation branch without reparsing the identifier.
+     */
+    const identOrFunction = token(noTrivia(sequence(
+      g.CssSyntaxKeyword,
+      optional(literal('('))
+    )));
+    const UrlFunction = node<ValueNode>(
+      'DirectScssUrl',
       sequence(
-        literal('('),
-        g.ScssCondOr,
+        routed(),
+        optional(choice(
+          g.DirectScssQuoted,
+          g.DirectScssInterpolatedUrlValue,
+          staticUrlInner
+        )),
         literal(')')
       ),
-      g.ScssComparison
-    ));
-
-    /* A term: optional `not`, then a paren-group or a comparison. */
-    const ScssCondTerm = node(sequence(
-      optional(kwNot),
-      g.ScssCondInParens
-    ));
-
-    /* 'and' chain (left-associative). */
-    const ScssCondAnd = node(sequence(
-      g.ScssCondTerm,
-      many(sequence(
-        kwAnd,
-        g.ScssCondTerm
-      ))
-    ));
-
-    /* 'or' / ',' chain (left-associative). `,` is allowed in @if (legacy syntax). */
-    const ScssCondOr = node(sequence(
-      g.ScssCondAnd,
-      many(sequence(
-        choice(
-          kwOr,
-          literal(',')
-        ),
-        g.ScssCondAnd
-      ))
-    ));
-
-    /* A `{ … }` block body → Rules (statements come from atRuleBody). */
-    const ScssRules = node(sequence(
-      literal('{'),
-      g.atRuleBody,
-      expect(
-        literal('}'),
-        '}'
-      )
-    ));
-
-    const ifKw = regex(/@if(?![-\w])/i);
-    const elseKw = regex(/@else(?![-\w])/i);
-    const ifWord = regex(/if(?![-\w])/i);
-
-    /*
-   * A REQUIRED condition. `@if { … }` (no condition) is a real error. `not('{')`
-   * asserts we are not sitting directly on the block opener; `expect` reports the
-   * missing condition and RECOVERS IN PLACE (zero-width) so the `{ … }` block still
-   * parses (as an `@if` with a recovered error) rather than the whole rule failing
-   * and `@if` falling through to the opaque unknown-at-rule handler. Structural,
-   * context-free — no `withCtx`/`guard`, so the grammar stays macro-compiled.
-   */
-    const reqIfCond = expect(
-      sequence(
-        not(literal('{')),
-        g.ScssCondOr
-      ),
-      'condition'
+      (children) => {
+        if (children.length === 2) {
+          if (requireToken(children[0]).value.toLowerCase() !== 'url(' || requireToken(children[1]).value !== ')') {
+            throw new TypeError('DirectScssUrl produced unexpected children.');
+          }
+          return url(any(''));
+        }
+        if (children.length !== 3 || requireToken(children[0]).value.toLowerCase() !== 'url(' || requireToken(children[2]).value !== ')') {
+          throw new TypeError('DirectScssUrl produced unexpected children.');
+        }
+        const body = children[1];
+        return url(isValue(body) ? body : any(requireToken(body).value));
+      }
     );
-    const ScssIf = node(sequence(
-      ifKw,
-      reqIfCond,
-      g.ScssRules,
-      many(sequence(
-        elseKw,
-        choice(
-          sequence(
-            ifWord,
-            g.ScssCondOr,
-            g.ScssRules
-          ),
-          g.ScssRules
-        )
-      ))
-    ));
-
-    /*
-   * ── Control flow: @each / @for / @while ────────────────────────────────────
-   * Faithful ports of scssEachAtRule / scssForAtRule / scssWhileAtRule
-   * (productions/atRules.ts). All normalize to Jess `For` / `While` nodes.
-   */
-    const inKw = regex(/\bin\b/);
-    const fromKw = regex(/\bfrom\b/);
-    const forThrough = regex(/\bthrough\b/);
-    const forTo = regex(/\bto\b/);
-    const eachKw = regex(/@each(?![-\w])/i);
-    const forKw = regex(/@for(?![-\w])/i);
-    const whileKw = regex(/@while(?![-\w])/i);
-
-    /*
-   * A REQUIRED loop variable. `@each in $list { … }` (no variable) is a real error.
-   * `not(inKw | '{')` asserts a variable is actually present (missing → we are at
-   * `in` or the block); `expect` reports it and recovers zero-width so `in $list
-   * { … }` still parses as an `@each` with a recovered error.
-   */
-    const reqEachVars = expect(
+    const Call = node<FunctionCall | Reference>(
+      'DirectScssCall',
       sequence(
-        not(choice(
-          inKw,
-          literal('{')
-        )),
-        sepBy(
-          scssVar,
-          literal(',')
-        )
-      ),
-      'variable'
-    );
-    const ScssEach = node(sequence(
-      eachKw,
-      reqEachVars,
-      inKw,
-      g.valueSequence,
-      g.ScssRules
-    ));
-
-    /*
-   * A REQUIRED `from … through/to …` range. `@for $i { … }` (no range) is a real
-   * error. The whole range tail is wrapped in one `expect`: on failure it recovers
-   * zero-width (as a unit — `fromKw` is a hard token that fails at `{` without
-   * consuming) so the trailing `{ … }` block still parses as a `@for` with a
-   * recovered error rather than the rule failing and falling through.
-   */
-    const forRangeTail = sequence(
-      fromKw,
-      g.topSum,
-      choice(
-        forThrough,
-        forTo
-      ),
-      g.topSum
-    );
-    const ScssFor = node(sequence(
-      forKw,
-      expect(
-        scssVar,
-        'variable'
-      ),
-      expect(
-        forRangeTail,
-        '"from"'
-      ),
-      g.ScssRules
-    ));
-
-    const ScssWhile = node(sequence(
-      whileKw,
-      g.ScssCondOr,
-      g.ScssRules
-    ));
-
-    /*
-   * ── Mixins: @mixin / @include / @content ───────────────────────────────────
-   * Faithful ports of scssMixinAtRule / scssIncludeAtRule / scssContentAtRule.
-   */
-    const mixinKw = regex(/@mixin(?![-\w])/i);
-    const includeKw = regex(/@include(?![-\w])/i);
-    const contentKw = regex(/@content(?![-\w])/i);
-    const usingKw = regex(/\busing\b/);
-
-    /* SCSS call/mixin argument: `$x: val`, `val...`, or a plain value. */
-    const ScssCallArg = node(choice(
-      sequence(
-        scssVar,
-        literal(':'),
-        g.valueSequence
-      ),
-      sequence(
-        g.value,
-        literal('...')
-      ),
-      sequence(
-        g.valueSequence,
-        literal('...')
-      ),
-      g.valueSequence
-    ));
-    const ScssCallArgsInner = node(optional(sequence(
-      g.ScssCallArg,
-      many(sequence(
-        literal(','),
-        optional(g.ScssCallArg)
-      ))
-    )));
-    const optionalCallParens = optional(sequence(
-      literal('('),
-      g.ScssCallArgsInner,
-      expect(literal(')'))
-    ));
-
-    /* Mixin parameter: `...$rest`, `$rest...`, `$a: default`, or bare `$a`. */
-    const ScssMixinParam = node(choice(
-      sequence(
-        literal('...'),
-        scssVar
-      ),
-      sequence(
-        scssVar,
-        literal('...')
-      ),
-      sequence(
-        scssVar,
+        routed(),
+        optional(directScssValueTrivia),
         optional(sequence(
-          literal(':'),
-          g.valueSequence
-        ))
-      )
-    ));
-    const ScssMixinParams = node(sequence(
-      literal('('),
-      optional(sequence(
-        g.ScssMixinParam,
-        many(sequence(
-          literal(','),
-          optional(g.ScssMixinParam)
-        ))
-      )),
-      expect(literal(')'))
-    ));
-
-    /* Mixin/include name: `foo`, module-qualified `ns.foo`, or `foo-#{$bar}`. */
-    const scssMixinIdent = choice(
-      ScssInterpolatedName,
-      plainIdent
+          g.DirectScssValueTerm,
+          many(g.DirectScssValuePair)
+        )),
+        optional(directScssValueTrivia),
+        literal(')')
+      ),
+      children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
     );
-    const ScssMixinName = node(choice(
+    const KeywordOrInterpolatedValue = node<ValueNode>(
+      'DirectScssKeywordOrInterpolatedValue',
       sequence(
-        plainIdent,
-        literal('.'),
-        plainIdent
+        routed(),
+        many(choice(
+          regex(/[-_a-zA-Z0-9\u0080-\uffff]+/),
+          g.SassInterpolation
+        ))
       ),
-      ScssInterpolatedName,
-      plainIdent
-    ));
-
-    const ScssDeclBody = node(sequence(
-      literal('{'),
-      g.declarationList,
-      expect(
-        literal('}'),
-        '}'
-      )
-    ));
-
-    /*
-   * A REQUIRED mixin name. `@mixin { … }` (no name) is a real error. `expect` reports
-   * the missing name and recovers zero-width so the `{ … }` body still parses (as a
-   * `@mixin` with a recovered error) rather than the rule falling through.
-   */
-    const ScssMixin = node(sequence(
-      mixinKw,
-      expect(
-        scssMixinIdent,
-        'name'
-      ),
-      optional(g.ScssMixinParams),
-      g.ScssDeclBody
-    ));
-
-    const ScssIncludeUsing = node(sequence(
-      usingKw,
-      literal('('),
-      sepBy(
-        scssVar,
-        literal(',')
-      ),
-      expect(literal(')'))
-    ));
-
-    /*
-   * A REQUIRED mixin name. `@include ;` and `.a { @include }` (no name) are real
-   * errors. `expect` reports the missing name and recovers zero-width so the trailing
-   * `;`/`}` still closes the statement rather than the rule falling through.
-   */
-    const ScssInclude = node(sequence(
-      includeKw,
-      expect(
-        g.ScssMixinName,
-        'name'
-      ),
-      optionalCallParens,
-      optional(g.ScssIncludeUsing),
-      optional(g.ScssRules),
-      optional(literal(';'))
-    ));
-
-    const ScssContent = node(sequence(
-      contentKw,
-      optionalCallParens,
-      optional(literal(';'))
-    ));
-
-    /* ── @function / @return ───────────────────────────────────────────────────── */
-    const functionKw = regex(/@function(?![-\w])/i);
-    const returnKw = regex(/@return(?![-\w])/i);
-
-    const ScssFunction = node(sequence(
-      functionKw,
-      scssMixinIdent,
-      optional(g.ScssMixinParams),
-      g.ScssDeclBody
-    ));
-
-    /*
-   * A REQUIRED return value. `@return }` / `@return ;` (no expression) is a real
-   * error. `not('}' | ';')` asserts a value is actually present (valueList can match
-   * zero-width); `expect` reports it and recovers zero-width so the enclosing block's
-   * `}` still closes.
-   */
-    const ScssReturn = node(sequence(
-      returnKw,
-      expect(
-        sequence(
-          not(choice(
-            literal('}'),
-            literal(';')
-          )),
-          g.valueList
-        ),
-        'expression'
-      ),
-      optional(literal(';'))
-    ));
-
-    /*
-   * ── @use / @forward / @import / @extend ───────────────────────────────────
-   * Faithful ports of scssUseAtRule / scssForwardAtRule / importAtRule /
-   * scssExtendAtRule (productions/atRules.ts).
-   */
-    const singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
-    const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
-    const strHole = [singleStr, doubleStr];
-    const bParen = balanced(
-      '(',
-      ')',
-      { skip: strHole }
+      (children) => {
+        if (children.some(isInterpolation)) {
+          return interpolation(children.flatMap(child => isInterpolation(child)
+            ? child.parts
+            : [{ lit: requireToken(child).value }]));
+        }
+        return keyword(children.map(child => requireToken(child).value).join(''));
+      }
     );
-    const bSquare = balanced(
-      '[',
-      ']',
-      { skip: strHole }
+    const IdentifierOrFunction = dispatch(
+      identOrFunction,
+      caseInsensitive('url(', UrlFunction),
+      when(endsWith('('), Call),
+      otherwise(KeywordOrInterpolatedValue)
     );
-    const bCurly = balanced(
-      '{',
-      '}',
-      { skip: strHole }
-    );
-    const scanSkip = [bParen, bSquare, bCurly, singleStr, doubleStr];
 
-    const kwAs = regex(/\bas\b/);
-    const kwWith = regex(/\bwith\b/);
-    const useKw = regex(/@use(?![-\w])/i);
-    const forwardKw = regex(/@forward(?![-\w])/i);
-    const extendKw = regex(/@extend(?![-\w])/i);
-    const extendOptional = regex(/!optional\b/);
-    const importKw = regex(/@import(?![-\w])/i);
-
-    const ScssWithConfigEntry = node(sequence(
-      scssVar,
-      literal(':'),
-      g.valueSequence,
-      optional(choice(
-        literal('!default'),
-        literal('!global')
-      ))
-    ));
-    const ScssWithConfig = node(sequence(
-      literal('('),
-      optional(sequence(
-        sepBy(
-          ScssWithConfigEntry,
-          literal(',')
-        ),
-        optional(literal(','))
-      )),
-      expect(literal(')'))
-    ));
-
-    const ScssUseAs = node(sequence(
-      kwAs,
+    /*
+   * A bare `#{…}` is already owned by `DirectScssInterpolatedValue`: its
+   * trailing `many` matches zero chunks, so an interpolation with no following
+   * identifier reduces to the identical `Interpolation` value. A standalone
+   * `SassInterpolation` arm after it is therefore unreachable.
+   */
+    const ScssValueAtom = node<ValueNode>(
+      'ScssValueAtom',
       choice(
-        literal('*'),
-        plainIdent
-      )
-    ));
-
-    const ScssUse = node(sequence(
-      useKw,
-      g.Quoted,
-      optional(ScssUseAs),
-      optional(sequence(
-        kwWith,
-        ScssWithConfig
-      )),
-      optional(literal(';'))
-    ));
+        g.DirectScssQuoted,
+        g.DirectScssInterpolatedValue,
+        g.DirectScssVarReference,
+        g.DirectScssColor,
+        g.DirectScssDimension,
+        g.DirectScssCustomPropertyValue,
+        g.DirectScssUnicodeRange,
+        IdentifierOrFunction,
+        g.DirectScssMap,
+        g.DirectScssParen,
+        g.DirectScssSquare
+      ),
+      children => requireValue(children[0])
+    );
 
     /*
-   * Capture the post-path prelude (`as *`, `show …`, `hide …`, `as prefix-*`) up
-   * to `with (`, `;`, `}`, or EOF — so an unterminated `@forward "x" as a-*` (the
-   * owner-rejected prefix form, which the sass-spec corpus writes without a `;`,
-   * sometimes with comments/newlines around `as`) still reaches the builder's
-   * "will never be" check rather than dangling as unparsed input. `{` bounds the
-   * scan so a following ruleset is never swallowed.
+   * Signed numerics are one Dimension leaf. Unary signs only own a variable or
+   * paren operand here, so `-2px` does not acquire an unnecessary Operation.
+   * The sign may have trailing whitespace (`- $x`, `+ ($x)`), but it must be
+   * at the current expression start: `1 -2` is still a space-list boundary.
    */
-    const forwardExtra = optional(scanTo(
+    const DirectScssMathUnary = node<ValueNode>(
+      'DirectScssMathUnary',
+      choice(
+        noTrivia(sequence(
+          regex(/-(?=[ \t\n\r\f]*[\$(])/),
+          optional(directScssSpace),
+          g.ScssValueAtom
+        )),
+        noTrivia(sequence(
+          regex(/\+(?=[ \t\n\r\f]*[\$(])/),
+          optional(directScssSpace),
+          g.ScssValueAtom
+        )),
+        g.ScssValueAtom
+      ),
+      (children) => {
+        if (children.length === 1) {
+          return requireValue(children[0]);
+        }
+        const sign = requireToken(children[0]).value;
+        const value = requireValue(children[children.length - 1]);
+        return sign === '-'
+          ? operation(
+              '*',
+              dimension(
+                -1,
+                '',
+                '-1'
+              ),
+              value
+            )
+          : value;
+      }
+    );
+
+    /*
+   * Parenthesized SCSS arithmetic has the normal product-before-sum precedence,
+   * including slash division. At top level slash remains a Sass slash-list
+   * separator, so the top-level product intentionally excludes it below.
+   */
+    const DirectScssMathProduct = node<ValueNode>(
+      'DirectScssMathProduct',
+      noTrivia(sequence(
+        g.DirectScssMathUnary,
+        many(sequence(
+          directScssProductOperator,
+          g.DirectScssMathUnary
+        ))
+      )),
+      foldOperation
+    );
+    const DirectScssMathSum = node<ValueNode>(
+      'DirectScssMathSum',
+      noTrivia(sequence(
+        g.DirectScssMathProduct,
+        many(sequence(
+          directScssSumOperator,
+          g.DirectScssMathProduct
+        ))
+      )),
+      foldOperation
+    );
+    const DirectScssMathTopProduct = node<ValueNode>(
+      'DirectScssMathTopProduct',
+      noTrivia(sequence(
+        g.DirectScssMathUnary,
+        many(sequence(
+          directScssTopProductOperator,
+          g.DirectScssMathUnary
+        ))
+      )),
+      foldOperation
+    );
+    const DirectScssMathTopSum = node<ValueNode>(
+      'DirectScssMathTopSum',
+      noTrivia(sequence(
+        g.DirectScssMathTopProduct,
+        many(sequence(
+          directScssSumOperator,
+          g.DirectScssMathTopProduct
+        ))
+      )),
+      foldOperation
+    );
+    const DirectScssValueTail = node<ScssValueTail>(
+      'DirectScssValueTail',
       choice(
         sequence(
-          kwWith,
-          literal('(')
+          directScssValueTrivia,
+          g.DirectScssMathTopSum
         ),
-        literal(';'),
-        literal('{'),
-        literal('}')
+        sequence(
+          optional(directScssSpace),
+          literal('/'),
+          optional(directScssSpace),
+          g.DirectScssMathTopSum
+        )
       ),
-      { skip: scanSkip, orEOF: true }
-    ));
-    const ScssForward = node(sequence(
-      forwardKw,
-      g.Quoted,
-      forwardExtra,
-      optional(sequence(
-        kwWith,
-        ScssWithConfig
-      )),
-      optional(literal(';'))
-    ));
-
-    const scssPlaceholder = regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-    const ScssPlaceholderSelector = node(scssPlaceholder);
-    const scssExtendComplex = choice(
-      ScssPlaceholderSelector,
-      g.ComplexSelector
+      (children) => {
+        if (isValue(children[1])) {
+          return { kind: 'space', value: children[1], separator: isToken(children[0]) ? children[0].value : ' ' };
+        }
+        const value = children[children.length - 1];
+        if (!isValue(value)) {
+          throw new TypeError('Direct SCSS slash list lost its value.');
+        }
+        const separators = children.filter(isToken).map(child => child.value).filter(text => text !== '/');
+        return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}` };
+      }
     );
-    const ScssExtendTarget = node(sequence(
-      scssExtendComplex,
-      many(sequence(
+    const DirectScssValueTerm = node<ValueSlot>(
+      'DirectScssValueTerm',
+      noTrivia(sequence(
+        g.DirectScssMathTopSum,
+        many(DirectScssValueTail)
+      )),
+      (children) => {
+        const groups: ValueNode[][] = [[requireValue(children[0])]];
+        const groupSeparators: string[][] = [[]];
+        for (const child of children.slice(1)) {
+          if (!isScssValueTail(child)) {
+            throw new TypeError('Direct SCSS AST value term produced an invalid list boundary.');
+          }
+          if (child.kind === 'slash') {
+            groups.push([child.value]);
+            groupSeparators.push([]);
+          } else {
+            groups.at(-1)!.push(child.value);
+            groupSeparators.at(-1)!.push(child.separator);
+          }
+        }
+        const values = groups.map((group, index) => group.length === 1
+          ? group[0]!
+          : withValueLayout(
+              group,
+              groupSeparators[index]!
+            ));
+        return groups.length === 1
+          ? values[0]!
+          : list(
+              values,
+              '/'
+            );
+      }
+    );
+    const DirectScssValuePair = node<ScssValuePair>(
+      'DirectScssValuePair',
+      noTrivia(sequence(
         literal(','),
-        scssExtendComplex
-      ))
-    ));
-    const ScssExtend = node(sequence(
-      extendKw,
-      ScssExtendTarget,
-      optional(extendOptional),
-      optional(literal(';'))
-    ));
-
-    const importOptionsParen = sequence(
-      literal('('),
-      scanTo(
-        literal(')'),
-        { skip: scanSkip }
-      ),
-      literal(')')
+        optional(directScssValueTrivia),
+        g.DirectScssValueTerm
+      )),
+      (children) => {
+        if (children.length !== 2 && children.length !== 3) {
+          throw new TypeError('DirectScssValuePair produced unexpected children.');
+        }
+        if (requireToken(children[0]).value !== ',') {
+          throw new TypeError('DirectScssValuePair lost its comma.');
+        }
+        const separator = children.length === 3
+          ? `,${requireToken(children[1]).value}`
+          : ',';
+        return { separator, value: requireValueSlot(children[children.length - 1]) };
+      }
     );
-
-    /*
-   * An `@import` prelude is a comma-separated list of items, each `<path>
-   * <modifiers>?`. The modifiers are a CSS media-query list / `supports(...)`
-   * that MAY itself contain commas (`@import "a" b, (c: d), e;` is ONE import
-   * with a three-part media list). So a comma only begins a NEW import when the
-   * token after it is another path (a string / url) — `not(not(...))` is the
-   * positive lookahead. The modifier scan skips balanced groups, strings, and
-   * comments, and terminates at `;`, `}`, EOF, or such a new-import comma.
-   */
-    const importPathStart = choice(
-      g.Url,
-      g.Quoted
-    );
-
-    /*
-   * Import modifiers skip interpolation as the same structural `#{ expression }`
-   * production used everywhere else in SCSS. Keeping it ahead of the generic
-   * brace skip means the opener is consumed as interpolation, never mistaken for
-   * an at-rule block; there is no opaque interpolation-shaped scanner token.
-   */
-    const importSkip = [ScssInterpBare, bParen, bSquare, bCurly, singleStr, doubleStr, comment, lineComment];
-    const newImportComma = sequence(
-      literal(','),
-      not(not(importPathStart))
-    );
-    const importModifier = scanTo(
-      choice(
-        literal(';'),
-        literal('}'),
-        newImportComma
-      ),
-      { skip: importSkip, orEOF: true }
-    );
-    const ScssImportItem = node(sequence(
-      expect(
-        importPathStart,
-        'import path'
-      ),
-      optional(importModifier)
-    ));
-    const ImportAtRuleStatement = node(
-      'ScssImportAtRule',
+    const DirectScssValue = node<ValueSlot>(
+      'DirectScssValue',
       sequence(
-        importKw,
-        optional(importOptionsParen),
-        ScssImportItem,
-        many(sequence(
-          literal(','),
-          ScssImportItem
+        g.DirectScssValueTerm,
+        many(g.DirectScssValuePair)
+      ),
+      (children) => {
+        const first = requireValueSlot(children[0]);
+        if (children.length === 1) {
+          return first;
+        }
+        const pairs: ScssValuePair[] = [];
+        for (let index = 1; index < children.length; index += 1) {
+          const child = children[index];
+          if (!isScssValuePair(child)) {
+            throw new TypeError('Direct SCSS AST value produced a non-list child.');
+          }
+          pairs.push(child);
+        }
+        const result = list(
+          [first, ...pairs.map(pair => pair.value)],
+          ','
+        );
+        return withValueLayout(
+          result,
+          pairs.map(pair => pair.separator)
+        );
+      }
+    );
+    const VariableDeclaration = node<VariableDeclaration>(
+      'VariableDeclaration',
+      sequence(
+        scssVarSigilName,
+        literal(':'),
+        g.DirectScssValue,
+        optional(choice(
+          literal('!default'),
+          literal('!global')
         )),
         optional(literal(';'))
+      ),
+      (children) => {
+        const modifier = children.find((child): child is { readonly value: string } =>
+          typeof child === 'object' && child !== null && 'value' in child
+          && typeof child.value === 'string'
+          && (child.value === '!default' || child.value === '!global'));
+        const write = modifier?.value === '!default'
+          ? { mode: 'if-absent' as const, lookup: 'scoped' as const }
+          : modifier?.value === '!global'
+            ? { mode: 'reassign' as const, lookup: 'scoped' as const }
+            : { mode: 'declare' as const };
+        return variableDeclaration(
+          requireToken(children[1]).value,
+          requireValueSlot(children[3]),
+          write
+        );
+      }
+    );
+    const DirectScssImportant = node<true>(
+      'DirectScssImportant',
+      sequence(
+        literal('!'),
+        g.CssSyntaxImportant
+      ),
+      (children) => {
+        if (children.length !== 2 || requireToken(children[0]).value !== '!') {
+          throw new TypeError('DirectScssImportant produced unexpected children.');
+        }
+        return true;
+      }
+    );
+
+    /*
+   * Declaration names are one of the few canonical AST fields that already
+   * carries typed interpolation (`string | Interpolation`). Keep the `#{…}` segments
+   * structural here instead of accepting the whole name as an opaque token.
+   * The production requires an interpolation atom, so ordinary CSS properties
+   * remain on the compact shared CSS terminal below.
+   */
+    const directScssPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+    const DirectScssInterpolatedProperty = node<Interpolation>(
+      'DirectScssInterpolatedProperty',
+      sequence(
+        optional(literal('*')),
+        many(directScssPropertyChunk),
+        g.SassInterpolation,
+        many(choice(
+          directScssPropertyChunk,
+          g.SassInterpolation
+        ))
+      ),
+      (children) => {
+        const parts: Interpolation['parts'] = [];
+        for (const child of children) {
+          if (isInterpolation(child)) {
+            parts.push(...child.parts);
+          } else {
+            appendLiteral(
+              parts,
+              requireToken(child).value
+            );
+          }
+        }
+        return interpolation(parts);
+      }
+    );
+
+    /*
+   * A custom property is plain CSS in every dialect, so SCSS composes the same
+   * recognition the CSS base does rather than routing `--x` through the ordinary
+   * property terminal (which is a CSS ident and cannot start with `--`). The name
+   * is the shared custom-property leaf, or that leaf's `--` prefix followed by
+   * SCSS `#{…}` segments.
+   */
+    const DirectScssCustomPropertyName = node<string | Interpolation>(
+      'DirectScssCustomPropertyName',
+      choice(
+        noTrivia(sequence(
+          literal('--'),
+          many(directScssPropertyChunk),
+          g.SassInterpolation,
+          many(choice(
+            directScssPropertyChunk,
+            g.SassInterpolation
+          ))
+        )),
+        g.CssSyntaxCustomProperty
+      ),
+      (children) => {
+        if (!children.some(isInterpolation)) {
+          return requireToken(children[0]).value;
+        }
+        const parts: Interpolation['parts'] = [];
+        customValueFromParts(
+          children,
+          parts,
+          { interpolated: false }
+        );
+        return interpolation(parts);
+      }
+    );
+
+    /*
+   * The value is a CSS `<declaration-value>`: an almost-arbitrary token stream
+   * whose only structure is balanced groups, strings, comments — and, in SCSS,
+   * `#{…}`. Sass does not evaluate a custom-property value, so every other byte
+   * stays literal text. Delimiters recurse as grammar children rather than being
+   * captured as one opaque span, so an inner `;` or `}` cannot end the
+   * declaration and an inner `#{…}` still reduces to a typed segment.
+   */
+    const DirectScssCustomParen = node<readonly unknown[]>(
+      'DirectScssCustomParen',
+      noTrivia(sequence(
+        literal('('),
+        many(g.DirectScssCustomInnerPart),
+        literal(')')
+      )),
+      children => children.slice()
+    );
+    const DirectScssCustomSquare = node<readonly unknown[]>(
+      'DirectScssCustomSquare',
+      noTrivia(sequence(
+        literal('['),
+        many(g.DirectScssCustomInnerPart),
+        literal(']')
+      )),
+      children => children.slice()
+    );
+    const DirectScssCustomCurly = node<readonly unknown[]>(
+      'DirectScssCustomCurly',
+      noTrivia(sequence(
+        literal('{'),
+        many(g.DirectScssCustomInnerPart),
+        literal('}')
+      )),
+      children => children.slice()
+    );
+    const DirectScssCustomInnerPart: Combinator<unknown> = choice(
+      g.SassInterpolation,
+      g.CssSyntaxCustomInnerContent,
+      blockComment,
+      g.CssSyntaxCustomSingleQuoted,
+      g.CssSyntaxCustomDoubleQuoted,
+      g.DirectScssCustomParen,
+      g.DirectScssCustomSquare,
+      g.DirectScssCustomCurly
+    );
+    const DirectScssCustomPart: Combinator<unknown> = choice(
+      g.SassInterpolation,
+      g.CssSyntaxCustomOuterContent,
+      blockComment,
+      g.CssSyntaxCustomSingleQuoted,
+      g.CssSyntaxCustomDoubleQuoted,
+      g.DirectScssCustomParen,
+      g.DirectScssCustomSquare,
+      g.DirectScssCustomCurly
+    );
+    const DirectScssCustomValue = node<ValueNode>(
+      'DirectScssCustomValue',
+      noTrivia(many(g.DirectScssCustomPart)),
+      children => customValue(children)
+    );
+    const DirectScssCustomDeclaration = node<Declaration>(
+      'DirectScssCustomDeclaration',
+
+      /*
+     * A trailing `!important` is declaration priority, not value text: css-syntax-3
+     * §5.5.6 strips it before the custom-property original-text step. The shared
+     * value leaf already stops before the marker (and before the whitespace
+     * preceding it), so this tail simply claims it, exactly like the ordinary
+     * declaration tail below.
+     */
+      sequence(
+        g.DirectScssCustomPropertyName,
+        literal(':'),
+        g.DirectScssCustomValue,
+        optional(g.DirectScssImportant),
+        optional(literal(';'))
+      ),
+      (children) => {
+        const name = children[0];
+        if (typeof name !== 'string' && !isInterpolation(name)) {
+          throw new TypeError('Direct SCSS AST grammar produced a custom declaration without a name.');
+        }
+
+        /*
+       * An interpolated custom-property name is itself a ValueNode, so read the
+       * value from its fixed position after the colon rather than by shape.
+       */
+        const value = children[2];
+        if (!isValue(value)) {
+          throw new TypeError('Direct SCSS AST grammar produced an incomplete custom declaration.');
+        }
+        return decl(
+          name,
+          valueSlot(value),
+          null,
+          children.includes(true)
+        );
+      }
+    );
+    const DirectScssDeclaration = node<Declaration>(
+      'DirectScssDeclaration',
+      choice(
+        g.DirectScssCustomDeclaration,
+        sequence(
+          choice(
+            g.DirectScssInterpolatedProperty,
+            propertyName
+          ),
+          optional(choice(
+            literal('+_'),
+            literal('+')
+          )),
+          literal(':'),
+          g.DirectScssValue,
+          optional(g.DirectScssImportant),
+          optional(literal(';'))
+        )
+      ),
+      (children) => {
+      /*
+       * The custom-property arm is a single completed Declaration child; pass it
+       * through so every body that admits a declaration admits a custom property
+       * without respelling the arm at each site.
+       */
+        const custom = children[0];
+        if (children.length === 1 && isDeclaration(custom)) {
+          return custom;
+        }
+        if (children.length < 3 || children.length > 6) {
+          throw new TypeError('DirectScssDeclaration produced unexpected children.');
+        }
+        const isImportant = children.includes(true);
+        const mergeToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && (child.value === '+' || child.value === '+_'));
+        const merge = mergeToken === undefined ? null : mergeToken.value === '+' ? ',' : ' ';
+
+        /*
+       * An interpolated declaration name is itself a ValueNode. The declaration
+       * value is the grammar child immediately after its owned colon, rather
+       * than the first value-shaped child in the reduction.
+       */
+        const colon = children.findIndex(child => isToken(child) && child.value === ':');
+        const value = colon < 0 ? undefined : children[colon + 1];
+        if (value === undefined) {
+          throw new TypeError('DirectScssDeclaration requires a value.');
+        }
+        const name = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+        return decl(
+          name,
+          requireValueSlot(value),
+          merge,
+          isImportant
+        );
+      }
+    );
+
+    /*
+   * The public CST's nested-property form is compile-time property-prefix syntax, not a
+   * runtime container. This direct slice admits static or interpolated property
+   * names and declaration-only bodies, then lowers the prefix during grammar reduction to
+   * the existing ordered Declaration facts the serializer already owns.
+   * The legacy CST also accepts variable and namespaced-variable assignments,
+   * @if/@each/@for/@while, and comments in
+   * this block.
+   * Those are deliberately held here: lowering them needs a typed delayed
+   * property-prefix placement fact, not a synthetic container. Recursive
+   * nested properties and @extend are not legacy body forms, so this direct
+   * grammar does not create extensions for them either.
+   */
+    const DirectScssStaticNestedPropertyLeaf = node<Declaration>(
+      'DirectScssStaticNestedPropertyLeaf',
+      sequence(
+        choice(
+          g.DirectScssInterpolatedProperty,
+          propertyName
+        ),
+        literal(':'),
+        g.DirectScssValue,
+        optional(literal(';'))
+      ),
+      children => decl(
+        isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value,
+        requireValueSlot(children[2]),
+        null,
+        false
       )
     );
 
-    const atRootKw = regex(/@at-root(?![-\w])/i);
-    const debugKw = regex(/@debug(?![-\w])/i);
-    const warnKw = regex(/@warn(?![-\w])/i);
-    const errorKw = regex(/@error(?![-\w])/i);
-
-    const ScssDiagnostic = node(sequence(
-      choice(
-        debugKw,
-        warnKw,
-        errorKw
-      ),
-      g.valueSequence,
-      optional(literal(';'))
-    ));
-
-    const ScssAtRootFilter = node(sequence(
-      atRootKw,
-      literal('('),
-      g.valueSequence,
-      literal(')'),
-      ScssRules
-    ));
-
-    const ScssAtRootSelector = node(sequence(
-      atRootKw,
-      g.SelectorList,
-      ScssDeclBody
-    ));
-
-    const ScssAtRootPlain = node(sequence(
-      atRootKw,
-      ScssRules
-    ));
-
-    /* ── SCSS at-rule prelude interpolation (segments) ──────────────────────── */
-    const scssPreludeText = regex(/(?:[^{#]|#(?!\{))+/);
-    const scssPreludeSegment = choice(
-      ScssInterpBare,
-      scssPreludeText
-    );
-
     /*
-   * Fully permissive raw-text + `#{…}`-interpolation prelude. Feeds `@media` /
-   * `@container` (which have bare forms) AND — via the dedicated, opener-gated
-   * `SupportsAtRuleBlock` below — `@supports`, whose `<supports-condition>` prelude
-   * is validated for a legal opener before this scan consumes it.
+   * Cheap zero-width gate so an ordinary declaration (`color: red;`) does not
+   * speculatively parse its full value as a nested-property own-value, fail the
+   * required block `{`, and backtrack a whole value re-parse before
+   * `DirectScssDeclaration` re-parses it. A nested property always opens a block
+   * `{` before the statement terminates; this single `not` fails (skipping the
+   * arm) only when a `;`/`}` is reachable through non-brace bytes first, i.e.
+   * the statement ends before any `{`. `[^{};]` halts at an interpolation's `{`
+   * too, so a `#{…}`-bearing declaration still enters (unchanged), and a real
+   * nested property is never skipped (its block or own-value `#{` `{` always
+   * precedes any terminator). Single `not` is a predicate — it emits no child,
+   * so the positional reducer below is unaffected.
    */
-    const scssPermissivePrelude = oneOrMore(scssPreludeSegment);
-
-    /*
-   * A query at-rule prelude that carries at least one `#{ … }` interpolation.
-   * Anchored on a REQUIRED `ScssInterpBare` so a non-interpolated prelude
-   * (`(color: red)`, `screen`, `name (width > 0)`) never matches here and falls
-   * through to the base structured query grammar, staying byte-identical. The
-   * presence of interpolation IS the gate — no opener lookahead is needed.
-   */
-    const scssInterpPrelude = sequence(
-      many(scssPreludeText),
-      ScssInterpBare,
-      many(scssPreludeSegment)
-    );
-
-    /*
-   * ── Strict generic at-rule prelude (Sass+) ──────────────────────────────────
-   * Mirror of the Less strict `atPrelude`, but for SCSS. Sass+ rejects invalid CSS:
-   * a TOP-LEVEL (paren-depth 0) bare `$variable` in a non-value at-rule
-   * prelude/name/identifier position is a HARD parse error, while `#{…}`
-   * interpolation is accepted (the migration target), a bare ident/name stays
-   * valid, and a `$var` INSIDE `(…)`/`[…]` — a declaration value — stays valid +
-   * resolving (even inside an unknown/custom at-rule). The atom set: balanced
-   * `(…)`/`[…]` + strings (opaque — a `$var` inside is a declaration value), a
-   * `#{…}` interpolation atom (`ScssInterpBare`), and runs of ordinary prelude
-   * chars. The run stops at `$`, so a top-level bare `$var` is never consumed and
-   * the sequence stops there; the run's `#(?!\{)` keeps a bare `#` (colors/ids)
-   * literal while a `#{` is taken by the interpolation atom. Generalizes the
-   * `@supports` precedent (b799d9a49) to every SCSS at-rule position.
-   */
-    const scssStrictRun = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
-    const scssStrictAtom = choice(
-      bParen,
-      bSquare,
-      singleStr,
-      doubleStr,
-      ScssInterpBare,
-      scssStrictRun
-    );
-    const scssStrictPrelude = many(scssStrictAtom);
-
-    /*
-   * Generic unknown at-rule statement (`@charset "x";`, or a bare `@c` used as a
-   * content placeholder in the sass-spec corpus). Overrides Less's
-   * `AtRuleStatement`. Sass allows omitting the `;` before `}`/EOF, so the prelude
-   * scan stops at `{`/`;`/`}`/EOF AND at a top-level `$` (so a bare `$var` is not
-   * swallowed), and the tail REQUIRES a real terminator (`;`, or a zero-width `}` /
-   * EOF): a prelude that stopped at a top-level bare `$var` therefore does NOT match
-   * here and falls to the committed `AtRuleMalformed` fallback below.
-   */
-    const scssAtKeyword = regex(/@-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*/);
-    const scssAtPrelude = optional(scanTo(
-      choice(
+    const directNestedPropertyAhead = not(regex(/[^{};]*[;}]/));
+    const DirectScssStaticNestedProperty = node<Declaration>(
+      'DirectScssStaticNestedProperty',
+      choice(sequence(
+        directNestedPropertyAhead,
+        choice(
+          g.DirectScssInterpolatedProperty,
+          propertyName
+        ),
+        literal(':'),
+        optional(g.DirectScssValue),
         literal('{'),
-        literal(';'),
+        many(g.DirectScssStaticNestedPropertyLeaf),
         literal('}'),
-        literal('$')
-      ),
-      { skip: scanSkip, orEOF: true }
-    ));
-    const scssStmtEnd = choice(
-      literal(';'),
-      regex(/(?=\})/),
-      not(regex(/[\s\S]/))
+        optional(g.DirectScssImportant),
+        optional(literal(';'))
+      )),
+      (children) => {
+        const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
+        const open = children.findIndex(child => isToken(child) && child.value === '{');
+        const close = children.findIndex((child, index) => index > open && isToken(child) && child.value === '}');
+        if (open < 0 || close < 0) {
+          throw new TypeError('Direct SCSS nested property lost its block delimiters.');
+        }
+        const ownValue = open > 2 && isValueSlotValue(children[2]) ? children[2] : null;
+        const ownImportant = children.includes(true);
+        if (ownImportant && ownValue === null) {
+          throw new TypeError('Direct SCSS nested property cannot apply !important without an own declaration value.');
+        }
+
+        /*
+       * The leaf entries stay LEAF-ONLY-named plain Declarations inside a
+       * Collection value. Hyphenation and own-value placement move to the
+       * serializer; the carrier's own value (when present) rides on `base`.
+       */
+        const entries: Declaration[] = [];
+        for (let index = open + 1; index < close; index++) {
+          const child = children[index];
+          if (isDeclaration(child)) {
+            entries.push(child);
+          } else {
+            throw new TypeError('Direct SCSS nested property produced a non-declaration child.');
+          }
+        }
+        return decl(
+          prefix,
+          collection(
+            entries,
+            ownValue ?? undefined
+          ),
+          null,
+          ownValue === null ? false : ownImportant
+        );
+      }
     );
-    const AtRuleStatement = node(
-      'AtRuleStatement',
+    const DirectScssStaticImportUrl = node<Url>(
+      'DirectScssStaticImportUrl',
+
+      /*
+     * The public CST accepts an empty CSS URL target. Keep that fact explicit
+     * rather than treating it as a generic call or a text fallback. The only
+     * newly admitted shape here is `url()`; quoted, static unquoted, and
+     * interpolation-bearing targets remain their existing structural arms.
+     */
       sequence(
-        scssAtKeyword,
-        scssAtPrelude,
-        scssStmtEnd
+        g.CssSyntaxUrlOpen,
+        optional(choice(
+          g.DirectScssQuoted,
+          staticUrlInner
+        )),
+        literal(')')
+      ),
+      (children) => {
+      /*
+       * Parseman omits an unmatched optional from `children`, leaving the
+       * closing delimiter at index 1 for exactly `url()`.
+       */
+        if (children.length === 2) {
+          return url(any(''));
+        }
+        const body = children[1];
+        return url(isQuoted(body) || isInterpolation(body) ? body : any(requireToken(body).value));
+      }
+    );
+    const DirectScssStaticImportOptions = node<List>(
+      'DirectScssStaticImportOptions',
+      sequence(
+        literal('('),
+        g.DirectScssKeyword,
+        many(sequence(
+          literal(','),
+          g.DirectScssKeyword
+        )),
+        literal(')')
+      ),
+      (children) => {
+        const values = children.filter((child): child is Keyword => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Keyword');
+        return list(
+          values,
+          ','
+        );
+      }
+    );
+
+    /*
+   * This remains a deliberately bounded CSS-import tail. Every admitted part
+   * has an existing lossless ValueNode representation: `layer`/`layer(name)`,
+   * the structural `supports(<supports-condition>)` form, and one media type.
+   * Media-query structure, general-enclosed supports, dynamic terms, and
+   * multi-item imports still need their own typed reductions rather than a
+   * generic value or authored-text fallback.
+   */
+    const DirectScssStaticImportLayer = node<ValueNode>(
+      'DirectScssStaticImportLayer',
+      choice(
+        noTrivia(sequence(
+          regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+          literal('('),
+          g.DirectScssKeyword,
+          literal(')')
+        )),
+        noTrivia(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i))
+      ),
+      children => children.length === 1
+        ? keyword(requireToken(children[0]).value)
+        : funcCall(
+            requireToken(children[0]).value,
+            [requireValue(children[2])]
+          )
+    );
+
+    /*
+   * In an import condition, CSS permits a single declaration without the
+   * parentheses required by a general <supports-condition>. Its canonical fact
+   * is still the same parenthesized declaration condition used elsewhere.
+   */
+    const DirectScssStaticImportDeclaration = node<ValueNode>(
+      'DirectScssStaticImportDeclaration',
+      sequence(
+        propertyName,
+        literal(':'),
+        g.DirectScssSupportsAtom
+      ),
+      children => block(operation(
+        ':',
+        keyword(requireToken(children[0]).value),
+        requireValue(children[2])
+      ))
+    );
+    const DirectScssStaticImportSupports = node<FunctionCall>(
+      'DirectScssStaticImportSupports',
+      sequence(
+        noTrivia(sequence(
+          regex(/supports(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+          literal('(')
+        )),
+        choice(
+          g.DirectScssSupportsCondition,
+          g.DirectScssStaticImportDeclaration
+        ),
+        literal(')')
+      ),
+      children => funcCall(
+        requireToken(children[0]).value,
+        [requireValue(children[2])]
       )
     );
 
     /*
-   * Generic block at-rule (`@keyframes`, `@counter-style`, `@font-face`, unknown
-   * `@foo … { … }`). Overrides Less's `AtRuleBlock` so the strict prelude excludes a
-   * top-level `$var` and understands SCSS `#{…}` interpolation (Less's atom set only
-   * knows `@{…}`, and its run would mis-read `#{`'s brace as the block opener).
+   * CSS import tails share the media-query *shape* used by conditional groups,
+   * but not their recovery branch: a query function there lowers an arbitrary
+   * payload to `Any`, which is not a direct AST import fact. This local family
+   * admits only the static values and boolean/query forms the canonical nodes
+   * already represent.
    */
-    const AtRuleBlock = node(
-      'AtRuleBlock',
+    const DirectScssStaticImportQualifier = node<ValueNode>(
+      'DirectScssStaticImportQualifier',
+      choice(
+        sequence(
+          g.DirectScssStaticImportLayer,
+          g.DirectScssStaticImportSupports
+        ),
+        g.DirectScssStaticImportLayer,
+        g.DirectScssStaticImportSupports
+      ),
+      (children) => {
+        const values = children.filter(isValue);
+        if (values.length === 0) {
+          throw new TypeError('Direct SCSS import qualifier requires typed facts.');
+        }
+        return values.length === 1 ? values[0]! : spaced(values);
+      }
+    );
+    const DirectScssStaticImportMediaFeature = node<ValueNode>(
+      'DirectScssStaticImportMediaFeature',
+      choice(
+        sequence(
+          literal('('),
+          propertyName,
+          literal(')')
+        ),
+        sequence(
+          literal('('),
+          propertyName,
+          literal(':'),
+          g.DirectScssSupportsAtom,
+          literal(')')
+        ),
+        sequence(
+          literal('('),
+          propertyName,
+          g.CssSyntaxQueryComparisonOperator,
+          g.DirectScssSupportsAtom,
+          literal(')')
+        )
+      ),
+      (children) => {
+        const property = keyword(requireToken(children[1]).value);
+        if (children.length === 3) {
+          return block(property);
+        }
+        return block(operation(
+          requireToken(children[2]).value,
+          property,
+          requireValue(children[3])
+        ));
+      }
+    );
+    const DirectScssStaticImportMediaInParens = node<ValueNode>(
+      'DirectScssStaticImportMediaInParens',
+      choice(
+        sequence(
+          literal('('),
+          g.DirectScssStaticImportMediaCondition,
+          literal(')')
+        ),
+        g.DirectScssStaticImportMediaFeature
+      ),
+      children => children.length === 1 ? requireValue(children[0]) : block(requireValue(children[1]))
+    );
+    const DirectScssStaticImportMediaCondition = node<ValueNode>(
+      'DirectScssStaticImportMediaCondition',
+      choice(
+        sequence(
+          g.CssSyntaxQueryNot,
+          g.DirectScssStaticImportMediaInParens
+        ),
+        sequence(
+          g.DirectScssStaticImportMediaInParens,
+          many(sequence(
+            g.CssSyntaxQueryAndOr,
+            g.DirectScssStaticImportMediaInParens
+          ))
+        )
+      ),
+      (children) => {
+        const values = keywordizeValues(children);
+        return values.length === 1 ? values[0]! : spaced(values);
+      }
+    );
+    const DirectScssStaticImportMediaNonOnlyKeyword = node<Keyword>(
+      'DirectScssStaticImportMediaNonOnlyKeyword',
       sequence(
-        scssAtKeyword,
-        scssStrictPrelude,
+        not(g.CssSyntaxQueryOnly),
+        g.DirectScssKeyword
+      ),
+      children => requireKeyword(children.at(-1))
+    );
+
+    /*
+   * A media *type* can only continue with `and`; `or` remains available in a
+   * condition made solely from parenthesized media features below.
+   */
+    const directScssStaticImportMediaAnd = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+    const DirectScssStaticImportMediaOnlyClause = node<ValueNode>(
+      'DirectScssStaticImportMediaOnlyClause',
+      sequence(
+        g.CssSyntaxQueryOnly,
+        DirectScssStaticImportMediaNonOnlyKeyword,
+        many(sequence(
+          directScssStaticImportMediaAnd,
+          g.DirectScssStaticImportMediaInParens
+        ))
+      ),
+      children => spaced(keywordizeValues(children))
+    );
+    const DirectScssStaticImportMediaClause = node<ValueNode>(
+      'DirectScssStaticImportMediaClause',
+      choice(
+        DirectScssStaticImportMediaOnlyClause,
+        sequence(
+          DirectScssStaticImportMediaNonOnlyKeyword,
+          choice(
+            sequence(
+              directScssStaticImportMediaAnd,
+              g.DirectScssStaticImportMediaInParens
+            ),
+            g.DirectScssStaticImportMediaInParens
+          )
+        ),
+        g.DirectScssStaticImportMediaCondition,
+        DirectScssStaticImportMediaNonOnlyKeyword
+      ),
+      (children) => {
+        const values = keywordizeValues(children);
+        return values.length === 1 ? values[0]! : spaced(values);
+      }
+    );
+    const DirectScssStaticImportMediaPrelude = node<ValueNode>(
+      'DirectScssStaticImportMediaPrelude',
+      sequence(
+        g.DirectScssStaticImportMediaClause,
+        many(sequence(
+          literal(','),
+          g.DirectScssStaticImportMediaClause
+        ))
+      ),
+      (children) => {
+        const values = children.filter(isValue);
+        return values.length === 1
+          ? values[0]!
+          : list(
+              values,
+              ','
+            );
+      }
+    );
+    const DirectScssStaticImportTail = node<ValueNode>(
+      'DirectScssStaticImportTail',
+      choice(
+        sequence(
+          g.DirectScssStaticImportQualifier,
+          g.DirectScssStaticImportMediaPrelude
+        ),
+        g.DirectScssStaticImportQualifier,
+        g.DirectScssStaticImportMediaPrelude
+      ),
+      (children) => {
+        const values = children.filter(isValue).flatMap(value =>
+          typeof value === 'object' && value !== null && 'type' in value && value.type === 'SpacedValue'
+            ? value.parts
+            : [value]);
+        if (values.length === 0) {
+          throw new TypeError('Direct SCSS static import tail requires a typed value.');
+        }
+        return values.length === 1 ? values[0]! : spaced(values);
+      }
+    );
+    const ScssImport = node<ImportAtRule>(
+      'ScssImport',
+      sequence(
+        regex(/@import(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        optional(g.DirectScssStaticImportOptions),
+        choice(
+          g.DirectScssQuoted,
+          g.DirectScssStaticImportUrl
+        ),
+        optional(g.DirectScssStaticImportTail),
+        literal(';')
+      ),
+      (children) => {
+        const targetIndex = children.findIndex(isImportTarget);
+        const target = children[targetIndex];
+        if (!isImportTarget(target)) {
+          throw new TypeError('ScssImport requires a typed target.');
+        }
+        const tail = children.slice(targetIndex + 1).find(isValue) ?? null;
+        return importAtRule(
+          '@import',
+          target,
+          children.find(isList) ?? null,
+          null,
+          tail
+        );
+      }
+    );
+    const directScssImportName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+    const DirectScssUseAs = node<string>(
+      'DirectScssUseAs',
+      sequence(
+        regex(/as(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        choice(
+          literal('*'),
+          directScssImportName
+        )
+      ),
+      children => requireToken(children[1]).value
+    );
+    const DirectScssUse = node<StyleImport | ModuleImport>(
+      'DirectScssUse',
+      sequence(
+        regex(/@use(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssStaticQuoted,
+        optional(g.DirectScssUseAs),
+        literal(';')
+      ),
+      (children) => {
+        const path = children[1];
+        if (!isQuoted(path)) {
+          throw new TypeError('Direct SCSS @use requires a quoted module path.');
+        }
+        const namespace = children.find((child): child is string => typeof child === 'string') ?? null;
+        if (path.value.startsWith('sass:')) {
+          const rewritten = `#sass/${path.value.slice('sass:'.length)}`;
+          return moduleImport(
+            quoted(
+              `${path.quote}${rewritten}${path.quote}`,
+              rewritten,
+              path.quote,
+              false
+            ),
+            'use',
+            namespace
+          );
+        }
+        return isScriptModulePath(path.value)
+          ? moduleImport(
+              path,
+              'use',
+              namespace
+            )
+          : styleImport(
+              path,
+              'compose',
+              namespace,
+              false
+            );
+      }
+    );
+    const DirectScssForward = node<StyleImport>(
+      'DirectScssForward',
+      sequence(
+        regex(/@forward(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssStaticQuoted,
+        literal(';')
+      ),
+      (children) => {
+        if (!isQuoted(children[1])) {
+          throw new TypeError('Direct SCSS @forward requires a quoted module path.');
+        }
+        return styleImport(
+          children[1],
+          'compose',
+          null,
+          true
+        );
+      }
+    );
+
+    /*
+   * The core canonical tree already owns MixinDef/MixinCall and its ordinary
+   * parameter/argument binding semantics. This direct SCSS family therefore
+   * covers static mixin names, positional/named/default/rest arguments, and
+   * bodies made from the direct statements already available below. `@content`,
+   * module-qualified calls, and interpolated names remain separate families.
+   */
+    const directMixinName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+    const directMixinParamName = scssVarSigilName;
+    const DirectScssMixinParam = node<Param>(
+      'DirectScssMixinParam',
+      choice(
+        sequence(
+          literal('...'),
+          directMixinParamName
+        ),
+        sequence(
+          directMixinParamName,
+          optional(sequence(
+            literal(':'),
+            g.DirectScssValueTerm
+          )),
+          optional(literal('...'))
+        )
+      ),
+      (children) => {
+        const name = requireToken(children.find(child => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== '...' && child.value !== ':')!).value;
+        if (children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...')) {
+          return { name, rest: true };
+        }
+        const defaultValue = children.find(isValueSlotValue);
+        return defaultValue === undefined ? { name } : { name, default: defaultValue };
+      }
+    );
+    const DirectScssMixinParams = node<Param[]>(
+      'DirectScssMixinParams',
+      sequence(
+        literal('('),
+        optional(sequence(
+          g.DirectScssMixinParam,
+          many(sequence(
+            literal(','),
+            g.DirectScssMixinParam
+          )),
+          optional(literal(','))
+        )),
+        literal(')')
+      ),
+      children => children.filter((child): child is Param => typeof child === 'object' && child !== null && !('type' in child) && ('name' in child || 'rest' in child))
+    );
+    const ScssMixinCallArg = node<ScssCallArg>(
+      'ScssMixinCallArg',
+      choice(
+        sequence(
+          directMixinParamName,
+          literal(':'),
+          g.DirectScssValueTerm
+        ),
+        sequence(
+          g.DirectScssValueTerm,
+          literal('...')
+        ),
+        g.DirectScssValueTerm
+      ),
+      (children) => {
+        const value = children.find(isValueSlotValue);
+        if (value === undefined) {
+          throw new TypeError('ScssMixinCallArg requires a value.');
+        }
+        const nameToken = children.find((child): child is Token => typeof child === 'object' && child !== null && 'value' in child && typeof child.value === 'string' && child.value !== '$' && child.value !== ':' && child.value !== '...');
+        if (nameToken !== undefined && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === ':')) {
+          return { name: nameToken.value, value };
+        }
+        return children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === '...')
+          ? { value, spread: true }
+          : { value };
+      }
+    );
+    const DirectScssMixinCall = node<MixinCall>(
+      'DirectScssMixinCall',
+      sequence(
+        regex(/@include(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        directMixinName,
+        optional(sequence(
+          literal('('),
+          optional(sequence(
+            g.ScssMixinCallArg,
+            many(sequence(
+              literal(','),
+              g.ScssMixinCallArg
+            )),
+            optional(literal(','))
+          )),
+          literal(')')
+        )),
+        optional(literal(';'))
+      ),
+      children => mixinCall(
+        requireToken(children[1]).value,
+        children.filter((child): child is ScssCallArg => typeof child === 'object' && child !== null && 'value' in child && isValueSlotValue(child.value))
+      )
+    );
+
+    /*
+   * Shared block-body statement dispatch. The nested-declaration-capable body
+   * contexts (mixin definitions, `@each`/`@for` loops, nested bubbling at-rule
+   * blocks, and the ruleset body via the extend-augmented reuse below) all list
+   * the same ordered arm set. Factoring each distinct signature into one named
+   * combinator keeps arm-win precedence identical across every context instead
+   * of hand-copying the arms per production. Grouping the contiguous `@`-led
+   * arms into one nested choice is byte-identical (a bare `choice` passes its
+   * winning arm's value through unchanged and firstMatch order is preserved),
+   * and lets parseman first-set-gate the whole cluster behind a single `@`
+   * check. The `@import` arm stays ahead of the cluster because its authored
+   * order there predates the cluster; keeping it out preserves precedence.
+   * Cluster arms are ordered most-frequent-first. Every arm opens with a
+   * distinct, word-boundaried `@` at-keyword (`@include`/`@mixin`/`@function`/
+   * `@if`/`@each`/`@for`/`@supports`/`@media`/`@container`/`@starting-style`/
+   * `@layer`/`@scope`/`@document`/`@page`/`@font-feature-values`), so no input
+   * matches two arms — firstMatch order is immaterial to WHICH arm wins and any
+   * permutation is byte-identical. `@include` (mixin call) is by far the most
+   * common nested at-statement, followed by the control-flow forms, so placing
+   * them ahead of the rarely-nested CSS bubbling blocks lets the common case win
+   * on its first recognizer instead of failing the block recognizers first.
+   * The opaque arm is last in every cluster: its name recognizer already excludes
+   * every name the typed arms own, so it can only win where nothing else could.
+   */
+    const directScssNestedAtStatement = choice(
+      g.DirectScssMixinCall,
+      g.DirectScssIf,
+      g.DirectScssEach,
+      g.DirectScssFor,
+      g.DirectScssMixinDef,
+      g.DirectScssFunction,
+      g.DirectScssNestedConditionalBlock,
+      g.DirectScssNestedStartingStyleBlock,
+      g.DirectScssNestedLayerBlock,
+      g.DirectScssNestedScopeBlock,
+      g.DirectScssDocumentBlock,
+      g.DirectScssPageBlock,
+      g.DirectScssFontFeatureValuesBlock,
+      g.DirectScssOpaqueAtRuleBlock,
+      g.DirectScssOpaqueAtRuleStatement
+    );
+
+    /*
+   * The `@`-led cluster is tried LAST in every body, after `Rule`. Every cluster
+   * arm opens with a literal `@` at-keyword, so it is disjoint from `Rule` (a
+   * selector never opens with `@`), from `@keyframes`/`@extend` (distinct
+   * at-keywords with no cluster arm), and from every prefix arm (`Declaration`,
+   * `StaticNestedProperty`, `VarDeclaration`, `Comment` never open with `@`, and
+   * `Import`'s `@use`/`@forward`/`@import` are distinct at-keywords). Because no
+   * input can match both the cluster and any arm ahead of it, moving it last is
+   * firstMatch-order-preserving (byte-identical) while letting the common
+   * non-`@` statements — ordinary rules and `&`-selectors, the bulk of a
+   * stylesheet — reach `Rule` without first walking all thirteen at-rule
+   * recognizers on a doomed speculation.
+   * Declarations (`prop: value`) and nested-property blocks (`prop: { … }`) are
+   * by far the most common body statements, so they lead the prefix. Both open
+   * on a property token (an identifier, `--custom`, or `#{…}`) that is first-char
+   * disjoint from `Comment` (`/`), `Import` (`@`) and `VarDeclaration` (`$`), so
+   * no input matches both a leading arm and a following one — the reorder is
+   * firstMatch-order-preserving (byte-identical). `StaticNestedProperty` keeps
+   * its own cheap `not([^{};]*[;}])` block-ahead gate and stays ahead of
+   * `Declaration` (the two share the `prop:` prefix). Leading with them means an
+   * ordinary declaration no longer enters and rolls back the Comment/Import/
+   * VarDeclaration node frames before matching.
+   * `;` SEPARATES declarations rather than terminating them (css-syntax-3 §5.4.7
+   * "consume a list of declarations": a declaration ends at `;` OR at the end of
+   * the block, and an empty declaration between two separators is discarded, not
+   * an error). The declaration productions already make their own `;` optional,
+   * so what was missing is the empty declaration — `a { ; }`, `a { color: red;; }`
+   * and a leading `;`. A skipped bare `;` arm IS that discard: `statementChildren`
+   * drops the token, so the arm contributes no node. It goes last because `;` is
+   * first-char disjoint from every arm ahead of it (property tokens, `/`, `@`,
+   * `$`), so no input matches both and the placement is firstMatch-order-
+   * preserving — while an empty declaration stays rare enough not to belong in
+   * front of the two arms this prefix deliberately leads with.
+   */
+    const directScssNestedBodyPrefix = choice(
+      g.DirectScssStaticNestedProperty,
+      g.DirectScssDeclaration,
+      g.DirectScssComment,
+      g.ScssImport,
+      g.VariableDeclaration,
+      literal(';')
+    );
+
+    /* Nested body ending in `Rule` (mixin/each/for/nested-scope bodies). */
+    const directScssNestedBody = many(choice(
+      directScssNestedBodyPrefix,
+      g.DirectScssRule,
+      directScssNestedAtStatement
+    ));
+
+    /* Nested bubbling at-rule bodies additionally accept `@keyframes` before `Rule`. */
+    const directScssNestedKeyframesBody = many(choice(
+      directScssNestedBodyPrefix,
+      g.DirectScssKeyframes,
+      g.DirectScssRule,
+      directScssNestedAtStatement
+    ));
+
+    /* The ruleset body adds one extra arm (`DirectScssExtend`) before `Rule`. */
+    const directScssRuleBody = many(choice(
+      directScssNestedBodyPrefix,
+      g.DirectScssExtend,
+      g.DirectScssRule,
+      directScssNestedAtStatement
+    ));
+
+    /*
+   * Statement-level bubbling at-rule bodies (media/supports/container and the
+   * starting-style/layer variant) each list a fixed ordered arm set shared
+   * across their own arms; hoist each distinct signature to one combinator.
+   */
+    const directScssConditionalBody = many(choice(
+      g.DirectScssComment,
+      g.ScssImport,
+      g.DirectScssMixinDef,
+      g.DirectScssMixinCall,
+      g.DirectScssEach,
+      g.DirectScssFor,
+      g.DirectScssIf,
+      g.DirectScssConditionalBlock,
+      g.DirectScssStartingStyleBlock,
+      g.DirectScssLayerBlock,
+      g.DirectScssScopeBlock,
+      g.DirectScssDocumentBlock,
+      g.DirectScssPageBlock,
+      g.DirectScssFontFeatureValuesBlock,
+      g.DirectScssKeyframes,
+      g.DirectScssOpaqueAtRuleBlock,
+      g.DirectScssOpaqueAtRuleStatement,
+      g.DirectScssRule
+    ));
+    const directScssStartingLayerBody = many(choice(
+      g.DirectScssComment,
+      g.ScssImport,
+      g.DirectScssMixinDef,
+      g.DirectScssMixinCall,
+      g.DirectScssEach,
+      g.DirectScssFor,
+      g.DirectScssIf,
+      g.DirectScssConditionalBlock,
+      g.DirectScssStartingStyleBlock,
+      g.DirectScssLayerBlock,
+      g.DirectScssDocumentBlock,
+      g.DirectScssPageBlock,
+      g.DirectScssFontFeatureValuesBlock,
+      g.DirectScssKeyframes,
+      g.DirectScssOpaqueAtRuleBlock,
+      g.DirectScssOpaqueAtRuleStatement,
+      g.DirectScssRule
+    ));
+    const DirectScssMixinDef = node<MixinDef>(
+      'DirectScssMixinDef',
+      sequence(
+        regex(/@mixin(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        directMixinName,
+        optional(g.DirectScssMixinParams),
         literal('{'),
-        g.atRuleBody,
-        expect(
-          literal('}'),
-          '}'
+        directScssNestedBody,
+        literal('}')
+      ),
+      children => mixinDef(
+        requireToken(children[1]).value,
+        isParamArray(children[2]) ? children[2] : [],
+        statementChildren(
+          children,
+          true
         )
       )
     );
 
     /*
-   * Committed fallback: a generic at-rule whose strict prelude stopped before a
-   * top-level bare `$var` that neither the block `{` nor the statement terminator
-   * can consume (`@keyframes $v {}`, `@layer $v {}`, unknown `@foo $v {}`). Ordered
-   * after AtRuleBlock / AtRuleStatement, it reports ONE legible error AT that
-   * position and recovers, consuming to the real tail so `many` resumes cleanly —
-   * the SCSS mirror of Less's `AtRuleMalformed`.
+   * `@return v` inside a user `@function` yields the function's value. Per the
+   * SCSS→Jess lowering it becomes a `result: v` declaration in the lambda body;
+   * the shared evaluator reads a `result` entry as the yielded value.
    */
-    const scssAtTailAhead = regex(/(?=[{;}]|$)/);
-    const AtRuleMalformed = node(
-      'AtRuleBlock',
+    const DirectScssReturn = node<Declaration>(
+      'DirectScssReturn',
       sequence(
-        scssAtKeyword,
-        scssStrictPrelude,
-        expect(
-          scssAtTailAhead,
-          'at-rule block or ;'
-        ),
-        optional(scanTo(
-          choice(
-            literal('{'),
-            literal(';'),
-            literal('}')
-          ),
-          { skip: scanSkip, orEOF: true }
+        regex(/@return(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssValue,
+        optional(literal(';'))
+      ),
+      children => decl(
+        'result',
+        requireValueSlot(children[1])
+      )
+    );
+
+    /*
+   * A user `@function f($n) { @return v }` lowers to a value-returning anonymous
+   * mixin (lambda) bound to a `$var`: `$f: @($n) > { result: v }`. There is NO
+   * first-class `$function` node — this reuses `variableDeclaration` +
+   * `AnonymousMixin` (with the same `params` shape a MixinDef uses), and `@return`
+   * reuses `result:`. The parameter list threads into `AnonymousMixin.params`; an
+   * empty/absent list is omitted so the plain-block shape stays monomorphic.
+   */
+    const DirectScssFunction = node<VariableDeclaration>(
+      'DirectScssFunction',
+      sequence(
+        regex(/@function(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        directMixinName,
+        optional(g.DirectScssMixinParams),
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.VariableDeclaration,
+          g.DirectScssReturn,
+          g.DirectScssIf,
+          g.DirectScssEach,
+          g.DirectScssFor
         )),
-        optional(choice(
-          sequence(
-            literal('{'),
-            g.atRuleBody,
-            expect(
-              literal('}'),
-              '}'
+        literal('}')
+      ),
+      (children) => {
+        const params = isParamArray(children[2]) ? children[2] : [];
+        return variableDeclaration(
+          requireToken(children[1]).value,
+          anonymousMixin(
+            statementChildren(
+              children,
+              true
+            ),
+            params.length > 0 ? params : undefined
+          ),
+          { mode: 'declare' }
+        );
+      }
+    );
+    const DirectScssEachName = node<string>(
+      'DirectScssEachName',
+      scssVarSigilName,
+      children => requireToken(children[1]).value
+    );
+    const DirectScssEachBinding = node<ForBinding>(
+      'DirectScssEachBinding',
+      sequence(
+        g.DirectScssEachName,
+        many(sequence(
+          literal(','),
+          g.DirectScssEachName
+        ))
+      ),
+      (children) => {
+        const names = children.filter((child): child is string => typeof child === 'string');
+        if (names.length === 1) {
+          return { kind: 'single', name: names[0]! };
+        }
+        if (names.length < 2) {
+          throw new TypeError('Direct SCSS AST grammar produced an invalid @each binding.');
+        }
+        return { kind: 'tuple', names: [names[0]!, names[1]!, ...names.slice(2)] };
+      }
+    );
+
+    /*
+   * SCSS comma bindings destructure each iterable value. This is distinct from
+   * Jess bracket key/value bindings and Less callback key/index bindings, so it
+   * owns the canonical `tuple` pattern rather than borrowing either meaning.
+   */
+    const DirectScssEach = node<For>(
+      'DirectScssEach',
+      sequence(
+        regex(/@each(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssEachBinding,
+        regex(/\bin\b/),
+        g.DirectScssValue,
+        literal('{'),
+        directScssNestedBody,
+        literal('}')
+      ),
+      (children) => {
+        const iterable = children.find(isValueSlotValue);
+        if (iterable === undefined) {
+          throw new TypeError('DirectScssEach requires an iterable.');
+        }
+        return forNode(
+          iterable,
+          statementChildren(
+            children,
+            true
+          ),
+          requireForBinding(children[1])
+        );
+      }
+    );
+
+    /*
+   * SCSS `@for` has an authored inclusive (`through`) or exclusive (`to`) end.
+   * Preserve that fact in the canonical typed Range rather than lowering the
+   * range into a text list or borrowing Less's `range()` call spelling.
+   */
+    const DirectScssFor = node<For>(
+      'DirectScssFor',
+      sequence(
+        regex(/@for(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssEachName,
+
+        /*
+       * SCSS range bounds use the same top-level arithmetic grammar as the
+       * legacy CST (`topSum`). Keep them as ValueNode facts for Range; the
+       * evaluator already evaluates both bounds before iterating.
+       */
+        regex(/from(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssMathTopSum,
+        choice(
+          regex(/through(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+          regex(/to(?![-_a-zA-Z0-9\u0080-\uffff])/i)
+        ),
+        g.DirectScssMathTopSum,
+        literal('{'),
+        directScssNestedBody,
+        literal('}')
+      ),
+      children => forNode(
+        range(
+          requireValue(children[3]),
+          requireValue(children[5]),
+          null,
+          true,
+          requireToken(children[4]).value.toLowerCase() === 'through'
+        ),
+        statementChildren(
+          children.slice(
+            7,
+            -1
+          ),
+          true
+        ),
+        { kind: 'single', name: requireString(children[1]) }
+      )
+    );
+
+    /*
+   * Direct SCSS conditionals use the canonical If/GuardNode. Bare truthiness is
+   * deliberately still held because the current truth node has Less's exact-
+   * true behavior; comparisons have their own existing typed evaluator path.
+   */
+    const directScssTrue = regex(/true(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+    const directScssFalse = regex(/false(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+    const directScssNot = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+    const directScssAnd = regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+    const directScssOr = regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+    const DirectScssIfComparison = node<GuardNode>(
+      'DirectScssIfComparison',
+      sequence(
+        g.DirectScssMathTopSum,
+        choice(
+          literal('=='),
+          literal('!='),
+          literal('>='),
+          literal('<='),
+          literal('>'),
+          literal('<')
+        ),
+        g.DirectScssMathTopSum
+      ),
+      (children) => {
+        const left = requireValue(children[0]);
+        const operator = requireToken(children[1]).value;
+        const right = requireValue(children[2]);
+        const comparison = { g: 'cmp' as const, op: operator === '==' || operator === '!=' ? '=' : operator, left, right };
+        return operator === '!=' ? { g: 'not', inner: comparison } : comparison;
+      }
+    );
+    const DirectScssIfAtom = node<GuardNode>(
+      'DirectScssIfAtom',
+      choice(
+        sequence(
+          literal('('),
+          g.DirectScssIfCondition,
+          literal(')')
+        ),
+        g.DirectScssIfComparison,
+        directScssTrue,
+        directScssFalse
+      ),
+      (children) => {
+        const nested = children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child);
+        if (nested !== undefined) {
+          return nested;
+        }
+        const token = requireToken(children[0]).value.toLowerCase();
+        return { g: 'truth', value: keyword(token) };
+      }
+    );
+    const DirectScssIfTerm = node<GuardNode>(
+      'DirectScssIfTerm',
+      sequence(
+        optional(directScssNot),
+        g.DirectScssIfAtom
+      ),
+      (children) => {
+        const atom = children.find((child): child is GuardNode => typeof child === 'object' && child !== null && 'g' in child);
+        if (atom === undefined) {
+          throw new TypeError('Direct SCSS @if term lost its guard.');
+        }
+        return children.some(child => isToken(child) && child.value.toLowerCase() === 'not')
+          ? { g: 'not', inner: atom }
+          : atom;
+      }
+    );
+    const DirectScssIfAnd = node<GuardNode>(
+      'DirectScssIfAnd',
+      sequence(
+        g.DirectScssIfTerm,
+        many(sequence(
+          directScssAnd,
+          g.DirectScssIfTerm
+        ))
+      ),
+      (children) => {
+        let guard = requireGuardNode(children[0]);
+        for (let index = 2; index < children.length; index += 2) {
+          guard = { g: 'and', left: guard, right: requireGuardNode(children[index]) };
+        }
+        return guard;
+      }
+    );
+    const DirectScssIfCondition = node<GuardNode>(
+      'DirectScssIfCondition',
+      sequence(
+        g.DirectScssIfAnd,
+        many(sequence(
+          directScssOr,
+          g.DirectScssIfAnd
+        ))
+      ),
+      (children) => {
+        let guard = requireGuardNode(children[0]);
+        for (let index = 2; index < children.length; index += 2) {
+          guard = { g: 'or', left: guard, right: requireGuardNode(children[index]) };
+        }
+        return guard;
+      }
+    );
+    const DirectScssIfBody = node<Statement[]>(
+      'DirectScssIfBody',
+      sequence(
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.ScssImport,
+          g.VariableDeclaration,
+          g.DirectScssStaticNestedProperty,
+          g.DirectScssDeclaration,
+          g.DirectScssIfStaticConditionalBlock,
+          g.DirectScssDocumentBlock,
+          g.DirectScssPageBlock,
+          g.DirectScssFontFeatureValuesBlock,
+          g.DirectScssMixinDef,
+          g.DirectScssMixinCall,
+          g.DirectScssEach,
+          g.DirectScssFor,
+          g.DirectScssIf,
+          g.DirectScssIfStaticRule
+        )),
+        literal('}')
+      ),
+      children => statementChildren(
+        children.slice(
+          1,
+          -1
+        ),
+        true
+      )
+    );
+    const DirectScssIfStaticRule = node<Rule>(
+      'DirectScssIfStaticRule',
+      sequence(
+        g.DirectScssSelector,
+        g.DirectScssIfBody
+      ),
+      children => rule(
+        requireSelectorList(children[0]),
+        requireStatementList(children[1])
+      )
+    );
+    const DirectScssIfStaticConditionalBlock = node<AtRuleBlock>(
+      'DirectScssIfStaticConditionalBlock',
+      choice(
+        sequence(
+          supportsAtKeyword,
+          g.DirectScssSupportsPrelude,
+          g.DirectScssIfBody
+        ),
+        sequence(
+          choice(
+            mediaAtKeyword,
+            sequence(
+              containerAtKeyword,
+              not(g.CssSyntaxQueryOnly)
             )
           ),
-          literal(';')
+          g.DirectScssQueryPrelude,
+          g.DirectScssIfBody
+        ),
+        sequence(
+          choice(
+            mediaAtKeyword,
+            sequence(
+              containerAtKeyword,
+              not(g.CssSyntaxQueryOnly)
+            )
+          ),
+          g.DirectScssStaticMediaPrelude,
+          g.DirectScssIfBody
+        ),
+        sequence(
+          startingStyleAtKeyword,
+          g.DirectScssStaticAtPrelude,
+          g.DirectScssIfBody
+        ),
+        sequence(
+          layerAtKeyword,
+          g.DirectScssStaticAtPrelude,
+          g.DirectScssIfBody
+        )
+      ),
+      (children) => {
+        const body = children[2];
+        if (!Array.isArray(body)) {
+          throw new TypeError('Direct SCSS conditional block lost its statement body.');
+        }
+        return atRuleBlock(
+          requireToken(children[0]).value,
+          optionalValue(children[1]),
+          statements(body)
+        );
+      }
+    );
+    const DirectScssIf = node<If>(
+      'DirectScssIf',
+      sequence(
+        regex(/@if(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssIfCondition,
+        g.DirectScssIfBody,
+        many(sequence(
+          regex(/@else(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+          choice(
+            sequence(
+              regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+              g.DirectScssIfCondition,
+              g.DirectScssIfBody
+            ),
+            g.DirectScssIfBody
+          )
+        ))
+      ),
+      (children) => {
+        const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
+        for (let index = 3; index < children.length;) {
+        /*
+         * Every tail begins with @else. An else-if has its literal `if`, guard,
+         * and body; a bare else contributes just its body.
+         */
+          index += 1;
+          const child = children[index];
+          if (isToken(child) && child.value.toLowerCase() === 'if') {
+            branches.push({ guard: requireGuardNode(children[index + 1]), body: requireStatementList(children[index + 2]) });
+            index += 3;
+          } else {
+            branches.push({ guard: null, body: requireStatementList(children[index]) });
+            index += 1;
+          }
+        }
+        const first = branches[0];
+        if (first === undefined) {
+          throw new TypeError('Direct SCSS @if reduction produced no branches.');
+        }
+        return ifNode([first, ...branches.slice(1)]);
+      }
+    );
+
+    /*
+   * Static conditional-group preludes are structured in the grammar. The public
+   * SCSS CST also accepts `#{...}` query preludes for language-service recovery,
+   * but direct `parse() -> Stylesheet` intentionally rejects that CST-only form
+   * until the AST owns typed query-prelude interpolation. Never lower it to raw
+   * prelude text merely to erase that deliberate acceptance mismatch.
+   *
+   * A media/container feature value is a single CSS component value, not one of
+   * SCSS's comma/space/slash lists, and it may be a `<ratio>` — media-queries-4
+   * §2.1, `<number> [ / <number> ]?` — as in `(aspect-ratio: 16/9)`. Building it
+   * on the pre-list math term keeps the feature's `/` a ratio operator (the same
+   * typed Operation the prelude uses for `:` and the comparisons) instead of
+   * SCSS's value-position slash list, so every dialect carries one ratio shape.
+   */
+    const QueryValue = node<ValueNode>(
+      'DirectScssQueryValue',
+      noTrivia(sequence(
+        g.DirectScssMathTopSum,
+        optional(sequence(
+          optional(directScssSpace),
+          literal('/'),
+          optional(directScssSpace),
+          g.DirectScssMathTopSum
+        ))
+      )),
+      (children) => {
+        const values = children.filter(isValue);
+        const numerator = requireValue(values[0]);
+        const denominator = values[1];
+        return denominator === undefined
+          ? numerator
+          : operation(
+              '/',
+              numerator,
+              denominator
+            );
+      }
+    );
+    const directScssQueryComparisonOperator = g.CssSyntaxQueryComparisonOperator;
+
+    /*
+   * media-queries-4 §2.4.3 lets `<mf-range>` lead with the value rather than the
+   * feature name — `(100px < width)` and the two-sided `(100px < width < 200px)`
+   * — so a name-first comparison is only half of the production. This is plain
+   * CSS, and plain CSS parses in every dialect, so SCSS carries the same arm and
+   * the same typed shape as the css/less/jess grammars: the outer comparison
+   * wraps the inner one, giving Block(paren, Operation('<', Operation('<', …))).
+   * Building it on QueryValue is what gives the range form `<ratio>`
+   * bounds (`(16/9 < aspect-ratio < 2/1)`) without restating the ratio grammar.
+   */
+    const DirectScssQueryFeature = node<ValueNode>(
+      'DirectScssQueryFeature',
+      choice(
+        sequence(
+          literal('('),
+          propertyName,
+          literal(')')
+        ),
+        sequence(
+          literal('('),
+          propertyName,
+          literal(':'),
+          QueryValue,
+          literal(')')
+        ),
+        sequence(
+          literal('('),
+          propertyName,
+          directScssQueryComparisonOperator,
+          QueryValue,
+          literal(')')
+        ),
+        sequence(
+          literal('('),
+          QueryValue,
+          directScssQueryComparisonOperator,
+          propertyName,
+          optional(sequence(
+            directScssQueryComparisonOperator,
+            QueryValue
+          )),
+          literal(')')
+        )
+      ),
+      (children) => {
+      /*
+       * The value-first arm is the only one holding a value where the other three
+       * hold the feature name, so that child alone settles which arm matched.
+       */
+        if (isValue(children[1])) {
+          const values = children.filter(isValue);
+          const property = keyword(requireToken(children[3]).value);
+          let comparison = operation(
+            requireToken(children[2]).value,
+            requireValue(values[0]),
+            property
+          );
+          const upper = values[1];
+          if (upper !== undefined) {
+            comparison = operation(
+              requireToken(children[children.length - 3]).value,
+              comparison,
+              upper
+            );
+          }
+          return block(comparison);
+        }
+        const property = keyword(requireToken(children[1]).value);
+        if (children.length === 3) {
+          return block(property);
+        }
+        const value = requireValue(children[children.length - 2]);
+        return block(operation(
+          requireToken(children[2]).value,
+          property,
+          value
+        ));
+      }
+    );
+    const DirectScssQueryFunction = node<FunctionCall>(
+      'DirectScssQueryFunction',
+      sequence(
+        g.CssSyntaxQueryFunctionName,
+        literal('('),
+        scanTo(
+          literal(')'),
+          { skip: [balanced(
+            '(',
+            ')'
+          ), g.DirectScssQuoted] }
+        ),
+        expect(
+          literal(')'),
+          ')'
+        )
+      ),
+      children => funcCall(
+        requireToken(children[0]).value,
+        [any(children.length > 2 ? requireToken(children[2]).value : '')]
+      )
+    );
+    const DirectScssQueryInParens = node<ValueNode>(
+      'DirectScssQueryInParens',
+      choice(
+        sequence(
+          literal('('),
+          g.DirectScssQueryCondition,
+          literal(')')
+        ),
+        g.DirectScssQueryFeature,
+        g.DirectScssQueryFunction
+      ),
+      children => children.length === 1
+        ? requireValue(children[0])
+        : block(requireValue(children[1]))
+    );
+    const DirectScssQueryCondition = node<ValueNode>(
+      'DirectScssQueryCondition',
+      choice(
+        sequence(
+          g.CssSyntaxQueryNot,
+          g.DirectScssQueryInParens
+        ),
+        sequence(
+          g.DirectScssQueryInParens,
+          many(sequence(
+            g.CssSyntaxQueryAndOr,
+            g.DirectScssQueryInParens
+          ))
+        )
+      ),
+      (children) => {
+        const values = keywordizeValues(children);
+        return values.length === 1 ? values[0]! : spaced(values);
+      }
+    );
+
+    /*
+   * `only` modifies a media type; it cannot introduce a parenthesized query
+   * condition. Keep `not (...)` in DirectScssQueryCondition, where that form
+   * is structurally valid.
+   */
+    const QueryNonOnlyKeyword = node<Keyword>(
+      'DirectScssQueryNonOnlyKeyword',
+      sequence(
+        not(g.CssSyntaxQueryOnly),
+        g.DirectScssKeyword
+      ),
+      children => requireKeyword(children.at(-1))
+    );
+    const QueryOnlyClause = node<ValueNode>(
+      'DirectScssQueryOnlyClause',
+      sequence(
+        g.CssSyntaxQueryOnly,
+        QueryNonOnlyKeyword,
+        many(sequence(
+          g.CssSyntaxQueryAndOr,
+          g.DirectScssQueryInParens
+        ))
+      ),
+      children => spaced(keywordizeValues(children))
+    );
+    const DirectScssQueryClause = node<ValueNode>(
+      'DirectScssQueryClause',
+      choice(
+        QueryOnlyClause,
+        sequence(
+          QueryNonOnlyKeyword,
+          optional(g.CssSyntaxQueryAndOr),
+          g.DirectScssQueryInParens
+        ),
+        g.DirectScssQueryCondition,
+        QueryNonOnlyKeyword
+      ),
+      (children) => {
+        const values = keywordizeValues(children);
+        return values.length === 1 ? values[0]! : spaced(values);
+      }
+    );
+    const DirectScssQueryPreludeTail = node<ValueNode>(
+      'DirectScssQueryPreludeTail',
+      sequence(
+        literal(','),
+        g.DirectScssQueryClause
+      ),
+      children => requireValue(children[1])
+    );
+    const DirectScssQueryPrelude = node<ValueNode>(
+      'DirectScssQueryPrelude',
+      sequence(
+        g.DirectScssQueryClause,
+        many(g.DirectScssQueryPreludeTail)
+      ),
+      (children) => {
+        const values = children.map(requireValue);
+        return values.length === 1
+          ? values[0]!
+          : list(
+              values,
+              ','
+            );
+      }
+    );
+
+    /*
+   * `@supports` is not the media/container query grammar: a general-enclosed
+   * function would otherwise reach DirectScssQueryFunction and be lowered to
+   * FunctionCall(Any).  Keep this public direct route to facts the canonical
+   * AST actually owns; dynamic SCSS values require their own semantic model.
+   */
+    const DirectScssSupportsAtom = node<ValueNode>(
+      'DirectScssSupportsAtom',
+      choice(
+        StaticValueQuoted,
+        g.DirectScssColor,
+        g.DirectScssDimension,
+        g.DirectScssCustomPropertyValue,
+        g.DirectScssKeyword
+      ),
+      children => requireValue(children[0])
+    );
+    const DirectScssGeneralTemplateParen = node<Interpolation>(
+      'DirectScssGeneralTemplateParen',
+      sequence(
+        literal('('),
+        g.DirectScssGeneralTemplate,
+        literal(')')
+      ),
+      interpolationFromTemplateChildren
+    );
+    const DirectScssGeneralTemplateSquare = node<Interpolation>(
+      'DirectScssGeneralTemplateSquare',
+      sequence(
+        literal('['),
+        g.DirectScssGeneralTemplate,
+        literal(']')
+      ),
+      interpolationFromTemplateChildren
+    );
+    const DirectScssGeneralTemplateBrace = node<Interpolation>(
+      'DirectScssGeneralTemplateBrace',
+      sequence(
+        literal('{'),
+        g.DirectScssGeneralTemplate,
+        literal('}')
+      ),
+      interpolationFromTemplateChildren
+    );
+    const DirectScssGeneralTemplateDoubleQuoted = node<Interpolation>(
+      'DirectScssGeneralTemplateDoubleQuoted',
+      sequence(
+        literal('"'),
+        g.DirectScssGeneralTemplate,
+        literal('"')
+      ),
+      interpolationFromTemplateChildren
+    );
+    const DirectScssGeneralTemplateSingleQuoted = node<Interpolation>(
+      'DirectScssGeneralTemplateSingleQuoted',
+      sequence(
+        literal('\''),
+        g.DirectScssGeneralTemplate,
+        literal('\'')
+      ),
+      interpolationFromTemplateChildren
+    );
+    const DirectScssGeneralTemplate = node<Interpolation>(
+      'DirectScssGeneralTemplate',
+      many(choice(
+        g.SassInterpolation,
+        g.DirectScssGeneralTemplateParen,
+        g.DirectScssGeneralTemplateSquare,
+        g.DirectScssGeneralTemplateBrace,
+        g.DirectScssGeneralTemplateDoubleQuoted,
+        g.DirectScssGeneralTemplateSingleQuoted,
+        directScssGeneralTemplateText
+      )),
+      interpolationFromTemplateChildren
+    );
+    const DirectScssGeneralEnclosed = node<GeneralEnclosed>(
+      'DirectScssGeneralEnclosed',
+      choice(
+        sequence(
+          g.CssSyntaxKeyword,
+          literal('('),
+          g.DirectScssGeneralTemplate,
+          literal(')')
+        ),
+        sequence(
+          literal('('),
+          g.DirectScssGeneralTemplate,
+          literal(')')
+        )
+      ),
+      children => children.length === 4
+        ? generalEnclosed(
+            'function',
+            requireToken(children[0]).value,
+            requireInterpolation(children[2])
+          )
+        : generalEnclosed(
+            'paren',
+            null,
+            requireInterpolation(children[1])
+          )
+    );
+    const DirectScssSupportsFeature = node<ValueNode>(
+      'DirectScssSupportsFeature',
+      choice(
+        sequence(
+          literal('('),
+          propertyName,
+          literal(')')
+        ),
+        sequence(
+          literal('('),
+          propertyName,
+          literal(':'),
+          g.DirectScssSupportsAtom,
+          literal(')')
+        )
+      ),
+      (children) => {
+        const property = keyword(requireToken(children[1]).value);
+        const value = children.find(isValue);
+        return value === undefined
+          ? block(property)
+          : block(operation(
+              ':',
+              property,
+              value
+            ));
+      }
+    );
+    const DirectScssSupportsInParens = node<ValueNode>(
+      'DirectScssSupportsInParens',
+      choice(
+        sequence(
+          literal('('),
+          g.DirectScssSupportsCondition,
+          literal(')')
+        ),
+        g.DirectScssSupportsFeature,
+        g.DirectScssGeneralEnclosed
+      ),
+      (children) => {
+        const value = children.find(isValue);
+        if (value === undefined) {
+          throw new TypeError('Direct SCSS supports parenthesis lost its typed condition.');
+        }
+        return isValue(children[0]) ? value : block(value);
+      }
+    );
+    const DirectScssSupportsNot = node<Keyword>(
+      'DirectScssSupportsNot',
+      g.CssSyntaxQueryNot,
+      children => keyword(requireToken(children[0]).value)
+    );
+    const DirectScssSupportsAndOr = node<Keyword>(
+      'DirectScssSupportsAndOr',
+      g.CssSyntaxQueryAndOr,
+      children => keyword(requireToken(children[0]).value)
+    );
+    const DirectScssSupportsCondition = node<ValueNode>(
+      'DirectScssSupportsCondition',
+      choice(
+        sequence(
+          g.DirectScssSupportsNot,
+          g.DirectScssSupportsInParens
+        ),
+        sequence(
+          g.DirectScssSupportsInParens,
+          many(sequence(
+            g.DirectScssSupportsAndOr,
+            g.DirectScssSupportsInParens
+          ))
+        )
+      ),
+      (children) => {
+        const values = children.filter(isValue);
+        if (values.length === 0) {
+          throw new TypeError('Direct SCSS supports condition lost every typed part.');
+        }
+        return values.length === 1 ? values[0]! : spaced(values);
+      }
+    );
+    const DirectScssSupportsPrelude = node<ValueNode>(
+      'DirectScssSupportsPrelude',
+      g.DirectScssSupportsCondition,
+      children => requireValue(children[0])
+    );
+    const DirectScssStaticMediaPrelude = node<ValueNode>(
+      'DirectScssStaticMediaPrelude',
+      noTrivia(oneOrMore(g.ScssSyntaxStaticMediaModifier)),
+      children => any(children.map(requireToken).map(token => token.value).join('').trim())
+    );
+
+    /*
+   * CSS's direct grammar retains a known block at-rule's static header as a
+   * grammar-owned `Any` when no more specific value model applies. SCSS needs
+   * the same lossless fact for `@layer` and `@starting-style`, but must not
+   * flatten its `#{…}` form: every atom below reserves that opener, including
+   * inside quotes and nested paren/square groups. Dynamic headers remain held
+   * until they have an interpolation-bearing prelude model.
+   */
+    const directScssStaticAtPreludeText = regex(/(?:[^#()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?!\*))+/);
+    const DirectScssStaticAtPreludeDoubleQuoted = node<Token>(
+      'DirectScssStaticAtPreludeDoubleQuoted',
+      sequence(
+        literal('"'),
+        directDoubleQuotedText,
+        literal('"')
+      ),
+      joinTokenValue
+    );
+    const DirectScssStaticAtPreludeSingleQuoted = node<Token>(
+      'DirectScssStaticAtPreludeSingleQuoted',
+      sequence(
+        literal('\''),
+        directSingleQuotedText,
+        literal('\'')
+      ),
+      joinTokenValue
+    );
+    const DirectScssStaticAtPreludeParen = node<Token>(
+      'DirectScssStaticAtPreludeParen',
+      sequence(
+        literal('('),
+        many(g.DirectScssStaticAtPreludeAtom),
+        literal(')')
+      ),
+      joinTokenValue
+    );
+    const DirectScssStaticAtPreludeSquare = node<Token>(
+      'DirectScssStaticAtPreludeSquare',
+      sequence(
+        literal('['),
+        many(g.DirectScssStaticAtPreludeAtom),
+        literal(']')
+      ),
+      joinTokenValue
+    );
+    const DirectScssStaticAtPreludeAtom = node<Token>(
+      'DirectScssStaticAtPreludeAtom',
+      choice(
+        g.DirectScssStaticAtPreludeParen,
+        g.DirectScssStaticAtPreludeSquare,
+        g.DirectScssStaticAtPreludeDoubleQuoted,
+        g.DirectScssStaticAtPreludeSingleQuoted,
+        g.CssSyntaxBlockComment,
+        g.ScssSyntaxLineComment,
+        directScssStaticAtPreludeText
+      ),
+      children => ({ value: requireToken(children[0]).value })
+    );
+    const DirectScssStaticAtPrelude = node<ValueNode | null>(
+      'DirectScssStaticAtPrelude',
+      noTrivia(many(g.DirectScssStaticAtPreludeAtom)),
+      (children) => {
+        const text = children.map(requireToken).map(token => token.value).join('').trim();
+        return text.length === 0 ? null : any(text);
+      }
+    );
+
+    /*
+   * Statement headers need the same static nested syntax as block headers but
+   * must leave their top-level semicolon to the statement production.
+   */
+    const directScssStaticStatementPreludeText = regex(/(?:[^#;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
+    const DirectScssStaticStatementPrelude = node<ValueNode | null>(
+      'DirectScssStaticStatementPrelude',
+      noTrivia(many(choice(
+        g.DirectScssStaticAtPreludeParen,
+        g.DirectScssStaticAtPreludeSquare,
+        g.DirectScssStaticAtPreludeDoubleQuoted,
+        g.DirectScssStaticAtPreludeSingleQuoted,
+        g.CssSyntaxBlockComment,
+        g.ScssSyntaxLineComment,
+        directScssStaticStatementPreludeText
+      ))),
+      (children) => {
+      /*
+       * Sass line comments are non-emitting trivia. Keeping their bytes here
+       * would comment out the serializer's terminal semicolon.
+       */
+        const text = children.map(requireToken).filter(token => !token.value.startsWith('//')).map(token => token.value).join('').trim();
+        return text.length === 0 ? null : any(text);
+      }
+    );
+
+    /*
+   * CSS statement at-rules retain the existing canonical statement fact. This
+   * deliberately excludes Sass diagnostics (`@debug`, `@warn`, `@error`) and
+   * all dynamic headers: neither can truthfully lower to CSS output here.
+   */
+    const DirectScssAtRuleStatement = node<AtRuleStatement>(
+      'DirectScssAtRuleStatement',
+      sequence(
+        regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        DirectScssStaticStatementPrelude,
+        literal(';')
+      ),
+      children => atRuleStatement(
+        requireToken(children[0]).value,
+        optionalValue(children[1])
+      )
+    );
+
+    /*
+   * `@scope` is an existing CSS at-rule fact: its static header remains a
+   * grammar-owned prelude and its SCSS body remains typed statements. Dynamic
+   * interpolation is intentionally outside DirectScssStaticAtPrelude.
+   */
+    const DirectScssScopeBlock = node<AtRuleBlock>(
+      'DirectScssScopeBlock',
+      sequence(
+        scopeAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.ScssImport,
+          g.VariableDeclaration,
+          g.DirectScssMixinDef,
+          g.DirectScssMixinCall,
+          g.DirectScssEach,
+          g.DirectScssFor,
+          g.DirectScssIf,
+          g.DirectScssConditionalBlock,
+          g.DirectScssStartingStyleBlock,
+          g.DirectScssLayerBlock,
+          g.DirectScssScopeBlock,
+          g.DirectScssDocumentBlock,
+          g.DirectScssPageBlock,
+          g.DirectScssFontFeatureValuesBlock,
+          g.DirectScssKeyframes,
+          g.DirectScssRule
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statements(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+
+    /*
+   * A scope placed in an SCSS nested rule has the same header fact but the
+   * nested declaration-capable body used by the other bubbling at-rules.
+   */
+    const DirectScssNestedScopeBlock = node<AtRuleBlock>(
+      'DirectScssNestedScopeBlock',
+      sequence(
+        scopeAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        directScssNestedBody,
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statements(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+    const DirectScssConditionalBlock = node<AtRuleBlock>(
+      'DirectScssConditionalBlock',
+      choice(
+        sequence(
+          supportsAtKeyword,
+          g.DirectScssSupportsPrelude,
+          literal('{'),
+          directScssConditionalBody,
+          literal('}')
+        ),
+        sequence(
+          choice(
+            mediaAtKeyword,
+            sequence(
+              containerAtKeyword,
+              not(g.CssSyntaxQueryOnly)
+            )
+          ),
+          g.DirectScssQueryPrelude,
+          literal('{'),
+          directScssConditionalBody,
+          literal('}')
+        ),
+        sequence(
+          choice(
+            mediaAtKeyword,
+            sequence(
+              containerAtKeyword,
+              not(g.CssSyntaxQueryOnly)
+            )
+          ),
+          g.DirectScssStaticMediaPrelude,
+          literal('{'),
+          directScssConditionalBody,
+          literal('}')
+        )
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        requireValue(children[1]),
+        statements(children.slice(
+          3,
+          -1
+        ))
+      )
+    );
+    const DirectScssStartingStyleBlock = node<AtRuleBlock>(
+      'DirectScssStartingStyleBlock',
+      sequence(
+        startingStyleAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        directScssStartingLayerBody,
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statements(children.slice(
+          3,
+          -1
+        ))
+      )
+    );
+    const DirectScssLayerBlock = node<AtRuleBlock>(
+      'DirectScssLayerBlock',
+      sequence(
+        layerAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        directScssStartingLayerBody,
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statements(children.slice(
+          3,
+          -1
         ))
       )
     );
 
     /*
-   * ── Statement injection ─────────────────────────────────────────────────
-   * Override Less's containers to try the SCSS control statements first, then
-   * fall back to Less's full statement set (`g.stylesheetItem` / `g.blockItem`).
+   * Deprecated CSS document blocks still have a precise structural shape: a
+   * static grammar-owned header and a frame-one stylesheet body. The existing
+   * `Any` prelude retains static url-match functions and separators without
+   * claiming an interpolation segment model; `#{...}` is rejected by the
+   * shared static-header grammar before a node exists.
    */
-    const scssStatement = choice(
-      g.ScssIf,
-      g.ScssEach,
-      g.ScssFor,
-      g.ScssWhile,
-      g.ScssMixin,
-      g.ScssInclude,
-      g.ScssContent,
-      g.ScssFunction,
-      g.ScssReturn,
-      g.ScssUse,
-      g.ScssForward,
-
-      /*
-     * Tried ahead of Less's `blockItem`, so an `@import` whose modifier carries
-     * `#{ … }` interpolation is handled by the SCSS import rule rather than being
-     * misread by Less's generic `AtRuleBlock` (which would treat the `{` in `#{`
-     * as a block opener).
-     */
-      g.ImportAtRuleStatement,
-      g.NsVarDeclaration,
-      ScssDiagnostic,
-      ScssAtRootFilter,
-      ScssAtRootSelector,
-      ScssAtRootPlain
-    );
-
-    /*
-   * SCSS parent selector `&` is valid only inside a rule block (nested), never at
-   * top level — dart-sass rejects a bare top-level `&`. Mirror of the jess gate:
-   * re-derive Less's `simpleSelector` (Less's `SelectorList`/`CompoundSelector`
-   * resolve `g.simpleSelector` late, so this override applies to inherited rules
-   * too) with the `&` (LessAmpersand) arm gated on the dynamic `inner` flag, which
-   * `declarationList` sets true for any rule body at any depth. `g.basicSel` /
-   * `g.extendAhead` are Less's own token regexes (exposed on its namespace) so
-   * this stays byte-identical to Less apart from the gate. O(1) gated dispatch.
-   */
-    const simpleSelector = choice(
-      g.AttributeSelector,
-      g.PseudoSelector,
-      { gate: (s: any) => !!(s?.inner), combinator: g.LessAmpersand },
-      g.InterpolatedSelector,
-      g.basicSel
-    );
-    const declarationList = withCtx(
-      { inner: true },
-      many(choice(
-        scssStatement,
-        g.ScssExtend,
-        g.ScssPlaceholderRuleset,
-        g.ScssQueryInterpBlock,
-        Declaration,
-        CustomDeclaration,
-        g.blockItem
-      ))
-    );
-    const atRuleBody = many(choice(
-      scssStatement,
-      g.ScssPlaceholderRuleset,
-      g.ScssQueryInterpBlock,
-      g.blockItem
-    ));
-
-    const ScssPlaceholderRuleset = node(sequence(
-      ScssPlaceholderSelector,
-      optional(g.Guard),
-      literal('{'),
-      declarationList,
-      expect(literal('}'))
-    ));
-
-    /*
-   * `@media` / `@container` keep their bare forms (`screen`, `name (width > 0)`) via
-   * the strict prelude, which — unlike the old permissive scan — rejects a top-level
-   * bare `$var` (`@media $v`): the run stops at `$`, so the committed `expect('{')`
-   * fails ON the `$var` and reports the missing block there (a hard error). A
-   * `#{…}`-interpolated prelude is taken earlier by `ScssQueryInterpBlock`; a `$var`
-   * inside `(…)` stays a valid declaration value; a missing block still errors.
-   */
-    const queryAtKeyword = regex(/@(?:media|container)(?![-\w])/i);
-    const QueryAtRuleBlock = node(sequence(
-      queryAtKeyword,
-      scssStrictPrelude,
-      expect(
-        literal('{'),
-        '{'
-      ),
-      atRuleBody,
-      expect(literal('}'))
-    ));
-
-    /*
-   * ── Strict `@supports` prelude (Sass+) ───────────────────────────────────────
-   * `@supports`'s prelude is a `<supports-condition>` (css-conditional-3 §2) — no
-   * bare form. Valid openers: `(`, the `not` keyword, a `<function-token>` (ident
-   * glued to `(`, e.g. `selector(…)`), OR — the SCSS interpolation form — `#{…}`.
-   * A bare CSS ident (`@supports color {}`) or a bare `$variable`
-   * (`@supports $cond {}`) is INVALID (a hard parse error — Sass+ rejects invalid
-   * CSS). `@media`/`@container` keep their bare forms (handled by the permissive
-   * `QueryAtRuleBlock` above, from which `@supports` is now excluded). Built as a
-   * `QueryAtRuleBlock` node so the SCSS `_buildQueryAtRuleBlock` builder assembles
-   * the identical AtRule from the same prelude nodes — the zero-width opener
-   * lookahead adds no child, so only the acceptance set changes. @see
-   * https://www.w3.org/TR/css-conditional-3/#at-supports
-   */
-    const supportsAtKeyword = regex(/@supports(?![-\w])/i);
-    const supportsCondAhead = regex(/(?=\(|not(?![-\w])|#\{|-?[_a-zA-Z\u0080-\uFFFF][-_a-zA-Z0-9\u0080-\uFFFF]*\()/i);
-    const SupportsAtRuleBlock = node(
-      'QueryAtRuleBlock',
+    const DirectScssDocumentBlock = node<AtRuleBlock>(
+      'DirectScssDocumentBlock',
       sequence(
-        supportsAtKeyword,
-        expect(
-          supportsCondAhead,
-          'supports condition'
-        ),
-        scssPermissivePrelude,
-        expect(literal('{')),
-        atRuleBody,
-        expect(literal('}'))
+        documentAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssMixinDef,
+          g.DirectScssMixinCall,
+          g.DirectScssEach,
+          g.DirectScssFor,
+          g.DirectScssIf,
+          g.DirectScssConditionalBlock,
+          g.DirectScssStartingStyleBlock,
+          g.DirectScssLayerBlock,
+          g.DirectScssDocumentBlock,
+          g.DirectScssPageBlock,
+          g.DirectScssFontFeatureValuesBlock,
+          g.DirectScssFontFace,
+          g.DirectScssCounterStyle,
+          g.DirectScssPropertyAtRule,
+          g.DirectScssKeyframes,
+          g.DirectScssRule
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statements(children.slice(
+          3,
+          -1
+        ))
       )
     );
 
     /*
-   * ── SCSS-interpolated query at-rule preludes ─────────────────────────────────
-   * `@media` / `@container` / `@supports` whose prelude carries a `#{ … }`
-   * interpolation. The base CSS/Less query grammar (structured `<query>` /
-   * `<supports-condition>`) cannot parse an interpolation, so without this rule
-   * the prelude falls through to Less's generic `AtRuleBlock`, which mis-reads
-   * `#{$cond}` as a mixin-ruleset lookup and serializes garbage
-   * (`$($ > *#{$cond})`). Gated on `scssInterpPrelude` (a required interpolation),
-   * so non-interpolated preludes keep flowing through the structured base grammar
-   * untouched. Its own builder lowers each `#{ … }` to canonical interpolation
-   * syntax (`$[cond]` for a single bare variable, `$( … )` otherwise).
+   * Page-margin boxes are a finite CSS family, not generic nested at-rules.
+   * Keep the header/body policy local to this grammar: every named box has no
+   * prelude and contains declarations/comments only. Header comments are trivia,
+   * not a body comment.
    */
-    const scssQueryInterpKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
-    const ScssQueryInterpBlock = node(sequence(
-      scssQueryInterpKeyword,
-      scssInterpPrelude,
-      expect(literal('{')),
-      atRuleBody,
-      expect(literal('}'))
-    ));
-    const scopeKw = regex(/@scope(?![-\w])/i);
-    const ScssScopeBlock = node(sequence(
-      scopeKw,
-      scssPermissivePrelude,
-      literal('{'),
-      atRuleBody,
-      expect(literal('}'))
-    ));
-    const layerKw = regex(/@layer(?![-\w])/i);
-    const ScssLayerBlock = node(sequence(
-      layerKw,
-      optional(ScssInterpolatedName),
-      literal('{'),
-      atRuleBody,
-      expect(literal('}'))
-    ));
-    const Stylesheet = node(many(choice(
-      scssStatement,
-      ScssPlaceholderRuleset,
-      ScssQueryInterpBlock,
-      ScssScopeBlock,
-      ScssLayerBlock,
-      g.stylesheetItem
+    const DirectScssPageMarginBox = node<AtRuleBlock>(
+      'DirectScssPageMarginBox',
+      sequence(
+        g.CssSyntaxMarginAtKeyword,
+        many(g.CssSyntaxBlockComment),
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssDeclaration,
+          literal(';')
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        null,
+        statementChildren(
+          children,
+          true
+        )
+      )
+    );
+
+    /*
+   * The shared AST deliberately retains a static page selector as an existing
+   * grammar-owned Any, just as the direct CSS route does. `#{...}` remains
+   * excluded by DirectScssStaticAtPrelude rather than being flattened.
+   */
+    const DirectScssPageBlock = node<AtRuleBlock>(
+      'DirectScssPageBlock',
+      sequence(
+        pageAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssDeclaration,
+          g.DirectScssPageMarginBox,
+          literal(';')
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statementChildren(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+
+    /*
+   * The inner names are a finite CSS family.  Keep each descriptor block
+   * declaration/comment-only and retain the outer static font list as the
+   * existing grammar-owned Any fact; dynamic SCSS headers are not flattened.
+   */
+    const DirectScssFontFeatureValueBlock = node<AtRuleBlock>(
+      'DirectScssFontFeatureValueBlock',
+      sequence(
+        g.CssSyntaxFontFeatureValueAtKeyword,
+        many(g.CssSyntaxBlockComment),
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssDeclaration,
+          literal(';')
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        null,
+        statementChildren(
+          children,
+          true
+        )
+      )
+    );
+    const DirectScssFontFeatureValuesBlock = node<AtRuleBlock>(
+      'DirectScssFontFeatureValuesBlock',
+      sequence(
+        fontFeatureValuesAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssFontFeatureValueBlock
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statementChildren(children.slice(
+          3,
+          -1
+        ))
+      )
+    );
+    const DirectScssNestedConditionalBlock = node<AtRuleBlock>(
+      'DirectScssNestedConditionalBlock',
+      choice(
+        sequence(
+          supportsAtKeyword,
+          g.DirectScssSupportsPrelude,
+          literal('{'),
+          directScssNestedKeyframesBody,
+          literal('}')
+        ),
+        sequence(
+          choice(
+            mediaAtKeyword,
+            sequence(
+              containerAtKeyword,
+              not(g.CssSyntaxQueryOnly)
+            )
+          ),
+          g.DirectScssQueryPrelude,
+          literal('{'),
+          directScssNestedKeyframesBody,
+          literal('}')
+        ),
+        sequence(
+          choice(
+            mediaAtKeyword,
+            sequence(
+              containerAtKeyword,
+              not(g.CssSyntaxQueryOnly)
+            )
+          ),
+          g.DirectScssStaticMediaPrelude,
+          literal('{'),
+          directScssNestedKeyframesBody,
+          literal('}')
+        )
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        requireValue(children[1]),
+        statements(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+    const DirectScssNestedStartingStyleBlock = node<AtRuleBlock>(
+      'DirectScssNestedStartingStyleBlock',
+      sequence(
+        startingStyleAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        directScssNestedKeyframesBody,
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statements(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+    const DirectScssNestedLayerBlock = node<AtRuleBlock>(
+      'DirectScssNestedLayerBlock',
+      sequence(
+        layerAtKeyword,
+        g.DirectScssStaticAtPrelude,
+        literal('{'),
+        directScssNestedKeyframesBody,
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        optionalValue(children[1]),
+        statements(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+    const DirectScssFontFace = node<AtRuleBlock>(
+      'DirectScssFontFace',
+      sequence(
+        regex(/@font-face(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssDeclaration
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        '@font-face',
+        null,
+        statements(
+          children.slice(
+            2,
+            -1
+          ),
+          true
+        )
+      )
+    );
+    const DirectScssCounterStyle = node<AtRuleBlock>(
+      'DirectScssCounterStyle',
+      sequence(
+        regex(/@counter-style(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssKeyword,
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssDeclaration
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        '@counter-style',
+        requireKeyword(children[1]),
+        statements(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+
+    /*
+   * `@property` names are custom-property names, not ordinary CSS keywords:
+   * the mandatory `--` prefix must be retained in the typed prelude. Keeping
+   * the prefix and identifier as grammar leaves also means interpolation cannot
+   * slip through as a flattened string.
+   */
+    const DirectScssPropertyName = node<Keyword>(
+      'DirectScssPropertyName',
+      noTrivia(sequence(
+        literal('--'),
+        g.CssSyntaxKeyword
+      )),
+      children => keyword(`${requireToken(children[0]).value}${requireToken(children[1]).value}`)
+    );
+    const DirectScssPropertyAtRule = node<AtRuleBlock>(
+      'DirectScssPropertyAtRule',
+      sequence(
+        regex(/@property(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssPropertyName,
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssDeclaration
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        '@property',
+        requireKeyword(children[1]),
+        statements(
+          children.slice(
+            3,
+            -1
+          ),
+          true
+        )
+      )
+    );
+
+    /*
+   * Keyframes already fit the canonical AtRuleBlock + Rule model: the at-rule
+   * name/prelude and every descriptor block remain structured.  Keep this
+   * deliberately static at the header and selector boundary; interpolated
+   * keyframe names/selectors need typed selector interpolation rather than raw
+   * text capture.
+   */
+    const DirectScssKeyframeSelector = node<SimpleSelector>(
+      'DirectScssKeyframeSelector',
+      choice(
+        directScssKeyframeEndpoint,
+        directScssKeyframePercent
+      ),
+      children => simpleSelector(requireToken(children[0]).value)
+    );
+    const DirectScssKeyframeBlock = node<Rule>(
+      'DirectScssKeyframeBlock',
+      sequence(
+        g.DirectScssKeyframeSelector,
+
+        /*
+       * Comments are valid selector-list delimiters.  Keep them as grammar
+       * facts (and statement comments only when they are actual body items),
+       * matching the direct CSS keyframe list without source recovery.
+       */
+        many(sequence(
+          many(g.DirectScssComment),
+          literal(','),
+          many(g.DirectScssComment),
+          g.DirectScssKeyframeSelector
+        )),
+        many(g.DirectScssComment),
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssDeclaration,
+          literal(';')
+        )),
+        literal('}')
+      ),
+      children => rule(
+        directScssKeyframeSelectorList(children),
+        statementChildren(
+          children.slice(
+            2,
+            -1
+          ),
+          true
+        )
+      )
+    );
+
+    /*
+   * Keyframe names do not participate in the module-path classification that
+   * deliberately keeps `DirectScssStaticQuoted` escape-free. They are ordinary
+   * static quoted values, so they reuse the escape-preserving
+   * `StaticValueQuoted` production (identical grammar and reducer)
+   * while still leaving a real `#{` opener for the rejected dynamic path.
+   */
+    const DirectScssKeyframes = node<AtRuleBlock>(
+      'DirectScssKeyframes',
+      sequence(
+        g.CssSyntaxKeyframesAtKeyword,
+        choice(
+          g.DirectScssKeyword,
+          StaticValueQuoted
+        ),
+        literal('{'),
+        many(choice(
+          g.DirectScssComment,
+          g.DirectScssKeyframeBlock
+        )),
+        literal('}')
+      ),
+      children => atRuleBlock(
+        requireToken(children[0]).value,
+        requireValue(children[1]),
+        statementChildren(children.slice(
+          3,
+          -1
+        ))
+      )
+    );
+
+    /*
+   * Static selector structure is grammar-owned too: selector lists and compact
+   * compounds do not pass through a text bridge. SCSS-specific interpolation,
+   * attribute selectors and pseudo arguments remain explicit
+   * follow-up families rather than being flattened into a string fallback.
+   */
+    const DirectScssSimple = node<SimpleSelector>(
+      'DirectScssSimple',
+      g.CssSyntaxSimple,
+      children => simpleSelector(requireToken(children[0]).value)
+    );
+    const DirectScssInterpolatedSimple = node<SimpleSelector>(
+      'DirectScssInterpolatedSimple',
+      noTrivia(sequence(
+        optional(regex(/[.#]/)),
+        many(directScssSelectorTextRun),
+        g.SassInterpolation,
+        many(choice(
+          g.SassInterpolation,
+          directScssSelectorTextRun
+        ))
+      )),
+      (children) => {
+        const parts: Interpolation['parts'] = [];
+        for (const child of children) {
+          if (isInterpolation(child)) {
+            parts.push(...child.parts);
+          } else {
+            appendLiteral(
+              parts,
+              requireToken(child).value
+            );
+          }
+        }
+        return interpolatedSimpleSelector(interpolation(parts));
+      }
+    );
+
+    /*
+   * SCSS placeholder selectors are selector syntax, not declarations or a
+   * runtime-only marker. The canonical selector tree already represents their
+   * exact static spelling as a SimpleSelector; interpolated placeholder names need a
+   * typed interpolation model and are deliberately excluded.
+   */
+    const DirectScssPlaceholder = node<SimpleSelector>(
+      'DirectScssPlaceholder',
+      regex(/%-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/),
+      children => simpleSelector(requireToken(children[0]).value)
+    );
+
+    /*
+   * This is the static CSS-compatible attribute-selector family. The canonical
+   * selector tree represents an attribute as one source-faithful SimpleSelector, just
+   * as the CSS direct grammar does. Namespaced and interpolation-bearing
+   * attributes stay outside this closed slice because their segments need
+   * their own typed representation rather than text flattening.
+   */
+    const DirectScssAttribute = node<SimpleSelector>(
+      'DirectScssAttribute',
+      sequence(
+        literal('['),
+        g.CssSyntaxKeyword,
+        optional(sequence(
+          g.CssSyntaxAttributeOperator,
+          choice(
+
+            /*
+           * `noTrivia` on the quoted arms only: the attribute itself re-enters
+           * the ambient trivia (see the selector production) so `[a = "b"]`
+           * keeps its spacing, but the string body must stay literal bytes so
+           * `[href="//host"]` is not swallowed by the `//` trivia arm.
+           */
+            noTrivia(sequence(
+              literal('"'),
+              directDoubleQuotedText,
+              literal('"')
+            )),
+            noTrivia(sequence(
+              literal('\''),
+              directSingleQuotedText,
+              literal('\'')
+            )),
+            g.CssSyntaxKeyword
+          ),
+          optional(g.CssSyntaxAttributeModifier)
+        )),
+        literal(']')
+      ),
+      children => simpleSelector(joinSourceText(children))
+    );
+
+    /*
+   * Selector-valued pseudo arguments have the same canonical selector shape as
+   * an ordinary rule header. Parse them through that grammar, then preserve the
+   * canonical text inside the existing SimpleSelector selector representation. Raw
+   * pseudo arguments are deliberately not accepted here: an SCSS interpolation
+   * in one must stay typed rather than being swallowed as a string.
+   */
+    const DirectScssPseudoArgument = node<string>(
+      'DirectScssPseudoArgument',
+
+      /*
+     * A pseudo's selector-valued argument is carried by its containing
+     * SimpleSelector text in AST v2, not as a second selector field. Recognize
+     * its static grammar here so it remains accepted without giving a nested
+     * DirectScssSelector an interpolation escape hatch.
+     */
+      sequence(
+        not(g.CssSyntaxMalformedPseudoNumericArgument),
+        g.DirectScssStaticPseudoArgument
+      ),
+      joinSourceText
+    );
+
+    /*
+   * A static functional pseudo is still a canonical SimpleSelector leaf. Its
+   * argument is grammar-recognized (including balanced groups, brackets,
+   * strings, and comments) rather than post-parse text recovery. Every chunk
+   * excludes a real SCSS `#{` opener, so interpolation cannot be flattened into
+   * this static spelling while selector-valued arguments retain their existing
+   * canonical spelling inside the containing SimpleSelector.
+   */
+    const directScssStaticPseudoChunk = regex(/(?:[^()\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
+    const DirectScssStaticPseudoGroup = node<string>(
+      'DirectScssStaticPseudoGroup',
+      sequence(
+        literal('('),
+        many(choice(
+          g.DirectScssStaticPseudoGroup,
+          g.DirectScssStaticPseudoSquare,
+          StaticValueQuoted,
+          g.CssSyntaxBlockComment,
+          directScssStaticPseudoChunk
+        )),
+        literal(')')
+      ),
+      joinSourceText
+    );
+    const DirectScssStaticPseudoSquare = node<string>(
+      'DirectScssStaticPseudoSquare',
+      sequence(
+        literal('['),
+        many(choice(
+          g.DirectScssStaticPseudoGroup,
+          g.DirectScssStaticPseudoSquare,
+          StaticValueQuoted,
+          g.CssSyntaxBlockComment,
+          directScssStaticPseudoChunk
+        )),
+        literal(']')
+      ),
+      joinSourceText
+    );
+    const DirectScssStaticPseudoArgument = node<string>(
+      'DirectScssStaticPseudoArgument',
+      oneOrMore(choice(
+        g.DirectScssStaticPseudoGroup,
+        g.DirectScssStaticPseudoSquare,
+        StaticValueQuoted,
+        g.CssSyntaxBlockComment,
+        directScssStaticPseudoChunk
+      )),
+      joinSourceText
+    );
+
+    /*
+   * Selector-valued pseudo arguments are still text inside the containing
+   * SimpleSelector, but their top-level commas have the established canonical
+   * selector spelling (no following whitespace). Keep that grammar-owned
+   * normalization separate from generic functional pseudo arguments.
+   */
+    const directScssStaticSelectorPseudoChunk = regex(/(?:[^(),\[\]'"#\/]|#(?!\{)|\/(?!\*))+/);
+    const DirectScssStaticSelectorPseudoItem = node<string>(
+      'DirectScssStaticSelectorPseudoItem',
+      oneOrMore(choice(
+        g.DirectScssStaticPseudoGroup,
+        g.DirectScssStaticPseudoSquare,
+        StaticValueQuoted,
+        g.CssSyntaxBlockComment,
+        directScssStaticSelectorPseudoChunk
+      )),
+      joinSourceText
+    );
+    const DirectScssStaticSelectorPseudoTail = node<string>(
+      'DirectScssStaticSelectorPseudoTail',
+      sequence(
+        literal(','),
+        optional(directScssSpace),
+        g.DirectScssStaticSelectorPseudoItem
+      ),
+      children => `,${requireString(children.at(-1))}`
+    );
+    const DirectScssStaticSelectorPseudoArgument = node<string>(
+      'DirectScssStaticSelectorPseudoArgument',
+      sequence(
+        g.DirectScssStaticSelectorPseudoItem,
+        many(g.DirectScssStaticSelectorPseudoTail)
+      ),
+      joinSourceText
+    );
+
+    /*
+   * Pseudos share a glued `:name` / `:name(` opener. Route it once, then let the
+   * selected branch own that opener through `routed()` so the public
+   * `DirectScss...Pseudo` CST labels keep their source span.
+   */
+    const pseudoIdentOrFunction = token(noTrivia(sequence(
+      pseudoColon,
+      g.CssSyntaxKeyword,
+      optional(literal('('))
     )));
 
+    /*
+   * A relative selector (a `:has()` argument) may open with a child/sibling
+   * combinator (`:has(> .b)`). The outer selector grammar forbids a leading
+   * combinator, so this pseudo-private complex admits an optional relative one and
+   * rides it on the ComplexSelector's `leadingComb`. A leading `||`/`|` is
+   * namespace syntax, not a relative combinator, so it is excluded (mirrors the
+   * css/less landings).
+   */
+    const scssRelativeSelectorCombinator = choice(
+      literal('>'),
+      literal('+'),
+      literal('~')
+    );
+    const DirectScssRelativeComplex = node<ComplexSelector>(
+      'DirectScssRelativeComplex',
+      parser(
+        { trivia: whitespace },
+        sequence(
+          optional(scssRelativeSelectorCombinator),
+          g.DirectScssComplex
+        )
+      ),
+      (children) => {
+        const complex = children.find(isComplexSelector);
+        if (complex === undefined) {
+          throw new TypeError('DirectScssRelativeComplex requires a complex selector.');
+        }
+        if (children.length === 1) {
+          return complex;
+        }
+        const lead = requireToken(children[0]).value;
+        if (lead !== '>' && lead !== '+' && lead !== '~') {
+          throw new TypeError('DirectScssRelativeComplex produced an invalid leading combinator.');
+        }
+        return { ...complex, leadingComb: lead };
+      }
+    );
+
+    /*
+   * The selector-argument pseudos (`:is`/`:where`/`:not`/`:has`/`:matches`) take a
+   * selector-ONLY argument: a (relative) selector list with no general-any text
+   * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
+   * non-relative shape reduces identically to `g.DirectScssSelector`; the retained
+   * `SelectorList` becomes structured `PseudoSelector.args`, never joined at parse.
+   */
+    const DirectScssSelectorOnlyPseudoArgument = node<SelectorList>(
+      'DirectScssSelectorOnlyPseudoArgument',
+      parser(
+        { trivia: whitespace },
+        sequence(
+          DirectScssRelativeComplex,
+          many(sequence(
+            literal(','),
+            DirectScssRelativeComplex
+          ))
+        )
+      ),
+      children => selist(...children.filter(isComplexSelector))
+    );
+    const NthPseudo = node<SimpleSelector>(
+        'DirectScssNthPseudo',
+
+        /*
+       * `:nth-child`/`:nth-last-child`: a bare `<An+B>` OR `<An+B> of <selector>`
+       * (Selectors-4 §6.6.2). Dispatched by the shared `g.CssSyntaxNthChildName`
+       * so `of S` is admitted only on the child index. An+B input cannot first try
+       * the selector-valued arm: `-n+2` has a valid selector prefix (`-n`) but is
+       * not a complete selector argument. Its complete static grammar owns the
+       * whole argument, and the numeric malformed-prefix gate prevents a broken
+       * An+B form from falling through to ordinary raw pseudo content.
+       */
+        sequence(
+          routed(),
+          not(g.CssSyntaxMalformedPseudoNumericArgument),
+          g.DirectScssStaticPseudoArgument,
+          literal(')')
+        ),
+
+        /*
+       * Insignificant whitespace surrounding the `<An+B>` argument inside the
+       * parens (`:nth-child( 2n+1 )`) is normalized away, matching the other
+       * dialects; sign whitespace inside the argument (`2n + 1`, `n - 3`) stays
+       * verbatim in the captured chunk. Selectors-4 §6.6.2 permits both
+       * (https://www.w3.org/TR/selectors-4/#anb-microsyntax).
+       */
+        children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
+      );
+    const NthTypePseudo = node<SimpleSelector>(
+        'DirectScssNthTypePseudo',
+
+        /*
+       * `:nth-of-type`/`:nth-last-of-type`: a BARE `<An+B>` only — Selectors-4
+       * §6.6.2 defines no `of S` tail for the type-index families. The
+       * `not(sequence(g.CssSyntaxNth, g.CssSyntaxOfKeyword))` guard rejects
+       * an `<An+B> of …` argument so `:nth-of-type(2n of .a)` fails rather than
+       * being captured as opaque text (the CSS-aligned owner decision), matching
+       * the css/jess landings.
+       */
+        sequence(
+          routed(),
+          not(g.CssSyntaxMalformedPseudoNumericArgument),
+          not(parser(
+            { trivia: whitespace },
+            sequence(
+              g.CssSyntaxNth,
+              g.CssSyntaxOfKeyword
+            )
+          )),
+          g.DirectScssStaticPseudoArgument,
+          literal(')')
+        ),
+        children => simpleSelector(`${requireToken(children[0]).value}${requireString(children.find(child => typeof child === 'string')).trim()})`)
+      );
+    const StructuredPseudo = node<SimpleToken>(
+        'DirectScssStructuredPseudo',
+
+        /*
+       * Parser = STRUCTURE + trivia only: keep the parsed `SelectorList` as `args`
+       * and DO NOT join — core serialization owns the inline `:is(a, b)` rule
+       * (`pseudoCanonical`). The positive lookahead confirms the
+       * argument is a fully STATIC selector arg (the chunk grammar rejects `#{`)
+       * before the structural parse commits; an interpolated arg fails here and,
+       * with no text fallback for these names, rejects exactly as before.
+       * Insignificant whitespace surrounding the argument inside the parens
+       * (`:not( .b )`) is consumed here; it is trivia, so the structured arg
+       * normalizes it away (`:not(.b)`) via `pseudoCanonical`, matching the other
+       * dialects (Selectors-4; the residual SCSS surrounding-whitespace divergence).
+       */
+        sequence(
+          routed(),
+          optional(directScssSpace),
+          expect(
+            peek(sequence(
+              g.DirectScssStaticSelectorPseudoArgument,
+              literal(')')
+            )),
+            'static selector pseudo argument'
+          ),
+          DirectScssSelectorOnlyPseudoArgument,
+          optional(directScssSpace),
+          literal(')')
+        ),
+        children => pseudoSelector(
+          scssPseudoName(requireToken(children[0]).value),
+          requireSelectorList(children.find(isSelectorList))
+        )
+      );
+    const GlobalLocalPseudo = node<SimpleSelector>(
+        'DirectScssGlobalLocalPseudo',
+
+        /*
+       * `:global(…)`/`:local(…)` retain the opaque, comma-normalized selector text
+       * inside the containing SimpleSelector — they are sealed and never structured.
+        */
+        sequence(
+          routed(),
+          g.DirectScssPseudoArgument,
+          literal(')')
+        ),
+        children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
+      );
+    const GenericFunctionPseudo = node<SimpleSelector>(
+        'DirectScssGenericPseudo',
+
+        /*
+       * Generic glued functions remain the general-any class. Known selector and
+       * nth families are routed before this branch, so malformed arguments stay
+       * committed to the known branch and cannot fall through here.
+       */
+        sequence(
+          routed(),
+          g.DirectScssPseudoArgument,
+          literal(')')
+        ),
+        children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
+      );
+    const GenericBarePseudo = node<SimpleSelector>(
+        'DirectScssGenericPseudo',
+        routed(),
+        children => simpleSelector(requireToken(children[0]).value)
+      );
+    const DirectScssPseudo = dispatch(
+      pseudoIdentOrFunction,
+      caseInsensitive([':nth-child(', ':nth-last-child('], NthPseudo),
+      caseInsensitive([':nth-of-type(', ':nth-last-of-type('], NthTypePseudo),
+      caseInsensitive([':is(', ':where(', ':not(', ':has(', ':matches('], StructuredPseudo),
+      caseInsensitive([':global(', ':local('], GlobalLocalPseudo),
+      caseInsensitive([
+        ':nth-child',
+        ':nth-last-child',
+        ':nth-of-type',
+        ':nth-last-of-type',
+        ':is',
+        ':where',
+        ':not',
+        ':has',
+        ':matches'
+      ], not(routed())),
+      when(endsWith('('), GenericFunctionPseudo),
+      otherwise(GenericBarePseudo)
+    );
+    const DirectScssNestingSelector = node<SimpleSelector>(
+      'DirectScssNestingSelector',
+      literal('&'),
+      () => simpleSelector('&')
+    );
+    const DirectScssCompound = node<CompoundSelector>(
+      'DirectScssCompound',
+      noTrivia(sequence(
+        oneOrMore(choice(
+          g.DirectScssNestingSelector,
+          parser(
+            { trivia: whitespace },
+            g.DirectScssAttribute
+          ),
+          g.DirectScssPseudo,
+          g.DirectScssPlaceholder,
+          g.DirectScssInterpolatedSimple,
+          g.DirectScssSimple
+        )),
+        not(pseudoColon)
+      )),
+      children => compoundSelectorOf(children.filter(isSimpleToken))
+    );
+    const directScssCombinator = choice(
+      literal('||'),
+      literal('>'),
+      literal('+'),
+      literal('~')
+    );
+    const DirectScssComplexTail = node<ScssComplexTail>(
+      'DirectScssComplexTail',
+      sequence(
+        optional(directScssCombinator),
+        g.DirectScssCompound
+      ),
+      (children) => {
+        const compound = children.find(isCompoundSelector);
+        if (compound === undefined) {
+          throw new TypeError('DirectScssComplexTail requires a compound.');
+        }
+        const combinator = children.find(isToken);
+        const comb = combinator?.value ?? ' ';
+        if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
+          throw new TypeError('DirectScssComplexTail produced an invalid combinator.');
+        }
+        return { comb, compound };
+      }
+    );
+    const DirectScssComplex = node<ComplexSelector>(
+      'DirectScssComplex',
+      sequence(
+        g.DirectScssCompound,
+        many(g.DirectScssComplexTail)
+      ),
+      children => complexSelector([
+        { compound: requireCompoundSelector(children[0]) },
+        ...children.slice(1).map(requireScssComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      ])
+    );
+    const DirectScssSelectorTail = node<ComplexSelector>(
+      'DirectScssSelectorTail',
+      sequence(
+        literal(','),
+        g.DirectScssComplex
+      ),
+      children => requireComplexSelector(children[1])
+    );
+    const DirectScssSelector = node<SelectorList>(
+      'DirectScssSelector',
+      sequence(
+        not(sequence(
+          g.DirectScssPlaceholder,
+          literal(',')
+        )),
+        g.DirectScssComplex,
+        many(g.DirectScssSelectorTail)
+      ),
+      children => selist(...children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector'))
+    );
+
+    /*
+   * SCSS `@extend` is a rule-body instruction, not a synthetic statement node.
+   * Its target stays a typed selector list and is hoisted onto the carrying Rule
+   * through the existing canonical extendInstructions field. `!optional` has
+   * missing-target diagnostic semantics that the canonical instruction does not
+   * yet model, so this direct slice rejects it rather than silently dropping it.
+   */
+    const DirectScssExtend = node<ExtendInstruction>(
+      'DirectScssExtend',
+      sequence(
+        regex(/@extend(?![-_a-zA-Z0-9\u0080-\uffff])/i),
+        g.DirectScssSelector,
+        optional(literal(';'))
+      ),
+      children => ({ target: requireSelectorList(children[1]), partial: false })
+    );
+
+    /*
+   * An unknown CSS block is terminal authored syntax. The shared recognition
+   * artifact owns every balanced/string/comment boundary; this reduction only
+   * records raw facts and keeps `$` out of an unquoted dynamic header, so a
+   * dynamic prelude still rejects rather than becoming opaque text.
+   * Wrap the two raw captures in their own nodes so this family's child count is
+   * fixed: an `optional(scanTo(...))` that matches nothing emits no child and
+   * would otherwise shift every positional index in the reducers below.
+   */
+    const DirectScssOpaquePrelude = node<string | null>(
+      'DirectScssOpaquePrelude',
+      g.ScssAstOpaqueStaticPrelude,
+      (children) => {
+        const text = children.length === 0 ? '' : requireToken(children[0]).value.trim();
+        return text === '' ? null : text;
+      }
+    );
+    const DirectScssOpaqueBody = node<string>(
+      'DirectScssOpaqueBody',
+      g.ScssAstOpaqueBody,
+      children => children.length === 0 ? '' : requireToken(children[0]).value
+    );
+    const DirectScssOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
+      'DirectScssOpaqueAtRuleBlock',
+      sequence(
+        scssGenericAtRuleName,
+        noTrivia(sequence(
+          g.DirectScssOpaquePrelude,
+          literal('{'),
+          g.DirectScssOpaqueBody,
+          literal('}')
+        ))
+      ),
+      (children) => {
+        const prelude = children[1];
+        const rawBody = children[3];
+        if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
+          throw new TypeError('Direct SCSS opaque at-rule lost its grammar-owned raw facts.');
+        }
+        return opaqueAtRuleBlock(
+          requireToken(children[0]).value,
+          prelude,
+          rawBody
+        );
+      }
+    );
+
+    /*
+   * The statement spelling of the same fact (`@view-transition;`). It shares the
+   * block's name recognizer, so the two are disjoint from every typed arm and
+   * from each other — this one requires `;` where the block requires `{`.
+   */
+    const DirectScssOpaqueAtRuleStatement = node<AtRuleStatement>(
+      'DirectScssOpaqueAtRuleStatement',
+      sequence(
+        scssGenericAtRuleName,
+        noTrivia(sequence(
+          g.DirectScssOpaquePrelude,
+          literal(';')
+        ))
+      ),
+      (children) => {
+        const prelude = children[1];
+        if (prelude !== null && typeof prelude !== 'string') {
+          throw new TypeError('Direct SCSS opaque at-rule statement lost its grammar-owned raw facts.');
+        }
+        return atRuleStatement(
+          requireToken(children[0]).value,
+          prelude === null ? null : any(prelude)
+        );
+      }
+    );
+    const DirectScssRule = node<Rule>(
+      'DirectScssRule',
+      sequence(
+        g.DirectScssSelector,
+        literal('{'),
+        directScssRuleBody,
+        literal('}')
+      ),
+      (children) => {
+        if (children.length < 3 || requireToken(children[1]).value !== '{' || requireToken(children[children.length - 1]).value !== '}') {
+          throw new TypeError('DirectScssRule produced unexpected children.');
+        }
+        const extendInstructions = children.filter(isExtendInstruction);
+        return rule(
+          requireSelectorList(children[0]),
+          statementChildren(
+            children.slice(
+              2,
+              -1
+            ),
+            true
+          ),
+          extendInstructions.length > 0 ? extendInstructions : undefined
+        );
+      }
+    );
+    const Stylesheet = node<Stylesheet>(
+      'Stylesheet',
+
+      /*
+     * Sass module directives are document-prefix syntax. Variables and comments
+     * may surround them there, and @use/@forward may remain interleaved, but an
+     * ordinary stylesheet item closes that prefix permanently. This is grammar
+     * shape, not a reducer-time placement check.
+     */
+      sequence(
+        many(choice(
+          g.DirectScssComment,
+          g.VariableDeclaration,
+          g.DirectScssUse,
+          g.DirectScssForward
+        )),
+        many(choice(
+          g.DirectScssComment,
+          g.ScssImport,
+          g.DirectScssAtRuleStatement,
+          g.VariableDeclaration,
+          g.DirectScssMixinDef,
+          g.DirectScssFunction,
+          g.DirectScssMixinCall,
+          g.DirectScssEach,
+          g.DirectScssFor,
+          g.DirectScssIf,
+          g.DirectScssConditionalBlock,
+          g.DirectScssStartingStyleBlock,
+          g.DirectScssLayerBlock,
+          g.DirectScssScopeBlock,
+          g.DirectScssDocumentBlock,
+          g.DirectScssPageBlock,
+          g.DirectScssFontFeatureValuesBlock,
+          g.DirectScssFontFace,
+          g.DirectScssCounterStyle,
+          g.DirectScssPropertyAtRule,
+          g.DirectScssKeyframes,
+          g.DirectScssOpaqueAtRuleBlock,
+          g.DirectScssOpaqueAtRuleStatement,
+          g.DirectScssRule
+        ))
+      ),
+      children => stylesheet(statements(children.flatMap(child => Array.isArray(child) ? child : [child])))
+    );
+
     return {
-      VarDeclaration, Reference, NsVarDeclaration, AtRuleStatement,
-      ScssInterpBare, Quoted, InterpValue, ScssInterpDeclName, ScssInterpCustomProp,
-      value, valueList, functionCallArgs, Call,
-      ScssMapLiteral, ScssIdentValue,
-      ScssInterpolatedName, InterpolatedSelector,
-      Declaration, CustomDeclaration,
-      ScssComparison, ScssCondInParens, ScssCondTerm, ScssCondAnd, ScssCondOr, ScssRules, ScssIf,
-      ScssEach, ScssFor, ScssWhile,
-      ScssCallArg, ScssCallArgsInner, ScssMixinParam, ScssMixinParams, ScssMixinName,
-      ScssDeclBody, ScssMixin, ScssIncludeUsing, ScssInclude, ScssContent,
-      ScssFunction, ScssReturn,
-      ScssWithConfigEntry, ScssWithConfig, ScssUseAs, ScssUse, ScssForward,
-      ScssPlaceholderSelector, ScssPlaceholderRuleset, ScssExtendTarget, ScssExtend,
-      ScssImportItem, ImportAtRuleStatement,
-      ScssNestedProps,
-      ScssDiagnostic, ScssAtRootFilter, ScssAtRootSelector, ScssAtRootPlain,
-      QueryAtRuleBlock, SupportsAtRuleBlock, ScssQueryInterpBlock, ScssScopeBlock, ScssLayerBlock,
-      AtRuleBlock, AtRuleMalformed,
-      Stylesheet, simpleSelector, declarationList, atRuleBody
+      Stylesheet,
+      ScssAstDocument: Stylesheet,
+      VariableDeclaration,
+      DirectScssComment,
+      DirectScssVarReference,
+      SassInterpolation,
+      DirectScssQuoted,
+      DirectScssStaticQuoted,
+      DirectScssKeyword,
+      DirectScssCustomPropertyValue,
+      DirectScssColor,
+      DirectScssUnicodeRange,
+      DirectScssDimension,
+      DirectScssInterpolatedUrlValue,
+      DirectScssInterpolatedValue,
+      DirectScssParen,
+      DirectScssMapEntry,
+      DirectScssMap,
+      DirectScssReturn,
+      DirectScssFunction,
+      DirectScssSquare,
+      ScssValueAtom,
+      DirectScssMathUnary,
+      DirectScssMathProduct,
+      DirectScssMathSum,
+      DirectScssMathTopProduct,
+      DirectScssMathTopSum,
+      DirectScssValueTerm,
+      DirectScssValuePair,
+      DirectScssValue,
+      DirectScssImportant,
+      DirectScssInterpolatedProperty,
+      DirectScssCustomPropertyName,
+      DirectScssCustomPart,
+      DirectScssCustomInnerPart,
+      DirectScssCustomParen,
+      DirectScssCustomSquare,
+      DirectScssCustomCurly,
+      DirectScssCustomValue,
+      DirectScssCustomDeclaration,
+      DirectScssDeclaration,
+      DirectScssStaticNestedPropertyLeaf,
+      DirectScssStaticNestedProperty,
+      ScssImport,
+      DirectScssUseAs,
+      DirectScssUse,
+      DirectScssForward,
+      DirectScssStaticImportUrl,
+      DirectScssStaticImportOptions,
+      DirectScssStaticImportLayer,
+      DirectScssStaticImportDeclaration,
+      DirectScssStaticImportSupports,
+      DirectScssStaticImportQualifier,
+      DirectScssStaticImportMediaFeature,
+      DirectScssStaticImportMediaInParens,
+      DirectScssStaticImportMediaCondition,
+      DirectScssStaticImportMediaOnlyClause,
+      DirectScssStaticImportMediaClause,
+      DirectScssStaticImportMediaPrelude,
+      DirectScssStaticImportTail,
+      DirectScssMixinParam,
+      DirectScssMixinParams,
+      ScssMixinCallArg,
+      DirectScssMixinCall,
+      DirectScssMixinDef,
+      DirectScssEachName,
+      DirectScssEachBinding,
+      DirectScssEach,
+      DirectScssFor,
+      DirectScssIfCondition,
+      DirectScssIfAnd,
+      DirectScssIfTerm,
+      DirectScssIfAtom,
+      DirectScssIfComparison,
+      DirectScssIfBody,
+      DirectScssIfStaticRule,
+      DirectScssIfStaticConditionalBlock,
+      DirectScssIf,
+      DirectScssQueryFeature,
+      DirectScssQueryFunction,
+      DirectScssQueryInParens,
+      DirectScssQueryCondition,
+      DirectScssQueryClause,
+      DirectScssQueryPreludeTail,
+      DirectScssQueryPrelude,
+      DirectScssSupportsAtom,
+      DirectScssGeneralTemplate,
+      DirectScssGeneralTemplateParen,
+      DirectScssGeneralTemplateSquare,
+      DirectScssGeneralTemplateBrace,
+      DirectScssGeneralTemplateDoubleQuoted,
+      DirectScssGeneralTemplateSingleQuoted,
+      DirectScssGeneralEnclosed,
+      DirectScssSupportsFeature,
+      DirectScssSupportsInParens,
+      DirectScssSupportsNot,
+      DirectScssSupportsAndOr,
+      DirectScssSupportsCondition,
+      DirectScssSupportsPrelude,
+      DirectScssStaticMediaPrelude,
+      DirectScssStaticAtPrelude,
+      DirectScssStaticAtPreludeAtom,
+      DirectScssStaticAtPreludeParen,
+      DirectScssStaticAtPreludeSquare,
+      DirectScssStaticAtPreludeDoubleQuoted,
+      DirectScssStaticAtPreludeSingleQuoted,
+      DirectScssAtRuleStatement,
+      DirectScssScopeBlock,
+      DirectScssNestedScopeBlock,
+      DirectScssConditionalBlock,
+      DirectScssStartingStyleBlock,
+      DirectScssLayerBlock,
+      DirectScssDocumentBlock,
+      DirectScssPageMarginBox,
+      DirectScssPageBlock,
+      DirectScssFontFeatureValueBlock,
+      DirectScssFontFeatureValuesBlock,
+      DirectScssNestedConditionalBlock,
+      DirectScssNestedStartingStyleBlock,
+      DirectScssNestedLayerBlock,
+      DirectScssFontFace,
+      DirectScssCounterStyle,
+      DirectScssPropertyName,
+      DirectScssPropertyAtRule,
+      DirectScssKeyframeSelector,
+      DirectScssKeyframeBlock,
+      DirectScssKeyframes,
+      DirectScssOpaquePrelude,
+      DirectScssOpaqueBody,
+      DirectScssOpaqueAtRuleBlock,
+      DirectScssOpaqueAtRuleStatement,
+      DirectScssSimple,
+      DirectScssInterpolatedSimple,
+      DirectScssPlaceholder,
+      DirectScssAttribute,
+      DirectScssPseudoArgument,
+      DirectScssStaticSelectorPseudoArgument,
+      DirectScssStaticSelectorPseudoItem,
+      DirectScssStaticSelectorPseudoTail,
+      DirectScssStaticPseudoArgument,
+      DirectScssStaticPseudoGroup,
+      DirectScssStaticPseudoSquare,
+      DirectScssPseudo,
+      DirectScssNestingSelector,
+      DirectScssCompound,
+      DirectScssComplexTail,
+      DirectScssComplex,
+      DirectScssSelectorTail,
+      DirectScssSelector,
+      DirectScssExtend,
+      DirectScssRule,
+      rw: whitespace,
+      whitespace
     };
-  }
+};
+
+export const scssGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+  { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString] },
+  scssFactory
+)]);
+
+export const scssAstGrammar = scssGrammar;
+
+export const scssCstGrammar: Record<keyof ScssRules, FusedRule> = composeLeaf([cssSyntax, opaqueAtRuleRecognition, cssPseudoSyntax, rules<ScssRules>(
+  { trivia: whitespace, scanSkip: [blockComment, lineComment, scssScanSkipDoubleString, scssScanSkipSingleString], hostMode: 'cst' },
+  scssFactory
 )]);

@@ -1,11 +1,17 @@
-export { cssGrammar } from './grammar.js';
+export { cssCstGrammar, cssGrammar } from './grammar.js';
 export {
   cssCstBuildHost, parseCst, parseDocCst, parseCssCst, parseCssDoc,
   type CssCstChild, type CssCstError, type CssCstLeaf, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type CssCstType, type ParseDoc
 } from './cst-css.js';
-import { run } from 'parseman';
-import type { Stylesheet } from '@jesscss/core/ast';
-import { cssAstGrammar } from './ast/grammar.js';
+import { run, triviaEntries } from 'parseman';
+import {
+  createTriviaMapFromRanges,
+  withSourceSpan,
+  withTriviaMap,
+  type AstTriviaRange,
+  type Stylesheet
+} from '@jesscss/core/ast';
+import { cssAstGrammar } from './grammar.js';
 
 /** Structured failure from the public direct CSS parser. */
 export class CssParseError extends SyntaxError {
@@ -31,26 +37,44 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && Array.isArray(value.children);
 }
 
+function triviaRanges(triviaLog: readonly number[]): Iterable<AstTriviaRange> {
+  const entries = triviaEntries(triviaLog);
+  return {
+    *[Symbol.iterator]() {
+      for (let i = 0; i < entries.length; i++) {
+        yield { start: entries.start(i), end: entries.end(i) };
+      }
+    }
+  };
+}
+
 /** Parse CSS directly into the canonical AST v2 document. */
 export function parse(input: string): Stylesheet {
-  const entry = cssAstGrammar.CssAstDocument;
+  const entry = cssAstGrammar.Stylesheet;
   const trivia = cssAstGrammar.whitespace;
   if (entry === undefined || trivia === undefined) {
-    throw new TypeError('CSS AST grammar is missing its public document entry.');
+    throw new TypeError('CSS AST grammar is missing its public Stylesheet entry.');
   }
   const result = run(
     entry,
     input,
     { trivia }
   );
-  if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
-    const offset = result.ok
+  const recoveryError = result.errors[0];
+  if (!result.ok || result.unconsumedFrom !== null || recoveryError !== undefined || !isStylesheet(result.value)) {
+    const offset = recoveryError?.span.start ?? (result.ok
       ? result.unconsumedFrom ?? result.span.end
-      : result.span.start;
+      : result.span.start);
     throw new CssParseError(
       offset,
-      result.expected
+      recoveryError?.expected ?? result.expected
     );
   }
-  return result.value;
+  return withTriviaMap(
+    withSourceSpan(result.value, result.span),
+    createTriviaMapFromRanges(
+      input,
+      triviaRanges(result.triviaLog)
+    )
+  );
 }

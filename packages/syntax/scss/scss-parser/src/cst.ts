@@ -1,5 +1,5 @@
 import { parseCst, parseDocCst, type CssCstNode, type CssCstParseOptions, type CssCstParseResult, type ParseDoc } from '@jesscss/css-parser/cst';
-import { scssGrammar } from './grammar.js';
+import { scssCstGrammar } from './grammar.js';
 
 export function parseScssCst(
   input: string,
@@ -7,7 +7,7 @@ export function parseScssCst(
   options?: CssCstParseOptions
 ): CssCstParseResult {
   return parseCst(
-    scssGrammar as Record<string, unknown>,
+    scssCstGrammar as Record<string, unknown>,
     input,
     startRule,
     options
@@ -17,7 +17,7 @@ export function parseScssCst(
 /** Incremental (`.edit()`-able) SCSS document — see `parseDocCst`. */
 export function parseScssDoc(input: string, startRule = 'Stylesheet'): ParseDoc<CssCstNode> {
   return parseDocCst(
-    scssGrammar as Record<string, unknown>,
+    scssCstGrammar as Record<string, unknown>,
     input,
     startRule
   );

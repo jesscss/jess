@@ -1,20 +1,21 @@
 import {
   type Plugin,
   AbstractPlugin,
-  type Context,
+  Context,
   type UrlTransformRequest,
-  parserDiagnostic,
   makeJessError,
   type ISafeParseResult,
-  type SafeParseOptions
+  type SafeParseOptions,
+  buildEvaluator
 } from '@jesscss/core';
 import { type PluginHost } from '@jesscss/core/value';
+import { makeLessRegistry } from '@jesscss/fns/less/registry';
 import { LessApiBridge, type NativeLessPlugin } from '@jesscss/plugin-less-compat';
 import type { EqualityMode, MathMode, UnitMode, LessOptions } from 'styles-config';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { expandLessImportCandidates } from '@jesscss/style-resolver';
-import { parse as parseLess } from '@jesscss/less-parser';
+import { safeParse as safeParseLess } from '@jesscss/less-parser';
 
 export type LessPluginOptions = LessOptions;
 
@@ -33,6 +34,8 @@ export const lessPluginDefaults = {
   bubbleRootAtRules: true,
   collapseNesting: false
 } as const;
+
+const lessValueEvaluator = buildEvaluator(makeLessRegistry());
 
 /** Match Less's URL normalization without treating URL text as an import path. */
 function normalizeUrlPath(url: string): string {
@@ -197,6 +200,9 @@ export class LessPlugin extends AbstractPlugin {
   }
 
   setContext(context: Context): void {
+    if (context.documentContext?.plugin !== this) {
+      return;
+    }
     /*
      * The Less adapter owns the language defaults, while Context owns the
      * session-level option store consumed by the AST evaluator.  A caller's
@@ -218,6 +224,7 @@ export class LessPlugin extends AbstractPlugin {
     if (context.opts.bubbleRootAtRules === undefined) {
       context.setOption('bubbleRootAtRules', this.bubbleRootAtRules);
     }
+    context.registerValueEvaluator(lessValueEvaluator);
 
     let host = this.pluginHosts.get(context);
     if (!host) {
@@ -247,7 +254,27 @@ export class LessPlugin extends AbstractPlugin {
       });
       this.pluginHosts.set(context, host);
     }
-    context.pluginHost = host;
+    const existingHost = context.pluginHost;
+    const globalFns = [
+      ...(existingHost?.globalFns ?? []),
+      ...(host.globalFns ?? [])
+    ];
+    context.pluginHost = {
+      ...existingHost,
+      ...host,
+      ...(globalFns.length === 0 ? {} : { globalFns }),
+      loadPlugin: host.loadPlugin || existingHost?.loadPlugin
+        ? (request) => Promise.all([
+            existingHost?.loadPlugin?.(request) ?? [],
+            host.loadPlugin?.(request) ?? []
+          ]).then(([existingFns, hostFns]) => [
+            ...existingFns,
+            ...hostFns
+          ])
+        : undefined,
+      invokeRawFunction: (fn, args, ctx) =>
+        host.invokeRawFunction?.(fn, args, ctx) ?? existingHost?.invokeRawFunction?.(fn, args, ctx)
+    };
   }
 
   override resolve(filePath: string | string[], currentDir: string, searchPaths: string[]) {
@@ -311,14 +338,7 @@ export class LessPlugin extends AbstractPlugin {
 
   safeParse(filePath: string, source: string, parseOptions?: SafeParseOptions): ISafeParseResult {
     void parseOptions;
-    try {
-      return { document: parseLess(source), errors: [], warnings: [] };
-    } catch (error) {
-      return {
-        errors: [parserDiagnostic({ dialect: 'Less', error, filePath, source })],
-        warnings: []
-      };
-    }
+    return safeParseLess(filePath, source);
   }
 }
 

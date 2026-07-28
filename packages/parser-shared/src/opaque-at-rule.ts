@@ -40,14 +40,14 @@ const preprocessorBrace = balanced(
 const preprocessorSkip = [blockComment, lineComment, escape, doubleQuoted, singleQuoted, preprocessorBrace];
 
 export const opaqueAtRuleRecognition = rules(_g => ({
-  CssAstOpaqueCapturePrelude: optional(scanTo(
+  CssOpaqueCapturePrelude: optional(scanTo(
     choice(
       literal('{'),
       literal(';')
     ),
     { skip: cssSkip }
   )),
-  CssAstOpaqueCaptureBody: noTrivia(scanTo(
+  CssOpaqueCaptureBody: noTrivia(scanTo(
     literal('}'),
     { skip: cssSkip }
   )),

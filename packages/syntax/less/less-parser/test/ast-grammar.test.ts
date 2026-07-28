@@ -1,30 +1,40 @@
-import { run } from 'parseman';
-import type { Stylesheet } from '@jesscss/core/ast';
-import { serialize } from '../../../../core/src/ast/serialize.js';
-import { parseLessCst } from '../src/cst.js';
-import { lessAstGrammar } from '../src/ast/grammar.js';
-import { LessDynamicCharsetError } from '../src/parse-error.js';
+import { run } from "parseman";
+import type { Stylesheet } from "@jesscss/core/ast";
+import { serialize } from "../../../../core/src/ast/serialize.js";
+import { parseLessCst, type LessCstChild } from "../src/cst.js";
+import { lessAstGrammar } from "../src/grammar.js";
+import {
+  LessBareVariableInterpolationError,
+  LessDynamicCharsetError,
+  LessInlineJavaScriptError,
+} from "../src/parse-error.js";
 
 function isStylesheet(value: unknown): value is Stylesheet {
-  return typeof value === 'object'
-    && value !== null
-    && 'type' in value
-    && value.type === 'Stylesheet'
-    && 'children' in value
-    && Array.isArray(value.children);
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "Stylesheet" &&
+    "children" in value &&
+    Array.isArray(value.children)
+  );
 }
 
 function stylesheet(value: unknown): Stylesheet {
   if (!isStylesheet(value)) {
-    throw new TypeError('Expected the Less grammar to produce a Stylesheet');
+    throw new TypeError("Expected the Less grammar to produce a Stylesheet");
   }
   return value;
 }
 
 function parsesCompleteStylesheet(source: string): boolean {
   try {
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-    return result.ok && result.unconsumedFrom === null && isStylesheet(result.value);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+    return (
+      result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
+    );
   } catch {
     return false;
   }
@@ -38,97 +48,314 @@ function expectExplicitListSeparators(value: unknown): void {
   if (!isRecord(value)) {
     return;
   }
-  if (value.type === 'List') {
-    expect(value.sep).toSatisfy(separator => separator === ',' || separator === '/');
+  if (value.type === "List") {
+    expect(value.sep).toSatisfy(
+      (separator) => separator === "," || separator === "/"
+    );
   }
   Object.values(value).forEach(expectExplicitListSeparators);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === "object" && value !== null;
 }
 
-describe('Less AST grammar facts', () => {
-  it('keeps ordinary adjacency as a raw value array and reserves List for explicit separators', () => {
+function findCstNodes(
+  node: LessCstChild,
+  grammarType: string
+): Extract<LessCstChild, { _tag: "node" }>[] {
+  if (node._tag !== "node") {
+    return [];
+  }
+  const self = node.grammarType === grammarType ? [node] : [];
+  return [
+    ...self,
+    ...node.children.flatMap((child) => findCstNodes(child, grammarType)),
+  ];
+}
+
+function cstLeafValues(node: LessCstChild): string[] {
+  if (node._tag === "leaf") {
+    return [node.value];
+  }
+  return node.children.flatMap(cstLeafValues);
+}
+
+function cstIssueCount(result: ReturnType<typeof parseLessCst>): number {
+  return (
+    Number(!result.ok) +
+    result.errors.length +
+    Number(result.unconsumedFrom !== null)
+  );
+}
+
+describe("Less AST grammar facts", () => {
+  it("keeps ordinary adjacency as a raw value array and reserves List for explicit separators", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '@space: red blue; @comma: red, blue; .x { value: @space; }',
+      "@space: red blue; @comma: red, blue; .x { value: @space; }",
       { trivia: lessAstGrammar.whitespace }
     );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(stylesheet(result.value).children.slice(0, 2)).toMatchObject([
-      { type: 'VariableDeclaration', name: 'space', value: [{ type: 'Color', src: 'red' }, { type: 'Color', src: 'blue' }] },
-      { type: 'VariableDeclaration', name: 'comma', value: { type: 'List', sep: ',' } }
+      {
+        type: "VariableDeclaration",
+        name: "space",
+        value: [
+          { type: "Color", src: "red" },
+          { type: "Color", src: "blue" },
+        ],
+      },
+      {
+        type: "VariableDeclaration",
+        name: "comma",
+        value: { type: "List", sep: "," },
+      },
     ]);
     expectExplicitListSeparators(result.value);
   });
 
-  it('retains a standalone root block comment before an escaped selector in source order', () => {
+  it("treats a standalone root block comment before an escaped selector as trivia", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '/* escaped selector note */ \\62\\6c\\6f\\63\\6b { color: silver; }',
+      "/* escaped selector note */ \\62\\6c\\6f\\63\\6b { color: silver; }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'Comment', text: '/* escaped selector note */' },
-        { type: 'Rule', body: [{ type: 'Declaration', name: 'color', value: { type: 'Color', src: 'silver' } }] }
-      ]
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "color",
+              value: { type: "Color", src: "silver" },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('completes a document with final Less line-comment trivia', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '@tone: red; // final override\n', { trivia: lessAstGrammar.whitespace });
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'VariableDeclaration', name: 'tone' }] });
-  });
-
-  it('completes a namespaced document before terminal line-comment trivia', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '#ns { .m() { color: red; } }\n// compatibility note\n', { trivia: lessAstGrammar.whitespace });
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule' }] });
-  });
-
-  it('keeps a generic block at-rule function prelude structural', () => {
+  it("completes a document with final Less line-comment trivia", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '@document url-prefix() { .child { color: red; } }',
+      "@tone: red; // final override\n",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [{ type: "VariableDeclaration", name: "tone" }],
+    });
+  });
+
+  it("completes a namespaced document before terminal line-comment trivia", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "#ns { .m() { color: red; } }\n// compatibility note\n",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [{ type: "Rule" }],
+    });
+  });
+
+  it("keeps a generic block at-rule function prelude structural", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "@document url-prefix() { .child { color: red; } }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock',
-        name: '@document',
-        prelude: { type: 'FunctionCall', name: 'url-prefix', args: [] },
-        body: [{ type: 'Rule' }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@document",
+          prelude: { type: "FunctionCall", name: "url-prefix", args: [] },
+          body: [{ type: "Rule" }],
+        },
+      ],
     });
   });
 
-  it('preserves the historical doubled-quote function argument as one opaque fact', () => {
-    const source = '@-x-document url-prefix(""github.com"") { h1 { color: red; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("accepts valid CSS component preludes on generic Less at-rules", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '@unknown [data-x="}"] and (--flag: value) { .child { color: red; } }',
+      { trivia: lessAstGrammar.whitespace }
+    );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock',
-        name: '@-x-document',
-        prelude: { type: 'FunctionCall', name: 'url-prefix', args: [{ type: 'Any', src: '""github.com""' }] }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@unknown",
+          prelude: { type: "Any", src: '[data-x="}"] and (--flag: value)' },
+          body: [{ type: "Rule" }],
+        },
+      ],
+    });
+  });
+
+  it("accepts valid CSS component preludes on generic Less at-rule statements", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "@unknown (--flag: value);",
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleStatement",
+          name: "@unknown",
+          prelude: { type: "Any", src: "(--flag: value)" },
+        },
+      ],
+    });
+  });
+
+  it("keeps typed generic at-rule preludes structural before the CSS component fallback", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "@unknown foo 42 (bar) { .child { color: red; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@unknown",
+          prelude: { type: "SpacedValue" },
+          body: [{ type: "Rule" }],
+        },
+      ],
+    });
+  });
+
+  it("keeps CSS-compatible generic at-rule function preludes structural", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '@-moz-document regexp("(\\d{0,15})") { a { color: red; } }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@-moz-document",
+          prelude: {
+            type: "FunctionCall",
+            name: "regexp",
+            args: [{ type: "Quoted", value: "(\\d{0,15})" }],
+          },
+          body: [{ type: "Rule" }],
+        },
+      ],
+    });
+  });
+
+  it("uses the CSS component fallback for generic prelude syntax outside the typed Less subset", () => {
+    const block = run(
+      lessAstGrammar.LessAstDocument,
+      '@-moz-document/* near */ /* filter */ url("example.com/{") /* a */ {}',
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(block.ok).toBe(true);
+    expect(block.unconsumedFrom).toBeNull();
+    expect(block.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@-moz-document",
+          prelude: { type: "Url" },
+          body: [],
+        },
+      ],
+    });
+
+    const statement = run(
+      lessAstGrammar.LessAstDocument,
+      "@arbitrary value after ();",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(statement.ok).toBe(true);
+    expect(statement.unconsumedFrom).toBeNull();
+    expect(statement.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleStatement",
+          name: "@arbitrary",
+          prelude: { type: "Any", src: "value after ()" },
+        },
+      ],
+    });
+  });
+
+  it("keeps generic at-rule prelude fallback behind Less-specific at routes", () => {
+    const detachedCall = run(lessAstGrammar.LessAstDocument, "@rules();", {
+      trivia: lessAstGrammar.whitespace,
+    });
+    expect(detachedCall.ok).toBe(true);
+    expect(detachedCall.unconsumedFrom).toBeNull();
+    expect(detachedCall.value).toMatchObject({
+      type: "Stylesheet",
+      children: [{ type: "Reference" }],
+    });
+  });
+
+  it("preserves the historical doubled-quote function argument as one opaque fact", () => {
+    const source =
+      '@-x-document url-prefix(""github.com"") { h1 { color: red; } }';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@-x-document",
+          prelude: {
+            type: "FunctionCall",
+            name: "url-prefix",
+            args: [{ type: "Any", src: '""github.com""' }],
+          },
+        },
+      ],
     });
     expect(serialize(stylesheet(result.value)).css).toBe(
       '@-x-document url-prefix(""github.com"") {\n  h1 {\n    color: red;\n  }\n}\n'
@@ -142,77 +369,115 @@ describe('Less AST grammar facts', () => {
     expect(generic.ok).toBe(true);
     expect(generic.unconsumedFrom).toBeNull();
     expect(generic.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ prelude: { type: 'FunctionCall', name: 'custom', args: [{ type: 'Any', src: '""github.com""' }] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          prelude: {
+            type: "FunctionCall",
+            name: "custom",
+            args: [{ type: "Any", src: '""github.com""' }],
+          },
+        },
+      ],
     });
   });
 
-  it('retains a block comment immediately before a function argument comma', () => {
+  it("keeps a block comment before a function argument comma as layout trivia", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.card { background: linear-gradient(#333 /* keep */, #111); }',
+      ".card { background: linear-gradient(#333 /* keep */, #111); }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [{ type: 'Declaration', value: {
-        type: 'FunctionCall', name: 'linear-gradient', args: [
-          [{ type: 'Color', src: '#333' }, { type: 'Comment', text: '/* keep */' }],
-          { type: 'Color', src: '#111' }
-        ]
-      } }] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              value: {
+                type: "FunctionCall",
+                name: "linear-gradient",
+                args: [
+                  { type: "Color", src: "#333" },
+                  { type: "Color", src: "#111" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('skips Less line-comment trivia after every function-argument delimiter', () => {
+  it("skips Less line-comment trivia after every function-argument delimiter", () => {
     /*
      * The `separator` capture is authored layout, not a trivia substitute: the
      * argument after a delimiter runs the same ambient trivia as the first one.
      */
     const sources = [
-      '.a { b: max(1px,\n  // c\n  2px); }',
-      '.a { b: max(1px, // c\n2px); }',
-      '.a { b: max(\n  // c\n  1px, 2px); }',
-      '.a { b: e(1px;\n  // c\n  2px); }'
+      ".a { b: max(1px,\n  // c\n  2px); }",
+      ".a { b: max(1px, // c\n2px); }",
+      ".a { b: max(\n  // c\n  1px, 2px); }",
+      ".a { b: e(1px;\n  // c\n  2px); }",
     ];
     for (const source of sources) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
     }
   });
 
-  it('retains the authored delimiter gap when a line comment follows a function argument comma', () => {
+  it("retains the authored delimiter gap when a line comment follows a function argument comma", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.a { b: max(1px,\n  // c\n  2px); }',
+      ".a { b: max(1px,\n  // c\n  2px); }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [{ type: 'Declaration', value: {
-        type: 'FunctionCall', name: 'max', args: [
-          { type: 'Dimension', number: 1, unit: 'px' },
-          { type: 'Dimension', number: 2, unit: 'px' }
-        ]
-      } }] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              value: {
+                type: "FunctionCall",
+                name: "max",
+                args: [
+                  { type: "Dimension", number: 1, unit: "px" },
+                  { type: "Dimension", number: 2, unit: "px" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
 
     /*
      * The authored `,\n  ` gap survives as layout; the comment is trivia, so it
      * never reaches the emitted bytes.
      */
-    expect(serialize(stylesheet(result.value)).css).toBe('.a {\n  b: max(1px,\n    2px);\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      ".a {\n  b: max(1px,\n    2px);\n}\n"
+    );
   });
 
-  it('skips line-comment trivia after a delimiter in a call-argument function', () => {
+  it("skips line-comment trivia after a delimiter in a call-argument function", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '@m: { a: 1; }\neach(@m,\n  // c\n  #(@v, @k) { .@{k} { x: @v; } });',
+      "@m: { a: 1; }\neach(@m,\n  // c\n  #(@v, @k) { .@{k} { x: @v; } });",
       { trivia: lessAstGrammar.whitespace }
     );
 
@@ -220,1049 +485,2268 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
   });
 
-  it('reads a glued variable reference as the same expression as the spaced spelling', () => {
+  it("reads a glued variable reference as the same expression as the spaced spelling", () => {
     /*
      * Less 4.x parses `1px@v` as the two-element space-separated expression
      * `1px @v`, in both `@name:` and property position. The absent gap is
      * layout, so both spellings must produce the identical value shape.
      */
-    const glued = ['@x: 1px@v;', '.a { b: 1px@v; }', '@x: calc(@w + 2vw)@v;', '.a { b: calc(@w + 2vw)@v; }'];
-    const spaced = ['@x: 1px @v;', '.a { b: 1px @v; }', '@x: calc(@w + 2vw) @v;', '.a { b: calc(@w + 2vw) @v; }'];
+    const glued = [
+      "@x: 1px@v;",
+      ".a { b: 1px@v; }",
+      "@x: calc(@w + 2vw)@v;",
+      ".a { b: calc(@w + 2vw)@v; }",
+    ];
+    const spaced = [
+      "@x: 1px @v;",
+      ".a { b: 1px @v; }",
+      "@x: calc(@w + 2vw) @v;",
+      ".a { b: calc(@w + 2vw) @v; }",
+    ];
     const shape = (source: string): unknown => {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
-      return JSON.parse(JSON.stringify(result.value, (key, value) => key === 'span' ? undefined : value));
+      return JSON.parse(
+        JSON.stringify(result.value, (key, value) =>
+          key === "span" ? undefined : value
+        )
+      );
     };
     for (let index = 0; index < glued.length; index += 1) {
       expect(shape(glued[index]!), glued[index]).toEqual(shape(spaced[index]!));
     }
   });
 
-  it('keeps a glued variable reference out of the value when the gap is a statement boundary', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '@x: 1px;\n@v: 2px;', { trivia: lessAstGrammar.whitespace });
+  it("keeps a glued variable reference out of the value when the gap is a statement boundary", () => {
+    const result = run(lessAstGrammar.LessAstDocument, "@x: 1px;\n@v: 2px;", {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'x' },
-        { type: 'VariableDeclaration', name: 'v' }
-      ]
+        { type: "VariableDeclaration", name: "x" },
+        { type: "VariableDeclaration", name: "v" },
+      ],
     });
   });
 
-  it('reads a lookup-bearing mixin reference as a variable value', () => {
+  it("reads a lookup-bearing mixin reference as a variable value", () => {
     /*
      * The bare-call arms of the variable-value choice must not claim the call
      * half of `#m(@a)[…]`; the whole reference is one value, exactly as it
      * already is in property position.
      */
-    for (const source of ['@v: #m(@a)[];', '@v: #m(@a)[key];', '@v: #m()[];', '@v: .m(@a)[];', '@v: #ns > .m(@a)[];']) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    for (const source of [
+      "@v: #m(@a)[];",
+      "@v: #m(@a)[key];",
+      "@v: #m()[];",
+      "@v: .m(@a)[];",
+      "@v: #ns > .m(@a)[];",
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
     }
   });
 
-  it('keeps a bare mixin call as a variable value when no lookup follows', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '@v: #m(@a);', { trivia: lessAstGrammar.whitespace });
+  it("keeps a bare mixin call as a variable value when no lookup follows", () => {
+    const result = run(lessAstGrammar.LessAstDocument, "@v: #m(@a);", {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'VariableDeclaration', name: 'v', value: { type: 'MixinCall' } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "v",
+          value: { type: "MixinCall" },
+        },
+      ],
     });
   });
 
-  it('lowers an inline detached-ruleset each() iterable with a parameterized callback', () => {
+  it("lowers an inline detached-ruleset each() iterable with a parameterized callback", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      'each({ margin: m; padding: p; }, #(@abbrev, @prop) { .@{abbrev} { @{prop}: 0; } });',
+      "each({ margin: m; padding: p; }, #(@abbrev, @prop) { .@{abbrev} { @{prop}: 0; } });",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'For', binding: { kind: 'comma', names: ['abbrev', 'prop', undefined] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "For",
+          binding: { kind: "comma", names: ["abbrev", "prop", undefined] },
+        },
+      ],
     });
   });
 
-  it('keeps an interpolated pseudo argument structural', () => {
+  it("keeps an interpolated pseudo argument structural", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.a { &:lang(@{lang}) ~ .b::after { content: @value; } }',
+      ".a { &:lang(@{lang}) ~ .b::after { content: @value; } }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { type: 'SimpleSelector', text: '&', interp: null },
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Rule",
+              selector: {
+                selectors: [
+                  {
+                    head: {
+                      simples: [
+                        { type: "SimpleSelector", text: "&", interp: null },
 
-        // The argument is typed parts, never a joined string.
-        { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
-          { lit: ':lang(' },
-          { ref: { type: 'VariableReference', name: 'lang' }, unquote: true },
-          { lit: ')' }
-        ] } }
-      ] } }] } }] }]
+                        // The argument is typed parts, never a joined string.
+                        {
+                          type: "SimpleSelector",
+                          text: null,
+                          interp: {
+                            type: "Interpolation",
+                            parts: [
+                              { lit: ":lang(" },
+                              {
+                                ref: {
+                                  type: "VariableReference",
+                                  name: "lang",
+                                },
+                                unquote: true,
+                              },
+                              { lit: ")" },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('accepts an interpolated argument on non-selector and selector pseudos alike', () => {
-    for (const source of [':lang(@{l}) { a: b; }', ':dir(@{d}) { a: b; }', ':not(@{s}) { a: b; }', ':lang(x@{l}y) { a: b; }']) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("accepts an interpolated argument on non-selector and selector pseudos alike", () => {
+    for (const source of [
+      ":lang(@{l}) { a: b; }",
+      ":dir(@{d}) { a: b; }",
+      ":not(@{s}) { a: b; }",
+      ":lang(x@{l}y) { a: b; }",
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(result.ok, source).toBe(true);
       expect(result.unconsumedFrom, source).toBeNull();
     }
   });
 
-  it('leaves a fully static pseudo argument on the static route', () => {
-    const result = run(lessAstGrammar.LessAstDocument, ':lang(en) { a: b; }', { trivia: lessAstGrammar.whitespace });
+  it("leaves a fully static pseudo argument on the static route", () => {
+    const result = run(lessAstGrammar.LessAstDocument, ":lang(en) { a: b; }", {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ selector: { selectors: [{ head: { simples: [{ type: 'SimpleSelector', text: ':lang(en)', interp: null }] } }] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ":lang(en)", interp: null },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('keeps a CSS escape hack as a typed declaration-value suffix', () => {
+  it("keeps a CSS escape hack as a typed declaration-value suffix", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.x { background-color: #000 \\9; }',
+      ".x { background-color: #000 \\9; }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [{
-          type: 'Declaration',
-          value: [{ type: 'Color', src: '#000' }, { type: 'Any', src: '\\9' }]
-        }]
-      }]
-    });
-    expect(serialize(stylesheet(result.value)).css).toBe('.x {\n  background-color: #000 \\9;\n}\n');
-  });
-
-  it('keeps a generic at-rule parenthesized group structural after ordinary terms', () => {
-    const source = '@unknown foo 42 (bar) { x { y: z; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock',
-        name: '@unknown',
-        prelude: {
-          type: 'SpacedValue',
-          parts: [
-            { type: 'Keyword', src: 'foo' },
-            { type: 'Dimension', src: '42' },
-            { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'bar' } }
-          ]
-        }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              value: [
+                { type: "Color", src: "#000" },
+                { type: "Any", src: "\\9" },
+              ],
+            },
+          ],
+        },
+      ],
     });
     expect(serialize(stylesheet(result.value)).css).toBe(
-      '@unknown foo 42 (bar) {\n  x {\n    y: z;\n  }\n}\n'
+      ".x {\n  background-color: #000 \\9;\n}\n"
     );
   });
 
-  it('keeps @page pseudo-pages as one typed header atom', () => {
-    const source = '@page :first { margin: 3cm; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps a generic at-rule parenthesized group structural after ordinary terms", () => {
+    const source = "@unknown foo 42 (bar) { x { y: z; } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'AtRuleBlock', name: '@page', prelude: { type: 'Any', src: ':first' } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@unknown",
+          prelude: {
+            type: "SpacedValue",
+            parts: [
+              { type: "Keyword", src: "foo" },
+              { type: "Dimension", src: "42" },
+              {
+                type: "Block",
+                delimiter: "paren",
+                inner: { type: "Keyword", src: "bar" },
+              },
+            ],
+          },
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('@page :first {\n  margin: 3cm;\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "@unknown foo 42 (bar) {\n  x {\n    y: z;\n  }\n}\n"
+    );
   });
 
-  it('constructs static Less selector captures as existing selector-valued facts', () => {
-    const source = '@targets: *[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)];';
+  it("keeps @page pseudo-pages as one typed header atom", () => {
+    const source = "@page :first { margin: 3cm; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@page",
+          prelude: { type: "Any", src: ":first" },
+        },
+      ],
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "@page :first {\n  margin: 3cm;\n}\n"
+    );
+  });
+
+  it("constructs static Less selector captures as existing selector-valued facts", () => {
+    const source =
+      "@targets: *[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)];";
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const direct = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'VariableDeclaration',
-        name: 'targets',
-        value: {
-          type: 'SelectorCapture',
-          branches: ['.notice', '.card:not(.muted, .disabled):nth-child(-n+2)', '.tail:nth-child(2n+1)'],
-          src: '*[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)]'
-        }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "targets",
+          value: {
+            type: "SelectorCapture",
+            branches: [
+              ".notice",
+              ".card:not(.muted, .disabled):nth-child(-n+2)",
+              ".tail:nth-child(2n+1)",
+            ],
+            src: "*[.notice, .card:not(.muted, .disabled):nth-child(-n+2), .tail:nth-child(2n+1)]",
+          },
+        },
+      ],
     });
 
     for (const invalid of [
-      '@targets: *[@{selector}];',
-      '@targets: *[.card-@{tone}];',
-      '@targets: *[.card:not(@{tone})];',
-      '@targets: * [.notice];'
+      "@targets: *[@{selector}];",
+      "@targets: *[.card-@{tone}];",
+      "@targets: *[.card:not(@{tone})];",
+      "@targets: * [.notice];",
     ]) {
-      const rejected = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), invalid).toBe(false);
+      const rejected = run(lessAstGrammar.LessAstDocument, invalid, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        rejected.ok &&
+          rejected.unconsumedFrom === null &&
+          isStylesheet(rejected.value),
+        invalid
+      ).toBe(false);
     }
   });
 
-  it('lowers Less each() callbacks into canonical Jess-shaped For bindings', () => {
-    const source = 'each(@items, .(@entry) { value: @entry; });\neach(@items, .(@item, @key, @index) { value: @item; key: @key; index: @index; });\neach(@items, { value: @value; key: @key; index: @index; });';
+  it("lowers Less each() callbacks into canonical Jess-shaped For bindings", () => {
+    const source =
+      "each(@items, .(@entry) { value: @entry; });\neach(@items, .(@item, @key, @index) { value: @item; key: @key; index: @index; });\neach(@items, { value: @value; key: @key; index: @index; });";
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {
-          type: 'For',
-          iterable: { type: 'VariableReference', name: 'items', lookup: 'scoped' },
-          binding: { kind: 'single', name: 'entry' },
+          type: "For",
+          iterable: {
+            type: "VariableReference",
+            name: "items",
+            lookup: "scoped",
+          },
+          binding: { kind: "single", name: "entry" },
           rules: [
-            { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'entry', lookup: 'scoped' }, merge: null, important: false }
-          ]
+            {
+              type: "Declaration",
+              name: "value",
+              value: {
+                type: "VariableReference",
+                name: "entry",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+          ],
         },
         {
-          type: 'For',
-          iterable: { type: 'VariableReference', name: 'items', lookup: 'scoped' },
-          binding: { kind: 'comma', names: ['item', 'key', 'index'] },
+          type: "For",
+          iterable: {
+            type: "VariableReference",
+            name: "items",
+            lookup: "scoped",
+          },
+          binding: { kind: "comma", names: ["item", "key", "index"] },
           rules: [
-            { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'item', lookup: 'scoped' }, merge: null, important: false },
-            { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'scoped' }, merge: null, important: false },
-            { type: 'Declaration', name: 'index', value: { type: 'VariableReference', name: 'index', lookup: 'scoped' }, merge: null, important: false }
-          ]
+            {
+              type: "Declaration",
+              name: "value",
+              value: {
+                type: "VariableReference",
+                name: "item",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "key",
+              value: {
+                type: "VariableReference",
+                name: "key",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "index",
+              value: {
+                type: "VariableReference",
+                name: "index",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+          ],
         },
         {
-          type: 'For',
-          iterable: { type: 'VariableReference', name: 'items', lookup: 'scoped' },
-          binding: { kind: 'comma', names: ['value', 'key', 'index'] },
+          type: "For",
+          iterable: {
+            type: "VariableReference",
+            name: "items",
+            lookup: "scoped",
+          },
+          binding: { kind: "comma", names: ["value", "key", "index"] },
           rules: [
-            { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, merge: null, important: false },
-            { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'scoped' }, merge: null, important: false },
-            { type: 'Declaration', name: 'index', value: { type: 'VariableReference', name: 'index', lookup: 'scoped' }, merge: null, important: false }
-          ]
-        }
-      ]
+            {
+              type: "Declaration",
+              name: "value",
+              value: {
+                type: "VariableReference",
+                name: "value",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "key",
+              value: {
+                type: "VariableReference",
+                name: "key",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "index",
+              value: {
+                type: "VariableReference",
+                name: "index",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('accepts hash-prefixed Less each() callbacks as the same canonical For binding', () => {
-    const source = 'each(@items, #(@item, @key) { value: @item; key: @key; });';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("requires the Less each() opener to be glued", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "each (1, { value: @value; });",
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(
+      result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
+    ).toBe(false);
+  });
+
+  it("accepts hash-prefixed Less each() callbacks as the same canonical For binding", () => {
+    const source = "each(@items, #(@item, @key) { value: @item; key: @key; });";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'For',
-        iterable: { type: 'VariableReference', name: 'items', lookup: 'scoped' },
-        binding: { kind: 'comma', names: ['item', 'key', undefined] },
-        rules: [
-          { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'item', lookup: 'scoped' } },
-          { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'scoped' } }
-        ]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "For",
+          iterable: {
+            type: "VariableReference",
+            name: "items",
+            lookup: "scoped",
+          },
+          binding: { kind: "comma", names: ["item", "key", undefined] },
+          rules: [
+            {
+              type: "Declaration",
+              name: "value",
+              value: {
+                type: "VariableReference",
+                name: "item",
+                lookup: "scoped",
+              },
+            },
+            {
+              type: "Declaration",
+              name: "key",
+              value: {
+                type: "VariableReference",
+                name: "key",
+                lookup: "scoped",
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('accepts semicolon-separated anonymous each() callback bindings', () => {
-    const source = '.entry { each(a b, .(@value; @index) { item-@{index}: @value; }); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("accepts semicolon-separated anonymous each() callback bindings", () => {
+    const source =
+      ".entry { each(a b, .(@value; @index) { item-@{index}: @value; }); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{ body: [{
-        type: 'For',
-        binding: { kind: 'comma', names: ['value', 'index', undefined] }
-      }] }]
+      children: [
+        {
+          body: [
+            {
+              type: "For",
+              binding: { kind: "comma", names: ["value", "index", undefined] },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('lowers a flat static mixin call iterable into the existing For iterable fact', () => {
-    const source = '.values() { first: red; second: blue; } each(.values(), .(@value, @key) { .item { value: @value; key: @key; } });';
+  it("lowers a flat static mixin call iterable into the existing For iterable fact", () => {
+    const source =
+      ".values() { first: red; second: blue; } each(.values(), .(@value, @key) { .item { value: @value; key: @key; } });";
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const direct = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'MixinDef', name: '.values' },
-        { type: 'For', iterable: { type: 'MixinCall', name: '.values', args: [], path: [] }, binding: { kind: 'comma', names: ['value', 'key', undefined] }, rules: [{ type: 'Rule' }] }
-      ]
+        { type: "MixinDef", name: ".values" },
+        {
+          type: "For",
+          iterable: { type: "MixinCall", name: ".values", args: [], path: [] },
+          binding: { kind: "comma", names: ["value", "key", undefined] },
+          rules: [{ type: "Rule" }],
+        },
+      ],
     });
   });
 
-  it('lowers a static namespaced mixin-call iterable through the existing MixinCall path fact', () => {
-    const source = '.library { .values() { first: red; second: blue; } } each(.library > .values(), .(@value, @key) { .item { value: @value; key: @key; } });';
+  it("lowers a static namespaced mixin-call iterable through the existing MixinCall path fact", () => {
+    const source =
+      ".library { .values() { first: red; second: blue; } } each(.library > .values(), .(@value, @key) { .item { value: @value; key: @key; } });";
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const direct = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'Rule', selector: { selectors: [{ head: { simples: [{ text: '.library' }] } }] }, body: [{ type: 'MixinDef', name: '.values' }] },
-        { type: 'For', iterable: { type: 'MixinCall', name: '.values', args: [], path: [{ comb: ' ', sel: '.library' }] }, binding: { kind: 'comma', names: ['value', 'key', undefined] }, rules: [{ type: 'Rule' }] }
-      ]
+        {
+          type: "Rule",
+          selector: {
+            selectors: [{ head: { simples: [{ text: ".library" }] } }],
+          },
+          body: [{ type: "MixinDef", name: ".values" }],
+        },
+        {
+          type: "For",
+          iterable: {
+            type: "MixinCall",
+            name: ".values",
+            args: [],
+            path: [{ comb: " ", sel: ".library" }],
+          },
+          binding: { kind: "comma", names: ["value", "key", undefined] },
+          rules: [{ type: "Rule" }],
+        },
+      ],
     });
     expect(isStylesheet(direct.value)).toBe(true);
     if (!isStylesheet(direct.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(serialize(direct.value)).toEqual({
-      css: '.item {\n  value: red;\n  key: first;\n}\n.item {\n  value: blue;\n  key: second;\n}\n'
+      css: ".item {\n  value: red;\n  key: first;\n}\n.item {\n  value: blue;\n  key: second;\n}\n",
     });
   });
 
-  it('keeps dynamic, important, and semicolon namespaced mixin-call iterables out of the direct route', () => {
+  it("keeps dynamic, important, and semicolon namespaced mixin-call iterables out of the direct route", () => {
     for (const source of [
-      'each(.library > .@{name}(), { color: red; });',
-      'each(.library > .values() !important, { color: red; });',
-      'each(.library > .values();, { color: red; });'
+      "each(.library > .@{name}(), { color: red; });",
+      "each(.library > .values() !important, { color: red; });",
+      "each(.library > .values();, { color: red; });",
     ]) {
-      const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
+      const direct = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        source
+      ).toBe(false);
     }
   });
 
-  it('lowers a flat static mixin call variable value into the existing callable binding fact', () => {
-    const source = '.make-map() { tone: blue; } @map: .make-map(red, @tone: blue);';
+  it("lowers a flat static mixin call variable value into the existing callable binding fact", () => {
+    const source =
+      ".make-map() { tone: blue; } @map: .make-map(red, @tone: blue);";
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const direct = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'MixinDef', name: '.make-map' },
-        { type: 'VariableDeclaration', name: 'map', value: { type: 'MixinCall', name: '.make-map', args: [{ value: { src: 'red' } }, { name: 'tone', value: { src: 'blue' } }], path: [], important: false } }
-      ]
+        { type: "MixinDef", name: ".make-map" },
+        {
+          type: "VariableDeclaration",
+          name: "map",
+          value: {
+            type: "MixinCall",
+            name: ".make-map",
+            args: [
+              { value: { src: "red" } },
+              { name: "tone", value: { src: "blue" } },
+            ],
+            path: [],
+            important: false,
+          },
+        },
+      ],
     });
   });
 
-  it('drops only authored empty statements from simple and named each callbacks', () => {
-    const source = 'each(1, { ; value: @value; ; }); each(2, .(@entry) { ; value: @entry; ; });';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("drops only authored empty statements from simple and named each callbacks", () => {
+    const source =
+      "each(1, { ; value: @value; ; }); each(2, .(@entry) { ; value: @entry; ; });";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'For', binding: { kind: 'comma', names: ['value', 'key', 'index'] }, rules: [{ type: 'Declaration', name: 'value' }] },
-        { type: 'For', binding: { kind: 'single', name: 'entry' }, rules: [{ type: 'Declaration', name: 'value' }] }
-      ]
+        {
+          type: "For",
+          binding: { kind: "comma", names: ["value", "key", "index"] },
+          rules: [{ type: "Declaration", name: "value" }],
+        },
+        {
+          type: "For",
+          binding: { kind: "single", name: "entry" },
+          rules: [{ type: "Declaration", name: "value" }],
+        },
+      ],
     });
   });
 
-  it('retains the existing typed keyframes fact in detached-ruleset and each callback bodies', () => {
-    const source = '@theme: { @keyframes fade { from { opacity: 0; } } }; each(1, { @-webkit-keyframes "slide" { 50% { opacity: @value; } } });';
+  it("retains the existing typed keyframes fact in detached-ruleset and each callback bodies", () => {
+    const source =
+      '@theme: { @keyframes fade { from { opacity: 0; } } }; each(1, { @-webkit-keyframes "slide" { 50% { opacity: @value; } } });';
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const direct = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', value: { type: 'AnonymousMixin', body: [{ type: 'AtRuleBlock', name: '@keyframes', body: [{ type: 'Rule' }] }] } },
-        { type: 'For', rules: [{ type: 'AtRuleBlock', name: '@-webkit-keyframes', prelude: { type: 'Quoted', value: 'slide' }, body: [{ type: 'Rule' }] }] }
-      ]
+        {
+          type: "VariableDeclaration",
+          value: {
+            type: "AnonymousMixin",
+            body: [
+              {
+                type: "AtRuleBlock",
+                name: "@keyframes",
+                body: [{ type: "Rule" }],
+              },
+            ],
+          },
+        },
+        {
+          type: "For",
+          rules: [
+            {
+              type: "AtRuleBlock",
+              name: "@-webkit-keyframes",
+              prelude: { type: "Quoted", value: "slide" },
+              body: [{ type: "Rule" }],
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs canonical import, variable, declaration, and ruleset facts directly', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-export \'tokens.less\';', { trivia: lessAstGrammar.whitespace });
+  it("constructs canonical import, variable, declaration, and ruleset facts directly", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      '@theme: "dark";\n.a { /* note */ color: red; }\n@import "theme.less";\n@-export \'tokens.less\';',
+      { trivia: lessAstGrammar.whitespace }
+    );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {
-          type: 'VariableDeclaration',
-          name: 'theme',
-          value: { type: 'Quoted', src: '"dark"', value: 'dark', quote: '"', escaped: false },
-          write: { mode: 'declare' }
+          type: "VariableDeclaration",
+          name: "theme",
+          value: {
+            type: "Quoted",
+            src: '"dark"',
+            value: "dark",
+            quote: '"',
+            escaped: false,
+          },
+          write: { mode: "declare" },
         },
         {
-          type: 'Rule',
+          type: "Rule",
           selector: {
-            type: 'SelectorList',
-            selectors: [{
-              type: 'ComplexSelector',
-              head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.a', interp: null }] },
-              tail: []
-            }]
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".a", interp: null },
+                  ],
+                },
+                tail: [],
+              },
+            ],
           },
           body: [
-            { type: 'Comment', text: '/* note */' },
             {
-              type: 'Declaration',
-              name: 'color',
-              value: { type: 'Color', src: 'red' },
+              type: "Declaration",
+              name: "color",
+              value: { type: "Color", src: "red" },
               merge: null,
-              important: false
-            }
-          ]
+              important: false,
+            },
+          ],
         },
         {
-          type: 'ImportAtRule',
-          name: '@import',
+          type: "ImportAtRule",
+          name: "@import",
           options: null,
-          target: { type: 'Quoted', src: '"theme.less"', value: 'theme.less', quote: '"', escaped: false },
+          target: {
+            type: "Quoted",
+            src: '"theme.less"',
+            value: "theme.less",
+            quote: '"',
+            escaped: false,
+          },
           alias: null,
-          tail: null
+          tail: null,
         },
         {
-          type: 'ImportAtRule',
-          name: '@-export',
+          type: "ImportAtRule",
+          name: "@-export",
           options: null,
-          target: { type: 'Quoted', src: '\'tokens.less\'', value: 'tokens.less', quote: '\'', escaped: false },
+          target: {
+            type: "Quoted",
+            src: "'tokens.less'",
+            value: "tokens.less",
+            quote: "'",
+            escaped: false,
+          },
           alias: null,
-          tail: null
-        }
-      ]
+          tail: null,
+        },
+      ],
     });
   });
 
-  it('constructs an indirect variable as a typed two-step reference and evaluates it', () => {
-    const source = '@name: tone; @tone: red; .card { color: @@name; }';
+  it("constructs an indirect variable as a typed two-step reference and evaluates it", () => {
+    const source = "@name: tone; @tone: red; .card { color: @@name; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'name' },
-        { type: 'VariableDeclaration', name: 'tone' },
+        { type: "VariableDeclaration", name: "name" },
+        { type: "VariableDeclaration", name: "tone" },
         {
-          type: 'Rule', body: [{
-            type: 'Declaration', name: 'color', value: {
-              type: 'VarIndirect', nameRef: { type: 'VariableReference', name: 'name', lookup: 'scoped' }, lookup: 'scoped'
-            }
-          }]
-        }
-      ]
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "color",
+              value: {
+                type: "VarIndirect",
+                nameRef: {
+                  type: "VariableReference",
+                  name: "name",
+                  lookup: "scoped",
+                },
+                lookup: "scoped",
+              },
+            },
+          ],
+        },
+      ],
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError("Expected a direct Less Stylesheet.");
     }
-    expect(serialize(result.value).css).toBe(
-      '.card {\n  color: red;\n}\n'
-    );
+    expect(serialize(result.value).css).toBe(".card {\n  color: red;\n}\n");
   });
 
-  it('constructs precedence-aware Less arithmetic without widening slash-list semantics', () => {
-    const source = '@a: 2; .math { sum: 1 + 2 * 3; grouped: (1 + 2) * 3; neg: -(@a + 1); signed: -2px + 3px; ratio: 12px / 1.5; compact: 1 +2; spacedMinus: 1 -23; calc: calc(100% - (20px / 2)); }';
+  it("constructs precedence-aware Less arithmetic without widening slash-list semantics", () => {
+    const source =
+      "@a: 2; .math { sum: 1 + 2 * 3; grouped: (1 + 2) * 3; neg: -(@a + 1); signed: -2px + 3px; ratio: 12px / 1.5; compact: 1 +2; spacedMinus: 1 -23; calc: calc(100% - (20px / 2)); }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'a' },
-        { type: 'Rule', body: [
-          {
-            type: 'Declaration', name: 'sum', value: {
-              type: 'Operation', operator: '+', left: { type: 'Dimension', src: '1' },
-              right: {
-                type: 'Operation', operator: '*', left: { type: 'Dimension', src: '2' }, right: { type: 'Dimension', src: '3' }
-              }
-            }
-          },
-          {
-            type: 'Declaration', name: 'grouped', value: {
-              type: 'Operation', operator: '*', left: {
-                type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' }
-              }, right: { type: 'Dimension', src: '3' }
-            }
-          },
-          {
-            type: 'Declaration', name: 'neg', value: {
-              type: 'Operation', operator: '*', left: { type: 'Dimension', src: '-1' },
-              right: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '+' } }
-            }
-          },
-          {
-            type: 'Declaration', name: 'signed', value: {
-              type: 'Operation', operator: '+', left: { type: 'Dimension', src: '-2px' }, right: { type: 'Dimension', src: '3px' }
-            }
-          },
-          {
-            type: 'Declaration', name: 'ratio', value: [{ type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' }]
-          },
-          {
-            type: 'Declaration', name: 'compact', value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '+2' }]
-          },
-          {
-            type: 'Declaration', name: 'spacedMinus', value: [{ type: 'Dimension', src: '1' }, { type: 'Dimension', src: '-23' }]
-          },
-          {
-            type: 'Declaration', name: 'calc', value: {
-              type: 'FunctionCall', name: 'calc', args: [{ type: 'Operation', operator: '-' }]
-            }
-          }
-        ]
-        }
-      ]
+        { type: "VariableDeclaration", name: "a" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "sum",
+              value: {
+                type: "Operation",
+                operator: "+",
+                left: { type: "Dimension", src: "1" },
+                right: {
+                  type: "Operation",
+                  operator: "*",
+                  left: { type: "Dimension", src: "2" },
+                  right: { type: "Dimension", src: "3" },
+                },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "grouped",
+              value: {
+                type: "Operation",
+                operator: "*",
+                left: {
+                  type: "Block",
+                  delimiter: "paren",
+                  inner: { type: "Operation", operator: "+" },
+                },
+                right: { type: "Dimension", src: "3" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "neg",
+              value: {
+                type: "Operation",
+                operator: "*",
+                left: { type: "Dimension", src: "-1" },
+                right: {
+                  type: "Block",
+                  delimiter: "paren",
+                  inner: { type: "Operation", operator: "+" },
+                },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "signed",
+              value: {
+                type: "Operation",
+                operator: "+",
+                left: { type: "Dimension", src: "-2px" },
+                right: { type: "Dimension", src: "3px" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "ratio",
+              value: [
+                { type: "Dimension", src: "12px" },
+                { type: "Keyword", src: "/" },
+                { type: "Dimension", src: "1.5" },
+              ],
+            },
+            {
+              type: "Declaration",
+              name: "compact",
+              value: [
+                { type: "Dimension", src: "1" },
+                { type: "Dimension", src: "+2" },
+              ],
+            },
+            {
+              type: "Declaration",
+              name: "spacedMinus",
+              value: [
+                { type: "Dimension", src: "1" },
+                { type: "Dimension", src: "-23" },
+              ],
+            },
+            {
+              type: "Declaration",
+              name: "calc",
+              value: {
+                type: "FunctionCall",
+                name: "calc",
+                args: [{ type: "Operation", operator: "-" }],
+              },
+            },
+          ],
+        },
+      ],
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError("Expected a direct Less Stylesheet.");
     }
 
     /*
      * Serialization without a ValueEvaluator is deliberately structural; this
      * assertion proves the direct tree has not turned Less math into raw text.
      */
-    expect(serialize(result.value).css).toContain('sum: 1 + 2 * 3;');
-    expect(serialize(result.value).css).toContain('grouped: (1 + 2) * 3;');
-    expect(serialize(result.value).css).toContain('ratio: 12px / 1.5;');
-    expect(serialize(result.value).css).toContain('compact: 1 +2;');
+    expect(serialize(result.value).css).toContain("sum: 1 + 2 * 3;");
+    expect(serialize(result.value).css).toContain("grouped: (1 + 2) * 3;");
+    expect(serialize(result.value).css).toContain("ratio: 12px / 1.5;");
+    expect(serialize(result.value).css).toContain("compact: 1 +2;");
   });
 
-  it('keeps comment-aware product operators as one flat arithmetic stream', () => {
-    const source = '.math { product: 2 * // factor\n 3; modulo: 7 // divisor follows\n % 3; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps known function openers strict while generic functions stay generic", () => {
+    for (const { source, cstNode, value } of [
+      {
+        source: ".x { v: calc(1px + 2px); }",
+        cstNode: "CalcCall",
+        value: { type: "FunctionCall", name: "calc" },
+      },
+      {
+        source: ".x { v: foo(); }",
+        cstNode: "Call",
+        value: { type: "FunctionCall", name: "foo" },
+      },
+      {
+        source: ".x { v: url(@x); }",
+        cstNode: "Url",
+        value: { type: "Url" },
+      },
+      {
+        source: ".x { v: url(foo); }",
+        cstNode: "Url",
+        value: { type: "Url" },
+      },
+    ]) {
+      const cst = parseLessCst(source);
+      expect(cstIssueCount(cst), source).toBe(0);
+      expect(findCstNodes(cst.tree, cstNode).length, source).toBeGreaterThan(0);
+
+      const direct = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(direct.ok, source).toBe(true);
+      expect(direct.unconsumedFrom, source).toBeNull();
+      expect(stylesheet(direct.value), source).toMatchObject({
+        children: [{ body: [{ name: "v", value }] }],
+      });
+    }
+
+    for (const source of [
+      ".x { v: calc(); }",
+      ".x { v: calc(+); }",
+      ".x { v: 0 calc(); }",
+      ".x { v: 0 calc(+); }",
+      ".x { v: calc(1px +2px); }",
+      ".x { v: foo(+); }",
+    ]) {
+      const cst = parseLessCst(source);
+      expect(cstIssueCount(cst), source).toBeGreaterThan(0);
+      expect(parsesCompleteStylesheet(source), source).toBe(false);
+    }
+  });
+
+  it("keeps comment-aware product operators as one flat arithmetic stream", () => {
+    const source =
+      ".math { product: 2 * // factor\n 3; modulo: 7 // divisor follows\n % 3; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'product', value: { type: 'Operation', operator: '*', left: { type: 'Dimension', src: '2' }, right: { type: 'Dimension', src: '3' } } },
-        { type: 'Declaration', name: 'modulo', value: { type: 'Operation', operator: '%', left: { type: 'Dimension', src: '7' }, right: { type: 'Dimension', src: '3' } } }
-      ] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "product",
+              value: {
+                type: "Operation",
+                operator: "*",
+                left: { type: "Dimension", src: "2" },
+                right: { type: "Dimension", src: "3" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "modulo",
+              value: {
+                type: "Operation",
+                operator: "%",
+                left: { type: "Dimension", src: "7" },
+                right: { type: "Dimension", src: "3" },
+              },
+            },
+          ],
+        },
+      ],
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError("Expected a direct Less Stylesheet.");
     }
-    expect(serialize(result.value).css).toBe('.math {\n  product: 2 * 3;\n  modulo: 7 % 3;\n}\n');
+    expect(serialize(result.value).css).toBe(
+      ".math {\n  product: 2 * 3;\n  modulo: 7 % 3;\n}\n"
+    );
 
-    const malformed = run(lessAstGrammar.LessAstDocument, '.math { product: 2 * // missing operand\n; }', { trivia: lessAstGrammar.whitespace });
+    const malformed = run(
+      lessAstGrammar.LessAstDocument,
+      ".math { product: 2 * // missing operand\n; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
   });
 
-  it('admits comments around unambiguous product operators but not sign-ambiguous +/- (CSS rule)', () => {
+  it("admits comments around unambiguous product operators but not sign-ambiguous +/- (CSS rule)", () => {
     /*
      * `*` / `%` are unambiguous — like CSS `calc()` (where `*`/`/` need no
      * whitespace) block and line comments count as separating trivia.
      */
-    const product = run(lessAstGrammar.LessAstDocument, '.m { star: 1/**/*/**/2; mod: 7 /* x */ % /* y */ 3; }', { trivia: lessAstGrammar.whitespace });
+    const product = run(
+      lessAstGrammar.LessAstDocument,
+      ".m { star: 1/**/*/**/2; mod: 7 /* x */ % /* y */ 3; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(product.ok && product.unconsumedFrom === null).toBe(true);
     expect(product.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'star', value: { type: 'Operation', operator: '*', left: { type: 'Dimension', src: '1' }, right: { type: 'Dimension', src: '2' } } },
-        { type: 'Declaration', name: 'mod', value: { type: 'Operation', operator: '%', left: { type: 'Dimension', src: '7' }, right: { type: 'Dimension', src: '3' } } }
-      ] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "star",
+              value: {
+                type: "Operation",
+                operator: "*",
+                left: { type: "Dimension", src: "1" },
+                right: { type: "Dimension", src: "2" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "mod",
+              value: {
+                type: "Operation",
+                operator: "%",
+                left: { type: "Dimension", src: "7" },
+                right: { type: "Dimension", src: "3" },
+              },
+            },
+          ],
+        },
+      ],
     });
 
     /*
      * `+` / `-` are sign-ambiguous — like CSS `calc()`, comments do NOT satisfy
      * the required whitespace, so a comment-separated `-` is not a subtraction.
      */
-    const commentSum = run(lessAstGrammar.LessAstDocument, '.m { x: 1/**/-/**/2; }', { trivia: lessAstGrammar.whitespace });
-    expect(JSON.stringify(commentSum.value ?? {}).includes('"operator":"-"')).toBe(false);
+    const commentSum = run(
+      lessAstGrammar.LessAstDocument,
+      ".m { x: 1/**/-/**/2; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(
+      JSON.stringify(commentSum.value ?? {}).includes('"operator":"-"')
+    ).toBe(false);
 
     // Real whitespace around `-` still IS a subtraction (unchanged).
-    const spacedSum = run(lessAstGrammar.LessAstDocument, '.m { x: 1 - 2; }', { trivia: lessAstGrammar.whitespace });
+    const spacedSum = run(lessAstGrammar.LessAstDocument, ".m { x: 1 - 2; }", {
+      trivia: lessAstGrammar.whitespace,
+    });
     expect(spacedSum.value).toMatchObject({
-      children: [{ body: [{ name: 'x', value: { type: 'Operation', operator: '-' } }] }]
+      children: [
+        { body: [{ name: "x", value: { type: "Operation", operator: "-" } }] },
+      ],
     });
   });
 
-  it('keeps the comments2 variable/parens product on the same math route', () => {
-    const source = '@column-width: @base * 6em; @columns: 12; @gridsystem-width: (@column-width * // total columns */\n @columns) + ( // width */\n @gutter-width * // gutters */\n @columns);';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps the comments2 variable/parens product on the same math route", () => {
+    const source =
+      "@column-width: @base * 6em; @columns: 12; @gridsystem-width: (@column-width * // total columns */\n @columns) + ( // width */\n @gutter-width * // gutters */\n @columns);";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError("Expected a direct Less Stylesheet.");
     }
-    expect(result.value.children.find(child => child.type === 'VariableDeclaration' && child.name === 'gridsystem-width')).toMatchObject({
-      value: { type: 'Operation', operator: '+' }
+    expect(
+      result.value.children.find(
+        (child) =>
+          child.type === "VariableDeclaration" &&
+          child.name === "gridsystem-width"
+      )
+    ).toMatchObject({
+      value: { type: "Operation", operator: "+" },
     });
   });
 
-  it('keeps a glued top-level Less slash group structural for later calc evaluation', () => {
-    const source = '@ratio: 50vh/2; .card { direct: @ratio; calc: calc(100% - (@ratio - 20px)); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps a glued top-level Less slash group structural for later calc evaluation", () => {
+    const source =
+      "@ratio: 50vh/2; .card { direct: @ratio; calc: calc(100% - (@ratio - 20px)); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(result.value.children[0]).toMatchObject({
-      type: 'VariableDeclaration', name: 'ratio',
-      value: [{ type: 'Dimension', src: '50vh' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '2' }]
+      type: "VariableDeclaration",
+      name: "ratio",
+      value: [
+        { type: "Dimension", src: "50vh" },
+        { type: "Keyword", src: "/" },
+        { type: "Dimension", src: "2" },
+      ],
     });
     expect(serialize(result.value).css).toBe(
-      '.card {\n  direct: 50vh / 2;\n  calc: calc(100% - (50vh / 2 - 20px));\n}\n'
+      ".card {\n  direct: 50vh / 2;\n  calc: calc(100% - (50vh / 2 - 20px));\n}\n"
     );
   });
 
-  it('left-factors preserved slash value pieces without changing their direct AST facts', () => {
+  it("left-factors preserved slash value pieces without changing their direct AST facts", () => {
     const source = [
-      '@trivia: 12px / 1.5 / 3;',
-      '.case {',
-      '  bare: 12px;',
-      '  slash: 12px/1.5;',
-      '  multi: 12px/1.5/3;',
-      '  function: min(12px/1.5/3, 2px);',
-      '}'
-    ].join('\n');
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      "@trivia: 12px / 1.5 / 3;",
+      ".case {",
+      "  bare: 12px;",
+      "  slash: 12px/1.5;",
+      "  multi: 12px/1.5/3;",
+      "  function: min(12px/1.5/3, 2px);",
+      "}",
+    ].join("\n");
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
+      type: "Stylesheet",
+      children: [
         {
-          type: 'VariableDeclaration', name: 'trivia', value: {
-            type: 'SpacedValue',
+          type: "VariableDeclaration",
+          name: "trivia",
+          value: {
+            type: "SpacedValue",
             parts: [
-              { type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' },
-              { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '3' }
+              { type: "Dimension", src: "12px" },
+              { type: "Keyword", src: "/" },
+              { type: "Dimension", src: "1.5" },
+              { type: "Keyword", src: "/" },
+              { type: "Dimension", src: "3" },
             ],
-            separators: [' ', ' ', ' ', ' ']
-          }
+            separators: [" ", " ", " ", " "],
+          },
         },
         {
-          type: 'Rule', body: [
-            { type: 'Declaration', name: 'bare', value: { type: 'Dimension', src: '12px' } },
+          type: "Rule",
+          body: [
             {
-              type: 'Declaration', name: 'slash', value: [
-                { type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' }
-              ]
+              type: "Declaration",
+              name: "bare",
+              value: { type: "Dimension", src: "12px" },
             },
             {
-              type: 'Declaration', name: 'multi', value: [
-                { type: 'Dimension', src: '12px' }, { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '1.5' },
-                { type: 'Keyword', src: '/' }, { type: 'Dimension', src: '3' }
-              ]
+              type: "Declaration",
+              name: "slash",
+              value: [
+                { type: "Dimension", src: "12px" },
+                { type: "Keyword", src: "/" },
+                { type: "Dimension", src: "1.5" },
+              ],
             },
             {
-              type: 'Declaration', name: 'function', value: {
-                type: 'FunctionCall', name: 'min', args: [{ type: 'Operation' }, { type: 'Dimension', src: '2px' }]
-              }
-            }
-          ]
-        }
-      ]
+              type: "Declaration",
+              name: "multi",
+              value: [
+                { type: "Dimension", src: "12px" },
+                { type: "Keyword", src: "/" },
+                { type: "Dimension", src: "1.5" },
+                { type: "Keyword", src: "/" },
+                { type: "Dimension", src: "3" },
+              ],
+            },
+            {
+              type: "Declaration",
+              name: "function",
+              value: {
+                type: "FunctionCall",
+                name: "min",
+                args: [
+                  { type: "Operation" },
+                  { type: "Dimension", src: "2px" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
 
     const malformed = run(
       lessAstGrammar.LessAstDocument,
-      '.case { malformed: 12px / * 2px; }',
+      ".case { malformed: 12px / * 2px; }",
       { trivia: lessAstGrammar.whitespace }
     );
     expect(malformed.ok && malformed.unconsumedFrom === null).toBe(false);
   });
 
-  it('constructs zero-argument variable calls as final Reference steps directly', () => {
-    const source = '@theme(); .card { @theme(); }';
+  it("constructs zero-argument variable calls as final Reference steps directly", () => {
+    const source = "@theme(); .card { @theme(); }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'Reference', base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' }, steps: [{ type: 'Call', args: [] }], raw: '@theme()' },
-        { type: 'Rule', body: [{ type: 'Reference', base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' }, steps: [{ type: 'Call', args: [] }], raw: '@theme()' }] }
-      ]
+        {
+          type: "Reference",
+          base: { type: "VariableReference", name: "theme", lookup: "scoped" },
+          steps: [{ type: "Call", args: [] }],
+          raw: "@theme()",
+        },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Reference",
+              base: {
+                type: "VariableReference",
+                name: "theme",
+                lookup: "scoped",
+              },
+              steps: [{ type: "Call", args: [] }],
+              raw: "@theme()",
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs bare function-call statements as existing FunctionCall facts', () => {
+  it("constructs bare function-call statements as existing FunctionCall facts", () => {
     const source = 'e("x"); .card { e("y"); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'FunctionCall', name: 'e', args: [{ type: 'Quoted', value: 'x' }] },
-        { type: 'Rule', body: [{ type: 'FunctionCall', name: 'e', args: [{ type: 'Quoted', value: 'y' }] }] }
-      ]
+        {
+          type: "FunctionCall",
+          name: "e",
+          args: [{ type: "Quoted", value: "x" }],
+        },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "FunctionCall",
+              name: "e",
+              args: [{ type: "Quoted", value: "y" }],
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs deprecated Less percent-format syntax as the existing percent FunctionCall', () => {
+  it("constructs deprecated Less percent-format syntax as the existing percent FunctionCall", () => {
     const source = '.card { text: %("hello %s", "world"); modulo: 10 % 3; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'text', value: { type: 'FunctionCall', name: '%', args: [{ type: 'Quoted', value: 'hello %s' }, { type: 'Quoted', value: 'world' }] } },
-        { type: 'Declaration', name: 'modulo', value: { type: 'Operation', operator: '%' } }
-      ] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "text",
+              value: {
+                type: "FunctionCall",
+                name: "%",
+                args: [
+                  { type: "Quoted", value: "hello %s" },
+                  { type: "Quoted", value: "world" },
+                ],
+              },
+            },
+            {
+              type: "Declaration",
+              name: "modulo",
+              value: { type: "Operation", operator: "%" },
+            },
+          ],
+        },
+      ],
     });
-    for (const invalid of ['.card { text: %foo; }', '.card { text: %("x",); }']) {
-      const direct = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
+    for (const invalid of [
+      ".card { text: %foo; }",
+      '.card { text: %("x",); }',
+    ]) {
+      const direct = run(lessAstGrammar.LessAstDocument, invalid, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
     }
   });
 
-  it('keeps a static Less escaped quote inside percent-format arguments', () => {
+  it("keeps a static Less escaped quote inside percent-format arguments", () => {
     const source = '.card { text: %(~"hello %s", "world"); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [{
-        type: 'Declaration', value: {
-          type: 'FunctionCall', name: '%', args: [
-            { type: 'Quoted', value: 'hello %s', escaped: true },
-            { type: 'Quoted', value: 'world' }
-          ]
-        }
-      }] }]
-    });
-  });
-
-  it('constructs static body and inline extends with exact/all multi-target semantics', () => {
-    const source = '.target { color: navy; } .body { &:extend(.target, .other !all); } .first, .inline:extend(.target all), .sibling { color: red; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
-        { type: 'Rule', selector: { type: 'SelectorList' } },
-        { type: 'Rule', extendInstructions: [
-          { target: { type: 'SelectorList' }, partial: false },
-          { target: { type: 'SelectorList' }, partial: true }
-        ] },
-        { type: 'Rule', selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector' }, { type: 'ComplexSelector' }, { type: 'ComplexSelector' }] }, extendInstructions: [
-          { target: { type: 'SelectorList' }, partial: true, subject: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector' }] } }
-        ] }
-      ]
-    });
-  });
-
-  it('keeps a repeated inline extend selector list as branch-owned instructions', () => {
-    const result = run(
-      lessAstGrammar.LessAstDocument,
-      '.ext3:extend(.foo all), .ext4:extend(.foo all) {}',
-      { trivia: lessAstGrammar.whitespace }
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [
-            { type: 'ComplexSelector', head: { simples: [{ text: '.ext3' }] } },
-            { type: 'ComplexSelector', head: { simples: [{ text: '.ext4' }] } }
-          ]
-        },
-        extendInstructions: [
-          { partial: true, target: { selectors: [{ head: { simples: [{ text: '.foo' }] } }] }, subject: { selectors: [{ head: { simples: [{ text: '.ext3' }] } }] } },
-          { partial: true, target: { selectors: [{ head: { simples: [{ text: '.foo' }] } }] }, subject: { selectors: [{ head: { simples: [{ text: '.ext4' }] } }] } }
-        ]
-      }]
-    });
-  });
-
-  it('stops direct extend targets before terminal all and !all flags', () => {
-    const result = run(
-      lessAstGrammar.LessAstDocument,
-      '.subject { &:extend(.a .b all, .c > .d !all); color: black; }',
-      { trivia: lessAstGrammar.whitespace }
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{
-        type: 'Rule', extendInstructions: [
-          { partial: true, target: { selectors: [{ head: { simples: [{ text: '.a' }] }, tail: [{ comb: ' ', compound: { simples: [{ text: '.b' }] } }] }] } },
-          { partial: true, target: { selectors: [{ head: { simples: [{ text: '.c' }] }, tail: [{ comb: '>', compound: { simples: [{ text: '.d' }] } }] }] } }
-        ]
-      }]
-    });
-    expect(serialize(stylesheet(result.value)).css).toBe('.subject {\n  color: black;\n}\n');
-  });
-
-  it('uses the ordinary direct statement body inside an inline extend rule', () => {
-    const source = '.paint() { color: red; } .target { width: 1px; } .inline:extend(.target) { .paint(); each(1, { order: @value; }); @media screen { display: block; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
-        { type: 'MixinDef', name: '.paint' },
-        { type: 'Rule' },
-        { type: 'Rule', extendInstructions: [{ target: { type: 'SelectorList' } }], body: [
-          { type: 'MixinCall', name: '.paint' },
-          { type: 'For' },
-          { type: 'AtRuleBlock', name: '@media' }
-        ] }
-      ]
-    });
-  });
-
-  it('accepts an optional statement terminator after an inline extend ruleset', () => {
-    const result = run(
-      lessAstGrammar.LessAstDocument,
-      '.target { color: navy; } .alias:extend(.target) {};',
-      { trivia: lessAstGrammar.whitespace }
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule' }, { type: 'Rule' }]
-    });
-  });
-
-  it('constructs recursively grammar-built detached-ruleset variable bindings directly', () => {
-    const source = '@theme: { ; @accent: blue; color: @accent; ; };';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'VariableDeclaration', name: 'theme',
-        value: {
-          type: 'AnonymousMixin',
-          body: [
-            { type: 'VariableDeclaration', name: 'accent', value: { type: 'Color', src: 'blue' } },
-            { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'accent' } }
-          ]
-        }
-      }]
-    });
-  });
-
-  it('retains numeric detached-ruleset map keys as declaration facts', () => {
-    const source = '@grays: { 100: #f8f9fa; 900: #212529; <: %3c; #: %23; (: %28; };';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'VariableDeclaration', name: 'grays',
-        value: {
-          type: 'AnonymousMixin',
-          body: [
-            { type: 'Declaration', name: '100', value: { type: 'Color', src: '#f8f9fa' } },
-            { type: 'Declaration', name: '900', value: { type: 'Color', src: '#212529' } },
-            { type: 'Declaration', name: '<' },
-            { type: 'Declaration', name: '#' },
-            { type: 'Declaration', name: '(' }
-          ]
-        }
-      }]
-    });
-  });
-
-  it('constructs full direct statement bodies in detached rulesets and each callbacks', () => {
-    const source = '@theme: { .nested { color: red; } @media screen { .media { color: blue; } } .tone() { color: green; } each(1, { .item { order: @value; } }); };\neach(1, .(@entry) { .entry { order: @entry; } @media print { .print { color: black; } } });';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {
-          type: 'VariableDeclaration', name: 'theme',
-          value: {
-            type: 'AnonymousMixin',
-            body: [
-              { type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] },
-              { type: 'AtRuleBlock', name: '@media', body: [{ type: 'Rule' }] },
-              { type: 'MixinDef', name: '.tone', body: [{ type: 'Declaration', name: 'color' }] },
-              { type: 'For', rules: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'order' }] }] }
-            ]
-          }
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              value: {
+                type: "FunctionCall",
+                name: "%",
+                args: [
+                  { type: "Quoted", value: "hello %s", escaped: true },
+                  { type: "Quoted", value: "world" },
+                ],
+              },
+            },
+          ],
         },
-        {
-          type: 'For', binding: { kind: 'single', name: 'entry' },
-          rules: [
-            { type: 'Rule', body: [{ type: 'Declaration', name: 'order' }] },
-            { type: 'AtRuleBlock', name: '@media', body: [{ type: 'Rule' }] }
-          ]
-        }
-      ]
+      ],
     });
   });
 
-  it('keeps standalone extend statements out of direct detached and callback bodies until they have a statement fact', () => {
+  it("constructs static body and inline extends with exact/all multi-target semantics", () => {
+    const source =
+      ".target { color: navy; } .body { &:extend(.target, .other !all); } .first, .inline:extend(.target all), .sibling { color: red; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "Rule", selector: { type: "SelectorList" } },
+        {
+          type: "Rule",
+          extendInstructions: [
+            { target: { type: "SelectorList" }, partial: false },
+            { target: { type: "SelectorList" }, partial: true },
+          ],
+        },
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              { type: "ComplexSelector" },
+              { type: "ComplexSelector" },
+              { type: "ComplexSelector" },
+            ],
+          },
+          extendInstructions: [
+            {
+              target: { type: "SelectorList" },
+              partial: true,
+              subject: {
+                type: "SelectorList",
+                selectors: [{ type: "ComplexSelector" }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("keeps inline extend branch ownership aligned across AST and CST host modes", () => {
+    const source =
+      ".first, .inline:extend(.target all), .sibling { color: red; }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: { simples: [{ text: ".first" }] },
+              },
+              {
+                type: "ComplexSelector",
+                head: { simples: [{ text: ".inline" }] },
+              },
+              {
+                type: "ComplexSelector",
+                head: { simples: [{ text: ".sibling" }] },
+              },
+            ],
+          },
+          extendInstructions: [
+            {
+              partial: true,
+              subject: {
+                selectors: [{ head: { simples: [{ text: ".inline" }] } }],
+              },
+              target: {
+                selectors: [{ head: { simples: [{ text: ".target" }] } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const inlineExtends = findCstNodes(cst.tree, "ExtendPseudo");
+    expect(inlineExtends).toHaveLength(1);
+    expect(cstLeafValues(inlineExtends[0]!)).toEqual([
+      ":",
+      "extend",
+      "(",
+      ".target",
+      "all",
+      ")",
+    ]);
+    expect(findCstNodes(cst.tree, "InlineExtendTail")).toHaveLength(0);
+  });
+
+  it("keeps a repeated inline extend selector list as branch-owned instructions", () => {
+    const source =
+      ".ext3 > .leaf:extend(.foo all), .ext4:hover:extend(.bar !all), .plain {}";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: { simples: [{ text: ".ext3" }] },
+                tail: [
+                  { comb: ">", compound: { simples: [{ text: ".leaf" }] } },
+                ],
+              },
+              {
+                type: "ComplexSelector",
+                head: { simples: [{ text: ".ext4" }, { text: ":hover" }] },
+              },
+              {
+                type: "ComplexSelector",
+                head: { simples: [{ text: ".plain" }] },
+              },
+            ],
+          },
+          extendInstructions: [
+            {
+              partial: true,
+              target: {
+                selectors: [{ head: { simples: [{ text: ".foo" }] } }],
+              },
+              subject: {
+                selectors: [
+                  {
+                    head: { simples: [{ text: ".ext3" }] },
+                    tail: [
+                      { comb: ">", compound: { simples: [{ text: ".leaf" }] } },
+                    ],
+                  },
+                ],
+              },
+            },
+            {
+              partial: true,
+              target: {
+                selectors: [{ head: { simples: [{ text: ".bar" }] } }],
+              },
+              subject: {
+                selectors: [
+                  {
+                    head: { simples: [{ text: ".ext4" }, { text: ":hover" }] },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const inlineExtends = findCstNodes(cst.tree, "ExtendPseudo");
+    expect(inlineExtends).toHaveLength(2);
+    expect(inlineExtends.map(cstLeafValues)).toEqual([
+      [":", "extend", "(", ".foo", "all", ")"],
+      [":", "extend", "(", ".bar", "!all", ")"],
+    ]);
+    expect(findCstNodes(cst.tree, "InlineExtendTail")).toHaveLength(0);
+  });
+
+  it("keeps inline extend subjects on the full parsed selector branch", () => {
+    const source =
+      ".active&:extend(.target), .ext1 .ext2 :extend(.foo all) { color: red; }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              { head: { simples: [{ text: ".active" }, { text: "&" }] } },
+              {
+                head: { simples: [{ text: ".ext1" }] },
+                tail: [
+                  { comb: " ", compound: { simples: [{ text: ".ext2" }] } },
+                ],
+              },
+            ],
+          },
+          extendInstructions: [
+            {
+              partial: false,
+              subject: {
+                selectors: [
+                  { head: { simples: [{ text: ".active" }, { text: "&" }] } },
+                ],
+              },
+              target: {
+                selectors: [{ head: { simples: [{ text: ".target" }] } }],
+              },
+            },
+            {
+              partial: true,
+              subject: {
+                selectors: [
+                  {
+                    head: { simples: [{ text: ".ext1" }] },
+                    tail: [
+                      { comb: " ", compound: { simples: [{ text: ".ext2" }] } },
+                    ],
+                  },
+                ],
+              },
+              target: {
+                selectors: [{ head: { simples: [{ text: ".foo" }] } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const inlineExtends = findCstNodes(cst.tree, "ExtendPseudo");
+    expect(inlineExtends).toHaveLength(2);
+    expect(inlineExtends.map(cstLeafValues)).toEqual([
+      [":", "extend", "(", ".target", ")"],
+      [":", "extend", "(", ".foo", "all", ")"],
+    ]);
+    expect(findCstNodes(cst.tree, "InlineExtendTail")).toHaveLength(0);
+  });
+
+  it("rejects bare and non-terminal inline extend selectors", () => {
     for (const source of [
-      '@theme: { &:extend(.target); };',
-      'each(1, { &:extend(.target); });'
+      ":extend(.a all) { color: red; }",
+      ".a:extend(.b all).c { color: red; }",
     ]) {
       const cst = parseLessCst(source);
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
 
-      expect(cst.errors, source).toHaveLength(0);
-      expect(cst.unconsumedFrom, source).toBeNull();
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
+      expect(cstIssueCount(cst), source).toBeGreaterThan(0);
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(false);
     }
   });
 
-  it('retains argument-bearing variable calls as typed final Reference steps', () => {
-    const source = '@theme(red);';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("stops direct extend targets before terminal all and !all flags", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      ".subject { &:extend(.a .b all, .c > .d !all); color: black; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
 
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{ type: 'Reference', base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' }, steps: [{ type: 'Call', args: [{ value: { type: 'Color', src: 'red' } }] }] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          extendInstructions: [
+            {
+              partial: true,
+              target: {
+                selectors: [
+                  {
+                    head: { simples: [{ text: ".a" }] },
+                    tail: [
+                      { comb: " ", compound: { simples: [{ text: ".b" }] } },
+                    ],
+                  },
+                ],
+              },
+            },
+            {
+              partial: true,
+              target: {
+                selectors: [
+                  {
+                    head: { simples: [{ text: ".c" }] },
+                    tail: [
+                      { comb: ">", compound: { simples: [{ text: ".d" }] } },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      ".subject {\n  color: black;\n}\n"
+    );
+  });
+
+  it("uses the ordinary direct statement body inside an inline extend rule", () => {
+    const source =
+      ".paint() { color: red; } .target { width: 1px; } .inline:extend(.target) { .paint(); each(1, { order: @value; }); @media screen { display: block; } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "MixinDef", name: ".paint" },
+        { type: "Rule" },
+        {
+          type: "Rule",
+          extendInstructions: [{ target: { type: "SelectorList" } }],
+          body: [
+            { type: "MixinCall", name: ".paint" },
+            { type: "For" },
+            { type: "AtRuleBlock", name: "@media" },
+          ],
+        },
+      ],
     });
   });
 
-  it('uses detached rulesets only in public call-argument and parameter-default positions', () => {
-    const source = '@theme: { color: red; }; .m(@default: { width: 1px; }) { } .m({ color: blue; }); .m(@named: { color: green; }); fn({ display: block; });';
+  it("accepts an optional statement terminator after an inline extend ruleset", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      ".target { color: navy; } .alias:extend(.target) {};",
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [{ type: "Rule" }, { type: "Rule" }],
+    });
+  });
+
+  it("constructs recursively grammar-built detached-ruleset variable bindings directly", () => {
+    const source = "@theme: { ; @accent: blue; color: @accent; ; };";
     const cst = parseLessCst(source);
-    const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "theme",
+          value: {
+            type: "AnonymousMixin",
+            body: [
+              {
+                type: "VariableDeclaration",
+                name: "accent",
+                value: { type: "Color", src: "blue" },
+              },
+              {
+                type: "Declaration",
+                name: "color",
+                value: { type: "VariableReference", name: "accent" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("retains numeric detached-ruleset map keys as declaration facts", () => {
+    const source =
+      "@grays: { 100: #f8f9fa; 900: #212529; <: %3c; #: %23; (: %28; };";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "grays",
+          value: {
+            type: "AnonymousMixin",
+            body: [
+              {
+                type: "Declaration",
+                name: "100",
+                value: { type: "Color", src: "#f8f9fa" },
+              },
+              {
+                type: "Declaration",
+                name: "900",
+                value: { type: "Color", src: "#212529" },
+              },
+              { type: "Declaration", name: "<" },
+              { type: "Declaration", name: "#" },
+              { type: "Declaration", name: "(" },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("constructs full direct statement bodies in detached rulesets and each callbacks", () => {
+    const source =
+      "@theme: { .nested { color: red; } @media screen { .media { color: blue; } } .tone() { color: green; } each(1, { .item { order: @value; } }); };\neach(1, .(@entry) { .entry { order: @entry; } @media print { .print { color: black; } } });";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "theme",
+          value: {
+            type: "AnonymousMixin",
+            body: [
+              { type: "Rule", body: [{ type: "Declaration", name: "color" }] },
+              { type: "AtRuleBlock", name: "@media", body: [{ type: "Rule" }] },
+              {
+                type: "MixinDef",
+                name: ".tone",
+                body: [{ type: "Declaration", name: "color" }],
+              },
+              {
+                type: "For",
+                rules: [
+                  {
+                    type: "Rule",
+                    body: [{ type: "Declaration", name: "order" }],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          type: "For",
+          binding: { kind: "single", name: "entry" },
+          rules: [
+            { type: "Rule", body: [{ type: "Declaration", name: "order" }] },
+            { type: "AtRuleBlock", name: "@media", body: [{ type: "Rule" }] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("keeps standalone extend statements out of direct detached and callback bodies until they have a statement fact", () => {
+    for (const source of [
+      "@theme: { &:extend(.target); };",
+      "each(1, { &:extend(.target); });",
+    ]) {
+      const cst = parseLessCst(source);
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+
+      expect(cstIssueCount(cst), source).toBeGreaterThan(0);
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(false);
+    }
+  });
+
+  it("retains argument-bearing variable calls as typed final Reference steps", () => {
+    const source = "@theme(red);";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(
+      result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
+    ).toBe(true);
+    expect(result.value).toMatchObject({
+      children: [
+        {
+          type: "Reference",
+          base: { type: "VariableReference", name: "theme", lookup: "scoped" },
+          steps: [
+            { type: "Call", args: [{ value: { type: "Color", src: "red" } }] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("uses detached rulesets only in public call-argument and parameter-default positions", () => {
+    const source =
+      "@theme: { color: red; }; .m(@default: { width: 1px; }) { } .m({ color: blue; }); .m(@named: { color: green; }); fn({ display: block; });";
+    const cst = parseLessCst(source);
+    const direct = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
-      type: 'Stylesheet', children: [
-        { type: 'VariableDeclaration', name: 'theme', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } },
-        { type: 'MixinDef', name: '.m', params: [{ name: 'default', default: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'width' }] } }] },
-        { type: 'MixinCall', name: '.m', args: [{ value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } }] },
-        { type: 'MixinCall', name: '.m', args: [{ name: 'named', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] } }] },
-        { type: 'FunctionCall', name: 'fn', args: [{ type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'display' }] }] }
-      ]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "theme",
+          value: {
+            type: "AnonymousMixin",
+            body: [{ type: "Declaration", name: "color" }],
+          },
+        },
+        {
+          type: "MixinDef",
+          name: ".m",
+          params: [
+            {
+              name: "default",
+              default: {
+                type: "AnonymousMixin",
+                body: [{ type: "Declaration", name: "width" }],
+              },
+            },
+          ],
+        },
+        {
+          type: "MixinCall",
+          name: ".m",
+          args: [
+            {
+              value: {
+                type: "AnonymousMixin",
+                body: [{ type: "Declaration", name: "color" }],
+              },
+            },
+          ],
+        },
+        {
+          type: "MixinCall",
+          name: ".m",
+          args: [
+            {
+              name: "named",
+              value: {
+                type: "AnonymousMixin",
+                body: [{ type: "Declaration", name: "color" }],
+              },
+            },
+          ],
+        },
+        {
+          type: "FunctionCall",
+          name: "fn",
+          args: [
+            {
+              type: "AnonymousMixin",
+              body: [{ type: "Declaration", name: "display" }],
+            },
+          ],
+        },
+      ],
     });
 
-    const valueArgument = run(lessAstGrammar.LessAstDocument, 'value: fn({ color: red; });', { trivia: lessAstGrammar.whitespace });
+    const valueArgument = run(
+      lessAstGrammar.LessAstDocument,
+      "value: fn({ color: red; });",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(valueArgument.ok).toBe(true);
     expect(valueArgument.unconsumedFrom).toBeNull();
     expect(valueArgument.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Declaration', name: 'value', value: {
-        type: 'FunctionCall', name: 'fn', args: [{ type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'color' }] }]
-      } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Declaration",
+          name: "value",
+          value: {
+            type: "FunctionCall",
+            name: "fn",
+            args: [
+              {
+                type: "AnonymousMixin",
+                body: [{ type: "Declaration", name: "color" }],
+              },
+            ],
+          },
+        },
+      ],
     });
 
-    for (const rejected of ['value: { color: red; };', 'value: %({ color: red; });']) {
+    const finalRootDeclaration = run(
+      lessAstGrammar.LessAstDocument,
+      "value: fn({ color: red; })",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(finalRootDeclaration.ok).toBe(true);
+    expect(finalRootDeclaration.unconsumedFrom).toBeNull();
+    expect(finalRootDeclaration.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Declaration",
+          name: "value",
+          value: {
+            type: "FunctionCall",
+            name: "fn",
+            args: [
+              {
+                type: "AnonymousMixin",
+                body: [{ type: "Declaration", name: "color" }],
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const separatedRootDeclaration = run(
+      lessAstGrammar.LessAstDocument,
+      "value: red; @media all { x: y; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(separatedRootDeclaration.ok).toBe(true);
+    expect(separatedRootDeclaration.unconsumedFrom).toBeNull();
+    expect(separatedRootDeclaration.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "Declaration", name: "value" },
+        { type: "AtRuleBlock", name: "@media" },
+      ],
+    });
+
+    for (const rejected of [
+      "value: red @media all { x: y; }",
+      ".card { color: red @media all { color: blue; } }",
+    ]) {
+      const cst = parseLessCst(rejected);
+      const result = run(lessAstGrammar.LessAstDocument, rejected, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        cst.errors.length + (cst.unconsumedFrom === null ? 0 : 1),
+        rejected
+      ).toBeGreaterThan(0);
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        rejected
+      ).toBe(false);
+    }
+
+    const customValueKeepsAtRuleBytes = run(
+      lessAstGrammar.LessAstDocument,
+      ".card { --x:red @media all {x:y} }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(customValueKeepsAtRuleBytes.ok).toBe(true);
+    expect(customValueKeepsAtRuleBytes.unconsumedFrom).toBeNull();
+    expect(customValueKeepsAtRuleBytes.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "--x",
+              value: { type: "Any", src: "red @media all {x:y} " },
+            },
+          ],
+        },
+      ],
+    });
+
+    const customValueWithSeparator = run(
+      lessAstGrammar.LessAstDocument,
+      ".card { --x:red; @media all { x: y; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(customValueWithSeparator.ok).toBe(true);
+    expect(customValueWithSeparator.unconsumedFrom).toBeNull();
+    expect(customValueWithSeparator.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            { type: "Declaration", name: "--x" },
+            { type: "AtRuleBlock", name: "@media" },
+          ],
+        },
+      ],
+    });
+
+    for (const rejected of [
+      "value: { color: red; };",
+      "value: %({ color: red; });",
+    ]) {
       const legacy = parseLessCst(rejected);
-      const result = run(lessAstGrammar.LessAstDocument, rejected, { trivia: lessAstGrammar.whitespace });
+      const result = run(lessAstGrammar.LessAstDocument, rejected, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(legacy.unconsumedFrom, rejected).not.toBeNull();
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), rejected).toBe(false);
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        rejected
+      ).toBe(false);
     }
 
     /*
      * Punctuation map keys are direct declaration facts, never an opaque
      * detached-body recovery path.
      */
-    const rawDetachedBody = '@theme: { <: %3c; };';
+    const rawDetachedBody = "@theme: { <: %3c; };";
     const rawLegacy = parseLessCst(rawDetachedBody);
-    const rawDirect = run(lessAstGrammar.LessAstDocument, rawDetachedBody, { trivia: lessAstGrammar.whitespace });
+    const rawDirect = run(lessAstGrammar.LessAstDocument, rawDetachedBody, {
+      trivia: lessAstGrammar.whitespace,
+    });
     expect(rawLegacy.errors).toHaveLength(0);
     expect(rawLegacy.unconsumedFrom).toBeNull();
     expect(rawDirect.ok).toBe(true);
     expect(rawDirect.unconsumedFrom).toBeNull();
     expect(rawDirect.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'VariableDeclaration', name: 'theme', value: {
-        type: 'AnonymousMixin', body: [{ type: 'Declaration', name: '<', value: { type: 'Any', src: '%3c' } }]
-      } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "theme",
+          value: {
+            type: "AnonymousMixin",
+            body: [
+              {
+                type: "Declaration",
+                name: "<",
+                value: { type: "Any", src: "%3c" },
+              },
+            ],
+          },
+        },
+      ],
     });
     const nestedConditionalArgument = run(
       lessAstGrammar.LessAstDocument,
-      '.m({ @media (tv) { color: black; } });',
+      ".m({ @media (tv) { color: black; } });",
       { trivia: lessAstGrammar.whitespace }
     );
     expect(nestedConditionalArgument.ok).toBe(true);
     expect(nestedConditionalArgument.unconsumedFrom).toBeNull();
   });
 
-  it('constructs static import options, url targets, and recursively balanced tails directly', () => {
+  it("constructs static import options, url targets, and recursively balanced tails directly", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@import (less, multiple) url(theme.css) screen and (min-width: 600px) supports(label: "wide mode");',
@@ -1273,23 +2757,31 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
-      type: 'Stylesheet',
-      children: [{
-        type: 'ImportAtRule',
-        name: '@import',
-        options: {
-          type: 'List',
-          value: [{ type: 'Any', src: 'less' }, { type: 'Any', src: 'multiple' }],
-          sep: ','
+      type: "Stylesheet",
+      children: [
+        {
+          type: "ImportAtRule",
+          name: "@import",
+          options: {
+            type: "List",
+            value: [
+              { type: "Any", src: "less" },
+              { type: "Any", src: "multiple" },
+            ],
+            sep: ",",
+          },
+          target: { type: "Url", value: { type: "Any", src: "theme.css" } },
+          alias: null,
+          tail: {
+            type: "Any",
+            src: 'screen and (min-width: 600px) supports(label: "wide mode")',
+          },
         },
-        target: { type: 'Url', value: { type: 'Any', src: 'theme.css' } },
-        alias: null,
-        tail: { type: 'Any', src: 'screen and (min-width: 600px) supports(label: "wide mode")' }
-      }]
+      ],
     });
   });
 
-  it('constructs a variable-bearing import query tail without an opaque tail fallback', () => {
+  it("constructs a variable-bearing import query tail without an opaque tail fallback", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@var: 100px; @import url("//ha.com/file.css") (min-width:@var);',
@@ -1299,26 +2791,35 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'var' },
+        { type: "VariableDeclaration", name: "var" },
         {
-          type: 'ImportAtRule',
-          target: { type: 'Url', value: { type: 'Quoted', value: '//ha.com/file.css' } },
+          type: "ImportAtRule",
+          target: {
+            type: "Url",
+            value: { type: "Quoted", value: "//ha.com/file.css" },
+          },
           tail: {
-            type: 'Block', delimiter: 'paren',
+            type: "Block",
+            delimiter: "paren",
             inner: {
-              type: 'Operation', operator: ':',
-              left: { type: 'Keyword', src: 'min-width' },
-              right: { type: 'VariableReference', name: 'var', lookup: 'scoped' }
-            }
-          }
-        }
-      ]
+              type: "Operation",
+              operator: ":",
+              left: { type: "Keyword", src: "min-width" },
+              right: {
+                type: "VariableReference",
+                name: "var",
+                lookup: "scoped",
+              },
+            },
+          },
+        },
+      ],
     });
   });
 
-  it('constructs quoted Less import interpolation as a structural target fact', () => {
+  it("constructs quoted Less import interpolation as a structural target fact", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@import (less, multiple) "theme-@{name}.css" screen;',
@@ -1328,24 +2829,36 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'ImportAtRule',
-        options: { type: 'List', sep: ',', value: [{ type: 'Any', src: 'less' }, { type: 'Any', src: 'multiple' }] },
-        target: {
-          type: 'Interpolation',
-          parts: [
-            { lit: '"theme-' },
-            { ref: { type: 'VariableReference', name: 'name' }, unquote: true },
-            { lit: '.css"' }
-          ]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "ImportAtRule",
+          options: {
+            type: "List",
+            sep: ",",
+            value: [
+              { type: "Any", src: "less" },
+              { type: "Any", src: "multiple" },
+            ],
+          },
+          target: {
+            type: "Interpolation",
+            parts: [
+              { lit: '"theme-' },
+              {
+                ref: { type: "VariableReference", name: "name" },
+                unquote: true,
+              },
+              { lit: '.css"' },
+            ],
+          },
+          tail: { type: "Any", src: "screen" },
         },
-        tail: { type: 'Any', src: 'screen' }
-      }]
+      ],
     });
   });
 
-  it('constructs one complete interpolated import tail as a structural fact', () => {
+  it("constructs one complete interpolated import tail as a structural fact", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@import (reference) "theme.less" @{media};',
@@ -1355,54 +2868,120 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'ImportAtRule',
-        options: { type: 'List', sep: ',', value: [{ type: 'Any', src: 'reference' }] },
-        target: { type: 'Quoted', value: 'theme.less' },
-        tail: {
-          type: 'Interpolation',
-          parts: [{ ref: { type: 'VariableReference', name: 'media', lookup: 'scoped' }, unquote: true }]
-        }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "ImportAtRule",
+          options: {
+            type: "List",
+            sep: ",",
+            value: [{ type: "Any", src: "reference" }],
+          },
+          target: { type: "Quoted", value: "theme.less" },
+          tail: {
+            type: "Interpolation",
+            parts: [
+              {
+                ref: {
+                  type: "VariableReference",
+                  name: "media",
+                  lookup: "scoped",
+                },
+                unquote: true,
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('constructs unquoted dynamic URL values and import targets as typed interpolation', () => {
-    const source = '@asset: icons; @theme: theme; .asset { variable: url(@asset/path.svg); template: url(@{theme}/icon.svg); } @import url(@{theme}.css);';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs unquoted dynamic URL values and import targets as typed interpolation", () => {
+    const source =
+      "@asset: icons; @theme: theme; .asset { variable: url(@asset/path.svg); template: url(@{theme}/icon.svg); } @import url(@{theme}.css);";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'asset' },
-        { type: 'VariableDeclaration', name: 'theme' },
-        { type: 'Rule', body: [
-          { type: 'Declaration', name: 'variable', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'asset' } }, { lit: '/path.svg' }] } } },
-          { type: 'Declaration', name: 'template', value: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'theme' } }, { lit: '/icon.svg' }] } } }
-        ] },
-        { type: 'ImportAtRule', target: { type: 'Url', value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'theme' } }, { lit: '.css' }] } } }
-      ]
+        { type: "VariableDeclaration", name: "asset" },
+        { type: "VariableDeclaration", name: "theme" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "variable",
+              value: {
+                type: "Url",
+                value: {
+                  type: "Interpolation",
+                  parts: [
+                    { ref: { type: "VariableReference", name: "asset" } },
+                    { lit: "/path.svg" },
+                  ],
+                },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "template",
+              value: {
+                type: "Url",
+                value: {
+                  type: "Interpolation",
+                  parts: [
+                    { ref: { type: "VariableReference", name: "theme" } },
+                    { lit: "/icon.svg" },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+        {
+          type: "ImportAtRule",
+          target: {
+            type: "Url",
+            value: {
+              type: "Interpolation",
+              parts: [
+                { ref: { type: "VariableReference", name: "theme" } },
+                { lit: ".css" },
+              ],
+            },
+          },
+        },
+      ],
     });
   });
 
-  it('keeps invalid interpolation-shaped quoted import text literal', () => {
+  it("keeps invalid interpolation-shaped quoted import text literal", () => {
     for (const source of [
       '@import "theme-@{bad.path}.css";',
       '@import "theme-@{ x }.css";',
-      '@import "theme-@{}.css";'
+      '@import "theme-@{}.css";',
     ]) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(true);
       expect(result.value).toMatchObject({
-        children: [{ type: 'ImportAtRule', target: { type: 'Quoted' } }]
+        children: [{ type: "ImportAtRule", target: { type: "Quoted" } }],
       });
     }
   });
 
-  it('rejects non-static or unbalanced import facts instead of creating opaque fallbacks', () => {
+  it("rejects non-static or unbalanced import facts instead of creating opaque fallbacks", () => {
     for (const source of [
       '@import "theme-@{name}.css;',
       '@import "theme.less" @media;',
@@ -1418,83 +2997,146 @@ describe('Less AST grammar facts', () => {
       '@import "theme.less" screen and {min-width: 600px};',
       '@import "theme.less" screen and (min-width: {600px});',
       '@import "theme.less" screen and "unterminated;',
-      '@import \'theme.less\' screen and \'unterminated;',
+      "@import 'theme.less' screen and 'unterminated;",
       '@import "theme.less" screen and (min-width: 600px));',
       '@import "theme.less" screen and (min-width: 600px)};',
-      '@import (unknown) "theme.less";'
+      '@import (unknown) "theme.less";',
     ]) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value)
+      ).toBe(false);
       expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
     }
   });
 
-  it('constructs keyword and variable-reference values without recovering value text', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '@base: red;\n@theme: @base;\n.a { color: @theme; background: red; }', { trivia: lessAstGrammar.whitespace });
+  it("constructs keyword and variable-reference values without recovering value text", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "@base: red;\n@theme: @base;\n.a { color: @theme; background: red; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'base', value: { type: 'Color', src: 'red' }, write: { mode: 'declare' } },
-        { type: 'VariableDeclaration', name: 'theme', value: { type: 'VariableReference', name: 'base', lookup: 'scoped' }, write: { mode: 'declare' } },
         {
-          type: 'Rule',
+          type: "VariableDeclaration",
+          name: "base",
+          value: { type: "Color", src: "red" },
+          write: { mode: "declare" },
+        },
+        {
+          type: "VariableDeclaration",
+          name: "theme",
+          value: { type: "VariableReference", name: "base", lookup: "scoped" },
+          write: { mode: "declare" },
+        },
+        {
+          type: "Rule",
           selector: {
-            type: 'SelectorList',
-            selectors: [{
-              type: 'ComplexSelector',
-              head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.a', interp: null }] },
-              tail: []
-            }]
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".a", interp: null },
+                  ],
+                },
+                tail: [],
+              },
+            ],
           },
           body: [
-            { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'theme', lookup: 'scoped' }, merge: null, important: false },
-            { type: 'Declaration', name: 'background', value: { type: 'Color', src: 'red' }, merge: null, important: false }
-          ]
-        }
-      ]
+            {
+              type: "Declaration",
+              name: "color",
+              value: {
+                type: "VariableReference",
+                name: "theme",
+                lookup: "scoped",
+              },
+              merge: null,
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "background",
+              value: { type: "Color", src: "red" },
+              merge: null,
+              important: false,
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('feeds top-level and ruleset-local variable facts straight into the canonical serializer', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '@base: red;\n.a { @tone: @base; color: @tone; }', { trivia: lessAstGrammar.whitespace });
+  it("feeds top-level and ruleset-local variable facts straight into the canonical serializer", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "@base: red;\n.a { @tone: @base; color: @tone; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
 
-    if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
-      throw new Error('Direct Less AST grammar did not make a Stylesheet.');
+    if (
+      !result.ok ||
+      result.unconsumedFrom !== null ||
+      !isStylesheet(result.value)
+    ) {
+      throw new Error("Direct Less AST grammar did not make a Stylesheet.");
     }
-    expect(serialize(result.value).css).toBe('.a {\n  color: red;\n}\n');
+    expect(serialize(result.value).css).toBe(".a {\n  color: red;\n}\n");
   });
 
-  it('constructs a commented multiline comma-list variable value with a trailing comma', () => {
-    const source = '.items { @values:\n  // fruit\n  apple,\n  banana,\n; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs a commented multiline comma-list variable value with a trailing comma", () => {
+    const source = ".items { @values:\n  // fruit\n  apple,\n  banana,\n; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [{
-          type: 'VariableDeclaration',
-          name: 'values',
-          value: {
-            type: 'List', sep: ',',
-            value: [{ type: 'Keyword', src: 'apple' }, { type: 'Keyword', src: 'banana' }]
-
-          }
-        }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "VariableDeclaration",
+              name: "values",
+              value: {
+                type: "List",
+                sep: ",",
+                value: [
+                  { type: "Keyword", src: "apple" },
+                  { type: "Keyword", src: "banana" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs static dimensions, colors, URLs, calls, and comma/space lists directly', () => {
-    const source = '.a { margin: +1.5e2rem 0 -2%; color: #ff00aa; background: url(icons/a.svg); empty: url(); escaped: url(foo\\ bar); shadow: rgb(255, 0, 128),\n inset 0 1px #000; }';
+  it("constructs static dimensions, colors, URLs, calls, and comma/space lists directly", () => {
+    const source =
+      ".a { margin: +1.5e2rem 0 -2%; color: #ff00aa; background: url(icons/a.svg); empty: url(); escaped: url(foo\\ bar); shadow: rgb(255, 0, 128),\n inset 0 1px #000; }";
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     /*
      * This is the same static lexical subset the existing Less grammar accepts;
@@ -1507,134 +3149,223 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [{
-            type: 'ComplexSelector',
-            head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.a', interp: null }] },
-            tail: []
-          }]
-        },
-        body: [
-          {
-            type: 'Declaration', name: 'margin', merge: null, important: false,
-            value: [
-              { type: 'Dimension', number: 150, unit: 'rem', src: '+1.5e2rem' },
-              { type: 'Dimension', number: 0, unit: '', src: '0' },
-              { type: 'Dimension', number: -2, unit: '%', src: '-2%' }
-            ]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".a", interp: null },
+                  ],
+                },
+                tail: [],
+              },
+            ],
           },
-          { type: 'Declaration', name: 'color', value: { type: 'Color', src: '#ff00aa' }, merge: null, important: false },
-          {
-            type: 'Declaration', name: 'background', merge: null, important: false,
-            value: { type: 'Url', value: { type: 'Any', src: 'icons/a.svg' } }
-          },
-          {
-            type: 'Declaration', name: 'empty', merge: null, important: false,
-            value: { type: 'Url', value: { type: 'Any', src: '' } }
-          },
-          {
-            type: 'Declaration', name: 'escaped', merge: null, important: false,
-            value: { type: 'Url', value: { type: 'Any', src: 'foo\\ bar' } }
-          },
-          {
-            type: 'Declaration', name: 'shadow', merge: null, important: false,
-            value: {
-              type: 'List', sep: ',',
+          body: [
+            {
+              type: "Declaration",
+              name: "margin",
+              merge: null,
+              important: false,
               value: [
                 {
-                  type: 'FunctionCall', name: 'rgb', modern: false,
-                  args: [
-                    { type: 'Dimension', number: 255, unit: '', src: '255' },
-                    { type: 'Dimension', number: 0, unit: '', src: '0' },
-                    { type: 'Dimension', number: 128, unit: '', src: '128' }
-                  ]
+                  type: "Dimension",
+                  number: 150,
+                  unit: "rem",
+                  src: "+1.5e2rem",
                 },
-                [
-                  { type: 'Keyword', src: 'inset' },
-                  { type: 'Dimension', number: 0, unit: '', src: '0' },
-                  { type: 'Dimension', number: 1, unit: 'px', src: '1px' },
-                  { type: 'Color', src: '#000' }
-                ]
-              ]
-            }
-          }
-        ]
-      }]
+                { type: "Dimension", number: 0, unit: "", src: "0" },
+                { type: "Dimension", number: -2, unit: "%", src: "-2%" },
+              ],
+            },
+            {
+              type: "Declaration",
+              name: "color",
+              value: { type: "Color", src: "#ff00aa" },
+              merge: null,
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "background",
+              merge: null,
+              important: false,
+              value: {
+                type: "Url",
+                value: { type: "Any", src: "icons/a.svg" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "empty",
+              merge: null,
+              important: false,
+              value: { type: "Url", value: { type: "Any", src: "" } },
+            },
+            {
+              type: "Declaration",
+              name: "escaped",
+              merge: null,
+              important: false,
+              value: { type: "Url", value: { type: "Any", src: "foo\\ bar" } },
+            },
+            {
+              type: "Declaration",
+              name: "shadow",
+              merge: null,
+              important: false,
+              value: {
+                type: "List",
+                sep: ",",
+                value: [
+                  {
+                    type: "FunctionCall",
+                    name: "rgb",
+                    modern: false,
+                    args: [
+                      { type: "Dimension", number: 255, unit: "", src: "255" },
+                      { type: "Dimension", number: 0, unit: "", src: "0" },
+                      { type: "Dimension", number: 128, unit: "", src: "128" },
+                    ],
+                  },
+                  [
+                    { type: "Keyword", src: "inset" },
+                    { type: "Dimension", number: 0, unit: "", src: "0" },
+                    { type: "Dimension", number: 1, unit: "px", src: "1px" },
+                    { type: "Color", src: "#000" },
+                  ],
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs a bare percent sign as a keyword function argument', () => {
-    const source = 'size: unit(100, %);';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs a bare percent sign as a keyword function argument", () => {
+    const source = "size: unit(100, %);";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Declaration', value: { type: 'FunctionCall', name: 'unit', args: [
-        { type: 'Dimension', src: '100' }, { type: 'Keyword', src: '%' }
-      ] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Declaration",
+          value: {
+            type: "FunctionCall",
+            name: "unit",
+            args: [
+              { type: "Dimension", src: "100" },
+              { type: "Keyword", src: "%" },
+            ],
+          },
+        },
+      ],
     });
-    const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
+    const serializable = run(
+      lessAstGrammar.LessAstDocument,
+      `.test { ${source} }`,
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(serializable.ok).toBe(true);
     expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(stylesheet(serializable.value)).css).toBe('.test {\n  size: unit(100, %);\n}\n');
+    expect(serialize(stylesheet(serializable.value)).css).toBe(
+      ".test {\n  size: unit(100, %);\n}\n"
+    );
   });
 
-  it('constructs a comparison condition in a Less function argument', () => {
-    const full = run(lessAstGrammar.LessAstDocument, '#boolean { a: boolean(not(2 < 1)); b: boolean(not(2 > 1) and (true)); c: boolean(not(boolean(true))); f: boolean((2 > 1) = (3 > 2)); }', { trivia: lessAstGrammar.whitespace });
+  it("constructs a comparison condition in a Less function argument", () => {
+    const full = run(
+      lessAstGrammar.LessAstDocument,
+      "#boolean { a: boolean(not(2 < 1)); b: boolean(not(2 > 1) and (true)); c: boolean(not(boolean(true))); f: boolean((2 > 1) = (3 > 2)); }",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(full.ok).toBe(true);
     expect(full.unconsumedFrom).toBeNull();
-    const result = run(lessAstGrammar.LessAstDocument, 'x: boolean(not(2 < 1));', { trivia: lessAstGrammar.whitespace });
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ children: [{ value: { args: [{ type: 'Condition', guard: { g: 'not', inner: { g: 'cmp', op: '<' } } }] } }] });
-  });
-
-  it('constructs a Less function condition comparison between parenthesized conditions', () => {
-    const result = run(lessAstGrammar.LessAstDocument, 'x: boolean((2 > 1) = (3 > 2));', { trivia: lessAstGrammar.whitespace });
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "x: boolean(not(2 < 1));",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{
-        value: {
-          type: 'FunctionCall',
-          name: 'boolean',
-          args: [{
-            type: 'Condition',
-            guard: {
-              g: 'cmp',
-              op: '=',
-              left: { type: 'Condition', guard: { g: 'cmp', op: '>' } },
-              right: { type: 'Condition', guard: { g: 'cmp', op: '>' } }
-            }
-          }]
-        }
-      }]
+      children: [
+        {
+          value: {
+            args: [
+              {
+                type: "Condition",
+                guard: { g: "not", inner: { g: "cmp", op: "<" } },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('does not construct unparenthesized condition equality as a Less function condition operand', () => {
-    expect(parsesCompleteStylesheet('x: boolean(2 > 1 = 3 > 2);')).toBe(false);
+  it("constructs a Less function condition comparison between parenthesized conditions", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "x: boolean((2 > 1) = (3 > 2));",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      children: [
+        {
+          value: {
+            type: "FunctionCall",
+            name: "boolean",
+            args: [
+              {
+                type: "Condition",
+                guard: {
+                  g: "cmp",
+                  op: "=",
+                  left: { type: "Condition", guard: { g: "cmp", op: ">" } },
+                  right: { type: "Condition", guard: { g: "cmp", op: ">" } },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
   });
 
-  it('enforces Less function condition grouping for boolean() and if()', () => {
+  it("does not construct unparenthesized condition equality as a Less function condition operand", () => {
+    expect(parsesCompleteStylesheet("x: boolean(2 > 1 = 3 > 2);")).toBe(false);
+  });
+
+  it("enforces Less function condition grouping for boolean() and if()", () => {
     const accepts = [
-      'x: boolean(1 = 1);',
-      'x: boolean(not (1 = 1));',
-      'x: boolean((1 = 1) and (2 = 2));',
-      'x: if(1 = 1, yes, no);',
-      'x: if(not (1 = 1), yes, no);',
-      'x: if((1 = 1) and (2 = 2), yes, no);'
+      "x: boolean(1 = 1);",
+      "x: boolean(not (1 = 1));",
+      "x: boolean((1 = 1) and (2 = 2));",
+      "x: if(1 = 1, yes, no);",
+      "x: if(not (1 = 1), yes, no);",
+      "x: if((1 = 1) and (2 = 2), yes, no);",
     ];
     const rejects = [
-      'x: boolean(not 1 = 1);',
-      'x: boolean(1 = 1 and (2 = 2));',
-      'x: if(not 1 = 1, yes, no);',
-      'x: if(1 = 1 and (2 = 2), yes, no);'
+      "x: boolean(not 1 = 1);",
+      "x: boolean(1 = 1 and (2 = 2));",
+      "x: if(not 1 = 1, yes, no);",
+      "x: if(1 = 1 and (2 = 2), yes, no);",
     ];
 
     for (const source of accepts) {
@@ -1645,673 +3376,1371 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('constructs a truth condition in a multi-argument Less function call', () => {
-    const result = run(lessAstGrammar.LessAstDocument, 'x: if(not(false), 1, 2);', { trivia: lessAstGrammar.whitespace });
+  it("constructs a truth condition in a multi-argument Less function call", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "x: if(not(false), 1, 2);",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
   });
 
-  it('constructs arithmetic inside Less function arguments as an operation', () => {
-    const result = run(lessAstGrammar.LessAstDocument, 'x: round(32 / 3);', { trivia: lessAstGrammar.whitespace });
+  it("constructs arithmetic inside Less function arguments as an operation", () => {
+    const result = run(lessAstGrammar.LessAstDocument, "x: round(32 / 3);", {
+      trivia: lessAstGrammar.whitespace,
+    });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{ value: { type: 'FunctionCall', name: 'round', args: [{ type: 'Operation', operator: '/' }] } }]
+      children: [
+        {
+          value: {
+            type: "FunctionCall",
+            name: "round",
+            args: [{ type: "Operation", operator: "/" }],
+          },
+        },
+      ],
     });
   });
 
-  it('retains an inter-argument block comment in the preceding typed function argument', () => {
-    const source = 'x: mix(blue, #FFF /* explanation */, 50%);';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps an inter-argument block comment as function layout trivia", () => {
+    const source = "x: mix(blue, #FFF /* explanation */, 50%);";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{ value: { type: 'FunctionCall', name: 'mix', args: [
-        { type: 'Color', src: 'blue' },
-        [{ type: 'Color', src: '#FFF' }, { type: 'Comment', text: '/* explanation */' }],
-        { type: 'Dimension', src: '50%' }
-      ] } }]
+      children: [
+        {
+          value: {
+            type: "FunctionCall",
+            name: "mix",
+            args: [
+              { type: "Color", src: "blue" },
+              { type: "Color", src: "#FFF" },
+              { type: "Dimension", src: "50%" },
+            ],
+          },
+        },
+      ],
     });
-    const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
-    expect(serializable.ok).toBe(true);
-    expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(stylesheet(serializable.value)).css).toBe('.test {\n  x: mix(blue, #FFF /* explanation */, 50%);\n}\n');
   });
 
-  it('keeps a generic function argument as one space-separated value slot after its comma boundary', () => {
-    const source = 'grid-template-columns: repeat(14, 10px /* gap */ 60px);';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps a generic function argument as one space-separated value slot while treating comments as trivia", () => {
+    const source = "grid-template-columns: repeat(14, 10px /* gap */ 60px);";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ value: { type: 'FunctionCall', name: 'repeat', args: [
-        { type: 'Dimension', src: '14' },
-        [
-          { type: 'Dimension', src: '10px' },
-          { type: 'Comment', text: '/* gap */' },
-          { type: 'Dimension', src: '60px' }
-        ]
-      ] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          value: {
+            type: "FunctionCall",
+            name: "repeat",
+            args: [
+              { type: "Dimension", src: "14" },
+              [
+                { type: "Dimension", src: "10px" },
+                { type: "Dimension", src: "60px" },
+              ],
+            ],
+          },
+        },
+      ],
     });
-    const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
-    expect(serializable.ok).toBe(true);
-    expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(stylesheet(serializable.value)).css).toBe('.test {\n  grid-template-columns: repeat(14, 10px /* gap */ 60px);\n}\n');
   });
 
-  it('keeps variable-initializer comments out of later typed call arguments', () => {
-    const source = '@color: #FFF/* source note */; html { color: mix(blue, @color, 50%); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps variable-initializer comments out of later typed call arguments", () => {
+    const source =
+      "@color: #FFF/* source note */; html { color: mix(blue, @color, 50%); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
-        { type: 'VariableDeclaration', name: 'color', value: { type: 'Color', src: '#FFF' } },
-        { type: 'Rule', body: [{ value: { type: 'FunctionCall', name: 'mix', args: [
-          { type: 'Color', src: 'blue' },
-          { type: 'VariableReference', name: 'color', lookup: 'scoped' },
-          { type: 'Dimension', src: '50%' }
-        ] } }] }
-      ]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "color",
+          value: { type: "Color", src: "#FFF" },
+        },
+        {
+          type: "Rule",
+          body: [
+            {
+              value: {
+                type: "FunctionCall",
+                name: "mix",
+                args: [
+                  { type: "Color", src: "blue" },
+                  {
+                    type: "VariableReference",
+                    name: "color",
+                    lookup: "scoped",
+                  },
+                  { type: "Dimension", src: "50%" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('keeps detached rulesets as typed arguments of a Less function value', () => {
-    const result = run(lessAstGrammar.LessAstDocument, 'x: if(not(false), { c: 3 }, { d: 4 });', { trivia: lessAstGrammar.whitespace });
+  it("keeps detached rulesets as typed arguments of a Less function value", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "x: if(not(false), { c: 3 }, { d: 4 });",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{ value: {
-        type: 'FunctionCall',
-        name: 'if',
-        args: [{ type: 'Condition' }, { type: 'AnonymousMixin' }, { type: 'AnonymousMixin' }]
-      } }]
+      children: [
+        {
+          value: {
+            type: "FunctionCall",
+            name: "if",
+            args: [
+              { type: "Condition" },
+              { type: "AnonymousMixin" },
+              { type: "AnonymousMixin" },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('parses the upstream Less function-condition block without a legacy fallback', () => {
+  it("parses the upstream Less function-condition block without a legacy fallback", () => {
     const statements = [
-      'a: if(not(false), 1, 2);',
-      'b: if(not(true), 1, 2);',
-      '@1: if(not(false), {c: 3}, {d: 4}); @1();',
-      'e: if(not(true), 5);',
-      '@f: boolean(3 = 4);',
-      'f: if(not(@f), 6);',
-      'g: if(true, 3, 5);',
-      'h: if(false, 3, 5);',
-      'i: if(true and isnumber(6), 6, 8);',
-      'j: if(not(true) and true, 6, 8);',
-      'k: if(true or true, 1);',
-      '@some: foo;',
-      'l: if((iscolor(@some)), darken(@some, 10%), black);',
-      'if((false), {g: 7});',
-      '@conditional: if((true), { color: green; }, {}); @conditional();',
-      '@falsey: if((false), { color: orange; }, { color: purple; }); @falsey();'
+      "a: if(not(false), 1, 2);",
+      "b: if(not(true), 1, 2);",
+      "@1: if(not(false), {c: 3}, {d: 4}); @1();",
+      "e: if(not(true), 5);",
+      "@f: boolean(3 = 4);",
+      "f: if(not(@f), 6);",
+      "g: if(true, 3, 5);",
+      "h: if(false, 3, 5);",
+      "i: if(true and isnumber(6), 6, 8);",
+      "j: if(not(true) and true, 6, 8);",
+      "k: if(true or true, 1);",
+      "@some: foo;",
+      "l: if((iscolor(@some)), darken(@some, 10%), black);",
+      "if((false), {g: 7});",
+      "@conditional: if((true), { color: green; }, {}); @conditional();",
+      "@falsey: if((false), { color: orange; }, { color: purple; }); @falsey();",
     ];
     for (let count = 1; count <= statements.length; count += 1) {
-      const source = `#if { ${statements.slice(0, count).join(' ')} }`;
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok, `first ${count} function-condition statements`).toBe(true);
-      expect(result.unconsumedFrom, `first ${count} function-condition statements`).toBeNull();
+      const source = `#if { ${statements.slice(0, count).join(" ")} }`;
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(result.ok, `first ${count} function-condition statements`).toBe(
+        true
+      );
+      expect(
+        result.unconsumedFrom,
+        `first ${count} function-condition statements`
+      ).toBeNull();
     }
   });
 
-  it('constructs escaped parenthesized Less lists as typed, iterable values', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '.x { value: ~(1, 2, 3); each(~(1 2 3); { item: @value; }); }', { trivia: lessAstGrammar.whitespace });
+  it("constructs escaped parenthesized Less lists as typed, iterable values", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      ".x { value: ~(1, 2, 3); each(~(1 2 3); { item: @value; }); }",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{ body: [
-        { type: 'Declaration', value: { type: 'Block', delimiter: 'paren', escaped: true, inner: { type: 'List', sep: ',', value: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }] } } },
-        { type: 'For', iterable: { type: 'Block', delimiter: 'paren', escaped: true, inner: [{ type: 'Dimension' }, { type: 'Dimension' }, { type: 'Dimension' }] } }
-      ] }]
+      children: [
+        {
+          body: [
+            {
+              type: "Declaration",
+              value: {
+                type: "Block",
+                delimiter: "paren",
+                escaped: true,
+                inner: {
+                  type: "List",
+                  sep: ",",
+                  value: [
+                    { type: "Dimension" },
+                    { type: "Dimension" },
+                    { type: "Dimension" },
+                  ],
+                },
+              },
+            },
+            {
+              type: "For",
+              iterable: {
+                type: "Block",
+                delimiter: "paren",
+                escaped: true,
+                inner: [
+                  { type: "Dimension" },
+                  { type: "Dimension" },
+                  { type: "Dimension" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('keeps CSS custom-property tokens structural in nested Less function arguments', () => {
+  it("keeps CSS custom-property tokens structural in nested Less function arguments", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.a { color: rgba(var(--color-accent), 0.2); }',
+      ".a { color: rgba(var(--color-accent), 0.2); }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ body: [{
-        type: 'Declaration', name: 'color', value: {
-          type: 'FunctionCall', name: 'rgba', args: [{
-            type: 'FunctionCall', name: 'var', args: [{ type: 'Keyword', src: '--color-accent' }]
-          }, { type: 'Dimension', src: '0.2' }]
-        }
-      }] }]
+      type: "Stylesheet",
+      children: [
+        {
+          body: [
+            {
+              type: "Declaration",
+              name: "color",
+              value: {
+                type: "FunctionCall",
+                name: "rgba",
+                args: [
+                  {
+                    type: "FunctionCall",
+                    name: "var",
+                    args: [{ type: "Keyword", src: "--color-accent" }],
+                  },
+                  { type: "Dimension", src: "0.2" },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('retains multiline declaration value slots as canonical facts', () => {
-    const source = '.grid { grid-template-areas:\n  "header header"\n  "content sidebar"; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("retains multiline declaration value slots as canonical facts", () => {
+    const source =
+      '.grid { grid-template-areas:\n  "header header"\n  "content sidebar"; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [{
-          type: 'Declaration',
-          name: 'grid-template-areas',
-          valueOnNewLine: true,
-          value: [{ type: 'Quoted', value: 'header header' }, { type: 'Quoted', value: 'content sidebar' }]
-        }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "grid-template-areas",
+              valueOnNewLine: true,
+              value: [
+                { type: "Quoted", value: "header header" },
+                { type: "Quoted", value: "content sidebar" },
+              ],
+            },
+          ],
+        },
+      ],
     });
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(serialize(result.value)).toEqual({
-      css: '.grid {\n  grid-template-areas:\n    "header header"\n    "content sidebar";\n}\n'
+      css: '.grid {\n  grid-template-areas:\n    "header header"\n    "content sidebar";\n}\n',
     });
   });
 
-  it('constructs bare variable and interpolation URL bodies as typed values', () => {
-    const source = '.asset { direct: url(@asset); interpolated: url(@{asset}.svg); quoted: url("@{base}/icon.svg"); }';
+  it("constructs bare variable and interpolation URL bodies as typed values", () => {
+    const source =
+      '.asset { direct: url(@asset); interpolated: url(@{asset}.svg); quoted: url("@{base}/icon.svg"); }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [
-          { type: 'Declaration', name: 'direct', value: { type: 'Url', value: { type: 'VariableReference', name: 'asset' } } },
-          {
-            type: 'Declaration', name: 'interpolated', value: {
-              type: 'Url', value: {
-                type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'asset' }, unquote: true }, { lit: '.svg' }]
-              }
-            }
-          },
-          {
-            type: 'Declaration', name: 'quoted', value: {
-              type: 'Url', value: {
-                type: 'Interpolation', parts: [{ lit: '"' }, { ref: { type: 'VariableReference', name: 'base' }, unquote: true }, { lit: '/icon.svg"' }]
-              }
-            }
-          }
-        ]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "direct",
+              value: {
+                type: "Url",
+                value: { type: "VariableReference", name: "asset" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "interpolated",
+              value: {
+                type: "Url",
+                value: {
+                  type: "Interpolation",
+                  parts: [
+                    {
+                      ref: { type: "VariableReference", name: "asset" },
+                      unquote: true,
+                    },
+                    { lit: ".svg" },
+                  ],
+                },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "quoted",
+              value: {
+                type: "Url",
+                value: {
+                  type: "Interpolation",
+                  parts: [
+                    { lit: '"' },
+                    {
+                      ref: { type: "VariableReference", name: "base" },
+                      unquote: true,
+                    },
+                    { lit: '/icon.svg"' },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('retains block comments in declaration heads while keeping value comments typed', () => {
-    const source = '.card { color/* property */: grey; margin /* before merge */ + /* before colon */: 0; border: /* value */ solid black; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("retains declaration-head block comments while treating value comments as trivia", () => {
+    const source =
+      ".card { color/* property */: grey; margin /* before merge */ + /* before colon */: 0; border: /* value */ solid black; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'color/* property */' }] }, merge: null, value: { type: 'Color', src: 'grey' } },
-        { type: 'Declaration', name: { type: 'Interpolation', parts: [{ lit: 'margin /* before merge */  /* before colon */' }] }, merge: ',', value: { type: 'Dimension', src: '0' } },
-        { type: 'Declaration', name: 'border', merge: null, value: [{ type: 'Comment', text: '/* value */' }, { type: 'Keyword', src: 'solid' }, { type: 'Color', src: 'black' }] }
-      ] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: {
+                type: "Interpolation",
+                parts: [{ lit: "color/* property */" }],
+              },
+              merge: null,
+              value: { type: "Color", src: "grey" },
+            },
+            {
+              type: "Declaration",
+              name: {
+                type: "Interpolation",
+                parts: [
+                  { lit: "margin /* before merge */  /* before colon */" },
+                ],
+              },
+              merge: ",",
+              value: { type: "Dimension", src: "0" },
+            },
+            {
+              type: "Declaration",
+              name: "border",
+              merge: null,
+              value: [
+                { type: "Keyword", src: "solid" },
+                { type: "Color", src: "black" },
+              ],
+            },
+          ],
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('.card {\n  color/* property */: grey;\n  margin /* before merge */  /* before colon */: 0;\n  border: /* value */ solid black;\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      ".card {\n  color/* property */: grey;\n  margin /* before merge */  /* before colon */: 0;\n  border: solid black;\n}\n"
+    );
   });
 
-  it('constructs Less declaration merge and importance modifiers without flattening them into value text', () => {
-    const source = '@accent: navy !important; .card { box-shadow+: @accent; box-shadow+: white; font+_: serif !important; }';
+  it("constructs Less declaration merge and importance modifiers without flattening them into value text", () => {
+    const source =
+      "@accent: navy !important; .card { box-shadow+: @accent; box-shadow+: white; font+_: serif !important; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {
-          type: 'VariableDeclaration', name: 'accent',
-          value: { type: 'Important', inner: { type: 'Color', src: 'navy' } },
-          write: { mode: 'declare' }
+          type: "VariableDeclaration",
+          name: "accent",
+          value: { type: "Important", inner: { type: "Color", src: "navy" } },
+          write: { mode: "declare" },
         },
         {
-          type: 'Rule',
+          type: "Rule",
           selector: {
-            type: 'SelectorList',
-            selectors: [{
-              type: 'ComplexSelector',
-              head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.card', interp: null }] },
-              tail: []
-            }]
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".card", interp: null },
+                  ],
+                },
+                tail: [],
+              },
+            ],
           },
           body: [
-            { type: 'Declaration', name: 'box-shadow', value: { type: 'VariableReference', name: 'accent', lookup: 'scoped' }, merge: ',', important: false },
-            { type: 'Declaration', name: 'box-shadow', value: { type: 'Color', src: 'white' }, merge: ',', important: false },
-            { type: 'Declaration', name: 'font', value: { type: 'Keyword', src: 'serif' }, merge: ' ', important: true }
-          ]
-        }
-      ]
+            {
+              type: "Declaration",
+              name: "box-shadow",
+              value: {
+                type: "VariableReference",
+                name: "accent",
+                lookup: "scoped",
+              },
+              merge: ",",
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "box-shadow",
+              value: { type: "Color", src: "white" },
+              merge: ",",
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "font",
+              value: { type: "Keyword", src: "serif" },
+              merge: " ",
+              important: true,
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs generic static at-rule blocks and statements through canonical at-rule nodes', () => {
-    const source = '@charset "utf-8"; @namespace foo url(http://www.example.com); @font-face { font-family: Inter; src: url(font.woff2); } @media screen { .card { color: red; } } .outer { @layer utilities { color: blue; } }';
+  it("constructs generic static at-rule blocks and statements through canonical at-rule nodes", () => {
+    const source =
+      '@charset "utf-8"; @namespace url(http://www.w3.org/1999/xhtml); @namespace foo url(http://www.example.com); @font-face { font-family: Inter; src: url(font.woff2); } @media screen { .card { color: red; } } .outer { @layer utilities { color: blue; } }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'AtRuleStatement', name: '@charset', prelude: { type: 'Quoted', src: '"utf-8"', value: 'utf-8' } },
         {
-          type: 'AtRuleStatement', name: '@namespace',
+          type: "AtRuleStatement",
+          name: "@charset",
+          prelude: { type: "Quoted", src: '"utf-8"', value: "utf-8" },
+        },
+        {
+          type: "AtRuleStatement",
+          name: "@namespace",
           prelude: {
-            type: 'SpacedValue',
+            type: "Url",
+            value: { type: "Any", src: "http://www.w3.org/1999/xhtml" },
+          },
+        },
+        {
+          type: "AtRuleStatement",
+          name: "@namespace",
+          prelude: {
+            type: "SpacedValue",
             parts: [
-              { type: 'Keyword', src: 'foo' },
-              { type: 'Url', value: { type: 'Any', src: 'http://www.example.com' } }
-            ]
-          }
+              { type: "Keyword", src: "foo" },
+              {
+                type: "Url",
+                value: { type: "Any", src: "http://www.example.com" },
+              },
+            ],
+          },
         },
         {
-          type: 'AtRuleBlock', name: '@font-face', prelude: null,
+          type: "AtRuleBlock",
+          name: "@font-face",
+          prelude: null,
           body: [
-            { type: 'Declaration', name: 'font-family', value: { type: 'Keyword', src: 'Inter' } },
-            { type: 'Declaration', name: 'src', value: { type: 'Url', value: { type: 'Any', src: 'font.woff2' } } }
-          ]
+            {
+              type: "Declaration",
+              name: "font-family",
+              value: { type: "Keyword", src: "Inter" },
+            },
+            {
+              type: "Declaration",
+              name: "src",
+              value: { type: "Url", value: { type: "Any", src: "font.woff2" } },
+            },
+          ],
         },
         {
-          type: 'AtRuleBlock', name: '@media', prelude: { type: 'Keyword', src: 'screen' },
-          body: [{ type: 'Rule', selector: { type: 'SelectorList' }, body: [{ type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' } }] }]
+          type: "AtRuleBlock",
+          name: "@media",
+          prelude: { type: "Keyword", src: "screen" },
+          body: [
+            {
+              type: "Rule",
+              selector: { type: "SelectorList" },
+              body: [
+                {
+                  type: "Declaration",
+                  name: "color",
+                  value: { type: "Color", src: "red" },
+                },
+              ],
+            },
+          ],
         },
         {
-          type: 'Rule',
-          body: [{ type: 'AtRuleBlock', name: '@layer', prelude: { type: 'Keyword', src: 'utilities' }, body: [{ type: 'Declaration', name: 'color', value: { type: 'Color', src: 'blue' } }] }]
-        }
-      ]
+          type: "Rule",
+          body: [
+            {
+              type: "AtRuleBlock",
+              name: "@layer",
+              prelude: { type: "Keyword", src: "utilities" },
+              body: [
+                {
+                  type: "Declaration",
+                  name: "color",
+                  value: { type: "Color", src: "blue" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
 
     for (const dynamic of [
-      '@custom @{query} { .card { color: red; } }',
-      '@custom foo@{query} { .card { color: red; } }',
-      '@custom foo @{query} { .card { color: red; } }',
-      '@custom foo@{query};',
-      '@custom foo @{query};'
+      "@custom @{query} { .card { color: red; } }",
+      "@custom foo@{query} { .card { color: red; } }",
+      "@custom foo @{query} { .card { color: red; } }",
+      "@custom foo@{query};",
+      "@custom foo @{query};",
     ]) {
-      const rejected = run(lessAstGrammar.LessAstDocument, dynamic, { trivia: lessAstGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), dynamic).toBe(false);
+      const rejected = run(lessAstGrammar.LessAstDocument, dynamic, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        rejected.ok &&
+          rejected.unconsumedFrom === null &&
+          isStylesheet(rejected.value),
+        dynamic
+      ).toBe(false);
     }
   });
 
-  it('keeps charset on the static generic route while retaining typed namespace interpolation', () => {
-    const source = '@charset "UTF-8"; @ns: less; @namespace @{ns} "http://lesscss.org";';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [
-        {
-          type: 'AtRuleStatement', name: '@charset', prelude: {
-            type: 'Quoted', src: '"UTF-8"', value: 'UTF-8'
-          }
-        },
-        { type: 'VariableDeclaration', name: 'ns' },
-        {
-          type: 'AtRuleStatement', name: '@namespace', prelude: {
-            type: 'SpacedValue', parts: [
-              { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'ns', lookup: 'scoped' }, unquote: true }] },
-              { type: 'Quoted', src: '"http://lesscss.org"', value: 'http://lesscss.org' }
-            ]
-          }
-        }
-      ]
-    });
-
-    expect(() => run(
-      lessAstGrammar.LessAstDocument,
-      '@Eight: 8; @charset "UTF-@{Eight}";',
-      { trivia: lessAstGrammar.whitespace }
-    )).toThrow(LessDynamicCharsetError);
-
-    for (const rejectedSource of [
-      '@charset @{encoding};',
-      '@custom foo@{name};'
-    ]) {
-      const rejected = run(lessAstGrammar.LessAstDocument, rejectedSource, { trivia: lessAstGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value), rejectedSource).toBe(false);
-    }
-  });
-
-  it('constructs interpolated and dotted layer headers through canonical at-rule nodes', () => {
-    const source = '@layer-name: theme; @layer @{layer-name} { .card { color: red; } } @layer framework.buttons { .button { color: blue; } } @layer reset, base;';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [
-        { type: 'VariableDeclaration', name: 'layer-name' },
-        {
-          type: 'AtRuleBlock', name: '@layer',
-          prelude: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'layer-name' }, unquote: true }] },
-          body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' } }] }]
-        },
-        {
-          type: 'AtRuleBlock', name: '@layer', prelude: { type: 'Keyword', src: 'framework.buttons' },
-          body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color', value: { type: 'Color', src: 'blue' } }] }]
-        },
-        {
-          type: 'AtRuleStatement', name: '@layer',
-          prelude: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'reset' }, { type: 'Keyword', src: 'base' }] }
-        }
-      ]
-    });
-  });
-
-  it('constructs static CSS keyframes through canonical at-rule and rule facts', () => {
-    const source = '@keyframes fade { from, 50% { opacity: 0; } to { opacity: 1; } } @-webkit-keyframes "slide" { 0%, 100% { left: 0; } } @keyframes ~"spin" { from { opacity: 0; } }';
+  it("keeps generic CSS opaque at-rule blocks narrow in Less", () => {
+    const source = "@future {!!:foo > ; > ?bar}";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {
-          type: 'AtRuleBlock', name: '@keyframes', prelude: { type: 'Keyword', src: 'fade' },
-          body: [{
-            type: 'Rule', selector: { type: 'SelectorList', selectors: [
-              { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: 'from' }] } },
-              { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '50%' }] } }
-            ] }, body: [{ type: 'Declaration', name: 'opacity' }]
-          }, { type: 'Rule', body: [{ type: 'Declaration', name: 'opacity' }] }]
+          type: "OpaqueAtRuleBlock",
+          name: "@future",
+          prelude: null,
+          rawBody: "!!:foo > ; > ?bar",
+        },
+      ],
+    });
+
+    for (const dynamic of [
+      "@custom foo@{query};",
+      "@custom foo @{query};",
+      "@theme: { &:extend(.target); };",
+    ]) {
+      const opaque = run(lessAstGrammar.OpaqueAtRuleBlock, dynamic, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(opaque.ok && opaque.unconsumedFrom === null, dynamic).toBe(false);
+    }
+  });
+
+  it("keeps charset on the static generic route while retaining typed namespace interpolation", () => {
+    const source =
+      '@charset "UTF-8"; @ns: less; @namespace @{ns} "http://lesscss.org";';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleStatement",
+          name: "@charset",
+          prelude: {
+            type: "Quoted",
+            src: '"UTF-8"',
+            value: "UTF-8",
+          },
+        },
+        { type: "VariableDeclaration", name: "ns" },
+        {
+          type: "AtRuleStatement",
+          name: "@namespace",
+          prelude: {
+            type: "SpacedValue",
+            parts: [
+              {
+                type: "Interpolation",
+                parts: [
+                  {
+                    ref: {
+                      type: "VariableReference",
+                      name: "ns",
+                      lookup: "scoped",
+                    },
+                    unquote: true,
+                  },
+                ],
+              },
+              {
+                type: "Quoted",
+                src: '"http://lesscss.org"',
+                value: "http://lesscss.org",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(() =>
+      run(
+        lessAstGrammar.LessAstDocument,
+        '@Eight: 8; @charset "UTF-@{Eight}";',
+        { trivia: lessAstGrammar.whitespace }
+      )
+    ).toThrow(LessDynamicCharsetError);
+
+    for (const rejectedSource of [
+      "@charset @{encoding};",
+      "@custom foo@{name};",
+    ]) {
+      const rejected = run(lessAstGrammar.LessAstDocument, rejectedSource, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        rejected.ok &&
+          rejected.unconsumedFrom === null &&
+          isStylesheet(rejected.value),
+        rejectedSource
+      ).toBe(false);
+    }
+  });
+
+  it("recognizes inline backtick JavaScript as removed Less syntax", () => {
+    expect(() =>
+      run(lessAstGrammar.LessAstDocument, ".entry { value: `1 + 1`; }", {
+        trivia: lessAstGrammar.whitespace,
+      })
+    ).toThrow(LessInlineJavaScriptError);
+  });
+
+  it("recognizes bare at-variable prelude interpolation as removed Less syntax", () => {
+    for (const source of [
+      "@media @q { .card { color: red; } }",
+      "@supports (@cond) { .card { color: red; } }",
+      "@container @name (inline-size > 30em) { .card { color: red; } }",
+      "@layer @name;",
+      "@keyframes @name { from { opacity: 0; } }",
+    ]) {
+      expect(
+        () =>
+          run(lessAstGrammar.LessAstDocument, source, {
+            trivia: lessAstGrammar.whitespace,
+          }),
+        source
+      ).toThrow(LessBareVariableInterpolationError);
+    }
+
+    const valid = run(
+      lessAstGrammar.LessAstDocument,
+      "@media (min-width: @w) { .card { color: red; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(valid.ok).toBe(true);
+    expect(valid.unconsumedFrom).toBeNull();
+  });
+
+  it("constructs interpolated and dotted layer headers through canonical at-rule nodes", () => {
+    const source =
+      "@layer-name: theme; @layer @{layer-name} { .card { color: red; } } @layer framework.buttons { .button { color: blue; } } @layer reset, base;";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration", name: "layer-name" },
+        {
+          type: "AtRuleBlock",
+          name: "@layer",
+          prelude: {
+            type: "Interpolation",
+            parts: [
+              {
+                ref: { type: "VariableReference", name: "layer-name" },
+                unquote: true,
+              },
+            ],
+          },
+          body: [
+            {
+              type: "Rule",
+              body: [
+                {
+                  type: "Declaration",
+                  name: "color",
+                  value: { type: "Color", src: "red" },
+                },
+              ],
+            },
+          ],
         },
         {
-          type: 'AtRuleBlock', name: '@-webkit-keyframes', prelude: { type: 'Quoted', value: 'slide' },
-          body: [{ type: 'Rule', selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector' }, { type: 'ComplexSelector' }] } }]
+          type: "AtRuleBlock",
+          name: "@layer",
+          prelude: { type: "Keyword", src: "framework.buttons" },
+          body: [
+            {
+              type: "Rule",
+              body: [
+                {
+                  type: "Declaration",
+                  name: "color",
+                  value: { type: "Color", src: "blue" },
+                },
+              ],
+            },
+          ],
         },
         {
-          type: 'AtRuleBlock', name: '@keyframes', prelude: { type: 'Quoted', src: '~"spin"', value: 'spin', escaped: true },
-          body: [{ type: 'Rule', selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector' }] } }]
-        }
-      ]
+          type: "AtRuleStatement",
+          name: "@layer",
+          prelude: {
+            type: "List",
+            sep: ",",
+            value: [
+              { type: "Keyword", src: "reset" },
+              { type: "Keyword", src: "base" },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("constructs static CSS keyframes through canonical at-rule and rule facts", () => {
+    const source =
+      '@keyframes fade { from, 50% { opacity: 0; } to { opacity: 1; } } @-webkit-keyframes "slide" { 0%, 100% { left: 0; } } @keyframes ~"spin" { from { opacity: 0; } }';
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@keyframes",
+          prelude: { type: "Keyword", src: "fade" },
+          body: [
+            {
+              type: "Rule",
+              selector: {
+                type: "SelectorList",
+                selectors: [
+                  {
+                    type: "ComplexSelector",
+                    head: {
+                      type: "CompoundSelector",
+                      simples: [{ type: "SimpleSelector", text: "from" }],
+                    },
+                  },
+                  {
+                    type: "ComplexSelector",
+                    head: {
+                      type: "CompoundSelector",
+                      simples: [{ type: "SimpleSelector", text: "50%" }],
+                    },
+                  },
+                ],
+              },
+              body: [{ type: "Declaration", name: "opacity" }],
+            },
+            { type: "Rule", body: [{ type: "Declaration", name: "opacity" }] },
+          ],
+        },
+        {
+          type: "AtRuleBlock",
+          name: "@-webkit-keyframes",
+          prelude: { type: "Quoted", value: "slide" },
+          body: [
+            {
+              type: "Rule",
+              selector: {
+                type: "SelectorList",
+                selectors: [
+                  { type: "ComplexSelector" },
+                  { type: "ComplexSelector" },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          type: "AtRuleBlock",
+          name: "@keyframes",
+          prelude: {
+            type: "Quoted",
+            src: '~"spin"',
+            value: "spin",
+            escaped: true,
+          },
+          body: [
+            {
+              type: "Rule",
+              selector: {
+                type: "SelectorList",
+                selectors: [{ type: "ComplexSelector" }],
+              },
+            },
+          ],
+        },
+      ],
     });
     expect(serialize(stylesheet(result.value)).css).toBe(
       '@keyframes fade {\n  from,\n  50% {\n    opacity: 0;\n  }\n  to {\n    opacity: 1;\n  }\n}\n@-webkit-keyframes "slide" {\n  0%,\n  100% {\n    left: 0;\n  }\n}\n@keyframes spin {\n  from {\n    opacity: 0;\n  }\n}\n'
     );
 
     for (const rejected of [
-      '@keyframes @name { from { opacity: 0; } }',
-      '@keyframes fade { @{step} { opacity: 0; } }',
-      '@keyframes fade { 10 { opacity: 0; } }'
+      "@keyframes @name { from { opacity: 0; } }",
+      "@keyframes fade { @{step} { opacity: 0; } }",
+      "@keyframes fade { 10 { opacity: 0; } }",
     ]) {
-      const direct = run(lessAstGrammar.LessAstDocument, rejected, { trivia: lessAstGrammar.whitespace });
+      const direct = run(lessAstGrammar.LessAstDocument, rejected, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(direct.ok && direct.unconsumedFrom === null, rejected).toBe(false);
     }
   });
 
-  it('keeps Less keyframe comments in the typed body and rejects unrepresentable selector comments', () => {
-    const bodyComment = '@keyframes fade { from { /* body note */ opacity: 0; } }';
-    const direct = run(lessAstGrammar.LessAstDocument, bodyComment, { trivia: lessAstGrammar.whitespace });
+  it("treats Less keyframe comments as trivia", () => {
+    const bodyComment =
+      "@keyframes fade { from { /* body note */ opacity: 0; } }";
+    const direct = run(lessAstGrammar.LessAstDocument, bodyComment, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
-      type: 'Stylesheet', children: [{
-        type: 'AtRuleBlock', body: [{
-          type: 'Rule', body: [{ type: 'Comment', text: '/* body note */' }, { type: 'Declaration', name: 'opacity' }]
-        }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          body: [
+            {
+              type: "Rule",
+              body: [{ type: "Declaration", name: "opacity" }],
+            },
+          ],
+        },
+      ],
     });
     expect(serialize(stylesheet(direct.value)).css).toBe(
-      '@keyframes fade {\n  from {\n    /* body note */\n    opacity: 0;\n  }\n}\n'
+      "@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n"
     );
 
     for (const source of [
-      '@keyframes fade { from /* selector note */, 50% { opacity: 0; } }',
-      '@keyframes fade { from, /* selector note */ 50% { opacity: 0; } }',
-      '@keyframes fade { from /* selector note */ { opacity: 0; } }'
+      "@keyframes fade { from /* selector note */, 50% { opacity: 0; } }",
+      "@keyframes fade { from, /* selector note */ 50% { opacity: 0; } }",
+      "@keyframes fade { from /* selector note */ { opacity: 0; } }",
     ]) {
-      const rejected = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null, source).toBe(false);
+      const accepted = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(accepted.ok && accepted.unconsumedFrom === null, source).toBe(
+        true
+      );
     }
   });
 
-  it('matches public acceptance of an empty statement inside a generic at-rule body without inventing an AST node', () => {
-    const source = '@foo { ; color: red; }';
+  it("matches public acceptance of an empty statement inside a generic at-rule body without inventing an AST node", () => {
+    const source = "@foo { ; color: red; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toEqual({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@foo', prelude: null,
-        body: [{ type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' }, merge: null, important: false }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@foo",
+          prelude: null,
+          body: [
+            {
+              type: "Declaration",
+              name: "color",
+              value: { type: "Color", src: "red" },
+              merge: null,
+              important: false,
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs bounded static @supports conditions with structural parentheses', () => {
-    const source = '@supports ((display: grid) or (color: red)) and (hover) { .card { color: red; } }';
+  it("constructs bounded static @supports conditions with structural parentheses", () => {
+    const source =
+      "@supports ((display: grid) or (color: red)) and (hover) { .card { color: red; } }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@supports',
-        prelude: { type: 'SpacedValue', parts: [
-          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue', parts: [
-            { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } },
-            { type: 'Keyword', src: 'or' },
-            { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':' } }
-          ] } },
-          { type: 'Keyword', src: 'and' },
-          { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'hover' } }
-        ] },
-        body: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@supports",
+          prelude: {
+            type: "SpacedValue",
+            parts: [
+              {
+                type: "Block",
+                delimiter: "paren",
+                inner: {
+                  type: "SpacedValue",
+                  parts: [
+                    {
+                      type: "Block",
+                      delimiter: "paren",
+                      inner: { type: "Operation", operator: ":" },
+                    },
+                    { type: "Keyword", src: "or" },
+                    {
+                      type: "Block",
+                      delimiter: "paren",
+                      inner: { type: "Operation", operator: ":" },
+                    },
+                  ],
+                },
+              },
+              { type: "Keyword", src: "and" },
+              {
+                type: "Block",
+                delimiter: "paren",
+                inner: { type: "Keyword", src: "hover" },
+              },
+            ],
+          },
+          body: [
+            { type: "Rule", body: [{ type: "Declaration", name: "color" }] },
+          ],
+        },
+      ],
     });
   });
 
-  it('renders bounded @supports parentheses without changing quoted or escaped feature values', () => {
-    const source = '@supports (font-family: "A  \\"B\\"") and ((display: grid) or (color: red)) { .card { color: red; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("renders bounded @supports parentheses without changing quoted or escaped feature values", () => {
+    const source =
+      '@supports (font-family: "A  \\"B\\"") and ((display: grid) or (color: red)) { .card { color: red; } }';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(serialize(result.value)).toEqual({
-      css: '@supports (font-family: "A  \\"B\\"") and ((display: grid) or (color: red)) {\n  .card {\n    color: red;\n  }\n}\n'
+      css: '@supports (font-family: "A  \\"B\\"") and ((display: grid) or (color: red)) {\n  .card {\n    color: red;\n  }\n}\n',
     });
   });
 
-  it('keeps multi-token @supports feature values structural and canonicalizes their padding', () => {
-    const source = '@supports ( box-shadow: 2px 2px 2px black ) or ( -moz-box-shadow: 2px 2px 2px black ) { .card { color: red; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps multi-token @supports feature values structural and canonicalizes their padding", () => {
+    const source =
+      "@supports ( box-shadow: 2px 2px 2px black ) or ( -moz-box-shadow: 2px 2px 2px black ) { .card { color: red; } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(result.value.children[0]).toMatchObject({
-      type: 'AtRuleBlock', name: '@supports',
-      prelude: { type: 'SpacedValue', parts: [
-        { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'SpacedValue' } } },
-        { type: 'Keyword', src: 'or' },
-        { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'SpacedValue' } } }
-      ] }
+      type: "AtRuleBlock",
+      name: "@supports",
+      prelude: {
+        type: "SpacedValue",
+        parts: [
+          {
+            type: "Block",
+            delimiter: "paren",
+            inner: {
+              type: "Operation",
+              operator: ":",
+              right: { type: "SpacedValue" },
+            },
+          },
+          { type: "Keyword", src: "or" },
+          {
+            type: "Block",
+            delimiter: "paren",
+            inner: {
+              type: "Operation",
+              operator: ":",
+              right: { type: "SpacedValue" },
+            },
+          },
+        ],
+      },
     });
     expect(serialize(result.value).css).toBe(
-      '@supports (box-shadow: 2px 2px 2px black) or (-moz-box-shadow: 2px 2px 2px black) {\n  .card {\n    color: red;\n  }\n}\n'
+      "@supports (box-shadow: 2px 2px 2px black) or (-moz-box-shadow: 2px 2px 2px black) {\n  .card {\n    color: red;\n  }\n}\n"
     );
   });
 
-  it('constructs structural media and container query preludes, including Less variables', () => {
-    const source = '@limit: 40rem; @media screen and (min-width: @limit), print { .card { color: red; } } @container (400px < width < @limit) { .card { color: blue; } }';
+  it("constructs structural media and container query preludes, including Less variables", () => {
+    const source =
+      "@limit: 40rem; @media screen and (min-width: @limit), print { .card { color: red; } } @container (400px < width < @limit) { .card { color: blue; } }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'limit' },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'List', sep: ',', value: [
-          { type: 'SpacedValue', parts: [
-            { type: 'Keyword', src: 'screen' },
-            { type: 'Keyword', src: 'and' },
-            { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: ':', right: { type: 'VariableReference', name: 'limit' } } }
-          ] },
-          { type: 'Keyword', src: 'print' }
-        ] }, body: [{ type: 'Rule' }] },
-        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '<', right: { type: 'VariableReference', name: 'limit' } } }, body: [{ type: 'Rule' }] }
-      ]
+        { type: "VariableDeclaration", name: "limit" },
+        {
+          type: "AtRuleBlock",
+          name: "@media",
+          prelude: {
+            type: "List",
+            sep: ",",
+            value: [
+              {
+                type: "SpacedValue",
+                parts: [
+                  { type: "Keyword", src: "screen" },
+                  { type: "Keyword", src: "and" },
+                  {
+                    type: "Block",
+                    delimiter: "paren",
+                    inner: {
+                      type: "Operation",
+                      operator: ":",
+                      right: { type: "VariableReference", name: "limit" },
+                    },
+                  },
+                ],
+              },
+              { type: "Keyword", src: "print" },
+            ],
+          },
+          body: [{ type: "Rule" }],
+        },
+        {
+          type: "AtRuleBlock",
+          name: "@container",
+          prelude: {
+            type: "Block",
+            delimiter: "paren",
+            inner: {
+              type: "Operation",
+              operator: "<",
+              right: { type: "VariableReference", name: "limit" },
+            },
+          },
+          body: [{ type: "Rule" }],
+        },
+      ],
     });
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(serialize(result.value)).toEqual({
-      css: '@media screen and (min-width: 40rem), print {\n  .card {\n    color: red;\n  }\n}\n@container (400px < width < 40rem) {\n  .card {\n    color: blue;\n  }\n}\n'
+      css: "@media screen and (min-width: 40rem), print {\n  .card {\n    color: red;\n  }\n}\n@container (400px < width < 40rem) {\n  .card {\n    color: blue;\n  }\n}\n",
     });
   });
 
-  it('constructs a bare parenthesized media feature as a typed query node', () => {
-    const source = '@media (tv) { .card { color: red; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs a bare parenthesized media feature as a typed query node", () => {
+    const source = "@media (tv) { .card { color: red; } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@media',
-        prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Keyword', src: 'tv' } },
-        body: [{ type: 'Rule' }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@media",
+          prelude: {
+            type: "Block",
+            delimiter: "paren",
+            inner: { type: "Keyword", src: "tv" },
+          },
+          body: [{ type: "Rule" }],
+        },
+      ],
     });
     expect(serialize(stylesheet(result.value)).css).toBe(
-      '@media (tv) {\n  .card {\n    color: red;\n  }\n}\n'
+      "@media (tv) {\n  .card {\n    color: red;\n  }\n}\n"
     );
   });
 
-  it('folds a media feature <ratio> into one typed operation in every feature form', () => {
+  it("folds a media feature <ratio> into one typed operation in every feature form", () => {
     const ratio = {
-      type: 'Operation', operator: '/',
-      left: { type: 'Dimension', src: '16' },
-      right: { type: 'Dimension', src: '9' }
+      type: "Operation",
+      operator: "/",
+      left: { type: "Dimension", src: "16" },
+      right: { type: "Dimension", src: "9" },
     };
 
     for (const [source, operator] of [
-      ['@media (aspect-ratio: 16/9) { .card { color: red; } }', ':'],
-      ['@media (aspect-ratio: 16 / 9) { .card { color: red; } }', ':'],
-      ['@media (min-aspect-ratio: 16/9) { .card { color: red; } }', ':'],
-      ['@container (aspect-ratio: 16/9) { .card { color: red; } }', ':'],
+      ["@media (aspect-ratio: 16/9) { .card { color: red; } }", ":"],
+      ["@media (aspect-ratio: 16 / 9) { .card { color: red; } }", ":"],
+      ["@media (min-aspect-ratio: 16/9) { .card { color: red; } }", ":"],
+      ["@container (aspect-ratio: 16/9) { .card { color: red; } }", ":"],
 
       /*
        * The comparison form used to take the value-position slash group and
        * reduce `16/9` to a SpacedValue instead of the ratio operation.
        */
-      ['@media (aspect-ratio >= 16/9) { .card { color: red; } }', '>=']
+      ["@media (aspect-ratio >= 16/9) { .card { color: red; } }", ">="],
     ] as const) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       expect(result.value, source).toMatchObject({
-        children: [{ prelude: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator, right: ratio } } }]
+        children: [
+          {
+            prelude: {
+              type: "Block",
+              delimiter: "paren",
+              inner: { type: "Operation", operator, right: ratio },
+            },
+          },
+        ],
       });
     }
 
-    const range = run(lessAstGrammar.LessAstDocument, '@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }', { trivia: lessAstGrammar.whitespace });
+    const range = run(
+      lessAstGrammar.LessAstDocument,
+      "@media (16/9 < aspect-ratio < 2/1) { .card { color: red; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(range.ok && range.unconsumedFrom === null).toBe(true);
     expect(range.value).toMatchObject({
-      children: [{ prelude: { type: 'Block', delimiter: 'paren', inner: {
-        type: 'Operation', operator: '<',
-        left: { type: 'Operation', operator: '<', left: ratio, right: { type: 'Keyword', src: 'aspect-ratio' } },
-        right: { type: 'Operation', operator: '/', left: { type: 'Dimension', src: '2' }, right: { type: 'Dimension', src: '1' } }
-      } } }]
+      children: [
+        {
+          prelude: {
+            type: "Block",
+            delimiter: "paren",
+            inner: {
+              type: "Operation",
+              operator: "<",
+              left: {
+                type: "Operation",
+                operator: "<",
+                left: ratio,
+                right: { type: "Keyword", src: "aspect-ratio" },
+              },
+              right: {
+                type: "Operation",
+                operator: "/",
+                left: { type: "Dimension", src: "2" },
+                right: { type: "Dimension", src: "1" },
+              },
+            },
+          },
+        },
+      ],
     });
     expect(serialize(stylesheet(range.value)).css).toBe(
-      '@media (16 / 9 < aspect-ratio < 2 / 1) {\n  .card {\n    color: red;\n  }\n}\n'
+      "@media (16 / 9 < aspect-ratio < 2 / 1) {\n  .card {\n    color: red;\n  }\n}\n"
     );
 
     /*
      * `style()` carries a declaration, so its slash stays a value-position
      * slash group rather than becoming a ratio operation.
      */
-    const styleQuery = run(lessAstGrammar.LessAstDocument, '@container style(--ratio: 16/9) { .card { color: red; } }', { trivia: lessAstGrammar.whitespace });
+    const styleQuery = run(
+      lessAstGrammar.LessAstDocument,
+      "@container style(--ratio: 16/9) { .card { color: red; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(styleQuery.ok && styleQuery.unconsumedFrom === null).toBe(true);
     expect(styleQuery.value).toMatchObject({
-      children: [{ prelude: { type: 'FunctionCall', name: 'style', args: [{ type: 'Operation', operator: ':', right: { type: 'SpacedValue' } }] } }]
+      children: [
+        {
+          prelude: {
+            type: "FunctionCall",
+            name: "style",
+            args: [
+              {
+                type: "Operation",
+                operator: ":",
+                right: { type: "SpacedValue" },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('stores parenthesized colon features as typed values for later media interpolation', () => {
-    const source = '@size: 640px; @tablet: (min-width: @size); @media @{tablet} { .card { color: red; } }';
-    const feature = run(lessAstGrammar.DirectLessQueryColonFeature, '(min-width: @size)', { trivia: lessAstGrammar.whitespace });
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("stores parenthesized colon features as typed values for later media interpolation", () => {
+    const source =
+      "@size: 640px; @tablet: (min-width: @size); @media @{tablet} { .card { color: red; } }";
+    const feature = run(
+      lessAstGrammar.QueryColonFeature,
+      "(min-width: @size)",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(feature).toMatchObject({ ok: true, span: { start: 0, end: 18 } });
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'size' },
-        { type: 'VariableDeclaration', name: 'tablet', value: {
-          type: 'Block', delimiter: 'paren', inner: {
-            type: 'Operation', operator: ':',
-            left: { type: 'Keyword', src: 'min-width' },
-            right: { type: 'VariableReference', name: 'size' }
-          }
-        } },
-        { type: 'AtRuleBlock', name: '@media' }
-      ]
+        { type: "VariableDeclaration", name: "size" },
+        {
+          type: "VariableDeclaration",
+          name: "tablet",
+          value: {
+            type: "Block",
+            delimiter: "paren",
+            inner: {
+              type: "Operation",
+              operator: ":",
+              left: { type: "Keyword", src: "min-width" },
+              right: { type: "VariableReference", name: "size" },
+            },
+          },
+        },
+        { type: "AtRuleBlock", name: "@media" },
+      ],
     });
     expect(serialize(stylesheet(result.value)).css).toBe(
-      '@media (min-width: 640px) {\n  .card {\n    color: red;\n  }\n}\n'
+      "@media (min-width: 640px) {\n  .card {\n    color: red;\n  }\n}\n"
     );
 
-    const incoherent = run(lessAstGrammar.LessAstDocument, '.card { value: (12px 13px); }', { trivia: lessAstGrammar.whitespace });
+    const incoherent = run(
+      lessAstGrammar.LessAstDocument,
+      ".card { value: (12px 13px); }",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(incoherent.ok && incoherent.unconsumedFrom === null).toBe(false);
   });
 
-  it('evaluates the upstream namespacing-media accessor as a whole media query term', () => {
+  it("evaluates the upstream namespacing-media accessor as a whole media query term", () => {
     const source = `#ns {
   .sizes() { @small: 600px; }
   .breakpoint(@size) {
@@ -2323,512 +4752,1056 @@ describe('Less AST grammar facts', () => {
 #ns { .sizes() { @small: 480px; } }
 .valToGet() { keyword: small; }
 @media #ns.breakpoint(.valToGet[])[@max] { .selector { prop: val; } }`;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         /*
          * `#ns { … }` is an ordinary ID-selector ruleset which owns mixin
          * declarations; it is not itself a mixin declaration.
          */
-        { type: 'Rule', selector: { selectors: [{ head: { simples: [{ text: '#ns' }] } }] }, body: [{ type: 'MixinDef', name: '.sizes' }, { type: 'MixinDef', name: '.breakpoint' }] },
-        { type: 'Rule', selector: { selectors: [{ head: { simples: [{ text: '#ns' }] } }] }, body: [{ type: 'MixinDef', name: '.sizes' }] },
-        { type: 'MixinDef', name: '.valToGet' },
-        { type: 'AtRuleBlock', name: '@media', prelude: {
-          type: 'Reference',
-          base: { type: 'MixinCall', name: '.breakpoint', path: [{ comb: ' ', sel: '#ns' }] },
-          steps: [{ type: 'BracketLookup', keyKind: 'var', key: { type: 'VariableReference', name: 'max' } }]
-        } }
-      ]
-    });
-    expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
-    }
-    expect(serialize(result.value).css).toBe(
-      '@media not all and (min-width: 480px) {\n  .selector {\n    prop: val;\n  }\n}\n'
-    );
-  });
-
-  it('constructs nested negated container-query conditions structurally', () => {
-    const source = '@container (width > 760px) and (not (height > 670px)) { .card { color: red; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@container',
-        prelude: { type: 'SpacedValue', parts: [
-          { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>' } },
-          { type: 'Keyword', src: 'and' },
-          { type: 'Block', delimiter: 'paren', inner: { type: 'SpacedValue', parts: [{ type: 'Keyword', src: 'not' }, { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>' } }] } }
-        ] }
-      }]
-    });
-    expect(serialize(stylesheet(result.value)).css).toBe(
-      '@container (width > 760px) and (not (height > 670px)) {\n  .card {\n    color: red;\n  }\n}\n'
-    );
-  });
-
-  it('constructs typed container style queries and permits them in shared conditional bodies', () => {
-    const source = '@container card (inline-size > 30em) { @container style(--responsive: true) { .card { color: red; } } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'AtRuleBlock', name: '@container',
-        body: [{
-          type: 'AtRuleBlock', name: '@container',
-          prelude: { type: 'FunctionCall', name: 'style', args: [{
-            type: 'Operation', operator: ':', left: { type: 'Keyword', src: '--responsive' }, right: { type: 'Keyword', src: 'true' }
-          }] }
-        }]
-      }]
-    });
-    expect(serialize(stylesheet(result.value)).css).toBe(
-      '@container card (inline-size > 30em) {\n  @container style(--responsive: true) {\n    .card {\n      color: red;\n    }\n  }\n}\n'
-    );
-  });
-
-  it('constructs an interpolated Less container name with a structural condition', () => {
-    const source = '@name: card; @limit: 30em; @container @{name} (inline-size > @limit) { .card { color: red; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [
-        { type: 'VariableDeclaration', name: 'name' },
-        { type: 'VariableDeclaration', name: 'limit' },
-        { type: 'AtRuleBlock', name: '@container', prelude: { type: 'SpacedValue', parts: [
-          { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'name' }, unquote: true }] },
-          { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '>', right: { type: 'VariableReference', name: 'limit' } } }
-        ] } }
-      ]
-    });
-    expect(serialize(stylesheet(result.value)).css).toBe(
-      '@container card (inline-size > 30em) {\n  .card {\n    color: red;\n  }\n}\n'
-    );
-  });
-
-  it('retains output-bearing comments in a direct media-query prelude', () => {
-    const result = run(
-      lessAstGrammar.LessAstDocument,
-      '@media screen /* comment */, print /* another */ { body { font-size: 12pt; } }',
-      { trivia: lessAstGrammar.whitespace }
-    );
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
-    }
-    expect(serialize(result.value)).toEqual({
-      css: '@media screen /* comment */, print /* another */ {\n  body {\n    font-size: 12pt;\n  }\n}\n'
-    });
-  });
-
-  it('rejects malformed or unmodelled media/container query preludes without generic at-rule fallback', () => {
-    for (const source of [
-      '@media only (min-width: 1px) { .card { color: red; } }',
-      '@media screen and { .card { color: red; } }',
-      '@container only screen { .card { color: red; } }',
-      '@container selector(.card) { .card { color: red; } }'
-    ]) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
-    }
-    for (const source of [
-      '@media screen { .card { color: red; } }',
-      '@container (width > 10px) { .card { color: red; } }'
-    ]) {
-      const generic = run(lessAstGrammar.DirectLessAtRuleBlock, source, { trivia: lessAstGrammar.whitespace });
-      expect(generic.ok && generic.unconsumedFrom === null, source).toBe(false);
-    }
-  });
-
-  it('constructs complete Less interpolation headers as typed media, supports, and keyframe preludes', () => {
-    const source = '@query: screen; @condition: "(display: grid)"; @animation: fade; @media @{query} { .media { color: red; } } @supports @{condition} { .supports { display: grid; } } @keyframes @{animation} { from { opacity: 0; } }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [
-        { type: 'VariableDeclaration', name: 'query' },
-        { type: 'VariableDeclaration', name: 'condition' },
-        { type: 'VariableDeclaration', name: 'animation' },
-        { type: 'AtRuleBlock', name: '@media', prelude: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'query' }, unquote: true }] } },
-        { type: 'AtRuleBlock', name: '@supports', prelude: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'condition' }, unquote: true }] } },
-        { type: 'AtRuleBlock', name: '@keyframes', prelude: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'animation' }, unquote: true }] } }
-      ]
-    });
-    expect(isStylesheet(result.value)).toBe(true);
-    if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
-    }
-    expect(serialize(result.value)).toEqual({
-      css: '@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n'
-    });
-  });
-
-  it('constructs static and interpolated general-enclosed supports content without a raw fallback', () => {
-    const source = '@feature: kind; @supports selector(  .card-@{feature} /* keep */ :is(.a, .b) ) { .card { color: red; } }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [
-        { type: 'VariableDeclaration', name: 'feature' },
-        { type: 'AtRuleBlock', name: '@supports', prelude: {
-          type: 'GeneralEnclosed', form: 'function', name: 'selector',
-          content: { type: 'Interpolation', parts: [
-            { lit: '  .card-' },
-            { ref: { type: 'VariableReference', name: 'feature', lookup: 'scoped' }, unquote: true },
-            { lit: ' /* keep */ :is(.a, .b) ' }
-          ] }
-        } }
-      ]
-    });
-
-    for (const source of [
-      '@supports (font-tech(color-COLRv1)) { .card { color: red; } }',
-      '@supports (@{feature}: grid) { .card { color: red; } }'
-    ]) {
-      const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(true);
-    }
-    for (const source of [
-      '@supports selector(.card { .card { color: red; } }',
-      '@supports selector([.card) { .card { color: red; } }',
-      '@supports (display: grid), (color: red) { .card { color: red; } }'
-    ]) {
-      const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
-    }
-    const genericSupports = run(
-      lessAstGrammar.DirectLessAtRuleBlock,
-      '@supports (display: grid) { .card { color: red; } }',
-      { trivia: lessAstGrammar.whitespace }
-    );
-    expect(genericSupports.ok && genericSupports.unconsumedFrom === null).toBe(false);
-  });
-
-  it('constructs static mixin definitions and calls through canonical mixin nodes', () => {
-    const source = '.space(@amount, @color: blue) { padding: @amount; color: @color; } .card { .space(2px, red); }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [
         {
-          type: 'MixinDef', name: '.space',
-          params: [{ name: 'amount' }, { name: 'color', default: { type: 'Color', src: 'blue' } }],
+          type: "Rule",
+          selector: { selectors: [{ head: { simples: [{ text: "#ns" }] } }] },
           body: [
-            { type: 'Declaration', name: 'padding', value: { type: 'VariableReference', name: 'amount' } },
-            { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'color' } }
-          ]
+            { type: "MixinDef", name: ".sizes" },
+            { type: "MixinDef", name: ".breakpoint" },
+          ],
         },
         {
-          type: 'Rule',
-          body: [{
-            type: 'MixinCall', name: '.space', path: [], important: false,
-            args: [{ value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }, { value: { type: 'Color', src: 'red' } }]
-          }]
-        }
-      ]
+          type: "Rule",
+          selector: { selectors: [{ head: { simples: [{ text: "#ns" }] } }] },
+          body: [{ type: "MixinDef", name: ".sizes" }],
+        },
+        { type: "MixinDef", name: ".valToGet" },
+        {
+          type: "AtRuleBlock",
+          name: "@media",
+          prelude: {
+            type: "Reference",
+            base: {
+              type: "MixinCall",
+              name: ".breakpoint",
+              path: [{ comb: " ", sel: "#ns" }],
+            },
+            steps: [
+              {
+                type: "BracketLookup",
+                keyKind: "var",
+                key: { type: "VariableReference", name: "max" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(isStylesheet(result.value)).toBe(true);
+    if (!isStylesheet(result.value)) {
+      throw new TypeError("expected Stylesheet");
+    }
+    expect(serialize(result.value).css).toBe(
+      "@media not all and (min-width: 480px) {\n  .selector {\n    prop: val;\n  }\n}\n"
+    );
+  });
+
+  it("constructs top-level negated media query conditions structurally", () => {
+    const source =
+      "@media not (width <= -100px) { body { background: green; } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@media",
+          prelude: {
+            type: "SpacedValue",
+            parts: [
+              { type: "Keyword", src: "not" },
+              {
+                type: "Block",
+                delimiter: "paren",
+                inner: { type: "Operation", operator: "<=" },
+              },
+            ],
+          },
+          body: [{ type: "Rule" }],
+        },
+      ],
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "@media not (width <= -100px) {\n  body {\n    background: green;\n  }\n}\n"
+    );
+  });
+
+  it("constructs nested negated container-query conditions structurally", () => {
+    const source =
+      "@container (width > 760px) and (not (height > 670px)) { .card { color: red; } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@container",
+          prelude: {
+            type: "SpacedValue",
+            parts: [
+              {
+                type: "Block",
+                delimiter: "paren",
+                inner: { type: "Operation", operator: ">" },
+              },
+              { type: "Keyword", src: "and" },
+              {
+                type: "Block",
+                delimiter: "paren",
+                inner: {
+                  type: "SpacedValue",
+                  parts: [
+                    { type: "Keyword", src: "not" },
+                    {
+                      type: "Block",
+                      delimiter: "paren",
+                      inner: { type: "Operation", operator: ">" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "@container (width > 760px) and (not (height > 670px)) {\n  .card {\n    color: red;\n  }\n}\n"
+    );
+  });
+
+  it("constructs typed container style queries and permits them in shared conditional bodies", () => {
+    const source =
+      "@container card (inline-size > 30em) { @container style(--responsive: true) { .card { color: red; } } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "AtRuleBlock",
+          name: "@container",
+          body: [
+            {
+              type: "AtRuleBlock",
+              name: "@container",
+              prelude: {
+                type: "FunctionCall",
+                name: "style",
+                args: [
+                  {
+                    type: "Operation",
+                    operator: ":",
+                    left: { type: "Keyword", src: "--responsive" },
+                    right: { type: "Keyword", src: "true" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "@container card (inline-size > 30em) {\n  @container style(--responsive: true) {\n    .card {\n      color: red;\n    }\n  }\n}\n"
+    );
+  });
+
+  it("constructs an interpolated Less container name with a structural condition", () => {
+    const source =
+      "@name: card; @limit: 30em; @container @{name} (inline-size > @limit) { .card { color: red; } }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration", name: "name" },
+        { type: "VariableDeclaration", name: "limit" },
+        {
+          type: "AtRuleBlock",
+          name: "@container",
+          prelude: {
+            type: "SpacedValue",
+            parts: [
+              {
+                type: "Interpolation",
+                parts: [
+                  {
+                    ref: { type: "VariableReference", name: "name" },
+                    unquote: true,
+                  },
+                ],
+              },
+              {
+                type: "Block",
+                delimiter: "paren",
+                inner: {
+                  type: "Operation",
+                  operator: ">",
+                  right: { type: "VariableReference", name: "limit" },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "@container card (inline-size > 30em) {\n  .card {\n    color: red;\n  }\n}\n"
+    );
+  });
+
+  it("treats media-query prelude comments as trivia", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "@media screen /* comment */, print /* another */ { body { font-size: 12pt; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isStylesheet(result.value)).toBe(true);
+    if (!isStylesheet(result.value)) {
+      throw new TypeError("expected Stylesheet");
+    }
+    expect(serialize(result.value)).toEqual({
+      css: "@media screen, print {\n  body {\n    font-size: 12pt;\n  }\n}\n",
     });
   });
 
-  it('parses multiline svg-gradient values inside a mixin definition directly', () => {
-    const source = '.gradient-mixin(@color) {\n  background: svg-gradient(to bottom,\n    fade(@color, 0%) 0%,\n    fade(@color, 5%) 60%\n  );\n}';
-    for (const candidate of [
-      '.gradient-mixin(@color) { background: red; }',
-      '.gradient-mixin(@color) { background: svg-gradient(red); }',
-      '.gradient-mixin(@color) { background: svg-gradient(to bottom); }',
-      '.gradient-mixin(@color) { background: svg-gradient(to bottom, fade(@color, 0%)); }',
-      '.gradient-mixin(@color) { background: svg-gradient(to bottom, fade(@color, 0%) 0%); }',
-      source
+  it("rejects malformed or unmodelled media/container query preludes without generic at-rule fallback", () => {
+    for (const source of [
+      "@media only (min-width: 1px) { .card { color: red; } }",
+      "@media screen and { .card { color: red; } }",
+      "@container none (width > 10px) { .card { color: red; } }",
+      "@container and (width > 10px) { .card { color: red; } }",
+      "@container only screen { .card { color: red; } }",
+      "@container selector(.card) { .card { color: red; } }",
     ]) {
-      const result = run(lessAstGrammar.LessAstDocument, candidate, { trivia: lessAstGrammar.whitespace });
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(false);
+    }
+    for (const source of [
+      "@media screen { .card { color: red; } }",
+      "@container (width > 10px) { .card { color: red; } }",
+    ]) {
+      const generic = run(lessAstGrammar.AtRuleBlock, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(generic.ok && generic.unconsumedFrom === null, source).toBe(false);
+    }
+    const namedOnly = run(
+      lessAstGrammar.LessAstDocument,
+      "@container only (width > 10px) { .card { color: red; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(
+      namedOnly.ok &&
+        namedOnly.unconsumedFrom === null &&
+        isStylesheet(namedOnly.value)
+    ).toBe(true);
+    for (const source of [
+      "@container screen { .card { color: red; } }",
+      "@container only { .card { color: red; } }",
+      "@container card (inline-size > 30em), style(--large: true) { .card { color: red; } }",
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(true);
+    }
+  });
+
+  it("constructs complete Less interpolation headers as typed media, supports, and keyframe preludes", () => {
+    const source =
+      '@query: screen; @condition: "(display: grid)"; @animation: fade; @media @{query} { .media { color: red; } } @supports @{condition} { .supports { display: grid; } } @keyframes @{animation} { from { opacity: 0; } }';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration", name: "query" },
+        { type: "VariableDeclaration", name: "condition" },
+        { type: "VariableDeclaration", name: "animation" },
+        {
+          type: "AtRuleBlock",
+          name: "@media",
+          prelude: {
+            type: "Interpolation",
+            parts: [
+              {
+                ref: { type: "VariableReference", name: "query" },
+                unquote: true,
+              },
+            ],
+          },
+        },
+        {
+          type: "AtRuleBlock",
+          name: "@supports",
+          prelude: {
+            type: "Interpolation",
+            parts: [
+              {
+                ref: { type: "VariableReference", name: "condition" },
+                unquote: true,
+              },
+            ],
+          },
+        },
+        {
+          type: "AtRuleBlock",
+          name: "@keyframes",
+          prelude: {
+            type: "Interpolation",
+            parts: [
+              {
+                ref: { type: "VariableReference", name: "animation" },
+                unquote: true,
+              },
+            ],
+          },
+        },
+      ],
+    });
+    expect(isStylesheet(result.value)).toBe(true);
+    if (!isStylesheet(result.value)) {
+      throw new TypeError("expected Stylesheet");
+    }
+    expect(serialize(result.value)).toEqual({
+      css: "@media screen {\n  .media {\n    color: red;\n  }\n}\n@supports (display: grid) {\n  .supports {\n    display: grid;\n  }\n}\n@keyframes fade {\n  from {\n    opacity: 0;\n  }\n}\n",
+    });
+  });
+
+  it("constructs static and interpolated general-enclosed supports content without a raw fallback", () => {
+    const source =
+      "@feature: kind; @supports selector(  .card-@{feature} /* keep */ :is(.a, .b) ) { .card { color: red; } }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration", name: "feature" },
+        {
+          type: "AtRuleBlock",
+          name: "@supports",
+          prelude: {
+            type: "GeneralEnclosed",
+            form: "function",
+            name: "selector",
+            content: {
+              type: "Interpolation",
+              parts: [
+                { lit: "  .card-" },
+                {
+                  ref: {
+                    type: "VariableReference",
+                    name: "feature",
+                    lookup: "scoped",
+                  },
+                  unquote: true,
+                },
+                { lit: " /* keep */ :is(.a, .b) " },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    for (const source of [
+      "@supports (font-tech(color-COLRv1)) { .card { color: red; } }",
+      "@supports (@{feature}: grid) { .card { color: red; } }",
+    ]) {
+      const direct = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        source
+      ).toBe(true);
+    }
+    for (const source of [
+      "@supports selector(.card { .card { color: red; } }",
+      "@supports selector([.card) { .card { color: red; } }",
+      "@supports (display: grid), (color: red) { .card { color: red; } }",
+    ]) {
+      const direct = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        source
+      ).toBe(false);
+    }
+    const genericSupports = run(
+      lessAstGrammar.AtRuleBlock,
+      "@supports (display: grid) { .card { color: red; } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(genericSupports.ok && genericSupports.unconsumedFrom === null).toBe(
+      false
+    );
+  });
+
+  it("constructs static mixin definitions and calls through canonical mixin nodes", () => {
+    const source =
+      ".space(@amount, @color: blue) { padding: @amount; color: @color; } .card { .space(2px, red); }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "MixinDef",
+          name: ".space",
+          params: [
+            { name: "amount" },
+            { name: "color", default: { type: "Color", src: "blue" } },
+          ],
+          body: [
+            {
+              type: "Declaration",
+              name: "padding",
+              value: { type: "VariableReference", name: "amount" },
+            },
+            {
+              type: "Declaration",
+              name: "color",
+              value: { type: "VariableReference", name: "color" },
+            },
+          ],
+        },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".space",
+              path: [],
+              important: false,
+              args: [
+                {
+                  value: {
+                    type: "Dimension",
+                    number: 2,
+                    unit: "px",
+                    src: "2px",
+                  },
+                },
+                { value: { type: "Color", src: "red" } },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("parses multiline svg-gradient values inside a mixin definition directly", () => {
+    const source =
+      ".gradient-mixin(@color) {\n  background: svg-gradient(to bottom,\n    fade(@color, 0%) 0%,\n    fade(@color, 5%) 60%\n  );\n}";
+    for (const candidate of [
+      ".gradient-mixin(@color) { background: red; }",
+      ".gradient-mixin(@color) { background: svg-gradient(red); }",
+      ".gradient-mixin(@color) { background: svg-gradient(to bottom); }",
+      ".gradient-mixin(@color) { background: svg-gradient(to bottom, fade(@color, 0%)); }",
+      ".gradient-mixin(@color) { background: svg-gradient(to bottom, fade(@color, 0%) 0%); }",
+      source,
+    ]) {
+      const result = run(lessAstGrammar.LessAstDocument, candidate, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(result.ok, candidate).toBe(true);
       expect(result.unconsumedFrom, candidate).toBeNull();
     }
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'MixinDef',
-        name: '.gradient-mixin',
-        params: [{ name: 'color' }],
-        body: [{ type: 'Declaration', name: 'background', value: { type: 'FunctionCall', name: 'svg-gradient' } }]
-      }]
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
     });
-  });
-
-  it('keeps CSS-escaped mixin names as direct canonical calls', () => {
-    const source = '.mixin\\!tUp() { color: red; } .card { .mixin\\!tUp(); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [
-        { type: 'MixinDef', name: '.mixin\\!tUp' },
-        { type: 'Rule', body: [{ type: 'MixinCall', name: '.mixin\\!tUp', path: [], args: [] }] }
-      ]
-    });
-  });
-
-  it('accepts an optional statement terminator after a Less mixin definition', () => {
-    const source = '.wrap(@value) { color: @value; }; .card { .wrap(red); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'MixinDef', name: '.wrap', params: [{ name: 'value' }] },
-        { type: 'Rule', body: [{ type: 'MixinCall', name: '.wrap', args: [{ value: { type: 'Color', src: 'red' } }] }] }
-      ]
+        {
+          type: "MixinDef",
+          name: ".gradient-mixin",
+          params: [{ name: "color" }],
+          body: [
+            {
+              type: "Declaration",
+              name: "background",
+              value: { type: "FunctionCall", name: "svg-gradient" },
+            },
+          ],
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('.card {\n  color: red;\n}\n');
   });
 
-  it('constructs semicolon-separated mixin parameters with detached-ruleset defaults', () => {
+  it("keeps CSS-escaped mixin names as direct canonical calls", () => {
+    const source = ".mixin\\!tUp() { color: red; } .card { .mixin\\!tUp(); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "MixinDef", name: ".mixin\\!tUp" },
+        {
+          type: "Rule",
+          body: [
+            { type: "MixinCall", name: ".mixin\\!tUp", path: [], args: [] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("accepts an optional statement terminator after a Less mixin definition", () => {
+    const source = ".wrap(@value) { color: @value; }; .card { .wrap(red); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "MixinDef", name: ".wrap", params: [{ name: "value" }] },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".wrap",
+              args: [{ value: { type: "Color", src: "red" } }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      ".card {\n  color: red;\n}\n"
+    );
+  });
+
+  it("constructs semicolon-separated mixin parameters with detached-ruleset defaults", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.configure(@a: {}; @b: { default: works; };) { @a(); @b(); }',
+      ".configure(@a: {}; @b: { default: works; };) { @a(); @b(); }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'MixinDef', name: '.configure', params: [
-        { name: 'a', default: { type: 'AnonymousMixin', body: [] } },
-        { name: 'b', default: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'default' }] } }
-      ] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "MixinDef",
+          name: ".configure",
+          params: [
+            { name: "a", default: { type: "AnonymousMixin", body: [] } },
+            {
+              name: "b",
+              default: {
+                type: "AnonymousMixin",
+                body: [{ type: "Declaration", name: "default" }],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs semicolon-separated detached-ruleset mixin arguments', () => {
+  it("constructs semicolon-separated detached-ruleset mixin arguments", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.configure(@a; @b) {} .card { .configure({ direct: works; }; @b: { named: works; }); }',
+      ".configure(@a; @b) {} .card { .configure({ direct: works; }; @b: { named: works; }); }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'MixinDef' }, { type: 'Rule', body: [{ type: 'MixinCall', args: [
-        { value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'direct' }] } },
-        { name: 'b', value: { type: 'AnonymousMixin', body: [{ type: 'Declaration', name: 'named' }] } }
-      ] }] }]
+      type: "Stylesheet",
+      children: [
+        { type: "MixinDef" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              args: [
+                {
+                  value: {
+                    type: "AnonymousMixin",
+                    body: [{ type: "Declaration", name: "direct" }],
+                  },
+                },
+                {
+                  name: "b",
+                  value: {
+                    type: "AnonymousMixin",
+                    body: [{ type: "Declaration", name: "named" }],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('groups comma runs into list-valued arguments when semicolons separate Less mixin arguments', () => {
+  it("groups comma runs into list-valued arguments when semicolons separate Less mixin arguments", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '.generic(@left; @right) { left: @left; right: @right; } .out { .generic(a, b, c; a, b, c); }',
+      ".generic(@left; @right) { left: @left; right: @right; } .out { .generic(a, b, c; a, b, c); }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'MixinDef' }, { type: 'Rule', body: [{
-        type: 'MixinCall', name: '.generic', args: [
-          { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }, { type: 'Keyword', src: 'c' }] } },
-          { value: { type: 'List', sep: ',', value: [{ type: 'Keyword', src: 'a' }, { type: 'Keyword', src: 'b' }, { type: 'Keyword', src: 'c' }] } }
-        ]
-      }] }]
+      type: "Stylesheet",
+      children: [
+        { type: "MixinDef" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".generic",
+              args: [
+                {
+                  value: {
+                    type: "List",
+                    sep: ",",
+                    value: [
+                      { type: "Keyword", src: "a" },
+                      { type: "Keyword", src: "b" },
+                      { type: "Keyword", src: "c" },
+                    ],
+                  },
+                },
+                {
+                  value: {
+                    type: "List",
+                    sep: ",",
+                    value: [
+                      { type: "Keyword", src: "a" },
+                      { type: "Keyword", src: "b" },
+                      { type: "Keyword", src: "c" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('.out {\n  left: a, b, c;\n  right: a, b, c;\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      ".out {\n  left: a, b, c;\n  right: a, b, c;\n}\n"
+    );
   });
 
-  it('keeps recursive value slots inside semicolon-terminated mixin argument groups', () => {
+  it("keeps recursive value slots inside semicolon-terminated mixin argument groups", () => {
     const source = [
-      '.multi-bg(@bgs...) { background: @bgs; }',
-      '.hero {',
+      ".multi-bg(@bgs...) { background: @bgs; }",
+      ".hero {",
       '  .multi-bg(linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url("/images/hero.jpg") center/cover no-repeat);',
-      '}'
-    ].join('\n');
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      "}",
+    ].join("\n");
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'MixinDef' }, { type: 'Rule', body: [{
-        type: 'MixinCall',
-        name: '.multi-bg',
-        args: [
-          { value: { type: 'FunctionCall', name: 'linear-gradient' } },
-          { value: [
-            { type: 'Url' },
-            { type: 'SpacedValue' },
-            { type: 'Keyword', src: 'no-repeat' }
-          ] }
-        ]
-      }] }]
+      type: "Stylesheet",
+      children: [
+        { type: "MixinDef" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".multi-bg",
+              args: [
+                { value: { type: "FunctionCall", name: "linear-gradient" } },
+                {
+                  value: [
+                    { type: "Url" },
+                    { type: "SpacedValue" },
+                    { type: "Keyword", src: "no-repeat" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
     expect(serialize(stylesheet(result.value)).css).toBe(
       '.hero {\n  background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)) url("/images/hero.jpg") center/cover no-repeat;\n}\n'
     );
   });
 
-  it('constructs public literal-pattern and variadic mixin parameters directly', () => {
-    const source = '.badge(red, @gap, @rest...) { padding: @gap; } .card { .badge(red, 2px, 4px); }';
+  it("constructs public literal-pattern and variadic mixin parameters directly", () => {
+    const source =
+      ".badge(red, @gap, @rest...) { padding: @gap; } .card { .badge(red, 2px, 4px); }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {
-          type: 'MixinDef', name: '.badge',
+          type: "MixinDef",
+          name: ".badge",
           params: [
-            { pattern: { type: 'Color', src: 'red' } },
-            { name: 'gap' },
-            { name: 'rest', rest: true }
-          ]
+            { pattern: { type: "Color", src: "red" } },
+            { name: "gap" },
+            { name: "rest", rest: true },
+          ],
         },
         {
-          type: 'Rule',
-          body: [{
-            type: 'MixinCall', name: '.badge', path: [], important: false,
-            args: [
-              { value: { type: 'Color', src: 'red' } },
-              { value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } },
-              { value: { type: 'Dimension', number: 4, unit: 'px', src: '4px' } }
-            ]
-          }]
-        }
-      ]
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".badge",
+              path: [],
+              important: false,
+              args: [
+                { value: { type: "Color", src: "red" } },
+                {
+                  value: {
+                    type: "Dimension",
+                    number: 2,
+                    unit: "px",
+                    src: "2px",
+                  },
+                },
+                {
+                  value: {
+                    type: "Dimension",
+                    number: 4,
+                    unit: "px",
+                    src: "4px",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs a Less mixin argument expansion through the existing spread field', () => {
-    const source = '.pair(@a, @b) { first: @a; second: @b; } @args: one, two; .card { .pair(@args...); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs a Less mixin argument expansion through the existing spread field", () => {
+    const source =
+      ".pair(@a, @b) { first: @a; second: @b; } @args: one, two; .card { .pair(@args...); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'MixinDef', name: '.pair' },
-        { type: 'VariableDeclaration', name: 'args' },
-        { type: 'Rule', body: [{
-          type: 'MixinCall', name: '.pair',
-          args: [{ value: { type: 'VariableReference', name: 'args', lookup: 'scoped' }, spread: true }]
-        }] }
-      ]
+        { type: "MixinDef", name: ".pair" },
+        { type: "VariableDeclaration", name: "args" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".pair",
+              args: [
+                {
+                  value: {
+                    type: "VariableReference",
+                    name: "args",
+                    lookup: "scoped",
+                  },
+                  spread: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('.card {\n  first: one;\n  second: two;\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      ".card {\n  first: one;\n  second: two;\n}\n"
+    );
   });
 
-  it('constructs static namespaced mixin calls through the existing path contract', () => {
-    const source = '.card { .library > .colors .tone(red); }';
+  it("constructs static namespaced mixin calls through the existing path contract", () => {
+    const source = ".card { .library > .colors .tone(red); }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [{
-          type: 'MixinCall', name: '.tone', important: false,
-          path: [
-            { comb: ' ', sel: '.library' },
-            { comb: '>', sel: '.colors' }
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".tone",
+              important: false,
+              path: [
+                { comb: " ", sel: ".library" },
+                { comb: ">", sel: ".colors" },
+              ],
+              args: [{ value: { type: "Color", src: "red" } }],
+            },
           ],
-          args: [{ value: { type: 'Color', src: 'red' } }]
-        }]
-      }]
+        },
+      ],
     });
   });
 
-  it('keeps nested callable mixin arguments as MixinCall facts, not value-shaped source recovery', () => {
-    const source = '.wrapper(.something(foo)); .wrapper(.output-height());';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps nested callable mixin arguments as MixinCall facts, not value-shaped source recovery", () => {
+    const source = ".wrapper(.something(foo)); .wrapper(.output-height());";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'MixinCall', name: '.wrapper', args: [{ value: { type: 'MixinCall', name: '.something', args: [{ value: { type: 'Keyword', src: 'foo' } }] } }] },
-        { type: 'MixinCall', name: '.wrapper', args: [{ value: { type: 'MixinCall', name: '.output-height', args: [] } }] }
-      ]
+        {
+          type: "MixinCall",
+          name: ".wrapper",
+          args: [
+            {
+              value: {
+                type: "MixinCall",
+                name: ".something",
+                args: [{ value: { type: "Keyword", src: "foo" } }],
+              },
+            },
+          ],
+        },
+        {
+          type: "MixinCall",
+          name: ".wrapper",
+          args: [
+            { value: { type: "MixinCall", name: ".output-height", args: [] } },
+          ],
+        },
+      ],
     });
 
-    const arithmetic = run(lessAstGrammar.LessAstDocument, '.wrapper(.something(foo) + 1);', { trivia: lessAstGrammar.whitespace });
+    const arithmetic = run(
+      lessAstGrammar.LessAstDocument,
+      ".wrapper(.something(foo) + 1);",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(arithmetic.ok && arithmetic.unconsumedFrom === null).toBe(false);
 
     const lexical = run(
       lessAstGrammar.LessAstDocument,
-      '@caller: 10px; .wrapper(@m) { @m(); } .something(@value) { width: @value; } .output-height() { height: 10px; } .x { .wrapper(.something(@caller)); .wrapper(.output-height()); }',
+      "@caller: 10px; .wrapper(@m) { @m(); } .something(@value) { width: @value; } .output-height() { height: 10px; } .x { .wrapper(.something(@caller)); .wrapper(.output-height()); }",
       { trivia: lessAstGrammar.whitespace }
     );
     expect(lexical.ok).toBe(true);
-    expect(serialize(stylesheet(lexical.value)).css).toBe('.x {\n  width: 10px;\n  height: 10px;\n}\n');
+    expect(serialize(stylesheet(lexical.value)).css).toBe(
+      ".x {\n  width: 10px;\n  height: 10px;\n}\n"
+    );
   });
 
-  it('constructs static namespace/map reads as References over the existing MixinCall path base', () => {
-    const source = '.out { a: #ns1[foo]; b: #ns1.vars[$sub]; c: #DEF.colors[primary]; d: #library.add-one(1px)[@return]; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs static namespace/map reads as References over the existing MixinCall path base", () => {
+    const source =
+      ".out { a: #ns1[foo]; b: #ns1.vars[$sub]; c: #DEF.colors[primary]; d: #library.add-one(1px)[@return]; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule', body: [
-          { type: 'Declaration', name: 'a', value: { type: 'Reference', base: { type: 'MixinCall', name: '#ns1', path: [], args: [] }, steps: [{ type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'foo' } }], raw: '#ns1[foo]' } },
-          { type: 'Declaration', name: 'b', value: { type: 'Reference', base: { type: 'MixinCall', name: '.vars', path: [{ comb: ' ', sel: '#ns1' }], args: [] }, steps: [{ type: 'BracketLookup', keyKind: 'prop', key: { type: 'PropertyReference', name: 'sub' } }], raw: '#ns1 .vars[$sub]' } },
-          { type: 'Declaration', name: 'c', value: { type: 'Reference', base: { type: 'MixinCall', name: '.colors', path: [{ comb: ' ', sel: '#DEF' }], args: [] }, steps: [{ type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'primary' } }], raw: '#DEF .colors[primary]' } },
-          { type: 'Declaration', name: 'd', value: { type: 'Reference', base: { type: 'MixinCall', name: '.add-one', path: [{ comb: ' ', sel: '#library' }], args: [{ value: { type: 'Dimension', src: '1px' } }] }, steps: [{ type: 'BracketLookup', keyKind: 'var', key: { type: 'VariableReference', name: 'return' } }], raw: '#library .add-one(1px)[@return]' } }
-        ]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "a",
+              value: {
+                type: "Reference",
+                base: { type: "MixinCall", name: "#ns1", path: [], args: [] },
+                steps: [
+                  {
+                    type: "BracketLookup",
+                    keyKind: "prop",
+                    key: { type: "Keyword", src: "foo" },
+                  },
+                ],
+                raw: "#ns1[foo]",
+              },
+            },
+            {
+              type: "Declaration",
+              name: "b",
+              value: {
+                type: "Reference",
+                base: {
+                  type: "MixinCall",
+                  name: ".vars",
+                  path: [{ comb: " ", sel: "#ns1" }],
+                  args: [],
+                },
+                steps: [
+                  {
+                    type: "BracketLookup",
+                    keyKind: "prop",
+                    key: { type: "PropertyReference", name: "sub" },
+                  },
+                ],
+                raw: "#ns1 .vars[$sub]",
+              },
+            },
+            {
+              type: "Declaration",
+              name: "c",
+              value: {
+                type: "Reference",
+                base: {
+                  type: "MixinCall",
+                  name: ".colors",
+                  path: [{ comb: " ", sel: "#DEF" }],
+                  args: [],
+                },
+                steps: [
+                  {
+                    type: "BracketLookup",
+                    keyKind: "prop",
+                    key: { type: "Keyword", src: "primary" },
+                  },
+                ],
+                raw: "#DEF .colors[primary]",
+              },
+            },
+            {
+              type: "Declaration",
+              name: "d",
+              value: {
+                type: "Reference",
+                base: {
+                  type: "MixinCall",
+                  name: ".add-one",
+                  path: [{ comb: " ", sel: "#library" }],
+                  args: [{ value: { type: "Dimension", src: "1px" } }],
+                },
+                steps: [
+                  {
+                    type: "BracketLookup",
+                    keyKind: "var",
+                    key: { type: "VariableReference", name: "return" },
+                  },
+                ],
+                raw: "#library .add-one(1px)[@return]",
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('folds mixed namespace call, lookup, member, and call continuations into one direct Reference', () => {
+  it("folds mixed namespace call, lookup, member, and call continuations into one direct Reference", () => {
     const source = `
 #library {
   .seed() { @next: .inner(); }
@@ -2836,160 +5809,284 @@ describe('Less AST grammar facts', () => {
 }
 .out { value: #library.seed()[@next](42)[answer]; member: @theme[key].next(1); }
 `;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{}, {
-        type: 'Rule', body: [{
-          type: 'Declaration', name: 'value', value: {
-            type: 'Reference',
-            base: { type: 'MixinCall', name: '.seed', path: [{ comb: ' ', sel: '#library' }], args: [] },
-            steps: [
-              { type: 'BracketLookup', keyKind: 'var', key: { type: 'VariableReference', name: 'next', lookup: 'scoped' } },
-              { type: 'Call', args: [{ value: { type: 'Dimension', src: '42' } }] },
-              { type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'answer' } }
-            ],
-            raw: '#library .seed()[@next](42)[answer]'
-          }
-        }, {
-          type: 'Declaration', name: 'member', value: {
-            type: 'Reference',
-            base: { type: 'VariableReference', name: 'theme', lookup: 'scoped' },
-            steps: [
-              { type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'key' } },
-              { type: 'DotLookup', name: 'next' },
-              { type: 'Call', args: [{ value: { type: 'Dimension', src: '1' } }] }
-            ],
-            raw: '@theme[key].next(1)'
-          }
-        }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {},
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "value",
+              value: {
+                type: "Reference",
+                base: {
+                  type: "MixinCall",
+                  name: ".seed",
+                  path: [{ comb: " ", sel: "#library" }],
+                  args: [],
+                },
+                steps: [
+                  {
+                    type: "BracketLookup",
+                    keyKind: "var",
+                    key: {
+                      type: "VariableReference",
+                      name: "next",
+                      lookup: "scoped",
+                    },
+                  },
+                  {
+                    type: "Call",
+                    args: [{ value: { type: "Dimension", src: "42" } }],
+                  },
+                  {
+                    type: "BracketLookup",
+                    keyKind: "prop",
+                    key: { type: "Keyword", src: "answer" },
+                  },
+                ],
+                raw: "#library .seed()[@next](42)[answer]",
+              },
+            },
+            {
+              type: "Declaration",
+              name: "member",
+              value: {
+                type: "Reference",
+                base: {
+                  type: "VariableReference",
+                  name: "theme",
+                  lookup: "scoped",
+                },
+                steps: [
+                  {
+                    type: "BracketLookup",
+                    keyKind: "prop",
+                    key: { type: "Keyword", src: "key" },
+                  },
+                  { type: "DotLookup", name: "next" },
+                  {
+                    type: "Call",
+                    args: [{ value: { type: "Dimension", src: "1" } }],
+                  },
+                ],
+                raw: "@theme[key].next(1)",
+              },
+            },
+          ],
+        },
+      ],
     });
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
-    expect(serialize(result.value).css).toContain('value: 42;');
+    expect(serialize(result.value).css).toContain("value: 42;");
   });
 
-  it('constructs $@variable namespace property keys without flattening their indirection', () => {
+  it("constructs $@variable namespace property keys without flattening their indirection", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '@prop-name: my-prop; #namespace { my-prop: prop-value; } .test { value: #namespace[$@prop-name]; }',
+      "@prop-name: my-prop; #namespace { my-prop: prop-value; } .test { value: #namespace[$@prop-name]; }",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{}, {}, {
-        type: 'Rule', body: [{
-          type: 'Declaration', name: 'value', value: {
-            type: 'Reference', base: { type: 'MixinCall', name: '#namespace', path: [], args: [] },
-            steps: [{
-              type: 'BracketLookup', keyKind: 'prop',
-              key: { type: 'VariableReference', name: 'prop-name', lookup: 'scoped' }
-            }],
-            raw: '#namespace[$@prop-name]'
-          }
-        }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {},
+        {},
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "value",
+              value: {
+                type: "Reference",
+                base: {
+                  type: "MixinCall",
+                  name: "#namespace",
+                  path: [],
+                  args: [],
+                },
+                steps: [
+                  {
+                    type: "BracketLookup",
+                    keyKind: "prop",
+                    key: {
+                      type: "VariableReference",
+                      name: "prop-name",
+                      lookup: "scoped",
+                    },
+                  },
+                ],
+                raw: "#namespace[$@prop-name]",
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('keeps a namespaced mixin map value and its call-level important flag typed', () => {
+  it("keeps a namespaced mixin map value and its call-level important flag typed", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
-      '@theme-colors: #theme.dark.navbar.colors() !important;',
+      "@theme-colors: #theme.dark.navbar.colors() !important;",
       { trivia: lessAstGrammar.whitespace }
     );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'VariableDeclaration', name: 'theme-colors',
-        value: {
-          type: 'MixinCall', name: '.colors', args: [], important: true,
-          path: [
-            { comb: ' ', sel: '#theme' },
-            { comb: ' ', sel: '.dark' },
-            { comb: ' ', sel: '.navbar' }
-          ]
-        }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "VariableDeclaration",
+          name: "theme-colors",
+          value: {
+            type: "MixinCall",
+            name: ".colors",
+            args: [],
+            important: true,
+            path: [
+              { comb: " ", sel: "#theme" },
+              { comb: " ", sel: ".dark" },
+              { comb: " ", sel: ".navbar" },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('constructs bracket-accessed namespace values as arithmetic operands', () => {
+  it("constructs bracket-accessed namespace values as arithmetic operands", () => {
     const source = `
 #ns { .options() { val1: 10px; } }
 @ns: { @options: { val2: 20px; } }
 .foo { val: #ns.options[val1] + @ns[@options][val2] + 5px; }
 `;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {},
         {},
-        { type: 'Rule', body: [{ type: 'Declaration', name: 'val', value: {
-          type: 'Operation', operator: '+',
-          left: { type: 'Operation', operator: '+', left: {
-            type: 'Reference', base: { type: 'MixinCall', name: '.options', path: [{ comb: ' ', sel: '#ns' }], args: [] },
-            steps: [{ type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'val1' } }]
-          }, right: {
-            type: 'Reference', base: { type: 'VariableReference', name: 'ns', lookup: 'scoped' },
-            steps: [
-              { type: 'BracketLookup', keyKind: 'var', key: { type: 'VariableReference', name: 'options', lookup: 'scoped' } },
-              { type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'val2' } }
-            ]
-          } },
-          right: { type: 'Dimension', src: '5px' }
-        } }] }
-      ]
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "val",
+              value: {
+                type: "Operation",
+                operator: "+",
+                left: {
+                  type: "Operation",
+                  operator: "+",
+                  left: {
+                    type: "Reference",
+                    base: {
+                      type: "MixinCall",
+                      name: ".options",
+                      path: [{ comb: " ", sel: "#ns" }],
+                      args: [],
+                    },
+                    steps: [
+                      {
+                        type: "BracketLookup",
+                        keyKind: "prop",
+                        key: { type: "Keyword", src: "val1" },
+                      },
+                    ],
+                  },
+                  right: {
+                    type: "Reference",
+                    base: {
+                      type: "VariableReference",
+                      name: "ns",
+                      lookup: "scoped",
+                    },
+                    steps: [
+                      {
+                        type: "BracketLookup",
+                        keyKind: "var",
+                        key: {
+                          type: "VariableReference",
+                          name: "options",
+                          lookup: "scoped",
+                        },
+                      },
+                      {
+                        type: "BracketLookup",
+                        keyKind: "prop",
+                        key: { type: "Keyword", src: "val2" },
+                      },
+                    ],
+                  },
+                },
+                right: { type: "Dimension", src: "5px" },
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('evaluates bracket variable members from every applicable implicit and explicit mixin call result', () => {
+  it("evaluates bracket variable members from every applicable implicit and explicit mixin call result", () => {
     const source = `
 #library { .implicit() { @return: red; } .explicit(@x) { @return: 1px; } }
 #library { .implicit() { @return: blue; } .explicit(@x) { @return: 2px; } }
 .out { implicit: #library.implicit[@return]; explicit: #library.explicit(1px)[@return]; }
 `;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
-    expect(serialize(result.value).css).toContain('.out {\n  implicit: blue;\n  explicit: 2px;\n}');
+    expect(serialize(result.value).css).toContain(
+      ".out {\n  implicit: blue;\n  explicit: 2px;\n}"
+    );
   });
 
-  it('resolves direct `[@key]` members in the aggregated mixin-call result frame, not the caller frame', () => {
+  it("resolves direct `[@key]` members in the aggregated mixin-call result frame, not the caller frame", () => {
     const source = `
 #library { .m() { @key: first; @return: first-return; } }
 #library { .m() { @key: callee; @return: callee-return; } }
 @key: return;
 .out { ordinary: #library.m()[@key]; returned: #library.m()[@return]; }
 `;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
 
     /*
@@ -2997,10 +6094,12 @@ describe('Less AST grammar facts', () => {
      * named variable member (`[@foo]`, `[@return]`). `[@@name]` is the distinct
      * indirection form, covered separately by namespacing-2 and not widened here.
      */
-    expect(serialize(result.value).css).toContain('.out {\n  ordinary: callee;\n  returned: callee-return;\n}');
+    expect(serialize(result.value).css).toContain(
+      ".out {\n  ordinary: callee;\n  returned: callee-return;\n}"
+    );
   });
 
-  it('classifies variable-only value blocks as Collections and reads their typed members', () => {
+  it("classifies variable-only value blocks as Collections and reads their typed members", () => {
     /*
      * Upstream tests-config/namespacing/namespacing-1.less: the map declaration
      * follows its reads, and `@@varToGet` selects the `@default-color` member.
@@ -3010,47 +6109,51 @@ describe('Less AST grammar facts', () => {
 .out { @defaults(); direct: @defaults[@default-color]; nested: @defaults[@nested][@color]; indirect: @defaults[@@varToGet]; }
 @defaults: { @default-color: red; @nested: { @color: yellow; }; };
 `;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(result.value.children[2]).toMatchObject({
-      type: 'VariableDeclaration',
-      name: 'defaults',
+      type: "VariableDeclaration",
+      name: "defaults",
       value: {
-        type: 'Collection',
+        type: "Collection",
         entries: [
-          { type: 'VariableDeclaration', name: 'default-color' },
+          { type: "VariableDeclaration", name: "default-color" },
           {
-            type: 'VariableDeclaration',
-            name: 'nested',
+            type: "VariableDeclaration",
+            name: "nested",
             value: {
-              type: 'Collection',
-              entries: [{ type: 'VariableDeclaration', name: 'color' }]
-            }
-          }
-        ]
-      }
+              type: "Collection",
+              entries: [{ type: "VariableDeclaration", name: "color" }],
+            },
+          },
+        ],
+      },
     });
     const outputRule = result.value.children[1];
-    expect(outputRule).toMatchObject({ type: 'Rule' });
-    if (outputRule?.type !== 'Rule') {
-      throw new TypeError('expected output rule');
+    expect(outputRule).toMatchObject({ type: "Rule" });
+    if (outputRule?.type !== "Rule") {
+      throw new TypeError("expected output rule");
     }
     expect(outputRule.body[0]).toMatchObject({
-      type: 'Reference',
-      base: { type: 'VariableReference', name: 'defaults', lookup: 'scoped' },
-      steps: [{ type: 'Call', args: [] }],
-      raw: '@defaults()'
+      type: "Reference",
+      base: { type: "VariableReference", name: "defaults", lookup: "scoped" },
+      steps: [{ type: "Call", args: [] }],
+      raw: "@defaults()",
     });
-    expect(serialize(result.value).css).toContain('.out {\n  direct: red;\n  nested: yellow;\n  indirect: red;\n}');
+    expect(serialize(result.value).css).toContain(
+      ".out {\n  direct: red;\n  nested: yellow;\n  indirect: red;\n}"
+    );
   });
 
-  it('reads `$name` as a property member on an aggregated static namespace call result', () => {
+  it("reads `$name` as a property member on an aggregated static namespace call result", () => {
     /*
      * Upstream tests-config/namespacing/namespacing-1.less: #ns1.vars[$sub]
      * selects `sub:` from every applicable `.vars()` result; the last wins.
@@ -3060,130 +6163,202 @@ describe('Less AST grammar facts', () => {
 #ns1 { .vars() { sub: tres; } }
 .out { sub: #ns1.vars[$sub]; }
 `;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
-    expect(serialize(result.value).css).toContain('.out {\n  sub: tres;\n}');
+    expect(serialize(result.value).css).toContain(".out {\n  sub: tres;\n}");
   });
 
-  it('constructs semicolon-terminated parenthesis-free mixin calls through the existing path contract', () => {
-    const source = '#theme { .mixin() { color: red; } } .card { #theme > .mixin; } .important { #theme > .mixin !important; }';
+  it("constructs semicolon-terminated parenthesis-free mixin calls through the existing path contract", () => {
+    const source =
+      "#theme { .mixin() { color: red; } } .card { #theme > .mixin; } .important { #theme > .mixin !important; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'Rule', body: [{ type: 'MixinDef', name: '.mixin' }] },
-        { type: 'Rule', body: [{ type: 'MixinCall', name: '.mixin', args: [], path: [{ comb: ' ', sel: '#theme' }] }] },
-        { type: 'Rule', body: [{ type: 'MixinCall', name: '.mixin', args: [], path: [{ comb: ' ', sel: '#theme' }], important: true }] }
-      ]
-    });
-
-    for (const invalid of [
-      '.card { #theme > .mixin }'
-    ]) {
-      const direct = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
-    }
-  });
-
-  it('constructs the public call-level !important mixin override directly', () => {
-    const source = '.card { .space(2px) !important; }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [{
-          type: 'MixinCall', name: '.space', path: [], important: true,
-          args: [{ value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }]
-        }]
-      }]
-    });
-  });
-
-  it('constructs ordered named arguments for static and namespaced mixin calls directly', () => {
-    const source = '.card { .library > .colors .tone(@shade: red, @gap: 2px); }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [{
-          type: 'MixinCall', name: '.tone', important: false,
-          path: [
-            { comb: ' ', sel: '.library' },
-            { comb: '>', sel: '.colors' }
-          ],
-          args: [
-            { name: 'shade', value: { type: 'Color', src: 'red' } },
-            { name: 'gap', value: { type: 'Dimension', number: 2, unit: 'px', src: '2px' } }
-          ]
-        }]
-      }]
-    });
-  });
-
-  it('constructs truthful static mixin comparison and truth guards directly', () => {
-    const source = '.wide(@width) when (@width >= 20px) { width: @width; } .enabled() when (true) { display: block; }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [
+        { type: "Rule", body: [{ type: "MixinDef", name: ".mixin" }] },
         {
-          type: 'MixinDef', name: '.wide',
-          guard: {
-            g: 'cmp', op: '>=',
-            left: { type: 'VariableReference', name: 'width' },
-            right: { type: 'Dimension', number: 20, unit: 'px', src: '20px' }
-          }
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".mixin",
+              args: [],
+              path: [{ comb: " ", sel: "#theme" }],
+            },
+          ],
         },
         {
-          type: 'MixinDef', name: '.enabled',
-          guard: { g: 'truth', value: { type: 'Keyword', src: 'true' } }
-        }
-      ]
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".mixin",
+              args: [],
+              path: [{ comb: " ", sel: "#theme" }],
+              important: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    for (const invalid of [".card { #theme > .mixin }"]) {
+      const direct = run(lessAstGrammar.LessAstDocument, invalid, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        invalid
+      ).toBe(false);
+    }
+  });
+
+  it("constructs the public call-level !important mixin override directly", () => {
+    const source = ".card { .space(2px) !important; }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".space",
+              path: [],
+              important: true,
+              args: [
+                {
+                  value: {
+                    type: "Dimension",
+                    number: 2,
+                    unit: "px",
+                    src: "2px",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('enforces Less when guard comparison grouping', () => {
+  it("constructs ordered named arguments for static and namespaced mixin calls directly", () => {
+    const source =
+      ".card { .library > .colors .tone(@shade: red, @gap: 2px); }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "MixinCall",
+              name: ".tone",
+              important: false,
+              path: [
+                { comb: " ", sel: ".library" },
+                { comb: ">", sel: ".colors" },
+              ],
+              args: [
+                { name: "shade", value: { type: "Color", src: "red" } },
+                {
+                  name: "gap",
+                  value: {
+                    type: "Dimension",
+                    number: 2,
+                    unit: "px",
+                    src: "2px",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("constructs truthful static mixin comparison and truth guards directly", () => {
+    const source =
+      ".wide(@width) when (@width >= 20px) { width: @width; } .enabled() when (true) { display: block; }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "MixinDef",
+          name: ".wide",
+          guard: {
+            g: "cmp",
+            op: ">=",
+            left: { type: "VariableReference", name: "width" },
+            right: { type: "Dimension", number: 20, unit: "px", src: "20px" },
+          },
+        },
+        {
+          type: "MixinDef",
+          name: ".enabled",
+          guard: { g: "truth", value: { type: "Keyword", src: "true" } },
+        },
+      ],
+    });
+  });
+
+  it("enforces Less when guard comparison grouping", () => {
     const accepts = [
-      '.match() when (1 = 1) { color: green; }',
-      '.match() when not (1 = 1) { color: green; }',
-      '.match() when (1 = 1) and (2 = 2) { color: green; }'
+      ".match() when (1 = 1) { color: green; }",
+      ".match() when not (1 = 1) { color: green; }",
+      ".match() when (1 = 1) and (2 = 2) { color: green; }",
     ];
     const rejects = [
-      '.match() when 1 = 1 { color: red; }',
-      '.match() when true { color: red; }',
-      '.match(@is-true) when @is-true { color: red; }'
+      ".match() when 1 = 1 { color: red; }",
+      ".match() when true { color: red; }",
+      ".match(@is-true) when @is-true { color: red; }",
     ];
 
     for (const source of accepts) {
@@ -3194,7 +6369,7 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('routes the namespacing-7 accessor guards through existing typed References', () => {
+  it("routes the namespacing-7 accessor guards through existing typed References", () => {
     const source = `#ns {
   .options() { option: true; }
 }
@@ -3205,242 +6380,459 @@ describe('Less AST grammar facts', () => {
 & when (@ns[@options][option]) { .dr { a: b; } }
 & when (@ns[@options][option] = true) { .dr-2 { c: d; } }
 & when (@ns[@options][option] = false) { .dr-no-reach { c: d; } }`;
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     const children = stylesheet(result.value).children;
     expect([children[2], children[3], children[7]]).toMatchObject([
       {
-        type: 'Rule',
+        type: "Rule",
         guard: {
-          g: 'truth',
+          g: "truth",
           value: {
-            type: 'Reference',
+            type: "Reference",
             base: {
-              type: 'MixinCall', name: '.options',
-              path: [{ comb: ' ', sel: '#ns' }],
-              args: []
-            },
-            steps: [{ type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'option' } }],
-            raw: '#ns .options[option]'
-          }
-        }
-      },
-      {
-        type: 'Rule',
-        guard: {
-          g: 'cmp', op: '=',
-          left: {
-            type: 'Reference',
-            base: {
-              type: 'MixinCall', name: '.options',
-              path: [{ comb: ' ', sel: '#ns' }],
-              args: []
-            },
-            steps: [{ type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'option' } }],
-            raw: '#ns .options[option]'
-          },
-          right: { type: 'Keyword', src: 'true' }
-        }
-      },
-      {
-        type: 'Rule',
-        guard: {
-          g: 'cmp', op: '=',
-          left: {
-            type: 'Reference',
-            base: {
-              type: 'VariableReference', name: 'ns', lookup: 'scoped'
+              type: "MixinCall",
+              name: ".options",
+              path: [{ comb: " ", sel: "#ns" }],
+              args: [],
             },
             steps: [
-              { type: 'BracketLookup', keyKind: 'var', key: { type: 'VariableReference', name: 'options', lookup: 'scoped' } },
-              { type: 'BracketLookup', keyKind: 'prop', key: { type: 'Keyword', src: 'option' } }
+              {
+                type: "BracketLookup",
+                keyKind: "prop",
+                key: { type: "Keyword", src: "option" },
+              },
             ],
-            raw: '@ns[@options][option]'
+            raw: "#ns .options[option]",
           },
-          right: { type: 'Keyword', src: 'false' }
-        }
-      }
+        },
+      },
+      {
+        type: "Rule",
+        guard: {
+          g: "cmp",
+          op: "=",
+          left: {
+            type: "Reference",
+            base: {
+              type: "MixinCall",
+              name: ".options",
+              path: [{ comb: " ", sel: "#ns" }],
+              args: [],
+            },
+            steps: [
+              {
+                type: "BracketLookup",
+                keyKind: "prop",
+                key: { type: "Keyword", src: "option" },
+              },
+            ],
+            raw: "#ns .options[option]",
+          },
+          right: { type: "Keyword", src: "true" },
+        },
+      },
+      {
+        type: "Rule",
+        guard: {
+          g: "cmp",
+          op: "=",
+          left: {
+            type: "Reference",
+            base: {
+              type: "VariableReference",
+              name: "ns",
+              lookup: "scoped",
+            },
+            steps: [
+              {
+                type: "BracketLookup",
+                keyKind: "var",
+                key: {
+                  type: "VariableReference",
+                  name: "options",
+                  lookup: "scoped",
+                },
+              },
+              {
+                type: "BracketLookup",
+                keyKind: "prop",
+                key: { type: "Keyword", src: "option" },
+              },
+            ],
+            raw: "@ns[@options][option]",
+          },
+          right: { type: "Keyword", src: "false" },
+        },
+      },
     ]);
   });
 
-  it('constructs quoted Less mixin guard operands as existing typed values', () => {
-    const source = '.match(@value) when (@value = "ok") { color: green; } .yes { .match("ok"); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs quoted Less mixin guard operands as existing typed values", () => {
+    const source =
+      '.match(@value) when (@value = "ok") { color: green; } .yes { .match("ok"); }';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({ type: 'Stylesheet' });
+    expect(result.value).toMatchObject({ type: "Stylesheet" });
     expect(stylesheet(result.value).children[0]).toMatchObject({
-      type: 'MixinDef', name: '.match',
+      type: "MixinDef",
+      name: ".match",
       guard: {
-        g: 'cmp', op: '=',
-        left: { type: 'VariableReference', name: 'value', lookup: 'scoped' },
-        right: { type: 'Quoted', src: '"ok"', value: 'ok', quote: '"', escaped: false }
-      }
+        g: "cmp",
+        op: "=",
+        left: { type: "VariableReference", name: "value", lookup: "scoped" },
+        right: {
+          type: "Quoted",
+          src: '"ok"',
+          value: "ok",
+          quote: '"',
+          escaped: false,
+        },
+      },
     });
   });
 
-  it('constructs static logical, negated, default, and type-call mixin guards directly', () => {
-    const source = '.match(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }';
+  it("constructs static logical, negated, default, and type-call mixin guards directly", () => {
+    const source =
+      ".match(@value) when (not (@value < 2) and iscolor(red), default()) { color: red; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'MixinDef', name: '.match',
-        guard: {
-          g: 'or',
-          left: {
-            g: 'and',
+      type: "Stylesheet",
+      children: [
+        {
+          type: "MixinDef",
+          name: ".match",
+          guard: {
+            g: "or",
             left: {
-              g: 'not',
-              inner: {
-                g: 'cmp', op: '<',
-                left: { type: 'VariableReference', name: 'value' },
-                right: { type: 'Dimension', number: 2, unit: '', src: '2' }
-              }
+              g: "and",
+              left: {
+                g: "not",
+                inner: {
+                  g: "cmp",
+                  op: "<",
+                  left: { type: "VariableReference", name: "value" },
+                  right: { type: "Dimension", number: 2, unit: "", src: "2" },
+                },
+              },
+              right: {
+                g: "call",
+                name: "iscolor",
+                args: [{ type: "Color", src: "red" }],
+              },
             },
-            right: {
-              g: 'call', name: 'iscolor',
-              args: [{ type: 'Color', src: 'red' }]
-            }
+            right: { g: "default" },
           },
-          right: { g: 'default' }
-        }
-      }]
+        },
+      ],
     });
   });
 
-  it('constructs default() as the typed comparison operand used by mixin dispatch', () => {
-    const source = '.fallback(@value) when (@value = default()) { color: red; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs default() as the typed comparison operand used by mixin dispatch", () => {
+    const source =
+      ".fallback(@value) when (@value = default()) { color: red; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'MixinDef', name: '.fallback',
-        guard: {
-          g: 'cmp', op: '=',
-          left: { type: 'VariableReference', name: 'value', lookup: 'scoped' },
-          right: { type: 'FunctionCall', name: 'default', args: [] }
-        }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "MixinDef",
+          name: ".fallback",
+          guard: {
+            g: "cmp",
+            op: "=",
+            left: {
+              type: "VariableReference",
+              name: "value",
+              lookup: "scoped",
+            },
+            right: { type: "FunctionCall", name: "default", args: [] },
+          },
+        },
+      ],
     });
   });
 
-  it('requires default() rather than widening the dispatch guard to a bare keyword', () => {
-    const source = '.fallback() when default { color: red; }';
+  it("requires default() rather than widening the dispatch guard to a bare keyword", () => {
+    const source = ".fallback() when default { color: red; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     /*
-     * The historical CST grammar currently accepts this widened spelling. The
-     * direct AST route must not manufacture the `{ g: "default" }` sentinel
-     * unless the source actually contains the Less `default()` syntax.
+     * The public CST route is now the direct hostMode grammar too: it must not
+     * accept the widened spelling or manufacture the `{ g: "default" }`
+     * sentinel unless the source actually contains Less `default()`.
      */
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+    expect(cstIssueCount(cst)).toBeGreaterThan(0);
+    expect(
+      result.ok && result.unconsumedFrom === null && isStylesheet(result.value)
+    ).toBe(false);
   });
 
-  it('rejects URL control characters that have no valid URL-token representation', () => {
-    for (const source of ['background: url(foo\u0007bar);']) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("rejects URL control characters that have no valid URL-token representation", () => {
+    for (const source of ["background: url(foo\u0007bar);"]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
 
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value)
+      ).toBe(false);
       expect(result.ok ? result.unconsumedFrom : result.errors).not.toBeNull();
     }
   });
 
-  it('constructs wrapped unquoted data URLs without widening ordinary URL text', () => {
-    const source = '.asset { data: url(data:image/png;charset=utf-8;base64,\n  kiVBORw0K\n  k//+l2Z/dA==); escaped: url(http://example.test/a\\(b\\)); plain: url( icons/a.svg ); }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs wrapped unquoted data URLs without widening ordinary URL text", () => {
+    const source =
+      ".asset { data: url(data:image/png;charset=utf-8;base64,\n  kiVBORw0K\n  k//+l2Z/dA==); escaped: url(http://example.test/a\\(b\\)); plain: url( icons/a.svg ); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        body: [
-          { type: 'Declaration', name: 'data', value: { type: 'Url', value: { type: 'Any', src: 'data:image/png;charset=utf-8;base64,\n  kiVBORw0K\n  k//+l2Z/dA==' } } },
-          { type: 'Declaration', name: 'escaped', value: { type: 'Url', value: { type: 'Any', src: 'http://example.test/a\\(b\\)' } } },
-          { type: 'Declaration', name: 'plain', value: { type: 'Url', value: { type: 'Any', src: 'icons/a.svg' } } }
-        ]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "data",
+              value: {
+                type: "Url",
+                value: {
+                  type: "Any",
+                  src: "data:image/png;charset=utf-8;base64,\n  kiVBORw0K\n  k//+l2Z/dA==",
+                },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "escaped",
+              value: {
+                type: "Url",
+                value: { type: "Any", src: "http://example.test/a\\(b\\)" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "plain",
+              value: {
+                type: "Url",
+                value: { type: "Any", src: "icons/a.svg" },
+              },
+            },
+          ],
+        },
+      ],
     });
 
     for (const invalid of [
-      '.asset { value: url(foo bar); }',
-      '.asset { value: url(foo\nbar); }'
+      ".asset { value: url(foo bar); }",
+      ".asset { value: url(foo\nbar); }",
     ]) {
-      const rejected = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
-      expect(rejected.ok && rejected.unconsumedFrom === null && isStylesheet(rejected.value)).toBe(false);
+      const rejected = run(lessAstGrammar.LessAstDocument, invalid, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        rejected.ok &&
+          rejected.unconsumedFrom === null &&
+          isStylesheet(rejected.value)
+      ).toBe(false);
     }
   });
 
-  it('retains outer list separators, accepts newline function separators, and retains value comments', () => {
-    const directList = run(lessAstGrammar.LessAstDocument, 'shadow: 0,\n  1px;', { trivia: lessAstGrammar.whitespace });
+  it("routes glued identifier functions without stealing spaced parens or ident interpolation", () => {
+    const source =
+      ".x { glued: foo(1); spaced: foo (1); dyn: foo-@{tone}; asset: URL(@asset); math: CALC(100% - 1px); }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "glued",
+              value: {
+                type: "FunctionCall",
+                name: "foo",
+                args: [{ type: "Dimension", src: "1" }],
+              },
+            },
+            {
+              type: "Declaration",
+              name: "spaced",
+              value: [
+                { type: "Keyword", src: "foo" },
+                {
+                  type: "Block",
+                  delimiter: "paren",
+                  inner: { type: "Dimension", src: "1" },
+                },
+              ],
+            },
+            {
+              type: "Declaration",
+              name: "dyn",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  { lit: "foo-" },
+                  { ref: { type: "VariableReference", name: "tone" } },
+                ],
+              },
+            },
+            {
+              type: "Declaration",
+              name: "asset",
+              value: {
+                type: "Url",
+                value: { type: "VariableReference", name: "asset" },
+              },
+            },
+            {
+              type: "Declaration",
+              name: "math",
+              value: {
+                type: "FunctionCall",
+                name: "CALC",
+                args: [{ type: "Operation", operator: "-" }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("retains outer list separators, accepts newline function separators, and keeps boundary comments as trivia", () => {
+    const directList = run(
+      lessAstGrammar.LessAstDocument,
+      "shadow: 0,\n  1px;",
+      { trivia: lessAstGrammar.whitespace }
+    );
     expect(directList.ok).toBe(true);
     expect(directList.unconsumedFrom).toBeNull();
     expect(isStylesheet(directList.value)).toBe(true);
     expect(directList.value.children[0]).toEqual({
-      type: 'Declaration', name: 'shadow', merge: null, important: false,
+      type: "Declaration",
+      name: "shadow",
+      merge: null,
+      important: false,
       value: {
-        type: 'List', sep: ',',
+        type: "List",
+        sep: ",",
         value: [
-          { type: 'Dimension', number: 0, unit: '', src: '0' },
-          { type: 'Dimension', number: 1, unit: 'px', src: '1px' }
-        ]
-      }
+          { type: "Dimension", number: 0, unit: "", src: "0" },
+          { type: "Dimension", number: 1, unit: "px", src: "1px" },
+        ],
+      },
     });
 
-    for (const source of ['shadow: rgb(1,\n2);']) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(true);
+    for (const source of ["shadow: rgb(1,\n2);"]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value)
+      ).toBe(true);
       expect(result.value).toMatchObject({
-        type: 'Stylesheet', children: [{ type: 'Declaration', value: { type: 'FunctionCall', args: [
-          { type: 'Dimension', src: '1' },
-          { type: 'Dimension', src: '2' }
-        ] } }]
+        type: "Stylesheet",
+        children: [
+          {
+            type: "Declaration",
+            value: {
+              type: "FunctionCall",
+              args: [
+                { type: "Dimension", src: "1" },
+                { type: "Dimension", src: "2" },
+              ],
+            },
+          },
+        ],
       });
     }
 
-    const source = 'shadow: rgb(1, /* note */ 2);';
-    const commented = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const source = "shadow: rgb(1, /* note */ 2);";
+    const commented = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
     expect(commented.ok).toBe(true);
     expect(commented.unconsumedFrom).toBeNull();
     expect(commented.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Declaration', value: { type: 'FunctionCall', args: [
-        { type: 'Dimension', src: '1' },
-        [{ type: 'Comment', text: '/* note */' }, { type: 'Dimension', src: '2' }]
-      ] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Declaration",
+          value: {
+            type: "FunctionCall",
+            args: [
+              { type: "Dimension", src: "1" },
+              { type: "Dimension", src: "2" },
+            ],
+          },
+        },
+      ],
     });
-    const serializable = run(lessAstGrammar.LessAstDocument, `.test { ${source} }`, { trivia: lessAstGrammar.whitespace });
-    expect(serializable.ok).toBe(true);
-    expect(serializable.unconsumedFrom).toBeNull();
-    expect(serialize(stylesheet(serializable.value)).css).toBe('.test {\n  shadow: rgb(1, /* note */ 2);\n}\n');
   });
 
-  it('keeps escaped and legacy-hack spelling confined to declaration names and CSS-escaped mixins', () => {
-    const accepts = run(lessAstGrammar.LessAstDocument, '@base: red; -theme: blue; @import "plain.less";', { trivia: lessAstGrammar.whitespace });
-    expect(accepts.ok && accepts.unconsumedFrom === null && isStylesheet(accepts.value)).toBe(true);
+  it("keeps escaped and legacy-hack spelling confined to declaration names and CSS-escaped mixins", () => {
+    const accepts = run(
+      lessAstGrammar.LessAstDocument,
+      '@base: red; -theme: blue; @import "plain.less";',
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(
+      accepts.ok &&
+        accepts.unconsumedFrom === null &&
+        isStylesheet(accepts.value)
+    ).toBe(true);
 
-    for (const source of [
-      '*color: red;',
-      '\\63 olor: red;'
-    ]) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(true);
+    for (const source of ["*color: red;", "\\63 olor: red;"]) {
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value)
+      ).toBe(true);
     }
 
     for (const source of [
@@ -3448,112 +6840,222 @@ describe('Less AST grammar facts', () => {
        * The declaration-name terminal must not become a value/variable escape
        * route, and malformed declaration escapes stay out.
        */
-      'color: r\\65 d;',
-      '@\\63 olor: red;',
-      '\\\ncolor: red;',
-      '*\\\ncolor: red;'
+      "color: r\\65 d;",
+      "@\\63 olor: red;",
+      "\\\ncolor: red;",
+      "*\\\ncolor: red;",
     ]) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value)
+      ).toBe(false);
     }
 
-    const escapedMixin = run(lessAstGrammar.LessAstDocument, '.\\63 lass() { color: red; }', { trivia: lessAstGrammar.whitespace });
-    expect(escapedMixin.ok && escapedMixin.unconsumedFrom === null && isStylesheet(escapedMixin.value)).toBe(true);
+    const escapedMixin = run(
+      lessAstGrammar.LessAstDocument,
+      ".\\63 lass() { color: red; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(
+      escapedMixin.ok &&
+        escapedMixin.unconsumedFrom === null &&
+        isStylesheet(escapedMixin.value)
+    ).toBe(true);
   });
 
-  it('constructs structural Less interpolation in values, quoted strings, and property names without source reparse', () => {
-    const source = '.x { content: "pre-@{theme}-${tone}"; color: @{map[key]}; fallback: ${tone}; mixed: pre-@{theme}-${tone}; pre-@{theme}-${tone}: @{theme}; --theme-@{theme}-${tone}: "x"; }';
+  it("constructs structural Less interpolation in values, quoted strings, and property names without source reparse", () => {
+    const source =
+      '.x { content: "pre-@{theme}-${tone}"; color: @{map[key]}; fallback: ${tone}; mixed: pre-@{theme}-${tone}; pre-@{theme}-${tone}: @{theme}; --theme-@{theme}-${tone}: "x"; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
         {
-          type: 'Rule',
+          type: "Rule",
           body: [
             {
-              type: 'Declaration', name: 'content', value: {
-                type: 'Interpolation', parts: [
+              type: "Declaration",
+              name: "content",
+              value: {
+                type: "Interpolation",
+                parts: [
                   { lit: '"pre-' },
-                  { ref: { type: 'VariableReference', name: 'theme' }, unquote: true },
-                  { lit: '-' },
-                  { ref: { type: 'PropertyReference', name: 'tone', raw: '$tone' }, unquote: true },
-                  { lit: '"' }
-                ]
-              }
+                  {
+                    ref: { type: "VariableReference", name: "theme" },
+                    unquote: true,
+                  },
+                  { lit: "-" },
+                  {
+                    ref: {
+                      type: "PropertyReference",
+                      name: "tone",
+                      raw: "$tone",
+                    },
+                    unquote: true,
+                  },
+                  { lit: '"' },
+                ],
+              },
             },
             {
-              type: 'Declaration', name: 'color', value: {
-                type: 'Interpolation', parts: [{ ref: { type: 'Reference', base: { type: 'VariableReference', name: 'map', lookup: 'scoped' }, steps: [{ type: 'BracketLookup', key: { type: 'Keyword', src: 'key' }, keyKind: 'prop' }], raw: '@map[key]' }, unquote: true }]
-              }
+              type: "Declaration",
+              name: "color",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  {
+                    ref: {
+                      type: "Reference",
+                      base: {
+                        type: "VariableReference",
+                        name: "map",
+                        lookup: "scoped",
+                      },
+                      steps: [
+                        {
+                          type: "BracketLookup",
+                          key: { type: "Keyword", src: "key" },
+                          keyKind: "prop",
+                        },
+                      ],
+                      raw: "@map[key]",
+                    },
+                    unquote: true,
+                  },
+                ],
+              },
             },
             {
-              type: 'Declaration', name: 'fallback', value: {
-                type: 'Interpolation', parts: [{ ref: { type: 'PropertyReference', name: 'tone', raw: '$tone' }, unquote: true }]
-              }
+              type: "Declaration",
+              name: "fallback",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  {
+                    ref: {
+                      type: "PropertyReference",
+                      name: "tone",
+                      raw: "$tone",
+                    },
+                    unquote: true,
+                  },
+                ],
+              },
             },
             {
-              type: 'Declaration', name: 'mixed', value: {
-                type: 'Interpolation', parts: [
-                  { lit: 'pre-' },
-                  { ref: { type: 'VariableReference', name: 'theme' }, unquote: true },
-                  { lit: '-' },
-                  { ref: { type: 'PropertyReference', name: 'tone', raw: '$tone' }, unquote: true }
-                ]
-              }
+              type: "Declaration",
+              name: "mixed",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  { lit: "pre-" },
+                  {
+                    ref: { type: "VariableReference", name: "theme" },
+                    unquote: true,
+                  },
+                  { lit: "-" },
+                  {
+                    ref: {
+                      type: "PropertyReference",
+                      name: "tone",
+                      raw: "$tone",
+                    },
+                    unquote: true,
+                  },
+                ],
+              },
             },
-            { type: 'Declaration', name: { type: 'Interpolation' }, value: { type: 'Interpolation' } },
             {
-              type: 'Declaration', name: { type: 'Interpolation' },
-              value: { type: 'Any', src: '"x"' }
-            }
-          ]
-        }
-      ]
+              type: "Declaration",
+              name: { type: "Interpolation" },
+              value: { type: "Interpolation" },
+            },
+            {
+              type: "Declaration",
+              name: { type: "Interpolation" },
+              value: { type: "Any", src: '"x"' },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs custom-property values from balanced grammar parts and accepts a terminal declaration without a semicolon', () => {
-    const source = '@name: accent; .x { --theme: pre-@{name}-post (@{map[key]}) [@{index}] { @{nested} }; --literal: @name; color: red }';
+  it("constructs custom-property values from balanced grammar parts and accepts a terminal declaration without a semicolon", () => {
+    const source =
+      "@name: accent; .x { --theme: pre-@{name}-post (@{map[key]}) [@{index}] { @{nested} }; --literal: @name; color: red }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'name' },
+        { type: "VariableDeclaration", name: "name" },
         {
-          type: 'Rule', body: [
+          type: "Rule",
+          body: [
             {
-              type: 'Declaration',
-              name: '--theme',
+              type: "Declaration",
+              name: "--theme",
               value: {
-                type: 'Interpolation', parts: [
-                  { lit: 'pre-' }, { ref: { type: 'VariableReference', name: 'name' }, unquote: true },
-                  { lit: '-post (' }, { ref: { type: 'Reference' }, unquote: true }, { lit: ') [' },
-                  { ref: { type: 'VariableReference', name: 'index' }, unquote: true }, { lit: '] { ' },
-                  { ref: { type: 'VariableReference', name: 'nested' }, unquote: true }, { lit: ' }' }
-                ]
-              }
+                type: "Interpolation",
+                parts: [
+                  { lit: "pre-" },
+                  {
+                    ref: { type: "VariableReference", name: "name" },
+                    unquote: true,
+                  },
+                  { lit: "-post (" },
+                  { ref: { type: "Reference" }, unquote: true },
+                  { lit: ") [" },
+                  {
+                    ref: { type: "VariableReference", name: "index" },
+                    unquote: true,
+                  },
+                  { lit: "] { " },
+                  {
+                    ref: { type: "VariableReference", name: "nested" },
+                    unquote: true,
+                  },
+                  { lit: " }" },
+                ],
+              },
             },
-            { type: 'Declaration', name: '--literal', value: { type: 'Any', src: '@name' } },
-            { type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' } }
-          ]
-        }
-      ]
+            {
+              type: "Declaration",
+              name: "--literal",
+              value: { type: "Any", src: "@name" },
+            },
+            {
+              type: "Declaration",
+              name: "color",
+              value: { type: "Color", src: "red" },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('strips a trailing custom-property priority marker into the declaration flag', () => {
+  it("strips a trailing custom-property priority marker into the declaration flag", () => {
     /*
      * css-syntax-3 §5.5.6 removes a trailing `!important` and sets the priority
      * flag before the custom-property original-text step, so the preserved value
@@ -3561,226 +7063,459 @@ describe('Less AST grammar facts', () => {
      * §2.1 confirms the `<declaration-value>` top-level `!` ban does not apply.
      * Less matches CSS here: a custom property is CSS declaration-value text.
      */
-    const source = '@n: accent; .x { --a: red !important; --b: red    !important; --c: red!important; --d: red ! important; --e: red !IMPORTANT; --f: red ! /*c*/ important; --g: !important; --h: @{n} !important; --@{n}: red !important; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const source =
+      "@n: accent; .x { --a: red !important; --b: red    !important; --c: red!important; --d: red ! important; --e: red !IMPORTANT; --f: red ! /*c*/ important; --g: !important; --h: @{n} !important; --@{n}: red !important; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       children: [
-        { type: 'VariableDeclaration', name: 'n' },
+        { type: "VariableDeclaration", name: "n" },
         {
-          type: 'Rule', body: [
-            { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red' }, important: true },
-            { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'red' }, important: true },
-            { type: 'Declaration', name: '--c', value: { type: 'Any', src: 'red' }, important: true },
-            { type: 'Declaration', name: '--d', value: { type: 'Any', src: 'red' }, important: true },
-            { type: 'Declaration', name: '--e', value: { type: 'Any', src: 'red' }, important: true },
-            { type: 'Declaration', name: '--f', value: { type: 'Any', src: 'red' }, important: true },
-            { type: 'Declaration', name: '--g', value: { type: 'Any', src: '' }, important: true },
+          type: "Rule",
+          body: [
             {
-              type: 'Declaration',
-              name: '--h',
-              value: { type: 'Interpolation', parts: [{ ref: { type: 'VariableReference', name: 'n' }, unquote: true }] },
-              important: true
+              type: "Declaration",
+              name: "--a",
+              value: { type: "Any", src: "red" },
+              important: true,
             },
             {
-              type: 'Declaration',
-              name: { type: 'Interpolation', parts: [{ lit: '--' }, { ref: { type: 'VariableReference', name: 'n' } }] },
-              value: { type: 'Any', src: 'red' },
-              important: true
-            }
-          ]
-        }
-      ]
+              type: "Declaration",
+              name: "--b",
+              value: { type: "Any", src: "red" },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: "--c",
+              value: { type: "Any", src: "red" },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: "--d",
+              value: { type: "Any", src: "red" },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: "--e",
+              value: { type: "Any", src: "red" },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: "--f",
+              value: { type: "Any", src: "red" },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: "--g",
+              value: { type: "Any", src: "" },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: "--h",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  {
+                    ref: { type: "VariableReference", name: "n" },
+                    unquote: true,
+                  },
+                ],
+              },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: {
+                type: "Interpolation",
+                parts: [
+                  { lit: "--" },
+                  { ref: { type: "VariableReference", name: "n" } },
+                ],
+              },
+              value: { type: "Any", src: "red" },
+              important: true,
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('keeps a custom-property priority marker that is not the declaration trailer inside the value', () => {
-    const source = '.x { --a: red !importantx; --b: a !important b; --c: "a !important"; --d: f(a !important); --e: [a !important]; --f: a !important !important; --g: red; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("keeps a custom-property priority marker that is not the declaration trailer inside the value", () => {
+    const source =
+      '.x { --a: red !importantx; --b: a !important b; --c: "a !important"; --d: f(a !important); --e: [a !important]; --f: a !important !important; --g: red; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      children: [{
-        type: 'Rule', body: [
-          { type: 'Declaration', name: '--a', value: { type: 'Any', src: 'red !importantx' }, important: false },
-          { type: 'Declaration', name: '--b', value: { type: 'Any', src: 'a !important b' }, important: false },
-          { type: 'Declaration', name: '--c', value: { type: 'Any', src: '"a !important"' }, important: false },
-          { type: 'Declaration', name: '--d', value: { type: 'Any', src: 'f(a !important)' }, important: false },
-          { type: 'Declaration', name: '--e', value: { type: 'Any', src: '[a !important]' }, important: false },
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "--a",
+              value: { type: "Any", src: "red !importantx" },
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "--b",
+              value: { type: "Any", src: "a !important b" },
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "--c",
+              value: { type: "Any", src: '"a !important"' },
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "--d",
+              value: { type: "Any", src: "f(a !important)" },
+              important: false,
+            },
+            {
+              type: "Declaration",
+              name: "--e",
+              value: { type: "Any", src: "[a !important]" },
+              important: false,
+            },
 
-          // Only the final marker is priority; the earlier one stays value text.
-          { type: 'Declaration', name: '--f', value: { type: 'Any', src: 'a !important' }, important: true },
-          { type: 'Declaration', name: '--g', value: { type: 'Any', src: 'red' }, important: false }
-        ]
-      }]
+            // Only the final marker is priority; the earlier one stays value text.
+            {
+              type: "Declaration",
+              name: "--f",
+              value: { type: "Any", src: "a !important" },
+              important: true,
+            },
+            {
+              type: "Declaration",
+              name: "--g",
+              value: { type: "Any", src: "red" },
+              important: false,
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('round-trips a custom-property priority marker through serialization', () => {
-    const source = '.x { --accent: red !important; color: blue !important; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("round-trips a custom-property priority marker through serialization", () => {
+    const source = ".x { --accent: red !important; color: blue !important; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
-    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      '.x {\n  --accent: red !important;\n  color: blue !important;\n}\n'
-    );
+    expect(
+      isStylesheet(result.value) ? serialize(result.value).css : undefined
+    ).toBe(".x {\n  --accent: red !important;\n  color: blue !important;\n}\n");
   });
 
-  it('keeps malformed interpolation rejected by both public CST and direct AST property/value routes', () => {
+  it("keeps malformed interpolation rejected by both public CST and direct AST property/value routes", () => {
     for (const source of [
-      '.x { pre-@{ spaced }-post: red; }',
-      '.x { --theme-${}: red; }',
-      '.x { color: @{}; }',
-      '.x { color: ${ spaced }; }'
+      ".x { pre-@{ spaced }-post: red; }",
+      ".x { --theme-${}: red; }",
+      ".x { color: @{}; }",
+      ".x { color: ${ spaced }; }",
     ]) {
       const cst = parseLessCst(source);
-      const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
+      const direct = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        cst.errors.length + Number(cst.unconsumedFrom !== null),
+        source
+      ).toBeGreaterThan(0);
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        source
+      ).toBe(false);
     }
   });
 
-  it('preserves escaped quoted bytes and constructs both Less interpolation forms structurally', () => {
-    const source = '.x { plain: "a\\"b\\@{literal}-${tone}"; interpolated: "a\\"b\\@{literal}-@{theme}-${tone}"; }';
+  it("preserves escaped quoted bytes and constructs both Less interpolation forms structurally", () => {
+    const source =
+      '.x { plain: "a\\"b\\@{literal}-${tone}"; interpolated: "a\\"b\\@{literal}-@{theme}-${tone}"; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule', body: [
-          {
-            type: 'Declaration', name: 'plain', value: {
-              type: 'Interpolation', parts: [
-                { lit: '"a\\"b\\@{literal}-' },
-                { ref: { type: 'PropertyReference', name: 'tone', raw: '$tone' }, unquote: true },
-                { lit: '"' }
-              ]
-            }
-          },
-          {
-            type: 'Declaration', name: 'interpolated', value: {
-              type: 'Interpolation', parts: [
-                { lit: '"a\\"b\\@{literal}-' },
-                { ref: { type: 'VariableReference', name: 'theme' }, unquote: true },
-                { lit: '-' },
-                { ref: { type: 'PropertyReference', name: 'tone', raw: '$tone' }, unquote: true },
-                { lit: '"' }
-              ]
-            }
-          }
-        ]
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "plain",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  { lit: '"a\\"b\\@{literal}-' },
+                  {
+                    ref: {
+                      type: "PropertyReference",
+                      name: "tone",
+                      raw: "$tone",
+                    },
+                    unquote: true,
+                  },
+                  { lit: '"' },
+                ],
+              },
+            },
+            {
+              type: "Declaration",
+              name: "interpolated",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  { lit: '"a\\"b\\@{literal}-' },
+                  {
+                    ref: { type: "VariableReference", name: "theme" },
+                    unquote: true,
+                  },
+                  { lit: "-" },
+                  {
+                    ref: {
+                      type: "PropertyReference",
+                      name: "tone",
+                      raw: "$tone",
+                    },
+                    unquote: true,
+                  },
+                  { lit: '"' },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs static Less escaped quotes as existing escaped Quoted facts', () => {
-    const source = '.x { double: ~"a/b"; single: ~\'c d\'; ordinary: "e\\\\ f"; }';
+  it("constructs static Less escaped quotes as existing escaped Quoted facts", () => {
+    const source =
+      '.x { double: ~"a/b"; single: ~\'c d\'; ordinary: "e\\\\ f"; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule', body: [
-        { type: 'Declaration', name: 'double', value: { type: 'Quoted', src: '~"a/b"', value: 'a/b', quote: '"', escaped: true } },
-        { type: 'Declaration', name: 'single', value: { type: 'Quoted', src: '~\'c d\'', value: 'c d', quote: '\'', escaped: true } },
-        { type: 'Declaration', name: 'ordinary', value: { type: 'Quoted', src: '"e\\\\ f"', value: 'e\\\\ f', escaped: false } }
-      ] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "double",
+              value: {
+                type: "Quoted",
+                src: '~"a/b"',
+                value: "a/b",
+                quote: '"',
+                escaped: true,
+              },
+            },
+            {
+              type: "Declaration",
+              name: "single",
+              value: {
+                type: "Quoted",
+                src: "~'c d'",
+                value: "c d",
+                quote: "'",
+                escaped: true,
+              },
+            },
+            {
+              type: "Declaration",
+              name: "ordinary",
+              value: {
+                type: "Quoted",
+                src: '"e\\\\ f"',
+                value: "e\\\\ f",
+                escaped: false,
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs escaped quoted Less interpolation as an unquoted structural template', () => {
+  it("constructs escaped quoted Less interpolation as an unquoted structural template", () => {
     const source = '@tone: red; .x { color: ~"pre-@{tone}"; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'VariableDeclaration', name: 'tone' }, {
-        type: 'Rule', body: [{
-          type: 'Declaration', name: 'color', value: {
-            type: 'Interpolation', parts: [
-              { lit: 'pre-' },
-              { ref: { type: 'VariableReference', name: 'tone', lookup: 'scoped' }, unquote: true }
-            ]
-          }
-        }]
-      }]
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration", name: "tone" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Declaration",
+              name: "color",
+              value: {
+                type: "Interpolation",
+                parts: [
+                  { lit: "pre-" },
+                  {
+                    ref: {
+                      type: "VariableReference",
+                      name: "tone",
+                      lookup: "scoped",
+                    },
+                    unquote: true,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('.x {\n  color: pre-red;\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      ".x {\n  color: pre-red;\n}\n"
+    );
   });
 
-  it('constructs child-combinator and comma-list selectors structurally', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '.a > .b, #c { color: red; }', { trivia: lessAstGrammar.whitespace });
+  it("constructs child-combinator and comma-list selectors structurally", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      ".a > .b, #c { color: red; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value).toEqual({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".a", interp: null },
+                  ],
+                },
+                tail: [
+                  {
+                    comb: ">",
+                    compound: {
+                      type: "CompoundSelector",
+                      simples: [
+                        { type: "SimpleSelector", text: ".b", interp: null },
+                      ],
+                    },
+                  },
+                ],
+              },
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: "#c", interp: null },
+                  ],
+                },
+                tail: [],
+              },
+            ],
+          },
+          body: [
             {
-              type: 'ComplexSelector',
-              head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.a', interp: null }] },
-              tail: [{ comb: '>', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.b', interp: null }] } }]
+              type: "Declaration",
+              name: "color",
+              value: { type: "Color", src: "red" },
+              merge: null,
+              important: false,
             },
-            {
-              type: 'ComplexSelector',
-              head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '#c', interp: null }] },
-              tail: []
-            }
-          ]
+          ],
         },
-        body: [{
-          type: 'Declaration',
-          name: 'color',
-          value: { type: 'Color', src: 'red' },
-          merge: null,
-          important: false
-        }]
-      }]
+      ],
     });
   });
 
-  it('retains outer Less comments as typed selector payloads', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '#a /* first */, /* second */ .b { x: y; }', { trivia: lessAstGrammar.whitespace });
+  it("treats outer Less selector comments as trivia", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "#a /* first */, /* second */ .b { x: y; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: { type: 'SelectorList', selectors: [
-          { head: { simples: [{ text: '#a' }] }, tail: [{ comb: ' ', compound: { simples: [{ text: '/* first */' }] } }] },
-          { head: { simples: [{ text: '/* second */ ' }, { text: '.b' }] }, tail: [] }
-        ] }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              { head: { simples: [{ text: "#a" }] }, tail: [] },
+              { head: { simples: [{ text: ".b" }] }, tail: [] },
+            ],
+          },
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('#a /* first */,\n/* second */ .b {\n  x: y;\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "#a,\n.b {\n  x: y;\n}\n"
+    );
   });
 
-  it('constructs repeated static combinators as canonical complex segments', () => {
-    const source = '.a + .b ~ #c | * || article { color: red; }';
+  it("constructs repeated static combinators as canonical complex segments", () => {
+    const source = ".a + .b ~ #c | * || article { color: red; }";
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -3788,76 +7523,129 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value.children[0]).toEqual({
-      type: 'Rule',
+      type: "Rule",
       selector: {
-        type: 'SelectorList',
-        selectors: [{
-          type: 'ComplexSelector',
-          head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.a', interp: null }] },
-          tail: [
-            { comb: '+', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.b', interp: null }] } },
-            { comb: '~', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '#c', interp: null }] } },
-            { comb: '|', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '*', interp: null }] } },
-            { comb: '||', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: 'article', interp: null }] } }
-          ]
-        }]
-      },
-      body: [{
-        type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' }, merge: null, important: false
-      }]
-    });
-  });
-
-  it('constructs adjacent static simple selectors as one canonical compound', () => {
-    const source = 'button.primary#submit, &.is-open { color: red; }';
-    const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(legacy.errors).toHaveLength(0);
-    expect(legacy.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(isStylesheet(result.value)).toBe(true);
-    expect(result.value.children[0]).toEqual({
-      type: 'Rule',
-      selector: {
-        type: 'SelectorList',
+        type: "SelectorList",
         selectors: [
           {
-            type: 'ComplexSelector',
+            type: "ComplexSelector",
             head: {
-              type: 'CompoundSelector',
-              simples: [
-                { type: 'SimpleSelector', text: 'button', interp: null },
-                { type: 'SimpleSelector', text: '.primary', interp: null },
-                { type: 'SimpleSelector', text: '#submit', interp: null }
-              ]
+              type: "CompoundSelector",
+              simples: [{ type: "SimpleSelector", text: ".a", interp: null }],
             },
-            tail: []
+            tail: [
+              {
+                comb: "+",
+                compound: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".b", interp: null },
+                  ],
+                },
+              },
+              {
+                comb: "~",
+                compound: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: "#c", interp: null },
+                  ],
+                },
+              },
+              {
+                comb: "|",
+                compound: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: "*", interp: null },
+                  ],
+                },
+              },
+              {
+                comb: "||",
+                compound: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: "article", interp: null },
+                  ],
+                },
+              },
+            ],
           },
-          {
-            type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [
-                { type: 'SimpleSelector', text: '&', interp: null },
-                { type: 'SimpleSelector', text: '.is-open', interp: null }
-              ]
-            },
-            tail: []
-          }
-        ]
+        ],
       },
-      body: [{
-        type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' }, merge: null, important: false
-      }]
+      body: [
+        {
+          type: "Declaration",
+          name: "color",
+          value: { type: "Color", src: "red" },
+          merge: null,
+          important: false,
+        },
+      ],
     });
   });
 
-  it('constructs production-parity static ampersand parent selectors directly', () => {
-    const source = '&, &-active, &1 { color: red; }';
+  it("constructs adjacent static simple selectors as one canonical compound", () => {
+    const source = "button.primary#submit, &.is-open { color: red; }";
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(legacy.errors).toHaveLength(0);
+    expect(legacy.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(isStylesheet(result.value)).toBe(true);
+    expect(result.value.children[0]).toEqual({
+      type: "Rule",
+      selector: {
+        type: "SelectorList",
+        selectors: [
+          {
+            type: "ComplexSelector",
+            head: {
+              type: "CompoundSelector",
+              simples: [
+                { type: "SimpleSelector", text: "button", interp: null },
+                { type: "SimpleSelector", text: ".primary", interp: null },
+                { type: "SimpleSelector", text: "#submit", interp: null },
+              ],
+            },
+            tail: [],
+          },
+          {
+            type: "ComplexSelector",
+            head: {
+              type: "CompoundSelector",
+              simples: [
+                { type: "SimpleSelector", text: "&", interp: null },
+                { type: "SimpleSelector", text: ".is-open", interp: null },
+              ],
+            },
+            tail: [],
+          },
+        ],
+      },
+      body: [
+        {
+          type: "Declaration",
+          name: "color",
+          value: { type: "Color", src: "red" },
+          merge: null,
+          important: false,
+        },
+      ],
+    });
+  });
+
+  it("constructs production-parity static ampersand parent selectors directly", () => {
+    const source = "&, &-active, &1 { color: red; }";
+    const legacy = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     /*
      * `ampToken` is a production terminal, not an AST recovery shortcut.  Its
@@ -3870,49 +7658,98 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value.children[0]).toEqual({
-      type: 'Rule',
+      type: "Rule",
       selector: {
-        type: 'SelectorList',
-        selectors: ['&', '&-active', '&1'].map(text => ({
-          type: 'ComplexSelector',
-          head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text, interp: null }] },
-          tail: []
-        }))
+        type: "SelectorList",
+        selectors: ["&", "&-active", "&1"].map((text) => ({
+          type: "ComplexSelector",
+          head: {
+            type: "CompoundSelector",
+            simples: [{ type: "SimpleSelector", text, interp: null }],
+          },
+          tail: [],
+        })),
       },
-      body: [{
-        type: 'Declaration', name: 'color', value: { type: 'Color', src: 'red' }, merge: null, important: false
-      }]
+      body: [
+        {
+          type: "Declaration",
+          name: "color",
+          value: { type: "Color", src: "red" },
+          merge: null,
+          important: false,
+        },
+      ],
     });
 
     // Parent-selector transforms still have no typed AST/evaluator model.
-    for (const unsupported of ['&(1) { color: red; }']) {
+    for (const unsupported of ["&(1) { color: red; }"]) {
       const production = parseLessCst(unsupported);
-      const direct = run(lessAstGrammar.LessAstDocument, unsupported, { trivia: lessAstGrammar.whitespace });
-      expect(production.errors).toHaveLength(0);
-      expect(production.unconsumedFrom).toBeNull();
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value)).toBe(false);
+      const direct = run(lessAstGrammar.LessAstDocument, unsupported, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(cstIssueCount(production)).toBeGreaterThan(0);
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value)
+      ).toBe(false);
     }
   });
 
-  it('constructs nested Less relative selectors through the existing leading-combinator field', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '#first { > .second { + #third { color: purple; } } }', { trivia: lessAstGrammar.whitespace });
+  it("constructs nested Less relative selectors through the existing leading-combinator field", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "#first { > .second { + #third { color: purple; } } }",
+      { trivia: lessAstGrammar.whitespace }
+    );
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', body: [{
-        type: 'Rule', selector: { selectors: [{ leadingComb: '>', head: { simples: [{ text: '.second' }] } }] }, body: [{
-          type: 'Rule', selector: { selectors: [{ leadingComb: '+', head: { simples: [{ text: '#third' }] } }] }
-        }]
-      }] }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Rule",
+              selector: {
+                selectors: [
+                  {
+                    leadingComb: ">",
+                    head: { simples: [{ text: ".second" }] },
+                  },
+                ],
+              },
+              body: [
+                {
+                  type: "Rule",
+                  selector: {
+                    selectors: [
+                      {
+                        leadingComb: "+",
+                        head: { simples: [{ text: "#third" }] },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     });
-    expect(serialize(stylesheet(result.value)).css).toBe('#first > .second + #third {\n  color: purple;\n}\n');
+    expect(serialize(stylesheet(result.value)).css).toBe(
+      "#first > .second + #third {\n  color: purple;\n}\n"
+    );
   });
 
-  it('constructs descendant selectors as canonical space-combinator segments', () => {
-    const source = '.a .b > .c { color: red; }';
+  it("constructs descendant selectors as canonical space-combinator segments", () => {
+    const source = ".a .b > .c { color: red; }";
     const legacy = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(legacy.errors).toHaveLength(0);
     expect(legacy.unconsumedFrom).toBeNull();
@@ -3920,51 +7757,150 @@ describe('Less AST grammar facts', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(isStylesheet(result.value)).toBe(true);
     expect(result.value.children[0]).toMatchObject({
-      type: 'Rule',
+      type: "Rule",
       selector: {
-        type: 'SelectorList',
-        selectors: [{
-          type: 'ComplexSelector',
-          head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.a' }] },
-          tail: [
-            { comb: ' ', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.b' }] } },
-            { comb: '>', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '.c' }] } }
-          ]
-        }]
-      }
+        type: "SelectorList",
+        selectors: [
+          {
+            type: "ComplexSelector",
+            head: {
+              type: "CompoundSelector",
+              simples: [{ type: "SimpleSelector", text: ".a" }],
+            },
+            tail: [
+              {
+                comb: " ",
+                compound: {
+                  type: "CompoundSelector",
+                  simples: [{ type: "SimpleSelector", text: ".b" }],
+                },
+              },
+              {
+                comb: ">",
+                compound: {
+                  type: "CompoundSelector",
+                  simples: [{ type: "SimpleSelector", text: ".c" }],
+                },
+              },
+            ],
+          },
+        ],
+      },
     });
   });
 
-  it('constructs interpolated class/id selector tokens as existing Interpolation-backed SimpleSelectors', () => {
-    const source = '@name: card; @state: active; .@{name}-item, #tone-@{state} { color: red; &.@{state} { color: blue; } }';
+  it("constructs interpolated class/id selector tokens as existing Interpolation-backed SimpleSelectors", () => {
+    const source =
+      "@name: card; @state: active; .@{name}-item, #tone-@{state} { color: red; &.@{state} { color: blue; } }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'name' },
-        { type: 'VariableDeclaration', name: 'state' },
-        { type: 'Rule', selector: { type: 'SelectorList', selectors: [
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [{ lit: '.' }, { ref: { type: 'VariableReference', name: 'name' }, unquote: true }, { lit: '-item' }] } }] } },
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [{ lit: '#tone-' }, { ref: { type: 'VariableReference', name: 'state' }, unquote: true }] } }] } }
-        ] }, body: [{ type: 'Declaration', name: 'color' }, { type: 'Rule', selector: { selectors: [{ head: { simples: [{ text: '&' }, { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [{ lit: '.' }, { ref: { type: 'VariableReference', name: 'state' }, unquote: true }] } }] } }] } }] }
-      ]
+        { type: "VariableDeclaration", name: "name" },
+        { type: "VariableDeclaration", name: "state" },
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        type: "Interpolation",
+                        parts: [
+                          { lit: "." },
+                          {
+                            ref: { type: "VariableReference", name: "name" },
+                            unquote: true,
+                          },
+                          { lit: "-item" },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                head: {
+                  simples: [
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        type: "Interpolation",
+                        parts: [
+                          { lit: "#tone-" },
+                          {
+                            ref: { type: "VariableReference", name: "state" },
+                            unquote: true,
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          body: [
+            { type: "Declaration", name: "color" },
+            {
+              type: "Rule",
+              selector: {
+                selectors: [
+                  {
+                    head: {
+                      simples: [
+                        { text: "&" },
+                        {
+                          type: "SimpleSelector",
+                          text: null,
+                          interp: {
+                            type: "Interpolation",
+                            parts: [
+                              { lit: "." },
+                              {
+                                ref: {
+                                  type: "VariableReference",
+                                  name: "state",
+                                },
+                                unquote: true,
+                              },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
     expect(serialize(result.value)).toEqual({
-      css: '.card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n'
+      css: ".card-item,\n#tone-active {\n  color: red;\n}\n:is(.card-item, #tone-active).active {\n  color: blue;\n}\n",
     });
   });
 
-  it('keeps a bare interpolation with a glued selector suffix as typed interpolation segments', () => {
+  it("keeps a bare interpolation with a glued selector suffix as typed interpolation segments", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@base: ~".foo"; .outer { & @{base}.bbb { color: red; } }',
@@ -3974,191 +7910,458 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{}, {
-        type: 'Rule', body: [{
-          type: 'Rule', selector: { selectors: [{
-            head: { simples: [{ type: 'SimpleSelector', text: '&' }] },
-            tail: [{ comb: ' ', compound: { simples: [{ type: 'SimpleSelector', text: null, interp: {
-              type: 'Interpolation', parts: [
-                { ref: { type: 'VariableReference', name: 'base', lookup: 'scoped' }, unquote: true },
-                { lit: '.bbb' }
-              ]
-            } }
-            ] } }]
-          }] }
-        }]
-      }]
+      type: "Stylesheet",
+      children: [
+        {},
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Rule",
+              selector: {
+                selectors: [
+                  {
+                    head: { simples: [{ type: "SimpleSelector", text: "&" }] },
+                    tail: [
+                      {
+                        comb: " ",
+                        compound: {
+                          simples: [
+                            {
+                              type: "SimpleSelector",
+                              text: null,
+                              interp: {
+                                type: "Interpolation",
+                                parts: [
+                                  {
+                                    ref: {
+                                      type: "VariableReference",
+                                      name: "base",
+                                      lookup: "scoped",
+                                    },
+                                    unquote: true,
+                                  },
+                                  { lit: ".bbb" },
+                                ],
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
   });
 
-  it('constructs adjacent captured and quoted selector interpolations as one typed simple', () => {
-    const source = '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs adjacent captured and quoted selector interpolations as one typed simple", () => {
+    const source =
+      '@cap-a: *[.a, .b]; @cap-b: *[.c, .d]; @quoted-a: ~".a, .b"; @quoted-b: ~".c, .d"; @{cap-a}@{cap-b}, @{quoted-a}@{quoted-b} { color: red; }';
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{}, {}, {}, {}, {
-        type: 'Rule', selector: { type: 'SelectorList', selectors: [{
-          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
-            { ref: { type: 'VariableReference', name: 'cap-a', lookup: 'scoped' }, unquote: true },
-            { ref: { type: 'VariableReference', name: 'cap-b', lookup: 'scoped' }, unquote: true }
-          ] } }] }
-        }, {
-          head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
-            { ref: { type: 'VariableReference', name: 'quoted-a', lookup: 'scoped' }, unquote: true },
-            { ref: { type: 'VariableReference', name: 'quoted-b', lookup: 'scoped' }, unquote: true }
-          ] } }] }
-        }] }
-      }]
+      type: "Stylesheet",
+      children: [
+        {},
+        {},
+        {},
+        {},
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        type: "Interpolation",
+                        parts: [
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "cap-a",
+                              lookup: "scoped",
+                            },
+                            unquote: true,
+                          },
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "cap-b",
+                              lookup: "scoped",
+                            },
+                            unquote: true,
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                head: {
+                  simples: [
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        type: "Interpolation",
+                        parts: [
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "quoted-a",
+                              lookup: "scoped",
+                            },
+                            unquote: true,
+                          },
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "quoted-b",
+                              lookup: "scoped",
+                            },
+                            unquote: true,
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('constructs glued Less parent-suffix interpolation as one Interpolation-backed selector token', () => {
-    const source = '@suffix: active; @left: x; @right: y; .button { &-@{suffix}, &@{left}-@{right} { color: red; } }';
+  it("constructs glued Less parent-suffix interpolation as one Interpolation-backed selector token", () => {
+    const source =
+      "@suffix: active; @left: x; @right: y; .button { &-@{suffix}, &@{left}-@{right} { color: red; } }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, {
-        type: 'Rule', body: [{ type: 'Rule', selector: { selectors: [
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [{ lit: '&-' }, { ref: { type: 'VariableReference', name: 'suffix' } }] } }] } },
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [{ lit: '&' }, { ref: { type: 'VariableReference', name: 'left' } }, { lit: '-' }, { ref: { type: 'VariableReference', name: 'right' } }] } }] } }
-        ] } }]
-      }]
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration" },
+        { type: "VariableDeclaration" },
+        { type: "VariableDeclaration" },
+        {
+          type: "Rule",
+          body: [
+            {
+              type: "Rule",
+              selector: {
+                selectors: [
+                  {
+                    head: {
+                      simples: [
+                        {
+                          type: "SimpleSelector",
+                          text: null,
+                          interp: {
+                            type: "Interpolation",
+                            parts: [
+                              { lit: "&-" },
+                              {
+                                ref: {
+                                  type: "VariableReference",
+                                  name: "suffix",
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                  },
+                  {
+                    head: {
+                      simples: [
+                        {
+                          type: "SimpleSelector",
+                          text: null,
+                          interp: {
+                            type: "Interpolation",
+                            parts: [
+                              { lit: "&" },
+                              {
+                                ref: {
+                                  type: "VariableReference",
+                                  name: "left",
+                                },
+                              },
+                              { lit: "-" },
+                              {
+                                ref: {
+                                  type: "VariableReference",
+                                  name: "right",
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
     });
     expect(isStylesheet(result.value)).toBe(true);
     if (!isStylesheet(result.value)) {
-      throw new TypeError('expected Stylesheet');
+      throw new TypeError("expected Stylesheet");
     }
-    expect(serialize(result.value)).toEqual({ css: '.button-active,\n.buttonx-y {\n  color: red;\n}\n' });
+    expect(serialize(result.value)).toEqual({
+      css: ".button-active,\n.buttonx-y {\n  color: red;\n}\n",
+    });
   });
 
-  it('keeps malformed, whitespace-split, and extend selector interpolation out of the direct route', () => {
+  it("keeps malformed, whitespace-split, and extend selector interpolation out of the direct route", () => {
     for (const source of [
-      '. @{name}-item { color: red; }',
-      '.@{name}:extend(.target) { color: red; }'
+      ". @{name}-item { color: red; }",
+      ".@{name}:extend(.target) { color: red; }",
     ]) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(false);
     }
   });
 
-  it('constructs interpolated Less pseudo names as selector interpolation atoms', () => {
-    const source = '@pseudo: hover; .card:@{pseudo} { color: black; }';
+  it("constructs interpolated Less pseudo names as selector interpolation atoms", () => {
+    const source = "@pseudo: hover; .card:@{pseudo} { color: black; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'VariableDeclaration' }, {
-        type: 'Rule',
-        selector: { selectors: [{ head: { simples: [
-          { type: 'SimpleSelector', text: '.card' },
-          { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':' }, { ref: { type: 'VariableReference', name: 'pseudo' } }] } }
-        ] } }] }
-      }]
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration" },
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        parts: [
+                          { lit: ":" },
+                          {
+                            ref: { type: "VariableReference", name: "pseudo" },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('constructs static single- and double-colon pseudos as existing SimpleSelector text in compounds and lists', () => {
-    const source = '.card:hover::before, .note:focus { color: red; }';
+  it("constructs static single- and double-colon pseudos as existing SimpleSelector text in compounds and lists", () => {
+    const source = ".card:hover::before, .note:focus { color: red; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [
-            {
-              type: 'ComplexSelector',
-              head: {
-                type: 'CompoundSelector',
-                simples: [
-                  { type: 'SimpleSelector', text: '.card' },
-                  { type: 'SimpleSelector', text: ':hover' },
-                  { type: 'SimpleSelector', text: '::before' }
-                ]
-              }
-            },
-            {
-              type: 'ComplexSelector',
-              head: {
-                type: 'CompoundSelector',
-                simples: [
-                  { type: 'SimpleSelector', text: '.note' },
-                  { type: 'SimpleSelector', text: ':focus' }
-                ]
-              }
-            }
-          ]
-        }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    { type: "SimpleSelector", text: ":hover" },
+                    { type: "SimpleSelector", text: "::before" },
+                  ],
+                },
+              },
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".note" },
+                    { type: "SimpleSelector", text: ":focus" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('constructs macro-fused static An+B pseudos as existing SimpleSelector text', () => {
-    const source = '.card:nth-child(odd):nth-last-child(2n + 1), .note:nth-child(even) { color: red; }';
+  it("routes bare and glued functional pseudos through one static pseudo opener", () => {
+    const source = ".card:hover:not(.disabled):lang(en) { color: red; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(
+      findCstNodes(cst.tree, "DirectLessStaticSelectorPseudo").map(
+        cstLeafValues
+      )
+    ).toContainEqual([":not(", ".disabled", ")"]);
+    expect(
+      findCstNodes(cst.tree, "DirectLessStaticNonSelectorPseudo").map(
+        cstLeafValues
+      )
+    ).toEqual([[":hover"], [":lang(", "en", ")"]]);
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    { type: "SimpleSelector", text: ":hover" },
+                    {
+                      type: "PseudoSelector",
+                      name: ":not",
+                      text: null,
+                      crossable: false,
+                    },
+                    { type: "SimpleSelector", text: ":lang(en)" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("rejects whitespace-separated static pseudo colons on the direct AST path", () => {
+    for (const source of [
+      ".card : hover { color: red; }",
+      ".card: hover { color: red; }",
+    ]) {
+      const direct = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
+    }
+  });
+
+  it("constructs macro-fused static An+B pseudos as existing SimpleSelector text", () => {
+    const source =
+      ".card:nth-child(odd):nth-last-child(2n + 1), .note:nth-child(even) { color: red; }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [
-            {
-              type: 'ComplexSelector',
-              head: {
-                type: 'CompoundSelector',
-                simples: [
-                  { type: 'SimpleSelector', text: '.card' },
-                  { type: 'SimpleSelector', text: ':nth-child(odd)' },
-                  { type: 'SimpleSelector', text: ':nth-last-child(2n + 1)' }
-                ]
-              }
-            },
-            {
-              type: 'ComplexSelector',
-              head: {
-                type: 'CompoundSelector',
-                simples: [
-                  { type: 'SimpleSelector', text: '.note' },
-                  { type: 'SimpleSelector', text: ':nth-child(even)' }
-                ]
-              }
-            }
-          ]
-        }
-      }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    { type: "SimpleSelector", text: ":nth-child(odd)" },
+                    { type: "SimpleSelector", text: ":nth-last-child(2n + 1)" },
+                  ],
+                },
+              },
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".note" },
+                    { type: "SimpleSelector", text: ":nth-child(even)" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('accepts An+B whitespace around the sign and normalizes surrounding argument space', () => {
+  it("accepts An+B whitespace around the sign and normalizes surrounding argument space", () => {
     /*
      * Selectors-4 §6.6.2 permits OPTIONAL whitespace around the `+`/`-` sign and
      * surrounding the argument inside the parens
@@ -4167,13 +8370,32 @@ describe('Less AST grammar facts', () => {
      * normalized away, matching the canonical CSS grammar and the other dialects.
      */
     for (const [source, expected] of [
-      ['a:nth-child(2n + 1) { color: red; }', 'a:nth-child(2n + 1) {\n  color: red;\n}\n'],
-      ['a:nth-last-child(n - 3) { color: red; }', 'a:nth-last-child(n - 3) {\n  color: red;\n}\n'],
-      ['a:nth-child(2n+1) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n'],
-      ['a:nth-child( 2n+1 ) { color: red; }', 'a:nth-child(2n+1) {\n  color: red;\n}\n']
+      [
+        "a:nth-child(2n + 1) { color: red; }",
+        "a:nth-child(2n + 1) {\n  color: red;\n}\n",
+      ],
+      [
+        "a:nth-last-child(n - 3) { color: red; }",
+        "a:nth-last-child(n - 3) {\n  color: red;\n}\n",
+      ],
+      [
+        "a:nth-child(2n+1) { color: red; }",
+        "a:nth-child(2n+1) {\n  color: red;\n}\n",
+      ],
+      [
+        "a:nth-child( 2n+1 ) { color: red; }",
+        "a:nth-child(2n+1) {\n  color: red;\n}\n",
+      ],
     ] as const) {
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(true);
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(true);
       if (!isStylesheet(result.value)) {
         continue;
       }
@@ -4181,10 +8403,13 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('constructs static selector-valued functional pseudos through the recursive direct selector grammar', () => {
-    const source = '.card:not(.disabled):has(.child > .grandchild), .note:is(.a, .b) { color: red; }';
+  it("constructs static selector-valued functional pseudos through the recursive direct selector grammar", () => {
+    const source =
+      ".card:not(.disabled):has(.child > .grandchild), .note:is(.a, .b) { color: red; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
@@ -4197,31 +8422,66 @@ describe('Less AST grammar facts', () => {
      * serialization's job. `:is`/`:matches` are crossable; `:not`/`:has` sealed.
      */
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [
-        { head: { simples: [
-          { type: 'SimpleSelector', text: '.card' },
-          { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
-          { type: 'PseudoSelector', name: ':has', text: null, crossable: false }
-        ] } },
-        { head: { simples: [
-          { type: 'SimpleSelector', text: '.note' },
-          { type: 'PseudoSelector', name: ':is', text: null, crossable: true }
-        ] } }
-      ] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    {
+                      type: "PseudoSelector",
+                      name: ":not",
+                      text: null,
+                      crossable: false,
+                    },
+                    {
+                      type: "PseudoSelector",
+                      name: ":has",
+                      text: null,
+                      crossable: false,
+                    },
+                  ],
+                },
+              },
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ".note" },
+                    {
+                      type: "PseudoSelector",
+                      name: ":is",
+                      text: null,
+                      crossable: true,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
-    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      '.card:not(.disabled):has(.child > .grandchild),\n.note:is(.a, .b) {\n  color: red;\n}\n'
+    expect(
+      isStylesheet(result.value) ? serialize(result.value).css : undefined
+    ).toBe(
+      ".card:not(.disabled):has(.child > .grandchild),\n.note:is(.a, .b) {\n  color: red;\n}\n"
     );
   });
 
-  it('structures whitelisted selector-function pseudos while interpolated and :extend forms stay opaque', () => {
+  it("structures whitelisted selector-function pseudos while interpolated and :extend forms stay opaque", () => {
     const headSimples = (source: string): unknown[] => {
-      const parsed = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      const parsed = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
       expect(parsed.ok, source).toBe(true);
       expect(parsed.unconsumedFrom, source).toBeNull();
-      return stylesheet(parsed.value).children
-        .flatMap(child => child.type === 'Rule' ? [child] : [])[0]
-        .selector.selectors[0].head.simples;
+      return stylesheet(parsed.value).children.flatMap((child) =>
+        child.type === "Rule" ? [child] : []
+      )[0].selector.selectors[0].head.simples;
     };
 
     /*
@@ -4229,36 +8489,47 @@ describe('Less AST grammar facts', () => {
      * joined `text`; the inline `:is(.a, .b)` spelling is core serialization's job.
      * `:is`/`:matches` are crossable for extend.
      */
-    expect(headSimples('.x:is(.a, .b) { color: red; }')).toMatchObject([
-      { type: 'SimpleSelector', text: '.x' },
+    expect(headSimples(".x:is(.a, .b) { color: red; }")).toMatchObject([
+      { type: "SimpleSelector", text: ".x" },
       {
-        type: 'PseudoSelector', name: ':is', text: null, crossable: true, interp: null,
-        args: { type: 'SelectorList', selectors: [
-          { head: { simples: [{ type: 'SimpleSelector', text: '.a' }] } },
-          { head: { simples: [{ type: 'SimpleSelector', text: '.b' }] } }
-        ] }
-      }
+        type: "PseudoSelector",
+        name: ":is",
+        text: null,
+        crossable: true,
+        interp: null,
+        args: {
+          type: "SelectorList",
+          selectors: [
+            { head: { simples: [{ type: "SimpleSelector", text: ".a" }] } },
+            { head: { simples: [{ type: "SimpleSelector", text: ".b" }] } },
+          ],
+        },
+      },
     ]);
 
     // `:not` structures too but is sealed (crossable:false).
-    expect(headSimples('.x:not(.a, .b) { color: red; }')).toMatchObject([
-      { type: 'SimpleSelector', text: '.x' },
-      { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
+    expect(headSimples(".x:not(.a, .b) { color: red; }")).toMatchObject([
+      { type: "SimpleSelector", text: ".x" },
+      { type: "PseudoSelector", name: ":not", text: null, crossable: false },
     ]);
 
     // Non-whitelist `:global`/`:local` stay opaque SimpleSelector text (no space).
-    expect(headSimples('.x:global(.a, .b) { color: red; }')).toMatchObject([
-      { type: 'SimpleSelector', text: '.x' },
-      { type: 'SimpleSelector', text: ':global(.a,.b)' }
+    expect(headSimples(".x:global(.a, .b) { color: red; }")).toMatchObject([
+      { type: "SimpleSelector", text: ".x" },
+      { type: "SimpleSelector", text: ":global(.a,.b)" },
     ]);
 
     /*
      * An interpolated pseudo name stays an opaque interp-backed SimpleSelector —
      * it never becomes a structured PseudoSelector.
      */
-    expect(headSimples('.x:@{state} { color: red; }')).toMatchObject([
-      { type: 'SimpleSelector', text: '.x' },
-      { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':' }, { ref: { name: 'state' } }] } }
+    expect(headSimples(".x:@{state} { color: red; }")).toMatchObject([
+      { type: "SimpleSelector", text: ".x" },
+      {
+        type: "SimpleSelector",
+        text: null,
+        interp: { parts: [{ lit: ":" }, { ref: { name: "state" } }] },
+      },
     ]);
 
     /*
@@ -4268,136 +8539,250 @@ describe('Less AST grammar facts', () => {
      * Less 4.8.0 models this same case structurally (literal chunks and refs as
      * separate elements), so the parts stay typed and are never joined to text.
      */
-    expect(headSimples('.x:is(@{sel}) { color: red; }')).toMatchObject([
-      { type: 'SimpleSelector', text: '.x' },
-      { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':is(' }, { ref: { name: 'sel' } }, { lit: ')' }] } }
+    expect(headSimples(".x:is(@{sel}) { color: red; }")).toMatchObject([
+      { type: "SimpleSelector", text: ".x" },
+      {
+        type: "SimpleSelector",
+        text: null,
+        interp: {
+          parts: [{ lit: ":is(" }, { ref: { name: "sel" } }, { lit: ")" }],
+        },
+      },
     ]);
-    expect(headSimples('.x:not(.a@{b}) { color: red; }')).toMatchObject([
-      { type: 'SimpleSelector', text: '.x' },
-      { type: 'SimpleSelector', text: null, interp: { parts: [{ lit: ':not(.a' }, { ref: { name: 'b' } }, { lit: ')' }] } }
+    expect(headSimples(".x:not(.a@{b}) { color: red; }")).toMatchObject([
+      { type: "SimpleSelector", text: ".x" },
+      {
+        type: "SimpleSelector",
+        text: null,
+        interp: {
+          parts: [{ lit: ":not(.a" }, { ref: { name: "b" } }, { lit: ")" }],
+        },
+      },
     ]);
 
     /*
      * `:extend(...)` is a Less extend directive, not a pseudo: it is never
      * structured and leaves the compound with only the subject SimpleSelector.
      */
-    expect(headSimples('.x:extend(.a) { color: red; }')).toMatchObject([
-      { type: 'SimpleSelector', text: '.x' }
+    expect(headSimples(".x:extend(.a) { color: red; }")).toMatchObject([
+      { type: "SimpleSelector", text: ".x" },
     ]);
   });
 
-  it('retains leading combinators inside nested functional pseudo selectors', () => {
-    const source = ':is(:not(:has(>.foo)), :has(>.foo.bar)) { overflow: clip; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("retains leading combinators inside nested functional pseudo selectors", () => {
+    const source =
+      ":is(:not(:has(>.foo)), :has(>.foo.bar)) { overflow: clip; }";
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { type: 'PseudoSelector', name: ':is', text: null, crossable: true }
-      ] } }] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    {
+                      type: "PseudoSelector",
+                      name: ":is",
+                      text: null,
+                      crossable: true,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
 
     /*
      * Structured pseudos now render on ONE line with the canonical spaced join
      * (`, `) via core serialization; the nested leading `>` combinators survive.
      */
-    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      ':is(:not(:has(> .foo)), :has(> .foo.bar)) {\n  overflow: clip;\n}\n'
+    expect(
+      isStylesheet(result.value) ? serialize(result.value).css : undefined
+    ).toBe(
+      ":is(:not(:has(> .foo)), :has(> .foo.bar)) {\n  overflow: clip;\n}\n"
     );
   });
 
-  it('constructs static non-selector functional pseudos as existing SimpleSelector text', () => {
-    const source = '.card:lang(en-US)::part(icon):state(foo[bar]) { color: blue; }';
+  it("constructs static non-selector functional pseudos as existing SimpleSelector text", () => {
+    const source =
+      ".card:lang(en-US)::part(icon):state(foo[bar]) { color: blue; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { type: 'SimpleSelector', text: '.card' },
-        { type: 'SimpleSelector', text: ':lang(en-US)' },
-        { type: 'SimpleSelector', text: '::part(icon)' },
-        { type: 'SimpleSelector', text: ':state(foo[bar])' }
-      ] } }] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    { type: "SimpleSelector", text: ":lang(en-US)" },
+                    { type: "SimpleSelector", text: "::part(icon)" },
+                    { type: "SimpleSelector", text: ":state(foo[bar])" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
-    expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
-      '.card:lang(en-US)::part(icon):state(foo[bar]) {\n  color: blue;\n}\n'
+    expect(
+      isStylesheet(result.value) ? serialize(result.value).css : undefined
+    ).toBe(
+      ".card:lang(en-US)::part(icon):state(foo[bar]) {\n  color: blue;\n}\n"
     );
 
     for (const invalid of [
-      '.card:nth-child(2n +) { color: blue; }',
-      '.card:nth-child(1.5) { color: blue; }',
-      '.card:nth-of-type(2n +) { color: blue; }',
-      '.card:nth-last-of-type(1.5) { color: blue; }',
-      '.card:nth-of-type(2n of .item) { color: blue; }',
-      '.card:nth-last-of-type(2n of .item) { color: blue; }',
-      '.card:nth-child { color: blue; }',
-      '.card:nth-of-type { color: blue; }',
+      ".card:nth-child(2n +) { color: blue; }",
+      ".card:nth-child(1.5) { color: blue; }",
+      ".card:nth-of-type(2n +) { color: blue; }",
+      ".card:nth-last-of-type(1.5) { color: blue; }",
+      ".card:nth-of-type(2n of .item) { color: blue; }",
+      ".card:nth-last-of-type(2n of .item) { color: blue; }",
+      ".card:nth-child { color: blue; }",
+      ".card:nth-of-type { color: blue; }",
 
       /*
        * Less splices a non-`@{…}` pseudo argument as an opaque text blob and
        * never re-parses it. Jess keeps pseudo arguments structural, so these
        * stay rejected — an intentional divergence, not a recognition gap.
        */
-      '.card:lang(@locale) { color: blue; }',
-      '.card:lang(@@locale) { color: blue; }'
+      ".card:lang(@locale) { color: blue; }",
+      ".card:lang(@@locale) { color: blue; }",
     ]) {
-      const direct = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
+      const direct = run(lessAstGrammar.LessAstDocument, invalid, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        invalid
+      ).toBe(false);
     }
 
     /*
      * A `@{…}` argument is interpolation-bearing, which Less models structurally
      * too, so it parses as one interpolation-backed SimpleSelector.
      */
-    for (const interpolated of ['.card:lang(@{locale}) { color: blue; }', '.card::part(icon-@{name}) { color: blue; }']) {
-      const direct = run(lessAstGrammar.LessAstDocument, interpolated, { trivia: lessAstGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), interpolated).toBe(true);
+    for (const interpolated of [
+      ".card:lang(@{locale}) { color: blue; }",
+      ".card::part(icon-@{name}) { color: blue; }",
+    ]) {
+      const direct = run(lessAstGrammar.LessAstDocument, interpolated, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        interpolated
+      ).toBe(true);
     }
   });
 
-  it('constructs the complete static An+B pseudo family without raw fallback', () => {
-    const source = '.child:nth-child(-n+2 of .item):nth-last-child(2n + 1), .type:nth-of-type(odd):nth-last-of-type(3n) { color: blue; }';
-    const direct = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+  it("constructs the complete static An+B pseudo family without raw fallback", () => {
+    const source =
+      ".child:nth-child(-n+2 of .item):nth-last-child(2n + 1), .type:nth-of-type(odd):nth-last-of-type(3n) { color: blue; }";
+    const direct = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
-    expect(direct.value).toMatchObject({ type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [
-      { head: { simples: [{ text: '.child' }, { text: ':nth-child(-n+2 of .item)' }, { text: ':nth-last-child(2n + 1)' }] } },
-      { head: { simples: [{ text: '.type' }, { text: ':nth-of-type(odd)' }, { text: ':nth-last-of-type(3n)' }] } }
-    ] } }] });
+    expect(direct.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { text: ".child" },
+                    { text: ":nth-child(-n+2 of .item)" },
+                    { text: ":nth-last-child(2n + 1)" },
+                  ],
+                },
+              },
+              {
+                head: {
+                  simples: [
+                    { text: ".type" },
+                    { text: ":nth-of-type(odd)" },
+                    { text: ":nth-last-of-type(3n)" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
   });
 
-  it('restricts the `of S` nth argument to the child index via the shared cssAstPseudoSyntax recognition', () => {
+  it("restricts the `of S` nth argument to the child index via the shared cssPseudoSyntax recognition", () => {
     /*
      * `of S` is valid only for `:nth-child`/`:nth-last-child` (Selectors-4 §6.6.2);
      * the type-index families take a bare `<An+B>` (§7.1). The shared
-     * `CssAstSyntaxNthChildName`/`CssAstSyntaxNthTypeName`/`CssAstSyntaxOfKeyword`
+     * `CssSyntaxNthChildName`/`CssSyntaxNthTypeName`/`CssSyntaxOfKeyword`
      * recognitions from `@jesscss/parser-shared/pseudo-consts` are what
      * enforce this split — a stray `of S` on an of-type index must reject rather
      * than fall through to an opaque descendant-selector parse.
      */
     for (const rejected of [
-      'a:nth-of-type(2n of .a) { color: red; }',
-      'a:nth-of-type(n of .a) { color: red; }',
-      'a:nth-last-of-type(-n+3 of .a) { color: red; }'
+      "a:nth-of-type(2n of .a) { color: red; }",
+      "a:nth-of-type(n of .a) { color: red; }",
+      "a:nth-last-of-type(-n+3 of .a) { color: red; }",
     ]) {
-      const result = run(lessAstGrammar.LessAstDocument, rejected, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), rejected).toBe(false);
+      const result = run(lessAstGrammar.LessAstDocument, rejected, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        rejected
+      ).toBe(false);
     }
 
     for (const accepted of [
-      'a:nth-child(2n of .a) { color: red; }',
-      'a:nth-of-type(2n+1) { color: red; }',
-      'a:nth-last-of-type(odd) { color: red; }'
+      "a:nth-child(2n of .a) { color: red; }",
+      "a:nth-of-type(2n+1) { color: red; }",
+      "a:nth-last-of-type(odd) { color: red; }",
     ]) {
-      const result = run(lessAstGrammar.LessAstDocument, accepted, { trivia: lessAstGrammar.whitespace });
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), accepted).toBe(true);
+      const result = run(lessAstGrammar.LessAstDocument, accepted, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        accepted
+      ).toBe(true);
     }
 
     /*
@@ -4405,213 +8790,417 @@ describe('Less AST grammar facts', () => {
      * shared-name dispatch: `:nth-child(@{n})` remains an Interpolation-backed
      * SimpleSelector, not a raw selector reparse.
      */
-    const interp = run(lessAstGrammar.LessAstDocument, 'a:nth-child(@{n}) { color: red; }', { trivia: lessAstGrammar.whitespace });
-    expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(true);
+    const interp = run(
+      lessAstGrammar.LessAstDocument,
+      "a:nth-child(@{n}) { color: red; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(
+      interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)
+    ).toBe(true);
     expect(interp.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { type: 'SimpleSelector', text: 'a' },
-        { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation' } }
-      ] } }] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: "a" },
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: { type: "Interpolation" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('keeps public block-comment trivia inside static selector-valued pseudo arguments', () => {
-    const source = '.card:not(/* before */ .disabled, /* between */ .muted):nth-child(/* numeric */ 2n + 1) { color: red; }';
+  it("keeps public block-comment trivia inside static selector-valued pseudo arguments", () => {
+    const source =
+      ".card:not(/* before */ .disabled, /* between */ .muted):nth-child(/* numeric */ 2n + 1) { color: red; }";
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ type: 'Rule', selector: { selectors: [{ head: { simples: [
-        { type: 'SimpleSelector', text: '.card' },
-        { type: 'PseudoSelector', name: ':not', text: null, crossable: false },
-        { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
-      ] } }] } }]
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    {
+                      type: "PseudoSelector",
+                      name: ":not",
+                      text: null,
+                      crossable: false,
+                    },
+                    { type: "SimpleSelector", text: ":nth-child(2n + 1)" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 
-  it('rejects non-selector and interpolation-bearing functional pseudo arguments without a raw fallback', () => {
+  it("rejects non-selector and interpolation-bearing functional pseudo arguments without a raw fallback", () => {
     for (const source of [
-      '.card:not(2n+1) { color: red; }',
-      '.card:has(#{dynamic}) { color: red; }',
-      '.card:has(.child { color: red; }) { color: red; }',
-      '.card:extend/* not a pseudo */(.target) { color: red; }'
+      ".card:not(2n+1) { color: red; }",
+      ".card:has(#{dynamic}) { color: red; }",
+      ".card:has(.child { color: red; }) { color: red; }",
+      ".card:extend/* not a pseudo */(.target) { color: red; }",
     ]) {
       const cst = parseLessCst(source);
-      const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+      const result = run(lessAstGrammar.LessAstDocument, source, {
+        trivia: lessAstGrammar.whitespace,
+      });
 
-      expect(cst.errors, source).toHaveLength(0);
-      expect(cst.unconsumedFrom, source).toBeNull();
-      expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
+      expect(cstIssueCount(cst), source).toBeGreaterThan(0);
+      expect(
+        result.ok &&
+          result.unconsumedFrom === null &&
+          isStylesheet(result.value),
+        source
+      ).toBe(false);
     }
   });
 
-  it('constructs static unqualified attribute selectors as existing SimpleSelector text through the public selector shape', () => {
-    const source = '.card[data-state][role=button][title="Save" i] { color: red; }';
+  it("constructs static unqualified attribute selectors as existing SimpleSelector text through the public selector shape", () => {
+    const source =
+      '.card[data-state][role=button][title="Save" i] { color: red; }';
     const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [{
-            type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [
-                { type: 'SimpleSelector', text: '.card' },
-                { type: 'SimpleSelector', text: '[data-state]' },
-                { type: 'SimpleSelector', text: '[role=button]' },
-                { type: 'SimpleSelector', text: '[title="Save" i]' }
-              ]
-            }
-          }]
-        }
-      }]
-    });
-  });
-
-  it('constructs CSS-escaped attribute names structurally', () => {
-    const result = run(lessAstGrammar.LessAstDocument, '[ng\\:cloak], ng\\:form { display: none; }', { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet', children: [{ selector: { selectors: [
-        { head: { simples: [{ text: '[ng\\:cloak]' }] } },
-        { head: { simples: [{ text: 'ng\\:form' }] } }
-      ] } }]
-    });
-  });
-
-  it('constructs static namespace attribute selectors from grammar components', () => {
-    const source = '.card[svg|role=button][*|data-state][|title="Save" i] { color: red; }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [{
-            type: 'ComplexSelector',
-            head: {
-              type: 'CompoundSelector',
-              simples: [
-                { type: 'SimpleSelector', text: '.card' },
-                { type: 'SimpleSelector', text: '[svg|role=button]' },
-                { type: 'SimpleSelector', text: '[*|data-state]' },
-                { type: 'SimpleSelector', text: '[|title="Save" i]' }
-              ]
-            }
-          }]
-        }
-      }]
-    });
-  });
-
-  it('keeps static namespace type selectors as one SimpleSelector rather than a column-combinator complex', () => {
-    const source = 'svg|a, *|a, |a, svg|* { color: red; }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [
-            { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: 'svg|a' }] }, tail: [] },
-            { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '*|a' }] }, tail: [] },
-            { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: '|a' }] }, tail: [] },
-            { type: 'ComplexSelector', head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: 'svg|*' }] }, tail: [] }
-          ]
-        }
-      }]
-    });
-  });
-
-  it('keeps the ordinary column combinator distinct from namespace type selector syntax', () => {
-    const result = run(lessAstGrammar.LessAstDocument, 'a | b { color: red; }', { trivia: lessAstGrammar.whitespace });
-
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{
-        type: 'Rule',
-        selector: {
-          type: 'SelectorList',
-          selectors: [{
-            type: 'ComplexSelector',
-            head: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: 'a' }] },
-            tail: [{ comb: '|', compound: { type: 'CompoundSelector', simples: [{ type: 'SimpleSelector', text: 'b' }] } }]
-          }]
-        }
-      }]
-    });
-  });
-
-  it('constructs interpolated attribute selectors as one structural selector token', () => {
-    const source = '@field: state; @value: active; @name: role; @quoted: button; .card[data-@{field}=@{value}][svg|@{name}="@{quoted}"] { color: red; }';
-    const cst = parseLessCst(source);
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
-
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
-    expect(result.ok).toBe(true);
-    expect(result.unconsumedFrom).toBeNull();
-    expect(result.value).toMatchObject({
-      type: 'Stylesheet',
+      type: "Stylesheet",
       children: [
-        { type: 'VariableDeclaration', name: 'field' },
-        { type: 'VariableDeclaration', name: 'value' },
-        { type: 'VariableDeclaration', name: 'name' },
-        { type: 'VariableDeclaration', name: 'quoted' },
-        { type: 'Rule', selector: { selectors: [{ head: { simples: [
-          { type: 'SimpleSelector', text: '.card' },
-          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [{ lit: '[data-' }, { ref: { type: 'VariableReference', name: 'field', lookup: 'scoped' }, unquote: true }, { lit: '=' }, { ref: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, unquote: false }, { lit: ']' }] } },
-          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [{ lit: '[svg|' }, { ref: { type: 'VariableReference', name: 'name', lookup: 'scoped' }, unquote: true }, { lit: '="' }, { ref: { type: 'VariableReference', name: 'quoted', lookup: 'scoped' }, unquote: true }, { lit: '"]' }] } }
-        ] } }] } }
-      ]
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    { type: "SimpleSelector", text: "[data-state]" },
+                    { type: "SimpleSelector", text: "[role=button]" },
+                    { type: "SimpleSelector", text: '[title="Save" i]' },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("constructs CSS-escaped attribute names structurally", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "[ng\\:cloak], ng\\:form { display: none; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          selector: {
+            selectors: [
+              { head: { simples: [{ text: "[ng\\:cloak]" }] } },
+              { head: { simples: [{ text: "ng\\:form" }] } },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("constructs static namespace attribute selectors from grammar components", () => {
+    const source =
+      '.card[svg|role=button][*|data-state][|title="Save" i] { color: red; }';
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    { type: "SimpleSelector", text: "[svg|role=button]" },
+                    { type: "SimpleSelector", text: "[*|data-state]" },
+                    { type: "SimpleSelector", text: '[|title="Save" i]' },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("keeps static namespace type selectors as one SimpleSelector rather than a column-combinator complex", () => {
+    const source = "svg|a, *|a, |a, svg|* { color: red; }";
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [{ type: "SimpleSelector", text: "svg|a" }],
+                },
+                tail: [],
+              },
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [{ type: "SimpleSelector", text: "*|a" }],
+                },
+                tail: [],
+              },
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [{ type: "SimpleSelector", text: "|a" }],
+                },
+                tail: [],
+              },
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [{ type: "SimpleSelector", text: "svg|*" }],
+                },
+                tail: [],
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("keeps the ordinary column combinator distinct from namespace type selector syntax", () => {
+    const result = run(
+      lessAstGrammar.LessAstDocument,
+      "a | b { color: red; }",
+      { trivia: lessAstGrammar.whitespace }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        {
+          type: "Rule",
+          selector: {
+            type: "SelectorList",
+            selectors: [
+              {
+                type: "ComplexSelector",
+                head: {
+                  type: "CompoundSelector",
+                  simples: [{ type: "SimpleSelector", text: "a" }],
+                },
+                tail: [
+                  {
+                    comb: "|",
+                    compound: {
+                      type: "CompoundSelector",
+                      simples: [{ type: "SimpleSelector", text: "b" }],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("constructs interpolated attribute selectors as one structural selector token", () => {
+    const source =
+      '@field: state; @value: active; @name: role; @quoted: button; .card[data-@{field}=@{value}][svg|@{name}="@{quoted}"] { color: red; }';
+    const cst = parseLessCst(source);
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(result.ok).toBe(true);
+    expect(result.unconsumedFrom).toBeNull();
+    expect(result.value).toMatchObject({
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration", name: "field" },
+        { type: "VariableDeclaration", name: "value" },
+        { type: "VariableDeclaration", name: "name" },
+        { type: "VariableDeclaration", name: "quoted" },
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    { type: "SimpleSelector", text: ".card" },
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        type: "Interpolation",
+                        parts: [
+                          { lit: "[data-" },
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "field",
+                              lookup: "scoped",
+                            },
+                            unquote: true,
+                          },
+                          { lit: "=" },
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "value",
+                              lookup: "scoped",
+                            },
+                            unquote: false,
+                          },
+                          { lit: "]" },
+                        ],
+                      },
+                    },
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        type: "Interpolation",
+                        parts: [
+                          { lit: "[svg|" },
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "name",
+                              lookup: "scoped",
+                            },
+                            unquote: true,
+                          },
+                          { lit: '="' },
+                          {
+                            ref: {
+                              type: "VariableReference",
+                              name: "quoted",
+                              lookup: "scoped",
+                            },
+                            unquote: true,
+                          },
+                          { lit: '"]' },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError("Expected a direct Less Stylesheet.");
     }
-    expect(serialize(result.value).css).toBe('.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n');
+    expect(serialize(result.value).css).toBe(
+      '.card[data-state=active][svg|role="button"] {\n  color: red;\n}\n'
+    );
 
     for (const invalid of [
-      '.card[@{ spaced }=button] { color: red; }',
-      '@{namespace}|a { color: red; }'
+      ".card[@{ spaced }=button] { color: red; }",
+      "@{namespace}|a { color: red; }",
     ]) {
-      const direct = run(lessAstGrammar.LessAstDocument, invalid, { trivia: lessAstGrammar.whitespace });
-      expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), invalid).toBe(false);
+      const direct = run(lessAstGrammar.LessAstDocument, invalid, {
+        trivia: lessAstGrammar.whitespace,
+      });
+      expect(
+        direct.ok &&
+          direct.unconsumedFrom === null &&
+          isStylesheet(direct.value),
+        invalid
+      ).toBe(false);
     }
   });
 
-  it('retains a quoted Less variable when it fills an unquoted attribute-selector value', () => {
+  it("retains a quoted Less variable when it fills an unquoted attribute-selector value", () => {
     const result = run(
       lessAstGrammar.LessAstDocument,
       '@value: "test3"; .card[data=@{value}] { color: red; }',
@@ -4621,27 +9210,53 @@ describe('Less AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     if (!isStylesheet(result.value)) {
-      throw new TypeError('Expected a direct Less Stylesheet.');
+      throw new TypeError("Expected a direct Less Stylesheet.");
     }
-    expect(serialize(result.value).css).toBe('.card[data="test3"] {\n  color: red;\n}\n');
+    expect(serialize(result.value).css).toBe(
+      '.card[data="test3"] {\n  color: red;\n}\n'
+    );
   });
 
-  it('keeps the |= attribute operator distinct from a namespace prefix with interpolation', () => {
+  it("keeps the |= attribute operator distinct from a namespace prefix with interpolation", () => {
     const source = '@num: 3; [prop|="value@{num}"] { attributes: yes; }';
-    const result = run(lessAstGrammar.LessAstDocument, source, { trivia: lessAstGrammar.whitespace });
+    const result = run(lessAstGrammar.LessAstDocument, source, {
+      trivia: lessAstGrammar.whitespace,
+    });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'VariableDeclaration', name: 'num' }, {
-        type: 'Rule',
-        selector: { selectors: [{ head: { simples: [{
-          type: 'SimpleSelector',
-          text: null,
-          interp: { parts: [{ lit: '[prop|="value' }, { ref: { type: 'VariableReference', name: 'num' }, unquote: true }, { lit: '"]' }] }
-        }] } }] }
-      }]
+      type: "Stylesheet",
+      children: [
+        { type: "VariableDeclaration", name: "num" },
+        {
+          type: "Rule",
+          selector: {
+            selectors: [
+              {
+                head: {
+                  simples: [
+                    {
+                      type: "SimpleSelector",
+                      text: null,
+                      interp: {
+                        parts: [
+                          { lit: '[prop|="value' },
+                          {
+                            ref: { type: "VariableReference", name: "num" },
+                            unquote: true,
+                          },
+                          { lit: '"]' },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
     });
   });
 });

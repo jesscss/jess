@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * grammar forces a fresh compose and surfaces any such break.
  */
 describe('Jess CST grammar compose integrity', () => {
-  it('composes css -> jess with every referenced rule resolved (no missing-rule fallback)', async () => {
+  it('composes css -> jess with every referenced rule resolved and no Less grammar leakage', async () => {
     const captured: string[] = [];
     const origWarn = console.warn;
     const origError = console.error;
@@ -33,5 +33,11 @@ describe('Jess CST grammar compose integrity', () => {
     expect(issues, `compose() emitted missing-rule / runtime-fallback diagnostics:\n${issues.join('\n')}`).toEqual([]);
 
     expect(Object.keys(grammar).length, 'composed Jess grammar has no rules').toBeGreaterThan(0);
+
+    for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VarCall', 'VariableCall']) {
+      expect(Object.hasOwn(grammar, rule), `Less-only rule "${rule}" leaked into Jess grammar`).toBe(false);
+    }
+    const leaked = Object.keys(grammar).filter(rule => rule.startsWith('DirectLess'));
+    expect(leaked, `Less-prefixed rules leaked into Jess grammar:\n${leaked.join('\n')}`).toEqual([]);
   });
 });

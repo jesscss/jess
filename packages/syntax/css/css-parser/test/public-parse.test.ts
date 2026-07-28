@@ -3,6 +3,22 @@ import { parse, parseCssCst } from '@jesscss/css-parser';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+function containsNode(value: unknown, predicate: (value: Record<string, unknown>) => boolean): boolean {
+  if (Array.isArray(value)) {
+    return value.some(child => containsNode(child, predicate));
+  }
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return predicate(record)
+    || Object.values(record).some(child => containsNode(child, predicate));
+}
+
+function containsFunctionCall(value: unknown, name: string): boolean {
+  return containsNode(value, record => record.type === 'FunctionCall' && record.name === name);
+}
+
 describe('public CSS parse()', () => {
   it('accepts every positive public-CST fixture through the direct Stylesheet route', () => {
     const fixtureRoot = join(import.meta.dirname, 'css');
@@ -20,7 +36,7 @@ describe('public CSS parse()', () => {
     for (const filename of readdirSync(fixtureRoot).filter(name => name.endsWith('.css'))) {
       const source = readFileSync(join(fixtureRoot, filename), 'utf8');
       const cst = parseCssCst(source);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), filename).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), filename).toBeGreaterThan(0);
       expect(() => parse(source), filename).toThrow(SyntaxError);
     }
   });
@@ -82,6 +98,14 @@ describe('public CSS parse()', () => {
     expect(() => parse('.card { color: red;')).toThrow(SyntaxError);
   });
 
+  it('requires a semicolon between declarations and following nested body items', () => {
+    expect(parse('.card { color: red }')).toMatchObject({
+      children: [{ body: [{ type: 'Declaration', name: 'color' }] }]
+    });
+    expect(() => parse('.card { color: red @media (width: 1px) { color: blue; } }')).toThrow(SyntaxError);
+    expect(() => parse('.card { color: red .child { color: blue; } }')).toThrow(SyntaxError);
+  });
+
   it('returns general-enclosed supports facts directly while preserving the explicit CST API', () => {
     const source = '@supports selector(.grid /* keep */ :is(.a, .b)) { .grid { display: grid; } }';
     const cst = parseCssCst(source);
@@ -97,6 +121,13 @@ describe('public CSS parse()', () => {
         }
       }]
     });
+  });
+
+  it('requires supports function tokens to glue the function name to the opening paren', () => {
+    const source = '@supports selector (.grid) { .grid { display: grid; } }';
+    const cst = parseCssCst(source);
+    expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
+    expect(() => parse(source)).toThrow(SyntaxError);
   });
 
   it('accepts negative An+B pseudo arguments through the public direct-AST route', () => {
@@ -120,13 +151,84 @@ describe('public CSS parse()', () => {
     });
   });
 
-  it('accepts ordinary declaration url-name delimiter comments through the public direct-AST route', () => {
-    expect(parse('.asset { background: url/* name-open */(icon.svg); }')).toMatchObject({
+  it('does not lower comment-delimited url identifiers to Url or FunctionCall values', () => {
+    const document = parse('.asset { background: url/* name-open */(icon.svg); }');
+
+    expect(document).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'Rule', body: [{
-        type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'icon.svg' } }
+        type: 'Declaration', name: 'background'
       }] }]
     });
+    expect(containsNode(document, value => value.type === 'Url')).toBe(false);
+    expect(containsFunctionCall(document, 'url')).toBe(false);
+  });
+
+  it('does not lower whitespace-separated identifiers to function calls', () => {
+    const glued = parse('.asset { filter: alpha(opacity=50); }');
+    const spaced = parse('.asset { filter: alpha (opacity=50); }');
+
+    expect(glued).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', body: [{
+        type: 'Declaration',
+        name: 'filter',
+        value: { type: 'FunctionCall', name: 'alpha' }
+      }] }]
+    });
+    expect(spaced).toMatchObject({
+      type: 'Stylesheet',
+      children: [{ type: 'Rule', body: [{
+        type: 'Declaration',
+        name: 'filter'
+      }] }]
+    });
+    expect(containsFunctionCall(spaced, 'alpha')).toBe(false);
+  });
+
+  it('does not lower spaced known function names to dedicated function values', () => {
+    for (const [source, name] of [
+      ['.asset { background: url (x); }', 'url'],
+      ['.asset { width: calc (1px + 2px); }', 'calc'],
+      ['.asset { color: var (--x); }', 'var']
+    ] as const) {
+      const document = parse(source);
+
+      expect(document).toMatchObject({
+        type: 'Stylesheet',
+        children: [{ type: 'Rule', body: [{
+          type: 'Declaration',
+          value: [
+            { type: 'Keyword', src: name },
+            { type: 'Block', delimiter: 'paren' }
+          ]
+        }] }]
+      });
+      expect(containsNode(document, value => value.type === 'Url')).toBe(false);
+      expect(containsFunctionCall(document, name)).toBe(false);
+    }
+  });
+
+  it('does not unglue spaced query function names into FunctionCall preludes', () => {
+    expect(() => parse('@container style (--theme: dark) { .card { color: red; } }')).toThrow(SyntaxError);
+
+    const document = parse('@container scroll-state (stuck: block-start) { .card { color: red; } }');
+
+    expect(document).toMatchObject({
+      type: 'Stylesheet',
+      children: [{
+        type: 'AtRuleBlock',
+        name: '@container',
+        prelude: {
+          type: 'SpacedValue',
+          parts: [
+            { type: 'Keyword', src: 'scroll-state' },
+            { type: 'Block', delimiter: 'paren' }
+          ]
+        }
+      }]
+    });
+    expect(containsFunctionCall(document, 'scroll-state')).toBe(false);
   });
 
   it('lowers CST-permitted static escaped quotes to canonical escaped Quoted values', () => {

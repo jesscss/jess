@@ -11,7 +11,7 @@
  * HOW TO RUN
  * ----------
  *   pnpm --filter @jesscss/less-parser build
- *   node packages/less-parser/test/parse-bench.mjs <label> [warmup=8] [timed=25]
+ *   node packages/syntax/less/less-parser/test/parse-bench.mjs <label> [warmup=8] [timed=25]
  *
  * Emits one JSON line: per case/surface `median`, `min`, `max` and every sample.
  *
@@ -59,14 +59,14 @@ function findFlat(dir, pattern) {
 /**
  * The three standing Less workloads: one big file, a real project, the unit corpus —
  * plus `css-corpus`, which is the Less grammar's PORTED CSS productions in isolation:
- * the same 33 files `packages/css-parser` benches, so a Less reading can be read
- * against the CSS parser's reading of identical input.
+ * the same flat CSS corpus `@jesscss/css-parser` benches, so a Less reading can
+ * be read against the CSS parser's reading of identical input.
  */
 const CASES = {
   'benchmark.less': [resolve(repo, 'packages/jess/benchmark/benchmark.less')],
   'bootstrap-port': find('node_modules/.pnpm/bootstrap-less-port@2.5.1_less@3.13.1/node_modules/bootstrap-less-port/less', '*.less'),
   'test-data-unit': find('node_modules/@less/test-data/tests-unit', '*.less'),
-  'css-corpus': findFlat('packages/css-parser/test/css', '*.css')
+  'css-corpus': findFlat('packages/syntax/css/css-parser/test/css', '*.css')
 };
 
 /**

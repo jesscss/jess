@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { run } from 'parseman';
-import { valueLayoutOf } from '@jesscss/core/ast';
+import { run, triviaEntries } from 'parseman';
+import { createTriviaMapFromRanges, triviaMapOf, valueLayoutOf, withSourceSpan, withTriviaMap } from '@jesscss/core/ast';
+import type { AstTriviaRange } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
-import { cssAstGrammar } from '../src/ast/grammar.js';
+import { cssAstGrammar } from '../src/grammar.js';
 import { parseCssCst } from '../src/cst-css.js';
 import { parse } from '../src/index.js';
 
@@ -18,11 +19,28 @@ function isStylesheet(value: unknown): value is Stylesheet {
 }
 
 function parseAst(input: string): Stylesheet {
-  const result = run(cssAstGrammar.CssAstDocument, input, { trivia: cssAstGrammar.whitespace });
+  const result = run(cssAstGrammar.Stylesheet, input, { trivia: cssAstGrammar.whitespace });
   if (!result.ok || result.unconsumedFrom !== null || !isStylesheet(result.value)) {
     throw new Error(`CSS AST grammar did not consume the document: ${JSON.stringify(result)}`);
   }
-  return result.value;
+  return withTriviaMap(
+    withSourceSpan(result.value, result.span),
+    createTriviaMapFromRanges(input, triviaRanges(result.triviaLog))
+  );
+}
+
+function triviaRanges(log: readonly number[]): readonly AstTriviaRange[] {
+  const entries = triviaEntries(log);
+  const ranges: AstTriviaRange[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    ranges.push({ start: entries.start(i), end: entries.end(i) });
+  }
+  return ranges;
+}
+
+function cstIssueCount(input: string): number {
+  const result = parseCssCst(input);
+  return Number(!result.ok) + result.errors.length + Number(result.unconsumedFrom !== null);
 }
 
 function expectExplicitListSeparators(value: unknown): void {
@@ -41,6 +59,16 @@ function expectExplicitListSeparators(value: unknown): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function containsNode(value: unknown, predicate: (value: Record<string, unknown>) => boolean): boolean {
+  if (Array.isArray(value)) {
+    return value.some(child => containsNode(child, predicate));
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return predicate(value) || Object.values(value).some(child => containsNode(child, predicate));
 }
 
 describe('CSS canonical-AST grammar', () => {
@@ -119,6 +147,27 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  it('requires pseudo function names to be glued to the opening paren', () => {
+    for (const source of [
+      '.card:not( .disabled ) { color: red; }',
+      '.card:nth-child( 2n + 1 ) { color: red; }',
+      '.card:lang( en ) { color: red; }'
+    ]) {
+      expect(parseCssCst(source).errors, source).toHaveLength(0);
+      expect(() => parseAst(source), source).not.toThrow();
+    }
+
+    for (const source of [
+      '.card:not (.disabled) { color: red; }',
+      '.card:nth-child (2n + 1) { color: red; }',
+      '.card:lang (en) { color: red; }'
+    ]) {
+      const cst = parseCssCst(source);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(() => parseAst(source), source).toThrow();
+    }
+  });
+
   it('matches public CST selector acceptance for attributes, recursive pseudo-selector arguments, raw pseudo arguments, and percentage simples', () => {
     for (const source of [
       '[role="button" i].card { color: red; }',
@@ -149,7 +198,7 @@ describe('CSS canonical-AST grammar', () => {
 
     for (const source of ['[role=] { color: red; }', ':is(.card { color: red; }', ':nth-child(-n+) { color: red; }']) {
       const cst = parseCssCst(source);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(() => parseAst(source), source).toThrow();
     }
   });
@@ -229,7 +278,7 @@ describe('CSS canonical-AST grammar', () => {
       ':nth-child(2n+1x) { color: red; }'
     ]) {
       const cst = parseCssCst(source);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(() => parseAst(source), source).toThrow();
     }
 
@@ -283,6 +332,7 @@ describe('CSS canonical-AST grammar', () => {
     // nth-child/last-child still accept `of`; bare of-type An+B is unaffected.
     for (const source of [
       'a:nth-child(2n of .a) { color: red; }',
+      'a:nth-child(2n OF .a) { color: red; }',
       'a:nth-last-child(-n+3 of .a) { color: red; }',
       'a:nth-child(n of .a) { color: red; }',
       'a:nth-of-type(2n+1) { color: red; }',
@@ -369,17 +419,31 @@ describe('CSS canonical-AST grammar', () => {
     }
   });
 
-  it('treats public selector and declaration-internal comments as trivia without swallowing comment statements', () => {
+  it('treats public selector and declaration-internal comments as trivia without creating comment statements', () => {
     const source = '/* root */ a/* compound */.card /* descendant */ > /* combinator */ [data-kind /* attribute */ = /* value */ primary i]:/* pseudo */hover { /* body */ color /* colon */ : /* value */ red/* tail */; }';
     const cst = parseCssCst(source);
+    const document = parse(source);
+    const trivia = triviaMapOf(document);
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parse(source)).toEqual(parseAst(source));
-    expect(parse(source)).toMatchObject({
+    expect(document).toEqual(parseAst(source));
+    expect(trivia?.commentRuns().map(run => source.slice(run.start, run.end))).toEqual([
+      '/* root */ ',
+      '/* compound */',
+      ' /* descendant */ ',
+      ' /* combinator */ ',
+      ' /* attribute */ ',
+      ' /* value */ ',
+      '/* pseudo */',
+      ' /* body */ ',
+      ' /* colon */ ',
+      ' /* value */ ',
+      '/* tail */'
+    ]);
+    expect(document).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'Comment', text: '/* root */' },
         {
           type: 'Rule',
           selector: {
@@ -389,7 +453,6 @@ describe('CSS canonical-AST grammar', () => {
             }]
           },
           body: [
-            { type: 'Comment', text: '/* body */' },
             { type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }
           ]
         }
@@ -454,7 +517,7 @@ describe('CSS canonical-AST grammar', () => {
       [':nth-child(-n+2 of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-last-of-type(-5n) { color: red; }', [':nth-last-of-type(-5n)']],
       [':nth-child(- n+2) { color: red; }', [':nth-child(- n+2)']],
-      [':nth-child(-n+2/* preserve */ of .item) { color: red; }', [':nth-child(-n+2/* preserve */ of .item)']],
+      [':nth-child(-n+2/* preserve */ of .item) { color: red; }', [':nth-child(-n+2 of .item)']],
       [':nth-child(-) { color: red; }', [':nth-child(-)']],
       ['50% { color: red; }', ['50%']]
     ];
@@ -485,7 +548,7 @@ describe('CSS canonical-AST grammar', () => {
       ':has(.card { color: red; }'
     ]) {
       const cst = parseCssCst(source);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(() => parseAst(source), source).toThrow();
     }
   });
@@ -512,6 +575,14 @@ describe('CSS canonical-AST grammar', () => {
     expect(serialize(document)).toEqual({
       css: '.card.featured {\n  color: red;\n}\n'
     });
+  });
+
+  it('rejects a top-level CSS nesting selector', () => {
+    const source = '&.featured { color: red; }';
+    const cst = parseCssCst(source);
+
+    expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
+    expect(() => parseAst(source)).toThrow('CSS AST grammar did not consume the document');
   });
 
   it('shares the strict CSS hex-color terminal with the other direct dialect grammars', () => {
@@ -565,7 +636,6 @@ describe('CSS canonical-AST grammar', () => {
     expect(document).toMatchObject({
       type: 'Stylesheet',
       children: [
-        { type: 'Comment', text: '/* top */' },
         {
           type: 'Rule',
           selector: {
@@ -615,6 +685,8 @@ describe('CSS canonical-AST grammar', () => {
       children: [{ type: 'AtRuleBlock', name: '@media', prelude: { type: 'SpacedValue' } }]
     });
     expect(() => parseAst('@media only (min-width: 1px) { .card { color: red; } }')).toThrow();
+    expect(() => parseAst('@media layer { .card { color: red; } }')).toThrow();
+    expect(() => parseAst('@media only layer { .card { color: red; } }')).toThrow();
     expect(() => parseAst('@container only screen { .card { color: red; } }')).toThrow();
     expect(parseAst('@media not (min-width: 1px) { .card { color: red; } }')).toMatchObject({
       children: [{ type: 'AtRuleBlock', name: '@media' }]
@@ -663,7 +735,7 @@ describe('CSS canonical-AST grammar', () => {
       '@supports color { .grid { display: grid; } }',
       '@supports { .grid { display: grid; } }'
     ]) {
-      expect(parseCssCst(source).errors.length).toBeGreaterThan(0);
+      expect(cstIssueCount(source)).toBeGreaterThan(0);
       expect(() => parseAst(source)).toThrow('CSS AST grammar did not consume the document');
     }
 
@@ -738,7 +810,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(parseAst(source).children[0]).toMatchObject({
       type: 'AtRuleBlock',
       name: '@supports',
-      body: [{ type: 'Comment', text: '/* body */' }, { type: 'Rule' }]
+      body: [{ type: 'Rule' }]
     });
   });
 
@@ -748,7 +820,7 @@ describe('CSS canonical-AST grammar', () => {
       '@supports style/* glue */(--theme: dark) { .grid { display: grid; } }'
     ]) {
       const cst = parseCssCst(source);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(() => parseAst(source), source).toThrow('CSS AST grammar did not consume the document');
       expect(() => parse(source), source).toThrow(SyntaxError);
     }
@@ -973,7 +1045,7 @@ describe('CSS canonical-AST grammar', () => {
       type: 'AtRuleBlock',
       name: '@page',
       body: [
-        { type: 'AtRuleBlock', name: '@top-left-corner', prelude: null, body: [{ type: 'Comment', text: '/* body */' }, { type: 'Declaration', name: 'content' }] },
+        { type: 'AtRuleBlock', name: '@top-left-corner', prelude: null, body: [{ type: 'Declaration', name: 'content' }] },
         ...names.slice(1).map(name => ({ type: 'AtRuleBlock', name: `@${name}`, prelude: null, body: [{ type: 'Declaration', name: 'content' }] }))
       ]
     });
@@ -983,7 +1055,7 @@ describe('CSS canonical-AST grammar', () => {
     const source = '@page report { @top/* split */-left { content: "x"; } }';
     const cst = parseCssCst(source);
 
-    expect(cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
+    expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
     expect(() => parseAst(source)).toThrow('CSS AST grammar did not consume the document');
     expect(() => parse(source)).toThrow(SyntaxError);
   });
@@ -1002,7 +1074,7 @@ describe('CSS canonical-AST grammar', () => {
       '@page { @top-center { .rule { color: red; } } }',
       '@page { @top-center { @media (width: 1px) { color: red; } } }'
     ]) {
-      expect(parseCssCst(source).errors.length).toBeGreaterThan(0);
+      expect(cstIssueCount(source)).toBeGreaterThan(0);
       expect(() => parseAst(source)).toThrow('CSS AST grammar did not consume the document');
     }
   });
@@ -1029,7 +1101,6 @@ describe('CSS canonical-AST grammar', () => {
       name: '@FONT-FEATURE-VALUES',
       prelude: { type: 'Any', src: '"Fira Code", Demo' },
       body: [
-        { type: 'Comment', text: '/* family */' },
         { type: 'AtRuleBlock', name: '@STYLISTIC', prelude: null, body: [{ type: 'Declaration', name: 'salt' }] },
         { type: 'AtRuleBlock', name: '@styleset', prelude: null, body: [{ type: 'Declaration', name: 'nice' }] },
         { type: 'AtRuleBlock', name: '@character-variant', prelude: null, body: [{ type: 'Declaration', name: 'cv01' }] },
@@ -1048,7 +1119,7 @@ describe('CSS canonical-AST grammar', () => {
       '@font-feature-values Demo { @unknown { value: 1; } }'
     ]) {
       const cst = parseCssCst(source);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(() => parseAst(source), source).toThrow('CSS AST grammar did not consume the document');
     }
   });
@@ -1115,7 +1186,6 @@ describe('CSS canonical-AST grammar', () => {
         name: '@KEYFRAMES',
         prelude: { type: 'Any', src: 'fade' },
         body: [
-          { type: 'Comment', text: '/* half-way */' },
           {
             type: 'Rule',
             selector: {
@@ -1158,7 +1228,6 @@ describe('CSS canonical-AST grammar', () => {
         type: 'AtRuleBlock',
         name: '@keyframes',
         body: [
-          { type: 'Comment', text: '/* body */' },
           {
             type: 'Rule',
             selector: {
@@ -1170,7 +1239,6 @@ describe('CSS canonical-AST grammar', () => {
               ]
             },
             body: [
-              { type: 'Comment', text: '/* declaration */' },
               { type: 'Declaration', name: 'opacity', value: { type: 'Dimension', number: 0, unit: '' } }
             ]
           }
@@ -1191,7 +1259,7 @@ describe('CSS canonical-AST grammar', () => {
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
     expect(parseAst(source).children[0]).toMatchObject({
-      type: 'AtRuleBlock', name: '@layer', prelude: { type: 'Any', src: 'utilities, components /* keep */' }, body: [{ type: 'Rule' }]
+      type: 'AtRuleBlock', name: '@layer', prelude: { type: 'Any', src: 'utilities, components' }, body: [{ type: 'Rule' }]
     });
   });
 
@@ -1212,7 +1280,7 @@ describe('CSS canonical-AST grammar', () => {
       { type: 'AtRuleBlock', name: '@SCOPE', prelude: null, body: [{ type: 'Declaration' }, { type: 'Rule' }] },
       { type: 'AtRuleBlock', name: '@KEYFRAMES', prelude: { type: 'Any', src: 'fade alternate' }, body: [{ type: 'Rule' }] },
       { type: 'AtRuleStatement', name: '@CHARSET', prelude: { type: 'Any', src: 'custom (encoding)' } },
-      { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Any', src: 'svg /* keep */ url("https://example.test/ns")' } }
+      { type: 'AtRuleStatement', name: '@namespace', prelude: { type: 'Any', src: 'svg url("https://example.test/ns")' } }
     ]);
   });
 
@@ -1267,7 +1335,7 @@ describe('CSS canonical-AST grammar', () => {
   it('does not lower malformed typed block at-rules to opaque blocks', () => {
     for (const source of ['@media { .card { color: red; } }', '@font-face { .card { color: red; } }']) {
       const cst = parseCssCst(source);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
       expect(() => parseAst(source), source).toThrow('CSS AST grammar did not consume the document');
     }
   });
@@ -1310,7 +1378,7 @@ describe('CSS canonical-AST grammar', () => {
       {
         type: 'AtRuleStatement',
         name: '@IMPORT',
-        prelude: { type: 'Any', src: '"theme.css" layer(theme) /* keep */ supports(display: grid) screen and (min-width: 40rem)' }
+        prelude: { type: 'Any', src: '"theme.css" layer(theme) supports(display: grid) screen and (min-width: 40rem)' }
       },
       {
         type: 'AtRuleStatement',
@@ -1331,8 +1399,31 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
+  it('admits top-level @imports only in the CSS import phase', () => {
+    expect(parseAst('@layer reset, theme; @import "theme.css"; @layer components; @import "components.css"; .card { color: red; }')).toMatchObject({
+      children: [
+        { type: 'AtRuleStatement', name: '@layer' },
+        { type: 'AtRuleStatement', name: '@import' },
+        { type: 'AtRuleStatement', name: '@layer' },
+        { type: 'AtRuleStatement', name: '@import' },
+        { type: 'Rule' }
+      ]
+    });
+
+    for (const source of [
+      '.card { color: red; } @import "late.css";',
+      '@media screen { .card { color: red; } } @import "late.css";',
+      '@layer reset { .card { color: red; } } @import "late.css";',
+      '@font-face { font-family: F; } @import "late.css";'
+    ]) {
+      const cst = parseCssCst(source);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
+      expect(() => parseAst(source), source).toThrow('CSS AST grammar did not consume the document');
+    }
+  });
+
   it('normalizes import-local target trivia while preserving post-target tail bytes in its prelude', () => {
-    const source = '@import/* keyword */ "theme.css"; @import /* target */ url /* open */ ( /* body */ icons.css /* close */ ); @import url(/* empty */); @import "tail.css"/* tail */screen;';
+    const source = '@import/* keyword */ "theme.css"; @import /* target */ url( /* body */ icons.css /* close */ ); @import url(/* empty */); @import "tail.css"/* tail */screen;';
     const cst = parseCssCst(source);
 
     expect(cst.errors).toHaveLength(0);
@@ -1342,48 +1433,47 @@ describe('CSS canonical-AST grammar', () => {
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: '"theme.css"' } },
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: 'url(icons.css)' } },
       { type: 'AtRuleStatement', prelude: { type: 'Any', src: 'url()' } },
-      { type: 'AtRuleStatement', prelude: { type: 'Any', src: '"tail.css" /* tail */screen' } }
+      { type: 'AtRuleStatement', prelude: { type: 'Any', src: '"tail.css" screen' } }
     ]);
   });
 
-  it('keeps ordinary declaration url-name delimiter comments structured without widening url payloads', () => {
+  it('does not lower comment-delimited url identifiers to Url or FunctionCall values', () => {
     const source = '.asset { background: url/* name-open */(icon.svg); }';
     const cst = parseCssCst(source);
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(parseAst(source)).toMatchObject({
+    const document = parseAst(source);
+    expect(document).toMatchObject({
       type: 'Stylesheet',
       children: [{ type: 'Rule', body: [{
-        type: 'Declaration', name: 'background', value: { type: 'Url', value: { type: 'Any', src: 'icon.svg' } }
+        type: 'Declaration', name: 'background'
       }] }]
     });
+    expect(containsNode(document, value => value.type === 'Url')).toBe(false);
+    expect(containsNode(document, value => value.type === 'FunctionCall' && value.name === 'url')).toBe(false);
     expect(parse(source)).toEqual(parseAst(source));
 
-    for (const invalid of [
-      '.asset { background: url(foo bar); }',
-      '.asset { background: url/* name-open */(foo bar); }'
-    ]) {
-      expect(() => parseAst(invalid), invalid).toThrow('CSS AST grammar did not consume the document');
-      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
-    }
+    const invalid = '.asset { background: url(foo bar); }';
+    expect(() => parseAst(invalid), invalid).toThrow('CSS AST grammar did not consume the document');
+    expect(() => parse(invalid), invalid).toThrow(SyntaxError);
   });
 
-  it('preserves whitespace and comments outside CSS import tail groups', () => {
-    const document = parseAst('@import "x.css" /* comment */  screen and ( color : red );');
+  it('keeps at-rule prelude comments out of semantic bytes while preserving them for rendering', () => {
+    const document = parseAst('@namespace svg/* comment */url("https://example.test/ns");');
 
     expect(document.children[0]).toMatchObject({
       type: 'AtRuleStatement',
-      name: '@import',
-      prelude: { type: 'Any', src: '"x.css" /* comment */  screen and ( color : red )' }
+      name: '@namespace',
+      prelude: { type: 'Any', src: 'svg url("https://example.test/ns")' }
     });
     expect(serialize(document)).toEqual({
-      css: '@import "x.css" /* comment */  screen and ( color : red );\n'
+      css: '@namespace svg/* comment */url("https://example.test/ns");\n'
     });
   });
 
   it('keeps @import outside the generic statement family and rejects malformed typed boundaries', () => {
-    const result = run(cssAstGrammar.CssAstAtRuleStatement, '@import "theme.css";', { trivia: cssAstGrammar.whitespace });
+    const result = run(cssAstGrammar.AtRuleStatement, '@import "theme.css";', { trivia: cssAstGrammar.whitespace });
 
     expect(result.ok).toBe(false);
     for (const input of [
@@ -1393,7 +1483,7 @@ describe('CSS canonical-AST grammar', () => {
     ]) {
       expect(() => parseAst(input)).toThrow();
     }
-    expect(run(cssAstGrammar.CssAstImport, '@imported "theme.css";', { trivia: cssAstGrammar.whitespace }).ok).toBe(false);
+    expect(run(cssAstGrammar.ImportStatement, '@imported "theme.css";', { trivia: cssAstGrammar.whitespace }).ok).toBe(false);
   });
 
   it('constructs quoted, url, and function values without a value re-parser', () => {
@@ -1520,10 +1610,11 @@ describe('CSS canonical-AST grammar', () => {
   });
 
   it('commits url() after its opener instead of falling back to a generic call', () => {
-    const result = run(cssAstGrammar.CssAstDocument, '.a { background: url(foo bar); }', { trivia: cssAstGrammar.whitespace });
+    const result = run(cssAstGrammar.Value, 'url(foo bar)', { trivia: cssAstGrammar.whitespace });
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toMatchObject({ expected: [')'] });
+    expect(result.value).toMatchObject({ type: 'Url', value: { type: 'Any', src: 'foo' } });
   });
 
   it('keeps unquoted url payload bytes when building ordinary declarations', () => {
@@ -1612,7 +1703,7 @@ describe('CSS canonical-AST grammar', () => {
     const source = '.a { a: url(x) / cover; b: var(--x) solid; c: rgb(1,2,3) / .5; d: foo(bar) baz; e: calc(1px + var(--x)); f: calc(var(--x, 1px + 2px) + 2px); g: calc(var(--x, red blue) + 2px); h: 0 calc(-1 * var(--x)); }';
 
     expect(parseCssCst(source).errors).toHaveLength(0);
-    const directVar = run(cssAstGrammar.CssAstCalcVarCall, 'var(--x, 1px + 2px)', { trivia: cssAstGrammar.whitespace });
+    const directVar = run(cssAstGrammar.VarCall, 'var(--x, 1px + 2px)', { trivia: cssAstGrammar.whitespace });
     expect(directVar.ok, JSON.stringify(directVar)).toBe(true);
     expect(directVar.unconsumedFrom).toBeNull();
     const document = parseAst(source);
@@ -1633,7 +1724,7 @@ describe('CSS canonical-AST grammar', () => {
 
     for (const malformed of ['.a { h: 0 calc(); }', '.a { h: 0 calc(+); }', '.a { h: 0 calc(1px +2px); }']) {
       const cst = parseCssCst(malformed);
-      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), malformed).toBeGreaterThan(0);
+      expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null), malformed).toBeGreaterThan(0);
       expect(() => parseAst(malformed), malformed).toThrow();
       expect(() => parse(malformed), malformed).toThrow(SyntaxError);
     }
@@ -1741,7 +1832,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { x: calc(var(--x, [(a)) + 2px); }',
       '.a { x: calc(var(--x, {[a]) + 2px); }'
     ]) {
-      const direct = run(cssAstGrammar.CssAstDocument, invalid, { trivia: cssAstGrammar.whitespace });
+      const direct = run(cssAstGrammar.Stylesheet, invalid, { trivia: cssAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow();
     }
@@ -1771,7 +1862,7 @@ describe('CSS canonical-AST grammar', () => {
       '.a { width: calc(1px -2px); }'
     ]) {
       try {
-        const result = run(cssAstGrammar.CssAstDocument, input, { trivia: cssAstGrammar.whitespace });
+        const result = run(cssAstGrammar.Stylesheet, input, { trivia: cssAstGrammar.whitespace });
         expect(result.ok && result.unconsumedFrom === null).toBe(false);
       } catch (error) {
         throw new Error(`${input}: ${error instanceof Error ? error.message : String(error)}`);
@@ -1881,16 +1972,16 @@ describe('CSS canonical-AST grammar', () => {
     });
   });
 
-  it('does not inherit the legacy CST grammar\'s invalid nested @import statement acceptance', () => {
+  it('rejects nested @import statements in both CST and AST modes', () => {
     const source = '.host { @import "theme.css"; }';
+    const cst = parseCssCst(source);
 
     /*
-     * The historic CST declarationList uses the broad generic at-keyword and
-     * therefore accepts this shape. CSS imports are stylesheet-level only;
-     * the direct grammar keeps @import as a typed root fact and rejects it
-     * here rather than quietly lowering it to a generic statement.
+     * CSS imports are stylesheet-level only. The single grammar keeps @import
+     * as a typed root fact and rejects it here rather than quietly lowering it
+     * to a generic nested statement in CST mode.
      */
-    expect(parseCssCst(source).errors).toHaveLength(0);
+    expect(Number(!cst.ok) + cst.errors.length + Number(cst.unconsumedFrom !== null)).toBeGreaterThan(0);
     expect(() => parseAst(source)).toThrow('CSS AST grammar did not consume the document');
   });
 

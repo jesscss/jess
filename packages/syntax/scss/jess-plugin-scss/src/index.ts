@@ -4,8 +4,11 @@ import {
   type ISafeParseResult,
   parserDiagnostic,
   type EqualityMode,
-  type UnitMode
+  type UnitMode,
+  type Context,
+  buildEvaluator
 } from '@jesscss/core';
+import { makeSassRegistry } from '@jesscss/fns/sass/registry';
 import { parse } from '@jesscss/scss-parser';
 import { expandScssImportCandidates } from '@jesscss/style-resolver';
 
@@ -35,6 +38,8 @@ export type ScssPluginOptions = {
 
 type ExtendSelectorKind = 'simple' | 'basic' | 'pseudo' | 'complex' | 'compound';
 
+const sassValueEvaluator = buildEvaluator(makeSassRegistry());
+
 export class ScssPlugin extends AbstractPlugin {
   name = 'scss';
   supportedExtensions = ['.scss'];
@@ -50,6 +55,19 @@ export class ScssPlugin extends AbstractPlugin {
   expandImport(importPath: string) {
     // Keep import expansion in sync with the language service.
     return expandScssImportCandidates(importPath);
+  }
+
+  setContext(context: Context): void {
+    if (context.documentContext?.plugin !== this) {
+      return;
+    }
+    if (context.opts.unitMode === undefined) {
+      context.setOption('unitMode', this.unitMode);
+    }
+    if (context.opts.equalityMode === undefined) {
+      context.setOption('equalityMode', this.equalityMode);
+    }
+    context.registerValueEvaluator(sassValueEvaluator);
   }
 
   safeParse(filePath: string, source: string): ISafeParseResult {

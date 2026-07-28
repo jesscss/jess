@@ -6,7 +6,7 @@ import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseJessCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
-import { jessAstGrammar } from '../src/ast/grammar.js';
+import { jessAstGrammar } from '../src/grammar.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return typeof value === 'object'
@@ -514,6 +514,18 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
+  it('routes value identifiers and glued function openers through owning value nodes', () => {
+    expect(parse('.x { color: rgb(15 23 42 / 0.22); image: url(images/${file}.svg); keyword: red; custom: --accent; }')).toMatchObject({
+      children: [{ type: 'Rule', body: [
+        { name: 'color', value: { type: 'FunctionCall', name: 'rgb' } },
+        { name: 'image', value: { type: 'Url' } },
+        { name: 'keyword', value: { type: 'Keyword', src: 'red' } },
+        { name: 'custom', value: { type: 'Keyword', src: '--accent' } }
+      ] }]
+    });
+    expect(() => parse('.x { color: rgb (15 23 42); }')).toThrow(SyntaxError);
+  });
+
   it('reads a collection member in condition position exactly as in value position', () => {
     const source = '$c: { x: 4px; }; $if ($c.x > 0) { .a { width: $($c.x * 2); } }';
     expect(parse(source)).toMatchObject({
@@ -686,7 +698,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(hasCstGrammar(cst.tree, 'SelectorCapture')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'DirectJessSelectorCapture')).toBe(true);
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
@@ -818,6 +830,17 @@ describe('Jess AST grammar facts', () => {
     ]) {
       const accepted = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
       expect(accepted.ok && accepted.unconsumedFrom === null, source).toBe(true);
+    }
+  });
+
+  it('rejects whitespace-separated static pseudo colons on the direct AST path', () => {
+    for (const source of [
+      '.card : hover { color: red; }',
+      '.card: hover { color: red; }'
+    ]) {
+      const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
     }
   });
 
@@ -976,7 +999,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(hasCstGrammar(cst.tree, 'QueryAtRuleBlock')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'DirectJessAtRuleBlock')).toBe(true);
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({
@@ -1141,6 +1164,22 @@ describe('Jess AST grammar facts', () => {
     expect(parse('@import "a.css" layer(base);').children[0]).toMatchObject({
       prelude: { parts: [{ type: 'Quoted' }, { type: 'FunctionCall', name: 'layer', args: [{ type: 'Keyword', src: 'base' }] }] }
     });
+    expect(parse('@import "a.css" SUPPORTS(display: grid) LaYeR(base);').children[0]).toMatchObject({
+      prelude: { parts: [
+        { type: 'Quoted' },
+        { type: 'FunctionCall', name: 'SUPPORTS' },
+        { type: 'FunctionCall', name: 'LaYeR' }
+      ] }
+    });
+    expect(parse('@import "a.css" supports (display: grid);').children[0]).toMatchObject({
+      prelude: { parts: [
+        { type: 'Quoted' },
+        { type: 'SpacedValue', parts: [
+          { type: 'Keyword', src: 'supports' },
+          { type: 'Block' }
+        ] }
+      ] }
+    });
 
     /*
      * A dynamic header stays rejected: the static prelude capture stops at a
@@ -1198,11 +1237,11 @@ describe('Jess AST grammar facts', () => {
       expect(cst.unconsumedFrom, source).toBeNull();
 
       /*
-       * Reduced as a `QueryAtRuleBlock` so every language-service grammarType
+       * Reduced as a `DirectJessAtRuleBlock` so every language-service grammarType
        * allow-list treats it exactly like a static `@media`.
        */
-      expect(hasCstGrammar(cst.tree, 'QueryAtRuleBlock'), source).toBe(true);
-      expect(hasCstGrammar(cst.tree, 'DollarBrace'), source).toBe(true);
+      expect(hasCstGrammar(cst.tree, 'DirectJessAtRuleBlock'), source).toBe(true);
+      expect(hasCstGrammar(cst.tree, 'DirectJessDollarBrace'), source).toBe(true);
 
       const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null, source).toBe(true);
@@ -1581,7 +1620,7 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('preserves block comments as canonical statements and drops `//` line comments as trivia', () => {
+  it('keeps block and line comments in trivia instead of statement children', () => {
     const source = '// root\n$theme: blue; /* between */ .card { // inside\n color: $theme; /* tail */ }';
     const legacy = parseJessCst(source);
     const result = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
@@ -1591,24 +1630,19 @@ describe('Jess AST grammar facts', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
 
-    /*
-     * `//` is not valid CSS, so — exactly as in Less — it is lexical trivia and
-     * never becomes a renderable `Comment` node. `/* *\/` stays CSS output.
-     */
     expect(result.value).toEqual({
       type: 'Stylesheet',
       children: [
         expect.objectContaining({ type: 'VariableDeclaration', name: 'theme' }),
-        { type: 'Comment', text: '/* between */' },
         expect.objectContaining({
           type: 'Rule',
           body: [
-            expect.objectContaining({ type: 'Declaration', name: 'color' }),
-            { type: 'Comment', text: '/* tail */' }
+            expect.objectContaining({ type: 'Declaration', name: 'color' })
           ]
         })
       ]
     });
+    expect(JSON.stringify(result.value)).not.toContain('Comment');
   });
 
   it('keeps `//` out of the AST wherever it may appear, matching the Less parser', () => {
@@ -1768,10 +1802,9 @@ describe('Jess AST grammar facts', () => {
       '.card { color: rgb(15 23 42 /); }',
       '.card { color: rgb(15 23 42 / 0.22 / 1); }'
     ]) {
-      const legacy = parseJessCst(invalid);
+      const cst = parseJessCst(invalid);
       const rejected = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
-      expect(legacy.errors, invalid).toHaveLength(0);
-      expect(legacy.unconsumedFrom, invalid).toBeNull();
+      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), invalid).toBeGreaterThan(0);
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
     }
@@ -2048,9 +2081,9 @@ describe('Jess AST grammar facts', () => {
      * so neither may degrade into an append of nothing.
      */
     for (const source of ['.a { &-1 { color: blue; } }', '.a { &1 { color: blue; } }', '.a { &() { color: blue; } }', '.a { &(\'\') { color: blue; } }', '.a { &(nil) { color: blue; } }']) {
-      const legacy = parseJessCst(source);
+      const cst = parseJessCst(source);
       const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
-      expect(legacy.errors.length).toBeGreaterThan(0);
+      expect(cst.errors.length + Number(cst.unconsumedFrom !== null), source).toBeGreaterThan(0);
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value)).toBe(false);
     }
   });
@@ -2258,7 +2291,7 @@ describe('Jess AST grammar facts', () => {
 
   it('recognizes a documented $for loop as one direct grammar production', () => {
     const source = '$for ($item of $items) { .item { value: $item; } }';
-    const result = run(jessAstGrammar.DirectJessFor, source, { trivia: jessAstGrammar.whitespace });
+    const result = run(jessAstGrammar.For, source, { trivia: jessAstGrammar.whitespace });
 
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
@@ -2469,7 +2502,7 @@ describe('Jess AST grammar facts', () => {
 
     expect(cst.errors).toHaveLength(0);
     expect(cst.unconsumedFrom).toBeNull();
-    expect(hasCstGrammar(cst.tree, 'Mixin')).toBe(true);
+    expect(hasCstGrammar(cst.tree, 'DirectJessMixinDef')).toBe(true);
     expect(direct.ok).toBe(true);
     expect(direct.unconsumedFrom).toBeNull();
     expect(direct.value).toMatchObject({ type: 'Stylesheet' });

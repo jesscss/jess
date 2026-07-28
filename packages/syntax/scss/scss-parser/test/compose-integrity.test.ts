@@ -1,20 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { run } from 'parseman';
+
+import { scssAstGrammar } from '../src/grammar.js';
+import { parseScssCst } from '../src/cst.js';
 
 /**
- * Regression guard for grammar `compose()` integrity across the css -> less -> scss
- * chain. parseman's `compose()` runs when the composed grammar module is imported;
- * if any rule (`Call`, `functionCallArgs`, a call-argument arm, …) references a rule
- * name that is NOT in the composed set, `compose()` throws
- * `compose: rule "X" references missing rule "Y"` or degrades to the runtime
- * interpreter with a "falling back to runtime" warning. A cross-grammar rule rename
- * (e.g. renaming the CST detached-ruleset block rule the scss delta references)
- * reintroduces exactly this class of break, and a stale incremental build can hide it.
- *
- * This test forces a fresh compose (via import), fails on any missing-rule / fallback
- * diagnostic, and pins the specific rules whose cross-grammar reference must resolve.
+ * Regression guard for the folded SCSS grammar. Importing the public grammar must
+ * not emit a missing-rule or runtime-fallback diagnostic, and the package must
+ * not grow a hidden Less-based route while SCSS has its own host-mode grammar.
  */
-describe('SCSS CST grammar compose integrity', () => {
-  it('composes css -> less -> scss with every referenced rule resolved (no missing-rule fallback)', async () => {
+describe('SCSS grammar compose integrity', () => {
+  it('imports the folded grammar with no missing-rule fallback or Less-only leakage', async () => {
     const captured: string[] = [];
     const origWarn = console.warn;
     const origError = console.error;
@@ -38,14 +34,25 @@ describe('SCSS CST grammar compose integrity', () => {
       /compose\b|missing rule|references missing|falling back to runtime/i.test(message));
     expect(issues, `compose() emitted missing-rule / runtime-fallback diagnostics:\n${issues.join('\n')}`).toEqual([]);
 
-    /*
-     * The composed set must expose the rules whose cross-grammar reference broke when
-     * the CST detached-ruleset block rule was renamed. `Call` / `functionCallArgs`
-     * (scss delta) reference the less-owned `DetachedRuleset` block and the
-     * `AnonymousMixinDefinition` mixin form; all four must be present.
-     */
-    for (const rule of ['Call', 'functionCallArgs', 'DetachedRuleset', 'AnonymousMixinDefinition']) {
-      expect(Object.hasOwn(grammar, rule), `composed SCSS grammar is missing rule "${rule}"`).toBe(true);
+    for (const rule of ['Stylesheet', 'ScssAstDocument', 'ScssValueAtom', 'ScssMixinCallArg']) {
+      expect(Object.hasOwn(grammar, rule), `folded SCSS grammar is missing rule "${rule}"`).toBe(true);
+    }
+    for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VarCall', 'VariableCall']) {
+      expect(Object.hasOwn(grammar, rule), `Less-only rule "${rule}" leaked into SCSS grammar`).toBe(false);
+    }
+  });
+
+  it('rejects Less-only rule-body constructs instead of reaching hidden Less routes', () => {
+    for (const source of [
+      '.a { .mixin(); }',
+      '.a { .mixin(1, 2); }',
+      '.a { &:extend(.b all); }'
+    ]) {
+      const cst = parseScssCst(source);
+      const ast = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
+      expect(ast.ok && ast.unconsumedFrom === null, source).toBe(false);
     }
   });
 });

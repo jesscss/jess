@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@jesscss/core": "workspace:*",
+    "@jesscss/fns": "workspace:*",
     "@jesscss/scss-parser": "workspace:*",
     "@jesscss/style-resolver": "workspace:*"
   },

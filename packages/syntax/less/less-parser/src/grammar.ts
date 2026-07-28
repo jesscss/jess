@@ -1,1281 +1,5584 @@
 /**
- * Functional Less grammar: `lessGrammar = compose([cssGrammar, <Less delta>])`.
+ * Functional Less host-mode grammar.
+ *
+ * CSS base: ../../../css/css-parser/src/grammar.ts
+ *
+ * Less adds and overrides:
+ * - @variables, property variables, detached rulesets, mixins, guards, loops,
+ *   plugin/import options, escaped strings, and dynamic selectors.
+ * - Less-specific block and at-rule placement, including documented deviations
+ *   from CSS ordering/nesting rules.
+ * - Inline :extend(...) collection during selector parsing; selectors must not
+ *   be reparsed to discover extends.
+ *
  * Its structural `node(parser)` entries are consumed by the CST runner or by
  * parser-local direct AST reductions; core supplies neither a parse host nor a
  * parse entry.
  */
 import {
-  rules, compose,
-  node, regex, literal, sequence, choice, many, oneOrMore, optional,
-  not, scanTo, balanced, parser, trivia, noTrivia, expect, sepBy, label, word, keywords
+  attempt, rules, composeLeaf,
+  node, regex, literal, sequence, choice, many, oneOrMore, oneOrMoreSep, optional,
+  not, scanTo, balanced, parser, trivia, noTrivia, expect, sepBy, label, word, keywords, field, leaf, peek,
+  dispatch, endsWith, makeWhen, makeWord, otherwise, routed, token, when
 } from 'parseman' with { type: 'macro' };
-import { cssGrammar } from '@jesscss/css-parser/grammar';
+import type { Combinator, FieldCapture, FieldMap } from 'parseman';
+import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
+import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
+import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { Any, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
+import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError } from './parse-error.js';
 
 // ---------------------------------------------------------------------------
-// Grammar — Less = CSS + the Less delta. `compose` fuses the imported compiled
-// `cssGrammar` (its linkable pieces travel on the value — no source) with the
-// inline Less delta: the delta's rules win by name, and its references to CSS
-// value rules (Num/Quoted/Paren/query) resolve into the fused set. One grammar =
-// one `rules()`; no fragment spreads.
+// Grammar — Less host-mode grammar.
 // ---------------------------------------------------------------------------
 
-// Trivia (`rw`) is declared ONCE on the grammar via `rules({ trivia: rw }, …)`,
-// honored through `compose()`, making it ambient in every rule — no per-rule
-// trivia-establisher wrappers are needed. Hoisted to module scope (mirroring
-// css-parser) so the options-first `rules({ trivia: rw }, …)` call below can
-// reference it. Same shape as CSS (whitespace + block + `//` line comments).
-const ws = regex(/[ \t\n\r\f]+/);
-const comment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
-const lineComment = regex(/\/\/[^\n\r]*/);
-const rw = trivia(oneOrMore(choice(label('whitespace', ws), label('blockComment', comment), label('lineComment', lineComment))));
-// The `word()` / `keywords()` trailing boundary is spelled `'-_0-9A-Za-z'` at
-// every call site rather than hoisted to a shared const: a module-level const
-// read from inside the `rules()` closure makes the map un-resolvable at build
-// time and `compose()` falls back to the runtime interpreter (measured — it also
-// changes the emitted CST, see the grammar-cleanup notes). Literal duplication
-// is the correct answer here.
+type Token = { readonly value: string };
+type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
+type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
+/** A typed continuation of a left-associated public Reference chain. */
+type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
+type ComplexTailFact = { readonly comb: ' ' | '>' | '+' | '~' | '|' | '||'; readonly compound: CompoundSelector };
+type MixinPathTailFact = { readonly comb: ' ' | '>'; readonly sel: string };
+type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[] };
+type MixinGuard = NonNullable<MixinDef['guard']>;
+type MixinCallArgument = MixinCall['args'][number];
+type CallValue = ValueSlot | MixinCall;
+/** Private grammar reduction: delimiters remain parser facts, while the public
+ * MixinDef receives only the semantic Param array. */
+type MixinParameterListFact = { readonly params: readonly Param[] };
+type MixinSignatureFact = { readonly name: string; readonly params: readonly Param[]; readonly guard?: MixinGuard };
+type DeclarationHeadTriviaFact = { readonly text: string; readonly outputBearing: boolean };
+type StaticAttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
+type StaticAttributeNameFact = { readonly namespace: string; readonly name: string };
+type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
+type SelectorBranchFact = { readonly selector: ComplexSelector; readonly extensions: readonly ExtendInstruction[] };
+type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
+type CustomValuePart = string | InterpolationFact | readonly CustomValuePart[];
+type GeneralEnclosedNameFact = { readonly name: string };
+type FunctionConditionFact = {
+  readonly guard: MixinGuard;
+  readonly src: string;
+  readonly grouped: boolean;
+  readonly hasComparison: boolean;
+};
 
-export const lessGrammar = compose([cssGrammar, rules({ trivia: rw }, (g: any) => {
-  // ---------------------------------------------------------------------------
-  // Terminals (CSS base + Less @var / @{interp}).
-  // ---------------------------------------------------------------------------
+/** Rules this file defines; macro-fused recognition inputs are not local output. */
+type LessRules = {
+  Stylesheet: Combinator<Stylesheet>;
+  LessAstDocument: Combinator<Stylesheet>;
+  VarDeclaration: Combinator<VariableDeclaration>;
+  ImportStatement: Combinator<ImportAtRule>;
+  PluginDirective: Combinator<Plugin>;
+  ValueBlockDeclaration: Combinator<VariableDeclaration>;
+  ValueBlock: Combinator<ValueNode>;
+  IndirectVariableReference: Combinator<VarIndirect>;
+  VariableReferenceChain: Combinator<ValueNode>;
+  VariableReference: Combinator<VariableReference>;
+  PropertyReference: Combinator<ValueNode>;
+  VariableInterpolation: Combinator<InterpolationFact>;
+  PropertyInterpolation: Combinator<InterpolationFact>;
+  Interpolation: Combinator<InterpolationFact>;
+  AtRuleInterpolation: Combinator<Interpolation>;
+  InterpolationAccessor: Combinator<InterpolationAccessorFact>;
+  ReferenceTail: Combinator<ReferenceTailFact>;
+  InterpolatedValue: Combinator<Interpolation>;
+  InterpolatedProperty: Combinator<Interpolation>;
+  Keyword: Combinator<ValueNode>;
+  NamedColor: Combinator<ValueNode>;
+  Color: Combinator<ValueNode>;
+  Dimension: Combinator<ValueNode>;
+  UnicodeRange: Combinator<Any>;
+  EscapeValue: Combinator<Any>;
+  PercentEscape: Combinator<Any>;
+  PagePseudo: Combinator<Any>;
+  DoubledQuoteArgument: Combinator<Any>;
+  DirectLessFunctionArgument: Combinator<ValueSlot>;
+  DirectLessFunctionScalarArgument: Combinator<ValueNode>;
+  ArgumentValueSequence: Combinator<ValueSlot>;
+  DirectLessFunctionCondition: Combinator<ValueNode>;
+  DirectLessFunctionConditionOr: Combinator<FunctionConditionFact>;
+  DirectLessFunctionConditionAnd: Combinator<FunctionConditionFact>;
+  DirectLessFunctionConditionTerm: Combinator<FunctionConditionFact>;
+  DirectLessFunctionConditionOperand: Combinator<ValueNode>;
+  DirectLessFunctionConditionParen: Combinator<FunctionConditionFact>;
+  DirectLessFunction: Combinator<FunctionCall>;
+  DirectLessCallArgumentFunction: Combinator<FunctionCall>;
+  FormatFunction: Combinator<FunctionCall>;
+  CallArgumentValue: Combinator<MixinCallArgument['value']>;
+  DirectLessFunctionStatement: Combinator<FunctionCall>;
+  DirectLessCalcFunction: Combinator<FunctionCall>;
+  Value: Combinator<ValueNode>;
+  DirectLessSelectorCapture: Combinator<SelectorCapture>;
+  MathAtom: Combinator<ValueNode>;
+  MathUnary: Combinator<ValueNode>;
+  MathProduct: Combinator<ValueNode>;
+  MathSum: Combinator<ValueNode>;
+  TopProduct: Combinator<ValueNode>;
+  TopSum: Combinator<ValueNode>;
+  PreservedDivision: Combinator<ValueNode>;
+  EscapedParen: Combinator<ValueNode>;
+  Paren: Combinator<ValueNode>;
+  ValueSequence: Combinator<ValueSlot>;
+  ValueList: Combinator<ValueSlot>;
+  VariableValue: Combinator<ValueSlot>;
+  ImportantValue: Combinator<Important>;
+  ValueListWithPriority: Combinator<ValueSlot>;
+  DirectLessCustomPropertyName: Combinator<string | Interpolation>;
+  DirectLessCustomPart: Combinator<CustomValuePart>;
+  DirectLessCustomInnerPart: Combinator<CustomValuePart>;
+  DirectLessCustomParen: Combinator<readonly CustomValuePart[]>;
+  DirectLessCustomSquare: Combinator<readonly CustomValuePart[]>;
+  DirectLessCustomCurly: Combinator<readonly CustomValuePart[]>;
+  DirectLessCustomValue: Combinator<ValueNode>;
+  CssCustomPropertyValue: Combinator<Keyword>;
+  DirectLessCustomDeclaration: Combinator<Declaration>;
+  DirectLessPunctuationMapDeclaration: Combinator<Declaration>;
+  Declaration: Combinator<Declaration>;
+  DirectLessMixinParam: Combinator<Param>;
+  DirectLessMixinParameterList: Combinator<MixinParameterListFact>;
+  DirectLessMixinDefinition: Combinator<MixinDef>;
+  DirectLessPositionalMixinCallArgument: Combinator<MixinCallArgument>;
+  DirectLessMixinArgumentGroup: Combinator<MixinCallArgument>;
+  MixinArguments: Combinator<readonly MixinCallArgument[]>;
+  DirectLessMixinCall: Combinator<MixinCall>;
+  DirectLessBareMixinCall: Combinator<MixinCall>;
+  DirectLessFlatMixinCall: Combinator<MixinCall>;
+  DirectLessNamespacedMixinCall: Combinator<MixinCall>;
+  DirectLessNamespacedMixinValue: Combinator<MixinCall>;
+  DirectLessMixinPathTail: Combinator<MixinPathTailFact>;
+  DirectLessMixinReference: Combinator<Reference>;
+  ReferenceCall: Combinator<Reference>;
+  DirectLessMixinGuard: Combinator<MixinGuard>;
+  DirectLessMixinGuardTopOr: Combinator<MixinGuard>;
+  DirectLessMixinGuardTopAnd: Combinator<MixinGuard>;
+  DirectLessMixinGuardTopTerm: Combinator<MixinGuard>;
+  DirectLessMixinGuardOr: Combinator<MixinGuard>;
+  DirectLessMixinGuardAnd: Combinator<MixinGuard>;
+  DirectLessMixinGuardTerm: Combinator<MixinGuard>;
+  DirectLessMixinGuardOperand: Combinator<ValueNode>;
+  DirectLessEachName: Combinator<string>;
+  /** A complete direct Less statement body, shared by detached rulesets and `each()` callbacks. */
+  DirectLessBodyStatement: Combinator<Statement | string>;
+  DirectLessEachCallback: Combinator<LessEachCallback>;
+  DirectLessEach: Combinator<For>;
+  SupportsValue: Combinator<ValueNode>;
+  SupportsFeature: Combinator<ValueNode>;
+  DirectLessSupportsInParens: Combinator<ValueNode>;
+  DirectLessSupportsCondition: Combinator<ValueNode>;
+  DirectLessGeneralEnclosedContent: Combinator<Interpolation>;
+  DirectLessGeneralEnclosedGroup: Combinator<Interpolation>;
+  DirectLessGeneralEnclosedQuoted: Combinator<Interpolation>;
+  DirectLessGeneralEnclosedFunctionName: Combinator<GeneralEnclosedNameFact>;
+  DirectLessGeneralEnclosed: Combinator<GeneralEnclosed>;
+  SupportsBlock: Combinator<AtRuleBlock>;
+  QueryValue: Combinator<ValueNode>;
+  QueryLogicalGroup: Combinator<ValueNode>;
+  QueryNegatedFeature: Combinator<ValueNode>;
+  QueryColonFeature: Combinator<ValueNode>;
+  QueryFeature: Combinator<ValueNode>;
+  QueryClause: Combinator<ValueNode>;
+  QueryPrelude: Combinator<ValueNode>;
+  MediaQueryTerm: Combinator<ValueNode>;
+  MediaQueryOnlyClause: Combinator<ValueNode>;
+  MediaQueryClause: Combinator<ValueNode>;
+  MediaQueryPrelude: Combinator<ValueNode>;
+  ContainerStyleQuery: Combinator<FunctionCall>;
+  ContainerName: Combinator<Keyword>;
+  ContainerQueryAtom: Combinator<ValueNode>;
+  ContainerCondition: Combinator<ValueNode>;
+  MediaContainerBody: Combinator<readonly Statement[]>;
+  MediaContainerBlock: Combinator<AtRuleBlock>;
+  KeyframeSelector: Combinator<SimpleSelector>;
+  KeyframeBlock: Combinator<Rule>;
+  Keyframes: Combinator<AtRuleBlock>;
+  DottedAtRuleKeyword: Combinator<ValueNode>;
+  StaticAtRuleAtom: Combinator<ValueNode>;
+  StaticAtRuleTerm: Combinator<ValueNode>;
+  StaticAtRulePrelude: Combinator<ValueNode>;
+  CssAtRulePrelude: Combinator<ValueNode | null>;
+  NamespacePrelude: Combinator<ValueNode>;
+  AtRuleBlock: Combinator<AtRuleBlock>;
+  OpaqueAtPrelude: Combinator<string | null>;
+  OpaqueBody: Combinator<string>;
+  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  AtRuleStatement: Combinator<AtRuleStatement>;
+  DirectLessStaticPseudo: Combinator<SimpleToken>;
+  DirectLessInterpolatedPseudo: Combinator<SimpleSelector>;
+  InterpolatedNthPseudo: Combinator<SimpleSelector>;
+  DirectLessInterpolatedArgumentPseudo: Combinator<SimpleSelector>;
+  DirectLessStaticNthPseudo: Combinator<SimpleSelector>;
+  DirectLessStaticNthArgument: Combinator<string>;
+  DirectLessStaticNonSelectorPseudoArgument: Combinator<string>;
+  DirectLessStaticPseudoGroup: Combinator<string>;
+  DirectLessStaticPseudoSquare: Combinator<string>;
+  StaticPseudoQuoted: Combinator<string>;
+  DirectLessStaticPseudoCompound: Combinator<CompoundSelector>;
+  DirectLessStaticPseudoComplexTail: Combinator<ComplexTailFact>;
+  DirectLessStaticPseudoComplex: Combinator<ComplexSelector>;
+  DirectLessStaticPseudoSelectorTail: Combinator<ComplexSelector>;
+  DirectLessStaticPseudoSelector: Combinator<SelectorList>;
+  DirectLessStaticAttributeNamespace: Combinator<string>;
+  DirectLessStaticNamespaceType: Combinator<SimpleSelector>;
+  DirectLessStaticAttributeName: Combinator<StaticAttributeNameFact>;
+  DirectLessStaticAttributeQuoted: Combinator<string>;
+  DirectLessStaticAttributeMatch: Combinator<StaticAttributeMatchFact>;
+  DirectLessStaticAttribute: Combinator<SimpleSelector>;
+  DirectLessInterpolatedAttributeToken: Combinator<Interpolation>;
+  DirectLessInterpolatedAttributeValueToken: Combinator<Interpolation>;
+  DirectLessInterpolatedAttributeQuoted: Combinator<Interpolation>;
+  DirectLessInterpolatedAttribute: Combinator<SimpleSelector>;
+  DirectLessInterpolatedSimpleSelector: Combinator<SimpleSelector>;
+  DirectLessBareInterpolatedSelector: Combinator<SimpleSelector>;
+  DirectLessAdjacentInterpolatedSelector: Combinator<SimpleSelector>;
+  DirectLessBareInterpolatedSelectorWithSuffix: Combinator<SimpleSelector>;
+  DirectLessInterpolatedParentSuffix: Combinator<SimpleSelector>;
+  DirectLessCompound: Combinator<CompoundSelector>;
+  DirectLessComplexTail: Combinator<ComplexTailFact>;
+  DirectLessComplex: Combinator<ComplexSelector>;
+  DirectLessSelectorTail: Combinator<ComplexSelector>;
+  DirectLessSelector: Combinator<SelectorList>;
+  DirectLessExtendComplex: Combinator<ComplexSelector>;
+  DirectLessExtendTarget: Combinator<ExtendTargetFact>;
+  DirectLessExtendStatement: Combinator<ExtendInstruction[]>;
+  RulesetWithExtends: Combinator<Rule>;
+  Quoted: Combinator<Quoted | Interpolation>;
+  StaticQuoted: Combinator<Quoted>;
+  EscapedQuoted: Combinator<Quoted | Interpolation>;
+  StaticUrl: Combinator<Url>;
+  UrlInterpolation: Combinator<Interpolation>;
+  DynamicUrl: Combinator<Url>;
+  ImportOption: Combinator<Any>;
+  ImportOptions: Combinator<List>;
+  ImportTarget: Combinator<Quoted | Url | Interpolation>;
+  ImportTail: Combinator<unknown>;
+  StaticTail: Combinator<unknown>;
+  StaticTailGroup: Combinator<unknown>;
+  StaticTailParen: Combinator<unknown>;
+  whitespace: Combinator<unknown>;
+};
 
-  // Whitespace-only trivia for url() bodies: inside `url(…)`, `//` and `/*` are URL
-  // characters, not comments (`url(//host/x)` is protocol-relative), so the normal
-  // `rw` (which skips line/block comments) must not apply there.
-  const urlWs = trivia(ws);
+function isToken(value: unknown): value is Token {
+  return typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string';
+}
 
-  const ident = regex(/-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-  // Selectors / mixin names / idents include CSS escapes (\hex, \char) — same
-  // definition as css-parser grammar.ts (a mixin call is just a selector).
-  const basicSel = regex(/(?:[.#]?-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
-  const combinator = choice(literal('||'), literal('>'), literal('+'), literal('~'), literal('|'));
-  const pseudoColon = regex(/::?/);
-  const attrOp = regex(/[*~|^$]?=/);
-  // Only `i` / `s` are defined today; for forwards-compatibility any single ASCII
-  // letter is accepted (`[a=b c]`). A digit / underscore / other non-letter is
-  // still rejected.
-  const attrMod = regex(/[a-zA-Z]/);
-  /** @todo(css-spec-parity): ad-hoc An+B microsyntax regex — mirror the css-parser `nth` once its spec audit (css-syntax-3 §the-anb-type / selectors-4 §6.6.2) lands; overrides the CSS base so any tightening there must be ported here too. */
-  const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+/i);
-  // Same pattern as shared-value-rules.ts `singleStr`/`doubleStr` — local so the macro
-  // can statically evaluate regex(); `\\` + newline is valid CSS line continuation.
-  const singleStr = regex(/'(?:[^'\\]|\\[\s\S])*'/);
-  const doubleStr = regex(/"(?:[^"\\]|\\[\s\S])*"/);
-  // Balanced bracket scans that treat strings as opaque holes — a bracket inside
-  // a string (`(foo: "(" x ")")`) takes token precedence and must NOT affect depth.
-  const strHole = [singleStr, doubleStr];
-  const bParen = balanced('(', ')', { skip: strHole });
-  const bSquare = balanced('[', ']', { skip: strHole });
-  const bCurly = balanced('{', '}', { skip: strHole });
-  const customProp = regex(/--[-_a-zA-Z0-9\u0080-\uffff]*/);
-  const atKeyword = regex(/@-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const urlOpen = regex(/url\(/i);
-  // Unquoted url() body — spec-exact <url-token> code points (consume-a-url-token,
-  // css-syntax-3 §4.3.6). A url code point is any code point EXCEPT `"` `'` `(` `)`,
-  // whitespace (tab/newline/form-feed/CR/space), a non-printable (U+0000–08, U+000B,
-  // U+000E–1F, U+007F), and `\`; a `\` begins an escaped code point (§4.3.7): `\` +
-  // 1–6 hex digits with one optional trailing whitespace terminator, OR `\` + any
-  // single non-newline code point — the same escape idiom `ident` uses. Ported
-  // verbatim from css-parser (5250b736b); Less inherits it and SCSS inherits it from
-  // Less.
-  const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-  const anyValueTok = regex(/[+\-*/=<>|~^]+|[^\s;{}\[\]()'",!]+/);
+/** Macro-fused shared recognition plus this file's recursively defined outputs. */
+type LessInputRules = LessRules & typeof lessSyntax;
 
-  // Less-specific terminals.
-  // First char may be a digit \u2014 Less allows numeric variable names (`@3`, `@{3}`).
-  // `@` + one or more name chars (dash included), so a dash-only name like `@-` is
-  // valid (Less accepts it). Digits are allowed anywhere (`@3` \u2014 flagged, not rejected).
-  const lessVar = regex(/@[-_a-zA-Z0-9\u0080-\uffff]+/);
-  // \u00a74.1 amendment (owner-approved 2026-07-18): the interpolation BODY is a
-  // READ-ONLY value REFERENCE \u2014 a bare-name/var head followed by zero or more
-  // `[key]` accessors (`@{theme[variant]}`, `@{map[@key]}`). The body is STRUCTURED
-  // by the grammar (P0 KEYSTONE: parser is the sole source of structure) \u2014 a
-  // `LessInterp` node whose children are the `@{` / `}` delimiter leaves, the head
-  // leaf, and each `[` / key / `]` accessor leaf \u2014 so a host consumes those child
-  // tokens directly and NEVER re-scans the `@{\u2026}` body bytes to rebuild the split.
-  // The zero-accessor case `@{name}` builds a plain variable ref (byte-identical).
-  // Accessor keys admit ident / `@var` / `$prop` / numeric tokens; a `.`-call
-  // (`@{head.call()}`) is intentionally NOT accepted (read-only). The `@{`\u2026`}`
-  // delimiters are owner-LOCKED. This single production is the shared interp-body
-  // seam \u2014 every `@{\u2026}` position (Quoted, selector, custom-prop, prelude, value)
-  // references `lessInterp` (or the parallel `interpKey`) so they all agree.
-  // `noTrivia` keeps the whole token contiguous (matching the former single regex):
-  // a spaced `@{ x }` / `@{a.b}` / `@{}` false-start does NOT match and stays literal.
-  const interpHead = regex(/-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const interpAccessorKey = regex(/[-_a-zA-Z0-9@$\u0080-\uffff]+/);
-  const interpAccessor = sequence(literal('['), interpAccessorKey, literal(']'));
-  const lessInterp = node('LessInterp',
-    noTrivia(sequence(literal('@{'), interpHead, many(interpAccessor), literal('}'))));
-  // `${property}` is the sibling Less interpolation form for property lookup.
-  // Keep it equally structural: the CST carries its distinct delimiters and the
-  // same read-only head/accessor body without a second interpolation-shaped leaf.
-  const lessPropertyInterp = node('LessPropertyInterp',
-    noTrivia(sequence(literal('${'), interpHead, many(interpAccessor), literal('}'))));
-  const lessInterpolation = choice(lessInterp, lessPropertyInterp);
-  // Interpolated custom-property names are segmented grammar, not a second
-  // interpolation-shaped token. `lessInterpolation` supplies the authoritative
-  // `@{…}` / `${…}` structures, while the surrounding runs remain leaves so the
-  // CustomDeclaration CST still retains its exact authored property bytes.
-  const customPropStart = choice(regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/), literal('-'));
-  const customPropTail = regex(/[-_a-zA-Z0-9\u0080-\uffff]+/);
-  const customPropInterp = noTrivia(sequence(
-    literal('--'), optional(customPropStart), lessInterpolation,
-    many(choice(lessInterpolation, customPropTail))
-  ));
+type SharedCssSyntax = {
+  CssSyntaxAttributeModifier: Combinator<unknown>;
+  CssSyntaxAttributeOperator: Combinator<unknown>;
+  CssSyntaxHexColor: Combinator<string>;
+  CssSyntaxUnicodeRange: Combinator<string>;
+  CssSyntaxNth: Combinator<unknown>;
+  CssSyntaxNthChildName: Combinator<string>;
+  CssSyntaxNthTypeName: Combinator<string>;
+  CssSyntaxNthName: Combinator<string>;
+  CssSyntaxOfKeyword: Combinator<string>;
+  CssSyntaxNumber: Combinator<string>;
+  CssSyntaxDimensionUnit: Combinator<string>;
+  CssSyntaxInterpolatedPropertyStart: Combinator<unknown>;
+  CssSyntaxInterpolatedPropertyTail: Combinator<unknown>;
+  CssSyntaxProperty: Combinator<unknown>;
+  CssSyntaxSupportsAtKeyword: Combinator<unknown>;
+  CssSyntaxKeyframesAtKeyword: Combinator<unknown>;
+  CssSyntaxMediaContainerAtKeyword: Combinator<unknown>;
+  CssSyntaxMediaAtKeyword: Combinator<unknown>;
+  CssSyntaxContainerAtKeyword: Combinator<unknown>;
+  CssSyntaxQueryNot: Combinator<unknown>;
+  CssSyntaxQueryOnly: Combinator<unknown>;
+  CssSyntaxQueryAndOr: Combinator<unknown>;
+  CssSyntaxQueryComparisonOperator: Combinator<unknown>;
+  CssSyntaxQueryFunctionName: Combinator<unknown>;
+  CssSyntaxImportant: Combinator<unknown>;
+  CssSyntaxBlockComment: Combinator<unknown>;
+};
 
-  // \u2500\u2500 Quoted (Less \u00a73.3: structure `@{name}` interpolation inside a string) \u2500\u2500\u2500\u2500
-  // The shared css `Quoted` is one flat `singleStr`/`doubleStr` leaf that swallows
-  // any interior `@{\u2026}`. Less OVERRIDES it so the PARSER is the sole source of the
-  // interpolation structure (P0 KEYSTONE): a string carrying a strict `@{name}`
-  // token is emitted as interleaved leaves \u2014 quote/literal chunks + isolated
-  // `lessInterp` leaves \u2014 that the value / import host consume with the SAME
-  // `interpFromLeaves` seam the selector / custom-prop paths use, never a byte
-  // re-scan. A plain string with no `@{\u2026}` backtracks to the flat leaf and is
-  // BYTE-IDENTICAL to the css base (fast path: no children array is materialized).
-  //
-  // A chunk is any run up to a `"`/`'` or the next VALID `@{name}`; the `@(?!\u2026)`
-  // negative-lookahead is the exact complement of `lessInterp`, so a `@` only ends
-  // a chunk when it opens a strict `@{name}` \u2014 a bare `@name`, an escaped `\@{x}`
-  // (`\\[\s\S]`), and a NON-interpolation false-start (`@{box-\u2026`, `@{ x }`, `@{a.b}`,
-  // `@{}`) all stay INSIDE the chunk as literal text. This matches real Less 4.x /
-  // the strict \u00a74.1 (owner-LOCKED) rule and finds a valid `@{name}` even after a
-  // false-start (`"@{box-@{suffix}}"` \u2192 literal `@{box-`, ref `@{suffix}`, literal
-  // `}`). Less has no nested interpolation, so `@{@{x}}` falls to the chunk verbatim.
-  // The interpolated arm REQUIRES at least one `lessInterp`, so a string with none
-  // fails it and falls to the flat `singleStr`/`doubleStr` leaf (byte-identical).
-  const dqChunk = regex(/(?:[^"\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}))+/);
-  const sqChunk = regex(/(?:[^'\\@]|\\[\s\S]|@(?!\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\}))+/);
-  // The interp-BODY seam (dialect-varying, owner note). In LESS the body is a
-  // READ-ONLY value REFERENCE opened by `@{` \u2014 a name/var head + zero or more
-  // `[key]` accessors (\u00a74.1 amendment; see `lessInterp`). `strInterp` IS
-  // `lessInterp`, so the string-interp body agrees with every other `@{\u2026}` site.
-  // Kept as its own const so a dialect that composes a DIFFERENT string-interp
-  // body plugs it here WITHOUT rewriting the content-gobble loop below: SCSS/.jess
-  // use `#{ <expression> }` (a full expression, opened by `#{`), and Less may later
-  // add `${name}` property-interp. This override is LESS-SCOPED (the delta's
-  // `Quoted` wins by name); SCSS composes on the CSS base, NOT on Less, so it never
-  // inherits this Less body.
-  //
-  // The grammar structures `@{head[key]}` at every interpolation site. A future
-  // parser-local direct-AST reduction owns any accessor-evaluation semantics.
-  const strInterp = lessInterp;
-  const Quoted = node('Quoted', choice(
-    sequence(literal('"'), many(dqChunk), strInterp, many(choice(strInterp, dqChunk)), literal('"')),
-    sequence(literal('\''), many(sqChunk), strInterp, many(choice(strInterp, sqChunk)), literal('\'')),
-    singleStr,
-    doubleStr
-  ));
+function requireToken(value: unknown): Token {
+  if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
+    throw new TypeError('Direct Less AST grammar produced a non-token child.');
+  }
+  return { value: value.value };
+}
 
-  // ---------------------------------------------------------------------------
-  // Grammar — CSS base rules + Less overrides/additions.
-  // ---------------------------------------------------------------------------
+function functionNameFromOpener(value: unknown): string {
+  const opener = requireToken(value).value;
+  if (!opener.endsWith('(')) {
+    throw new TypeError('Direct Less function opener lost its glued opening paren.');
+  }
+  return opener.slice(0, -1);
+}
 
-  // ── Stylesheet (Less: + VarDeclaration, MixinCall, detached Call) ──────────
-  // No catch-all: unmatched input stops `many`; the driver reports the unconsumed
-  // offset as one syntax error. Bare `;` is an empty statement.
-  // The per-statement choice used by the root `many(...)`. Exposed as a named
-  // rule so grammars that EXTEND Less (e.g. SCSS) can inject their own
-  // statements ahead of it — `many(choice(g.ScssIf, …, g.stylesheetItem))` —
-  // without re-listing the whole set. Keeps the extension seam in one place.
-  const stylesheetItem = choice(
-    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.AtRuleMalformed, g.ExtendStatement, g.Ruleset, g.MixinOrQualifiedRule, g.EachFor,
-    sequence(g.Call, optional(literal(';'))), literal(';')
+function requireTerminalText(value: unknown): string {
+  return typeof value === 'string' ? value : requireToken(value).value;
+}
+
+function requireString(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('Direct Less AST grammar produced a non-string child.');
+  }
+  return value;
+}
+
+function requireCombinator(value: unknown): AstCombinator {
+  const text = requireTerminalText(value);
+  if (text !== ' ' && text !== '>' && text !== '+' && text !== '~' && text !== '|' && text !== '||') {
+    throw new TypeError('Direct Less AST grammar produced an invalid selector combinator.');
+  }
+  return text;
+}
+
+function isTerminalText(value: unknown, text: string): boolean {
+  return (typeof value === 'string' && value === text)
+    || (typeof value === 'object' && value !== null && 'value' in value && value.value === text);
+}
+
+function requireField(fields: FieldMap | undefined, name: string): FieldCapture {
+  const field = fields?.[name];
+  if (field === undefined || Array.isArray(field)) {
+    throw new TypeError(`Direct Less AST grammar lost required ${name} field.`);
+  }
+  return field;
+}
+
+function requireFields(fields: FieldMap | undefined, name: string): readonly FieldCapture[] {
+  const field = fields?.[name];
+  if (field === undefined) {
+    throw new TypeError(`Direct Less AST grammar lost required ${name} field.`);
+  }
+  return Array.isArray(field) ? field : [field];
+}
+
+/** Reassemble only grammar-produced terminal values; never slice or rescan input. */
+function staticText(value: unknown): string {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (isQuoted(value)) {
+    return value.src;
+  }
+  // Parseman may retain a terminal capture as its token object when a
+  // boundary is wrapped in `field(...)`.  It is still grammar-owned static
+  // text; accepting it here avoids treating authored whitespace around a
+  // preserved Less slash as a dynamic import fragment.
+  if (typeof value === 'object' && value !== null && 'value' in value && typeof value.value === 'string') {
+    return value.value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(staticText).join('');
+  }
+  throw new TypeError('Direct Less AST grammar produced a non-static import fragment.');
+}
+
+function isQuoted(value: unknown): value is Quoted {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Quoted'
+    && 'src' in value
+    && typeof value.src === 'string'
+    && 'value' in value
+    && typeof value.value === 'string'
+    && 'quote' in value
+    && typeof value.quote === 'string'
+    && 'escaped' in value
+    && typeof value.escaped === 'boolean';
+}
+
+function isInterp(value: unknown): value is Interpolation {
+  return typeof value === 'object' && value !== null && 'type' in value
+    && value.type === 'Interpolation' && 'parts' in value && Array.isArray(value.parts);
+}
+
+function isUrl(value: unknown): value is Url {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Url'
+    && 'value' in value;
+}
+
+function isAny(value: unknown): value is Any {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Any'
+    && 'src' in value
+    && typeof value.src === 'string';
+}
+
+function isImportAtRule(value: unknown): value is ImportAtRule {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'ImportAtRule'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'target' in value
+    && (isQuoted(value.target) || isUrl(value.target) || isInterp(value.target))
+    && 'options' in value
+    && 'alias' in value
+    && 'tail' in value;
+}
+
+function isVarDeclaration(value: unknown): value is VariableDeclaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'VariableDeclaration'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'value' in value
+    && (isValueSlotValue(value.value) || isMixinCall(value.value));
+}
+
+function isVarRef(value: unknown): value is VariableReference {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'VariableReference'
+    && 'name' in value
+    && typeof value.name === 'string';
+}
+
+function isVarIndirect(value: unknown): value is VarIndirect {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'VarIndirect'
+    && 'nameRef' in value
+    && isValueNode(value.nameRef);
+}
+
+function isPropRef(value: unknown): value is ValueNode & { readonly type: 'PropertyReference'; readonly name: string; readonly raw: string } {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'PropertyReference'
+    && 'name' in value
+    && typeof value.name === 'string'
+    && 'raw' in value
+    && typeof value.raw === 'string';
+}
+
+function isReference(value: unknown): value is Reference {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'Reference'
+    && 'base' in value && isValueNode(value.base)
+    && 'steps' in value && Array.isArray(value.steps);
+}
+
+function isInterpolationAccessorFact(value: unknown): value is InterpolationAccessorFact {
+  return typeof value === 'object' && value !== null
+    && 'key' in value && (typeof value.key === 'number' || isValueNode(value.key))
+    && 'keyKind' in value && (value.keyKind === 'var' || value.keyKind === 'prop' || value.keyKind === 'index')
+    && 'src' in value && typeof value.src === 'string';
+}
+
+function requireInterpolationAccessorFact(value: unknown): InterpolationAccessorFact {
+  if (!isInterpolationAccessorFact(value)) {
+    throw new TypeError('Direct Less AST grammar produced an invalid accessor fact.');
+  }
+  return value;
+}
+
+function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: readonly unknown[]): ValueNode {
+  if (accessors.length === 0) {
+    return base;
+  }
+  const steps: ReferenceStep[] = [];
+  for (const child of accessors) {
+    const accessor = requireInterpolationAccessorFact(child);
+    raw += `[${accessor.src}]`;
+    steps.push({ type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind });
+  }
+  return reference(base, steps, raw);
+}
+
+/** Source fallback for a direct grammar fact. This deliberately walks already
+ * reduced facts; it never inspects or re-parses source bytes. */
+function mixinArgumentSource(value: CallValue): string {
+  if (isMixinCall(value)) {
+    const path = value.path.map((segment, index) => index === 0 ? segment.sel : `${segment.comb}${segment.sel}`).join('');
+    const args = value.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ');
+    return `${path}${value.name}(${args})${value.important ? ' !important' : ''}`;
+  }
+  if (Array.isArray(value)) {
+    return value.map(part => mixinArgumentSource(part)).join(' ');
+  }
+  const node = requireValueNode(value);
+  switch (node.type) {
+    case 'Keyword': case 'Color': case 'Dimension': case 'Any': case 'SelectorCapture': return node.src;
+    case 'Quoted': return node.src;
+    case 'VariableReference': return `@${node.name}`;
+    case 'PropertyReference': return node.raw;
+    case 'VarIndirect': return `@${mixinArgumentSource(node.nameRef)}`;
+    case 'Reference': return node.raw;
+    case 'FunctionCall': return `${node.name}(${node.args.map(mixinArgumentSource).join(', ')})`;
+    case 'Block': return `${node.escaped ? '~' : ''}${node.delimiter === 'square' ? '[' : '('}${mixinArgumentSource(node.inner)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'Operation': return `${mixinArgumentSource(node.left)} ${node.operator} ${mixinArgumentSource(node.right)}`;
+    case 'SpacedValue': return node.parts.map(mixinArgumentSource).join(' ');
+    case 'List': return node.value.map(mixinArgumentSource).join(node.sep === ',' ? ', ' : node.sep === '/' ? ' / ' : ' ');
+    case 'Important': return `${mixinArgumentSource(node.inner)} !important`;
+    default: throw new TypeError(`Direct Less mixin-reference raw source cannot represent ${node.type}.`);
+  }
+}
+
+/**
+ * Fold only already-reduced grammar facts into a public Reference.  In
+ * particular, this never re-reads the source to discover chain structure.
+ */
+function referenceWithTails(base: ValueNode | MixinCall, baseRaw: string, tails: readonly unknown[]): Reference {
+  const steps: ReferenceStep[] = [];
+  let raw = baseRaw;
+  for (const child of tails) {
+    if (typeof child !== 'object' || child === null || !('step' in child) || !('src' in child)) {
+      throw new TypeError('Direct Less AST grammar produced an invalid reference-tail fact.');
+    }
+    const tail = requireReferenceTailFact(child);
+    raw += tail.src;
+    steps.push(tail.step);
+  }
+  return reference(base, steps, raw);
+}
+
+function isReferenceTailFact(value: unknown): value is ReferenceTailFact {
+  return typeof value === 'object' && value !== null
+    && 'step' in value && typeof value.step === 'object' && value.step !== null
+    && 'src' in value && typeof value.src === 'string';
+}
+
+function requireReferenceTailFact(value: unknown): ReferenceTailFact {
+  if (!isReferenceTailFact(value)) {
+    throw new TypeError('Direct Less AST grammar produced an invalid reference-tail fact.');
+  }
+  return value;
+}
+
+function interpolationFactFromChildren(children: readonly unknown[]): InterpolationFact {
+  const opener = requireToken(children[0]).value;
+  const head = requireToken(children[1]).value;
+  let src = `${opener}${head}`;
+  for (const child of children.slice(2, -1)) {
+    src += `[${requireInterpolationAccessorFact(child).src}]`;
+  }
+  const ref = referenceWithBracketLookups(
+    opener === '@{' ? variableReference(head, 'scoped') : propertyReference(head),
+    `${opener === '@{' ? '@' : '$'}${head}`,
+    children.slice(2, -1)
   );
-  const Stylesheet = node(
-    many(g.stylesheetItem));
+  return { ref, src: `${src}}` };
+}
 
-  // Plain helper consts referenced before their section must be defined up-front
-  // (Phase-1 evaluation is sequential; only g.* refs resolve lazily).
-  const important = sequence(literal('!'), literal('important'));
+function appendInterpolationLiteral(parts: Interpolation['parts'], lit: string): void {
+  const previous = parts.at(-1);
+  if (previous !== undefined && 'lit' in previous) {
+    parts[parts.length - 1] = { lit: previous.lit + lit };
+  } else {
+    parts.push({ lit });
+  }
+}
 
-  // ── Less variable declaration / reference ───────────────────────────────────
-  // A detached ruleset assigned to a variable: `@name: { … }`. The structured branch
-  // parses the body as a declaration list (→ Mixin). If that fails — e.g. bootstrap's
-  // `@escaped-characters: { <: %3c; … }`, whose keys (`<`, `>`, `(`, `)`) are not valid
-  // property names — the raw fallback captures the balanced `{ … }` verbatim. Historical
-  // Less treats such a block as a raw string (only re-parsed on interpolation); the
-  // builder then produces a `Quoted` so `@plugin` functions (e.g. escape-svg) read it as
-  // a string. The fallback is a plain balanced scan (no node wrapper); the builder
-  // distinguishes it by the absence of structured child nodes.
-  const rawDetachedBlock = sequence(literal('{'), noTrivia(scanTo(literal('}'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] })), literal('}'));
-  const detachedBlock = choice(
-    sequence(literal('{'), g.declarationList, literal('}')),
-    rawDetachedBlock
+function appendGeneralEnclosedLiteral(parts: Interpolation['parts'], lit: string): void {
+  if (lit.length === 0) {
+    return;
+  }
+  const last = parts.at(-1);
+  if (last !== undefined && 'lit' in last) {
+    last.lit += lit;
+  } else {
+    parts.push({ lit });
+  }
+}
+
+function generalEnclosedInterpolationFromChildren(children: readonly unknown[]): Interpolation {
+  const parts: Interpolation['parts'] = [];
+  const append = (child: unknown): void => {
+    if (child === undefined || child === null || child === false) {
+      return;
+    }
+    if (isInterpolationFact(child)) {
+      parts.push({ ref: child.ref, unquote: true });
+    } else if (typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation') {
+      if (!isValueNode(child) || child.type !== 'Interpolation') {
+        throw new TypeError('Direct Less general-enclosed grammar produced a non-interpolation child.');
+      }
+      for (const part of child.parts) {
+        if ('lit' in part) {
+          appendGeneralEnclosedLiteral(parts, part.lit);
+        } else {
+          parts.push(part);
+        }
+      }
+    } else if (Array.isArray(child)) {
+      for (const nested of child) {
+        append(nested);
+      }
+    } else if (typeof child === 'string') {
+      appendGeneralEnclosedLiteral(parts, child);
+    } else {
+      appendGeneralEnclosedLiteral(parts, requireToken(child).value);
+    }
+  };
+  for (const child of children) {
+    append(child);
+  }
+  return interpolation(parts);
+}
+
+function isInterpolationFact(value: unknown): value is InterpolationFact {
+  return typeof value === 'object' && value !== null
+    && 'ref' in value && isValueNode(value.ref)
+    && 'src' in value && typeof value.src === 'string';
+}
+
+function requireInterpolationFact(value: unknown): InterpolationFact {
+  if (!isInterpolationFact(value)) {
+    throw new TypeError('Direct Less AST grammar produced an invalid interpolation fact.');
+  }
+  return value;
+}
+
+/** Fold grammar-owned interpolation facts, bare variable references, and literal
+ * tokens into canonical Interpolation parts.  An optional `leading` literal seeds
+ * the run so quote openers stay attached to their following literal segment. */
+function interpolationPartsFrom(children: readonly unknown[], unquote: boolean, leading?: string): Interpolation['parts'] {
+  const parts: Interpolation['parts'] = [];
+  if (leading !== undefined) {
+    parts.push({ lit: leading });
+  }
+  for (const child of children) {
+    if (isInterpolationFact(child)) {
+      parts.push({ ref: child.ref, unquote });
+    } else if (isVarRef(child)) {
+      parts.push({ ref: child, unquote });
+    } else {
+      appendInterpolationLiteral(parts, requireToken(child).value);
+    }
+  }
+  return parts;
+}
+
+/** Reduce grammar-produced `separator` field captures into their terminal text. */
+function separatorsFromFields(fields: FieldMap | undefined): string[] {
+  return fields?.separator === undefined
+    ? []
+    : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
+}
+
+function sourceFromState(state: unknown): string | undefined {
+  return typeof state === 'object'
+    && state !== null
+    && 'source' in state
+    && typeof state.source === 'string'
+    ? state.source
+    : undefined;
+}
+
+function triviaRunOutputText(source: string, start: number, end: number): string {
+  const run = source.slice(start, end);
+  if (!run.includes('/*')) {
+    return /[\n\r]/u.test(run) ? run : '';
+  }
+
+  let out = '';
+  let pos = start;
+  while (pos < end) {
+    const open = source.indexOf('/*', pos);
+    if (open < 0 || open >= end) {
+      break;
+    }
+    const close = source.indexOf('*/', open + 2);
+    if (close < 0 || close + 2 > end) {
+      break;
+    }
+
+    let textStart = open;
+    while (textStart > start) {
+      const char = source.charCodeAt(textStart - 1);
+      if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
+        break;
+      }
+      textStart--;
+    }
+
+    let textEnd = close + 2;
+    while (textEnd < end) {
+      const char = source.charCodeAt(textEnd);
+      if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
+        break;
+      }
+      textEnd++;
+    }
+
+    out += source.slice(textStart, textEnd);
+    pos = textEnd;
+  }
+  return out;
+}
+
+function triviaTextAtInsertIndex(
+  triviaLog: readonly number[],
+  state: unknown,
+  insertIndex: number
+): string {
+  const source = sourceFromState(state);
+  if (source === undefined) {
+    return '';
+  }
+
+  let text = '';
+  for (let index = 0; index < triviaLog.length; index += 3) {
+    if (triviaLog[index + 2] !== insertIndex) {
+      continue;
+    }
+    text += triviaRunOutputText(
+      source,
+      triviaLog[index] ?? 0,
+      triviaLog[index + 1] ?? 0
+    );
+  }
+  return text;
+}
+
+function isFunctionSeparatorChild(child: unknown): boolean {
+  const text = typeof child === 'string'
+    ? child
+    : typeof child === 'object'
+      && child !== null
+      && 'value' in child
+      && typeof child.value === 'string'
+      ? child.value
+      : '';
+  return text.startsWith(',') || text.startsWith(';');
+}
+
+function functionSeparatorsFromFields(
+  fields: FieldMap | undefined,
+  children: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown
+): string[] {
+  const separators = separatorsFromFields(fields);
+  if (separators.length === 0) {
+    return separators;
+  }
+
+  const separatorIndexes: number[] = [];
+  for (let index = 0; index < children.length; index++) {
+    if (isFunctionSeparatorChild(children[index])) {
+      separatorIndexes.push(index);
+    }
+  }
+
+  return separators.map((separator, index) => {
+    const separatorIndex = separatorIndexes[index];
+    if (separatorIndex === undefined) {
+      return separator;
+    }
+    const nextValueIndex = children.findIndex((child, childIndex) =>
+      childIndex > separatorIndex && isValueSlotValue(child));
+    return triviaTextAtInsertIndex(triviaLog, state, separatorIndex)
+      + separator
+      + triviaTextAtInsertIndex(triviaLog, state, nextValueIndex);
+  });
+}
+
+function hasField(fields: FieldMap | undefined, name: string): boolean {
+  return fields?.[name] !== undefined;
+}
+
+/** Fold selected value children into a comma `List`, retaining any authored
+ * separator layout, and collapse a single value to itself. */
+function commaListFromChildren<T extends ValueSlot>(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  pick: (child: unknown) => child is T
+): T | List {
+  const values = children.filter(pick);
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  const result = list(values, ',');
+  const separators = separatorsFromFields(fields);
+  return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
+}
+
+function commaListWithTriviaFromChildren<T extends ValueSlot>(
+  children: readonly unknown[],
+  fields: FieldMap | undefined,
+  triviaLog: readonly number[],
+  state: unknown,
+  pick: (child: unknown) => child is T
+): T | List {
+  const values = children.filter(pick);
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  const result = list(values, ',');
+  const authoredSeparators = separatorsFromFields(fields);
+  if (authoredSeparators.length !== values.length - 1) {
+    return result;
+  }
+  const separators: string[] = [];
+  let valueIndex = 0;
+  for (let index = 0; index < children.length; index += 1) {
+    if (!pick(children[index])) {
+      continue;
+    }
+    if (valueIndex > 0) {
+      separators.push(
+        triviaTextAtInsertIndex(triviaLog, state, index - 1)
+        + authoredSeparators[valueIndex - 1]!
+        + triviaTextAtInsertIndex(triviaLog, state, index)
+      );
+    }
+    valueIndex++;
+  }
+  return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
+}
+
+function isGluedValueBoundary(child: unknown): boolean {
+  return typeof child === 'object'
+    && child !== null
+    && 'kind' in child
+    && child.kind === 'glued-value-boundary';
+}
+
+/** Shared value-term reduction for grammar branches that keep comments in
+ * Parseman's trivia log rather than as semantic `Comment` value nodes. */
+function valuePieceReducerWithTrivia(
+  children: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown
+): ValueSlot {
+  const values = children
+    .filter(child => isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%'))
+    .map(child => isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%')
+      ? keyword(requireTerminalText(child))
+      : requireValueNode(child));
+  if (values.length === 1) {
+    return values[0]!;
+  }
+
+  const separators: string[] = [];
+  let previousValue = -1;
+  for (let index = 0; index < children.length; index += 1) {
+    const child = children[index];
+    if (!(isValueNode(child) || isTerminalText(child, '/') || isTerminalText(child, '-') || isTerminalText(child, '%'))) {
+      continue;
+    }
+    if (previousValue >= 0) {
+      const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
+      const boundary = children.slice(previousValue + 1, index).some(isGluedValueBoundary);
+      separators.push(trivia.length > 0 ? trivia : boundary ? '' : ' ');
+    }
+    previousValue = index;
+  }
+
+  return withValueLayout(values, separators);
+}
+
+/** A structural value child stays as-is; a grammar terminal becomes a keyword. */
+function keywordOrValue(child: unknown): ValueNode {
+  return isValueNode(child) ? child : keyword(requireTerminalText(child));
+}
+
+function layoutFromTriviaBoundaries(
+  children: readonly unknown[],
+  triviaLog: readonly number[],
+  state: unknown,
+  pick: (child: unknown) => boolean
+): string[] {
+  const separators: string[] = [];
+  let previous = -1;
+  for (let index = 0; index < children.length; index += 1) {
+    if (!pick(children[index])) {
+      continue;
+    }
+    if (previous >= 0) {
+      const trivia = triviaTextAtInsertIndex(triviaLog, state, index);
+      separators.push(trivia.length > 0 ? trivia : ' ');
+    }
+    previous = index;
+  }
+  return separators;
+}
+
+/** Space-join value/terminal children into a single SpacedValue. */
+function spacedFromValueChildren(
+  children: readonly unknown[],
+  triviaLog: readonly number[] = [],
+  state?: unknown
+): ValueNode {
+  const values = children.map(keywordOrValue);
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  const separators = layoutFromTriviaBoundaries(children, triviaLog, state, () => true);
+  return spaced(values, separators);
+}
+
+function isComplexTailFact(value: unknown): value is ComplexTailFact {
+  return typeof value === 'object' && value !== null && 'comb' in value && 'compound' in value;
+}
+
+/** Shared `optional(combinator) compound` selector-tail reduction: the compound
+ * and combinator sub-rules vary by selector family, but the fold to a
+ * `{ comb, compound }` fact is identical. */
+function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
+  const compound = children.find(isCompound);
+  if (compound === undefined) {
+    throw new TypeError('Direct Less AST grammar produced a selector tail without a compound.');
+  }
+  const token = children.find(child => !isCompound(child));
+  return { comb: token === undefined ? ' ' : requireCombinator(token), compound };
+}
+
+/** Space-separated query clause reduction: keyword/value children join into a
+ * SpacedValue, and a single value collapses to itself. */
+function queryClauseReducer(
+  children: readonly unknown[],
+  triviaLog: readonly number[] = [],
+  state?: unknown
+): ValueNode {
+  const values = children
+    .filter(child => child !== undefined && child !== null && child !== false)
+    .map(keywordOrValue);
+  if (values.length === 1) {
+    return values[0]!;
+  }
+  const separators = layoutFromTriviaBoundaries(
+    children,
+    triviaLog,
+    state,
+    child => child !== undefined && child !== null && child !== false
   );
-  // Var-decl colon. Spaces around it are fine (`@x : y` is a declaration). It is
-  // NOT a declaration only in the pseudo pattern `<space>:<word>` — the colon has a
-  // space before AND clings to the following ident (e.g. `@page :first { … }` is an
-  // at-rule prelude, not `@page: first`). So: colon adjacent to the name (noTrivia),
-  // OR colon not immediately followed by an ident-start.
-  const varColon = choice(
-    noTrivia(sequence(lessVar, literal(':'))),
-    sequence(lessVar, regex(/:(?![-_a-zA-Z-￿])/))
+  return spaced(values, separators);
+}
+
+function queryComparisonOperators(children: readonly unknown[]): string[] {
+  return children
+    .filter((child) => {
+      const text = typeof child === 'string'
+        ? child
+        : typeof child === 'object' && child !== null && 'value' in child
+          ? child.value
+          : null;
+      return text === '<' || text === '<=' || text === '=' || text === '>=' || text === '>';
+    })
+    .map(requireTerminalText);
+}
+
+/** Turn grammar-owned custom-property leaves into a canonical value without a source scan. */
+function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
+  const interpolationParts: Interpolation['parts'] = [];
+  let hasInterpolation = false;
+  const append = (part: CustomValuePart): void => {
+    if (typeof part === 'string') {
+      appendInterpolationLiteral(interpolationParts, part);
+    } else if (Array.isArray(part)) {
+      for (const nested of part) {
+        append(nested);
+      }
+    } else if (isInterpolationFact(part)) {
+      hasInterpolation = true;
+      interpolationParts.push({ ref: part.ref, unquote: true });
+    } else {
+      throw new TypeError('Direct Less custom value retained an untyped grammar part.');
+    }
+  };
+  for (const part of parts) {
+    append(part);
+  }
+  if (hasInterpolation) {
+    return interpolation(interpolationParts);
+  }
+  // A custom-property value is verbatim `<declaration-value>` text that is never
+  // evaluated (css-syntax-3 §7.2), so even a wholly-quoted value stays `Any`
+  // rather than being re-typed as a `Quoted` string.
+  return any(interpolationParts.map(part => 'lit' in part ? part.lit : '').join(''));
+}
+
+function customPartsFromChildren(children: readonly unknown[]): CustomValuePart[] {
+  const parts: CustomValuePart[] = [];
+  for (const child of children) {
+    if (isInterpolationFact(child)) {
+      parts.push(child);
+    } else if (Array.isArray(child)) {
+      parts.push(customPartsFromChildren(child));
+    } else if (typeof child === 'string') {
+      parts.push(child);
+    } else {
+      parts.push(requireToken(child).value);
+    }
+  }
+  return parts;
+}
+
+function isValueNode(value: unknown): value is ValueNode {
+  // Dispatch once on the discriminant rather than re-running the object guard
+  // through each `isX` prefix. Type-only arms return true directly (matching
+  // the original union); the four structurally-validated node kinds delegate to
+  // their deep guards, preserving identical acceptance.
+  if (typeof value !== 'object' || value === null || !('type' in value)) {
+    return false;
+  }
+  switch (value.type) {
+    case 'Keyword':
+    case 'Color':
+    case 'Dimension':
+    case 'Url':
+    case 'FunctionCall':
+    case 'SpacedValue':
+    case 'List':
+    case 'Operation':
+    case 'Condition':
+    case 'Block':
+    case 'PropertyReference':
+    case 'VarIndirect':
+    case 'Reference':
+    case 'Interpolation':
+    case 'Important':
+    case 'SelectorCapture':
+    case 'AnonymousMixin':
+    case 'Collection':
+    case 'GeneralEnclosed':
+      return true;
+    case 'Quoted':
+      return isQuoted(value);
+    case 'Any':
+      return isAny(value);
+    case 'VariableReference':
+      return isVarRef(value);
+    default:
+      return false;
+  }
+}
+
+function valueSlot(value: ValueSlot): ValueSlot {
+  // Ordinary adjacent terms are raw recursive ValueSlot arrays.  The
+  // variable-declaration reducer uses `variableValueSlot` below for the one
+  // Less-specific boundary where a preserved slash must remain available to
+  // later math-mode evaluation; declaration/value positions stay raw arrays.
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (isSpacedValue(value)) {
+    return value.parts;
+  }
+  if (isValueNode(value) && value.type === 'Block' && isSpacedValue(value.inner)) {
+    return { ...value, inner: value.inner.parts };
+  }
+  return value;
+}
+
+function isSpacedValue(value: ValueSlot): value is Extract<ValueNode, { type: 'SpacedValue' }> {
+  return isValueNode(value) && value.type === 'SpacedValue';
+}
+
+function variableValueSlot(value: unknown): ValueSlot {
+  const slot: ValueSlot = Array.isArray(value) ? value as ValueSlot : requireValueNode(value);
+  if (Array.isArray(slot)) {
+    // A variable-held slash with authored whitespace is one preserved Less
+    // arithmetic value.  Keep ordinary adjacent values as the raw recursive
+    // array, but retain this semantic boundary so a later operation does not
+    // mistake `10px / 2` for a numeric operand and invent `calc(...)`.  Glued
+    // slash values remain raw arrays for the existing Less structural shape.
+    const layout = valueLayoutOf(slot);
+    const hasSlash = slot.some(part =>
+      isValueNode(part) && (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
+    if (hasSlash && layout?.some(separator => separator.length > 0)) {
+      return { type: 'SpacedValue', parts: slot, separators: layout };
+    }
+    return slot;
+  }
+  if (isSpacedValue(slot)) {
+    const preservedDivision = slot.parts.some(part =>
+      (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
+    const authoredBoundary = slot.separators?.some(separator => separator.length > 0) === true;
+    return preservedDivision && authoredBoundary ? slot : slot.parts;
+  }
+  if (isValueNode(slot) && slot.type === 'Block' && isSpacedValue(slot.inner)) {
+    const preservedDivision = slot.inner.parts.some(part =>
+      (part.type === 'Keyword' || part.type === 'Any') && part.src.trim() === '/');
+    return preservedDivision ? slot : { ...slot, inner: slot.inner.parts };
+  }
+  return slot;
+}
+
+function isValueSlotValue(value: unknown): value is ValueSlot {
+  return Array.isArray(value) ? value.every(isValueSlotValue) : isValueNode(value);
+}
+
+function requireValueSlot(value: unknown): ValueSlot {
+  return Array.isArray(value) ? value as ValueSlot : valueSlot(requireValueNode(value));
+}
+
+function requireValueNode(value: unknown): ValueNode {
+  if (!isValueNode(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-value child.');
+  }
+  return value;
+}
+
+function requireKeyword(value: unknown): Keyword {
+  const node = requireValueNode(value);
+  if (node.type !== 'Keyword') {
+    throw new TypeError('Direct Less AST grammar produced a non-keyword child.');
+  }
+  return node;
+}
+
+function requireMixinCallArgumentValue(value: unknown): MixinCallArgument['value'] {
+  if (!isValueSlotValue(value) && !isMixinCall(value)) {
+    throw new TypeError('Direct Less AST grammar produced an invalid mixin-call argument.');
+  }
+  return value;
+}
+
+function isDeclaration(value: unknown): value is Declaration {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Declaration'
+    && 'name' in value
+    && (typeof value.name === 'string' || isInterp(value.name))
+    && 'value' in value
+    && 'value' in value
+    && isValueSlotValue(value.value)
+    && 'merge' in value
+    && (value.merge === null || value.merge === ',' || value.merge === ' ')
+    && 'important' in value
+    && typeof value.important === 'boolean';
+}
+
+function isSelectorList(value: unknown): value is SelectorList {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'SelectorList'
+    && 'selectors' in value
+    && Array.isArray(value.selectors);
+}
+
+function requireSelectorList(value: unknown): SelectorList {
+  if (!isSelectorList(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-selector child.');
+  }
+  return value;
+}
+
+function isComplex(value: unknown): value is ComplexSelector {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'ComplexSelector'
+    && 'head' in value
+    && 'tail' in value
+    && Array.isArray(value.tail);
+}
+
+function requireComplex(value: unknown): ComplexSelector {
+  if (!isComplex(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-complex selector child.');
+  }
+  return value;
+}
+
+function requireComplexes(children: readonly unknown[]): ComplexSelector[] {
+  const selectors: ComplexSelector[] = [];
+  for (const child of children) {
+    selectors.push(requireComplex(child));
+  }
+  return selectors;
+}
+
+type SourceSpan = { readonly start: number; readonly end: number };
+type SpannedToken = { readonly value: unknown; readonly span: SourceSpan };
+
+function isSpannedToken(value: unknown): value is SpannedToken {
+  return typeof value === 'object'
+    && value !== null
+    && 'value' in value
+    && 'span' in value
+    && typeof value.span === 'object'
+    && value.span !== null
+    && 'start' in value.span
+    && 'end' in value.span
+    && typeof value.span.start === 'number'
+    && typeof value.span.end === 'number';
+}
+
+function bodySpanFromRaw(rawChildren: readonly unknown[]): SourceSpan | undefined {
+  let start: number | undefined;
+  let end: number | undefined;
+  for (const child of rawChildren) {
+    if (!isSpannedToken(child)) {
+      continue;
+    }
+    if (child.value === '{' && start === undefined) {
+      start = child.span.end;
+    } else if (child.value === '}') {
+      end = child.span.start;
+    }
+  }
+  return start === undefined || end === undefined || end < start ? undefined : { start, end };
+}
+
+function withBlockBody<T extends object>(node: T, rawChildren: readonly unknown[]): T {
+  const span = bodySpanFromRaw(rawChildren);
+  return span === undefined ? node : withBodySpan(node, span);
+}
+
+function isCompound(value: unknown): value is CompoundSelector {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'CompoundSelector'
+    && 'simples' in value
+    && Array.isArray(value.simples);
+}
+
+function isSimpleSelector(value: unknown): value is SimpleSelector {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'SimpleSelector'
+    && 'text' in value
+    && 'interp' in value;
+}
+
+// Selector-function pseudos whose static argument is retained as a structured
+// `SelectorList` (P0). Gated on the pseudo NAME (lowercased, colon-stripped),
+// mirroring the CSS grammar. `:global`/`:local` are recognized by
+// `staticSelectorPseudoName` but stay opaque text — they are absent here.
+// `crossable` (a narrower set) is decided in core.
+const STRUCTURED_PSEUDOS = new Set(['is', 'where', 'not', 'has', 'matches']);
+
+function isSimpleToken(value: unknown): value is SimpleToken {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && (value.type === 'SimpleSelector' || value.type === 'PseudoSelector');
+}
+
+function pseudoNameFromHead(head: string): string {
+  return head.startsWith('::')
+    ? head.slice(2)
+    : head.startsWith(':')
+      ? head.slice(1)
+      : head;
+}
+
+function staticSelectorPseudoFrom(head: string, arg: unknown): SimpleToken {
+  if (isSelectorList(arg) && STRUCTURED_PSEUDOS.has(pseudoNameFromHead(head).toLowerCase())) {
+    return pseudoSelector(head, arg);
+  }
+  return simpleSelector(`${head}(${requireSelectorList(arg).selectors.map(complexCanonical).join(',')})`);
+}
+
+function staticNonSelectorPseudoFrom(head: string, arg: string | null): SimpleSelector {
+  return arg === null
+    ? simpleSelector(head)
+    : simpleSelector(`${head}(${arg})`);
+}
+
+function requireCompound(value: unknown): CompoundSelector {
+  if (!isCompound(value)) {
+    throw new TypeError('Direct Less AST grammar produced a non-compound selector child.');
+  }
+  return value;
+}
+
+function isRule(value: unknown): value is Rule {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Rule'
+    && 'selector' in value
+    && isSelectorList(value.selector)
+    && 'body' in value
+    && Array.isArray(value.body);
+}
+
+function isAtRuleBlock(value: unknown): value is AtRuleBlock {
+  return typeof value === 'object' && value !== null && 'type' in value
+    && value.type === 'AtRuleBlock' && 'name' in value && typeof value.name === 'string'
+    && 'prelude' in value && 'body' in value && Array.isArray(value.body);
+}
+
+function isAtRuleStatement(value: unknown): value is AtRuleStatement {
+  return typeof value === 'object' && value !== null && 'type' in value
+    && value.type === 'AtRuleStatement' && 'name' in value && typeof value.name === 'string'
+    && 'prelude' in value;
+}
+
+function isMixinDef(value: unknown): value is MixinDef {
+  return typeof value === 'object' && value !== null && 'type' in value
+    && value.type === 'MixinDef' && 'name' in value && typeof value.name === 'string'
+    && 'params' in value && Array.isArray(value.params) && 'body' in value && Array.isArray(value.body);
+}
+
+function isMixinCall(value: unknown): value is MixinCall {
+  return typeof value === 'object' && value !== null && 'type' in value
+    && value.type === 'MixinCall' && 'name' in value && typeof value.name === 'string'
+    && 'args' in value && Array.isArray(value.args) && 'path' in value && Array.isArray(value.path)
+    && 'important' in value && typeof value.important === 'boolean';
+}
+
+function isReferenceCall(value: unknown): value is Reference {
+  return typeof value === 'object' && value !== null && 'type' in value
+    && value.type === 'Reference' && 'base' in value && isVarRef(value.base)
+    && 'steps' in value && Array.isArray(value.steps)
+    && value.steps.length === 1 && value.steps[0]?.type === 'Call';
+}
+
+function isParam(value: unknown): value is Param {
+  return typeof value === 'object' && value !== null && !('type' in value)
+    && ('name' in value || 'pattern' in value || 'rest' in value);
+}
+
+function isMixinParameterListFact(value: unknown): value is MixinParameterListFact {
+  return typeof value === 'object' && value !== null && 'params' in value
+    && Array.isArray(value.params) && value.params.every(isParam);
+}
+
+function isMixinSignatureFact(value: unknown): value is MixinSignatureFact {
+  return typeof value === 'object' && value !== null && 'name' in value
+    && typeof value.name === 'string' && 'params' in value
+    && Array.isArray(value.params) && value.params.every(isParam)
+    && (!('guard' in value) || value.guard === undefined || isMixinGuard(value.guard));
+}
+
+function isDeclarationHeadTriviaFact(value: unknown): value is DeclarationHeadTriviaFact {
+  return typeof value === 'object' && value !== null && 'text' in value
+    && typeof value.text === 'string' && 'outputBearing' in value
+    && typeof value.outputBearing === 'boolean';
+}
+
+function isStaticAttributeNameFact(value: unknown): value is StaticAttributeNameFact {
+  return typeof value === 'object' && value !== null
+    && 'namespace' in value && typeof value.namespace === 'string'
+    && 'name' in value && typeof value.name === 'string';
+}
+
+function isExtendInstruction(value: unknown): value is ExtendInstruction {
+  return typeof value === 'object' && value !== null
+    && 'target' in value && isSelectorList(value.target)
+    && 'partial' in value && typeof value.partial === 'boolean';
+}
+
+function isExtendTargetFact(value: unknown): value is ExtendTargetFact {
+  return typeof value === 'object' && value !== null
+    && 'target' in value && isSelectorList(value.target)
+    && 'partial' in value && typeof value.partial === 'boolean';
+}
+
+function isSelectorBranchFact(value: unknown): value is SelectorBranchFact {
+  return typeof value === 'object' && value !== null
+    && 'selector' in value && isComplex(value.selector)
+    && 'extensions' in value && Array.isArray(value.extensions)
+    && value.extensions.every(isExtendInstruction);
+}
+
+function isSelectorListWithExtendsFact(value: unknown): value is SelectorListWithExtendsFact {
+  return typeof value === 'object' && value !== null
+    && 'selector' in value && isSelectorList(value.selector)
+    && 'extensions' in value && Array.isArray(value.extensions)
+    && value.extensions.every(isExtendInstruction);
+}
+
+function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExtendsFact {
+  if (!isSelectorListWithExtendsFact(value)) {
+    throw new TypeError('Direct Less AST grammar produced a ruleset selector without selector facts.');
+  }
+  return value;
+}
+
+function isMixinPathTail(value: unknown): value is MixinPathTailFact {
+  return typeof value === 'object' && value !== null && 'comb' in value
+    && (value.comb === ' ' || value.comb === '>') && 'sel' in value && typeof value.sel === 'string';
+}
+
+function isMixinCallArgument(value: unknown): value is MixinCallArgument {
+  return typeof value === 'object' && value !== null && 'value' in value && (isValueSlotValue(value.value) || isMixinCall(value.value))
+    && (!('name' in value) || typeof value.name === 'string');
+}
+
+function isForBinding(value: unknown): value is ForBinding {
+  if (typeof value !== 'object' || value === null || !('kind' in value)) {
+    return false;
+  }
+  if (value.kind === 'single') {
+    return 'name' in value && typeof value.name === 'string';
+  }
+  return (value.kind === 'comma' || value.kind === 'bracket' || value.kind === 'tuple')
+    && 'names' in value && Array.isArray(value.names)
+    && value.names.every(name => name === undefined || typeof name === 'string');
+}
+
+function isLessEachCallback(value: unknown): value is LessEachCallback {
+  return typeof value === 'object' && value !== null
+    && 'binding' in value && isForBinding(value.binding)
+    && 'rules' in value && Array.isArray(value.rules) && value.rules.every(isStatement);
+}
+
+function mixinArgumentsFromChildren(children: readonly unknown[]): MixinCallArgument[] {
+  return children.flatMap(child => Array.isArray(child)
+    ? child.filter(isMixinCallArgument)
+    : isMixinCallArgument(child) ? [child] : []);
+}
+
+function isMixinGuard(value: unknown): value is MixinGuard {
+  return typeof value === 'object' && value !== null && 'g' in value
+    && (value.g === 'cmp' || value.g === 'and' || value.g === 'or' || value.g === 'not'
+      || value.g === 'truth' || value.g === 'call' || value.g === 'default');
+}
+
+function isDefaultGuardCall(value: ValueNode): value is FunctionCall {
+  return value.type === 'FunctionCall' && value.name === 'default' && value.args.length === 0;
+}
+
+function isFunctionConditionFact(value: unknown): value is FunctionConditionFact {
+  return typeof value === 'object' && value !== null && 'guard' in value && 'src' in value
+    && typeof value.src === 'string' && isMixinGuard(value.guard)
+    && 'grouped' in value && typeof value.grouped === 'boolean'
+    && 'hasComparison' in value && typeof value.hasComparison === 'boolean';
+}
+
+function guardOperatorText(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null || !('value' in value) || typeof value.value !== 'string') {
+    return null;
+  }
+  const operator = value.value.trim();
+  // The guard comparison vocabulary, spelled here in TS because a reducer cannot
+  // read a combinator's alternation. It must stay in step with
+  // `mixinGuardOperator` / `functionConditionOperator` — and it must NOT
+  // be unified with the CSS media-range operator (`g.CssSyntaxQueryComparisonOperator`,
+  // mediaqueries-4 §4 = `< <= = >= >`): `=~`, `=>` and `=<` are Less guard spellings
+  // with no meaning in a media query, and merging the two would widen
+  // `@media (width => 600px)` into acceptance.
+  return ['>', '<', '>=', '<=', '=>', '=<', '=', '=~'].includes(operator) ? operator : null;
+}
+
+function foldMixinGuards(kind: 'and' | 'or', children: readonly unknown[]): MixinGuard {
+  const guards = children.filter(isMixinGuard);
+  const head = guards[0];
+  if (head === undefined) {
+    throw new TypeError('Direct Less AST grammar produced an empty logical guard.');
+  }
+  let result = head;
+  for (let index = 1; index < guards.length; index++) {
+    result = { g: kind, left: result, right: guards[index]! };
+  }
+  return result;
+}
+
+function functionConditionSource(value: ValueSlot): string {
+  if (Array.isArray(value)) {
+    return value.map(part => functionConditionSource(part)).join(' ');
+  }
+  const node = requireValueNode(value);
+  switch (node.type) {
+    case 'Keyword': case 'Color': case 'Quoted': case 'Any': case 'Dimension': return node.src;
+    case 'VariableReference': return `@${node.name}`;
+    case 'FunctionCall': return `${node.name}(${node.args.map(functionConditionSource).join(', ')})`;
+    case 'Operation': return `${functionConditionSource(node.left)} ${node.operator} ${functionConditionSource(node.right)}`;
+    case 'Block': return `${node.delimiter === 'square' ? '[' : '('}${functionConditionSource(node.inner)}${node.delimiter === 'square' ? ']' : ')'}`;
+    case 'SpacedValue': return node.parts.map(functionConditionSource).join(' ');
+    case 'Condition': return node.src;
+    default: throw new TypeError(`Direct Less function condition cannot preserve ${node.type}.`);
+  }
+}
+
+function foldFunctionCondition(kind: 'and' | 'or', children: readonly unknown[]): FunctionConditionFact {
+  const facts = children.filter(isFunctionConditionFact);
+  const first = facts[0];
+  if (first === undefined) {
+    throw new TypeError('Direct Less function condition lost its first term.');
+  }
+  let guard = first.guard;
+  let src = first.src;
+  if (facts.length > 1 && facts.some(fact => fact.hasComparison && !fact.grouped)) {
+    throw new TypeError('Direct Less function condition comparisons must be grouped before logical operators.');
+  }
+  let hasComparison = first.hasComparison;
+  for (const right of facts.slice(1)) {
+    guard = { g: kind, left: guard, right: right.guard };
+    src += ` ${kind} ${right.src}`;
+    hasComparison ||= right.hasComparison;
+  }
+  return { guard, src, grouped: false, hasComparison };
+}
+
+function isStatement(value: unknown): value is Statement {
+  // Every statement guard gates on a distinct `type`, so dispatch once on the
+  // discriminant instead of trying up to thirteen guards sequentially (each of
+  // which re-runs the object guard). Behaviour is identical.
+  if (typeof value !== 'object' || value === null || !('type' in value)) {
+    return false;
+  }
+  switch (value.type) {
+    case 'ImportAtRule':
+      return isImportAtRule(value);
+    case 'VariableDeclaration':
+      return isVarDeclaration(value);
+    case 'Declaration':
+      return isDeclaration(value);
+    case 'Rule':
+      return isRule(value);
+    case 'AtRuleBlock':
+      return isAtRuleBlock(value);
+    case 'OpaqueAtRuleBlock':
+      return typeof value === 'object' && value !== null && 'type' in value && value.type === 'OpaqueAtRuleBlock';
+    case 'AtRuleStatement':
+      return isAtRuleStatement(value);
+    case 'Plugin':
+      return true;
+    case 'MixinDef':
+      return isMixinDef(value);
+    case 'MixinCall':
+      return isMixinCall(value);
+    case 'Reference':
+      return isReferenceCall(value);
+    case 'For':
+      return isFor(value);
+    case 'FunctionCall':
+      return isFunctionCall(value);
+    default:
+      return false;
+  }
+}
+
+function requireStatementArray(value: unknown): Statement[] {
+  if (!Array.isArray(value) || !value.every(isStatement)) {
+    throw new TypeError('Direct Less AST grammar produced an invalid statement list.');
+  }
+  return value;
+}
+
+function isFunctionCall(value: unknown): value is FunctionCall {
+  return typeof value === 'object' && value !== null && 'type' in value && value.type === 'FunctionCall';
+}
+
+function isFor(value: unknown): value is For {
+  return typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'For'
+    && 'iterable' in value
+    && 'rules' in value
+    && Array.isArray(value.rules)
+    && 'binding' in value;
+}
+
+function requireRulesetBody(children: readonly unknown[]): Statement[] {
+  const body: Statement[] = [];
+  for (const child of children) {
+    if (!isStatement(child)) {
+      throw new TypeError('Direct Less AST grammar produced a non-ruleset-body child.');
+    }
+    body.push(child);
+  }
+  return body;
+}
+
+function requireStatements(children: readonly unknown[]): Statement[] {
+  const statements: Statement[] = [];
+  for (const child of children) {
+    if (!isStatement(child)) {
+      throw new TypeError('Direct Less AST grammar produced a non-statement child.');
+    }
+    statements.push(child);
+  }
+  return statements;
+}
+
+/** Retain every callback body fact except an authored empty statement. */
+function requireCallbackStatements(children: readonly unknown[]): Statement[] {
+  const statements: Statement[] = [];
+  for (const child of children) {
+    if (isTerminalText(child, ';')) {
+      continue;
+    }
+    if (!isStatement(child)) {
+      throw new TypeError('Direct Less AST grammar produced a non-statement callback-body child.');
+    }
+    statements.push(child);
+  }
+  return statements;
+}
+
+/** Read a grammar-owned `{ … }` body without silently dropping non-body facts. */
+function requireValueBlockBody(children: readonly unknown[]): Statement[] {
+  const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
+  const bodyEnd = children.findIndex((child, index) => index > bodyStart && isTerminalText(child, '}'));
+  if (bodyStart < 0 || bodyEnd < 0) {
+    throw new TypeError('Direct Less AST grammar produced a detached ruleset without a delimited body.');
+  }
+  for (const child of children.slice(bodyEnd + 1)) {
+    if (!isTerminalText(child, ';')) {
+      throw new TypeError('Direct Less AST grammar produced an invalid detached-ruleset suffix.');
+    }
+  }
+  return requireCallbackStatements(children.slice(bodyStart + 1, bodyEnd));
+}
+
+/** Fold a grammar-produced flat binary chain left-to-right.  Precedence is
+ * represented by which production supplies each operand; no source text is
+ * recovered or re-parsed here. */
+function foldOperation(children: readonly unknown[]): ValueNode {
+  const first = children.find(isValueNode);
+  if (first === undefined) {
+    throw new TypeError('Direct Less arithmetic grammar produced no operand.');
+  }
+  let result = first;
+  for (let index = children.indexOf(first) + 1; index < children.length; index += 2) {
+    const operatorToken = children[index];
+    const right = children[index + 1];
+    if (operatorToken === undefined || !isValueNode(right)) {
+      throw new TypeError('Direct Less arithmetic grammar lost an operator operand.');
+    }
+    result = operation(requireTerminalText(operatorToken).trim(), result, right);
+  }
+  return result;
+}
+
+const blockComment = regex(/\/\*(?:[^*]|\*(?!\/))*\*\//);
+const triviaComment = regex(/\/\/[^\n\r]*|\/\*(?:[^*]|\*(?!\/))*\*\//);
+
+// Less comments are trivia. Line comments must not become renderable CSS
+// comments; block comments may still make an otherwise empty ruleset renderable
+// through body-span trivia, not through a `Comment` statement node.
+// URL bodies explicitly disable trivia below, so `url(//host/path)` remains
+// URL content rather than a comment.
+const whitespace = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  triviaComment
+)));
+const selectorAttributeModifierSpace = regex(/[ \t\n\r\f]+/);
+const importKeyword = keywords(
+  ['@-import', '@-export', '@import'],
+  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+);
+// Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: a
+// `scanTo`/`balanced` with no per-call skip consults these so a sentinel (an
+// arg terminator, or a `functionConditionAhead` operator like `or`)
+// hidden INSIDE a string is never matched. Consumes quote-to-quote including
+// escapes; used only as a scan hole, so it builds nothing.
+const scanSkipDoubleString = noTrivia(sequence(literal('"'), regex(/(?:[^"\\]|\\.)*/), literal('"')));
+const scanSkipSingleString = noTrivia(sequence(literal('\''), regex(/(?:[^'\\]|\\.)*/), literal('\'')));
+const lessOpaqueBodyBrace = balanced(
+  '{',
+  '}',
+  { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }
+);
+const lessOpaqueBodyCapture = noTrivia(scanTo(
+  literal('}'),
+  { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment, lessOpaqueBodyBrace] }
+));
+// Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
+// whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
+// where `*` and `/` need no whitespace and comments are freely allowed around
+// them (`1/**/*/**/2`, `1 // c\n * 2`). It is deliberately NOT used by the sum
+// terminal: `+`/`-` are sign-ambiguous, so — like CSS `calc()` — they require
+// real whitespace and comments do NOT count (see `sumOperator`). In
+// operator position this trivia is a separator the arithmetic consumes; a comment
+// in value-LIST position (`1 /* c */ 2`, no operator char follows) makes the
+// operator loop backtrack and is left as preserved value syntax.
+const mathTrivia = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  triviaComment
+)));
+// Function argument comments are trivia. Block comments stay out of the value
+// AST and are replayed through the call argument ValueLayout when they sit on an
+// argument boundary.
+const functionTrivia = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  triviaComment
+)));
+// Mixin signatures and guards are invisible definition syntax. Unlike an
+// ordinary declaration value, a block comment at one of their token boundaries
+// is lexical trivia (the legacy MixinArgs production used the same rule). Keep
+// this wider trivia local: output-bearing value comments remain typed facts.
+const mixinSignatureGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
+const mixinGuardGap = regex(/(?:(?:[ \t\n\r\f]+)|(?:\/\/[^\n\r]*)|(?:\/\*(?:[^*]|\*(?!\/))*\*\/))+/);
+const mixinSignatureTrivia = trivia(mixinSignatureGap);
+const mixinGuardTrivia = trivia(mixinGuardGap);
+// Selector grammar components used inside functional pseudos retain their
+// established lexical-comment behavior.
+const staticSelectorTrivia = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  triviaComment
+)));
+const compoundSelectorTrivia = trivia(oneOrMore(triviaComment));
+// Outer selector comments are lexical trivia. Render-time body/source spans own
+// whether a trivia-only body remains output-bearing; selectors do not invent
+// comment simple selectors.
+const outerSelectorTrivia = trivia(oneOrMore(choice(
+  regex(/[ \t\n\r\f]+/),
+  triviaComment
+)));
+const staticSimpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\*)/);
+const directStaticIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+// A selector simple that contains Less interpolation stays one selector atom.
+// Its literal runs deliberately exclude `.`, `#`, `[`, `:`, whitespace, and
+// combinators: those have separate selector grammar roles and must not be
+// flattened into an interpolation template.
+const directInterpolatedSelectorPrefix = regex(/[.#](?:-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)?/);
+const directInterpolatedSelectorTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+// A bare `@{name}` is a whole-selector interpolation only. Keeping the
+// delimiter lookahead here prevents it from consuming the interpolation prefix
+// of an unmodelled namespace/attribute selector such as `@{ns}|a`.
+const directBareInterpolatedSelectorEnd = regex(/(?=[ \t\n\r\f]*(?:[,{]))/);
+// Semantically identical to the production Less `ampToken` terminal. A static ampersand
+// is already the canonical AST representation: `SimpleSelector.text` retains `&` and
+// core's selector path identifies parent references from that text.  The
+// parenthesized and interpolation forms stay outside this static slice
+// until their typed semantic payloads are constructed by grammar reductions.
+const staticAmpersand = regex(/&[-_a-zA-Z0-9\u0080-\uffff]*/);
+const directLessKeyframeEndpoint = keywords(
+  ['from', 'to'],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF' }
+);
+const directLessKeyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
+// Ordered longest-first, identical to the production Less `combinator`
+// terminal. A missing authored token between compounds is the canonical
+// descendant relation; grammar trivia provides the separating whitespace.
+const staticCombinator = keywords(['||', '>', '+', '~', '|']);
+// A leading `|` belongs to namespace selector syntax (`|a`), not a relative
+// selector. Keep relative starts to the Less nested-selector combinators.
+const relativeSelectorCombinator = keywords(['>', '+', '~']);
+const pseudoDelimiter = keywords(['::', ':']);
+const commaOrSemicolon = keywords([',', ';']);
+const eachCallbackSigil = keywords(['.', '#']);
+// The production Less `urlInner` terminal, narrowed only at a dynamic Less
+// opener. A leading `@name` / `@{…}` belongs to the unimplemented Reference /
+// interpolation path, so this static slice rejects it instead of
+// misrepresenting it as `Any`. Other URL-token escapes and control boundaries
+// remain the production terminal exactly.
+const staticUrlText = regex(/(?!@(?:-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*|\{))(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
+// Less accepts formatting whitespace in an unquoted data URL and preserves it
+// in the URL payload (for example, a wrapped base64 body). CSS's shared
+// unquoted URL terminal remains strict: this is a Less-only Parseman leaf.
+// Keep the production URL exclusions intact—quotes, unescaped parentheses,
+// controls, and malformed escapes never become opaque URL text.
+const staticDataUrlText = regex(/data:(?:[^"'()\\\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+?(?=[ \t\n\r\f]*\))/i);
+// URL-edge whitespace is deliberately not the Less `whitespace` production:
+// that production also recognizes `//` comments, while `url(//cdn.example)`
+// is an ordinary URL payload.
+const urlBoundaryWhitespace = regex(/[ \t\n\r\f]+/);
+const urlFunctionOpen = token(noTrivia(regex(/url\(/i)));
+const staticTailText = regex(/[^()\[\]{};@'"]+/);
+const importOption = keywords(
+  ['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'],
+  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+);
+// The folded Less grammar intentionally uses the same bare identifier
+// boundary as its property/keyword facts.  `url()` has its own typed node and
+// is excluded so an unsupported dynamic URL cannot fall through as a generic call.
+const functionName = regex(/(?!(?:url|calc)(?=\())-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+const calcFunctionName = regex(/calc(?=\()/i);
+const functionOpener = token(noTrivia(sequence(functionName, literal('('))));
+const calcFunctionOpener = token(noTrivia(sequence(calcFunctionName, literal('('))));
+const inlineJavaScriptBody = regex(/(?:[^`\\]|\\[\s\S])*/);
+// Math productions run under `noTrivia`, so their operators own precisely the
+// gap that distinguishes arithmetic from a Less space-list. `leaf()` keeps the
+// comment-aware structural gap hidden from `foldOperation`: it receives the
+// same flat `*`/`/`/`%` terminal stream it did before, with no scanner or
+// post-parse text recovery. Keep the sum terminal below unchanged: its glued
+// numeric-sign lookahead is intentional Less syntax, not an operator gap.
+const productOperator = leaf(
+  noTrivia(sequence(optional(mathTrivia), keywords(['*', '/', '%']), optional(mathTrivia))),
+  children => children[1] as string
+);
+const topProductOperator = leaf(
+  noTrivia(sequence(optional(mathTrivia), keywords(['*', '%']), optional(mathTrivia))),
+  children => children[1] as string
+);
+// A preserved top-level Less slash is not arithmetic in parens-division mode,
+// but authored whitespace around `/` is still part of that opaque value. Keep
+// the boundary explicit so `10px / 2` does not flatten into a plain ValueSlot
+// array before the evaluator can apply the math-mode rule.
+const preservedSlashBoundary = sequence(
+  optional(regex(/[ \t\n\r\f]+/)),
+  literal('/'),
+  optional(regex(/[ \t\n\r\f]+/))
+);
+// CSS rule (kept, NOT widened for comments): `+`/`-` are ambiguous between a
+// binary operator and a leading sign, so — like CSS `calc()` — they require REAL
+// whitespace on both sides (or Less's glued-to-a-number form `1-2`). Comments do
+// NOT count as that whitespace (`1/**/-/**/2` is NOT math), unlike the unambiguous
+// `*`/`/`/`%` product operators above, which DO admit comment trivia. The three
+// arms are symmetric-ws | glued-to-number | asymmetric-reject guard.
+const sumOperator = regex(/(?:[ \t\n\r\f]+[-+][ \t\n\r\f]+|[-+](?=[0-9.])|[ \t\n\r\f]*[-+](?![0-9.])[ \t\n\r\f]*)/);
+// Generic Less at-rule names are grammar terminals. This grammar keeps
+// their prelude/body semantic only where the existing canonical AST has a
+// truthful structured representation; it never captures a block as text.
+// Imports are typed facts with stricter target validation. Excluding their names
+// here prevents a malformed import from falling through as a generic at-rule.
+const charsetAtRuleName = word(
+  '@charset',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const layerAtRuleName = word(
+  '@layer',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const atRuleName = regex(/@(?!(?:-import|-export|import|layer|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+const staticAtRuleStatementName = regex(/@(?!(?:-import|-export|import|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w]))-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+const mixinName = regex(/[.#]-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const mixinPathCombinator = regex(/>/);
+const mixinGuardOperator = regex(/>=|<=|=>|=<|=~|[<>=]/);
+const functionConditionStop = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=]|(?:and|or)(?![-\w]))/i);
+const functionConditionOperator = regex(/[ \t\n\r\f]*(?:>=|<=|=>|=<|=~|[<>=])[ \t\n\r\f]*/);
+const functionConditionAnd = regex(/[ \t\n\r\f]*and(?![-\w])[ \t\n\r\f]*/i);
+const functionConditionOr = regex(/[ \t\n\r\f]*or(?![-\w])[ \t\n\r\f]*/i);
+const functionConditionNot = word(
+  'not',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+// Built on `mixinGuardOperator` rather than re-spelling the guard comparison
+// alternation: this is only ever consumed inside `not(not(…))`, so the extra frames
+// roll back and contribute no child. The keyword arm keeps its own regex — it is a
+// `scanTo` sentinel, so it lands at arbitrary offsets and needs the LEADING
+// `(?<![-\w])` boundary a token-position terminal does not carry.
+const functionConditionAhead = choice(mixinGuardOperator, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
+const staticSelectorPseudoName = regex(/(?:is|not|has|where|matches|global|local)(?=\()/i);
+// A non-selector functional pseudo is still one canonical SimpleSelector leaf.
+// A pseudo body cannot quietly turn a Less variable read into static bytes.
+// Keep only `@` that cannot start `@{...}`, `@@name`, or `@name`; nested
+// delimiters, quoted strings, and comments are reduced below rather than
+// recovered from source after recognition.
+const staticPseudoChunk = regex(/(?:[^()\[\]'"@/]|@(?![@{_a-zA-Z\u0080-\uffff-])|\/(?!\*))+/);
+// General-enclosed content is a raw template assembled by Parseman: structural
+// delimiters, strings, comments, and `@{…}` each have their own grammar arm.
+// This terminal owns only the remaining literal bytes; no completed source span
+// is scanned or re-parsed after recognition.
+const directLessGeneralEnclosedText = regex(/(?:\\[\s\S]|\/(?!\*)|@(?!\{)|[^\\/'"@()[\]{}]+)+/);
+const directLessGeneralEnclosedDoubleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^"\\@])+/);
+const directLessGeneralEnclosedSingleChunk = regex(/(?:\\[\s\S]|@(?!\{)|[^'\\@])+/);
+
+const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
+  const caseOf = makeWhen({ caseInsensitive: true });
+  const lessWord = makeWord('-_0-9A-Za-z');
+  const mixinGuardDefaultCall = regex(/default[ \t\n\r\f]*\([ \t\n\r\f]*\)(?![-\w])/);
+  // `@@name` is a variable reference whose lookup name is the resolved value
+  // of `@name`; retain that two-step lookup as a typed AST edge.  The doubled
+  // sigil is glued just like the production `nestedRef`, so trivia cannot turn
+  // it into two unrelated tokens.
+  const IndirectVariableReference = node<VarIndirect>(
+    'Reference',
+    noTrivia(sequence(literal('@@'), g.LessSyntaxVariableName)),
+    children => varIndirect(variableReference(requireToken(children[1]).value, 'scoped'), 'scoped')
   );
-  const VarDeclaration = node(
-    sequence(varColon, choice(detachedBlock, sequence(g.valueList, optional(important), optional(literal(';'))))));
-  const mixinArgsContent = scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] });
-  // Accessor key tokens, in lookupOrCall's OR2 order: NestedReference ($@x / @@x),
-  // AtKeyword (@x), PropertyReference ($x), InterpolatedIdent (…@{x}…), Ident.
-  // The builder applies the index/variable typing + Quoted-wrap (see _buildReference).
-  const nestedRef = regex(/(?:[@$]+(?:-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)?){2,}/);
-  const propRef = regex(/\$-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/);
-  // An interpolation-bearing lookup key is likewise structural. This retains
-  // each typed interpolation in selectors, accessors, pseudo names, and values
-  // rather than accepting a parallel `@{…}`/`${…}` text shape.
-  const interpKeyStart = choice(regex(/-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/), literal('-'));
-  const interpKeyTail = regex(/[-_a-zA-Z0-9-￿]+/);
-  const interpKey = noTrivia(sequence(
-    optional(interpKeyStart), lessInterpolation,
-    many(choice(lessInterpolation, interpKeyTail))
-  ));
-  // A purely-numeric name (`100:`) is a Less detached-ruleset map key, e.g.
-  // `@grays: { 100: @gray-100; }` (Bootstrap). Not valid CSS, but Less accepts it
-  // and `@grays[100]` reads it back; the whole-number alternative is tried first.
-  // Declaration property names keep the historical CSS-name leaves, but every
-  // Less interpolation is the shared typed production. Invalid `@{…}` shapes
-  // cannot be swallowed by a permissive property-name regex.
-  const declPropStart = regex(/(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-  const declPropTail = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-  const declPropName = choice(
-    regex(/[0-9]+/),
-    noTrivia(sequence(optional(literal('*')), optional(literal('-')), choice(declPropStart, lessInterpolation), many(choice(declPropTail, lessInterpolation))))
+  const VariableReference = node<VariableReference>(
+    'Reference',
+    sequence(literal('@'), g.LessSyntaxVariableName),
+    (children, _fields, span) => withSourceSpan(variableReference(requireToken(children[1]).value, 'scoped'), span)
   );
-  const refKey = choice(nestedRef, lessVar, propRef, interpKey, ident);
-  // One accessor: glued '[' / '(', trivia re-enabled inside the brackets/parens.
-  const refIndex = sequence(literal('['), optional(refKey), literal(']'));
-  const refCall = sequence(literal('('), optional(mixinArgsContent), literal(')'));
-  // varReference + lookupOrCall: a @variable OR $property glued to a chain of
-  // [accessor]/(call). `$color` is a bare property reference (read declaration
-  // `color`); `@a[k]` is a variable + accessor chain. noTrivia() forbids trivia
-  // (whitespace/comments) between the head and '[' / '(', keeping the chain
-  // contiguous (production's noSep()). The builder types `$`-headed refs as
-  // `property` and `@`-headed as `variable` (see _buildReference).
-  // `nestedRef` (tried first) admits the indirect head `@@name` (a variable whose
-  // NAME is another variable's value) as a value reference; `lessVar` cannot match
-  // the doubled `@@`. A single `@x` / `$x` needs only one sigil group, so it falls
-  // through to `lessVar` / `propRef` (nestedRef requires `{2,}`).
-  const Reference = node(
-    noTrivia(sequence(choice(nestedRef, lessVar, propRef), many(choice(refIndex, refCall)))));
-
-  // ── Detached-ruleset variable call ─────────────────────────────────────────
-  // `@name(...)` (no `:`) is a variable CALL of a detached ruleset, not a var
-  // decl or an at-rule. Faithful port of `varDeclarationOrCall`'s LParen branch
-  // (selectors.ts) + the `isVariableLike` disambiguation (root.ts): a KNOWN
-  // at-rule name (@media, @supports, …) followed by NON-empty parens stays an
-  // at-rule — `@media() ` (empty parens) is a deprecated var call, and any other
-  // `@var(...)` is a var call regardless of parens content. The builder emits the
-  // production's `Expression(Call{ name: Reference[role=name], args })` shape.
-  // A var name that is NOT a known at-rule name (negative lookahead asserts the
-  // known name is not the COMPLETE ident before the call parens).
-  const nonKnownAtVar = regex(/@-?(?!(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9]))[_a-zA-Z0-9-￿][-_a-zA-Z0-9-￿]*/);
-  const knownAtVar = regex(/@(?:(?:-moz-)?document|(?:-[a-z]+-)?keyframes|(?:-ms-)?viewport|import|media|supports|layer|container|scope|page|font-face|starting-style|property|counter-style|color-profile|font-palette-values|namespace)(?![-_a-zA-Z0-9])/);
-  const VarCall = node(
-    choice(
-      // A var call is `@name(...)` with the `(` ADJACENT to the name (no space).
-      // `@foo (bar)` — space before `(` — is never a var call; it's an unknown
-      // at-rule prelude, so noTrivia makes this branch defer to AtRuleBlock.
-      sequence(noTrivia(sequence(nonKnownAtVar, regex(/(?=\()/))), g.MixinArgs, optional(important), optional(literal(';'))),
-      // Known at-rule name with EMPTY parens only.
-      sequence(knownAtVar, literal('('), literal(')'), optional(important), optional(literal(';')))
-    ));
-
-  // ── Mixins ───────────────────────────────────────────────────────────────
-  // Mixin arguments are composed from the SAME value combinators as function-call
-  // args (`callArgSeq`) — NOT captured as raw text — so an arithmetic arg like
-  // `@a * 2` is a real Operation, not a Reference whose key is the raw string. The
-  // `MixinArgs` production lives next to `callArgSeq`/`callArgList` (below) so it can
-  // reuse them directly. See `_buildMixinArgs` (which reuses the shared `_assembleArgs`).
-  const mixinNamePath = sequence(basicSel, many(sequence(optional(combinator), basicSel)));
-  // MixinCall names must start with . or # — plain idents are properties, not mixins.
-  const mixinCallBasicSel = regex(/[.#]-?(?:[_a-zA-Z-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9-￿]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-  const mixinCallPath = sequence(g.mixinCallBasicSel, many(sequence(optional(combinator), basicSel)));
-  const MixinCall = node(
-    sequence(g.mixinCallPath, optional(g.MixinArgs), optional(important), optional(literal(';'))));
-  // Anonymous mixin callbacks accept either prefix: `.(…){…}` or `#(…){…}`.
-  const AnonymousMixinDefinition = node(
-    sequence(regex(/[.#]/), g.MixinArgs, literal('{'), g.declarationList, literal('}')));
-  // A bare name with nothing after it is NOT a statement — require args (a mixin
-  // call), or a `{}` body / `;` (a qualified rule or mixin call). Otherwise a lone
-  // ident like `x` or `nonsense` would be silently accepted.
-  // Two combinator-distinguished forms — the PARSER decides validity, not a
-  // post-hoc name check:
-  //   block form: `name [args] [guard] { … }` — a mixin definition or qualified
-  //               rule (name path may be a bare selector); a `{}` body is required.
-  //   call  form: `path [args] [guard] [;]` — a mixin CALL; the path MUST start
-  //               with `.`/`#` (mixinCallPath). A bare ident like `nonsense;` is
-  //               not a `.`/`#` path and has no block, so it matches NEITHER and is
-  //               reported as unconsumed input.
-  const MixinOrQualifiedRule = node(
-    choice(
-      sequence(g.mixinNamePath, optional(g.MixinArgs), optional(g.Guard), literal('{'), g.declarationList, literal('}')),
-      sequence(g.mixinCallPath, optional(g.MixinArgs), optional(g.Guard), optional(important), optional(literal(';')))
-    ));
-
-  // ── Guards / comparisons ───────────────────────────────────────────────────
-  // Guard grammar:
-  //   guard → 'when' guardOr
-  //   guardOr  → guardAnd ( ('or' | ',') guardAnd )*        (left-assoc, 'or')
-  //   guardAnd → guardTerm ( 'and' guardTerm )*             (left-assoc, 'and')
-  //   guardTerm → [not] ( guardInParens | comparison/value )
-  //   guardInParens → guardDefault | '(' guardOr ')'        (wrapped in Paren)
-  //   guardDefault  → 'default()'  →  DefaultGuard
-  // Precedence: 'or' loops over 'and'; parens nest a fresh guardOr. `not` negates a
-  // single term, producing a Condition(negate:true). Comparisons are a left operand
-  // followed by an optional `<op> right`.
-  const compareOp = regex(/>=|<=|=>|=<|=~|[<>=]/);
-  // A single comparison operand (mirrors expressionSum's value role here).
-  // `NsAccessor` (`#ns.opts[key]`) is a valid guard operand — `when (#ns.opts[flag])`
-  // / `when (#ns.opts[flag] = true)` — so it must parse as ONE operand (ordered
-  // before Reference/Paren) rather than falling to the value-Paren, which would
-  // swallow `= true` into a Sequence instead of a comparison.
-  // `EscapedValue` (`~"…"`, `~(…)`) is a valid comparison operand — `when (~"a" = @s)`
-  // — so it must parse as ONE operand (ordered before Quoted/anyValue), else the bare
-  // `Quoted` alt fails on the leading `~` and `anyValue` swallows `~"…" = @s` into a
-  // Sequence, dropping the comparison.
-  const guardOperand = choice(g.NsAccessor, g.Reference, g.numeric, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.Call, g.Paren, g.anyValue);
-  const Comparison = node(
-    sequence(g.Reference, compareOp, choice(g.Reference, g.numeric, g.Color, g.NamedColor, g.EscapedValue, g.Quoted, g.anyValue)));
-  const GuardDefault = node(
-    regex(/default(?:[ \t\n\r\f]*\([ \t\n\r\f]*\))?(?![-\w])/));
-  // '(' guardOr ')' → Paren; or a bare default(). Wrapped in a Paren node.
-  const GuardInParens = node(
-    choice(
-      g.GuardDefault,
-      sequence(literal('('), g.GuardOr, literal(')'))
-    ));
-  // A single guard term: optional `not`, then either a parenthesized guard or a
-  // bare comparison (`left <op> right`) / value.
-  const GuardTerm = node(
-    sequence(
-      optional(word('not', '-_0-9A-Za-z')),
-      choice(
-        g.GuardInParens,
-        sequence(guardOperand, optional(sequence(compareOp, guardOperand)))
-      )
-    ));
-  // 'and' chain of terms (left-associative).
-  const GuardAnd = node(
-    sequence(g.GuardTerm, many(sequence(word('and', '-_0-9A-Za-z'), g.GuardTerm))));
-  // 'or' / ',' chain of and-expressions (left-associative).
-  const GuardOr = node(
-    sequence(g.GuardAnd, many(sequence(choice(word('or', '-_0-9A-Za-z'), literal(',')), g.GuardAnd))));
-  const Guard = node(
-    sequence(word('when', '-_0-9A-Za-z'), g.GuardOr));
-
-  // ── Less ampersand / interpolated / extend ──────────────────────────────────
-  // `&` (the parent reference) optionally glued to a SUFFIX (`&1`, `&-bar`), which
-  // Less appends to the parent's trailing selector (`.rule` + `-bar` → `.rule-bar`).
-  // A number/`-` suffix reads as a merge (elements can't start with those). A `.`/`#`
-  // PREFIX is NOT part of the ampersand: `.foo-` is a complete, valid dash-ending class,
-  // so `.foo-&` is a COMPOUND of the BasicSelector `.foo-` and a plain `&` — it parses
-  // as `['.foo-', &]` (two independent simple selectors), never one merge node. The
-  // `&(…)` form keeps its paren scan.
-  const ampToken = regex(/&[-_a-zA-Z0-9-￿]*/);
-  const LessAmpersand = node(
-    sequence(ampToken, optional(sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')')))));
-  // Selector interpolation: an ident/`.`/`#` run interleaved with `@{…}`, with at
-  // least one interpolation. Three dispatch heads so the compiled first-set routes
-  // every leading form (a single sequence starting with two empty-matchable runs
-  // never exposed `@` as a first token, so a bare/leading `@{…}` was unreachable):
-  //   • `.`/`#`-prefixed   → `.a-@{n}`, `.@{n}`, `#id-@{x}`
-  //   • ident-prefixed     → `div@{n}`, `a@{parent}` (interp right after a type sel)
-  //   • bare interpolation → `@{parent}` (interp is the whole simple selector)
-  const interpPart = choice(lessInterp, regex(/[-_a-zA-Z0-9]+/));
-  const InterpolatedSelector = node(
-    choice(
-      sequence(regex(/[.#]/), many(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(interpPart)),
-      sequence(oneOrMore(regex(/[-_a-zA-Z0-9]+/)), lessInterp, many(interpPart)),
-      sequence(lessInterp, many(interpPart))
-    ));
-
-  // ── Selectors (Less: + ampersand/interp, relative combinator) ───────────────
-  // `sel when …` is a guarded ruleset: the `when` KEYWORD is the guard boundary,
-  // never a selector token — stop the selector run before it (the reference gets
-  // this from its lexer's `When` token; scannerless, we assert the keyword). The
-  // guard body (`(…)`, `not (…)`, `default()`, `and`/`or` chains) is then parsed
-  // by the atomic Guard rule — so the boundary must be just `when`, NOT `when (`
-  // (which missed `when not (…)`, `when default()`, …).
-  const whenAhead = keywords(['when'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  // `:extend(` lookahead — keeps the generic PseudoSelector from claiming extend
-  // (extend goes through ExtendPseudo) and lets the compound run stop before it.
-  const extendAhead = regex(/::?extend[ \t\n\r\f]*\(/);
-  // The two selector-run boundaries (`when` guard keyword, `:extend(`) combined
-  // into ONE lookahead regex: `not(selectorBoundary)` ran two regex
-  // execs at every simple/compound iteration — ~8% of parse on a selector-dense
-  // file. `not(selectorBoundary)` is equivalent (not A ∧ not B = not(A∨B)) at one
-  // exec. Used only in the `many(...)` run stops; the standalone extendAhead gate
-  // before PseudoSelector is unchanged.
-  const selectorBoundary = regex(/when(?![-\w])|::?extend[ \t\n\r\f]*\(/i);
-  // `InterpolatedSelector` (`.a-@{n}`, `@{p}`) and `basicSel` (`.btn`, `*`, `10%`)
-  // share the `.`/`#`/ident leading char, so as two sibling arms they forced the
-  // whole `simpleSelector` choice onto firstMatch. Nesting them into ONE ordered
-  // sub-rule (interp first, unchanged order → byte-identical) lets the outer choice
-  // see a single arm whose first-set is disjoint from `[` / `:` / `&`, so it
-  // dispatches by first char. (The inner interp/basic order is preserved exactly.)
-  const interpOrBasic = choice(g.InterpolatedSelector, basicSel);
-  const simpleSelector = choice(g.AttributeSelector, g.PseudoSelector, g.LessAmpersand, g.interpOrBasic);
-  // unwrap: a single simple selector (76% of compounds — `.btn`, `a`, `:hover`)
-  // IS that token; skip the build+frame and pass the child straight through. The
-  // builder's single-child path already returned the bare component, so this is
-  // byte-identical — a 2+-simple / whitespace-descendant run still builds.
-  const CompoundSelector = node(
-    sequence(g.simpleSelector, many(sequence(not(selectorBoundary), g.simpleSelector))), undefined, { unwrap: true });
-  // A complex selector, optionally terminated by a single `:extend(...)` pseudo.
-  // A complex selector consumes extend only AFTER
-  // the whole compound/combinator run — so extend is the LAST thing in the
-  // selector, and `.a:extend(.b).c` leaves `.c` unconsumed → parse error
-  // (extend-must-be-last). The compound run also stops at `:extend(` (extendAhead).
-  // unwrap: single compound (no combinator, no extend) IS the compound.
-  const ComplexSelector = node(
-    sequence(optional(combinator), g.CompoundSelector, many(sequence(optional(combinator), not(selectorBoundary), g.CompoundSelector)), optional(g.ExtendPseudo)), undefined, { unwrap: true });
-  // unwrap: single complex selector (no comma) IS that selector.
-  const SelectorList = node(
-    sequence(g.ComplexSelector, many(sequence(literal(','), g.ComplexSelector))), undefined, { unwrap: true });
-  // Attribute name may carry a CSS namespace prefix (`ns|attr`, `*|attr`,
-  // `|attr`). Less also allows interpolation in the name and value: `[@{n}=@{v}]`,
-  // `[data=@{attr-data}]`. interpKey matches a run containing `@{…}`.
-  // `|` is a namespace separator (`ns|attr`, `*|attr`, `|attr`) ONLY when not
-  // followed by `=` — `[prop|="x"]` is the `|=` dash-match operator, not a namespace.
-  const attrNsPrefix = optional(sequence(optional(choice(literal('*'), ident)), regex(/\|(?!=)/)));
-  const AttributeSelector = node(
-    sequence(literal('['), attrNsPrefix, choice(interpKey, ident), optional(sequence(attrOp, choice(singleStr, doubleStr, interpKey, ident), optional(attrMod))), literal(']')));
-  // pseudoArg: content inside pseudo parens (used in ExtendStatement too).
-  // PseudoSelector uses a two-branch outer choice so PEG backtracking works when
-  // SelectorList succeeds internally but ')' doesn't follow (e.g. "!all" suffix).
-  const pseudoArg = choice(nth, g.SelectorList, scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }));
-  const pseudoSelectorParens = choice(
-    sequence(literal('('), choice(nth, g.SelectorList), literal(')')),
-    sequence(literal('('), scanTo(literal(')'), { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }), literal(')'))
+  const BareVariableInterpolation = node<never>(
+    'BareVariableInterpolation',
+    noTrivia(sequence(literal('@'), g.LessSyntaxVariableName)),
+    (children, _fields, span) => {
+      throw new LessBareVariableInterpolationError(span.start, span.end, requireToken(children[1]).value);
+    }
   );
-  // `:extend(` tail (after the pseudo colon) — a `:extend(...)` is NOT a generic
-  // pseudo (it routes through ExtendPseudo), so PseudoSelector rejects it. The
-  // guard sits AFTER the non-nullable `pseudoColon` so this rule's first-set stays
-  // `:` — a leading `not()` would union `any()` and force the `simpleSelector`
-  // choice off its O(1) first-char dispatch onto firstMatch.
-  const extendTailAhead = regex(/extend[ \t\n\r\f]*\(/);
-  const PseudoSelector = node(
-    sequence(pseudoColon, not(extendTailAhead), choice(interpKey, ident), optional(g.pseudoSelectorParens)));
-
-  // ── Extend grammar
-  // `:extend(` selectorList `)` allows each complexSelector to carry an optional
-  // trailing `all` flag. The statement form `&:extend(...)` ends with `;`. Here
-  // each piece is real grammar (comma list + per-target flag) rather than
-  // re-parsing the source text.
-  //
-  // A per-target `all` / `!all` flag; both collapse to ExtendFlag.All.
-  const extendFlag = regex(/!?all(?![-\w])/);
-  // Lookahead used to stop the target's compound/complex run before the flag, so
-  // `all` is consumed as the flag — not swallowed as a trailing ident selector.
-  const extendFlagAhead = regex(/!?all(?![-\w])[ \t\n\r\f]*[,)]/);
-  // Extend-local compound/complex selectors: identical to the normal ones but they
-  // halt before a trailing flag (so `.x all` parses as target `.x` + flag `all`).
-  const extendCompound = node('CompoundSelector',
-    sequence(g.simpleSelector, many(sequence(not(selectorBoundary), not(extendFlagAhead), g.simpleSelector))));
-  const extendComplex = node('ComplexSelector',
-    sequence(optional(combinator), g.extendCompound, many(sequence(optional(combinator), not(whenAhead), not(extendFlagAhead), g.extendCompound))));
-  // A single extend target: a complex selector + its optional flag.
-  const ExtendTarget = node(
-    sequence(g.extendComplex, optional(extendFlag)));
-  // The comma-separated target list inside `extend( … )` (selectorList[inExtend]).
-  const extendBody = sepBy(g.ExtendTarget, literal(','));
-  // `:extend(` body `)` — the in-selector pseudo form (selectors.ts `extend`).
-  const ExtendPseudo = node(
-    sequence(pseudoColon, literal('extend'), literal('('), extendBody, expect(literal(')'), ')')));
-  // `&:extend(...)` statement, terminated by `;` (selectors.ts `ampersandExtend`).
-  // The leading `&` is REQUIRED: the reference's `ampersandExtend` does an
-  // unconditional `$.CONSUME(T.Ampersand)`, so a bare `:extend(...)` is NOT a valid
-  // standalone statement. Making `&` mandatory keeps `.a:extend(.b).c { … }` from
-  // mis-splitting into `.a` (mixin call) + bare `:extend(.b)` + `.c { … }`; instead
-  // the leftover `:extend(` after the `.a` mixin call is unconsumed input → one
-  // parse error (faithful: extend must be the last thing in its selector).
-  const ExtendStatement = node(
-    sequence(g.LessAmpersand, g.ExtendPseudo, optional(literal(';'))));
-
-  // ── Ruleset / declarations (Less-aware) ─────────────────────────────────────
-  const Ruleset = node(
-    sequence(g.SelectorList, optional(g.Guard), literal('{'), g.declarationList, expect(literal('}'), '}')));
-  // A nested mixin DEFINITION inside a rule body: `.name(args) [guard] { … }`.
-  // Strict — requires the `()` arg list AND a `{}` body, so it never matches a
-  // plain declaration or a `.name { }` ruleset. (declarationList only had MixinCall,
-  // which has no body, so nested definitions e.g. `.vars(){…}` were unmodelled.)
-  const NestedMixinDefinition = node('MixinOrQualifiedRule',
-    sequence(g.mixinCallPath, g.MixinArgs, optional(g.Guard), literal('{'), g.declarationList, literal('}')));
-  // The per-statement choice for a `{ … }` body (ruleset body + at-rule body).
-  // Exposed as a named rule so extending grammars (SCSS) can inject their own
-  // block statements ahead of it — `many(choice(g.ScssIf, …, g.blockItem))`.
-  // `NestedMixinDefinition` stays a local const referenced here (Less-only).
-  const blockItem = choice(
-    g.VarDeclaration, g.VarCall, g.QueryAtRuleBlock, g.SupportsAtRuleBlock, g.AtRuleBlock, g.ImportAtRuleStatement, g.AtRuleStatement, g.AtRuleMalformed, g.ExtendStatement, g.Ruleset, NestedMixinDefinition, g.EachFor, g.MixinCall, g.Declaration, g.CustomDeclaration,
-    // A bare function-call statement in a body, e.g. `each(@list, { … });`. Needs
-    // `ident(` so it never shadows a Declaration (which needs `:`).
-    sequence(g.Call, optional(literal(';'))), literal(';')
+  const PropertyReference = node<ValueNode>(
+    'Reference',
+    noTrivia(sequence(literal('$'), g.LessSyntaxIdentifier)),
+    children => propertyReference(requireToken(children[1]).value)
   );
-  const declarationList = many(g.blockItem);
-  // Property names may themselves be interpolated (`@{prop}: …`, `pre-@{x}-post: …`).
-  // Try the interpolation-bearing form first (it requires at least one `@{…}`),
-  // then a plain identifier.
-  //
-  // Narrow deferred-value POC: an ordinary, plain-name declaration with exactly
-  // one unsigned integer/dimension/percent token can retain that authored token
-  // as a scalar instead of constructing the value-expression subtree. `noTrivia`
-  // makes comments ineligible; the explicit whitespace is deliberately limited
-  // to whitespace, and the terminal guard rejects every trailing value syntax.
-  // This is an experimental Jess-native family, not a general raw-value grammar.
-  // "the value ends here": the next character must be whitespace, `;`, `}` or
-  // end-of-input. A TRAILING negative assertion is the documented shape for a
-  // boundary (a LEADING `not()` is the anti-pattern — it widens the arm's
-  // first-set to `any` and drops the enclosing choice off first-char dispatch).
-  const atValueEnd = not(regex(/[^\s;}]/));
-  const deferredNumericScalar = regex(/\d+(?:[a-zA-Z]+|%)?/);
-  const DeferredScalarDeclaration = node('Declaration',
+  const InterpolationAccessor = choice(
+    // Less `[]` selects the final declaration of a namespace/mixin result.
+    // Lower it directly to the established negative-one index contract; the
+    // existing Reference evaluator already applies negative indexes from the
+    // end of its typed declaration map.
+    node<InterpolationAccessorFact>(
+      'InterpolationLastAccessor',
+      noTrivia(literal('[]')),
+      () => ({ key: -1, keyKind: 'index', src: '-1' })
+    ),
+    node<InterpolationAccessorFact>(
+      'InterpolationIndexAccessor',
+      noTrivia(sequence(literal('['), g.LessSyntaxInterpIndexKey, literal(']'))),
+      (children) => {
+        const text = requireToken(children[1]).value;
+        return { key: Number(text), keyKind: 'index', src: text };
+      }
+    ),
+    // `$@name` is a property-map key selected by the VALUE of `@name`, e.g.
+    // `#namespace[$@prop-name]`. Keep both the indirection and the property
+    // namespace explicit: the existing resolver evaluates this key, then uses
+    // `keyKind: 'prop'` to select the declaration-member map.
+    node<InterpolationAccessorFact>(
+      'InterpolationPropertyVariableAccessor',
+      noTrivia(sequence(literal('['), literal('$'), g.VariableReference, literal(']'))),
+      (children) => {
+        const key = requireValueNode(children[2]);
+        if (!isVarRef(key)) {
+          throw new TypeError('Direct Less property-variable map key must retain its variable reference.');
+        }
+        return { key, keyKind: 'prop', src: `$@${key.name}` };
+      }
+    ),
+    node<InterpolationAccessorFact>(
+      'InterpolationReferenceAccessor',
+      noTrivia(sequence(literal('['), choice(g.IndirectVariableReference, g.VariableReference, g.PropertyReference, g.LessSyntaxInterpBareKey), literal(']'))),
+      (children) => {
+        const key = children[1];
+        if (isVarIndirect(key)) {
+          const nameRef = key.nameRef;
+          if (!isVarRef(nameRef)) {
+            throw new TypeError('Direct Less indirect map key must retain its variable reference.');
+          }
+          return { key, keyKind: 'var', src: `@@${nameRef.name}` };
+        }
+        if (isVarRef(key)) {
+          return { key, keyKind: 'var', src: `@${key.name}` };
+        }
+        if (isPropRef(key)) {
+          return { key, keyKind: 'prop', src: key.raw };
+        }
+        const text = requireToken(key).value;
+        return { key: keyword(text), keyKind: 'prop', src: text };
+      }
+    )
+  );
+  // Left-factored `@`+name so the ubiquitous plain `@var` is parsed ONCE: the
+  // accessor tails are optional, so a bare variable reference no longer parses
+  // `@name`, fails a required tail, backtracks, and re-parses `@name` through a
+  // separate plain-reference production. With tails this reduces to the tailed
+  // Reference node; without, to the plain VariableReference (identical shapes).
+  const VariableReferenceChain = node<ValueNode>(
+    'Reference',
+    noTrivia(sequence(literal('@'), g.LessSyntaxVariableName, optional(oneOrMore(g.ReferenceTail)))),
+    (children, _fields, span) => {
+      const name = requireToken(children[1]).value;
+      const base = variableReference(name, 'scoped');
+      return children.length > 2
+        ? referenceWithTails(base, `@${name}`, children.slice(2))
+        : withSourceSpan(base, span);
+    }
+  );
+  const DirectLessMixinPathTail = node<MixinPathTailFact>(
+    'DirectLessMixinPathTail',
+    sequence(optional(mixinPathCombinator), mixinName),
+    (children) => {
+      const combToken = children.find(child => isTerminalText(child, '>'));
+      return {
+        comb: combToken === undefined ? ' ' : '>',
+        sel: requireToken(children.at(-1)).value
+      };
+    }
+  );
+  const VariableInterpolation = node<InterpolationFact>(
+    'VariableInterpolation',
+    noTrivia(sequence(literal('@{'), g.LessSyntaxInterpHead, many(g.InterpolationAccessor), literal('}'))),
+    interpolationFactFromChildren
+  );
+  const PropertyInterpolation = node<InterpolationFact>(
+    'PropertyInterpolation',
+    noTrivia(sequence(literal('${'), g.LessSyntaxInterpHead, many(g.InterpolationAccessor), literal('}'))),
+    interpolationFactFromChildren
+  );
+  const Interpolation = node<InterpolationFact>(
+    'Interpolation',
+    choice(g.VariableInterpolation, g.PropertyInterpolation),
+    children => requireInterpolationFact(children[0])
+  );
+  // A complete Less at-rule header can be deferred through one `@{…}` lookup.
+  // Keep that as the existing typed Interpolation value rather than treating a header
+  // as raw text; dedicated query/supports reducers still own static structure.
+  const AtRuleInterpolation = node<Interpolation>(
+    'AtRuleInterpolation',
+    g.VariableInterpolation,
+    (children) => {
+      const fact = requireInterpolationFact(children[0]);
+      return interpolation([{ ref: fact.ref, unquote: true }]);
+    }
+  );
+  const interpolatedValueTail = choice(g.LessSyntaxInterpolatedValueTail, g.Interpolation);
+  const InterpolatedValue = node<Interpolation>(
+    'InterpolatedValue',
     noTrivia(sequence(
-      ident,
-      optional(ws),
-      literal(':'),
-      optional(ws),
-      deferredNumericScalar,
-      optional(ws),
-      atValueEnd,
-      optional(literal(';'))
-    ))
+      g.Interpolation,
+      many(interpolatedValueTail)
+    )),
+    children => interpolation(interpolationPartsFrom(children, true))
   );
-  const Declaration = choice(
-    DeferredScalarDeclaration,
-    node('Declaration', sequence(declPropName, optional(choice(literal('+_'), literal('+'))), literal(':'), optional(g.valueList), optional(important), optional(literal(';'))))
+  const Quoted = node<Quoted | Interpolation>(
+    'Quoted',
+    choice(
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
+    ),
+    (children) => {
+      const open = requireToken(children[0]);
+      if (!children.some(isInterpolationFact)) {
+        const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
+        return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
+      }
+      const parts = interpolationPartsFrom(children.slice(1, -1), true, open.value);
+      appendInterpolationLiteral(parts, open.value);
+      return interpolation(parts);
+    }
   );
-  // Kept as a composition seam for SCSS's custom-property override. Less no
-  // longer selects this permissive value rule; its own CustomDeclaration uses
-  // only the interpolation-only `cpValue` fallback below.
-  const customValue = sequence(g.valueList, atValueEnd);
-  // Opportunistic structuring for a `{ … }` custom-property value: try it as a
-  // real declaration body (so a `--foo: { color: @a; }` map-style block still
-  // structures), tolerant of anything that isn't CSS-shaped. No `expect()` on the
-  // closing `}` — a non-declaration body (arbitrary tokens) simply fails this alt
-  // with no error recorded, and `choice` falls through to the raw-text cpValue
-  // capture below.
-  const customCurlyBlock = node('Block',
-    sequence(literal('{'), g.declarationList, literal('}')));
-  // Predictive custom-property value region — NO scanTo, NO skip. Content runs
-  // interleaved with recursively-balanced ()/[]/{} groups, each closed by expect().
-  // So an unmatched, stray, or CROSS-TYPE bracket (`({[ })`) surfaces a syntax error
-  // instead of being swallowed. noTrivia keeps the value verbatim; inside a group a
-  // `;` is content (only the group's own close ends it), at top level `;`/`}` end it.
-  // Custom-property value = CSS `<declaration-value>` (spec-close, not Less 4.x's
-  // permissive pass): opaque tokens with ()/[]/{} balanced; `/* … */` comments are
-  // preserved and their contents NOT tokenized (`/* { ; } */`); strings are
-  // line-bounded, so a quote left unclosed before the newline is a
-  // `<bad-string-token>` → hard error (matches browsers — `--x: don't` is invalid).
-  // `//` is NOT a comment here (CSS), just delim content. A `{ … }` value that fits
-  // a declaration list is structured upstream by customCurlyBlock; this is the
-  // fallback for non-CSS-shaped values.
-  //
-  // Owner rule (Less `--*` = interpolation-ONLY): the value is captured VERBATIM
-  // here; the builder resolves ONLY `@{…}` interpolation within it. Bare `@var`
-  // references and function calls stay LITERAL — the value is NOT parsed as a Less
-  // value expression. This is why the structured `valueList` path is intentionally
-  // absent: it would (wrongly) evaluate bare `@var`/calls and drop comments/spacing.
-  // @see https://www.w3.org/TR/css-variables-1/#defining-variables
-  const cpSingleStr = regex(/'(?:[^'\n\\]|\\.)*'/);
-  const cpDoubleStr = regex(/"(?:[^"\n\\]|\\.)*"/);
-  // Content runs include CSS escapes (`\'`, `\(`, `\;`): `\` + any non-newline is an
-  // escaped code point (§4.3.7), so an escaped quote/bracket/semicolon is literal
-  // content, NOT a string/bracket/terminator. A lone `/` (division) is content;
-  // `/*` is left for the comment alt.
-  // Do not let an opaque run swallow a complete Less interpolation opener.  The
-  // negative lookahead is deliberately the same strict, contiguous shape as
-  // `lessInterp` above: a malformed/escaped/extended false start remains
-  // verbatim custom-property content, while a valid `@{name[key]}` is left at
-  // the cursor for the typed `LessInterp` alternative.  This is grammar
-  // recognition (and macro-compiled), not a post-parse source scan.
-  const cpInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\]'"\/\\])+|\/(?!\*)/);
-  const cpOuterContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\];'"\/\\])+|\/(?!\*)/);
-  // Tier-B: `lessInterp` is tried FIRST so a strict `@{name}` is isolated as its own
-  // leaf the host consumes (owner rule: a custom-prop value resolves ONLY `@{…}`).
-  // A bare `@var` or a non-strict `@{ base }`/`@{a.b}` falls through to the content
-  // runs and stays LITERAL — `@` is still an ordinary content char, so the isolation
-  // is additive (no content-regex boundary tweak, no over-structuring).
-  const cpInner = many(choice(lessInterp, cpInnerContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr));
-  const cpParen = sequence(literal('('), g.cpInner, expect(literal(')')));
-  const cpSquare = sequence(literal('['), g.cpInner, expect(literal(']')));
-  const cpCurly = sequence(literal('{'), g.cpInner, expect(literal('}')));
-  const cpValue = noTrivia(many(choice(lessInterp, cpOuterContent, comment, g.cpParen, g.cpSquare, g.cpCurly, cpSingleStr, cpDoubleStr)));
-  const CustomDeclaration = node(
-    sequence(choice(customPropInterp, customProp), literal(':'),
-      choice(g.customCurlyBlock, g.cpValue),
-      optional(literal(';'))));
-  const declaration = choice(g.VarDeclaration, g.CustomDeclaration, g.Declaration);
-
-  // ── Values (Less: + Reference, NamedColor, EscapedValue) ────────────────────
-  // A comma-separated value list, tolerating a single trailing comma (`a, b,`) as
-  // Less 4.x does — its `value` parser breaks out of the comma loop when no
-  // expression follows, silently dropping the dangling comma (the value builder's
-  // empty-segment filter mirrors this, so the trailing comma adds no list item).
-  const valueList = sequence(g.valueSequence, many(sequence(literal(','), g.valueSequence)), optional(literal(',')));
-  // A space-separated value sequence: each item is a full top-level EXPRESSION
-  // (topSum), so arithmetic folds into the grammar (`1 + 2` → one Operation) while
-  // non-operator items stay a list (`1px 2px 3px`). topSum collapses to the bare
-  // operand when there is no operator, so a plain list is byte-identical to before.
-  const valueSequence = oneOrMore(g.topSum);
-  // Interpolated value token (`@{colorVar}`, `pre-@{x}`), ordered before Reference:
-  // `@{` cannot match lessVar, and anyValueTok excludes `{`, so this is the only
-  // rule that accepts it.
-  const InterpValue = node(
-    interpKey);
-  // A namespace INDEXED-accessor reference in value position: a `.`/`#` compound
-  // selector-path head (`#ns.options`, `.mixin`) glued (noTrivia) to a `[accessor]`
-  // and then any further `[accessor]`/`(call)` chain. This must parse as ONE value
-  // operand BEFORE arithmetic folding — otherwise `#ns.options[val1] + 5px` splits
-  // into the bare string `#ns.options` plus an Operation whose left operand is the
-  // lone `[val1]` SquareParen, so the accessor never binds to the namespace path.
-  // Ordered before Color/SquareParen/anyValue in `value`: a hex-color-shaped head
-  // (`#DEF.colors[primary]`) would otherwise be eaten by Color as a bare `#DEF`,
-  // stranding `.colors[primary]` as a separate single-segment accessor that loses
-  // the `#DEF` namespace hop. NsAccessor requires a glued `[` (refIndex first), so a
-  // plain color `#DEF` — no bracket — still falls through to Color unchanged.
-  // The head is STRUCTURED into per-segment leaves (`#ns`, `.options`) so the host
-  // reads the namespace path directly (no byte re-split), with an optional glued
-  // `(args)` call on the last segment (`#library.add-one(1px)[@return]`) captured as
-  // a structured `MixinArgs` group (outside `noTrivia`, mirroring `VarCall`). A
-  // zero-width `(?=[([])` after the head keeps the whole form glued and lets a plain
-  // color `#DEF` (no bracket) fall through to `Color` unchanged. The builder
-  // (`nsAccessor`) assembles a `MixinCall` base + the `[key]` accessor chain. An
-  // inner `[…]` chain call (`#ns.x()[k](y)`) stays out of scope.
-  const nsHeadSeg = regex(/(?<![>+~|][ \t]?)[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)/);
-  const nsTailSeg = regex(/[.#]-?(?:[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*)/);
-  const NsAccessor = node(
+  // Static (interpolation-free) single/double-quoted body shared by the quoted
+  // value, functional-pseudo, and attribute-selector static grammars.
+  const staticQuotedBody = choice(
+    noTrivia(sequence(literal('"'), many(choice(g.LessSyntaxQuotedDoubleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('"'))),
+    noTrivia(sequence(literal('\''), many(choice(g.LessSyntaxQuotedSingleChunk, sequence(not(noTrivia(literal('@{'))), literal('@')), literal('$'))), literal('\'')))
+  );
+  const StaticQuoted = node<Quoted>(
+    'Quoted',
+    staticQuotedBody,
+    (children) => {
+      const open = requireToken(children[0]);
+      const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
+      return quoted(`${open.value}${value}${open.value}`, value, open.value, false);
+    }
+  );
+  // A static Less `~"…"` / `~'…'` is an ordinary quoted value with the
+  // existing escaped flag. Its interpolation-bearing form is a structural,
+  // unquoted template—never a recovered source string.
+  const EscapedQuoted = node<Quoted | Interpolation>(
+    'Quoted',
+    choice(
+      noTrivia(sequence(literal('~"'), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
+      noTrivia(sequence(literal('~\''), many(choice(g.VariableInterpolation, g.PropertyInterpolation, g.LessSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
+    ),
+    (children) => {
+      const opener = requireToken(children[0]).value;
+      const quote = opener[1];
+      if (quote !== '"' && quote !== '\'') {
+        throw new TypeError('Direct Less escaped quote lost its quote delimiter.');
+      }
+      if (children.some(isInterpolationFact)) {
+        return interpolation(interpolationPartsFrom(children.slice(1, -1), true));
+      }
+      const value = children.slice(1, -1).map(requireToken).map(token => token.value).join('');
+      return quoted(`${opener}${value}${quote}`, value, quote, true);
+    }
+  );
+  const StaticUrl = node<Url>(
+    'Url',
+    noTrivia(sequence(
+      urlFunctionOpen,
+      optional(urlBoundaryWhitespace),
+      optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
+      optional(urlBoundaryWhitespace),
+      literal(')')
+    )),
+    (_children, fields) => {
+      const captured = fields?.body;
+      if (Array.isArray(captured)) {
+        throw new TypeError('Direct Less static URL produced repeated body facts.');
+      }
+      const body = captured?.value;
+      if (body === undefined) {
+        return url(any(''));
+      }
+      if (isQuoted(body) || isInterp(body)) {
+        return url(body);
+      }
+      return url(any(requireTerminalText(body)));
+    }
+  );
+  // Bare `@name` and `@{name}` URL bodies are structural Less values, not
+  // opaque URL text. The interpolation branch retains its literal suffixes as
+  // `Interpolation` parts, so neither form needs a source scan or a value re-parser.
+  const UrlInterpolation = node<Interpolation>(
+    'UrlInterpolation',
+    noTrivia(choice(
+      sequence(g.VariableReference, oneOrMore(choice(staticUrlText, g.Interpolation))),
+      sequence(g.Interpolation, many(choice(staticUrlText, g.Interpolation)))
+    )),
+    children => interpolation(interpolationPartsFrom(children, true))
+  );
+  const DynamicUrl = node<Url>(
+    'Url',
+    sequence(urlFunctionOpen, choice(g.UrlInterpolation, g.VariableReference), literal(')')),
+    children => url(requireValueNode(children[1]))
+  );
+  const RoutedDynamicUrl = node<Url>(
+    'Url',
+    sequence(routed(), choice(g.UrlInterpolation, g.VariableReference), literal(')')),
+    children => url(requireValueNode(children[1]))
+  );
+  const RoutedStaticUrl = node<Url>(
+    'Url',
+    noTrivia(sequence(
+      routed(),
+      optional(urlBoundaryWhitespace),
+      optional(field('body', choice(g.EscapedQuoted, g.Quoted, staticDataUrlText, staticUrlText))),
+      optional(urlBoundaryWhitespace),
+      literal(')')
+    )),
+    (_children, fields) => {
+      const captured = fields?.body;
+      if (Array.isArray(captured)) {
+        throw new TypeError('Direct Less routed static URL produced repeated body facts.');
+      }
+      const body = captured?.value;
+      if (body === undefined) {
+        return url(any(''));
+      }
+      if (isQuoted(body) || isInterp(body)) {
+        return url(body);
+      }
+      return url(any(requireTerminalText(body)));
+    }
+  );
+  const UrlTarget = dispatch(
+    urlFunctionOpen,
+    caseOf('url(', choice(RoutedDynamicUrl, RoutedStaticUrl))
+  );
+  const ImportOption = node<Any>(
+    'ImportOption',
+    importOption,
+    children => any(requireToken(children[0]).value)
+  );
+  const ImportOptions = node<List>(
+    'ImportOptions',
     sequence(
-      noTrivia(sequence(nsHeadSeg, many(nsTailSeg), regex(/(?=[([])/))),
-      optional(g.MixinArgs),
-      noTrivia(sequence(refIndex, many(choice(refIndex, refCall))))));
-  // A CSS `unicode-range` token (`U+A5`, `U+0-7F`, `U+0???`, `U+??????`). Ordered
-  // before Dimension/Num/anyValue so the whole `U+…` run is one verbatim value — a
-  // bare `ident` would stop at the `+` and leave `+0???`/`0-7F` to be mis-folded as
-  // arithmetic. @see https://drafts.csswg.org/css-syntax/#urange-syntax
-  const UnicodeRange = node(
-    regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/));
-  const value = choice(g.InterpValue, g.Reference, g.UnicodeRange, g.numeric, g.NsAccessor, g.Color, g.NamedColor, g.Url, g.FormatCall, g.Call, g.EscapedValue, g.SelectorCapture, g.GluedParen, g.Paren, g.SquareParen, g.Quoted, g.anyValue);
-  // ── Math expressions — precedence in the grammar (port of expressionSum /
-  // expressionProduct). `* / %` bind tighter than `+ -`; left-associative. The
-  // `collapse` option makes a single-operand level pass its operand straight
-  // through (no Operation wrapper), so a plain value is byte-identical to the
-  // pre-expression grammar. The build folds the flat `operand op operand …`
-  // children into Operation nodes (see _buildOperation).
-  //
-  // `+`/`-` operator token: a sign NOT glued to a following number. A glued
-  // `-23`/`+5` is ONE signed operand (Num/Dimension eats the sign), mirroring the
-  // lexer's Plus/Minus-vs-Signed split — so `1 - 2` subtracts, but `1 -23` (space
-  // before, glued) does NOT continue the sum: the sign belongs to the next
-  // operand. At top level that trailing operand makes a space-list; inside a bare
-  // paren it has no operator before it, so the paren's `)` fails (a parse error,
-  // matching Less 4.x on `(12 (13))` / `(… 5 -23)`).
-  // The deprecated `./` dot-slash operator is intentionally NOT accepted — it was
-  // obscure, rarely used, and removed in v5. A `./` in a math context therefore
-  // leaves the `.` unconsumed and surfaces as a parse error (wrap division in
-  // parens instead).
-  const prodOp = regex(/[*\/%]/);
-  // A `+`/`-` operator fires when it is NOT a signed operand glued after a space:
-  //   • `[-+](?![0-9.])` — standalone (space / non-number after): `8 + 4`, `8 - (…)`.
-  //   • `(?<=\S)[-+](?=[0-9.])` — glued with NO space before (port of the Signed
-  //     branch's noSep gate): `8+4`, `8-4` are arithmetic. `8 +4` (space before,
-  //     glued) matches NEITHER — the `+4` is a separate signed operand (a list at
-  //     top level, a paren error inside `( … )`).
-  const sumOp = regex(/[-+](?![0-9.])|(?<=\S)[-+](?=[0-9.])/);
-  // Leading unary minus → Negative (port of expressionValue's OPTION(Minus)). Only
-  // a STANDALONE `-` (not glued to a number — that's a signed operand) at an operand
-  // position: `-(@a * 2)`, `-@var`. The sum level consumes a binary `-` first, so
-  // this only fires where an operand is expected.
-  const Negative = node(
-    sequence(regex(/-(?![0-9.])/), g.value));
-  const operand = choice(g.Negative, g.value);
-  const mathProduct = node('Operation',
-    sequence(operand, many(sequence(prodOp, operand))), undefined, { collapse: true });
-  const mathSum = node('Operation',
-    sequence(g.mathProduct, many(sequence(sumOp, g.mathProduct))), undefined, { collapse: true });
-  // Top-level (declaration / space-list) variant of the same precedence grammar.
-  // Identical shape, but built as `OperationTop`, whose slash-vs-list decision uses
-  // the DECLARATION context: `/` divides only under `math: always` (default
-  // `parens-division` keeps a top-level `/` a slash-List, e.g. `font: 12px/1.5`).
-  // A math paren nested inside a top-level value still uses the `Operation` variant
-  // (slash divides), since being in-parens turns division on.
-  const topProduct = node('OperationTop',
-    sequence(operand, many(sequence(prodOp, operand))), undefined, { collapse: true });
-  const topSum = node('OperationTop',
-    sequence(g.topProduct, many(sequence(sumOp, g.topProduct))), undefined, { collapse: true });
-  // An escaped paren `~( … )` is a RAW list, not a math expression: it holds an
-  // arbitrary space / comma / `;`-separated value sequence (`~(1 2 3)`, `~(1; 2)`),
-  // so it uses the permissive body — unlike a bare `( … )`, which is one expression.
-  const escapedParen = node('Paren', sequence(literal('('), g.permissiveParenBody));
-  const EscapedValue = node(
-    sequence(literal('~'), choice(escapedParen, g.Quoted)));
-  // TODO(parseman-compose-depth): this is a COPY of the shared
-  // `LessAstSyntaxNamedColor` (`parser-shared/src/recognition.ts`), which the
-  // Less AST grammar — the shipping parse path — already binds. CSS named colours
-  // are not a Less extension and this list does not belong here.
-  //
-  // It cannot be deleted at parseman 0.32.0. Binding the shared rule requires
-  // composing the recognition map into this CST (`compose([cssGrammar, lessAstSyntax,
-  // rules(…)])`, the shape scss-parser's CST already uses). That compiles fine HERE,
-  // but it makes `lessGrammar` a non-final carried piece, and scss-parser's
-  // `compose([lessGrammar, …])` then reports `argument 0 isn't a build-resolvable
-  // grammar` and degrades to the runtime interpreter — which emits a different tree
-  // (`docs/architecture/parser/PARSEMAN-0.32-VERIFIED-CONSTRAINTS.md` §1). Verified
-  // by building it, not assumed.
-  //
-  // THE BLOCKER IS SCSS COMPOSING ON LESS, NOT THE COLOUR LIST. `scss-parser`'s CST
-  // is `compose([lessGrammar, …])`; on the intended CSS base it would not sit
-  // downstream of this grammar and this copy would just be deleted. That inversion is
-  // tracked in `docs/architecture/parser/DIALECT-ARCHITECTURE-AND-ERROR-COVERAGE.md`
-  // — this is a concrete cleanup it blocks, not a cosmetic concern. Unblocked by
-  // EITHER the dialect re-base or a parseman that resolves deeper compose chains.
-  //
-  // WHEN YOU DELETE THIS, DO NOT RE-LITIGATE THE NAME COUNT. The lists differ: this
-  // copy has 150 names, the shared rule 149. The extra is `currentcolor`, and the
-  // shared rule is RIGHT to exclude it — owner ruling 2026-07-25: it is not a named
-  // colour because it is not computable, it resolves from another property at use
-  // time, so there is no value to materialise. (`transparent` IS included, and
-  // correctly so — it computes to `rgba(0,0,0,0)`.) Losing `currentcolor` from this
-  // node is a FIX, not a regression; it remains an ordinary keyword value, which is
-  // all it ever needed to be.
-  const NamedColor = node(keywords([
-    'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
-    'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
-    'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson', 'currentcolor', 'cyan',
-    'darkblue', 'darkcyan', 'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki',
-    'darkmagenta', 'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon',
-    'darkseagreen', 'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise',
-    'darkviolet', 'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue', 'firebrick',
-    'floralwhite', 'forestgreen', 'fuchsia', 'gainsboro', 'ghostwhite', 'gold', 'goldenrod',
-    'gray', 'green', 'greenyellow', 'grey', 'honeydew', 'hotpink', 'indianred', 'indigo',
-    'ivory', 'khaki', 'lavender', 'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue',
-    'lightcoral', 'lightcyan', 'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey',
-    'lightpink', 'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray',
-    'lightslategrey', 'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen', 'magenta',
-    'maroon', 'mediumaquamarine', 'mediumblue', 'mediumorchid', 'mediumpurple',
-    'mediumseagreen', 'mediumslateblue', 'mediumspringgreen', 'mediumturquoise',
-    'mediumvioletred', 'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowhite',
-    'navy', 'oldlace', 'olive', 'olivedrab', 'orange', 'orangered', 'orchid', 'palegoldenrod',
-    'palegreen', 'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'pink',
-    'plum', 'powderblue', 'purple', 'rebeccapurple', 'red', 'rosybrown', 'royalblue',
-    'saddlebrown', 'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna', 'silver',
-    'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow', 'springgreen', 'steelblue',
-    'tan', 'teal', 'thistle', 'tomato', 'transparent', 'turquoise', 'violet', 'wheat', 'white',
-    'whitesmoke', 'yellow', 'yellowgreen'
-  ], { caseInsensitive: true, boundary: '-_a-zA-Z0-9(' }));
-  // `Dimension` / `Num` / the unified `numeric` leaf are inherited verbatim from
-  // the shared CSS grammar (number + optional unit, contiguous via noTrivia).
-  // `Num` and `Color` now come from the shared `numericRules` fragment, spread into
-  // the return object below (identical to the CSS grammar's definitions).
-  /** @todo(css-spec-parity): closing `)` is `literal(')')`, so an unquoted url with interior whitespace backtracks instead of committing to a <bad-url-token> error — port the `expect(literal(')'))` commit from css-parser c5ff7836e; see css-syntax-3 §4.3.6 (consume-a-url-token / bad-url). */
-  // The quoted body routes through `g.Quoted` (not a flat `singleStr`/`doubleStr`)
-  // so a `url("…@{x}…")` string carries the §3.3 interpolation structure the value
-  // host resolves — a plain string still falls to Quoted's flat leaf (byte-identical).
-  // A bare `url(@var)` body is a value `Reference`, spliced by the host without
-  // unquoting (`url(@a)` with `@a: 'x'` → `url('x')`); the unquoted url-token body
-  // (`urlInner`) is the last arm, so a plain `url(image.png)` is unchanged.
-  const Url = node(parser({ trivia: urlWs }, sequence(urlOpen, optional(choice(g.Quoted, g.Reference, urlInner)), literal(')'))));
-  // A bare paren holds ONE expression per comma-segment (a Sum), NOT a
-  // space-separated value sequence — `(12 13)` / `(12 (13))` are incoherent (two
-  // operands, no operator) and error, matching Less 4.x. `;`-separated segments
-  // (used by `~( … ; … )` escapes) and commas are still lists. The closing `)` is
-  // committed (`expect`), so a leftover operand surfaces as `Expected ')'` at the
-  // offending token rather than being silently left unconsumed.
-  // A paren item is one expression, optionally followed by a single comparison
-  // (`(@i > 5)`) OR a declaration-form `feature: value` pair (`(min-width: @val)` —
-  // a media condition stored for reuse). The separator/operator stays a raw leaf in
-  // the stream (not folded into an Operation), so the Paren builder sees the same
-  // flat `left op right` it always did. A bare `12 (13)` has NO separator, so it
-  // still fails the `)`.
-  const parenSep = choice(compareOp, literal(':'));
-  const parenExpr = sequence(g.mathSum, optional(sequence(parenSep, g.mathSum)));
-  // A paren whose content BEGINS with a `#`/`.` namespace selector is a
-  // namespace-lookup reference (`(#ns.options[option])`, `(.mixin()[key])`), not an
-  // arithmetic expression — its `[…]`/`(…)` accessor chain is captured as a value
-  // sequence and the Paren builder reassembles it into a Reference/Call
-  // (_tryParseNamespaceRef). The lookahead requires a selector START (`.`/`#` + a
-  // name char), so `.5` (a number) and a bare `12 (13)` are NOT namespace refs and
-  // stay strict expressions — the incoherent `12 (13)` still fails the `)`.
-  const namespaceAhead = regex('(?=[.#]-?[_a-zA-Z\\u0080-\\uffff])');
-  const parenItem = choice(sequence(namespaceAhead, g.valueSequence), parenExpr);
-  const parenExprList = sequence(parenItem, many(sequence(literal(','), parenItem)));
-  const parenBody = sequence(optional(sequence(g.parenExprList, many(sequence(literal(';'), optional(g.parenExprList))))), expect(literal(')')));
-  // Permissive paren body (the pre-expression valueList form). Used ONLY by
-  // GluedParen — a `(` glued (no space) to a preceding selector/accessor token,
-  // i.e. mixin-reference ARGS (`.mixin1(@foo: bar)`, `#ns.x(.valToGet[])`), which
-  // hold arbitrary named args / accessor chains, not arithmetic. A `(` with space
-  // before it (or at value start) is a real value paren and takes the strict
-  // single-expression `parenBody` above, so `(12 (13))` still errors.
-  const permissiveParenBody = sequence(optional(sequence(g.valueList, many(sequence(literal(';'), optional(g.valueList))))), expect(literal(')')));
-  // A bare detached ruleset `{ … }` in value / function-argument position → a Mixin.
-  const DetachedRuleset = node(sequence(literal('{'), g.declarationList, literal('}')));
-  // Function-call arguments are their OWN production, NOT `parenBody`: unlike a parenthesized
-  // value, a function argument may be an anonymous mixin `.(…){…}` or a bare
-  // detached ruleset `{…}` — e.g. `each(@list, { … })`, `func({a:1}, {b:2})`. The
-  // comma phase takes value SEQUENCES (comma is the arg separator); after a `;` the
-  // args become value LISTS (comma allowed within an arg).
-  // Function-call args and mixin-call args share ONE set of arg productions, so an
-  // arithmetic arg like `@a * 2` is a real Operation in both, and values are
-  // assembled by the shared `_assembleArgs` builder (Keyword-ification + trivia — no
-  // raw text, no manual trimming). Beyond values / anon-mixin / detached-ruleset,
-  // the args admit the `@x: value` NAMED form and the `...` / `@x...` VARIADIC form.
-  // Named args flow through function calls too (dispatch to a named-param function,
-  // e.g. a Sass fn); the runtime rejects them if the target declares no names.
-  // Ordered choice: `...`/`:` lookahead lets variadic/named win, else the value
-  // combinator consumes the whole expression (so `@a * 2` is never truncated at
-  // `@a`). A bare `@a` is a Reference (the CALL shape); the mixin-DEFINITION builder
-  // reinterprets a lone `@name` as a param.
-  // A variadic argument: `@rest...` or a bare `...`.
-  const argRest = node('Rest', sequence(optional(lessVar), literal('...')));
-  const argNamedSeq = node('NamedArg', sequence(lessVar, literal(':'), choice(DetachedRuleset, g.valueSequence)));
-  // ── Name-independent condition arguments ─────────────────────────────────────
-  // A top-level condition operator (`> < >= <= = and or not`) inside ANY call's
-  // argument makes that argument a `Condition` — no name dispatch on `if`/`boolean`.
-  // The condition operators layer ON TOP of the ordinary value production, so nesting
-  // (`not(2 < 1)`, `true and isnumber(6)`) falls out of the grammar's own recursion:
-  // the `(…)` value-Paren already parses an inner comparison (parenSep = compareOp),
-  // and `and`/`or` split terms so a bare keyword never swallows the operator.
-  //
-  // The whole layer is GATED to only match when a real operator is present: each
-  // `ArgCondition` alternative's distinguishing token past the operand is an operator
-  // (leading `not`, a `compareOp`, or `and`/`or`), so a plain value / space-list arg
-  // matches NONE and falls through to the unchanged `valueSequence` below — the
-  // pre-existing arg is byte-identical, and mixin-DEFINITION params (never a top-level
-  // condition) are unaffected.
-  const notKw = keywords(['not'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  const andKw = keywords(['and'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  const orKw = keywords(['or'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  // A standalone top-level condition operator — used as a negative lookahead so the
-  // bounded value operand stops before it instead of eating it as a keyword/anyValue.
-  // Assembled from the existing operator terminals rather than re-spelling the
-  // comparison alternation a third time — it is only ever consumed inside
-  // `not(...)`, so the extra frames are rolled back and contribute no child.
-  const condStopAhead = choice(compareOp, andKw, orKw);
-  // A bounded value/space-list operand: a `valueSequence` that stops at a top-level
-  // condition operator (so `@a > 5 and @b` splits into operands, not one space-list).
-  const condOperand = oneOrMore(sequence(not(condStopAhead), g.topSum));
-  // A PARENTHESIZED sub-condition operand: `( CondArgOr )`. Necessary because a `(`
-  // glued to a preceding word (`not(…)`) takes the permissive mixin-arg Paren, whose
-  // body is a raw value list — it would NOT parse the inner `2 > 1` as a comparison.
-  // Parsing the paren body as a full `CondArgOr` restores the guard-grammar behaviour
-  // (`not(2 > 1)`, `(@a > 0)`, `(true)`), built into a `Paren` wrapping the condition.
-  const CondArgParen = node('GuardInParens',
-    sequence(literal('('), g.CondArgOr, literal(')')));
-  // A single-operand core: a parenthesized sub-condition OR a bounded value, with an
-  // optional trailing `<op> right` comparison.
-  const condCore = sequence(
-    choice(g.CondArgParen, condOperand),
-    optional(sequence(compareOp, choice(g.CondArgParen, condOperand))));
-  // A single condition term: optional leading `not`, then the operand core. `not`
-  // negates the term into a `Condition{negate}`; a bare comparison folds into
-  // `Condition[left, op, right]`; a plain operand passes through.
-  const CondArgTerm = node(
-    sequence(optional(notKw), condCore));
-  const CondArgAnd = node('CondArgAnd',
-    sequence(g.CondArgTerm, many(sequence(andKw, g.CondArgTerm))));
-  const CondArgOr = node('CondArgOr',
-    sequence(g.CondArgAnd, many(sequence(orKw, g.CondArgAnd))));
-  // An OPERATOR-BEARING term: a leading `not`, OR a comparison (`left <op> right`).
-  // (A bare operand with no `not`/`compareOp` is NOT operator-bearing — that path is
-  // reserved for the plain `valueSequence` arg.) Built via the same `CondArgTerm`
-  // builder — the tag is shared, so `not`/comparison fold into a `Condition`.
-  const CondArgTermOp = node('CondArgTerm',
-    choice(
-      sequence(notKw, condCore),
-      sequence(choice(g.CondArgParen, condOperand), compareOp, choice(g.CondArgParen, condOperand))
-    ));
-  // An `and`-group that carries ≥1 operator: either its FIRST term is operator-bearing,
-  // or it has an explicit `and`. Built via the shared `CondArgAnd` fold.
-  const CondArgAndOp = node('CondArgAnd',
-    choice(
-      sequence(g.CondArgTermOp, many(sequence(andKw, g.CondArgTerm))),
-      sequence(g.CondArgTerm, oneOrMore(sequence(andKw, g.CondArgTerm)))
-    ));
-  // GATE — `ArgCondition` matches ONLY an arg that carries a REAL top-level condition
-  // operator (a `not`, a comparison, or an `and`/`or`); a plain value / space-list
-  // matches NEITHER alternative and falls through to the unchanged `valueSequence`,
-  // so ordinary args (and mixin-def params, never a top-level condition) build
-  // byte-identically. No paren-aware lookahead scan: the operator requirement is
-  // structural (`CondArgAndOp` / a mandatory `oneOrMore` `or`), and nesting
-  // (`not(2 < 1)`, `true and isnumber(6)`) falls out of the grammar's own recursion —
-  // the value-Paren parses its inner comparison; `and`/`or` split terms. Built as a
-  // `CondArgOr` (shared fold): a leading op-bearing and-group, or a bare-headed `or`.
-  // Fast pre-gate for the (speculative, build-heavy) ArgCondition attempt. Without
-  // it, every plain value / space-list arg pays a full speculative ArgCondition
-  // parse — `condOperand` builds a whole `topSum` node tree — only to fail at the
-  // missing operator and re-parse as `valueSequence` (a double parse of every call
-  // arg; ~25% of parse self-time on real fixtures). The gate is a NON-CONSUMING,
-  // depth-aware lookahead: scan (skipping balanced brackets + strings, so a nested
-  // `(@a > 5)` / `"a,b"` is opaque) to the FIRST depth-0 condition operator OR arg
-  // terminator (`,` `;` `)`), then require an operator THERE. It succeeds iff a
-  // top-level condition operator precedes the arg's end — exactly when ArgCondition
-  // could match — so it never skips a real condition (no false negative); a stray
-  // operator (e.g. inside an un-parenthesised value) only costs a harmless extra
-  // attempt that falls through to `valueSequence`, byte-identically. `not(not(…))`
-  // is a positive lookahead: it rolls back all scan side effects, consumes zero and —
-  // unlike a bare `regex()` lookahead — pushes NO CST child, so placed as the first
-  // element of the node's sequence it leaves `CondArgOr`'s built children unchanged.
-  // The keyword arm keeps its own regex: unlike `andKw`/`orKw`/`notKw` this one
-  // is a `scanTo` sentinel, so it lands at arbitrary offsets and needs the
-  // LEADING `(?<![-\w])` boundary those token-position terminals do not carry.
-  // The comparison half reuses `compareOp` instead of a fourth copy.
-  const condOpAhead = choice(compareOp, regex(/(?<![-\w])(?:and|or|not)(?![-\w])/i));
-  const condOrArgEnd = choice(condOpAhead, regex(/[,;)]/));
-  const argHasCondAhead = not(not(sequence(
-    scanTo(condOrArgEnd, { skip: [bParen, bSquare, bCurly, singleStr, doubleStr] }),
-    condOpAhead)));
-  const ArgCondition = node('CondArgOr',
-    sequence(argHasCondAhead, choice(
-      sequence(g.CondArgAndOp, many(sequence(orKw, g.CondArgAnd))),
-      sequence(g.CondArgAnd, oneOrMore(sequence(orKw, g.CondArgAnd)))
-    )));
-  const callArgSeq = choice(argRest, argNamedSeq, g.AnonymousMixinDefinition, DetachedRuleset, ArgCondition, g.valueSequence);
-  // Function-call args and mixin-call args are now IDENTICAL — one `argsInner`. After
-  // a semicolon, commas keep splitting args (`sepBy(callArgSeq, ',')`), so both `.m(…)`
-  // and `foo(…)` catch the one illegal case: mixing the comma and semicolon ARG
-  // separators — i.e. two named params in a single semicolon-group (`@a: 1, @b: 2`) —
-  // rather than mis-parsing it as one list-valued param. (This is only about the comma
-  // vs semicolon argument separators; a `/` inside a value — `16px/1.5`, `1fr / 2fr` —
-  // is a value-internal separator and is never involved.) Value assembly is identical
-  // (`_assembleArgs` folds a comma run into a List). Named args + spreads flow through
-  // FUNCTION calls too — a `.jess` extension; validity is a dialect concern
-  // (Less-4-compat flags them; the runtime rejects a target that declares no names).
-  const argsInner = optional(sequence(sepBy(callArgSeq, literal(',')), many(sequence(literal(';'), optional(sepBy(callArgSeq, literal(',')))))));
-  const functionCallArgs = sequence(argsInner, literal(')'));
-  const MixinArgs = node(sequence(literal('('), argsInner, literal(')')));
-  // `calc(…)` follows the CSS math grammar, whose only operators are `+ - * /` — a
-  // bare `%` operand (e.g. `calc(1 %)`) is a syntax error: the trailing `%` fails
-  // the closing `)`. We model calc as a
-  // Call whose body excludes a standalone `%` token, so `1 %` leaves the `%`
-  // unconsumed and the `)` fails → one parse error. A percentage glued to a number
-  // (`100%`) is a Dimension and unaffected.
-  // A calc-scoped catch-all leaf. Unlike an ordinary value token it must NOT be a
-  // bare operator run: inside `calc(…)` the chars `+ - * /` (and `= < > | ~ ^`) are
-  // ONLY operators (handled by `calcProdOp`/`sumOp`), never operands, so a lone
-  // `+` / `*` is not a <calc-value> (css-values-4 §10). Excluding the operator
-  // chars — and `%`, kept out so a standalone `%` stays unconsumed and errors at
-  // the `)` — from the leaf keeps `calc(+)` / `calc(*)` from matching an operator
-  // as a value; they now fail the required <calc-value> and error. Non-operator
-  // keyword operands (`pi`, `e`, `infinity`) still match via `ident`, so valid
-  // calc is unchanged. Mirrors css-parser 7627722c2 (operator-excluding calc leaf).
-  const calcAnyTok = regex(/[^\s;{}\[\]()'",!%+\-*\/=<>|~^]+/);
-  const calcAnyValue = choice(ident, calcAnyTok);
-  const calcValue = choice(g.InterpValue, g.Reference, g.numeric, g.Color, g.NamedColor, g.Url, g.Call, g.EscapedValue, g.Paren, g.SquareParen, g.Quoted, calcAnyValue);
-  // calc math grammar (port of mathSum/mathProduct): operators are ONLY `+ - * /` —
-  // NO `%` (a standalone `%` stays unconsumed → the `)` fails → syntax error, per
-  // CSS calc). `/` always divides here (calc is a math context), built as
-  // `Operation`. Precedence + collapse identical to the value-position rules.
-  const calcProdOp = regex(/[*\/]/);
-  const calcProduct = node('Operation',
-    sequence(calcValue, many(sequence(calcProdOp, calcValue))), undefined, { collapse: true });
-  const calcSum = node('Operation',
-    sequence(calcProduct, many(sequence(sumOp, calcProduct))), undefined, { collapse: true });
-  const calcSequence = oneOrMore(calcSum);
-  const calcList = sequence(calcSequence, many(sequence(literal(','), calcSequence)));
-  // A `calc(…)` body is a <calc-sum>, which REQUIRES ≥1 <calc-value> (css-values-4
-  // §10): an empty `calc()` produces no value, so the leading `calcList` is
-  // `expect`ed rather than `optional`. Without this the calc arm would fail and
-  // backtrack into the generic `Call` arm, which silently accepts `calc()` as an
-  // ordinary function call; `expect` commits the `calc(` open and reports the
-  // missing value in place. Well-formed calc is unchanged (`calcList` matches and
-  // `expect` passes straight through). The trailing `; calcList` groups stay
-  // optional. Mirrors css-parser 7627722c2 (`expect(mathSum, 'calc value')`).
-  const calcBody = sequence(expect(calcList, 'calc value'), many(sequence(literal(';'), optional(calcList))), expect(literal(')')));
-  // `calc(…)` OR a generic function call as ONE node, so a generic call no longer
-  // pays a separate `calc(` node frame ahead of it in the value choice. The calc arm
-  // (its body is the folded math grammar) is tried first so `calc(` routes to math;
-  // any other ident takes the generic call-args tail. Built identically to the old
-  // inherited `CalcCall` / `Call` (same `Call` node type + children per arm). The
-  // plain value-position `Paren` still comes from the shared fragment (g.parenBody).
-  // A function call requires the `(` GLUED to the name — no trivia between. The SPACE
-  // before `(` is the discriminator (Less 4.x): `name(expr)` (no space) is a CSS
-  // function SHAPE, kept verbatim (`solid(#a8000b)` → `solid(#a8000b)`); `name (expr)`
-  // (space) is a keyword followed by a GROUPED math expression whose grouping parens
-  // dissolve on evaluation (`1px solid (@bg*.66 + @black*.33)` → `1px solid #a8000b`,
-  // like `(2px + 3px)` → `5px`). The `calc` arm's `(?=\()` lookahead already asserts
-  // this glue; the generic arm wraps `ident '('` in `noTrivia` so the `(` must sit
-  // immediately after the name (args after the `(` keep normal trivia via
-  // `functionCallArgs`), so `name (…)` falls through to the value `Paren` instead.
-  const Call = node(choice(
-    sequence(regex(/calc(?=\()/i), literal('('), g.calcBody),
-    sequence(noTrivia(sequence(ident, literal('('))), functionCallArgs)
+      literal('('),
+      oneOrMoreSep(
+        field('option', g.ImportOption),
+        literal(',')
+      ),
+      literal(')')
+    ),
+    (_children, fields) => {
+      const options = requireFields(fields, 'option').map((option) => {
+        const value = option.value;
+        if (!isAny(value)) {
+          throw new TypeError('Direct Less AST grammar produced a non-static import option.');
+        }
+        return value;
+      });
+      return list(options, ',');
+    }
+  );
+  const StaticTailParen = noTrivia(sequence(
+    literal('('),
+    many(choice(staticTailText, g.Quoted, g.StaticTailGroup)),
+    literal(')')
   ));
-  // A bare value paren `( … )`. Defined locally (not inherited from CSS) so the `(`→body
-  // trivia uses Less `rw`, which skips `//` line comments — CSS `rw` does not, so a `//`
-  // right after `(` (e.g. `(@a * // c\n @b)`) would otherwise not be consumed as trivia.
-  const Paren = node(sequence(literal('('), g.parenBody));
-  // Mixin-argument paren: `(` immediately preceded (lookbehind, no trivia) by a
-  // selector / accessor char — the args of a `.name(…)` / `#ns.x(…)` reference.
-  // Parsed permissively; the Declaration builder reassembles the selector +
-  // round-paren-args + square-paren-accessor items into a Reference/Call chain.
-  // A trailing `-` counts ONLY when it terminates an identifier (`.my-mixin-(…)`),
-  // never a standalone unary minus — `-(@a / 2)` is a Negative around a math Paren,
-  // so its `(` must fall through to the strict `g.Paren` (slash divides in-parens).
-  const GluedParen = node('Paren', sequence(regex('(?<=[)\\]\\w.#\\u0080-\\uffff]|[\\w.#\\u0080-\\uffff]-)\\('), g.permissiveParenBody));
-  const squareParenBody = sequence(optional(g.valueList), literal(']'));
-  const SquareParen = node(sequence(literal('['), g.squareParenBody));
-  // Selector-list CAPTURE `*[ <selector-list> ]` — a Less value that captures a
-  // comma-separated selector list for later interpolation into a selector
-  // (`@classes: *[.a, .b, .c]; @{classes} { … }`). The `*[` sigil is GLUED
-  // (noTrivia) so a bare universal `*` (multiply / selector) and a plain
-  // `[attr]`-shaped SquareParen value stay on their existing paths; only the
-  // contiguous `*[` opens a capture. The body reuses the selector-grammar
-  // `SelectorList` so the branch split is parser-owned (never a byte re-scan).
-  const SelectorCapture = node(
-    sequence(regex(/\*\[/), g.SelectorList, expect(literal(']'), ']')));
-  const anyValue = choice(ident, anyValueTok);
-
-  // `each(<iterable>, { … })` (or `.(@p) { … }`) is a $for control form, not a
-  // function call — parse it straight into a `For` node. The callback is a literal
-  // detached ruleset / anonymous mixin; a bare `each(list)` with no block callback
-  // falls through to a normal Call.
-  // `each(<iterable>, { … })` builds a `For` directly (not a throwaway Call). Its
-  // ARGUMENTS reuse the shared `functionCallArgs` — same args any function accepts,
-  // so the iterable + detached-ruleset / `.(…){…}` callback parse uniformly. The
-  // builder pulls the callback (a Mixin) out of the parsed args.
-  const EachFor = node('For',
+  const StaticTailGroup = g.StaticTailParen;
+  const StaticTail = noTrivia(oneOrMore(choice(
+    staticTailText,
+    g.Quoted,
+    g.StaticTailGroup
+  )));
+  // An import postlude's variable-bearing media feature has an exact typed
+  // shape. Keep this small prelude production here because the generic query
+  // family is defined after `ImportStatement`; no forward grammar reference
+  // may poison the document's direct start rule.
+  const ImportQueryTail = node<ValueNode>(
+    'ImportQueryTail',
+    sequence(literal('('), g.CssSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.VariableReference, literal(')')),
+    children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
+  );
+  const quotedOrUrlTarget = choice(g.EscapedQuoted, g.Quoted, UrlTarget);
+  const ImportTarget = node<Quoted | Url | Interpolation>(
+    'ImportTarget',
+    quotedOrUrlTarget,
+    (children) => {
+      const target = children.find(child => isQuoted(child) || isUrl(child) || isInterp(child));
+      if (target === undefined) {
+        throw new TypeError('Direct Less import target lost its typed value.');
+      }
+      return target;
+    }
+  );
+  const ImportTail = node<unknown>(
+    'ImportTail',
+    choice(
+      ImportQueryTail,
+      g.AtRuleInterpolation,
+      g.StaticTail
+    ),
+    children => children.length === 1 ? children[0] : children
+  );
+  const ImportStatement = node<ImportAtRule>(
+    'ImportAtRule',
+    sequence(importKeyword, optional(g.ImportOptions), g.ImportTarget, optional(field('tail', g.ImportTail)), literal(';')),
+    (children, fields, span) => {
+      // Every accepted import fact is a grammar child or a field capture. In
+      // particular, the opaque tail is reconstructed from terminal values only
+      // after the recursive grammar has closed every delimiter.
+      const keyword = requireToken(children[0]);
+      const options = children.find((child): child is List => typeof child === 'object' && child !== null && 'type' in child && child.type === 'List') ?? null;
+      const target = children.find((child): child is Quoted | Url | Interpolation => isQuoted(child) || isUrl(child) || isInterp(child));
+      if (target === undefined) {
+        throw new TypeError('Direct Less AST grammar produced no import target.');
+      }
+      const tailField = fields?.tail;
+      // The variable-bearing query feature and a complete `@{…}` tail are
+      // structural values. Mixed text and interpolation stays rejected until
+      // ImportAtRule has a typed segment model; do not flatten it back into
+      // opaque source bytes.
+      const tailValue = tailField === undefined ? undefined : requireField(fields, 'tail').value;
+      const tail = tailValue === undefined ? null : isValueNode(tailValue) ? tailValue : any(staticText(tailValue));
+      return importAtRule(keyword.value, target, options, null, tail);
+    }
+  );
+  // `@plugin` is a compile-time directive, not an unknown CSS at-rule. Its
+  // target and the *inner* option string are grammar facts so the evaluator
+  // never rediscovers either from raw prelude bytes. GeneralEnclosedContent
+  // recursively closes delimiters and preserves arbitrary option text as
+  // interpolation literal/ref segments, matching Less's opaque option string.
+  const PluginDirective = node<Plugin>(
+    'DirectLessPlugin',
     sequence(
-      keywords(['each'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' }), literal('('), functionCallArgs, optional(literal(';'))
-    ));
-
-  // ── Logical / conditional functions (Less) ──────────────────────────────────
-  // `if(cond, then[, else])` and `boolean(cond)` are NOT name-dispatched in the
-  // grammar: they are ordinary function `Call`s whose condition argument parses
-  // through the name-independent `ArgCondition` layer (a top-level `> < >= <= = and
-  // or not` in ANY call's argument becomes a `Condition`). Eval already registers
-  // `if`/`boolean` as ordinary functions that consume the parsed condition — so this
-  // is a parse-only unification: `if`/`boolean`/`#ns.if`/`.if`/`foo` all route through
-  // one `Call` production. The `and`/`or`/`not`/comparison sub-grammar the `when`
-  // guard uses (GuardOr) is unchanged; only the value-position call dispatch merged.
-
-  // ── Deprecated Less `%()` string-format function ─────────────────────────────
-  // `%(format, args…)` is printf-style formatting. We LOWER it at build time into a
-  // `Quoted(Interpolated)` — the canonical string-interpolation node — with a
-  // deprecation warning (see `_buildFormatCall`). The `%(?=\()` lookahead matches
-  // ONLY when the `(` follows immediately, so the bare `%` mod operator (`10 % 3`,
-  // parsed by `prodOp`) is UNAFFECTED. Ordered before the generic `Call` in `value`.
-  const FormatCall = node(
-    sequence(regex(/%(?=\()/), literal('('), functionCallArgs));
-
-  // ── At-rules ───────────────────────────────────────────────────────────────
-  // Generic at-rule prelude (`@keyframes @name`, `@page :first`, `@layer a.b`,
-  // `@unknown foo 42`), structured into value tokens so the tree2 host consumes
-  // leaves instead of re-tokenizing the prelude bytes with regex (Tier-B). The
-  // Less value tokens — `@{interp}`, `@@indirect`, `@var` — are isolated as their
-  // own leaves; everything else (idents, `:`, whitespace, and balanced `()`/`[]`
-  // groups + strings, which may themselves contain `{`/`;`) is a literal chunk.
-  // `noTrivia` keeps internal whitespace inside the chunk bytes (the old opaque
-  // `scanTo` leaf included it), so a multi-token prelude round-trips verbatim.
-  //
-  // Isolating `@{…}` as a real `lessInterp` leaf also FIXES the early-termination
-  // bug: the old `scanTo` sentinel matched the `{` of `@{n}` before the (dead)
-  // `bCurly` skip could run, so `@keyframes @{n} {` cut the prelude at the
-  // interpolation's brace. A token run consumes `@{n}` whole and runs on to the
-  // real block `{` (validated against Less 4.x — this is a deliberate correction,
-  // not a byte-preserving pass). `@media`/`@container`/`@supports` are unaffected
-  // (structured `QueryAtRuleBlock`); this generic prelude serves the block/
-  // statement at-rules that misparsed before.
-  // A literal chunk stops before a Less value token (`@{`/`@@`/`@name`), a
-  // terminator (`{`/`;`), or a bracket/string opener; a bare `@` not introducing a
-  // token (`@ `, `@)`) stays literal content.
-  const preludeChunk = regex(/(?:[^@{};()[\]'"]|@(?![{@\-_a-zA-Z0-9-￿]))+/);
-  // Balanced `()`/`[]` groups are STRUCTURED (recursive `preludeToken`), not opaque
-  // scans, so a Less value token inside a group — `@media (min-width: @bp)` — stays
-  // an isolated `@var`/`@{…}` leaf the host consumes, and nested groups nest by
-  // recursion. Strings stay opaque leaves (`@{…}` inside a string is string
-  // interpolation, a separate Tier-B shape). The `{`/`;` terminators are never
-  // consumed here — a `{` ends the prelude at the block opener.
-  // A `(`/`[` must open a BALANCED group (plain `literal(')')`, no recovery): an
-  // unclosed `@unknown url( {` leaves the `(` unconsumed, so the prelude ends before
-  // it and the block `{` never matches — the at-rule fails and the malformed input
-  // is rejected, exactly as the old opaque scan did (a `<bad-token>` parse error).
-  const preludeToken = choice(lessInterp, nestedRef, lessVar, preludeChunk, g.preludeParen, g.preludeSquare, singleStr, doubleStr);
-  const preludeParen = sequence(literal('('), many(g.preludeToken), literal(')'));
-  const preludeSquare = sequence(literal('['), many(g.preludeToken), literal(']'));
-  // TOP-LEVEL token set: `preludeToken` MINUS the bare `@var` (`lessVar`) and
-  // `@@indirect`/multi-ref (`nestedRef`) forms, so a top-level bare variable stops
-  // the prelude → hard error. `@{…}` interpolation, chunks, balanced groups (whose
-  // inner `@var` stays valid), and strings remain. v5 STRICT: a top-level bare
-  // `@variable`/`@@indirect` is a HARD parse error (generalizes the @supports
-  // precedent b799d9a49; 4.x only warned) — the committed `AtRuleMalformed` fallback
-  // reports it. A `@var` INSIDE `(…)`/`[…]` stays a valid declaration value via the
-  // recursive `preludeToken` (even inside an unknown at-rule's `(x: @v)`).
-  const preludeTokenTop = choice(lessInterp, preludeChunk, g.preludeParen, g.preludeSquare, singleStr, doubleStr);
-  const atPrelude = optional(noTrivia(oneOrMore(preludeTokenTop)));
-  // ── Structured, committed query block (@media / @container / @supports) ──────
-  // The flat `atPrelude` above walks past ANY bracket content to the first
-  // top-level `{`/`;`, so a stray/unbalanced bracket (`@media (extra: bracket))`)
-  // is silently swallowed — 0 errors. This structured prelude mirrors the CSS
-  // query grammar (grammar.ts QueryCondition/QueryInParens/QueryFeature): each
-  // `(…)` is a real balanced group, so a top-level stray `)` is NOT consumed by
-  // the prelude, and the committed `expect('{')` then fails ON that `)` → 1 error.
-  // Because the query keyword IS consumed, this rule does not fall through to the
-  // swallowing generic AtRuleBlock. Well-formed Less-specific preludes that this
-  // structured shape can't parse (bare `@var`, `#ns.x[@k]`, `~"…"`, `@media
-  // screen`) fail the prelude BEFORE the commit point, so the sequence backtracks
-  // cleanly and the generic AtRuleBlock (→ `_buildAtRulePrelude`) handles them.
-  // @see https://www.w3.org/TR/mediaqueries-5/#mq-syntax
-  // The condition sub-grammar (QueryFeature / QueryInParens / QueryCondition) is
-  // inherited from CSS verbatim. `queryPrelude` is overridden locally (below) so a
-  // comma-separated list may carry bare <media-type> items alongside conditions.
-  // Only this block wrapper differs (Less commits its opening brace via `expect`),
-  // so it stays here and reads `g.queryPrelude`.
-  //
-  // ── Media-query list (CSS Media Queries L4 <media-query-list>) ────────────────
-  // The inherited CSS `queryPrelude` models a @supports/@container-flavoured list
-  // whose every comma item is a parenthesised / `not`-led <media-condition>. It
-  // rejects a bare <media-type> (`all`, `print`, `screen`) as a list item, so a
-  // prelude whose FIRST item parses structurally but whose tail is a bare type —
-  // `@media ((color) and (hover)), all`, `@media (min-width: 100px), print` —
-  // hard-errors at the committed `{`: the first item is consumed, the `, all` tail
-  // is not, and the structured rule has already passed the point where it could
-  // backtrack to the (bracket-swallowing) generic AtRuleBlock. Per the L4 grammar a
-  // <media-query> list item is EITHER a <media-condition> OR
-  //   [ not | only ]? <media-type> [ and <media-condition-without-or> ]?
-  // so each comma-list position also admits the media-type form. The emitted AST is
-  // unaffected: the Less QueryAtRuleBlock builder reconstructs the prelude from
-  // SOURCE TEXT (identical to the generic AtRuleBlock path — both converge on
-  // `_buildAtRulePrelude`), so the grammar only has to CONSUME a well-formed prelude
-  // and reach the commit point; no stray/unbalanced bracket is ever swallowed (the
-  // media-type form's `and` sub-conditions are balanced `QueryInParens`).
-  // @see https://www.w3.org/TR/mediaqueries-5/#media-query-list
-  // A <media-type> is an <ident> other than the query keywords (`not only and or`,
-  // plus `layer` — reserved). Mirrors the CSS `containerName` exclusion set.
-  const mediaType = regex(/(?!(?:not|only|and|or|layer)(?![-\w]))-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*/i);
-  const containerName = mediaType;
-  // `[ not | only ]? <media-type> [ and <media-in-parens> ]*`.
-  const mediaTypeQuery = sequence(
-    optional(keywords(['not', 'only'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' })),
-    mediaType,
-    many(sequence(keywords(['and'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' }), g.QueryInParens)));
-  const mediaQueryItem = choice(g.QueryCondition, mediaTypeQuery);
-  // Import postludes use the same media-query item grammar, but may be a bare
-  // media type (`screen`), so they cannot reuse `queryPrelude` directly.
-  const ImportMedia = node('ImportMedia', sepBy(mediaQueryItem, literal(',')));
-  const queryPrelude = sequence(
-    optional(containerName), g.QueryCondition, many(sequence(literal(','), mediaQueryItem)));
-  // `@supports` stays in the STRUCTURED query block for well-formed parenthesized /
-  // `not` conditions (so a stray/unbalanced bracket is still rejected, not
-  // swallowed). Its stricter opener rule is enforced by the dedicated
-  // `SupportsAtRuleBlock` fallback below, which catches the leftovers this
-  // structured shape can't parse.
-  const queryAtKeyword = keywords(['@media', '@container', '@supports'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  const QueryAtRuleBlock = node(
-    sequence(queryAtKeyword, g.queryPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
-
-  // ── Strict `@supports` prelude (v5 .less) ────────────────────────────────────
-  // `@supports`'s prelude is a `<supports-condition>` (css-conditional-3 §2), which
-  // — unlike a `@media`/`@container` query — has NO bare form. It must OPEN with
-  // `(` (parenthesized), the `not` keyword, a `<function-token>` (an ident glued to
-  // `(`, e.g. `selector(…)` / `<general-enclosed>`), OR — the Less addition — a
-  // `@{…}` interpolation (the migration target: an interpolated condition is
-  // allowed where a bare `@var` is not). A bare CSS ident (`@supports color {}`) or
-  // a bare variable reference (`@supports @cond {}`) is INVALID. v5 .less makes this
-  // a HARD PARSE ERROR — stricter by design than Less 4.x, which only deprecates the
-  // bare form with a warning (4.x `feat: deprecate bare @variable in non-value
-  // at-rule positions`). Well-formed parenthesized/`not` conditions are already
-  // taken by the structured `QueryAtRuleBlock` above; this required-condition
-  // fallback exists so the leftovers that reach it (a bare ident, a bare `@var`, or
-  // — now VALID — a `@{…}` interpolation opener) either commit or report the missing
-  // condition, instead of being swallowed by the permissive generic `AtRuleBlock`.
-  // A zero-width lookahead asserts the opener without consuming, so the shared
-  // `atPrelude` scan still owns the walk to `{`; on failure `expect` recovers in
-  // place and the scan continues, so the block still parses (one error, no cascade).
-  // Ordered AFTER `QueryAtRuleBlock` and BEFORE the generic `AtRuleBlock` in the
-  // statement choice, so `@supports` never falls through to the permissive arm.
-  // @see https://www.w3.org/TR/css-conditional-3/#at-supports
-  const supportsAtKeyword = keywords(['@supports'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  const supportsCondAhead = regex(/(?=\(|not(?![-\w])|@\{|-?[_a-zA-Z-￿][-_a-zA-Z0-9-￿]*\()/i);
-  // After the committed opener lookahead, the condition uses the SAME leaf-split
-  // prelude as the generic `atPrelude` (`preludeTokenTop`): `(…)`/`not`/function-token
-  // conditions become chunk + balanced-group leaves, and a `@{…}` interpolation is an
-  // isolated `lessInterp` leaf — so the tree2 host RESOLVES `@supports @{cond}`
-  // (a bare `@cond`/ident is already rejected by the opener lookahead, and this token
-  // run stops at the block `{` rather than colliding with a `@{…}` interpolation brace).
-  const supportsPreludeScan = optional(noTrivia(oneOrMore(preludeTokenTop)));
-  const reqSupportsPrelude = sequence(expect(supportsCondAhead, 'supports condition'), supportsPreludeScan);
-  const SupportsAtRuleBlock = node('AtRuleBlock',
-    sequence(supportsAtKeyword, reqSupportsPrelude, expect(literal('{'), '{'), g.atRuleBody, expect(literal('}'), '}')));
-
-  // Generic block at-rule. `atPrelude` (the strict atom sequence above) stops before
-  // a top-level bare `@var`, so `literal('{')` is reached only for a well-formed
-  // prelude (bare ident, `@{…}` interpolation, parenthesized/bracketed groups,
-  // strings). A prelude that stopped at a bare `@var` fails `literal('{')` here (and
-  // `literal(';')` in AtRuleStatement), and the committed `AtRuleMalformed` fallback
-  // reports it. `literal('{')` (not `expect`) stays non-committing so a statement-
-  // form at-rule (`@foo bar;`) can fall through to AtRuleStatement.
-  const AtRuleBlock = node(
-    sequence(atKeyword, atPrelude, literal('{'), g.atRuleBody, expect(literal('}'), '}')));
-
-  // ── Structured, committed import statement (@import / @-import / @-export) ────
-  // The flat `atPrelude` also swallows a bare ident before the path, so
-  // `@import malformed "x.less";` is accepted with 0 errors. This rule requires,
-  // right after the keyword and an optional `(options)` paren, a quoted string or
-  // `url(...)` as the path — committed via `expect`. For `@import malformed "…"`,
-  // the token after the keyword is the bare ident `malformed` (neither `(` nor
-  // Quoted/Url), so the committed `expect(choice(Quoted, Url))` fails → 1 error.
-  // Ordered before the generic AtRuleStatement. Every semantic part stays a
-  // grammar child: no builder re-scans an opaque prelude.
-  const importKeyword = keywords(['@import', '@-import', '@-export'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' });
-  const ImportOption = node('ImportOption', keywords(['reference', 'optional', 'once', 'multiple', 'inline', 'css', 'less'], { caseInsensitive: true, boundary: '-_0-9A-Za-z' }));
-  const ImportOptions = node('ImportOptions',
-    sequence(literal('('), sepBy(g.ImportOption, literal(',')), literal(')')));
-  const ImportTarget = node('ImportTarget', choice(g.Url, g.Quoted));
-  const ImportAtRuleStatement = node('ImportAtRule',
+      word(
+        '@plugin',
+        '-_0-9A-Za-z',
+        { caseInsensitive: true }
+      ),
+      optional(sequence(literal('('), field('options', g.DirectLessGeneralEnclosedContent), literal(')'))),
+      field('target', quotedOrUrlTarget),
+      literal(';')
+    ),
+    (_children, fields) => {
+      const target = requireField(fields, 'target').value;
+      if (!isQuoted(target) && !isUrl(target) && !isInterp(target)) {
+        throw new TypeError('Direct Less Plugin lost its typed target.');
+      }
+      const optionValue = fields?.options === undefined ? null : requireField(fields, 'options').value;
+      if (optionValue !== null && !isInterp(optionValue)) {
+        throw new TypeError('Direct Less Plugin options must remain an interpolation template.');
+      }
+      return { type: 'Plugin', target, options: optionValue };
+    }
+  );
+  // A call arm here is a COMPLETE variable value, so it must not claim the call
+  // half of a lookup-bearing mixin reference (`#m(@a)[]`). Without this the
+  // choice commits to the bare call and the trailing `[…]` can never be read,
+  // even though Value already recognizes the whole reference —
+  // which is why the same value parsed in property position and not here.
+  const directMixinValueWithoutLookup = not(noTrivia(literal('[')));
+  const directVariableName = token(noTrivia(sequence(literal('@'), g.LessSyntaxVariableName)));
+  const VarDeclaration = node<VariableDeclaration>(
+    'VarDeclaration',
+    sequence(directVariableName, literal(':'), choice(sequence(g.DirectLessNamespacedMixinValue, directMixinValueWithoutLookup), g.ImportantValue, sequence(g.DirectLessFlatMixinCall, directMixinValueWithoutLookup), sequence(not(literal('{')), g.VariableValue)), literal(';')),
+    (children, _fields, span) => {
+      const name = requireToken(children[0]).value.slice(1);
+      const value = children[2];
+      return withSourceSpan(
+        variableDeclaration(name, isMixinCall(value) ? value : variableValueSlot(value), { mode: 'declare' }),
+        span
+      );
+    }
+  );
+  const ValueBlockDeclaration = node<VariableDeclaration>(
+    'VarDeclaration',
     sequence(
-      importKeyword, optional(g.ImportOptions),
-      expect(g.ImportTarget, 'import path'),
-      optional(g.ImportMedia), expect(literal(';'))
-    ));
-
-  const AtRuleStatement = node(
-    sequence(atKeyword, atPrelude, literal(';')));
-
-  // ── Strict generic at-rule fallback (v5 .less) ──────────────────────────────
-  // A generic at-rule whose strict `atPrelude` stopped BEFORE a top-level bare
-  // `@var` / `@@var` (or other junk) that neither the block `{` nor the statement
-  // `;` tail can consume — `@keyframes @v {}`, `@layer @v {}`, `@namespace @@v "u";`,
-  // `@charset @v;`, unknown `@foo @v {}`, custom `@-blah @v {}`, `@layer a.@v.c;`.
-  // Ordered AFTER AtRuleBlock / AtRuleStatement so it only ever catches the
-  // leftovers those well-formed tails could not. A zero-width lookahead asserts the
-  // required `{`/`;` tail; on a bare `@var` it fails, so the committed `expect`
-  // records ONE legible error AT that position (not the keyword) and recovers in
-  // place. The trailing `scanTo` then consumes the rest of the malformed prelude up
-  // to the real block/statement tail, and the tail itself, so `many` resumes cleanly
-  // (one error, no cascade) — the same recover-and-consume shape as
-  // `SupportsAtRuleBlock`. Built as `AtRuleBlock` (a doomed branch's emitted node is
-  // moot — the parse already carries the error). v5 makes the bare form a HARD parse
-  // error; 4.x only deprecated it with a warning.
-  const atTailAhead = regex(/(?=[{;])/);
-  const AtRuleMalformed = node('AtRuleBlock',
+      directVariableName,
+      literal(':'),
+      g.ValueBlock
+    ),
+    (children, _fields, span) => withSourceSpan(
+      variableDeclaration(
+        requireToken(children[0]).value.slice(1),
+        valueSlot(requireValueNode(children[2])),
+        { mode: 'declare' }
+      ),
+      span
+    )
+  );
+  const Keyword = node<ValueNode>(
+    'Keyword',
+    g.LessSyntaxKeyword,
+    children => keyword(requireToken(children[0]).value)
+  );
+  const NamedColor = node<ValueNode>(
+    'NamedColor',
+    g.LessSyntaxNamedColor,
+    children => color(requireToken(children[0]).value)
+  );
+  const Color = node<ValueNode>(
+    'Color',
+    g.CssSyntaxHexColor,
+    children => color(requireToken(children[0]).value)
+  );
+  const Dimension = node<ValueNode>(
+    'Dimension',
+    noTrivia(sequence(g.CssSyntaxNumber, optional(g.CssSyntaxDimensionUnit))),
+    (children) => {
+      const numberText = requireToken(children[0]).value;
+      const unit = children.length > 1 ? requireToken(children[1]).value : '';
+      return dimension(Number(numberText), unit, `${numberText}${unit}`);
+    }
+  );
+  // CSS unicode-range is one opaque CSS token, not Less arithmetic. It belongs
+  // in the value-term layer, but intentionally not the math-atom layer: Less
+  // rejects `U+0-7F + 1` rather than applying numeric operations to the range.
+  const UnicodeRange = node<Any>(
+    'UnicodeRange',
+    g.CssSyntaxUnicodeRange,
+    children => any(requireToken(children[0]).value)
+  );
+  // CSS declaration hacks such as `#000 \\9` are a real one-token value
+  // suffix. Keep the escape structural and narrow; this is not a raw-value
+  // fallback or a second scanner for declaration text.
+  const EscapeValue = node<Any>(
+    'EscapeValue',
+    regex(/(?:\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/),
+    children => any(requireToken(children[0]).value)
+  );
+  const PercentEscape = node<Any>(
+    'PercentEscape',
+    g.LessSyntaxPercentEscape,
+    children => any(requireToken(children[0]).value)
+  );
+  // `@page` pseudo-pages are header atoms, not selector syntax in a value
+  // position. Preserve their one-token spelling without widening generic values.
+  const PagePseudo = node<Any>(
+    'PagePseudo',
+    sequence(literal(':'), g.LessSyntaxKeyword),
+    children => any(`:${requireToken(children[1]).value}`)
+  );
+  // Unknown at-rule functions are intentionally permissive.  This legacy Less
+  // argument spelling is one opaque grammar fact—not two quoted strings around
+  // a value—and remains available to any unknown function name.
+  const DoubledQuoteArgument = node<Any>(
+    'DoubledQuoteArgument',
+    sequence(literal('""'), regex(/[^"()]+/), literal('""')),
+    children => any(`""${requireToken(children[1]).value}""`)
+  );
+  // This is the AST reduction of the public Less `ArgCondition` grammar. Its
+  // operands are bounded ordinary values; comparison/logical structure is added
+  // only after those values have been recognized.
+  const DirectLessFunctionConditionOperand = node<ValueNode>(
+    'DirectLessFunctionConditionOperand',
+    oneOrMore(sequence(not(functionConditionStop), g.TopSum)),
+    (children) => {
+      const values = children.filter(isValueNode);
+      if (values.length === 0) {
+        throw new TypeError('Direct Less function condition lost its operand.');
+      }
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const DirectLessFunctionConditionParen = node<FunctionConditionFact>(
+    'DirectLessFunctionConditionParen',
+    sequence(literal('('), g.DirectLessFunctionConditionOr, literal(')')),
+    (children) => {
+      const inner = children.find(isFunctionConditionFact);
+      if (inner === undefined) {
+        throw new TypeError('Direct Less function condition lost its parenthesized operand.');
+      }
+      return { guard: inner.guard, src: `(${inner.src})`, grouped: true, hasComparison: inner.hasComparison };
+    }
+  );
+  const DirectLessFunctionConditionTerm = node<FunctionConditionFact>(
+    'DirectLessFunctionConditionTerm',
     sequence(
-      atKeyword, atPrelude,
-      expect(atTailAhead, 'at-rule block or ;'),
-      scanTo(choice(literal('{'), literal(';')), { skip: [bParen, bSquare, bCurly, lessInterp, singleStr, doubleStr] }),
-      choice(sequence(literal('{'), g.atRuleBody, expect(literal('}'), '}')), literal(';'))
-    ));
-
-  // An at-rule body (@media / @supports / @starting-style / …) holds the SAME
-  // statements as a ruleset body — nested rules, mixin calls, each(), extends,
-  // var calls — not just declarations. Mirror declarationList's choice set.
-  // Same statement set as a ruleset body (shares `blockItem`).
-  const atRuleBody = many(g.blockItem);
+      optional(functionConditionNot),
+      choice(g.DirectLessFunctionConditionParen, g.DirectLessFunctionConditionOperand),
+      optional(sequence(functionConditionOperator, choice(g.DirectLessFunctionConditionParen, g.DirectLessFunctionConditionOperand)))
+    ),
+    (children) => {
+      const nested = children.filter(isFunctionConditionFact);
+      const values = children.filter(isValueNode);
+      const operator = children.map(guardOperatorText).find((value): value is string => value !== null)?.trim();
+      const left = nested[0] ?? (values[0] === undefined ? undefined : { guard: { g: 'truth' as const, value: values[0] }, src: functionConditionSource(values[0]), grouped: false, hasComparison: false });
+      const right = nested[1] ?? (values.length > 1 && values[1] !== undefined ? { guard: { g: 'truth' as const, value: values[1] }, src: functionConditionSource(values[1]), grouped: false, hasComparison: false } : undefined);
+      if (left === undefined) {
+        throw new TypeError('Direct Less function condition term lost its left operand.');
+      }
+      let guard: MixinGuard;
+      let src: string;
+      if (operator === undefined) {
+        guard = left.guard;
+        src = left.src;
+      } else {
+        if (right === undefined) {
+          throw new TypeError('Direct Less comparison requires value operands.');
+        }
+        if (nested.length === 0 && children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not')) {
+          throw new TypeError('Direct Less function condition `not` requires a grouped condition operand.');
+        }
+        const leftValue = left.guard.g === 'truth' ? left.guard.value : condition(left.guard, left.src);
+        const rightValue = right.guard.g === 'truth' ? right.guard.value : condition(right.guard, right.src);
+        guard = { g: 'cmp', op: operator, left: leftValue, right: rightValue };
+        src = `${left.src} ${operator} ${right.src}`;
+      }
+      const negated = children.some(child => typeof child === 'object' && child !== null && 'value' in child && child.value === 'not');
+      const hasComparison = operator !== undefined || left.hasComparison || right?.hasComparison === true;
+      const grouped = operator === undefined && left.grouped;
+      return negated
+        ? { guard: { g: 'not', inner: guard }, src: `not(${src})`, grouped, hasComparison }
+        : { guard, src, grouped, hasComparison };
+    }
+  );
+  const DirectLessFunctionConditionAnd = node<FunctionConditionFact>(
+    'DirectLessFunctionConditionAnd',
+    sequence(g.DirectLessFunctionConditionTerm, many(sequence(functionConditionAnd, g.DirectLessFunctionConditionTerm))),
+    children => foldFunctionCondition('and', children)
+  );
+  const DirectLessFunctionConditionOr = node<FunctionConditionFact>(
+    'DirectLessFunctionConditionOr',
+    sequence(g.DirectLessFunctionConditionAnd, many(sequence(functionConditionOr, g.DirectLessFunctionConditionAnd))),
+    children => foldFunctionCondition('or', children)
+  );
+  const DirectLessFunctionCondition = node<ValueNode>(
+    'DirectLessFunctionCondition',
+    g.DirectLessFunctionConditionOr,
+    (children) => {
+      const fact = children.find(isFunctionConditionFact);
+      if (fact === undefined) {
+        throw new TypeError('Direct Less function condition lost its fact.');
+      }
+      return condition(fact.guard, fact.src);
+    }
+  );
+  // A math expression may claim a function argument only at an actual argument
+  // boundary. A plain delimiter keeps the final-argument arithmetic fast path;
+  // a comment-separated comma/semicolon boundary is trivia owned by the
+  // enclosing function call, not a value child.
+  const functionArgumentBoundaryAhead = choice(
+    regex(/(?=[,;)])/),
+    peek(parser({ trivia: functionTrivia }, choice(literal(','), literal(';'))))
+  );
+  const DirectLessFunctionScalarArgument = node<ValueNode>(
+    'DirectLessFunctionScalarArgument',
+    sequence(g.MathSum, functionArgumentBoundaryAhead),
+    children => requireValueNode(children[0])
+  );
+  const DirectLessFunctionArgument = node<ValueSlot>(
+    'DirectLessFunctionArgument',
+    choice(
+      sequence(not(not(sequence(scanTo(choice(functionConditionAhead, regex(/[,;)]/))), functionConditionAhead))), g.DirectLessFunctionCondition),
+      g.DirectLessFunctionScalarArgument,
+      g.ArgumentValueSequence
+    ),
+    (children) => {
+      const value = children.find(isValueSlotValue);
+      if (value === undefined) {
+        throw new TypeError('Direct Less function argument lost its value.');
+      }
+      return value;
+    }
+  );
+  // Generic Less function calls carry one flat positional argument vector.
+  // Unlike mixin arguments, commas and semicolons do not create nested groups
+  // here: either delimiter separates the next typed argument, and evaluation
+  // canonicalizes both to the ordinary function-call comma spelling.
+  // A final delimiter has no following argument, so it intentionally has no
+  // ValueLayout boundary to retain.
+  // The `separator` capture records the authored delimiter gap for byte-faithful
+  // replay; it is layout, never a substitute for trivia. The following argument
+  // therefore stays under ambient trivia (`functionTrivia` here), so a `//` line
+  // comment after a delimiter is skipped exactly as it is before the first
+  // argument. Block comments on argument boundaries stay in that trivia stream
+  // and are replayed through ValueLayout; only comments inside a value sequence
+  // still reach ArgumentValueSequence.
+  const functionArgumentSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
+  const trailingFunctionArgumentSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
+  const functionArgument = choice(
+    g.DoubledQuoteArgument,
+    g.ValueBlock,
+    g.DirectLessFunctionArgument
+  );
+  const FunctionArguments = optional(sequence(
+    functionArgument,
+    many(sequence(
+      functionArgumentSeparator,
+      functionArgument,
+    )),
+    optional(trailingFunctionArgumentSeparator)
+  ));
+  const DirectLessFunction = node<FunctionCall>(
+    'Call',
+    parser({ trivia: functionTrivia }, sequence(functionOpener, FunctionArguments, literal(')'))),
+    (children, fields, span, _rawChildren, triviaLog, state) => {
+      const name = functionNameFromOpener(children[0]);
+      const args: ValueSlot[] = [];
+      for (const child of children.slice(1, -1)) {
+        if (isValueSlotValue(child)) {
+          args.push(child);
+        }
+      }
+      const call = funcCall(name, args);
+      const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
+      if (separators.length === args.length - 1 || hasField(fields, 'trailingSeparator')) {
+        withValueLayout(call.args, separators);
+      }
+      return withSourceSpan(call, span);
+    }
+  );
+  // A detached ruleset is a call-argument form, not a general value piece.
+  // Keep this argument-enabled function production out of Value
+  // so a declaration value cannot acquire the call-only `{ … }` first set.
+  const callArgumentFunctionSeparator = field('separator', regex(/[;,][ \t\n\r\f]*/));
+  const trailingCallArgumentFunctionSeparator = field('trailingSeparator', noTrivia(regex(/[;,][ \t\n\r\f]*/)));
+  const CallArgumentFunctionArguments = optional(sequence(
+    g.CallArgumentValue,
+    many(sequence(
+      callArgumentFunctionSeparator,
+      g.CallArgumentValue,
+    )),
+    optional(trailingCallArgumentFunctionSeparator)
+  ));
+  const DirectLessCallArgumentFunction = node<FunctionCall>(
+    'Call',
+    sequence(functionOpener, CallArgumentFunctionArguments, literal(')')),
+    (children, fields, span) => {
+      const name = functionNameFromOpener(children[0]);
+      const args = children.slice(1, -1).filter(isValueSlotValue);
+      const call = funcCall(name, args);
+      const separators = separatorsFromFields(fields);
+      if (separators.length === args.length - 1 || hasField(fields, 'trailingSeparator')) {
+        withValueLayout(call.args, separators);
+      }
+      return withSourceSpan(call, span);
+    }
+  );
+  // Deprecated Less percent-format syntax is a normal existing function fact.
+  // The glued `%(` opener keeps it distinct from the `%` arithmetic operator.
+  const FormatFunction = node<FunctionCall>(
+    'Call',
+    sequence(noTrivia(literal('%(')), optional(sequence(not(literal('{')), g.ValueSequence)), many(noTrivia(sequence(regex(/,[ \t\n\r\f]*/), not(literal('{')), g.ValueSequence))), literal(')')),
+    children => funcCall('%', children.slice(1, -1).filter(isValueSlotValue))
+  );
+  // A bare call is a Less statement only with its terminator.  Keep this
+  // distinct from DirectLessFunction, which is also a value piece and must not
+  // consume a declaration/list boundary.
+  const DirectLessFunctionStatement = node<FunctionCall>(
+    'Call',
+    sequence(g.DirectLessCallArgumentFunction, literal(';')),
+    (children) => {
+      const call = children.find(isFunctionCall);
+      if (call === undefined) {
+        throw new TypeError('Direct Less function statement lost its call fact.');
+      }
+      return call;
+    }
+  );
+  // `calc()` is not an opaque generic call: its sole argument is the Less math
+  // grammar, including nested arithmetic parentheses.  This gives the runtime
+  // the existing Operation/Block tree it needs for calc-safe evaluation.
+  const DirectLessCalcFunction = node<FunctionCall>(
+    'CalcCall',
+    noTrivia(sequence(calcFunctionOpener, g.MathSum, literal(')'))),
+    children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children[1])])
+  );
+  // ValueList-position identifiers and glued function openers share one lexical
+  // family. Parse that opener once, then route by the returned text: `url(` and
+  // `calc(` keep their dedicated typed bodies, any other glued opener is a
+  // generic function call, and a bare identifier remains the keyword /
+  // interpolation-bearing value production. This is the canonical Parseman 0.40
+  // dispatch shape: no `url(` / `calc(` / generic function / keyword sibling
+  // reparsing, and `foo (` still stays keyword + paren because the `(` is not
+  // glued into the opener.
+  const identOrFunction = token(noTrivia(sequence(g.LessSyntaxInterpolatedValueStart, optional(literal('(')))));
+  const CalcFunction = node<FunctionCall>(
+    'CalcCall',
+    noTrivia(sequence(routed(), g.MathSum, literal(')'))),
+    children => funcCall(functionNameFromOpener(children[0]), [requireValueNode(children[1])])
+  );
+  const GenericFunction = node<FunctionCall>(
+    'Call',
+    parser({ trivia: functionTrivia }, sequence(routed(), FunctionArguments, literal(')'))),
+    (children, fields, span, _rawChildren, triviaLog, state) => {
+      const name = functionNameFromOpener(children[0]);
+      const args: ValueSlot[] = [];
+      for (const child of children.slice(1, -1)) {
+        if (isValueSlotValue(child)) {
+          args.push(child);
+        }
+      }
+      const call = funcCall(name, args);
+      const separators = functionSeparatorsFromFields(fields, children, triviaLog, state);
+      if (separators.length === args.length - 1) {
+        withValueLayout(call.args, separators);
+      }
+      return withSourceSpan(call, span);
+    }
+  );
+  const Identifier = node<ValueNode>(
+    'Identifier',
+    noTrivia(sequence(routed(), many(interpolatedValueTail))),
+    (children) => {
+      if (children.some(isInterpolationFact)) {
+        return interpolation(interpolationPartsFrom(children, true));
+      }
+      return keyword(children.map(child => requireToken(child).value).join(''));
+    }
+  );
+  const IdentifierOrFunction = dispatch(
+    identOrFunction,
+    caseOf('url(', choice(RoutedDynamicUrl, RoutedStaticUrl)),
+    caseOf('calc(', CalcFunction),
+    when(endsWith('('), GenericFunction),
+    otherwise(Identifier)
+  );
+  // Less 5 removed inline backtick JavaScript. Recognize the complete legacy
+  // value shape so public diagnostics can point at the removed construct instead
+  // of reporting a generic value-position expected-token failure.
+  const BacktickJavaScript = node<ValueNode>(
+    'BacktickJavaScript',
+    noTrivia(sequence(literal('`'), inlineJavaScriptBody, literal('`'))),
+    (_children, _fields, span) => {
+      throw new LessInlineJavaScriptError(span.start, span.end);
+    }
+  );
+  // `~(...)` escapes its delimiters and makes the complete inner list the value
+  // (rather than a math grouping). A paren-delimited `Block` already has exactly the required
+  // evaluation behavior for that typed list: a computed list loses its outer
+  // parentheses, while the inner list remains indexable by `each()` and list
+  // functions.  This is grammar construction, not a raw source-value escape.
+  const EscapedParen = node<ValueNode>(
+    'EscapedParen',
+    noTrivia(sequence(literal('~('), g.ValueList, literal(')'))),
+    children => block(requireValueSlot(children[1]), 'paren', true)
+  );
+  // A bare `(...)` is a math grouping in Less.  Function/mixin argument lists
+  // have their own productions above; do not widen this value position into a
+  // permissive raw list.
+  const Paren = node<ValueNode>(
+    'Paren',
+    // Math itself is deliberately no-trivia so space-list and glued-sign rules
+    // stay exact. Parentheses own their boundary gaps, including Less `//`
+    // comments before the first or after the final operand.
+    noTrivia(sequence(literal('('), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
+    (children) => {
+      const inner = children.find(isValueNode);
+      if (inner === undefined) {
+        throw new TypeError('Direct Less parenthesized math lost its inner value.');
+      }
+      return block(inner);
+    }
+  );
+  // CSS grid line names are a bracketed value piece, not a map accessor or an
+  // opaque post-parse string. Keep the delimited grammar fact as one existing
+  // raw value leaf; dynamic/interpolated grid names remain outside this slice.
+  const gridLineName = node<Any>(
+    'GridLineName',
+    noTrivia(sequence(literal('['), g.Keyword, literal(']'))),
+    (children) => {
+      const name = requireValueNode(children[1]);
+      if (name.type !== 'Keyword') {
+        throw new TypeError('Direct Less grid line name requires a keyword fact.');
+      }
+      return any(`[${name.src}]`);
+    }
+  );
+  // A parenthesized `feature: value` is an ordinary typed Less value as well
+  // as a media/container query fact: `@tablet: (min-width: @size)`.  Keep the
+  // one canonical Block(paren, Operation(':')) reduction outside QueryValue so the
+  // value and query grammars share it without a recursive query-value cycle.
+  const QueryColonFeature = node<ValueNode>(
+    'QueryColonFeature',
+    sequence(literal('('), g.CssSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
+    children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
+  );
+  // Cheap superset lookahead so a plain `#fff` hex color (or any non-reference
+  // `.`/`#`-led value) does not run the whole mixin path + call speculation only
+  // to fail the required trailing lookup accessor and backtrack. A real mixin
+  // reference is `name path? (args)?` then `oneOrMore(ReferenceTail)`; its first
+  // differentiating tail is `[…]`, or — when a call precedes it — `(…)`. The chars
+  // before that first `[`/`(` are only the mixin name and `>`-joined path
+  // segments, never `;`/`{`/`}`. So requiring the `[.#]` head that every mixin
+  // name shares, then a `[` OR `(` before the next `;`/`{`/`}`, is a strict
+  // superset: a reference whose call args carry `;`/`{`/`}` still opens with `(`
+  // first and is never skipped, while a bracket-less color/class value is. The
+  // `[.#]` anchor also makes the predicate fail at offset 0 for every non-name
+  // value (`10px`, `linear-gradient(…)`), so it adds no forward scan on the
+  // common path the doomed `attempt` already rejected at its first byte. The
+  // predicate emits a throwaway token, so consumers select the real value node
+  // by type rather than by fixed position.
+  const directMixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
+  const Value = node<ValueNode>(
+    'Value',
+    choice(sequence(directMixinReferenceAhead, attempt(g.DirectLessMixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.DirectLessSelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
+    children => requireValueNode(children.find(isValueNode))
+  );
+  // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
+  // is glued to a variable or grouping (`-@x`, `-(...)`); `- @x` is instead a
+  // preserved space-list.  The direct grammar keeps that source-order/spacing
+  // distinction rather than normalizing both spellings to negation.
+  const MathUnary = node<ValueNode>(
+    'MathUnary',
+    choice(
+      noTrivia(sequence(regex(/-(?=[(@])/), g.Value)),
+      g.Value
+    ),
+    children => children.length === 1
+      ? requireValueNode(children[0])
+      : operation('*', dimension(-1, '', '-1'), requireValueNode(children[1])),
+    { collapse: true }
+  );
+  const MathAtom = node<ValueNode>(
+    'MathAtom',
+    g.MathUnary,
+    children => requireValueNode(children[0]),
+    { collapse: true }
+  );
+  // Parenthesized and calc math follows Less precedence: product before sum,
+  // both left-associative.  Top-level declarations deliberately exclude `/`:
+  // with Less's default parens-division mode it is a preserved slash group, not
+  // an eager division Operation.  The existing serializer already recognizes
+  // that SpacedValue shape and reinterprets it only inside calc().
+  const MathProduct = node<ValueNode>(
+    'MathProduct',
+    noTrivia(sequence(g.MathAtom, many(sequence(productOperator, g.MathAtom)))),
+    foldOperation,
+    { collapse: true }
+  );
+  const MathSum = node<ValueNode>(
+    'MathSum',
+    noTrivia(sequence(g.MathProduct, many(sequence(sumOperator, g.MathProduct)))),
+    foldOperation,
+    { collapse: true }
+  );
+  const TopProduct = node<ValueNode>(
+    'TopProduct',
+    noTrivia(sequence(g.MathAtom, many(sequence(topProductOperator, g.MathAtom)))),
+    foldOperation,
+    { collapse: true }
+  );
+  const TopSum = node<ValueNode>(
+    'TopSum',
+    noTrivia(sequence(g.TopProduct, many(sequence(sumOperator, g.TopProduct)))),
+    foldOperation,
+    { collapse: true }
+  );
+  // In Less's default `parens-division` mode a glued top-level `/` is not an
+  // eager Operation. It is one parser-owned slash group that becomes division
+  // only when a surrounding calc context consumes it.
+  const PreservedDivision = node<ValueNode>(
+    'PreservedDivision',
+    noTrivia(sequence(g.TopSum, oneOrMore(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
+    (children, fields, span) => {
+      const parts: ValueNode[] = [];
+      for (const child of children) {
+        if (isValueNode(child)) {
+          parts.push(child);
+        } else if (isTerminalText(child, '/')) {
+          parts.push(keyword('/'));
+        }
+      }
+      const slashBoundaries = fields?.separator === undefined
+        ? []
+        : requireFields(fields, 'separator').map(separator => staticText(separator.value));
+      const separators = slashBoundaries.flatMap((boundary) => {
+        const slash = boundary.indexOf('/');
+        return slash < 0 ? [boundary] : [boundary.slice(0, slash), boundary.slice(slash + 1)];
+      });
+      return {
+        type: 'SpacedValue',
+        parts,
+        separators: separators.length === parts.length - 1
+          ? separators
+          : Array.from({ length: parts.length - 1 }, () => '')
+      };
+    }
+  );
+  // Value pieces are separated by grammar-owned whitespace. Keeping that token
+  // here is what lets canonical SpacedValue retain multiline CSS layout without
+  // scanning/re-splitting a completed declaration value later.
+  // Left-factored `TopSum (/ TopSum)*`: the value-piece choice used to try
+  // `PreservedDivision` (a full `TopSum` + REQUIRED slash tail) and, on the
+  // no-slash majority, fail the tail, backtrack, and re-parse `TopSum` from the
+  // same position (the two arms share `TopSum`'s first-set, so the `choice` is
+  // not disjoint and cannot dispatch past the redundant descent). Parsing
+  // `TopSum` once and taking an OPTIONAL slash tail yields byte-identical values
+  // — a bare `TopSum` when no slash follows, the same `SpacedValue` when one
+  // does — without the second full value descent per non-slash piece.
+  const topSumMaybeDivision = node<ValueNode>(
+    'TopSumMaybeDivision',
+    noTrivia(sequence(g.TopSum, many(sequence(field('separator', preservedSlashBoundary), g.TopSum)))),
+    (children, fields) => {
+      if (fields?.separator === undefined) {
+        return requireValueNode(children[0]);
+      }
+      const parts: ValueNode[] = [];
+      for (const child of children) {
+        if (isValueNode(child)) {
+          parts.push(child);
+        } else if (isTerminalText(child, '/')) {
+          parts.push(keyword('/'));
+        }
+      }
+      const slashBoundaries = requireFields(fields, 'separator').map(separator => staticText(separator.value));
+      const separators = slashBoundaries.flatMap((boundary) => {
+        const slash = boundary.indexOf('/');
+        return slash < 0 ? [boundary] : [boundary.slice(0, slash), boundary.slice(slash + 1)];
+      });
+      return {
+        type: 'SpacedValue',
+        parts,
+        separators: separators.length === parts.length - 1
+          ? separators
+          : Array.from({ length: parts.length - 1 }, () => '')
+      };
+    }
+  );
+  const valuePiece = choice(g.UnicodeRange, topSumMaybeDivision, literal('/'), literal('-'), literal('%'));
+  const nestedAtRuleValueStart = regex(/@[^;{}()'"]*\{/);
+  const valueTriviaBoundary = parser(
+    { trivia: whitespace },
+    sequence(
+      peek(whitespace),
+      not(nestedAtRuleValueStart),
+      valuePiece
+    )
+  );
+  const gluedVariableValueBoundary = sequence(
+    leaf(peek(literal('@')), () => ({ kind: 'glued-value-boundary' })),
+    valuePiece
+  );
+  const valueContinuation = choice(valueTriviaBoundary, gluedVariableValueBoundary);
+  // Adjacent value pieces are normally separated by authored whitespace, but a
+  // Less variable reference may also be glued straight onto the previous piece
+  // (`1px@v`, `calc(@w + 2vw)@suffix`). Less treats the glued form as the same
+  // space-separated expression as `1px @v` — the missing gap is layout, not a
+  // different value shape — so the `@` boundary is a zero-width separator here.
+  // One shared piece-tail keeps declaration values and `@name:` variable values
+  // on the same rule instead of diverging on the glued spelling.
+  // The piece separator stops the value before a nested at-rule. `;` separates
+  // declarations rather than terminating them (css-syntax-3 §5.4.7), so the last
+  // declaration in a block ends at whatever follows it — and in Less that
+  // successor may be `@media all { … }`, whose at-keyword this term would
+  // otherwise take as an ordinary `@name` variable reference, leaving the `{`
+  // with no statement to open. Less cannot resolve this by reserving the CSS
+  // at-rule names the way css/scss/jess do: `@name` IS Less's variable spelling,
+  // so `color: red @media` must stay a two-piece value. The discriminator is
+  // therefore the shape that follows, not the name — an at-keyword run that
+  // reaches `{` before any `;`, `}`, group, or quote is a nested at-rule header
+  // and nothing else, because a value piece can never contain a top-level `{`.
+  // The lookahead is name-independent (so `@foo all { … }` works too) and costs
+  // nothing on ordinary values: it fails on its first character unless the next
+  // non-space character is `@`, and even then stops at the declaration's own
+  // terminator a few characters later.
+  const ValueSequence = node<ValueSlot>(
+    'ValueSequence',
+    noTrivia(sequence(valuePiece, many(valueContinuation))),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
+  );
+  // Function bodies use their own argument boundary rule, but comments *inside*
+  // an argument are still lexical trivia. This local value term therefore uses
+  // the same continuation boundary as ordinary values, while a completed
+  // argument's trailing trivia remains owned by `functionTrivia`.
+  const ArgumentValueSequence = node<ValueSlot>(
+    'FunctionValueSequence',
+    noTrivia(sequence(valuePiece, many(valueContinuation))),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
+  );
+  const ValueList = node<ValueSlot>(
+    'ValueList',
+    choice(
+      // This transaction owns the WHOLE accessor-bearing value. Keeping it out
+      // of Value means its typed mixin arguments do not recurse through the
+      // same candidate before the required bracket fact has been established.
+      sequence(directMixinReferenceAhead, attempt(sequence(g.DirectLessMixinReference, not(choice(topProductOperator, sumOperator))))),
+      oneOrMoreSep(
+        g.ValueSequence,
+        field('separator', regex(/,[ \t\n\r\f]*/))
+      )
+    ),
+    (children, fields, _span, _rawChildren, triviaLog, state) => {
+      const referenceValue = children.find(isReference);
+      if (referenceValue !== undefined) {
+        return referenceValue;
+      }
+      return commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue);
+    }
+  );
+  // Variable declarations additionally permit Less trivia immediately after
+  // `:` and after comma boundaries. A `//` line comment is trivia (never a CSS
+  // value node), while the comma-separated value remains the normal List fact.
+  const VariableValue = node<ValueSlot>(
+    'VariableValue',
+    sequence(
+      optional(whitespace),
+      oneOrMoreSep(
+        g.ValueSequence,
+        field('separator', regex(/,[ \t\n\r\f]*/))
+      ),
+      optional(sequence(literal(','), optional(whitespace)))
+    ),
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueSlotValue)
+  );
+  // `!important` is a grammar-owned declaration/value modifier.  Variables
+  // carry the wrapper so references hoist importance once; declarations expose
+  // their own flag.  Do not represent it as an opaque keyword/value suffix.
+  const ImportantValue = node<Important>(
+    'ImportantValue',
+    // Priority syntax is token structure, not one glued source string: Less
+    // accepts `!important`, `! important`, and `!/*comment*/important`.
+    sequence(g.ValueList, literal('!'), g.CssSyntaxImportant),
+    children => important(requireValueSlot(children[0]))
+  );
+  // Left-factored value/priority: parse the value tower ONCE, then an optional
+  // `!important` tail.  The old `choice(ImportantValue, ValueList)`
+  // was non-disjoint on the value first-set, so every declaration without a
+  // priority (~99%) descended the whole value tower inside `ImportantValue`,
+  // failed at the required `!`, backtracked, and re-descended as a bare value.
+  // The tail mirrors `ImportantValue` exactly (`!`, trivia, `important`),
+  // so the AST is identical either way:
+  // an `Important` wrapper when the tail matched, else the bare value.
+  const ValueListWithPriority = node<ValueSlot>(
+    'ValueListWithPriority',
+    sequence(
+      not(literal('{')),
+      g.ValueList,
+      optional(sequence(literal('!'), g.CssSyntaxImportant))
+    ),
+    (children) => {
+      const value = requireValueSlot(children[0]);
+      return children.some(child => isTerminalText(child, '!')) ? important(value) : value;
+    }
+  );
+  // Less custom properties retain CSS declaration-value text.  The direct
+  // route therefore treats every ordinary byte run as literal `Any` content,
+  // but lets the shared strict `@{…}` grammar surface interpolation as typed
+  // AST facts.  Delimiters, comments, and strings are grammar children—not a
+  // captured source span—and nested delimiters are balanced before reduction.
+  // Gating note: the static and interpolated `--*` name arms share `-`. Do not
+  // left-factor this until the custom-value comment/trivia slice can remove
+  // grammar-owned comment text from the same family and bless the CST movement.
+  const DirectLessCustomPropertyName = node<string | Interpolation>(
+    'DirectLessCustomPropertyName',
+    choice(
+      noTrivia(sequence(
+        literal('--'),
+        optional(choice(g.LessSyntaxInterpolatedCustomPropertyStart, g.LessSyntaxInterpolatedCustomPropertyDash)),
+        g.Interpolation,
+        many(choice(g.LessSyntaxInterpolatedCustomPropertyTail, g.Interpolation))
+      )),
+      g.LessSyntaxCustomProperty
+    ),
+    (children) => {
+      if (!children.some(isInterpolationFact)) {
+        return requireToken(children[0]).value;
+      }
+      return interpolation(interpolationPartsFrom(children, false));
+    }
+  );
+  const DirectLessCustomParen = node<readonly CustomValuePart[]>(
+    'DirectLessCustomParen',
+    noTrivia(sequence(literal('('), many(g.DirectLessCustomInnerPart), literal(')'))),
+    children => customPartsFromChildren(children)
+  );
+  const DirectLessCustomSquare = node<readonly CustomValuePart[]>(
+    'DirectLessCustomSquare',
+    noTrivia(sequence(literal('['), many(g.DirectLessCustomInnerPart), literal(']'))),
+    children => customPartsFromChildren(children)
+  );
+  const DirectLessCustomCurly = node<readonly CustomValuePart[]>(
+    'DirectLessCustomCurly',
+    noTrivia(sequence(literal('{'), many(g.DirectLessCustomInnerPart), literal('}'))),
+    children => customPartsFromChildren(children)
+  );
+  const DirectLessCustomInnerPart: Combinator<CustomValuePart> = choice(
+    g.Interpolation,
+    g.LessSyntaxCustomInnerContent,
+    blockComment,
+    g.LessSyntaxCustomSingleQuoted,
+    g.LessSyntaxCustomDoubleQuoted,
+    g.DirectLessCustomParen,
+    g.DirectLessCustomSquare,
+    g.DirectLessCustomCurly
+  );
+  const DirectLessCustomPart: Combinator<CustomValuePart> = choice(
+    g.Interpolation,
+    g.LessSyntaxCustomOuterContent,
+    blockComment,
+    g.LessSyntaxCustomSingleQuoted,
+    g.LessSyntaxCustomDoubleQuoted,
+    g.DirectLessCustomParen,
+    g.DirectLessCustomSquare,
+    g.DirectLessCustomCurly
+  );
+  const DirectLessCustomValue = node<ValueNode>(
+    'DirectLessCustomValue',
+    noTrivia(many(g.DirectLessCustomPart)),
+    children => customValueFromParts(customPartsFromChildren(children))
+  );
+  // A CSS custom-property token is an ordinary component value in Less
+  // functions such as `var(--accent)`. It is not a Less declaration name here.
+  // It reduces to the same Keyword the css/scss/jess grammars produce, and the
+  // same one StaticAtRuleCustomProperty already produces for the
+  // identical token in an at-rule header.
+  const CssCustomPropertyValue = node<Keyword>(
+    'CssCustomPropertyValue',
+    g.LessSyntaxCustomProperty,
+    children => keyword(requireToken(children[0]).value)
+  );
+  const DirectLessCustomDeclaration = node<Declaration>(
+    'CustomDeclaration',
+    // A trailing `!important` is declaration priority, not value text: css-syntax-3
+    // §5.5.6 strips it before the custom-property original-text step. The value leaf
+    // already stops before the marker (and before the whitespace preceding it), so
+    // this tail simply claims it. It mirrors the ordinary-declaration tail exactly:
+    // `!`, trivia, `important`.
+    sequence(
+      g.DirectLessCustomPropertyName,
+      literal(':'),
+      g.DirectLessCustomValue,
+      optional(sequence(literal('!'), g.CssSyntaxImportant))
+    ),
+    (children) => {
+      const name = children[0];
+      // A custom property name may itself be an `Interpolation`, so choose the final
+      // value child rather than treating the first AST value in this reduction
+      // as the declaration value.
+      const value = children.filter(isValueNode).at(-1);
+      if (name === undefined || value === undefined) {
+        throw new TypeError('Direct Less AST grammar produced an incomplete custom declaration.');
+      }
+      return decl(
+        isInterp(name) ? name : requireTerminalText(name),
+        valueSlot(value),
+        null,
+        children.some(child => isTerminalText(child, '!'))
+      );
+    }
+  );
+  const InterpolatedProperty = node<Interpolation>(
+    'InterpolatedProperty',
+    choice(
+      noTrivia(sequence(optional(literal('*')), optional(literal('-')), optional(g.CssSyntaxInterpolatedPropertyStart), g.Interpolation, many(choice(g.CssSyntaxInterpolatedPropertyTail, g.Interpolation)))),
+      noTrivia(sequence(literal('--'), optional(choice(g.LessSyntaxInterpolatedCustomPropertyStart, g.LessSyntaxInterpolatedCustomPropertyDash)), g.Interpolation, many(choice(g.LessSyntaxInterpolatedCustomPropertyTail, g.Interpolation))))
+    ),
+    children => interpolation(interpolationPartsFrom(children, false))
+  );
+  // An interpolated property name always carries a `@{`/`${` marker before the
+  // declaration `:`; a plain property never does. InterpolatedProperty
+  // is tried first in the property choice (its literal prefix arm can begin a
+  // property like `color-@{n}`), so a plain `color:` otherwise scans the whole
+  // property ident through the interpolated-property-start production before
+  // failing at the required interpolation. This positive lookahead is the cheap
+  // commit signal: only enter the interpolated-property arm when a marker is
+  // actually present before the delimiter, so plain properties fall straight to
+  // the literal DeclarationProperty arm. The `node()` boundary keeps the marker
+  // off the declaration reducer's `children[0]` property slot.
+  const interpolatedPropertyAhead = not(not(regex(/[^:;{}]*[@$]\{/)));
+  const directLessGatedInterpolatedProperty = node<Interpolation>(
+    'GatedInterpolatedProperty',
+    sequence(interpolatedPropertyAhead, g.InterpolatedProperty),
+    (children) => {
+      const property = children.find(isInterp);
+      if (property === undefined) {
+        throw new TypeError('Direct Less interpolated-property gate lost its interpolation.');
+      }
+      return property;
+    },
+    { collapse: true }
+  );
+  // A block comment between a property and `:` is authored declaration-name
+  // syntax. Preserve it through the existing structural Interpolation name
+  // representation; ordinary whitespace is retained only when such a comment
+  // is present, while Less `//` comments remain non-output lexical trivia.
+  const DirectLessDeclarationHeadTrivia: Combinator<DeclarationHeadTriviaFact> = choice(
+    node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadBlockComment', blockComment,
+      children => ({ text: requireToken(children[0]).value, outputBearing: true })),
+    node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadWhitespace', regex(/[ \t\n\r\f]+/),
+      children => ({ text: requireToken(children[0]).value, outputBearing: false })),
+    node<DeclarationHeadTriviaFact>('DirectLessDeclarationHeadLineComment', regex(/\/\/[^\n\r]*/),
+      () => ({ text: '', outputBearing: false }))
+  );
+  const StandardDeclaration = node<Declaration>(
+    'Declaration',
+    noTrivia(sequence(
+      sequence(
+        choice(
+          directLessGatedInterpolatedProperty,
+          g.LessSyntaxNumericMapKey,
+          g.LessSyntaxDeclarationProperty
+        ),
+        many(DirectLessDeclarationHeadTrivia),
+        optional(sequence(choice(literal('+_'), literal('+')), many(DirectLessDeclarationHeadTrivia))),
+        literal(':')
+      ),
+      noTrivia(sequence(
+        field('valueGap', regex(/[ \t\n\r\f]*/)),
+        // Less accepts an explicit empty declaration value (`margin: ;`). Keep
+	        // it as a canonical empty opaque value rather than dropping the
+	        // declaration or falling back to a second parser.
+	        optional(g.ValueListWithPriority)
+	      ))
+	    )),
+    (children, fields, span) => {
+      // Property, delimiter, and value are independently recognized grammar
+      // children; AST construction does not split or reclassify authored text.
+      const rawName = children[0];
+      // Parseman's optional branch is transparent when absent. Find the value
+      // only after the property delimiter, because an interpolated property
+      // name is itself an `Interpolation` value node.
+      const mergeToken = children.find(child => isToken(child) && (child.value === '+' || child.value === '+_'));
+      const colonIndex = children.findIndex(child => isTerminalText(child, ':'));
+      if (colonIndex < 0) {
+        throw new TypeError('Direct Less AST grammar produced no declaration delimiter.');
+      }
+      const valueChild = children.slice(colonIndex + 1).find(isValueSlotValue);
+      const value: ValueSlot = valueChild === undefined ? any('') : requireValueSlot(valueChild);
+      const merge = mergeToken === undefined ? null : requireToken(mergeToken).value === '+_' ? ' ' : ',';
+      const valueGap = fields?.valueGap === undefined ? '' : requireTerminalText(requireField(fields, 'valueGap').value);
+      // A lone line break after `:` is ordinary parser layout and canonicalizes
+      // back to `: value`. Preserve the declaration break only when the value
+      // itself carries multiline separator facts (grid-area style output).
+      const layout = Array.isArray(value) ? valueLayoutOf(value) : isSpacedValue(value) ? value.separators : undefined;
+      const valueOnNewLine = (valueGap.includes('\n') || valueGap.includes('\r'))
+        && layout?.some(separator => separator.includes('\n') || separator.includes('\r')) === true;
+      if (merge !== null && merge !== ',' && merge !== ' ') {
+        throw new TypeError('Direct Less AST grammar produced an invalid declaration merge modifier.');
+      }
+      const headTrivia = children.filter(isDeclarationHeadTriviaFact);
+      const name = headTrivia.some(trivia => trivia.outputBearing)
+        ? (() => {
+            const parts: Interpolation['parts'] = isInterp(rawName)
+              ? [...rawName.parts]
+              : [{ lit: requireTerminalText(rawName) }];
+            for (const trivia of headTrivia) {
+              appendInterpolationLiteral(parts, trivia.text);
+            }
+            return interpolation(parts);
+          })()
+        : rawName;
+      const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
+        ? decl(isInterp(name) ? name : requireToken(name).value, valueSlot(value.inner), merge, true, valueOnNewLine)
+        : decl(isInterp(name) ? name : requireToken(name).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
+      return withSourceSpan(node, span);
+    }
+  );
+  // Ordered before the ordinary value grammar: a `--*` declaration has the
+  // custom-property semantics above, while every other property remains on the
+  // typed Less value path.
+  // Gating note: `CustomDeclaration` and ordinary `Declaration` overlap on
+  // `--*`; the real fix is the custom-property factoring/trivia pass above,
+  // not a zero-width dispatch wrapper around the same ambiguous opener.
+  const Declaration: Combinator<Declaration> = choice(
+    g.DirectLessCustomDeclaration,
+    StandardDeclaration
+  );
+  /** Less detached maps can use punctuation members (`<: %3c; #: %23;`).
+   * This is a declaration fact with a non-CSS name, not an opaque body slice. */
+  const DirectLessPunctuationMapDeclaration = node<Declaration>(
+    'DirectLessPunctuationMapDeclaration',
+    sequence(
+	      g.LessSyntaxPunctuationMapKey,
+	      literal(':'),
+	      optional(g.ValueListWithPriority)
+	    ),
+    (children, _fields, span) => {
+      const value = children.find(isValueSlotValue);
+      return withSourceSpan(
+        decl(requireToken(children[0]).value, value === undefined ? any('') : value),
+        span
+      );
+    }
+  );
+  // A parameter default stops before a line-comment signature boundary. The
+  // ordinary value term deliberately treats a whitespace run as the start of a
+  // next value piece; guard that transition here so `@x: 1 // note\n )` leaves
+  // the comment to the signature rather than committing the whitespace first.
+  const DirectLessMixinParamValueTerm = node<ValueSlot>(
+    'DirectLessMixinParamValueTerm',
+    noTrivia(sequence(
+      valuePiece,
+      many(valueContinuation)
+    )),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => valuePieceReducerWithTrivia(children, triviaLog, state)
+  );
+  const DirectLessMixinParam: Combinator<Param> = choice(
+    node<Param>(
+      'DirectLessMixinRestParam',
+      sequence(literal('@'), g.LessSyntaxVariableName, literal('...')),
+      children => ({ name: requireToken(children[1]).value, rest: true })
+    ),
+    node<Param>('DirectLessMixinAnonymousRestParam', literal('...'), () => ({ rest: true })),
+    node<Param>(
+      'DirectLessMixinBoundParam',
+      sequence(
+        literal('@'),
+        g.LessSyntaxVariableName,
+        optional(sequence(
+          literal(':'),
+          choice(g.ValueBlock, DirectLessMixinParamValueTerm),
+          optional(whitespace)
+        ))
+      ),
+      (children) => {
+        const name = requireToken(children[1]).value;
+        const value = children.at(-1);
+        return isValueSlotValue(value) ? { name, default: value } : { name };
+      }
+    ),
+    node<Param>(
+      'DirectLessMixinPatternParam',
+      sequence(DirectLessMixinParamValueTerm, optional(whitespace)),
+      children => ({ pattern: requireValueSlot(children[0]) })
+    )
+  );
+  const DirectLessMixinParamWithSignatureTrivia = node<Param>(
+    'DirectLessMixinParamWithSignatureTrivia',
+    sequence(g.DirectLessMixinParam, optional(whitespace), optional(mixinSignatureGap)),
+    (children) => {
+      const param = children.find(isParam);
+      if (param === undefined) {
+        throw new TypeError('Direct Less mixin signature lost a Param fact.');
+      }
+      return param;
+    }
+  );
+  const DirectLessMixinParamSeparator = parser({ trivia: mixinSignatureTrivia }, commaOrSemicolon);
+  const DirectLessMixinParamTrailingSeparator = parser({ trivia: mixinSignatureTrivia }, literal(';'));
+  const DirectLessMixinParamClose = parser({ trivia: mixinSignatureTrivia }, literal(')'));
+  // The signature owns trivia at every delimiter boundary: mixin name → `(`,
+  // after `(`, between params/separators, after the final param, after `)`, and
+  // before `when`/`{`. Delimiters remain explicit private field facts so the
+  // grammar—not a post-parse text pass—decides where a comment belongs; public
+  // AST v2 keeps its deliberately semantic `Param[]` surface.
+  const DirectLessMixinParameterList = node<MixinParameterListFact>(
+    'DirectLessMixinParameterList',
+    parser({ trivia: mixinSignatureTrivia }, sequence(
+      field('open', literal('(')),
+      optional(sequence(
+        field('param', DirectLessMixinParamWithSignatureTrivia),
+        many(sequence(
+          field('separator', DirectLessMixinParamSeparator),
+          field('param', DirectLessMixinParamWithSignatureTrivia)
+        )),
+        optional(field('trailingSeparator', DirectLessMixinParamTrailingSeparator))
+      )),
+      field('close', DirectLessMixinParamClose)
+    )),
+    (_children, fields) => ({
+      params: fields?.param === undefined
+        ? []
+        : requireFields(fields, 'param').map((param) => {
+            if (!isParam(param.value)) {
+              throw new TypeError('Direct Less mixin signature produced a non-Param field.');
+            }
+            return param.value;
+          })
+    })
+  );
+  const DirectLessPositionalMixinCallArgument = node<MixinCallArgument>(
+    'DirectLessPositionalMixinArgument',
+    sequence(g.CallArgumentValue, optional(literal('...'))),
+    children => ({
+      value: requireMixinCallArgumentValue(children[0]),
+      ...(children.some(child => isTerminalText(child, '...')) ? { spread: true } : {})
+    })
+  );
+  const DirectLessMixinCallArgument: Combinator<MixinCallArgument> = choice(
+    node<MixinCallArgument>(
+      'DirectLessNamedMixinArgument',
+      sequence(literal('@'), g.LessSyntaxVariableName, literal(':'), g.CallArgumentValue),
+      children => ({ name: requireToken(children[1]).value, value: requireMixinCallArgumentValue(children[3]) })
+    ),
+    DirectLessPositionalMixinCallArgument
+  );
+  // In Less, a semicolon starts a new mixin argument group; commas *within*
+  // that group form one list-valued argument. Keep the semicolon branch
+  // transactional so ordinary comma-only calls retain their existing individual
+  // argument shape.
+  const DirectLessMixinArgumentGroup = node<MixinCallArgument>(
+    'DirectLessMixinArgumentGroup',
+    sequence(DirectLessPositionalMixinCallArgument, oneOrMore(sequence(literal(','), DirectLessPositionalMixinCallArgument))),
+    (children) => {
+      const args = children.filter(isMixinCallArgument);
+      return { value: list(args.map(argument => requireValueSlot(argument.value)), ',') };
+    }
+  );
+  const directLessMixinSemicolonArgument = choice(g.DirectLessMixinArgumentGroup, DirectLessMixinCallArgument);
+  const MixinArguments = node<readonly MixinCallArgument[]>(
+    'DirectLessMixinArguments',
+    choice(
+      attempt(sequence(
+        directLessMixinSemicolonArgument,
+        literal(';'),
+        optional(sequence(
+          directLessMixinSemicolonArgument,
+          many(sequence(literal(';'), directLessMixinSemicolonArgument)),
+          optional(literal(';'))
+        ))
+      )),
+      // A comma-only call has individual arguments. Once a semicolon appears,
+      // Less switches to its semicolon-group grammar above; a mixed named
+      // `@a: x, @b: y; @c: z` call is invalid and must not fall through.
+      sequence(
+        oneOrMoreSep(
+          DirectLessMixinCallArgument,
+          literal(',')
+        ),
+        optional(literal(';'))
+      )
+    ),
+    children => mixinArgumentsFromChildren(children)
+  );
+  const ReferenceTail = choice(
+    node<ReferenceTailFact>(
+      'ReferenceBracketTail',
+      g.InterpolationAccessor,
+      (children) => {
+        const accessor = requireInterpolationAccessorFact(children[0]);
+        return { step: { type: 'BracketLookup', key: accessor.key, keyKind: accessor.keyKind }, src: `[${accessor.src}]` };
+      }
+    ),
+    node<ReferenceTailFact>(
+      'ReferenceDotTail',
+      sequence(literal('.'), g.LessSyntaxVariableName),
+      (children) => {
+        const name = requireToken(children[1]).value;
+        return { step: { type: 'DotLookup', name }, src: `.${name}` };
+      }
+    ),
+    node<ReferenceTailFact>(
+      'ReferenceCallTail',
+      sequence(literal('('), optional(g.MixinArguments), literal(')')),
+      (children) => {
+        const args = mixinArgumentsFromChildren(children);
+        return { step: { type: 'Call', args }, src: `(${args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` };
+      }
+    )
+  );
+  const DirectLessMixinCall = node<MixinCall>(
+    'MixinCall',
+    sequence(
+      mixinName,
+      many(DirectLessMixinPathTail),
+      literal('('),
+      optional(g.MixinArguments),
+      literal(')'),
+      // A malformed guarded definition must not split into a bare mixin call
+      // followed by a selector rule (`.m() when default { … }`). Definitions get
+      // first choice above; this lookahead only blocks that invalid fallback.
+      not(regex(/[ \t\n\r\f]*when(?![-\w])/)),
+      optional(literal('!important')),
+      optional(literal(';'))
+    ),
+    (children, _fields, span) => {
+      const head = requireToken(children[0]).value;
+      const tails = children.filter(isMixinPathTail);
+      const last = tails.at(-1);
+      const call = mixinCall(last?.sel ?? head, mixinArgumentsFromChildren(children));
+      return withSourceSpan({
+        ...call,
+        ...(tails.length > 0
+          ? {
+              path: [
+                { comb: ' ', sel: head },
+                ...tails.slice(0, -1)
+              ]
+            }
+          : {}),
+        ...(children.some(child => isTerminalText(child, '!important')) ? { important: true } : {})
+      }, span);
+    }
+  );
+  // Less permits a zero-argument mixin call without parentheses only when the
+  // semicolon fixes the statement boundary. Keep the no-semicolon spelling out
+  // of this direct route: it is ambiguous with a selector/ruleset prefix.
+  const DirectLessBareMixinCall = node<MixinCall>(
+    'DirectLessBareMixinCall',
+    sequence(mixinName, many(DirectLessMixinPathTail), optional(literal('!important')), literal(';')),
+    (children) => {
+      const head = requireToken(children[0]).value;
+      const tails = children.filter(isMixinPathTail);
+      const last = tails.at(-1);
+      const call = mixinCall(last?.sel ?? head, []);
+      const path: MixinCall['path'] = [
+        { comb: ' ', sel: head },
+        ...tails.slice(0, -1)
+      ];
+      const withPath = tails.length === 0
+        ? call
+        : {
+            ...call,
+            path
+          };
+      return children.some(child => isTerminalText(child, '!important'))
+        ? { ...withPath, important: true }
+        : withPath;
+    }
+  );
+  // This is the existing callable-value fact shared by `each(.mixin(), …)` and
+  // `@name: .mixin()`. Keep it narrower than an ordinary MixinCall: namespace
+  // paths, dynamic names, and call-level modifiers have no approved binding
+  // contract in this direct slice.
+  const DirectLessFlatMixinCall = node<MixinCall>(
+    'DirectLessFlatMixinCall',
+    sequence(
+      mixinName,
+      literal('('),
+      optional(g.MixinArguments),
+      literal(')')
+    ),
+    children => mixinCall(requireToken(children[0]).value, mixinArgumentsFromChildren(children))
+  );
+  // `each()` can iterate the emitted declaration map of an existing static
+  // namespaced MixinCall.  This is intentionally narrower than statement-level
+  // calls: a namespace path is required, and call-level `!important`/`;` forms
+  // are not iterable values.  The resulting `path` is the ordinary MixinCall
+  // path already consumed by `forItemsFromMixinCall` / `expandCall`.
+  const DirectLessNamespacedMixinCall = node<MixinCall>(
+    'DirectLessNamespacedMixinCall',
+    sequence(
+      mixinName,
+      oneOrMore(DirectLessMixinPathTail),
+      literal('('),
+      optional(g.MixinArguments),
+      literal(')')
+    ),
+    (children) => {
+      const head = requireToken(children[0]).value;
+      const tails = children.filter(isMixinPathTail);
+      const last = tails.at(-1);
+      if (last === undefined) {
+        throw new TypeError('Direct Less namespaced iterable lost its final mixin name.');
+      }
+      const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
+      return {
+        ...mixinCall(last.sel, mixinArgumentsFromChildren(children)),
+        path
+      };
+    }
+  );
+  // A variable can retain a namespaced mixin call as its lazy map value. This
+  // differs from the `each()` iterable route above because Less permits a
+  // call-level `!important` modifier here; the established MixinCall flag
+  // carries it without a raw-value recovery or a new AST node family.
+  const DirectLessNamespacedMixinValue = node<MixinCall>(
+    'DirectLessNamespacedMixinValue',
+    sequence(
+      mixinName,
+      oneOrMore(DirectLessMixinPathTail),
+      literal('('),
+      optional(g.MixinArguments),
+      literal(')'),
+      optional(literal('!important'))
+    ),
+    (children) => {
+      const head = requireToken(children[0]).value;
+      const tails = children.filter(isMixinPathTail);
+      const last = tails.at(-1);
+      if (last === undefined) {
+        throw new TypeError('Direct Less namespaced variable value lost its final mixin name.');
+      }
+      const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
+      const call = {
+        ...mixinCall(last.sel, mixinArgumentsFromChildren(children)),
+        path
+      };
+      return children.some(child => isTerminalText(child, '!important')) ? { ...call, important: true } : call;
+    }
+  );
+  // A static namespace/mixin invocation remains the existing typed MixinCall
+  // (including its selector-path combinators).  Once it is followed by a map
+  // lookup, the whole value is a Reference: its base stays dispatchable by the
+  // proven namespace resolver and its dynamic accessors retain their ordered
+  // typed steps. `attempt` is essential here: a `#DEF` color or ordinary mixin
+  // prefix must be returned to the later value alternatives unless this grammar
+  // reaches at least one complete bracket accessor.
+  const DirectLessMixinReference = node<Reference>(
+    'DirectLessMixinReference',
+    sequence(
+      mixinName,
+      many(DirectLessMixinPathTail),
+      optional(sequence(
+        literal('('),
+        optional(g.MixinArguments),
+        literal(')')
+      )),
+      oneOrMore(g.ReferenceTail)
+    ),
+    (children) => {
+      const head = requireToken(children[0]).value;
+      const tails = children.filter(isMixinPathTail);
+      const terminal = tails.at(-1);
+      const call = mixinCall(terminal?.sel ?? head, mixinArgumentsFromChildren(children));
+      const base = tails.length === 0
+        ? call
+        : { ...call, path: [{ comb: ' ', sel: head }, ...tails.slice(0, -1)] as MixinCall['path'] };
+      const hasCall = children.some(child => isTerminalText(child, '('));
+      const baseRaw = `${head}${tails.map(tail => `${tail.comb}${tail.sel}`).join('')}${hasCall ? `(${base.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
+      return referenceWithTails(base, baseRaw, children.filter(isReferenceTailFact));
+    }
+  );
+  const ReferenceCall = node<Reference>(
+    'VarCall',
+    sequence(
+      literal('@'), not(word(
+        'supports',
+        '-_0-9A-Za-z',
+        { caseInsensitive: true }
+      )), g.LessSyntaxVariableName, literal('('),
+      optional(g.MixinArguments),
+      literal(')'), optional(literal(';'))
+    ),
+    (children) => {
+      const name = requireToken(children[1]).value;
+      const args = mixinArgumentsFromChildren(children);
+      return reference(variableReference(name, 'scoped'), [{ type: 'Call', args }], `@${name}()`);
+    }
+  );
+  const DirectLessMixinGuardDefaultOperand = node<ValueNode>(
+    'DirectLessMixinGuardDefaultOperand',
+    mixinGuardDefaultCall,
+    () => funcCall('default', [])
+  );
+  const DirectLessMixinGuardOperand = node<ValueNode>(
+    'DirectLessMixinGuardOperand',
+    // A complete `default()` is a typed FunctionCall when used as a comparison
+    // operand; the evaluator already supplies its mixin-dispatch value in that
+    // exact context. Leading with that arm is the whole disambiguation needed —
+    // a bare `default` is an ordinary ident SHAPE and reduces to a Keyword, as
+    // less.js does (`@a: default; .m() when (@a = default)` matches there).
+    // Whether that comparison means anything is a language-service fact.
+    choice(
+      DirectLessMixinGuardDefaultOperand,
+      // Guard operands reuse the ordinary typed access References. The
+      // namespace branch must backtrack for ordinary non-accessor colors.
+      attempt(g.DirectLessMixinReference),
+      g.VariableReferenceChain,
+      g.Quoted,
+      g.EscapedQuoted,
+      g.Dimension,
+      g.Color,
+      g.NamedColor,
+      g.DirectLessFunction,
+      g.Keyword
+    ),
+    children => requireValueNode(children[0])
+  );
+  const DirectLessMixinGuardTerm = node<MixinGuard>(
+    'DirectLessMixinGuardTerm',
+    sequence(
+      optional(lessWord('not')),
+      choice(
+        sequence(literal('('), g.DirectLessMixinGuardOr, literal(')')),
+        sequence(g.DirectLessMixinGuardOperand, optional(sequence(mixinGuardOperator, g.DirectLessMixinGuardOperand)))
+      )
+    ),
+    (children) => {
+      const nested = children.find(isMixinGuard);
+      const values = children.filter(isValueNode);
+      const operator = children.map(guardOperatorText).find((value): value is string => value !== null);
+      let guard: MixinGuard;
+      if (nested !== undefined) {
+        guard = nested;
+      } else {
+        const left = values[0];
+        if (left === undefined) {
+          throw new TypeError('Direct Less AST grammar produced a guard without a value.');
+        }
+        if (operator === undefined) {
+          if (isDefaultGuardCall(left)) {
+            guard = { g: 'default' };
+          } else if (left.type === 'FunctionCall') {
+            guard = { g: 'call', name: left.name, args: left.args.map(requireValueNode) };
+          } else {
+            guard = { g: 'truth', value: left };
+          }
+        } else {
+          const right = values[1];
+          if (right === undefined) {
+            throw new TypeError('Direct Less AST grammar produced a comparison guard without a right operand.');
+          }
+          guard = { g: 'cmp', op: operator, left, right };
+        }
+      }
+      return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
+    }
+  );
+  const DirectLessMixinGuardAnd = node<MixinGuard>(
+    'DirectLessMixinGuardAnd',
+    sequence(g.DirectLessMixinGuardTerm, many(sequence(lessWord('and'), g.DirectLessMixinGuardTerm))),
+    children => foldMixinGuards('and', children)
+  );
+  const DirectLessMixinGuardOr = node<MixinGuard>(
+    'DirectLessMixinGuardOr',
+    sequence(g.DirectLessMixinGuardAnd, many(sequence(choice(lessWord('or'), literal(',')), g.DirectLessMixinGuardAnd))),
+    children => foldMixinGuards('or', children)
+  );
+  const DirectLessMixinGuardTopTerm = node<MixinGuard>(
+    'DirectLessMixinGuardTopTerm',
+    choice(
+      sequence(optional(lessWord('not')), literal('('), g.DirectLessMixinGuardOr, literal(')')),
+      sequence(lessWord('not'), g.DirectLessMixinGuardTerm)
+    ),
+    (children) => {
+      const guard = children.find(isMixinGuard);
+      if (guard === undefined) {
+        throw new TypeError('Direct Less AST grammar produced an empty top-level grouped guard.');
+      }
+      return children.some(child => isTerminalText(child, 'not')) ? { g: 'not', inner: guard } : guard;
+    }
+  );
+  const DirectLessMixinGuardTopAnd = node<MixinGuard>(
+    'DirectLessMixinGuardTopAnd',
+    sequence(g.DirectLessMixinGuardTopTerm, many(sequence(lessWord('and'), g.DirectLessMixinGuardTopTerm))),
+    children => foldMixinGuards('and', children)
+  );
+  const DirectLessMixinGuardTopOr = node<MixinGuard>(
+    'DirectLessMixinGuardTopOr',
+    sequence(g.DirectLessMixinGuardTopAnd, many(sequence(choice(lessWord('or'), literal(',')), g.DirectLessMixinGuardTopAnd))),
+    children => foldMixinGuards('or', children)
+  );
+  const DirectLessMixinGuard = node<MixinGuard>(
+    'DirectLessMixinGuard',
+    parser({ trivia: mixinGuardTrivia }, sequence(lessWord('when'), g.DirectLessMixinGuardTopOr)),
+    (children) => {
+      const guard = children.find(isMixinGuard);
+      if (guard === undefined) {
+        throw new TypeError('Direct Less AST grammar produced a missing mixin guard.');
+      }
+      return guard;
+    }
+  );
+  // Scope the signature-only trivia through the opening `{`, then leave the
+  // body to its ordinary statement grammar where block comments are CSS output.
+  const DirectLessMixinSignature = node<MixinSignatureFact>(
+    'DirectLessMixinSignature',
+    parser({ trivia: mixinSignatureTrivia }, sequence(
+      field('name', mixinName),
+      field('parameters', g.DirectLessMixinParameterList),
+      optional(mixinSignatureGap),
+      optional(field('guard', DirectLessMixinGuard)),
+      optional(mixinSignatureGap),
+      field('open', literal('{'))
+    )),
+    (_children, fields) => {
+      const name = requireField(fields, 'name').value;
+      const parameters = requireField(fields, 'parameters').value;
+      if (!isMixinParameterListFact(parameters)) {
+        throw new TypeError('Direct Less mixin signature produced invalid header facts.');
+      }
+      const guardField = fields?.guard === undefined ? undefined : requireField(fields, 'guard').value;
+      if (guardField !== undefined && !isMixinGuard(guardField)) {
+        throw new TypeError('Direct Less mixin signature produced an invalid guard fact.');
+      }
+      return {
+        name: requireTerminalText(name),
+        params: parameters.params,
+        ...(guardField === undefined ? {} : { guard: guardField })
+      };
+    }
+  );
+  // Shared block-body statement choice. Every braced Less body (mixin
+  // definitions, `@supports`/media/container/generic at-rule blocks, and the
+  // ruleset body via the extend-augmented reuse below) accepts this exact
+  // ordered arm set. Factoring it into one named combinator keeps the arm-win
+  // precedence identical across all block contexts instead of hand-copying the
+  // arms per production. The root document and the detached-ruleset/`each`
+  // `DirectLessBodyStatement` deliberately keep their own ordered arm sets
+  // because they legitimately differ (comment-first root ordering; the
+  // punctuation-map arm and Each/Ruleset reordering in body statements).
+  // `@`-led statement group. Every body context lists these ten arms in this
+  // exact contiguous order, so grouping them into one nested choice is
+  // byte-identical to the flat listing (a bare `choice` passes its winning arm's
+  // value through unchanged, and firstMatch order is preserved). This is the
+  // structural "one at-rule choice group"; parseman already first-set-gates the
+  // whole group behind a single `@` (codepoint 64) check, so a non-`@` statement
+  // skips all ten arms with one integer compare. This is deliberately not a
+  // `dispatch(...)` yet: Less `@name` forms need more than bare `@` or bare
+  // `@name` to distinguish variable declarations, reference calls, known
+  // at-rules, generic blocks, and generic statements.
+  const directLessAtStatement = choice(g.ImportStatement, g.PluginDirective, g.ValueBlockDeclaration, g.VarDeclaration, g.SupportsBlock, g.MediaContainerBlock, g.ReferenceCall, g.Keyframes, g.AtRuleBlock, g.OpaqueAtRuleBlock, g.AtRuleStatement);
+  // Chevrotain funneled every `.foo`/`#foo` block through ONE mixin-or-ruleset
+  // dispatch: a cheap token-only test (`mixinStart` then `(` or `;`) chose the
+  // mixin arm, otherwise the qualified-rule arm ran, so the shared class/id
+  // prefix was never re-scanned by three separate mixin productions. Parseman
+  // already first-set-gates the whole `.`/`#` group behind one codepoint check,
+  // but WITHIN that group the three mixin productions each restart from the name
+  // before the ruleset finally matches. This positive lookahead reproduces
+  // Chevrotain's `testMixin`: a mixin header always reaches a `(` or `;` before
+  // any `{`/`}`, so a plain ruleset — whose selector has no such delimiter before
+  // its block — skips all three mixin productions with one bounded scan instead
+  // of three failed name re-scans. The gate only ever over-accepts (a
+  // parenthesized-pseudo ruleset such as `.a:not(.b){}` still falls through to
+  // the ruleset arm), so PEG priority and output stay identical.
+  const directLessMixinStatementAhead = not(not(regex(/[.#][^{};]*[(;]/)));
+  // A `node()` reduction boundary keeps the gated group's single mixin fact from
+  // splicing the zero-width lookahead marker into the parent statement list; the
+  // reducer returns the inner MixinDef/MixinCall/MixinCall (bare) node unchanged,
+  // so the emitted AST and its `type`-keyed shape are identical to the ungrouped
+  // arms. `collapse` lets parseman drop the transparent wrapper allocation.
+  const directLessMixinStatement = node<Statement>(
+    'DirectLessMixinStatement',
+    sequence(directLessMixinStatementAhead, choice(g.DirectLessMixinDefinition, g.DirectLessMixinCall, g.DirectLessBareMixinCall)),
+    (children) => {
+      const statement = children.find(isStatement);
+      if (statement === undefined) {
+        throw new TypeError('Direct Less mixin-or-ruleset gate lost its mixin statement.');
+      }
+      return statement;
+    },
+    { collapse: true }
+  );
+  // Chevrotain disambiguated a nested rule from a declaration on the colon's
+  // trailing trivia, not a full selector speculation: `foo: bar` (colon then
+  // whitespace) is always a declaration, never a selector, because a selector
+  // pseudo requires its name glued to the colon (`foo:hover`). Ruleset is tried
+  // before Declaration (a bare type-selector nested rule must win over a property
+  // name), so every `foo: value` otherwise parses `foo` as a type-selector
+  // compound and only fails at the missing `{`. This negative lookahead skips the
+  // Ruleset arm for the unambiguous `<ident><ws?>:<ws>` declaration shape, leaving
+  // the rarer `foo:bar` / `@{p}:` / `foo+:` forms on the original
+  // Ruleset-then-Declaration path. No real selector matches `<ident>:<ws>`, so the
+  // emitted AST and PEG priority are unchanged; a `node()` boundary keeps the
+  // lookahead marker from splicing into the statement list.
+  const directLessRulesetNotDeclaration = not(regex(/[-\w]+[ \t]*:[ \t\n\r\f]/));
+  const directLessGuardedRuleset = node<Rule>(
+    'DirectLessGuardedRuleset',
+    sequence(directLessRulesetNotDeclaration, g.RulesetWithExtends),
+    (children) => {
+      const ruleset = children.find(isRule);
+      if (ruleset === undefined) {
+        throw new TypeError('Direct Less declaration-guarded ruleset lost its rule.');
+      }
+      return ruleset;
+    },
+    { collapse: true }
+  );
+  const directLessDeclarationItem = node<Declaration>(
+    'DirectLessDeclarationItem',
+    sequence(
+      g.Declaration,
+      choice(
+        literal(';'),
+        peek(literal('}'))
+      )
+    ),
+    children => {
+      const declaration = children.find(isDeclaration);
+      if (declaration === undefined) {
+        throw new TypeError('Direct Less declaration-list item lost its declaration fact.');
+      }
+      return declaration;
+    },
+    { collapse: true }
+  );
+  const stylesheetEnd = not(regex(/[\s\S]/));
+  const rootDeclarationItem = node<Declaration>(
+    'DirectLessRootDeclarationItem',
+    sequence(
+      g.Declaration,
+      choice(
+        literal(';'),
+        stylesheetEnd
+      )
+    ),
+    children => {
+      const declaration = children.find(isDeclaration);
+      if (declaration === undefined) {
+        throw new TypeError('Direct Less root declaration item lost its declaration fact.');
+      }
+      return declaration;
+    },
+    { collapse: true }
+  );
+  const directLessPunctuationMapDeclarationItem = node<Declaration>(
+    'DirectLessPunctuationMapDeclarationItem',
+    sequence(
+      DirectLessPunctuationMapDeclaration,
+      choice(
+        literal(';'),
+        peek(literal('}'))
+      )
+    ),
+    children => {
+      const declaration = children.find(isDeclaration);
+      if (declaration === undefined) {
+        throw new TypeError('Direct Less punctuation map item lost its declaration fact.');
+      }
+      return declaration;
+    },
+    { collapse: true }
+  );
+  const blockItem = choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.DirectLessFunctionStatement, directLessGuardedRuleset, directLessDeclarationItem, literal(';'));
+  const blockBody = many(blockItem);
+  // The ruleset body adds one extra arm (`DirectLessExtendStatement`) after the
+  // shared arms. Nesting the shared choice ahead of it preserves the original
+  // precedence: the shared arms (including the empty `;`) are tried in the same
+  // order first, then the extend statement — behaviourally identical to the
+  // former flat `choice(<shared arms>, DirectLessExtendStatement, ';')` because
+  // an extend head never matches `;` or any shared arm the flat list did not.
+  const rulesetBody = many(choice(blockItem, g.DirectLessExtendStatement));
+  const DirectLessMixinDefinition = node<MixinDef>(
+    'MixinOrQualifiedRule',
+    sequence(
+      DirectLessMixinSignature,
+      blockBody,
+      optional(g.DirectLessFunction),
+      literal('}'),
+      optional(literal(';'))
+    ),
+    (children, _fields, span, rawChildren) => {
+      const signature = children.find(isMixinSignatureFact);
+      if (signature === undefined) {
+        throw new TypeError('Direct Less mixin definition lost its signature fact.');
+      }
+      return withSourceSpan(withBlockBody(
+        mixinDef(signature.name, [...signature.params], children.filter(isStatement), signature.guard),
+        rawChildren
+      ), span);
+    }
+  );
+  const DirectLessEachName = node<string>(
+    'DirectLessEachName',
+    sequence(literal('@'), g.LessSyntaxVariableName),
+    children => requireToken(children[1]).value
+  );
+  // Detached rulesets and `each()` callbacks are both statement containers.
+  // Keep their accepted content on the same direct grammar path as normal Less
+  // bodies: reductions above construct each canonical statement, and these
+  // containers merely retain those typed children.  This is deliberately not a
+  // CST/tree conversion or an opaque body fallback.
+  const DirectLessBodyStatement = choice(directLessPunctuationMapDeclarationItem, directLessAtStatement, directLessMixinStatement, directLessGuardedRuleset, g.DirectLessEach, g.DirectLessFunctionStatement, directLessDeclarationItem, literal(';'));
+  const ValueBlock = node<ValueNode>(
+    'ValueBlock',
+    sequence(literal('{'), many(g.DirectLessBodyStatement), optional(g.DirectLessFunction), literal('}')),
+    children => classifyValueBlock(requireValueBlockBody(children))
+  );
+  const CallArgumentValue = node<MixinCallArgument['value']>(
+    'DirectLessCallArgumentValue',
+    choice(attempt(g.DirectLessFlatMixinCall), g.ValueBlock, g.ValueSequence),
+    (children) => {
+      const value = children[0];
+      if (isMixinCall(value) || isValueSlotValue(value)) {
+        return value;
+      }
+      throw new TypeError('Direct Less call argument must reduce to a value or typed mixin call.');
+    }
+  );
+  const DirectLessEachCallback = node<LessEachCallback>(
+    'DirectLessEachCallback',
+    choice(
+      sequence(
+        literal('{'),
+        many(g.DirectLessBodyStatement),
+        optional(g.DirectLessFunction),
+        literal('}')
+      ),
+      sequence(
+        // Less anonymous mixin callbacks accept either `.(...) { ... }` or
+        // `#(...) { ... }`; both lower to the same canonical For binding.
+        eachCallbackSigil, literal('('), g.DirectLessEachName,
+        optional(sequence(commaOrSemicolon, g.DirectLessEachName, optional(sequence(commaOrSemicolon, g.DirectLessEachName)))),
+        literal(')'), literal('{'),
+        many(g.DirectLessBodyStatement),
+        optional(g.DirectLessFunction),
+        literal('}')
+      )
+    ),
+    (children) => {
+      if (requireToken(children[0]).value === '{') {
+        return {
+          binding: { kind: 'comma', names: ['value', 'key', 'index'] },
+          rules: requireCallbackStatements(children.slice(1, -1))
+        };
+      }
+      const names = children.filter((child): child is string => typeof child === 'string');
+      const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
+      if (bodyStart < 0) {
+        throw new TypeError('Direct Less AST grammar produced a named each() callback without a body.');
+      }
+      const body = requireCallbackStatements(children.slice(bodyStart + 1, -1));
+      if (names.length === 1) {
+        return { binding: { kind: 'single', name: names[0]! }, rules: body };
+      }
+      if (names.length === 2 || names.length === 3) {
+        return {
+          binding: { kind: 'comma', names: [names[0]!, names[1]!, names[2]] },
+          rules: body
+        };
+      }
+      throw new TypeError('Direct Less AST grammar produced an invalid each() callback binding.');
+    }
+  );
+  const DirectLessEach = node<For>(
+    'For',
+    // An inline detached ruleset is an ordinary `each()` iterable
+    // (`each({ margin: m; padding: p; }, \u2026)`). It is listed here rather than in
+    // ValueList because the call-only `{ \u2026 }` first set must stay out of
+    // ordinary declaration values.
+    sequence(
+      noTrivia(sequence(
+        word(
+          'each',
+          '-_a-zA-Z0-9\\u0080-\\uFFFF',
+          { caseInsensitive: true }
+        ),
+        literal('(')
+      )),
+      choice(
+        g.DirectLessNamespacedMixinCall,
+        g.DirectLessFlatMixinCall,
+        g.ValueBlock,
+        g.ValueList
+      ),
+      choice(
+        literal(','),
+        literal(';')
+      ),
+      g.DirectLessEachCallback,
+      literal(')'),
+      optional(literal(';'))
+    ),
+    (children) => {
+      const callback = children[4];
+      if (!isLessEachCallback(callback)) {
+        throw new TypeError('Direct Less each() reduction produced an invalid callback.');
+      }
+      const iterable = children[2];
+      return forNode(isMixinCall(iterable) ? iterable : requireValueSlot(iterable), callback.rules, callback.binding);
+    }
+  );
+  const DirectLessGeneralEnclosedRaw = node<string>(
+    'DirectLessGeneralEnclosedRaw',
+    noTrivia(choice(g.CssSyntaxBlockComment, directLessGeneralEnclosedText)),
+    children => requireToken(children[0]).value
+  );
+  const DirectLessGeneralEnclosedQuoted = node<Interpolation>(
+    'DirectLessGeneralEnclosedQuoted',
+    choice(
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, BareVariableInterpolation, directLessGeneralEnclosedDoubleChunk)), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, BareVariableInterpolation, directLessGeneralEnclosedSingleChunk)), literal('\'')))
+    ),
+    generalEnclosedInterpolationFromChildren
+  );
+  const DirectLessGeneralEnclosedGroup = node<Interpolation>(
+    'DirectLessGeneralEnclosedGroup',
+    choice(
+      noTrivia(sequence(literal('('), g.DirectLessGeneralEnclosedContent, literal(')'))),
+      noTrivia(sequence(literal('['), g.DirectLessGeneralEnclosedContent, literal(']'))),
+      noTrivia(sequence(literal('{'), g.DirectLessGeneralEnclosedContent, literal('}')))
+    ),
+    generalEnclosedInterpolationFromChildren
+  );
+  const DirectLessGeneralEnclosedContent = node<Interpolation>(
+    'DirectLessGeneralEnclosedContent',
+    noTrivia(many(choice(
+      BareVariableInterpolation,
+      DirectLessGeneralEnclosedRaw,
+      g.VariableInterpolation,
+      g.DirectLessGeneralEnclosedQuoted,
+      g.DirectLessGeneralEnclosedGroup
+    ))),
+    generalEnclosedInterpolationFromChildren
+  );
+  const DirectLessGeneralEnclosedFunctionName = node<GeneralEnclosedNameFact>(
+    'DirectLessGeneralEnclosedFunctionName',
+    token(noTrivia(sequence(g.CssSyntaxQueryFunctionName, literal('(')))),
+    children => ({ name: functionNameFromOpener(children[0]) })
+  );
+  const DirectLessGeneralEnclosed = node<GeneralEnclosed>(
+    'DirectLessGeneralEnclosed',
+    choice(
+      noTrivia(sequence(g.DirectLessGeneralEnclosedFunctionName, g.DirectLessGeneralEnclosedContent, literal(')'))),
+      noTrivia(sequence(literal('('), g.DirectLessGeneralEnclosedContent, literal(')')))
+    ),
+    (children) => {
+      const content = children.find((child): child is Interpolation => typeof child === 'object' && child !== null && 'type' in child && child.type === 'Interpolation');
+      if (content === undefined) {
+        throw new TypeError('Direct Less general-enclosed lost its grammar-owned content.');
+      }
+      const name = children.find((child): child is GeneralEnclosedNameFact => typeof child === 'object' && child !== null && 'name' in child);
+      return name === undefined ? generalEnclosed('paren', null, content) : generalEnclosed('function', name.name, content);
+    }
+  );
+  // `@supports` has its own typed condition grammar. Keep this narrower than
+  // ordinary Less values: feature values are static leaf facts, logical terms
+  // and nested conditions retain their authored parentheses as `Block`, and
+  // functions/general-enclosed/dynamic forms fail instead of becoming raw text.
+  const SupportsValue = node<ValueNode>(
+    'SupportsValue',
+    g.ValueList,
+    (children) => {
+      const value = requireValueSlot(children[0]);
+      if (isValueNode(value)) {
+        return value;
+      }
+      return spaced(value.map(requireValueNode));
+    }
+  );
+  const SupportsFeature = node<ValueNode>(
+    'SupportsFeature',
+    sequence(
+      literal('('),
+      g.CssSyntaxProperty,
+      optional(sequence(literal(':'), g.SupportsValue)),
+      literal(')')
+    ),
+    (children) => {
+      const property = keyword(requireToken(children[1]).value);
+      const value = children.find(isValueNode);
+      return value === undefined
+        ? block(property)
+        : block(operation(':', property, value));
+    }
+  );
+  const DirectLessSupportsInParens = node<ValueNode>(
+    'SupportsInParens',
+    choice(
+      sequence(literal('('), g.DirectLessSupportsCondition, literal(')')),
+      g.SupportsFeature,
+      g.DirectLessGeneralEnclosed
+    ),
+    children => children.length === 1
+      ? requireValueNode(children[0])
+      : block(requireValueNode(children[1]))
+  );
+  const DirectLessSupportsCondition = node<ValueNode>(
+    'SupportsCondition',
+    choice(
+      sequence(g.CssSyntaxQueryNot, g.DirectLessSupportsInParens),
+      sequence(g.DirectLessSupportsInParens, many(sequence(g.CssSyntaxQueryAndOr, g.DirectLessSupportsInParens)))
+    ),
+    (children) => {
+      const values = children.map(child => isValueNode(child)
+        ? child
+        : keyword(requireToken(child).value));
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const SupportsBlock = node<AtRuleBlock>(
+    'SupportsBlock',
+    sequence(
+      g.CssSyntaxSupportsAtKeyword,
+      choice(g.AtRuleInterpolation, BareVariableInterpolation, g.DirectLessSupportsCondition),
+      literal('{'),
+      blockBody,
+      optional(g.DirectLessFunction),
+      literal('}')
+    ),
+    (children, _fields, span, rawChildren) => withSourceSpan(
+      withBlockBody(
+        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), children.filter(isStatement)),
+        rawChildren
+      ),
+      span
+    )
+  );
+  const queryIdentifier = regex(/(?!(?:url)(?=\())-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/i);
+  const queryIdentOrFunction = token(noTrivia(sequence(
+    queryIdentifier,
+    optional(literal('('))
+  )));
+  const QueryKeyword = node<ValueNode>(
+    'Keyword',
+    routed(),
+    children => keyword(requireToken(children[0]).value)
+  );
+  const QueryIdentOrFunction = dispatch(
+    queryIdentOrFunction,
+    caseOf('calc(', CalcFunction),
+    when(
+      endsWith('('),
+      GenericFunction
+    ),
+    otherwise(QueryKeyword)
+  );
+  const directLessQueryLeaf = choice(g.VariableReferenceChain, g.Dimension, g.Color, g.NamedColor, g.StaticQuoted, QueryIdentOrFunction);
+  // Media/container query syntax shares CSS's grammar-owned comparison terminal
+  // and canonical `Block(paren, Operation)` shape. Less only supplies the additional
+  // variable-bearing value leaves; it does not capture a query prelude as raw
+  // text or run a second scanner over it.
+  const QueryValue = node<ValueNode>(
+    'QueryValue',
+    choice(g.PreservedDivision, directLessQueryLeaf),
+    children => requireValueNode(children[0])
+  );
+  // A media/container feature value may be a `<ratio>` — media-queries-4 §2.1,
+  // `<number> [ / <number> ]?` — as in `(aspect-ratio >= 16/9)`. The colon form
+  // already folds that slash into a typed `/` Operation through its math value;
+  // the comparison and range forms took the value-position leaf, where Less's
+  // `parens-division` slash group turned the same ratio into a SpacedValue. Fold
+  // it here so every feature form — and every dialect — carries one ratio shape.
+  // `style(--x: …)` keeps QueryValue above: that payload is a
+  // declaration, so its slash stays a value-position slash group.
+  const QueryFeatureValue = node<ValueNode>(
+    'QueryFeatureValue',
+    sequence(directLessQueryLeaf, many(sequence(literal('/'), directLessQueryLeaf))),
+    foldOperation
+  );
+  const QueryBareFeature = node<ValueNode>(
+    'QueryBareFeature',
+    sequence(literal('('), g.CssSyntaxProperty, literal(')')),
+    children => block(keyword(requireToken(children[1]).value))
+  );
+  const QueryComparisonFeature = node<ValueNode>(
+    'QueryComparisonFeature',
+    sequence(
+      literal('('), g.CssSyntaxProperty, g.CssSyntaxQueryComparisonOperator, QueryFeatureValue,
+      optional(sequence(g.CssSyntaxQueryComparisonOperator, QueryFeatureValue)), literal(')')
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      const operators = queryComparisonOperators(children);
+      if (values.length < 1 || operators.length < 1) {
+        throw new TypeError('Direct Less query comparison lost a value or operator.');
+      }
+      let comparison = operation(operators[0]!, keyword(requireToken(children[1]).value), values[0]!);
+      if (operators.length === 2) {
+        if (values[1] === undefined) {
+          throw new TypeError('Direct Less chained query comparison lost its final value.');
+        }
+        comparison = operation(operators[1]!, comparison, values[1]);
+      }
+      return block(comparison);
+    }
+  );
+  const QueryRangeFeature = node<ValueNode>(
+    'QueryRangeFeature',
+    sequence(
+      literal('('), QueryFeatureValue, g.CssSyntaxQueryComparisonOperator, g.CssSyntaxProperty,
+      optional(sequence(g.CssSyntaxQueryComparisonOperator, QueryFeatureValue)), literal(')')
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      const operators = queryComparisonOperators(children);
+      if (values.length < 1 || operators.length < 1) {
+        throw new TypeError('Direct Less query range lost a value or operator.');
+      }
+      let comparison = operation(operators[0]!, values[0]!, keyword(requireToken(children[3]).value));
+      if (operators.length === 2) {
+        if (values[1] === undefined) {
+          throw new TypeError('Direct Less chained query range lost its final value.');
+        }
+        comparison = operation(operators[1]!, comparison, values[1]);
+      }
+      return block(comparison);
+    }
+  );
+  // Container queries permit parenthesized boolean groups, for example
+  // `((width < 500px) or (height < 500px))`. The individual features retain
+  // their existing typed Block(paren, Operation) representation inside the group.
+  const QueryLogicalGroup = node<ValueNode>(
+    'QueryLogicalGroup',
+    sequence(literal('('), g.QueryFeature, oneOrMore(sequence(g.CssSyntaxQueryAndOr, g.QueryFeature)), literal(')')),
+    children => block(spaced(children.filter(child => isValueNode(child) ? true : isTerminalText(child, 'and') || isTerminalText(child, 'or')).map(keywordOrValue)))
+  );
+  // Container queries permit a nested negated condition, for example
+  // `(not (height > 670px))`. It is a parenthesized structural query fact,
+  // not an opaque at-rule header.
+  const QueryNegatedFeature = node<ValueNode>(
+    'QueryNegatedFeature',
+    sequence(literal('('), g.CssSyntaxQueryNot, g.QueryFeature, literal(')')),
+    children => block(spaced([keyword(requireToken(children[1]).value), requireValueNode(children[2])]))
+  );
+  const QueryFeature = node<ValueNode>(
+    'QueryFeature',
+    choice(QueryBareFeature, QueryColonFeature, QueryComparisonFeature, QueryRangeFeature, QueryLogicalGroup, QueryNegatedFeature),
+    children => requireValueNode(children[0])
+  );
+  // `only` is a media/query modifier, not an ordinary media-type keyword.
+  const QueryNonOnlyKeyword = node<Keyword>(
+    'QueryNonOnlyKeyword',
+    sequence(not(g.CssSyntaxQueryOnly), g.Keyword),
+    children => requireKeyword(children.at(-1))
+  );
+  const QueryTerm = node<ValueNode>(
+    'QueryTerm',
+    choice(
+      // A namespace/map read is a whole query term only after its required
+      // accessor has succeeded; otherwise ordinary colors and mixin prefixes
+      // continue to the existing query alternatives.
+      attempt(g.DirectLessMixinReference),
+      g.QueryFeature,
+      g.VariableReference,
+      QueryNonOnlyKeyword
+    ),
+    children => requireValueNode(children[0])
+  );
+  const QueryOnlyClause = node<ValueNode>(
+    'QueryOnlyClause',
+    sequence(
+      g.CssSyntaxQueryOnly,
+      QueryNonOnlyKeyword,
+      many(sequence(g.CssSyntaxQueryAndOr, QueryTerm))
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
+  );
+  // Gating note: `only` and ordinary query terms share the keyword first set.
+  // `QueryNonOnlyKeyword` already rejects `only` in the generic branch; a
+  // dispatch wrapper would mostly restate that negative guard without removing
+  // the media/container semantic split.
+  const QueryClause = node<ValueNode>(
+    'QueryClause',
+    choice(
+      QueryOnlyClause,
+      sequence(
+        QueryTerm,
+        many(sequence(g.CssSyntaxQueryAndOr, QueryTerm))
+      )
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
+  );
+  const QueryPrelude = node<ValueNode>(
+    'QueryPrelude',
+    sequence(g.QueryClause, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), g.QueryClause))),
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
+  );
+  // Less permits a variable interpolation as an ordinary `@media` query term:
+  // `@media @{all} and @{tv}`. That is not a container-query form, so retain
+  // the stricter shared query prelude used by `@container` and construct this
+  // media-only typed sequence from the same structural leaves.
+  const MediaQueryTerm = node<ValueNode>(
+    'MediaQueryTerm',
+    choice(g.AtRuleInterpolation, BareVariableInterpolation, QueryTerm),
+    children => requireValueNode(children[0])
+  );
+  const MediaQueryOnlyClause = node<ValueNode>(
+    'MediaQueryOnlyClause',
+    sequence(
+      g.CssSyntaxQueryOnly,
+      QueryNonOnlyKeyword,
+      many(sequence(g.CssSyntaxQueryAndOr, MediaQueryTerm))
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
+  );
+  const MediaQueryNotClause = node<ValueNode>(
+    'MediaQueryNotClause',
+    sequence(
+      g.CssSyntaxQueryNot,
+      MediaQueryTerm,
+      many(sequence(g.CssSyntaxQueryAndOr, MediaQueryTerm))
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => spacedFromValueChildren(children, triviaLog, state)
+  );
+  const MediaQueryClause = node<ValueNode>(
+    'MediaQueryClause',
+    choice(
+      MediaQueryOnlyClause,
+      MediaQueryNotClause,
+      sequence(
+        MediaQueryTerm,
+        many(sequence(g.CssSyntaxQueryAndOr, MediaQueryTerm))
+      )
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
+  );
+  const MediaQueryPrelude = node<ValueNode>(
+    'MediaQueryPrelude',
+    sequence(MediaQueryClause, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), MediaQueryClause))),
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
+  );
+  // A style query is a real typed container-header function. Its argument is a
+  // structural custom-property comparison rather than an opaque header slice.
+  const styleFunctionOpener = token(noTrivia(sequence(word(
+    'style',
+    '-_0-9A-Za-z',
+    { caseInsensitive: true }
+  ), literal('('))));
+  const ContainerStyleQuery = node<FunctionCall>(
+    'ContainerStyleQuery',
+    sequence(styleFunctionOpener, g.LessSyntaxCustomProperty, literal(':'), g.QueryValue, literal(')')),
+    children => funcCall(functionNameFromOpener(children[0]), [operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))])
+  );
+  const ContainerName = node<Keyword>(
+    'ContainerName',
+    sequence(
+      not(word(
+        'none',
+        '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+        { caseInsensitive: true }
+      )),
+      not(g.CssSyntaxQueryNot),
+      not(g.CssSyntaxQueryAndOr),
+      g.Keyword
+    ),
+    children => requireKeyword(children.at(-1))
+  );
+  const ContainerQueryAtom = node<ValueNode>(
+    'ContainerQueryAtom',
+    choice(
+      g.ContainerStyleQuery,
+      g.QueryFeature
+    ),
+    children => requireValueNode(children[0])
+  );
+  const ContainerCondition = node<ValueNode>(
+    'ContainerCondition',
+    choice(
+      sequence(
+        g.CssSyntaxQueryNot,
+        g.ContainerQueryAtom
+      ),
+      sequence(
+        g.ContainerQueryAtom,
+        many(sequence(
+          g.CssSyntaxQueryAndOr,
+          g.ContainerQueryAtom
+        ))
+      )
+    ),
+    (children, _fields, _span, _rawChildren, triviaLog, state) => queryClauseReducer(children, triviaLog, state)
+  );
+  // A container condition is either a container-query, an optional leading
+  // container name plus a query, or a name-only condition. The condition remains
+  // container-query syntax, not a media-query prelude, so a second bare media
+  // type cannot masquerade as a condition after the optional name.
+  const ContainerConditionItem = node<ValueNode>(
+    'ContainerConditionItem',
+    choice(
+      BareVariableInterpolation,
+      g.ContainerCondition,
+      sequence(
+        g.AtRuleInterpolation,
+        g.ContainerCondition
+      ),
+      sequence(
+        g.ContainerName,
+        g.ContainerCondition
+      ),
+      g.ContainerName
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const ContainerQueryPrelude = node<ValueNode>(
+    'ContainerQueryPrelude',
+    sequence(ContainerConditionItem, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), ContainerConditionItem))),
+    (children, fields, _span, _rawChildren, triviaLog, state) =>
+      commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
+  );
+  // Media and container headers differ, but their child statement language is
+  // one shared grammar production. Keep it shared so a valid nested Less
+  // construct cannot become valid in one conditional at-rule but not the other.
+  const MediaContainerBody = node<readonly Statement[]>(
+    'MediaContainerBody',
+    sequence(
+      literal('{'),
+      blockBody,
+      optional(g.DirectLessFunction),
+      literal('}')
+    ),
+    children => children.filter(isStatement)
+  );
+  const MediaContainerBlock = node<AtRuleBlock>(
+    'QueryAtRuleBlock',
+    choice(
+      sequence(g.CssSyntaxMediaAtKeyword, choice(MediaQueryPrelude, g.AtRuleInterpolation), g.MediaContainerBody),
+      sequence(g.CssSyntaxContainerAtKeyword, ContainerQueryPrelude, g.MediaContainerBody)
+    ),
+    (children, _fields, span) => {
+      const body = children.find(Array.isArray);
+      if (body === undefined) {
+        throw new TypeError('Direct Less conditional at-rule lost its body facts.');
+      }
+      return withSourceSpan(
+        atRuleBlock(requireToken(children[0]).value, requireValueNode(children[1]), requireStatementArray(body)),
+        span
+      );
+    }
+  );
+  // Keyframes use the existing canonical AtRuleBlock + Rule shape. Keeping the
+  // header and selector list structural avoids routing valid CSS keyframes
+  // through the generic Less at-rule/ruleset combination, which cannot model
+  // percentage selectors as selector facts.
+  // Gating note: block entries overlap on ident-led declarations and
+  // function-call statements. The shared prefix is the property/call name, but
+  // the deciding delimiter is `:` versus `(` / `;`, so a cosmetic dispatch on
+  // the identifier would commit too early.
+  const KeyframeSelector = node<SimpleSelector>(
+    'KeyframeSelector',
+    choice(directLessKeyframeEndpoint, directLessKeyframePercent),
+    children => simpleSelector(requireToken(children[0]).value)
+  );
+  const KeyframeBlock = node<Rule>(
+    'KeyframeBlock',
+    sequence(
+      oneOrMoreSep(
+        g.KeyframeSelector,
+        literal(',')
+      ),
+      literal('{'),
+      many(choice(directLessDeclarationItem, g.DirectLessFunctionStatement, literal(';'))),
+      optional(g.DirectLessFunction),
+      literal('}')
+    ),
+    (children, _fields, span, rawChildren) => {
+      const selectors = children.filter(isSimpleSelector)
+        .map(selector => complexSelector([{ compound: compoundSelectorOf([selector]) }]));
+      if (selectors.length === 0) {
+        throw new TypeError('Direct Less keyframe block requires a selector.');
+      }
+      return withSourceSpan(
+        withBlockBody(rule(selist(...selectors), children.filter(isStatement)), rawChildren),
+        span
+      );
+    }
+  );
+  const Keyframes = node<AtRuleBlock>(
+    'Keyframes',
+    sequence(
+      g.CssSyntaxKeyframesAtKeyword,
+      field('prelude', choice(g.AtRuleInterpolation, BareVariableInterpolation, g.EscapedQuoted, g.StaticQuoted, g.Keyword)),
+      literal('{'),
+      // Less permits a detached-ruleset call as a keyframes-body entry. Keep
+      // that as the existing typed Reference fact so a parameterized keyframe
+      // name and its body are both grammar-owned.
+      many(choice(g.ReferenceCall, g.KeyframeBlock)),
+      literal('}')
+    ),
+    (children, fields, span, rawChildren) => {
+      // The keyframes body may itself contain Reference values. Select header
+      // facts only from the grammar region before `{`, rather than filtering
+      // every value-shaped child in the whole production.
+      requireField(fields, 'prelude');
+      const bodyStart = children.findIndex(child => isTerminalText(child, '{'));
+      if (bodyStart < 0) {
+        throw new TypeError('Direct Less keyframes lost its body boundary.');
+      }
+      const preludeParts = children.slice(1, bodyStart).filter(isValueNode);
+      if (preludeParts.length === 0) {
+        throw new TypeError('Direct Less keyframes lost their header fact.');
+      }
+      return withSourceSpan(withBlockBody(
+        atRuleBlock(
+          requireToken(children[0]).value,
+          preludeParts.length === 1 ? preludeParts[0]! : spaced(preludeParts),
+          children.filter(isStatement)
+        ),
+        rawChildren
+      ), span);
+    }
+  );
+  // A dotted layer name is one syntactic identifier, rather than a selector or
+  // a post-parse string shape. Keep its spelling in the ordinary Keyword node.
+  const DottedAtRuleKeyword = node<ValueNode>(
+    'DottedAtRuleKeyword',
+    sequence(directStaticIdentifier, oneOrMore(sequence(noTrivia(literal('.')), noTrivia(directStaticIdentifier)))),
+    children => keyword(children.map(requireTerminalText).join(''))
+  );
+  const StaticAtRuleCustomProperty = node<ValueNode>(
+    'StaticAtRuleCustomProperty',
+    g.LessSyntaxCustomProperty,
+    children => keyword(requireToken(children[0]).value)
+  );
+  // Generic at-rule headers have no parser-owned syntax-preserving evaluation
+  // model for interpolation or parenthesized forms. Their direct subset stays
+  // static; `@layer` gets its own typed interpolation alternative below.
+  const StaticAtRuleAtom = node<ValueNode>(
+    'StaticAtRuleAtom',
+    choice(g.EscapedQuoted, g.StaticQuoted, g.Color, g.NamedColor, g.Dimension, g.StaticUrl, g.PagePseudo, g.DirectLessFunction, g.Paren, g.DottedAtRuleKeyword, StaticAtRuleCustomProperty, g.Keyword),
+    children => requireValueNode(children[0])
+  );
+  const StaticAtRuleTerm = node<ValueNode>(
+    'StaticAtRuleTerm',
+    oneOrMore(g.StaticAtRuleAtom),
+    (children) => {
+      const values = children.map(requireValueNode);
+      return values.length === 1 ? values[0]! : spaced(values);
+    }
+  );
+  const StaticAtRulePrelude = node<ValueNode>(
+    'StaticAtRulePrelude',
+    sequence(g.StaticAtRuleTerm, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), g.StaticAtRuleTerm))),
+    (children, fields) => {
+      const values = children.filter(isValueNode);
+      if (values.length === 1) {
+        return values[0]!;
+      }
+      const result = list(values, ',');
+      const separators = fields?.separator === undefined
+        ? []
+        : requireFields(fields, 'separator').map(separator => requireTerminalText(separator.value));
+      return separators.length === values.length - 1 ? withValueLayout(result, separators) : result;
+    }
+  );
+  const directLessAtPreludeWhitespace = noTrivia(regex(/[ \t\n\r\f]+/));
+  const directLessAtPreludeComment = noTrivia(blockComment);
+  const directLessAtPreludeComma = noTrivia(literal(','));
+  const directLessAtPreludeGroup = noTrivia(choice(
+    balanced(
+      '(',
+      ')',
+      { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }
+    ),
+    balanced(
+      '[',
+      ']',
+      { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }
+    )
+  ));
+  const directLessAtPreludeQuoted = noTrivia(choice(
+    scanSkipDoubleString,
+    scanSkipSingleString
+  ));
+  const directLessAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|\/(?!\*)|[^\\/ \t\n\r\f,;{}()[\]"'])+/));
+  const CssAtRulePrelude = node<ValueNode | null>(
+    'CssAtRulePrelude',
+    noTrivia(many(choice(
+      directLessAtPreludeWhitespace,
+      directLessAtPreludeComment,
+      directLessAtPreludeComma,
+      directLessAtPreludeGroup,
+      directLessAtPreludeQuoted,
+      BareVariableInterpolation,
+      directLessAtPreludeText
+    ))),
+    (children) => {
+      const text = staticText(children).trim();
+      return text === '' ? null : any(text);
+    }
+  );
+  const lessOpaqueAtPreludeText = noTrivia(regex(/(?:\\[\s\S]|@(?!\{)|\/(?!\*)|[^\\/@ \t\n\r\f,;{}()[\]"'])+/));
+  const lessOpaqueAtPreludeCapture = noTrivia(many(choice(
+    directLessAtPreludeWhitespace,
+    directLessAtPreludeComment,
+    directLessAtPreludeComma,
+    directLessAtPreludeGroup,
+    directLessAtPreludeQuoted,
+    BareVariableInterpolation,
+    lessOpaqueAtPreludeText
+  )));
+  // CSS-defined statement at-rules have grammar-owned interpolation forms that
+  // the generic at-rule subset intentionally does not accept. Keep the
+  // namespace prefix and URI as ordinary typed values; this preserves
+  // `@namespace @{prefix} "…"` without widening unknown at-rules such as
+  // `@custom foo@{name};` into a raw/recovered-header path.
+  // Gating note: `url(` overlaps the URI-only arm with an identifier-prefixed
+  // namespace in the analyzer, but the glued `url(` delimiter belongs to
+  // `StaticUrl`; dispatching on bare `url` would lose that distinction.
+  const NamespacePrelude = node<ValueNode>(
+    'NamespacePrelude',
+    choice(
+      g.StaticUrl,
+      g.Quoted,
+      sequence(
+        choice(g.AtRuleInterpolation, g.Keyword),
+        choice(g.Quoted, g.StaticUrl)
+      )
+    ),
+    (children) => {
+      const values = children.filter(isValueNode);
+      const uri = values.at(-1);
+      if (uri === undefined) {
+        throw new TypeError('Direct Less namespace prelude lost its URI value.');
+      }
+      return children.length === 1
+        ? uri
+        : spaced([values[0]!, uri]);
+    }
+  );
+  const atRuleBlockBody = sequence(
+    literal('{'),
+    blockBody,
+    optional(g.DirectLessFunction),
+    literal('}')
+  );
+  const genericAtRuleBlockTail = choice(
+    attempt(sequence(
+      // Generic headers serialize as ordinary bytes. Their interpolation and
+      // parenthesized forms need a dedicated syntax-preserving model, so this
+      // direct route deliberately leaves them closed.
+      attempt(g.StaticAtRulePrelude),
+      atRuleBlockBody
+    )),
+    sequence(
+      not(peek(regex(/[ \t\n\r\f]*:/))),
+      g.CssAtRulePrelude,
+      atRuleBlockBody
+    )
+  );
+  const AtRuleBlock = node<AtRuleBlock>(
+    'AtRuleBlock',
+    choice(
+      sequence(
+        layerAtRuleName,
+        not(noTrivia(literal('('))),
+        optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.StaticAtRulePrelude)),
+        atRuleBlockBody
+      ),
+      sequence(
+        atRuleName,
+        genericAtRuleBlockTail
+      )
+    ),
+    (children, _fields, span, rawChildren) => {
+      const prelude = children.find(isValueNode) ?? null;
+      // A FunctionCall is a legal statement *and* a legal generic prelude
+      // component. Exclude the exact selected prelude object rather than
+      // reclassifying it through text or weakening the statement grammar.
+      const body = children.filter(isStatement).filter(statement => statement !== prelude);
+      return withSourceSpan(withBlockBody(atRuleBlock(requireToken(children[0]).value, prelude, body), rawChildren), span);
+    }
+  );
+  const OpaqueAtPrelude = node<string | null>(
+    'OpaqueAtPrelude',
+    lessOpaqueAtPreludeCapture,
+    (children) => {
+      const text = children.length === 0 ? '' : staticText(children).trim();
+      return text === '' ? null : text;
+    }
+  );
+  const OpaqueBody = node<string>(
+    'OpaqueBody',
+    lessOpaqueBodyCapture,
+    children => children.length === 0 ? '' : staticText(children)
+  );
+  const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
+    'OpaqueAtRuleBlock',
+    sequence(
+      atRuleName,
+      not(peek(regex(/[ \t\n\r\f]*:/))),
+      noTrivia(sequence(
+        g.OpaqueAtPrelude,
+        literal('{'),
+        g.OpaqueBody,
+        literal('}')
+      ))
+    ),
+    (children) => {
+      const prelude = children[1];
+      const rawBody = children[3];
+      if ((prelude !== null && typeof prelude !== 'string') || typeof rawBody !== 'string') {
+        throw new TypeError('Direct Less opaque at-rule block lost its grammar-owned raw facts.');
+      }
+      return opaqueAtRuleBlock(
+        requireToken(children[0]).value,
+        prelude,
+        rawBody
+      );
+    }
+  );
+  // CSS @charset is a single static token. Less 4 interpolated inside it, but
+  // Less 5 deliberately rejects that legacy form. Recognize the authored form
+  // here so the public diagnostic carries its exact grammar span instead of
+  // falling through the root repetition as generic trailing input.
+  const CharsetStatement = node<AtRuleStatement>(
+    'AtRuleStatement',
+    sequence(charsetAtRuleName, g.Quoted, literal(';')),
+    (children, _fields, span) => {
+      const prelude = requireValueNode(children[1]);
+      if (prelude.type === 'Interpolation') {
+        throw new LessDynamicCharsetError(span.start, span.end);
+      }
+      return atRuleStatement(requireToken(children[0]).value, prelude);
+    }
+  );
+  const AtRuleStatement: Combinator<AtRuleStatement> = choice(
+    CharsetStatement,
+    node<AtRuleStatement>(
+      'AtRuleStatement',
+      dispatch(
+        token(noTrivia(staticAtRuleStatementName)),
+        caseOf('@namespace', sequence(routed(), g.NamespacePrelude, literal(';'))),
+        caseOf(
+          '@layer',
+          sequence(
+            routed(),
+            not(noTrivia(literal('('))),
+            optional(choice(BareVariableInterpolation, g.InterpolatedValue, g.StaticAtRulePrelude)),
+            literal(';')
+          )
+        ),
+        otherwise(sequence(
+          routed(),
+          choice(
+            attempt(sequence(
+              g.StaticAtRulePrelude,
+              literal(';')
+            )),
+            sequence(
+              not(peek(regex(/[ \t\n\r\f]*:/))),
+              g.CssAtRulePrelude,
+              literal(';')
+            )
+          )
+        ))
+      ),
+      (children) => {
+        const routedChildren = children.flatMap(child => Array.isArray(child) ? child : [child]);
+        return atRuleStatement(requireToken(routedChildren[0]).value, routedChildren.find(isValueNode) ?? null);
+      }
+    )
+  );
+  const DirectLessStaticNthArgument = node<string>(
+    'DirectLessStaticNthArgument',
+    sequence(
+      g.CssSyntaxNth,
+      optional(sequence(g.CssSyntaxOfKeyword, parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector)))
+    ),
+    (children) => {
+      const nth = requireToken(children[0]).value;
+      const selector = children.find(isSelectorList);
+      return selector === undefined ? nth : `${nth} of ${selector.selectors.map(complexCanonical).join(',')}`;
+    }
+  );
+  const DirectLessStaticNthPseudo: Combinator<SimpleSelector> = choice(
+    node<SimpleSelector>(
+      'DirectLessStaticNthChildPseudo',
+      parser({ trivia: staticSelectorTrivia }, sequence(
+        token(noTrivia(sequence(pseudoDelimiter, g.CssSyntaxNthChildName, literal('(')))),
+        g.DirectLessStaticNthArgument,
+        literal(')')
+      )),
+      children => simpleSelector(`${requireToken(children[0]).value}${requireString(children[1])})`)
+    ),
+    node<SimpleSelector>(
+      'DirectLessStaticNthTypePseudo',
+      parser({ trivia: staticSelectorTrivia }, sequence(
+        token(noTrivia(sequence(pseudoDelimiter, g.CssSyntaxNthTypeName, literal('(')))),
+        g.CssSyntaxNth,
+        literal(')')
+      )),
+      children => simpleSelector(`${requireToken(children[0]).value}${requireToken(children[1]).value})`)
+    )
+  );
+  // Less permits a variable interpolation as an An+B argument (`:nth-child(@{n})`).
+  // Keep the pseudo delimiter/name, variable reference, and closing delimiter as
+  // typed interpolation segments; no raw selector recovery or second parse is
+  // needed when the value is substituted during evaluation.
+  const InterpolatedNthPseudo = node<SimpleSelector>(
+    'DirectLessInterpolatedNthPseudo',
+    parser({ trivia: staticSelectorTrivia }, sequence(
+      token(noTrivia(sequence(pseudoDelimiter, choice(g.CssSyntaxNthChildName, g.CssSyntaxNthTypeName), literal('(')))),
+      g.VariableInterpolation,
+      literal(')')
+    )),
+    (children) => {
+      const open = requireTerminalText(children[0]);
+      const interpolationFact = requireInterpolationFact(children[1]);
+      return interpolatedSimpleSelector(interpolation([
+        { lit: open },
+        { ref: interpolationFact.ref, unquote: true },
+        { lit: ')' }
+      ]));
+    }
+  );
+  const directLessExtendPseudoOpen = parser(
+    { trivia: staticSelectorTrivia },
+    token(noTrivia(sequence(regex(/extend(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('))))
+  );
+  // A functional pseudo's ARGUMENT may be interpolated (`:lang(@{lang})`,
+  // `:dir(@{d})`), which no static argument grammar can recognize because the
+  // argument's bytes do not exist until evaluation. Keep it structural: the
+  // whole atom becomes one Interpolation-backed SimpleSelector holding typed
+  // literal/ref parts, exactly like the interpolated nth and name pseudos. The
+  // parser never joins it into text and never re-scans the span.
+  // At least one interpolation is required, so a fully static argument stays on
+  // the DirectLessStaticPseudo route it already had.
+  const DirectLessInterpolatedArgumentPseudo = node<SimpleSelector>(
+    'DirectLessInterpolatedArgumentPseudo',
+    parser({ trivia: staticSelectorTrivia }, sequence(
+      token(noTrivia(sequence(
+        pseudoDelimiter,
+        not(directLessExtendPseudoOpen),
+        g.LessSyntaxIdentifier,
+        literal('(')
+      ))),
+      many(staticPseudoChunk),
+      g.VariableInterpolation,
+      many(choice(g.VariableInterpolation, staticPseudoChunk)),
+      literal(')')
+    )),
+    (children) => {
+      const open = requireTerminalText(children[0]);
+      const parts = interpolationPartsFrom(children.slice(1, -1), true, open);
+      parts.push({ lit: ')' });
+      return interpolatedSimpleSelector(interpolation(parts));
+    }
+  );
+  const StaticPseudoQuoted = node<string>(
+    'DirectLessStaticPseudoQuoted',
+    staticQuotedBody,
+    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+  );
+  const staticPseudoInner = choice(g.DirectLessStaticPseudoGroup, g.DirectLessStaticPseudoSquare, g.StaticPseudoQuoted, blockComment, staticPseudoChunk);
+  const DirectLessStaticPseudoGroup = node<string>(
+    'DirectLessStaticPseudoGroup',
+    sequence(literal('('), many(staticPseudoInner), literal(')')),
+    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+  );
+  const DirectLessStaticPseudoSquare = node<string>(
+    'DirectLessStaticPseudoSquare',
+    sequence(literal('['), many(staticPseudoInner), literal(']')),
+    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+  );
+  const DirectLessStaticNonSelectorPseudoArgument = node<string>(
+    'DirectLessStaticNonSelectorPseudoArgument',
+    oneOrMore(staticPseudoInner),
+    children => children.map(child => typeof child === 'string' ? child : requireToken(child).value).join('')
+  );
+  // A functional pseudo's static selector argument is the same recursive
+  // selector grammar as a rule header. `rules()` names the cycle at macro
+  // lowering (`pseudo argument -> selector -> compound -> pseudo`), so this
+  // retains structural selector facts without a text scanner or a reparse.
+  // Keep it local, like CSS's generic pseudo argument: it is an implementation
+  // component of the public pseudo production, not a second parser API.
+  // Retain the parsed `SelectorList` rather than collapsing it to text. A
+  // whitelisted selector-function pseudo (`:is`/`:not`/…) keeps it as structured
+  // `args`; `DirectLessStaticSelectorPseudo` joins the opaque `:global`/`:local`
+  // fallback via `complexCanonical`. The parser never bakes the inline
+  // `:is(a, b)` spelling — core serialization owns that.
+  const DirectLessStaticPseudoArgument = node<SelectorList>(
+    'DirectLessStaticPseudoArgument',
+    parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector),
+    children => requireSelectorList(children[0])
+  );
+  // This selector family is private to functional pseudo arguments.  A block
+  // comment immediately between two simple selectors is lexical trivia, not a
+  // descendant relation (`.a/*x*/.b` is one compound); actual whitespace still
+  // belongs to the complex-tail descendant boundary.
+  const DirectLessStaticPseudoCompound = node<CompoundSelector>(
+    'DirectLessStaticPseudoCompound',
+    parser(
+      { trivia: compoundSelectorTrivia },
+      oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, g.DirectLessStaticPseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute))
+    ),
+    children => compoundSelectorOf(children.map((child) => {
+      return isSimpleToken(child) ? child : simpleSelector(requireToken(child).value);
+    }))
+  );
+  // This selector family is private to functional pseudo arguments.  Its tail
+  // admits Less selector trivia immediately before the next compound, so
+  // `.a /* note */ > /* note */ .b` remains one structured complex selector.
+  // The ordinary outer selector continues to use DirectLessComplexTail, whose
+  // no-trivia compound boundary is intentionally unchanged.
+  const DirectLessStaticPseudoComplexTail = node<ComplexTailFact>(
+    'DirectLessStaticPseudoComplexTail',
+    sequence(optional(staticCombinator), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoCompound)),
+    combinatorTailReducer
+  );
+  const DirectLessStaticPseudoComplex = node<ComplexSelector>(
+    'DirectLessStaticPseudoComplex',
+    sequence(
+      optional(relativeSelectorCombinator),
+      g.DirectLessStaticPseudoCompound,
+      many(sequence(not(regex(/[ \t\n\r\f]*when(?![-\w])/i)), g.DirectLessStaticPseudoComplexTail))
+    ),
+    (children) => {
+      const head = requireCompound(children.find(isCompound));
+      const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
+      return complexSelector([
+        { compound: head },
+        ...children.filter(isComplexTailFact)
+      ], leading === undefined ? undefined : requireCombinator(leading));
+    }
+  );
+  const DirectLessStaticPseudoSelectorTail = node<ComplexSelector>(
+    'DirectLessStaticPseudoSelectorTail',
+    sequence(literal(','), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoComplex)),
+    children => requireComplex(children[1])
+  );
+  const DirectLessStaticPseudoSelector = node<SelectorList>(
+    'DirectLessStaticPseudoSelector',
+    sequence(g.DirectLessStaticPseudoComplex, many(g.DirectLessStaticPseudoSelectorTail)),
+    children => selist(...requireComplexes(children))
+  );
+  // `*[ … ]` is only the glued capture delimiter around the existing static
+  // selector-list grammar. It is a selector-valued Less value, not a text
+  // capture: the selector grammar owns every branch boundary and the AST keeps
+  // the canonical branches for selector interpolation.
+  const DirectLessSelectorCapture = node<SelectorCapture>(
+    'DirectLessSelectorCapture',
+    sequence(noTrivia(literal('*[')), parser({ trivia: staticSelectorTrivia }, g.DirectLessStaticPseudoSelector), noTrivia(literal(']'))),
+    (children) => {
+      const selector = requireSelectorList(children[1]);
+      const branches = selector.selectors.map(complexCanonical);
+      return selectorCapture(branches, `*[${branches.join(', ')}]`);
+    }
+  );
+  const directLessPseudoOpen = token(noTrivia(sequence(
+    regex(/::?(?![ \t\n\r\f])/),
+    not(directLessExtendPseudoOpen),
+    not(g.CssSyntaxNthName),
+    g.LessSyntaxIdentifier,
+    optional(literal('('))
+  )));
+  const DirectLessStaticSelectorPseudoRouted = node<SimpleToken>(
+    'DirectLessStaticSelectorPseudo',
+    sequence(routed(), DirectLessStaticPseudoArgument, literal(')')),
+    (children) => staticSelectorPseudoFrom(
+      requireToken(children[0]).value.slice(0, -1),
+      children[1]
+    )
+  );
+  const DirectLessInterpolatedArgumentPseudoRouted = node<SimpleSelector>(
+    'DirectLessInterpolatedArgumentPseudo',
+    sequence(
+      routed(),
+      many(staticPseudoChunk),
+      g.VariableInterpolation,
+      many(choice(g.VariableInterpolation, staticPseudoChunk)),
+      literal(')')
+    ),
+    (children) => {
+      const open = requireToken(children[0]).value;
+      const parts = interpolationPartsFrom(children.slice(1, -1), true, open);
+      parts.push({ lit: ')' });
+      return interpolatedSimpleSelector(interpolation(parts));
+    }
+  );
+  const DirectLessStaticNonSelectorPseudoRouted = node<SimpleSelector>(
+    'DirectLessStaticNonSelectorPseudo',
+    sequence(routed(), g.DirectLessStaticNonSelectorPseudoArgument, literal(')')),
+    (children) => staticNonSelectorPseudoFrom(
+      requireToken(children[0]).value.slice(0, -1),
+      requireString(children[1])
+    )
+  );
+  const DirectLessStaticBarePseudoRouted = node<SimpleSelector>(
+    'DirectLessStaticNonSelectorPseudo',
+    routed(),
+    children => staticNonSelectorPseudoFrom(requireToken(children[0]).value, null)
+  );
+  const DirectLessPseudo = dispatch(
+    directLessPseudoOpen,
+    caseOf(
+      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
+      choice(DirectLessStaticSelectorPseudoRouted, DirectLessInterpolatedArgumentPseudoRouted)
+    ),
+    when(
+      endsWith('('),
+      choice(DirectLessInterpolatedArgumentPseudoRouted, DirectLessStaticNonSelectorPseudoRouted)
+    ),
+    otherwise(DirectLessStaticBarePseudoRouted)
+  );
+  // `:extend(...)` is an inline-extend production, not a pseudo. Like ordinary
+  // function openers, every pseudo-function opener is glued, so
+  // `:extend /*...*/ (` must not fall through as a generic pseudo or reparsed
+  // selector surface.
+  const DirectLessStaticPseudo = dispatch(
+    directLessPseudoOpen,
+    caseOf(
+      [':is(', '::is(', ':not(', '::not(', ':has(', '::has(', ':where(', '::where(', ':matches(', '::matches(', ':global(', '::global(', ':local(', '::local('],
+      DirectLessStaticSelectorPseudoRouted
+    ),
+    when(
+      endsWith('('),
+      DirectLessStaticNonSelectorPseudoRouted
+    ),
+    otherwise(DirectLessStaticBarePseudoRouted)
+  );
+  // A Less pseudo name may itself be interpolated (`:@{pseudo}` / `::@{pseudo}`)
+  // and remains one interpolation-backed selector atom. Keep the delimiter and
+  // interpolation structural so evaluation can substitute the name without a
+  // selector-string reparse.
+  const DirectLessInterpolatedPseudo = node<SimpleSelector>(
+    'DirectLessInterpolatedPseudo',
+    noTrivia(sequence(pseudoDelimiter, g.VariableInterpolation)),
+    (children) => {
+      const delimiter = requireTerminalText(children[0]);
+      const interpolationFact = requireInterpolationFact(children[1]);
+      return interpolatedSimpleSelector(interpolation([
+        { lit: delimiter },
+        { ref: interpolationFact.ref, unquote: true }
+      ]));
+    }
+  );
+  const DirectLessStaticAttributeNamespace = node<string>(
+    'DirectLessStaticAttributeNamespace',
+    choice(
+      // `|=` is the CSS attribute operator, not a namespace separator. Guard
+      // the namespace arm before consuming `|` so a quoted interpolation after
+      // `prop|=` remains on the ordinary attribute-value route.
+      sequence(directStaticIdentifier, literal('|'), not(literal('='))),
+      literal('*|'),
+      literal('|')
+    ),
+    children => children.map(requireToken).map(token => token.value).join('')
+  );
+  const DirectLessStaticNamespaceType = node<SimpleSelector>(
+    'DirectLessStaticNamespaceType',
+    sequence(g.DirectLessStaticAttributeNamespace, choice(directStaticIdentifier, literal('*'))),
+    children => simpleSelector(children.map(requireTerminalText).join(''))
+  );
+  const DirectLessStaticAttributeName = node<StaticAttributeNameFact>(
+    'DirectLessStaticAttributeName',
+    sequence(optional(g.DirectLessStaticAttributeNamespace), directStaticIdentifier),
+    children => ({
+      namespace: children.find((child): child is string => typeof child === 'string') ?? '',
+      name: requireToken(children.at(-1)).value
+    })
+  );
+  const DirectLessStaticAttributeQuoted = node<string>(
+    'DirectLessStaticAttributeQuoted',
+    staticQuotedBody,
+    children => children.map(requireToken).map(token => token.value).join('')
+  );
+  // Less's attribute name/value interpolation is one complete selector token.
+  // Keep every literal delimiter and every interpolation reference (`@{…}` and
+  // `${…}`) as an `Interpolation` part rather than recovering the bracket text
+  // after parsing. Dynamic pseudos and extend headers remain separate, rejected forms.
+  // Attribute name and value interpolation share one grammar body; the reducers
+  // differ only by whether each reference part is unquoted (name) or kept quoted
+  // (value, so `[data=@{value}]` retains its source spelling).
+  const directAttributeInterpolationTokenBody = noTrivia(sequence(
+    optional(choice(g.LessSyntaxInterpolatedValueStart, g.LessSyntaxInterpolatedValueDash)),
+    g.Interpolation,
+    many(interpolatedValueTail)
+  ));
+  const DirectLessInterpolatedAttributeToken = node<Interpolation>(
+    'DirectLessInterpolatedAttributeToken',
+    directAttributeInterpolationTokenBody,
+    children => interpolation(interpolationPartsFrom(children, true))
+  );
+  const DirectLessInterpolatedAttributeValueToken = node<Interpolation>(
+    'DirectLessInterpolatedAttributeValueToken',
+    directAttributeInterpolationTokenBody,
+    children => interpolation(interpolationPartsFrom(children, false))
+  );
+  const DirectLessInterpolatedAttributeQuoted = node<Interpolation>(
+    'DirectLessInterpolatedAttributeQuoted',
+    choice(
+      noTrivia(sequence(literal('"'), many(choice(g.VariableInterpolation, g.LessSyntaxQuotedDoubleChunk, literal('@'), literal('$'))), literal('"'))),
+      noTrivia(sequence(literal('\''), many(choice(g.VariableInterpolation, g.LessSyntaxQuotedSingleChunk, literal('@'), literal('$'))), literal('\'')))
+    ),
+    children => interpolation(interpolationPartsFrom(children, true))
+  );
+  const DirectLessStaticAttributeMatch = node<StaticAttributeMatchFact>(
+    'DirectLessStaticAttributeMatch',
+    sequence(
+      g.CssSyntaxAttributeOperator,
+      choice(directStaticIdentifier, g.DirectLessStaticAttributeQuoted),
+      optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
+    ),
+    children => ({
+      operator: requireToken(children[0]).value,
+      value: typeof children[1] === 'string' ? children[1] : requireToken(children[1]).value,
+      modifier: children.length === 2 ? null : requireToken(children[3]).value
+    })
+  );
+  const DirectLessStaticAttribute = node<SimpleSelector>(
+    'DirectLessStaticAttribute',
+    sequence(literal('['), g.DirectLessStaticAttributeName, optional(g.DirectLessStaticAttributeMatch), literal(']')),
+    (children) => {
+      const match = children.find((child): child is StaticAttributeMatchFact =>
+        typeof child === 'object' && child !== null && 'operator' in child && 'value' in child && 'modifier' in child
+      );
+      const name = children.find((child): child is StaticAttributeNameFact =>
+        typeof child === 'object' && child !== null && 'namespace' in child && 'name' in child
+      );
+      if (name === undefined) {
+        throw new TypeError('Direct Less AST grammar produced an attribute selector without a name.');
+      }
+      return simpleSelector(`[${name.namespace}${name.name}${match === undefined ? '' : `${match.operator}${match.value}${match.modifier === null ? '' : ` ${match.modifier}`}`}]`);
+    }
+  );
+  const DirectLessInterpolatedAttribute = node<SimpleSelector>(
+    'DirectLessInterpolatedAttribute',
+    sequence(
+      literal('['),
+      choice(
+        sequence(
+          optional(g.DirectLessStaticAttributeNamespace),
+          g.DirectLessInterpolatedAttributeToken,
+          optional(sequence(
+            g.CssSyntaxAttributeOperator,
+            choice(g.DirectLessInterpolatedAttributeValueToken, g.DirectLessInterpolatedAttributeQuoted, g.LessSyntaxIdentifier, g.DirectLessStaticAttributeQuoted),
+            optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
+          ))
+        ),
+        sequence(
+          g.DirectLessStaticAttributeName,
+          g.CssSyntaxAttributeOperator,
+          choice(g.DirectLessInterpolatedAttributeValueToken, g.DirectLessInterpolatedAttributeQuoted),
+          optional(sequence(selectorAttributeModifierSpace, g.CssSyntaxAttributeModifier))
+        )
+      ),
+      literal(']')
+    ),
+    (children) => {
+      const parts: Interpolation['parts'] = [];
+      for (const child of children) {
+        if (isInterp(child)) {
+          for (const part of child.parts) {
+            if ('lit' in part) {
+              appendInterpolationLiteral(parts, part.lit);
+            } else {
+              parts.push(part);
+            }
+          }
+        } else if (isStaticAttributeNameFact(child)) {
+          const name = child;
+          appendInterpolationLiteral(parts, `${name.namespace}${name.name}`);
+        } else if (typeof child === 'string') {
+          appendInterpolationLiteral(parts, child);
+        } else {
+          appendInterpolationLiteral(parts, requireToken(child).value);
+        }
+      }
+      return interpolatedSimpleSelector(interpolation(parts));
+    }
+  );
+  const DirectLessBareInterpolatedSelector = node<SimpleSelector>(
+    'DirectLessBareInterpolatedSelector',
+    sequence(g.VariableInterpolation, directBareInterpolatedSelectorEnd),
+    (children) => {
+      const fact = requireInterpolationFact(children[0]);
+      return interpolatedSimpleSelector(interpolation([{ ref: fact.ref, unquote: true }]));
+    }
+  );
+  // Adjacent selector interpolations are one compound simple, not two selector
+  // branches. Keep this arm separate from literal suffixes so Parseman's
+  // generated choice commits on the second `@{…}` without treating it as a
+  // static selector-tail byte sequence.
+  const DirectLessAdjacentInterpolatedSelector = node<SimpleSelector>(
+    'DirectLessAdjacentInterpolatedSelector',
+    noTrivia(sequence(g.VariableInterpolation, oneOrMore(g.VariableInterpolation))),
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+  );
+  // A bare interpolation may be followed by a glued selector simple, such as
+  // `@{base}.bbb`. Keep that suffix as an interpolation literal segment rather
+  // than recovering a completed selector string after parse.
+  const DirectLessBareInterpolatedSelectorWithSuffix = node<SimpleSelector>(
+    'DirectLessBareInterpolatedSelectorWithSuffix',
+    noTrivia(sequence(g.VariableInterpolation, oneOrMore(choice(directInterpolatedSelectorTail, staticSimpleSelector)))),
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+  );
+  const DirectLessInterpolatedSimpleSelector = node<SimpleSelector>(
+    'DirectLessInterpolatedSimpleSelector',
+    noTrivia(sequence(
+      directInterpolatedSelectorPrefix,
+      g.VariableInterpolation,
+      many(choice(directInterpolatedSelectorTail, g.VariableInterpolation))
+    )),
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+  );
+  // `&` plus a glued Less interpolation is one parent-suffix selector token,
+  // not a static parent selector followed by a second compound member. The
+  // existing Interpolation-backed SimpleSelector is its complete canonical model.
+  const DirectLessInterpolatedParentSuffix = node<SimpleSelector>(
+    'DirectLessInterpolatedParentSuffix',
+    noTrivia(sequence(
+      staticAmpersand,
+      g.VariableInterpolation,
+      many(choice(directInterpolatedSelectorTail, g.VariableInterpolation))
+    )),
+    children => interpolatedSimpleSelector(interpolation(interpolationPartsFrom(children, true)))
+  );
+  const directLessNonCommentCompoundSimple = choice(
+    g.DirectLessInterpolatedParentSuffix,
+    g.DirectLessInterpolatedSimpleSelector,
+    g.DirectLessAdjacentInterpolatedSelector,
+    g.DirectLessBareInterpolatedSelectorWithSuffix,
+    g.DirectLessBareInterpolatedSelector,
+    g.DirectLessStaticNamespaceType,
+    staticSimpleSelector,
+    staticAmpersand,
+    // Generic and selector pseudos (`:hover`, `::before`, `:not(...)`) dominate
+    // real selectors; the two nth arms and the interpolated-name arm are rare.
+    // DirectLessStaticPseudo carries the generic/selector case and is name-set
+    // disjoint from the other three — its NonSelectorPseudo `not(nth-name)` /
+    // `not(selector-name)` guards and its SelectorPseudo name regex mean it can
+    // never match an nth pseudo or an interpolated-name pseudo (`:@{n}`). So
+    // trying it first lets the common pseudo commit on the first arm instead of
+    // paying four failed `::?`+name re-scans through the nth/interp arms, while a
+    // rare nth/interp pseudo still falls through to its arm with output and PEG
+    // priority unchanged.
+    DirectLessPseudo,
+    g.InterpolatedNthPseudo,
+    g.DirectLessStaticNthPseudo,
+    g.DirectLessInterpolatedArgumentPseudo,
+    g.DirectLessInterpolatedPseudo,
+    g.DirectLessStaticAttribute,
+    g.DirectLessInterpolatedAttribute
+  );
+  const DirectLessCompound: Combinator<CompoundSelector> = node<CompoundSelector>(
+    'DirectLessCompound',
+    // Production's CompoundSelector is a run of adjacent simple selectors.
+    // Keep that same structural distinction here: `.a#id` is one CompoundSelector with
+    // two SimpleSelector children, not a recovered selector string. Static pseudos use
+    // the same canonical SimpleSelector representation. The exact shared An+B terminal
+    // is also direct; arbitrary pseudo arguments, attributes, and interpolation
+    // remain outside this slice until their own typed payloads have reductions.
+    // The functional form precedes its no-argument prefix so ordered choice does
+    // not commit `:nth-child` before seeing the opening parenthesis.
+    parser({ trivia: compoundSelectorTrivia }, oneOrMore(directLessNonCommentCompoundSimple)),
+    (children) => {
+      const simples = children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value));
+      return compoundSelectorOf(simples);
+    }
+  );
+  const DirectLessComplex = node<ComplexSelector>(
+    'DirectLessComplex',
+    sequence(
+      optional(relativeSelectorCombinator),
+      g.DirectLessCompound,
+      many(sequence(not(regex(/[ \t\n\r\f]*when(?![-\w])/i)), g.DirectLessComplexTail))
+    ),
+    (children, _fields, span) => {
+      const head = children.find(isCompound);
+      if (head === undefined) {
+        throw new TypeError('Direct Less AST grammar produced a selector without a head compound.');
+      }
+      const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
+      const tails = children.filter(isComplexTailFact).map((tail): ComplexTailFact => {
+        if (typeof tail !== 'object' || tail === null || !('comb' in tail) || !('compound' in tail)) {
+          throw new TypeError('Direct Less AST grammar produced an invalid selector tail.');
+        }
+        return tail as ComplexTailFact;
+      });
+      return withSourceSpan(complexSelector([
+        { compound: head },
+        ...tails
+      ], leading === undefined ? undefined : requireCombinator(leading)), span);
+    }
+  );
+  const DirectLessComplexTail = node<ComplexTailFact>(
+    'DirectLessComplexTail',
+    sequence(optional(staticCombinator), g.DirectLessCompound),
+    combinatorTailReducer
+  );
+  const DirectLessSelectorTail = node<ComplexSelector>(
+    'DirectLessSelectorTail',
+    sequence(literal(','), g.DirectLessComplex),
+    children => requireComplex(children[1])
+  );
+  const DirectLessSelector = node<SelectorList>(
+    'DirectLessSelector',
+    parser({ trivia: outerSelectorTrivia }, sequence(g.DirectLessComplex, many(g.DirectLessSelectorTail))),
+    (children, _fields, span) => withSourceSpan(selist(...requireComplexes(children)), span)
+  );
+  const directExtendAll = regex(/!?all(?![-_a-zA-Z0-9\u0080-\uffff])/i);
+  const StaticExtendCompound = node<CompoundSelector>(
+    'DirectLessStaticExtendCompound',
+    parser(
+      { trivia: compoundSelectorTrivia },
+      oneOrMore(choice(g.DirectLessStaticNamespaceType, staticSimpleSelector, staticAmpersand, DirectLessPseudo, g.DirectLessStaticNthPseudo, g.DirectLessStaticAttribute))
+    ),
+    children => compoundSelectorOf(children.map(child => isSimpleToken(child) ? child : simpleSelector(requireToken(child).value)))
+  );
+  const StaticExtendComplexTail = node<ComplexTailFact>(
+    'DirectLessStaticExtendComplexTail',
+    sequence(optional(staticCombinator), StaticExtendCompound),
+    combinatorTailReducer
+  );
+  const DirectLessExtendComplex = node<ComplexSelector>(
+    'DirectLessExtendComplex',
+    sequence(
+      StaticExtendCompound,
+      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), StaticExtendComplexTail))
+    ),
+    (children, _fields, span) => withSourceSpan(complexSelector([
+      { compound: requireCompound(children[0]) },
+      // The terminal-flag lookahead is a recognition-only child. Keep only
+      // actual tail facts: otherwise the successful stop check is emitted as
+      // a fake descendant tail with no compound.
+      ...children.slice(1).filter(isComplexTailFact)
+    ]), span)
+  );
+  const ExtendTargetComplexTail = node<ComplexTailFact>(
+    'DirectLessExtendTargetComplexTail',
+    sequence(optional(staticCombinator), g.DirectLessCompound),
+    combinatorTailReducer
+  );
+  const ExtendTargetComplex = node<ComplexSelector>(
+    'DirectLessExtendTargetComplex',
+    sequence(
+      // An extend target can carry a typed selector interpolation, unlike its
+      // inline subject. Keep `.@{name}` in the AST rather than rescanning it.
+      g.DirectLessCompound,
+      many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), ExtendTargetComplexTail))
+    ),
+    (children, _fields, span) => withSourceSpan(complexSelector([
+      { compound: requireCompound(children[0]) },
+      ...children.slice(1).filter(isComplexTailFact)
+    ]), span)
+  );
+  const DirectLessExtendTarget = node<ExtendTargetFact>(
+    'DirectLessExtendTarget',
+    sequence(ExtendTargetComplex, optional(directExtendAll)),
+    children => ({
+      target: selist(requireComplex(children[0])),
+      partial: children.some(child => isTerminalText(child, 'all') || isTerminalText(child, '!all'))
+    })
+  );
+  const ExtendPseudo = node<readonly ExtendTargetFact[]>(
+    'ExtendPseudo',
+    sequence(
+      noTrivia(sequence(literal(':'), literal('extend'), literal('('))),
+      oneOrMoreSep(
+        g.DirectLessExtendTarget,
+        literal(',')
+      ),
+      literal(')')
+    ),
+    children => children.filter(isExtendTargetFact)
+  );
+  const directSelectorBranchBoundary = peek(choice(literal(','), lessWord('when'), literal('{')));
+  const DirectLessExtendStatement = node<ExtendInstruction[]>(
+    'ExtendStatement',
+    sequence(literal('&'), ExtendPseudo, optional(literal(';'))),
+    children => children
+      .flatMap(child => Array.isArray(child) ? child.filter(isExtendTargetFact) : [])
+      .map(target => ({ target: target.target, partial: target.partial }))
+  );
+  const directSelectorBranchContinuation = choice(
+    sequence(ExtendPseudo, directSelectorBranchBoundary),
+    directSelectorBranchBoundary
+  );
+  const SelectorBranch = node<SelectorBranchFact>(
+    'SelectorBranch',
+    sequence(DirectLessExtendComplex, directSelectorBranchContinuation),
+    (children) => {
+      const subject = requireComplex(children[0]);
+      const extensions = children
+        .filter(Array.isArray)
+        .flatMap(child => child.filter(isExtendTargetFact))
+        .map(target => ({ target: target.target, partial: target.partial, subject: selist(subject) }));
+      return { selector: subject, extensions };
+    }
+  );
+  const DynamicSelectorBranch = node<SelectorBranchFact>(
+    'SelectorBranch',
+    g.DirectLessComplex,
+    children => ({ selector: requireComplex(children[0]), extensions: [] })
+  );
+  const selectorListWithExtends = node<SelectorListWithExtendsFact>(
+    'SelectorListWithExtends',
+    parser(
+      { trivia: outerSelectorTrivia },
+      oneOrMoreSep(
+        choice(SelectorBranch, DynamicSelectorBranch),
+        literal(',')
+      )
+    ),
+    (children, _fields, span) => ({
+      selector: withSourceSpan(selist(...children.flatMap(child => isSelectorBranchFact(child)
+        ? [child.selector]
+        : [])), span),
+      extensions: children.filter(isSelectorBranchFact).flatMap(branch => branch.extensions)
+    })
+  );
+  const RulesetWithExtends = node<Rule>(
+    'Ruleset',
+    sequence(selectorListWithExtends, optional(g.DirectLessMixinGuard), literal('{'), rulesetBody, optional(g.DirectLessFunction), literal('}'), optional(literal(';'))),
+    (children, _fields, span, rawChildren) => {
+      const selectorFact = requireSelectorListWithExtendsFact(children[0]);
+      const bodyExtensions = children.filter(Array.isArray).flatMap(child => child.filter(isExtendInstruction));
+      const extensions = [...selectorFact.extensions, ...bodyExtensions];
+      return withSourceSpan(withBlockBody(
+        rule(
+          selectorFact.selector,
+          // The fixed sequence places only direct declaration/comment facts between
+          // the braces. This validates that fact list; it never reparses body text.
+          requireRulesetBody(children.filter(isStatement)),
+          extensions.length === 0 ? undefined : extensions,
+          children.find(isMixinGuard)
+        ),
+        rawChildren
+      ), span);
+    }
+  );
+  const Stylesheet = node<Stylesheet>(
+    'Stylesheet',
+    sequence(many(choice(directLessAtStatement, directLessMixinStatement, g.DirectLessEach, g.DirectLessFunctionStatement, directLessGuardedRuleset, rootDeclarationItem, literal(';'))), optional(g.DirectLessFunction)),
+    children => stylesheet(children.filter(isStatement)),
+    { trailingTrivia: true }
+  );
 
   return {
-    rw,
-    stylesheetItem, blockItem,
-    Stylesheet, VarDeclaration, VarCall, Reference, MixinArgs, mixinNamePath, mixinCallBasicSel, mixinCallPath, MixinCall,
-    AnonymousMixinDefinition, MixinOrQualifiedRule, Comparison, GuardDefault, GuardInParens, GuardTerm, GuardAnd, GuardOr, Guard,
-    CondArgParen, CondArgTerm, CondArgAnd, CondArgOr, CondArgTermOp, CondArgAndOp, ArgCondition,
-    LessAmpersand, InterpolatedSelector, interpOrBasic, ExtendStatement, ExtendPseudo, ExtendTarget, extendCompound, extendComplex, simpleSelector,
-    CompoundSelector, ComplexSelector, SelectorList, AttributeSelector, PseudoSelector, pseudoArg, pseudoSelectorParens,
-    Ruleset, declarationList, Declaration, customValue, customCurlyBlock, cpInner, cpParen, cpSquare, cpCurly, cpValue, CustomDeclaration, declaration,
-    valueList, valueSequence, value, UnicodeRange, Negative, mathProduct, mathSum, topProduct, topSum, parenExprList, InterpValue, NsAccessor, EscapedValue, NamedColor, Url, Quoted,
-    parenBody, permissiveParenBody, Paren, GluedParen, DetachedRuleset, functionCallArgs, squareParenBody, calcBody, Call, FormatCall, SquareParen, SelectorCapture, anyValue, EachFor,
-    queryPrelude, QueryAtRuleBlock, SupportsAtRuleBlock, ImportAtRuleStatement, ImportOption, ImportOptions, ImportTarget, ImportMedia,
-    preludeToken, preludeParen, preludeSquare,
-    AtRuleBlock, AtRuleStatement, AtRuleMalformed, atRuleBody,
-    // Exposed so composing dialects (SCSS) can re-derive `simpleSelector` with a
-    // gated `&` arm without duplicating these token regexes. Non-behavioral.
-    basicSel, extendAhead
+    Stylesheet,
+    LessAstDocument: Stylesheet,
+    VarDeclaration,
+    ImportStatement,
+    PluginDirective,
+    ValueBlockDeclaration,
+    ValueBlock,
+    IndirectVariableReference,
+    VariableReferenceChain,
+    VariableReference,
+    PropertyReference,
+    VariableInterpolation,
+    PropertyInterpolation,
+    Interpolation,
+    AtRuleInterpolation,
+    InterpolationAccessor,
+    ReferenceTail,
+    InterpolatedValue,
+    InterpolatedProperty,
+    Keyword,
+    NamedColor,
+    Color,
+    Dimension,
+    UnicodeRange,
+    EscapeValue,
+    PercentEscape,
+    PagePseudo,
+    DoubledQuoteArgument,
+    DirectLessFunctionArgument,
+    DirectLessFunctionScalarArgument,
+    ArgumentValueSequence,
+    DirectLessFunctionCondition,
+    DirectLessFunctionConditionOr,
+    DirectLessFunctionConditionAnd,
+    DirectLessFunctionConditionTerm,
+    DirectLessFunctionConditionOperand,
+    DirectLessFunctionConditionParen,
+    DirectLessFunction,
+    DirectLessCallArgumentFunction,
+    FormatFunction,
+    CallArgumentValue,
+    DirectLessFunctionStatement,
+    DirectLessCalcFunction,
+    Value,
+    DirectLessSelectorCapture,
+    MathAtom,
+    MathUnary,
+    MathProduct,
+    MathSum,
+    TopProduct,
+    TopSum,
+    PreservedDivision,
+    EscapedParen,
+    Paren,
+    ValueSequence,
+    ValueList,
+    VariableValue,
+    ImportantValue,
+    ValueListWithPriority,
+    DirectLessCustomPropertyName,
+    DirectLessCustomPart,
+    DirectLessCustomInnerPart,
+    DirectLessCustomParen,
+    DirectLessCustomSquare,
+    DirectLessCustomCurly,
+    DirectLessCustomValue,
+    CssCustomPropertyValue,
+    DirectLessCustomDeclaration,
+    DirectLessPunctuationMapDeclaration,
+    Declaration,
+    DirectLessMixinParam,
+    DirectLessMixinParameterList,
+    DirectLessMixinDefinition,
+    DirectLessPositionalMixinCallArgument,
+    DirectLessMixinArgumentGroup,
+    MixinArguments,
+    DirectLessMixinCall,
+    DirectLessBareMixinCall,
+    DirectLessFlatMixinCall,
+    DirectLessNamespacedMixinCall,
+    DirectLessNamespacedMixinValue,
+    DirectLessMixinPathTail,
+    DirectLessMixinReference,
+    ReferenceCall,
+    DirectLessMixinGuard,
+    DirectLessMixinGuardTopOr,
+    DirectLessMixinGuardTopAnd,
+    DirectLessMixinGuardTopTerm,
+    DirectLessMixinGuardOr,
+    DirectLessMixinGuardAnd,
+    DirectLessMixinGuardTerm,
+    DirectLessMixinGuardOperand,
+    DirectLessEachName,
+    DirectLessBodyStatement,
+    DirectLessEachCallback,
+    DirectLessEach,
+    SupportsValue,
+    SupportsFeature,
+    DirectLessSupportsInParens,
+    DirectLessSupportsCondition,
+    DirectLessGeneralEnclosedContent,
+    DirectLessGeneralEnclosedGroup,
+    DirectLessGeneralEnclosedQuoted,
+    DirectLessGeneralEnclosedFunctionName,
+    DirectLessGeneralEnclosed,
+    SupportsBlock,
+    QueryValue,
+    QueryLogicalGroup,
+    QueryNegatedFeature,
+    QueryColonFeature,
+    QueryFeature,
+    QueryClause,
+    QueryPrelude,
+    MediaQueryTerm,
+    MediaQueryOnlyClause,
+    MediaQueryClause,
+    MediaQueryPrelude,
+    ContainerStyleQuery,
+    ContainerName,
+    ContainerQueryAtom,
+    ContainerCondition,
+    MediaContainerBody,
+    MediaContainerBlock,
+  KeyframeSelector,
+  KeyframeBlock,
+  Keyframes,
+  DottedAtRuleKeyword,
+  StaticAtRuleAtom,
+  StaticAtRuleTerm,
+  StaticAtRulePrelude,
+  CssAtRulePrelude,
+  NamespacePrelude,
+  AtRuleBlock,
+    OpaqueAtPrelude,
+    OpaqueBody,
+    OpaqueAtRuleBlock,
+    AtRuleStatement,
+    DirectLessStaticPseudo,
+    DirectLessInterpolatedPseudo,
+    InterpolatedNthPseudo,
+    DirectLessInterpolatedArgumentPseudo,
+    DirectLessStaticNthPseudo,
+    DirectLessStaticNthArgument,
+    DirectLessStaticNonSelectorPseudoArgument,
+    DirectLessStaticPseudoGroup,
+    DirectLessStaticPseudoSquare,
+    StaticPseudoQuoted,
+    DirectLessStaticPseudoCompound,
+    DirectLessStaticPseudoComplexTail,
+    DirectLessStaticPseudoComplex,
+    DirectLessStaticPseudoSelectorTail,
+    DirectLessStaticPseudoSelector,
+    DirectLessStaticAttributeNamespace,
+    DirectLessStaticNamespaceType,
+    DirectLessStaticAttributeName,
+    DirectLessStaticAttributeQuoted,
+    DirectLessStaticAttributeMatch,
+    DirectLessStaticAttribute,
+    DirectLessInterpolatedAttributeToken,
+    DirectLessInterpolatedAttributeValueToken,
+    DirectLessInterpolatedAttributeQuoted,
+    DirectLessInterpolatedAttribute,
+    DirectLessInterpolatedSimpleSelector,
+    DirectLessBareInterpolatedSelector,
+    DirectLessAdjacentInterpolatedSelector,
+    DirectLessBareInterpolatedSelectorWithSuffix,
+    DirectLessInterpolatedParentSuffix,
+    DirectLessCompound,
+    DirectLessComplexTail,
+    DirectLessComplex,
+    DirectLessSelectorTail,
+    DirectLessSelector,
+    DirectLessExtendComplex,
+    DirectLessExtendTarget,
+    DirectLessExtendStatement,
+    RulesetWithExtends,
+    Quoted,
+    StaticQuoted,
+    EscapedQuoted,
+    StaticUrl,
+    UrlInterpolation,
+    DynamicUrl,
+    ImportOption,
+    ImportOptions,
+    ImportTarget,
+    ImportTail,
+    StaticTail,
+    StaticTailGroup,
+    StaticTailParen,
+    whitespace,
+    rw: whitespace
   };
-})]);
+};
+
+export const lessGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }, lessAstFactory)]);
+export const lessAstGrammar = lessGrammar;
+
+/** Public Less CST artifact: the same grammar factory compiled in CST mode. */
+export const lessCstGrammar = composeLeaf([cssSyntax, lessSyntax, cssPseudoSyntax, rules<LessRules>({ trivia: whitespace, scanSkip: [scanSkipDoubleString, scanSkipSingleString, blockComment], hostMode: 'cst' }, lessAstFactory)]);

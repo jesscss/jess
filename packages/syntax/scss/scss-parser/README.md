@@ -6,15 +6,14 @@ An SCSS grammar for Jess, layered on the CSS base parser — **experimental, and
 > [Jess](https://github.com/jesscss/jess). The current alpha ships through
 > `.less`; SCSS is **not a goal of this phase**. This parser is early and exists
 > to seed the future **"Sass+"** dialect. Don't rely on it for production;
-> prefer [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser)
-> / [`@jesscss/less-parser`](https://www.npmjs.com/package/@jesscss/less-parser).
+> prefer [`@jesscss/css-parser`](https://www.npmjs.com/package/@jesscss/css-parser).
 > [Report bugs](https://github.com/jesscss/jess/issues); docs live at
 > [jesscss.github.io](https://jesscss.github.io/).
 
 ## What it is
 
 The SCSS grammar is the shared CSS grammar plus an SCSS delta:
-`scssGrammar = compose([cssGrammar, <SCSS delta>])`, layered on the spec-aligned
+`scssGrammar = compose([cssFactory, <SCSS delta>])`, layered on the spec-aligned
 CSS base in `@jesscss/css-parser` and built on
 [parseman](https://www.npmjs.com/package/parseman) — **the fastest
 general-purpose JavaScript parser** in its
@@ -171,4 +170,4 @@ type BuildHost = (
 This package is developed as part of [Jess](https://github.com/jesscss/jess).
 SCSS is the least-mature Jess dialect and is not the focus of the current
 alpha; it seeds the roadmap "Sass+" dialect. For production use, prefer
-`@jesscss/css-parser` / `@jesscss/less-parser`. Licensed MIT.
+`@jesscss/css-parser`. Licensed MIT.

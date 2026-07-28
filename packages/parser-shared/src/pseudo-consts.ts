@@ -1,21 +1,22 @@
 /**
  * Shared, dialect-invariant pseudo-argument recognition rules.
  *
- * Every rule here is built ONLY from `regex(...)` with no grammar (`g.`)
- * reference — that `g`-freedom is what lets a consuming dialect grammar inline
- * them at its own macro-fusion site. They are exposed as a composable
- * recognition artifact (the same shape as `cssAstSyntax` in `recognition.ts`
- * and `opaqueAtRuleRecognition`), so a direct-AST grammar fuses them through
- * `composeLeaf([...])` and references each via `g.<name>`. parseman cannot
- * inline a bare cross-module combinator const used inside a rules body; the
- * `rules()` recognition-map shape is the proven cross-package mechanism.
+ * Every rule here is built with grammar-free lexical combinators: no `g.`
+ * reference and no AST reduction. That `g`-freedom is what lets a consuming
+ * dialect grammar inline them at its own macro-fusion site. They are exposed as
+ * a composable recognition artifact (the same shape as `cssSyntax` in
+ * `recognition.ts` and `opaqueAtRuleRecognition`), so a direct-AST grammar
+ * fuses them through `composeLeaf([...])` and references each via `g.<name>`.
+ * parseman cannot inline a bare cross-module combinator const used inside a
+ * rules body; the `rules()` recognition-map shape is the proven cross-package
+ * mechanism.
  *
  * These consolidate the previously divergent nth-name boundaries and the
- * `of`/close lookaheads. The An+B leaf `CssAstSyntaxNth` and the
- * `CssAstSyntaxMalformedPseudoNumericArgument` gate live in `recognition.ts`
+ * `of`/close lookaheads. The An+B leaf `CssSyntaxNth` and the
+ * `CssSyntaxMalformedPseudoNumericArgument` gate live in `recognition.ts`
  * and are reused from there — they are not duplicated here.
  */
-import { regex, rules } from 'parseman' with { type: 'macro' };
+import { regex, rules, word } from 'parseman' with { type: 'macro' };
 
 /** `:nth-child(` / `:nth-last-child(` name, boundary-anchored on the `(`. */
 const nthChildNameWithArg = regex(/nth-(?:last-)?child(?=\()/i);
@@ -43,16 +44,20 @@ const nthNameBoundary = regex(/nth-(?:last-)?(?:child|of-type)(?![-_a-zA-Z0-9-\u
 const selectorArgPseudoName = regex(/(?:is|where|not|has|matches)(?=\()/i);
 
 /** The `of` keyword introducing a `<selector>` in an nth-child argument. */
-const pseudoOfKeyword = regex(/of(?![-\w])/i);
+const pseudoOfKeyword = word(
+  'of',
+  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  { caseInsensitive: true }
+);
 
 /** Zero-width close check: whitespace-tolerant lookahead at the argument `)`. */
 const pseudoCloseAhead = regex(/(?=[ \t\n\r\f]*\))/i);
 
-export const cssAstPseudoSyntax = rules(_g => ({
-  CssAstSyntaxNthChildName: nthChildNameWithArg,
-  CssAstSyntaxNthTypeName: nthTypeNameWithArg,
-  CssAstSyntaxNthName: nthNameBoundary,
-  CssAstSyntaxSelectorArgPseudoName: selectorArgPseudoName,
-  CssAstSyntaxOfKeyword: pseudoOfKeyword,
-  CssAstSyntaxPseudoCloseAhead: pseudoCloseAhead
+export const cssPseudoSyntax = rules(_g => ({
+  CssSyntaxNthChildName: nthChildNameWithArg,
+  CssSyntaxNthTypeName: nthTypeNameWithArg,
+  CssSyntaxNthName: nthNameBoundary,
+  CssSyntaxSelectorArgPseudoName: selectorArgPseudoName,
+  CssSyntaxOfKeyword: pseudoOfKeyword,
+  CssSyntaxPseudoCloseAhead: pseudoCloseAhead
 }));

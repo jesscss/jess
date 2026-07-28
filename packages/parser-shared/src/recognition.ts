@@ -5,13 +5,17 @@
  * Consumers macro-fuse this compiled artifact with their local reductions. It
  * contains recognition only: no AST construction or runtime composition seam.
  */
-import { keywords, regex, rules } from 'parseman' with { type: 'macro' };
+import { keywords, literal, noTrivia, regex, rules, sequence, word } from 'parseman' with { type: 'macro' };
 
-const propertyName = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
-const keywordValue = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const propertyName = cssIdentifier;
+const keywordValue = cssIdentifier;
 const doubleQuotedText = regex(/(?:[^"\\]|\\[\s\S])*/);
 const singleQuotedText = regex(/(?:[^'\\]|\\[\s\S])*/);
-const urlOpen = regex(/url\(/i);
+const urlOpen = literal(
+  'url(',
+  { caseInsensitive: true }
+);
 const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 
 /*
@@ -21,8 +25,10 @@ const urlInner = regex(/(?:[^"'()\\ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-
  */
 const staticUrlInner = regex(/(?:[^"'()\\$ \t\n\f\r\x00-\x08\x0B\x0E-\x1F\x7F]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
 const simpleSelector = regex(/(?:[.#]?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*|\d+(?:\.\d+)?%|\*)/);
-const pseudoColon = regex(/::?/);
-const attributeOperator = regex(/[*~|^$]?=/);
+
+/* Pseudo names are adjacent to `:`/`::`; ambient trivia must not swallow whitespace here. */
+const pseudoColon = regex(/::?(?![ \t\n\r\f])/);
+const attributeOperator = keywords(['*=', '~=', '|=', '^=', '$=', '=']);
 const attributeModifier = regex(/[a-zA-Z]/);
 const nth = regex(/even|odd|[-+]?\d*n(?:[ \t\n\r\f]*[+-][ \t\n\r\f]*\d+)?|[-+]?\d+/i);
 
@@ -48,7 +54,11 @@ const scssStaticMediaModifier = regex(/(?:[^${}()\[\];"'#]|#(?!\{))+/);
  * CSS and SCSS priority matching is ASCII-case-insensitive. Direct dialect
  * grammars own the surrounding `!` and AST reduction.
  */
-const important = regex(/important/i);
+const important = word(
+  'important',
+  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  { caseInsensitive: true }
+);
 const hexColor = regex(/#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/);
 
 /*
@@ -66,7 +76,10 @@ const unicodeRange = regex(/[Uu]\+[0-9A-Fa-f?]{1,6}(?:-[0-9A-Fa-f]{1,6})?/);
  * CSS at-keywords are ASCII-case-insensitive. Dialect reductions own the
  * header/body shape; these leaves only establish the keyword boundary.
  */
-const conditionalAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
+const conditionalAtKeyword = keywords(
+  ['@media', '@container', '@supports'],
+  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+);
 
 /*
  * Conditional groups do not share one prelude grammar: media/container admit
@@ -74,34 +87,114 @@ const conditionalAtKeyword = regex(/@(?:media|container|supports)(?![-\w])/i);
  * that dispatch fact macro-fused with the lexical leaves so direct reductions
  * cannot accidentally route a bare media keyword through @supports.
  */
-const mediaContainerAtKeyword = regex(/@(?:media|container)(?![-\w])/i);
-const mediaAtKeyword = regex(/@media(?![-\w])/i);
-const containerAtKeyword = regex(/@container(?![-\w])/i);
-const supportsAtKeyword = regex(/@supports(?![-\w])/i);
-const startingStyleAtKeyword = regex(/@starting-style(?![-\w])/i);
+const mediaContainerAtKeyword = keywords(
+  ['@media', '@container'],
+  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+);
+const mediaAtKeyword = word(
+  '@media',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const containerAtKeyword = word(
+  '@container',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const supportsAtKeyword = word(
+  '@supports',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const startingStyleAtKeyword = word(
+  '@starting-style',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
 
 /*
  * Retain the current public CSS grammar's ASCII `\\w` boundaries exactly.
  * This accepts a Unicode character after the keyword (for example `@pageé`),
  * which is legacy parser behavior to preserve during the direct-route cutover.
  */
-const pageAtKeyword = regex(/@page(?![-\w])/i);
-const marginAtKeyword = regex(/@(?:top-(?:left-corner|left|center|right-corner|right)|bottom-(?:left-corner|left|center|right-corner|right)|left-(?:top|middle|bottom)|right-(?:top|middle|bottom))(?![-\w])/i);
-const queryNot = regex(/not(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
-const queryOnly = regex(/only(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
-const queryAndOr = regex(/(?:and|or)(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
+const pageAtKeyword = word(
+  '@page',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const marginAtKeyword = keywords(
+  [
+    '@top-left-corner',
+    '@top-left',
+    '@top-center',
+    '@top-right-corner',
+    '@top-right',
+    '@bottom-left-corner',
+    '@bottom-left',
+    '@bottom-center',
+    '@bottom-right-corner',
+    '@bottom-right',
+    '@left-top',
+    '@left-middle',
+    '@left-bottom',
+    '@right-top',
+    '@right-middle',
+    '@right-bottom'
+  ],
+  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+);
+const queryNot = word(
+  'not',
+  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  { caseInsensitive: true }
+);
+const queryOnly = word(
+  'only',
+  '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\',
+  { caseInsensitive: true }
+);
+const queryAndOr = keywords(
+  ['and', 'or'],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\' }
+);
 
 /*
  * The comparison terminal is shared by every direct media/container reducer.
  * Dialects supply their own typed value production, but the CSS range spelling
  * itself must not drift into parser-local scanner logic.
  */
-const queryComparisonOperator = regex(/<=|>=|<|=|>/);
+const queryComparisonOperator = keywords(['<=', '>=', '<', '=', '>']);
 const queryFunctionName = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*(?=\()/);
-const scopeAtKeyword = regex(/@scope(?![-\w])/i);
-const descriptorAtKeyword = regex(/@(?:font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition)(?![-\w])/i);
-const documentAtKeyword = regex(/@(?:-moz-)?document(?![-\w])/i);
-const layerAtKeyword = regex(/@layer(?![-\w])/i);
+const queryFunctionOpen = noTrivia(sequence(
+  cssIdentifier,
+  literal('(')
+));
+const scopeAtKeyword = word(
+  '@scope',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const descriptorAtKeyword = keywords(
+  [
+    '@font-face',
+    '@counter-style',
+    '@property',
+    '@color-profile',
+    '@font-palette-values',
+    '@position-try',
+    '@view-transition'
+  ],
+  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+);
+const documentAtKeyword = keywords(
+  ['@-moz-document', '@document'],
+  { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
+);
+const layerAtKeyword = word(
+  '@layer',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
 const keyframesAtKeyword = regex(/@(?:-[a-z]+-)?keyframes(?![-\w])/i);
 const statementAtRuleName = regex(/@(?!(?:import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 
@@ -113,12 +206,34 @@ const statementAtRuleName = regex(/@(?!(?:import)(?=[^-_a-zA-Z0-9\u0080-\uffff]|
 const genericAtRuleName = regex(/@(?!(?:import|media|container|supports|starting-style|page|scope|font-face|counter-style|property|color-profile|font-palette-values|position-try|view-transition|-moz-document|document|font-feature-values|layer|(?:-[a-z]+-)?keyframes)(?=[^-\w]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/i);
 
 /*
+ * One opener for dispatching typed/generic at-rules after `@import` and
+ * conditional groups have already been handled. Keep this as one shared leaf:
+ * splitting it into same-`@` keyword choices only adds pre-dispatch fan-out.
+ */
+const routedAtRuleKeyword = regex(/@(?:(?:starting-style|font-feature-values|font-face|counter-style|color-profile|font-palette-values|position-try|view-transition|property|page|scope|layer|-moz-document|document)(?=[^-_0-9A-Za-z]|$)|(?:-[a-z]+-)?keyframes(?![-\w])|(?!(?:import|media|container|supports)(?=[^-_a-zA-Z0-9\u0080-\uffff]|$))-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*)/i);
+
+/*
  * Preserve the public CSS grammar's legacy ASCII boundary. In particular,
  * `@font-feature-valuesé` is the recognized at-keyword followed by a prelude
  * beginning with `é`, not a distinct at-keyword.
  */
-const fontFeatureValuesAtKeyword = regex(/@font-feature-values(?![-\w])/i);
-const fontFeatureValueAtKeyword = regex(/@(?:stylistic|styleset|character-variant|swash|ornaments|annotation|historical-forms)(?![-_a-zA-Z0-9\u0080-\uffff\\])/i);
+const fontFeatureValuesAtKeyword = word(
+  '@font-feature-values',
+  '-_0-9A-Za-z',
+  { caseInsensitive: true }
+);
+const fontFeatureValueAtKeyword = keywords(
+  [
+    '@stylistic',
+    '@styleset',
+    '@character-variant',
+    '@swash',
+    '@ornaments',
+    '@annotation',
+    '@historical-forms'
+  ],
+  { caseInsensitive: true, boundary: '-_a-zA-Z0-9\\u0080-\\uFFFF\\\\' }
+);
 
 /*
  * These are byte-for-byte the CSS grammar's numeric terminals.  Consumers own
@@ -296,85 +411,87 @@ const lessCustomOuterContent = regex(/(?:(?![ \t\n\r\f]*!(?:[ \t\n\r\f]|\/\*(?:[
 const lessCustomInnerContent = regex(/(?:\\[^\n]|(?!@\{-?[_a-zA-Z0-9\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?:\[[-_a-zA-Z0-9@$\u0080-\uffff]+\])*\})[^(){}[\]'"\/\\])+|\/(?!\*)/);
 const lessCustomSingleQuoted = regex(/'(?:[^'\n\\]|\\.)*'/);
 const lessCustomDoubleQuoted = regex(/"(?:[^"\n\\]|\\.)*"/);
-export const cssAstSyntax = rules(_g => ({
-  CssAstSyntaxProperty: propertyName,
-  CssAstSyntaxKeyword: keywordValue,
-  CssAstSyntaxDoubleQuotedText: doubleQuotedText,
-  CssAstSyntaxSingleQuotedText: singleQuotedText,
-  CssAstSyntaxUrlOpen: urlOpen,
-  CssAstSyntaxUrlInner: urlInner,
-  CssAstSyntaxStaticUrlInner: staticUrlInner,
-  CssAstSyntaxSimple: simpleSelector,
-  CssAstSyntaxPseudoColon: pseudoColon,
-  CssAstSyntaxAttributeOperator: attributeOperator,
-  CssAstSyntaxAttributeModifier: attributeModifier,
-  CssAstSyntaxNth: nth,
-  CssAstSyntaxMalformedPseudoNumericArgument: malformedPseudoNumericArgument,
-  CssAstSyntaxBlockComment: blockComment,
-  ScssAstSyntaxLineComment: scssLineComment,
-  ScssAstSyntaxStaticMediaModifier: scssStaticMediaModifier,
-  CssAstSyntaxImportant: important,
-  CssAstSyntaxHexColor: hexColor,
-  CssAstSyntaxUnicodeRange: unicodeRange,
-  CssAstSyntaxConditionalAtKeyword: conditionalAtKeyword,
-  CssAstSyntaxMediaContainerAtKeyword: mediaContainerAtKeyword,
-  CssAstSyntaxMediaAtKeyword: mediaAtKeyword,
-  CssAstSyntaxContainerAtKeyword: containerAtKeyword,
-  CssAstSyntaxSupportsAtKeyword: supportsAtKeyword,
-  CssAstSyntaxStartingStyleAtKeyword: startingStyleAtKeyword,
-  CssAstSyntaxPageAtKeyword: pageAtKeyword,
-  CssAstSyntaxMarginAtKeyword: marginAtKeyword,
-  CssAstSyntaxQueryNot: queryNot,
-  CssAstSyntaxQueryOnly: queryOnly,
-  CssAstSyntaxQueryAndOr: queryAndOr,
-  CssAstSyntaxQueryComparisonOperator: queryComparisonOperator,
-  CssAstSyntaxQueryFunctionName: queryFunctionName,
-  CssAstSyntaxScopeAtKeyword: scopeAtKeyword,
-  CssAstSyntaxDescriptorAtKeyword: descriptorAtKeyword,
-  CssAstSyntaxDocumentAtKeyword: documentAtKeyword,
-  CssAstSyntaxLayerAtKeyword: layerAtKeyword,
-  CssAstSyntaxKeyframesAtKeyword: keyframesAtKeyword,
-  CssAstSyntaxStatementAtRuleName: statementAtRuleName,
-  CssAstSyntaxGenericAtRuleName: genericAtRuleName,
-  CssAstSyntaxFontFeatureValuesAtKeyword: fontFeatureValuesAtKeyword,
-  CssAstSyntaxFontFeatureValueAtKeyword: fontFeatureValueAtKeyword,
-  CssAstSyntaxNumber: number,
-  CssAstSyntaxDimensionUnit: dimensionUnit,
-  CssAstSyntaxInterpolatedPropertyStart: interpolatedPropertyStart,
-  CssAstSyntaxInterpolatedPropertyTail: interpolatedPropertyTail,
-  CssAstSyntaxCustomProperty: customPropertyName,
-  CssAstSyntaxCustomOuterContent: customOuterContent,
-  CssAstSyntaxCustomInnerContent: customInnerContent,
-  CssAstSyntaxCustomSingleQuoted: customSingleQuoted,
-  CssAstSyntaxCustomDoubleQuoted: customDoubleQuoted
+export const cssSyntax = rules(_g => ({
+  CssSyntaxProperty: propertyName,
+  CssSyntaxKeyword: keywordValue,
+  CssSyntaxDoubleQuotedText: doubleQuotedText,
+  CssSyntaxSingleQuotedText: singleQuotedText,
+  CssSyntaxUrlOpen: urlOpen,
+  CssSyntaxUrlInner: urlInner,
+  CssSyntaxStaticUrlInner: staticUrlInner,
+  CssSyntaxSimple: simpleSelector,
+  CssSyntaxPseudoColon: pseudoColon,
+  CssSyntaxAttributeOperator: attributeOperator,
+  CssSyntaxAttributeModifier: attributeModifier,
+  CssSyntaxNth: nth,
+  CssSyntaxMalformedPseudoNumericArgument: malformedPseudoNumericArgument,
+  CssSyntaxBlockComment: blockComment,
+  ScssSyntaxLineComment: scssLineComment,
+  ScssSyntaxStaticMediaModifier: scssStaticMediaModifier,
+  CssSyntaxImportant: important,
+  CssSyntaxHexColor: hexColor,
+  CssSyntaxUnicodeRange: unicodeRange,
+  CssSyntaxConditionalAtKeyword: conditionalAtKeyword,
+  CssSyntaxMediaContainerAtKeyword: mediaContainerAtKeyword,
+  CssSyntaxMediaAtKeyword: mediaAtKeyword,
+  CssSyntaxContainerAtKeyword: containerAtKeyword,
+  CssSyntaxSupportsAtKeyword: supportsAtKeyword,
+  CssSyntaxStartingStyleAtKeyword: startingStyleAtKeyword,
+  CssSyntaxPageAtKeyword: pageAtKeyword,
+  CssSyntaxMarginAtKeyword: marginAtKeyword,
+  CssSyntaxQueryNot: queryNot,
+  CssSyntaxQueryOnly: queryOnly,
+  CssSyntaxQueryAndOr: queryAndOr,
+  CssSyntaxQueryComparisonOperator: queryComparisonOperator,
+  CssSyntaxQueryFunctionName: queryFunctionName,
+  CssSyntaxQueryFunctionOpen: queryFunctionOpen,
+  CssSyntaxScopeAtKeyword: scopeAtKeyword,
+  CssSyntaxDescriptorAtKeyword: descriptorAtKeyword,
+  CssSyntaxDocumentAtKeyword: documentAtKeyword,
+  CssSyntaxLayerAtKeyword: layerAtKeyword,
+  CssSyntaxKeyframesAtKeyword: keyframesAtKeyword,
+  CssSyntaxStatementAtRuleName: statementAtRuleName,
+  CssSyntaxGenericAtRuleName: genericAtRuleName,
+  CssSyntaxRoutedAtRuleKeyword: routedAtRuleKeyword,
+  CssSyntaxFontFeatureValuesAtKeyword: fontFeatureValuesAtKeyword,
+  CssSyntaxFontFeatureValueAtKeyword: fontFeatureValueAtKeyword,
+  CssSyntaxNumber: number,
+  CssSyntaxDimensionUnit: dimensionUnit,
+  CssSyntaxInterpolatedPropertyStart: interpolatedPropertyStart,
+  CssSyntaxInterpolatedPropertyTail: interpolatedPropertyTail,
+  CssSyntaxCustomProperty: customPropertyName,
+  CssSyntaxCustomOuterContent: customOuterContent,
+  CssSyntaxCustomInnerContent: customInnerContent,
+  CssSyntaxCustomSingleQuoted: customSingleQuoted,
+  CssSyntaxCustomDoubleQuoted: customDoubleQuoted
 }));
 
-export const lessAstSyntax = rules(_g => ({
-  LessAstSyntaxIdentifier: lessBareIdentifier,
-  LessAstSyntaxVariableName: lessVariableName,
-  LessAstSyntaxProperty: lessBareIdentifier,
-  LessAstSyntaxDeclarationProperty: lessDeclarationProperty,
-  LessAstSyntaxNumericMapKey: lessNumericMapKey,
-  LessAstSyntaxPunctuationMapKey: lessPunctuationMapKey,
-  LessAstSyntaxPercentEscape: lessPercentEscape,
-  LessAstSyntaxKeyword: lessBareIdentifier,
-  LessAstSyntaxNamedColor: lessNamedColor,
-  LessAstSyntaxDoubleQuotedText: lessDoubleQuotedText,
-  LessAstSyntaxSingleQuotedText: lessSingleQuotedText,
-  LessAstSyntaxInterpHead: lessInterpHead,
-  LessAstSyntaxInterpBareKey: lessInterpBareKey,
-  LessAstSyntaxInterpIndexKey: lessInterpIndexKey,
-  LessAstSyntaxQuotedDoubleChunk: lessQuotedDoubleChunk,
-  LessAstSyntaxQuotedSingleChunk: lessQuotedSingleChunk,
-  LessAstSyntaxInterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
-  LessAstSyntaxInterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
-  LessAstSyntaxInterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
-  LessAstSyntaxInterpolatedValueStart: lessInterpolatedValueStart,
-  LessAstSyntaxInterpolatedValueDash: lessInterpolatedValueDash,
-  LessAstSyntaxInterpolatedValueTail: lessInterpolatedValueTail,
-  LessAstSyntaxCustomProperty: lessCustomProperty,
-  LessAstSyntaxCustomOuterContent: lessCustomOuterContent,
-  LessAstSyntaxCustomInnerContent: lessCustomInnerContent,
-  LessAstSyntaxCustomSingleQuoted: lessCustomSingleQuoted,
-  LessAstSyntaxCustomDoubleQuoted: lessCustomDoubleQuoted
+export const lessSyntax = rules(_g => ({
+  LessSyntaxIdentifier: lessBareIdentifier,
+  LessSyntaxVariableName: lessVariableName,
+  LessSyntaxProperty: lessBareIdentifier,
+  LessSyntaxDeclarationProperty: lessDeclarationProperty,
+  LessSyntaxNumericMapKey: lessNumericMapKey,
+  LessSyntaxPunctuationMapKey: lessPunctuationMapKey,
+  LessSyntaxPercentEscape: lessPercentEscape,
+  LessSyntaxKeyword: lessBareIdentifier,
+  LessSyntaxNamedColor: lessNamedColor,
+  LessSyntaxDoubleQuotedText: lessDoubleQuotedText,
+  LessSyntaxSingleQuotedText: lessSingleQuotedText,
+  LessSyntaxInterpHead: lessInterpHead,
+  LessSyntaxInterpBareKey: lessInterpBareKey,
+  LessSyntaxInterpIndexKey: lessInterpIndexKey,
+  LessSyntaxQuotedDoubleChunk: lessQuotedDoubleChunk,
+  LessSyntaxQuotedSingleChunk: lessQuotedSingleChunk,
+  LessSyntaxInterpolatedCustomPropertyStart: lessInterpolatedCustomPropertyStart,
+  LessSyntaxInterpolatedCustomPropertyDash: lessInterpolatedCustomPropertyDash,
+  LessSyntaxInterpolatedCustomPropertyTail: lessInterpolatedCustomPropertyTail,
+  LessSyntaxInterpolatedValueStart: lessInterpolatedValueStart,
+  LessSyntaxInterpolatedValueDash: lessInterpolatedValueDash,
+  LessSyntaxInterpolatedValueTail: lessInterpolatedValueTail,
+  LessSyntaxCustomProperty: lessCustomProperty,
+  LessSyntaxCustomOuterContent: lessCustomOuterContent,
+  LessSyntaxCustomInnerContent: lessCustomInnerContent,
+  LessSyntaxCustomSingleQuoted: lessCustomSingleQuoted,
+  LessSyntaxCustomDoubleQuoted: lessCustomDoubleQuoted
 }));

@@ -1,6 +1,6 @@
 import { run } from 'parseman';
 import type { Stylesheet } from '@jesscss/core/ast';
-import { scssAstGrammar } from './ast/grammar.js';
+import { scssAstGrammar } from './grammar.js';
 import { lowerUserFunctionCalls } from './ast/lower-user-function-calls.js';
 
 /** Structured failure from the public direct SCSS parser. */
@@ -29,7 +29,7 @@ function isStylesheet(value: unknown): value is Stylesheet {
 
 /** Parse SCSS directly into the canonical AST v2 document. */
 export function parse(input: string): Stylesheet {
-  const entry = scssAstGrammar.ScssAstDocument;
+  const entry = scssAstGrammar.Stylesheet;
   const trivia = scssAstGrammar.whitespace;
   if (entry === undefined || trivia === undefined) {
     throw new TypeError('SCSS AST grammar is missing its public document entry.');

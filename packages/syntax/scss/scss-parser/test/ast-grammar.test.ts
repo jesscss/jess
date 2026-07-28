@@ -4,7 +4,7 @@ import { valueLayoutOf } from '@jesscss/core/ast';
 import type { Stylesheet } from '@jesscss/core/ast';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize as serializeMaybeAsync, type SerializeResult } from '../../../../core/src/ast/serialize.js';
-import { scssAstGrammar } from '../src/ast/grammar.js';
+import { scssAstGrammar } from '../src/grammar.js';
 import { parseScssCst } from '../src/cst.js';
 import { parse } from '../src/index.js';
 
@@ -801,8 +801,8 @@ describe('SCSS canonical-AST grammar', () => {
     expect(serialize(stylesheet(result.value))).toEqual({ css: '' });
   });
 
-  it('keeps CST-only nested-property body forms out of the direct lowering', () => {
-    const cstValidButHeld = [
+  it('keeps unmodelled nested-property body forms out of the folded grammar', () => {
+    const unmodelled = [
       '.card { font: { $weight: bold; } }',
       '.card { font: { theme.$weight: bold; } }',
       '.card { font: { @if true { weight: bold; } } }',
@@ -811,11 +811,10 @@ describe('SCSS canonical-AST grammar', () => {
       '.card { font: { @while false { weight: bold; } } }',
       '.card { font: { /* note */ weight: bold; } }'
     ];
-    for (const source of cstValidButHeld) {
+    for (const source of unmodelled) {
       const cst = parseScssCst(source);
       const direct = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
-      expect(cst.errors, source).toHaveLength(0);
-      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
     }
 
@@ -1123,7 +1122,7 @@ describe('SCSS canonical-AST grammar', () => {
       ],
 
       /*
-       * Reusing DirectScssQueryValue is what gives the range form its `<ratio>`
+       * Reusing QueryValue is what gives the range form its `<ratio>`
        * bounds, rather than the range restating the ratio grammar.
        */
       [
@@ -1165,14 +1164,13 @@ describe('SCSS canonical-AST grammar', () => {
     });
   });
 
-  it('documents the intentional CST-only SCSS query-interpolation route until the AST has typed prelude segments', () => {
+  it('rejects query interpolation until the AST has typed prelude segments', () => {
     for (const source of [
       '@media #{$query} { .card { color: red; } }',
       '@container #{$container-query} { .card { color: red; } }'
     ]) {
       const cst = parseScssCst(source);
-      expect(cst.errors, source).toHaveLength(0);
-      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
 
       const direct = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
       expect(direct.ok && direct.unconsumedFrom === null && isStylesheet(direct.value), source).toBe(false);
@@ -1401,8 +1399,7 @@ describe('SCSS canonical-AST grammar', () => {
       '@property --accent { .nested { color: red; } }'
     ]) {
       const cst = parseScssCst(source);
-      expect(cst.errors, source).toHaveLength(0);
-      expect(cst.unconsumedFrom, source).toBeNull();
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
@@ -1417,7 +1414,8 @@ describe('SCSS canonical-AST grammar', () => {
       '@media only; screen { .bad { color: red; } }',
       '@container only; screen { .bad { color: red; } }'
     ]) {
-      expect(parseScssCst(source).errors.length).toBeGreaterThan(0);
+      const cst = parseScssCst(source);
+      expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
       expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value), source).toBe(false);
     }
@@ -1428,7 +1426,8 @@ describe('SCSS canonical-AST grammar', () => {
 
   it('matches the public parser rejection of an unterminated block comment', () => {
     const source = '.card { color: red; /* unterminated';
-    expect(parseScssCst(source).errors.length).toBeGreaterThan(0);
+    const cst = parseScssCst(source);
+    expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
   });
@@ -1459,6 +1458,17 @@ describe('SCSS canonical-AST grammar', () => {
         }]
       }]
     });
+  });
+
+  it('rejects whitespace-separated static pseudo colons on the direct AST path', () => {
+    for (const source of [
+      '.card : hover { color: red; }',
+      '.card: hover { color: red; }'
+    ]) {
+      const direct = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+
+      expect(direct.ok && direct.unconsumedFrom === null, source).toBe(false);
+    }
   });
 
   it('constructs public static selector combinators as canonical ComplexSelector tails', () => {
@@ -1503,8 +1513,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('rejects namespaced attribute selectors until their namespace fact has a canonical AST field', () => {
     const source = '.card[svg|href] { color: blue; }';
     const cst = parseScssCst(source);
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
+    expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
 
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
@@ -1754,8 +1763,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('rejects interpolation-bearing pseudo arguments until their segments are represented in AST v2', () => {
     const source = '.card:not(#{$disabled}) { color: blue; }';
     const cst = parseScssCst(source);
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
+    expect(!cst.ok || cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
 
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
@@ -1849,8 +1857,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('rejects @extend !optional until its diagnostic semantics have a typed AST field', () => {
     const source = '.button { @extend .base !optional; }';
     const cst = parseScssCst(source);
-    expect(cst.errors).toHaveLength(0);
-    expect(cst.unconsumedFrom).toBeNull();
+    expect(cst.errors.length > 0 || cst.unconsumedFrom !== null).toBe(true);
 
     const result = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
     expect(result.ok && result.unconsumedFrom === null && isStylesheet(result.value)).toBe(false);
