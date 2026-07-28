@@ -1520,6 +1520,29 @@ involved.
   passed. The command reports the broad active diff's existing danger-token
   inventory; this slice accounts for its added parent walk and optional frame
   metadata above.
+- C17 module-cache slice on 2026-07-28: `Context.getModule(...)` now mirrors
+  stylesheet import and executable `@plugin` module loading by caching the
+  in-flight/successful ordinary module result for the current source context,
+  source plugin, authored specifier, and import type. The cache prevents a
+  script/JSON module from being resolved and loaded twice during one compile
+  context while preserving failure retry behavior.
+- New traversal/node/materialization for this slice: none beyond the existing
+  `_getPath`/plugin import work that a cache miss already performs. The added
+  `Map` is `Context`-local compile-cycle state; it stores the same
+  `{ module, triedPaths, resolvedPath }` result already returned to callers and
+  introduces no AST node, render array, parser replay, or cross-compile global
+  registry.
+- Behavior evidence for this slice:
+  `pnpm --filter @jesscss/core test -- test/context-module.test.ts --run --globals --reporter=dot`
+  passed 9/9, including a regression that proves two calls for the same script
+  module return the same result object after one resolver pass, one lazy script
+  importer load, and one module import. `pnpm --filter @jesscss/core test --
+  src/ast/__tests__/import-at-rule.test.ts --run --globals --reporter=dot`
+  passed 37/37, preserving executable `@plugin` module cache behavior.
+- Review/build evidence for this slice: `pnpm --filter @jesscss/core build`,
+  `pnpm run verify:aggressive-cutting-review`, `pnpm run verify:less-alpha`,
+  `pnpm run check:macro`, and `pnpm run verify:compose-integrity` passed. No
+  measured performance claim is made.
 - Latest pass: Less alpha parser/error integration state on 2026-07-27. The working diff includes
   the one-grammar parser fold, Parseman 0.41 grammar cleanup, parser-owned diagnostics, trivia
   extraction work, and the recursive reference error fix that graduated the Less recursion fixtures

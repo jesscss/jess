@@ -7,6 +7,19 @@ import { AbstractPlugin } from '../src/plugin.js';
 
 class ResolverOnlyPlugin extends AbstractPlugin {
   name = 'resolver-only';
+
+  resolveCalls = 0;
+  locateCalls = 0;
+
+  override resolve(filePath: string | string[], currentDir: string, searchPaths: string[]): string[] {
+    this.resolveCalls++;
+    return super.resolve(filePath, currentDir, searchPaths);
+  }
+
+  override locate(pathCandidates: string[], currentDir: string): null | string {
+    this.locateCalls++;
+    return super.locate(pathCandidates, currentDir);
+  }
 }
 
 class FnsImportPlugin extends AbstractPlugin {
@@ -43,7 +56,10 @@ class ScriptImportPlugin extends AbstractPlugin {
   name = 'js';
   supportedExtensions = ['.js'];
 
+  importCalls = 0;
+
   async import(absoluteFilePath: string): Promise<Record<string, any>> {
+    this.importCalls++;
     return { loaded: path.basename(absoluteFilePath) };
   }
 }
@@ -150,6 +166,36 @@ describe('Context.getModule', () => {
     });
     expect(loads).toBe(1);
     expect(context.plugins.map(plugin => plugin.name)).toEqual(['resolver-only', 'js']);
+  });
+
+  it('reuses loaded script modules during one context cycle', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jess-core-module-cache-'));
+    const scriptFile = path.join(tmpDir, 'module.js');
+    fs.writeFileSync(scriptFile, 'export const a = 1;', 'utf8');
+
+    let loads = 0;
+    const resolver = new ResolverOnlyPlugin();
+    const lazyPlugin = new ScriptImportPlugin();
+    const context = new Context(
+      {
+        loadPluginForExtension(extension) {
+          loads++;
+          expect(extension).toBe('.js');
+          return lazyPlugin;
+        }
+      },
+      [resolver]
+    );
+
+    const first = await context.getModule(scriptFile);
+    const second = await context.getModule(scriptFile);
+
+    expect(second).toBe(first);
+    expect(first).toMatchObject({ module: { loaded: 'module.js' } });
+    expect(loads).toBe(1);
+    expect(resolver.resolveCalls).toBe(1);
+    expect(resolver.locateCalls).toBe(1);
+    expect(lazyPlugin.importCalls).toBe(1);
   });
 
   it('blocks script modules when disableScriptModules is set even if an importer is available', async () => {

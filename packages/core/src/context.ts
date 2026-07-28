@@ -78,6 +78,12 @@ type LoadedPluginModuleResult = {
   resolvedPath: string;
 };
 
+type LoadedModuleResult = {
+  module: Record<string, unknown>;
+  triedPaths: string[];
+  resolvedPath: string;
+};
+
 function importParseCacheKey(options: ImportOptions): string {
   return options.type === undefined ? '' : `type:${options.type}`;
 }
@@ -414,6 +420,7 @@ export class Context {
   private readonly loadedImportCache = new Map<string, Promise<LoadedImportResult> | LoadedImportResult>();
   private readonly pluginPathCache = new Map<string, Promise<ResolvedPathResult> | ResolvedPathResult>();
   private readonly pluginModuleCache = new Map<string, Promise<LoadedPluginModuleResult> | LoadedPluginModuleResult>();
+  private readonly moduleCache = new Map<string, Promise<LoadedModuleResult> | LoadedModuleResult>();
   private readonly pluginCacheIds = new WeakMap<PluginInterface, number>();
   private nextPluginCacheId = 0;
 
@@ -511,6 +518,13 @@ export class Context {
   }
 
   private loadedImportCacheKey(importPath: string, importOptions: ImportOptions): string {
+    const source = this.sourceContext;
+    const file = source?.file;
+    const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
+    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importParseCacheKey(importOptions)}`;
+  }
+
+  private moduleCacheKey(importPath: string, importOptions: ImportOptions): string {
     const source = this.sourceContext;
     const file = source?.file;
     const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
@@ -1512,6 +1526,24 @@ export class Context {
    * @param importOptions
    */
   async getModule(importPath: string, importOptions: ImportOptions = {}) {
+    const cacheKey = this.moduleCacheKey(importPath, importOptions);
+    const cached = this.moduleCache.get(cacheKey);
+    if (cached !== undefined || this.moduleCache.has(cacheKey)) {
+      return cached;
+    }
+    const loading = this.getModuleUncached(importPath, importOptions);
+    this.moduleCache.set(cacheKey, loading);
+    try {
+      const loaded = await loading;
+      this.moduleCache.set(cacheKey, loaded);
+      return loaded;
+    } catch (error) {
+      this.moduleCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async getModuleUncached(importPath: string, importOptions: ImportOptions = {}): Promise<LoadedModuleResult> {
     const { resolvedPath, triedPaths, friendlyPath } = await this._getPath(importPath);
     const ext = path.extname(resolvedPath);
     const isJsonImport = ext === '.json';

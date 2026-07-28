@@ -80,8 +80,10 @@ depend on `^0.41.0`. A registry-backed dependency-order build completed, and
 0 interpreter fallbacks.
 
 Import/cache stabilization also landed on `dev`: `Context.loadImport(...)`
-memoizes loaded imports, `Compiler.compile()` exposes reusable prepared import
-plans, and compile-cycle/parsed-import caches are keyed by parse/parser
+memoizes loaded imports, `Context.getModule(...)` reuses ordinary script/JSON
+module resolution and loading within one compile context, `Compiler.compile()`
+exposes reusable prepared import plans, and compile-cycle/parsed-import caches
+are keyed by parse/parser
 identity. These are local session and prepared-static-import fixes; they do not
 change the remote URL import deferral, which remains excluded from the alpha
 lane pending an explicit network/security model.
