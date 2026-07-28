@@ -24,7 +24,7 @@ import {
 import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax, lessSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import { any, atRuleBlock, atRuleStatement, block, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, classifyValueBlock, dimension, forNode, funcCall, generalEnclosed, important, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, reference, selectorCapture, stylesheet, rule, selist, simpleSelector, sourceSpanOf, spaced, url, variableDeclaration, varIndirect, variableReference, valueLayoutOf, withBodySpan, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
 import type { Any, AtRuleBlock, AtRuleStatement, Combinator as AstCombinator, ComplexSelector, CompoundSelector, Declaration, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, Important, ImportAtRule, Interpolation, Keyword, List, MixinCall, MixinDef, OpaqueAtRuleBlock, Param, Plugin, Quoted, Reference, ReferenceStep, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, Statement, Url, ValueNode, ValueSlot, VariableDeclaration, VarIndirect, VariableReference } from '@jesscss/core/ast';
 import { LessBareVariableInterpolationError, LessDynamicCharsetError, LessInlineJavaScriptError } from './parse-error.js';
 
@@ -1642,7 +1642,12 @@ function foldOperation(children: readonly unknown[]): ValueNode {
     if (operatorToken === undefined || !isValueNode(right)) {
       throw new TypeError('Direct Less arithmetic grammar lost an operator operand.');
     }
-    result = operation(requireTerminalText(operatorToken).trim(), result, right);
+    const folded = operation(requireTerminalText(operatorToken).trim(), result, right);
+    const leftSpan = sourceSpanOf(result);
+    const rightSpan = sourceSpanOf(right);
+    result = leftSpan === undefined || rightSpan === undefined
+      ? folded
+      : withSourceSpan(folded, { start: leftSpan.start, end: rightSpan.end });
   }
   return result;
 }
@@ -2312,10 +2317,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const Dimension = node<ValueNode>(
     'Dimension',
     noTrivia(sequence(g.CssSyntaxNumber, optional(g.CssSyntaxDimensionUnit))),
-    (children) => {
+    (children, _fields, span) => {
       const numberText = requireToken(children[0]).value;
       const unit = children.length > 1 ? requireToken(children[1]).value : '';
-      return dimension(Number(numberText), unit, `${numberText}${unit}`);
+      return withSourceSpan(
+        dimension(Number(numberText), unit, `${numberText}${unit}`),
+        span
+      );
     }
   );
   // CSS unicode-range is one opaque CSS token, not Less arithmetic. It belongs
@@ -2640,7 +2648,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const EscapedParen = node<ValueNode>(
     'EscapedParen',
     noTrivia(sequence(literal('~('), g.ValueList, literal(')'))),
-    children => block(requireValueSlot(children[1]), 'paren', true)
+    (children, _fields, span) => withSourceSpan(
+      block(requireValueSlot(children[1]), 'paren', true),
+      span
+    )
   );
   // A bare `(...)` is a math grouping in Less.  Function/mixin argument lists
   // have their own productions above; do not widen this value position into a
@@ -2651,12 +2662,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     // stay exact. Parentheses own their boundary gaps, including Less `//`
     // comments before the first or after the final operand.
     noTrivia(sequence(literal('('), optional(whitespace), g.MathSum, optional(whitespace), literal(')'))),
-    (children) => {
+    (children, _fields, span) => {
       const inner = children.find(isValueNode);
       if (inner === undefined) {
         throw new TypeError('Direct Less parenthesized math lost its inner value.');
       }
-      return block(inner);
+      return withSourceSpan(block(inner), span);
     }
   );
   // CSS grid line names are a bracketed value piece, not a map accessor or an
@@ -2680,7 +2691,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const QueryColonFeature = node<ValueNode>(
     'QueryColonFeature',
     sequence(literal('('), g.CssSyntaxProperty, regex(/:[ \t\n\r\f]*/), g.MathSum, literal(')')),
-    children => block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3])))
+    (children, _fields, span) => withSourceSpan(
+      block(operation(':', keyword(requireToken(children[1]).value), requireValueNode(children[3]))),
+      span
+    )
   );
   // Cheap superset lookahead so a plain `#fff` hex color (or any non-reference
   // `.`/`#`-led value) does not run the whole mixin path + call speculation only

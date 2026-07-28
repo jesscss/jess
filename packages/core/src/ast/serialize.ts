@@ -114,7 +114,7 @@ import {
 import type { Fn, FnCtx, FnIo } from './functions/types.js'; // [plugin/P1] scoped-fn registry; [io] file-read seam
 import { type MaybePromise, isThenable, serialForEach } from '@jesscss/awaitable-pipe';
 import { colorFromSrc, dimensionFromFields, quotedFromFields, materializeAny } from './literal-tag.js'; // [value node model]
-import { calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
+import { UnitArithmeticError, calcInner, validateFinalUnits } from './value-operate.js'; // [calc/unit validation]
 import { makeBlock, makeCollection, makeKeyword, makeBool, makeList } from './value-factory.js'; // [calc]
 import { groupItems } from './value-list.js';
 import { DefaultGuardAmbiguityError, bindArgs, selectDefinitions, type Selection, type DefaultResolver, type CallArg, type CallValue } from './mixin-dispatch.js'; // [guards]
@@ -2535,14 +2535,75 @@ function evalTypedSlot(slot: ValueSlot, frame: Frame | null, e: EvalCtx): MaybeP
   return combineAll(values, resolved => resolved);
 }
 
-function validateValueGroupUnits(value: ValueGroup, modes: EvalModes): void {
+const strictUnitOwners = new WeakMap<ValueObj, Operation>();
+
+function hasInvalidFinalUnits(value: ValueObj): boolean {
+  if (value.type !== 'Dimension') {
+    return false;
+  }
+  const numerator = value.numerator ?? (value.unit ? [value.unit] : []);
+  const denominator = value.denominator ?? [];
+  return numerator.length > 1 || denominator.length > 0;
+}
+
+function rememberStrictUnitOwner(value: ValueObj, node: Operation, modes: EvalModes): ValueObj {
+  if (modes.unitMode === 'strict' && hasInvalidFinalUnits(value)) {
+    strictUnitOwners.set(value, node);
+  }
+  return value;
+}
+
+function isOperationNode(node: object): node is Operation {
+  return 'type' in node && node.type === 'Operation';
+}
+
+function arithmeticSiteLocation(node: object, e: EvalCtx): {
+  filePath?: string; source?: string; line?: number; column?: number;
+} {
+  const location = callSiteLocation(node, e);
+  if (!isOperationNode(node)) {
+    return location;
+  }
+  const source = location.source;
+  const span = source === undefined ? undefined : sourceSpanOf(node);
+  if (source === undefined || span === undefined) {
+    return location;
+  }
+  const leftEnd = sourceSpanOf(node.left)?.end ?? span.start;
+  const rightStart = sourceSpanOf(node.right)?.start ?? span.end;
+  const searchStart = Math.max(span.start, leftEnd);
+  const searchEnd = Math.min(span.end, rightStart);
+  const operatorOffset = source.indexOf(node.operator, searchStart);
+  if (operatorOffset < searchStart || operatorOffset >= searchEnd) {
+    return location;
+  }
+  const operatorLocation = lineColAt(source, operatorOffset);
+  return { ...location, line: operatorLocation.line, column: operatorLocation.column };
+}
+
+function throwUnitArithmetic(error: unknown, node: object, e: EvalCtx): never {
+  if (error instanceof UnitArithmeticError) {
+    throw ERR.invalidUnitArithmetic({
+      node,
+      ...arithmeticSiteLocation(node, e),
+      meta: { reason: error.message }
+    });
+  }
+  throw error;
+}
+
+function validateValueGroupUnits(value: ValueGroup, modes: EvalModes, owner: object, e: EvalCtx): void {
   if (isValueGroupArray(value)) {
     for (const item of value) {
-      validateValueGroupUnits(item, modes);
+      validateValueGroupUnits(item, modes, owner, e);
     }
     return;
   }
-  validateFinalUnits(value, modes);
+  try {
+    validateFinalUnits(value, modes);
+  } catch (error) {
+    throwUnitArithmetic(error, strictUnitOwners.get(value) ?? owner, e);
+  }
 }
 
 function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromise<ValueGroup> {
@@ -2987,12 +3048,18 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
 
       // Inside `calc(…)`, flag the modes so cross-unit math preserves (guard 3).
       const m: EvalModes = (e.calcDepth ?? 0) > 0 ? { ...e.modes, inCalc: true } : e.modes;
-      return combineAll([l, r], values => ev.operate(
-        node.operator,
-        requireValueObject(values[0]!, `operator ${node.operator}`),
-        requireValueObject(values[1]!, `operator ${node.operator}`),
-        m
-      ));
+      return combineAll([l, r], (values) => {
+        try {
+          return rememberStrictUnitOwner(ev.operate(
+            node.operator,
+            requireValueObject(values[0]!, `operator ${node.operator}`),
+            requireValueObject(values[1]!, `operator ${node.operator}`),
+            m
+          ), node, m);
+        } catch (error) {
+          throwUnitArithmetic(error, node, e);
+        }
+      });
     }
     case 'FunctionCall':
       return evalCall(node, frame, e, false);
@@ -4325,7 +4392,7 @@ function joinSpacedBytes(node: SpacedValue, frame: Frame | null, e: EvalCtx): Ma
 function evalBytes(node: ValueSlot, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
   return mapMaybe(evalValueSlot(node, frame, e), (value) => {
     if (!isLiteral(value)) {
-      validateValueGroupUnits(value, e.modes);
+      validateValueGroupUnits(value, e.modes, Array.isArray(node) ? (node[0] ?? {}) : node, e);
     }
     return emitValue(value);
   });

@@ -17,6 +17,13 @@ import { convertValue } from './value-units.js';
 
 /* --------------------------------------------------------- arithmetic */
 
+export class UnitArithmeticError extends TypeError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnitArithmeticError';
+  }
+}
+
 function calculate(a: number, op: string, b: number): number {
   switch (op) {
     case '+': return a + b;
@@ -142,7 +149,7 @@ export function validateFinalUnits(value: ValueGroup, modes: EvalModes): void {
     const numerator = value.numerator ?? (value.unit ? [value.unit] : []);
     const denominator = value.denominator ?? [];
     if (numerator.length > 1 || denominator.length > 0) {
-      throw new TypeError('Multiple units in dimension. Correct the units or use the unit function');
+      throw new UnitArithmeticError('Multiple units in dimension. Correct the units or use the unit function');
     }
     return;
   }
@@ -188,7 +195,7 @@ function dimensionOperate(a: Dimension, b: Dimension, op: string, modes: EvalMod
       const from = bu.num[0] ?? bu.den[0] ?? '';
       const bVal = convertValue(b.number, from, target);
       if (isStrict && bVal === b.number && from !== target) {
-        throw new TypeError(`Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`);
+        throw new UnitArithmeticError(`Incompatible units. Change the units or use the unit function. Bad units: '${target}' and '${from}'.`);
       }
       value = calculate(a.number, op, bVal);
     }

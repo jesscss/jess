@@ -361,6 +361,13 @@ export const ERR = {
       ...args
     });
   },
+  invalidUnitArithmetic(args: Common & { meta: { reason: string } }) {
+    return makeJessError({
+      code: 'eval/invalid-unit-arithmetic',
+      phase: 'eval',
+      ...args
+    });
+  },
 
   /**
    * A value resolved asynchronously in one of the few positions still confined

@@ -31,6 +31,7 @@ export type JessErrorCode =
   | "eval/ruleset-on-property"
   | "eval/async-in-sync-position"
   | "eval/recursive-reference"
+  | 'eval/invalid-unit-arithmetic'
   | "eval/unit-conversion"
   | "extend/protected-boundary"
   | "extend/not-found"
@@ -224,6 +225,14 @@ const TEMPLATES = new Map<JessErrorCode, Template>([
       reason: "${kind} ${symbol} refers to itself while it is being evaluated.",
       fix: "Break the cycle by assigning through an earlier value or a different name.",
     },
+  ],
+  [
+    'eval/invalid-unit-arithmetic',
+    {
+      summary: 'Invalid unit arithmetic',
+      reason: '${reason}',
+      fix: 'Use compatible units, cancel compound units before emission, or use unit() to normalize the value.'
+    }
   ],
   [
     "eval/unit-conversion",
