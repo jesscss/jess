@@ -25,6 +25,32 @@ labels, and replace duplicate known/generic routes with Parseman 0.40
 `dispatch(...)`, `makeWhen(...)`, and `routed()` shapes. The remaining gating
 warnings are a cleanup queue, not evidence to resurrect the old bridge.
 
+## Performance checkpoint
+
+2026-07-28 Bootstrap-port parse-only measurements keep the fold direction but
+open a real parser-performance lane. The pre-fold `52db1e072` checkout, rebuilt
+in dependency order, parsed all 90 `bootstrap-less-port` files successfully
+over the same 233.4 KB corpus at about 20-22 ms AST / 15-16 ms CST. Current
+`dev` also parses all 90 files successfully, but measures about 36-42 ms AST /
+33-37 ms CST depending on warmup/sample shape. Treat the old number as a
+diagnostic baseline, not a rollback target: alpha remains acceptable, and the
+single host-mode grammar stays the architecture.
+
+The next performance work should press forward on the folded grammar:
+
+- isolate raw Parseman `run(...)` time from parser-package AST trivia attachment
+  and `createTriviaMapFromParseman(...)`;
+- review whether host-mode CST/trivia ownership is leaking cost into AST-mode
+  parse;
+- keep replacing same-opener backtracking with `dispatch(...)` / `routed()`
+  only where it removes repeated recognition;
+- use first-set/gating output to prioritize broad nullable choices in
+  ruleset/declaration/value/function/selector paths;
+- compare Bootstrap full render separately from parser-only work. Current full
+  render is slower than Less 4.x but still alpha-acceptable; render/import/eval
+  hotspots are a parallel core/compiler lane, not a reason to undo the grammar
+  fold.
+
 ## Comment-as-trivia debt audit
 
 Current decision: comments are trivia. Do not preserve grammar-level `Comment`
