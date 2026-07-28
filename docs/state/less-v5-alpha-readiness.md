@@ -231,18 +231,18 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `872389bf8fb83565627223ec4c863aa31da0a053`,
+evidence: branch `less-5-alpha.1` at `c06338a4734f0c9aaa2ec7f965db2ca4e6bd3505`,
 clean worktree, PR open/non-draft. That head merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `872389bf` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `c06338a4` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
 and packed-consumer proof. GitHub Actions and CodeRabbit need to be rechecked
 on this head before merge.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `872389bf`, `pnpm run test:alpha` passes the
+`2.0.0-alpha.10`: on PR head `c06338a4`, `pnpm run test:alpha` passes the
 Less package typecheck, build, `lessc` smoke tests, alpha support contract,
 publish dry-run tests, and packed-consumer proof. The `lessc` smoke tests pin
 Linecraft-formatted colored diagnostics by default, source framing, `--silent`
@@ -709,7 +709,7 @@ earlier, before a manual publish attempt.
   the controlled alpha projection. The next Jess alpha is needed so Less PR #19
   can prove colored, single-frame Linecraft diagnostics against registry
   dependencies instead of published `2.0.0-alpha.10`.
-- 2026-07-28: Updated the external Less PR #19 audit to head `872389bf`,
+- 2026-07-28: Updated the external Less PR #19 audit to head `c06338a4`,
   including successful `lessc` warning routing to `stderr` and the blocker rule
   that public `lessc` errors must render through colored Linecraft diagnostics.
   Jess `dev` also has the single-frame diagnostic renderer fix; the external

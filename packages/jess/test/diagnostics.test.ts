@@ -219,12 +219,14 @@ describe('Public parser diagnostic provenance', () => {
     });
     expect(captured.err).toContain('charset.less');
     expect(captured.err).toContain('@charset "UTF-@{Eight}";');
-
-    /*
-     * linecraft renders either a point marker or a span marker, depending on
-     * whether the diagnostic carries an end location.
-     */
-    expect(captured.err).toMatch(/[╿┖]/u);
+    expectLinecraftFrame(captured.err, {
+      code: 'parse/dynamic-charset',
+      phase: 'parse',
+      filePath,
+      line: 2,
+      column: 1,
+      sourceLine: '@charset "UTF-@{Eight}";'
+    });
   });
 
   it('uses the imported file as the parse diagnostic source', async () => {
@@ -293,6 +295,9 @@ async function captureAsync<T>(fn: () => Promise<T>): Promise<{ value: T; out: s
 
 const ESC = String.fromCharCode(0x1B);
 const OSC8 = `${ESC}]8;;`;
+const ANSI_SGR = new RegExp(`${ESC}\\[[0-9;]*m`);
+const OSC8_SEQUENCE = new RegExp(`${ESC}\\]8;;.*?${ESC}\\\\`, 'g');
+const ANSI_SGR_SEQUENCE = new RegExp(`${ESC}\\[[0-9;]*m`, 'g');
 const LIVE_TERMINAL_CONTROLS = [
   `${ESC}[?1049h`,
   `${ESC}[?1049l`,
@@ -310,6 +315,27 @@ function expectNoLiveTerminalControls(output: string): void {
     expect(output).not.toContain(control);
   }
   expect(output).not.toMatch(CURSOR_MOTION_CONTROL);
+}
+
+function diagnosticText(output: string): string {
+  return output
+    .replace(OSC8_SEQUENCE, '')
+    .replace(ANSI_SGR_SEQUENCE, '');
+}
+
+function expectLinecraftFrame(
+  output: string,
+  opts: { code: string; phase: string; filePath: string; line: number; column: number; sourceLine: string }
+): void {
+  expect(output).toMatch(ANSI_SGR);
+  expectNoLiveTerminalControls(output);
+  const plain = diagnosticText(output);
+  expect(plain).toContain(`${opts.code} [${opts.phase}]`);
+  expect(plain).toContain(`${opts.filePath}:${opts.line}:${opts.column}`);
+  expect(plain).toContain(opts.sourceLine);
+  expect(plain).toMatch(/╭─\[/u);
+  expect(plain).toMatch(/╰─/u);
+  expect(plain).toMatch(/[╿┖]/u);
 }
 
 function warn(
@@ -379,9 +405,15 @@ describe('Diagnostic display tiers', () => {
         breakOnError: false
       })
     );
-    expect(stderr).toContain('ERR_SRC'); // code frame includes the source line
     expect(stderr.match(/parse\/syntax-error/g)).toHaveLength(1);
-    expectNoLiveTerminalControls(stderr);
+    expectLinecraftFrame(stderr, {
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      filePath: '/proj/src/styles.less',
+      line: 4,
+      column: 3,
+      sourceLine: 'ERR_SRC'
+    });
   });
 
   it('warnings: \'summary\' collapses to one line per code with count + files', () => {
@@ -407,7 +439,14 @@ describe('Diagnostic display tiers', () => {
         warnings: { display: 'frame' }
       })
     );
-    expect(out).toContain('W_FRAME_SRC');
+    expectLinecraftFrame(out, {
+      code: 'eval/deprecated',
+      phase: 'eval',
+      filePath: '/proj/src/styles.less',
+      line: 3,
+      column: 2,
+      sourceLine: 'W_FRAME_SRC'
+    });
   });
 
   it('errors: \'line\' compacts errors to one line with a link', () => {
