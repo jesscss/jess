@@ -754,8 +754,8 @@ earlier, before a manual publish attempt.
   `packages/less/package.json` instead of hardcoding alpha.10. The commit hook
   reran `pnpm run test:alpha`, including typecheck/build, `lessc`, alpha
   support, alpha fixtures, publish dry-run tests, and packed-consumer proof
-  against published Jess `2.0.0-alpha.10`. Updated the PR description; GitHub
-  CI is running for the new head.
+  against published Jess `2.0.0-alpha.10`. This was superseded by the
+  `fa39abf8` `.11` bump below.
 - 2026-07-28: Updated external Less PR #19 to `fa39abf8`, bumping its direct
   Jess runtime closure and optional `@jesscss/plugin-js` peer to published
   `2.0.0-alpha.11`. The alpha fixture harness removed
@@ -765,6 +765,9 @@ earlier, before a manual publish attempt.
   --ignore-scripts`, `pnpm run test:alpha`, `pnpm run test:release`,
   `pnpm --dir packages/less run lint`, `npm test`, and `git diff --check`.
   The packed-consumer proof installs Jess `2.0.0-alpha.11` from the registry.
+  GitHub CI is green for `fa39abf8` across ubuntu/macOS/windows and Node
+  current, LTS, LTS-1, and LTS-2; release-PR automation jobs are skipped as
+  expected.
 - 2026-07-28: Committed the Parseman trivia-transfer hardening and adjacent
   parser cleanup through `2bb1674e8`. Verification passed
   `pnpm --filter @jesscss/core exec vitest --run src/ast/__tests__/provenance.test.ts src/ast/__tests__/import-at-rule.test.ts`,
