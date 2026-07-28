@@ -207,7 +207,7 @@ export interface Interpolated<
  * An interpolated value is one that contains
  * reference variables, or expressions, but
  * which MUST resolve to a node with a string value
- * (like Anonymous) when evaluated.
+ * (like Any) when evaluated.
  *
  * @example
  *   in Less:

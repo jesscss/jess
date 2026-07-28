@@ -5264,7 +5264,7 @@ export class Rules<V = never, O extends NodeOptions = RulesOptions & NodeOptions
        * first run through `checkValidNodes` at ROOT (`F_ALLOW_ROOT`) so a value-returning
        * call that resolves to a non-statement node (`rgba(0,0,0,0);` → a `Color`) throws
        * `eval/invalid-statement` exactly as the eval terminal did — a legal statement
-       * node (`e('…')` → an `Anonymous`) passes. Byte-identical to the eval terminal that
+       * node (`e('…')` → an `Any`) passes. Byte-identical to the eval terminal that
        * previously handled this at root, so the root gate no longer forces it to eval.
        */
       if (mode === 'render' && context && options.spineMode && isSpineFoldableStatementCall(n)) {

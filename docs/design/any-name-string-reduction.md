@@ -5,7 +5,7 @@ Branch: `work/any-name-string` (base `origin/work/cutover-p1` = `587d56140`).
 
 ## Goal
 
-The `Any` node (`packages/core/src/tree/any.ts`, formerly Less `Anonymous`) carries a
+The `Any` node (`packages/core/src/tree/any.ts`) carries a
 `string` value + an optional `role`. `any.ts:30` carries the stranded AUDIT comment
 *"Do we still need this? Now that we're storing strings?"*. Intent: carry simple
 `name`/`ident`/`keyword`/`property` tokens as **plain strings**, allocating `Any`

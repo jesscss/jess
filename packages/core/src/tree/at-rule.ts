@@ -1,7 +1,7 @@
 import { spanStartOf, sourceSpanOf } from './util/provenance.js';
 import { Node, defineType, F_STATIC, F_VISIBLE, type LocationInfo, type NodeOptions } from './node.js';
 import { Ruleset } from './ruleset.js';
-import { Anonymous, Any, Keyword } from './any.js';
+import { Any, Keyword } from './any.js';
 import { Rules } from './rules.js';
 import type { Context } from '../context.js';
 import { OutputWriter, type FinalPrintOptions, type PrintOptions, getPrintOptions, prepareRenderPrintState } from './util/print.js';
@@ -114,7 +114,6 @@ type AtRuleBodyRegistrationState = {
 function atRuleScalarTokenText(node: Node): string | undefined {
   if (
     node.constructor === Any
-    || node.constructor === Anonymous
     || node.constructor === Keyword
   ) {
     return (node as Any).value;
