@@ -3,7 +3,7 @@ import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
   decl, collection, dimension, forNode, funcCall, interpolation, keyword, list,
-  range, stylesheet, rule, spaced, variableReference, type Stylesheet
+  propertyReference, range, stylesheet, rule, spaced, variableDeclaration, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
 
@@ -68,6 +68,30 @@ describe('For canonical AST emission', () => {
     ]);
 
     expect(render(document)).toBe('.set {\n  one: blue;\n  two: green;\n  three: red;\n}\n');
+  });
+
+  it('evaluates detached-map member values through the map property timeline when bound to @value', () => {
+    const map = collection([
+      decl('background-color', keyword('black')),
+      decl('color', propertyReference('background-color'))
+    ]);
+    const document = stylesheet([
+      variableDeclaration('vars', map, { mode: 'declare' }),
+      rule(':root', [
+        decl('background-color', keyword('red')),
+        forNode(
+          variableReference('vars', 'scoped'),
+          [decl(interpolation([{ lit: '--' }, { ref: variableReference('key', 'scoped'), unquote: true }]), variableReference('value', 'scoped'))],
+          { kind: 'comma', names: ['value', 'key', 'index'] }
+        )
+      ])
+    ]);
+
+    expect(render(document)).toBe(':root {\n'
+      + '  background-color: red;\n'
+      + '  --background-color: black;\n'
+      + '  --color: black;\n'
+      + '}\n');
   });
 
   it('keeps Jess bracket bindings in public key/value order', () => {

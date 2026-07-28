@@ -429,6 +429,7 @@ interface DeclIndex {
 interface BindingCell {
   declaration: VariableDeclaration;
   value: Binding;
+  valueFrame?: Frame;
 }
 
 /** Render-local closure/source facts for one detached-ruleset binding. */
@@ -618,6 +619,9 @@ export interface Frame {
   /** Value-block (anonymous-mixin / collection) closure facts for this activation;
    * never stored on AST nodes. */
   detachedBindings?: Map<ValueBlock, DetachedBinding>;
+
+  /** Per-activation value owners for synthetic parameter declarations. */
+  bindingValueFrames?: Map<Binding, Frame>;
 
   /** Opaque Context source identity that authored this activation's body. */
   sourceOwner?: object | null;
@@ -893,14 +897,18 @@ function collectSelectedDeclIndex(
 }
 
 /** Seed one activation's live cells from mixin/function parameters. */
-function cellsForParams(params: Map<string, Binding> | null): Map<string, BindingCell> | null {
+function cellsForParams(
+  params: Map<string, Binding> | null,
+  valueFrames?: ReadonlyMap<Binding, Frame>
+): Map<string, BindingCell> | null {
   if (!params) {
     return null;
   }
   const cells = new Map<string, BindingCell>();
   for (const [name, value] of params) {
     const declaration = variableDeclaration(name, value, { mode: 'declare' });
-    cells.set(name, { declaration, value });
+    const valueFrame = valueFrames?.get(value);
+    cells.set(name, valueFrame ? { declaration, value, valueFrame } : { declaration, value });
   }
   return cells;
 }
@@ -1706,7 +1714,7 @@ function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value
   for (let f = frame; f; f = f.parent) {
     const hit = f.cells?.get(name);
     if (hit && !e?.excluded.has(hit.value)) {
-      return { value: hit.value, frame: f };
+      return { value: hit.value, frame: hit.valueFrame ?? f };
     }
     if (f.fallback && !fb) {
       fb = f.fallback;
@@ -1773,7 +1781,7 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
   for (let f = frame; f; f = f.parent) {
     const replacement = f.reassign?.get(name);
     if (replacement && (!e?.excluded.has(replacement.value))) {
-      return { value: replacement.value, frame: f };
+      return { value: replacement.value, frame: f.bindingValueFrames?.get(replacement.value) ?? f };
     }
     const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
     if (stack) {
@@ -1789,7 +1797,7 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
           continue;
         }
         if (!e?.excluded.has(declaration.value)) {
-          return { value: declaration.value, frame: f };
+          return { value: declaration.value, frame: f.bindingValueFrames?.get(declaration.value) ?? f };
         }
       }
     }
@@ -3354,6 +3362,7 @@ function lastVarMember(map: DeclMap, e: EvalCtx): DeclEntry | undefined {
 
 /** Collect a body's declarations into name→value maps (+ ordered list). */
 function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx): DeclMap {
+  recordMapPropertyTimeline(statements, frame);
   const byVar = new Map<string, DeclEntry>();
   const byProp = new Map<string, DeclEntry>();
   const list: DeclEntry[] = [];
@@ -3376,6 +3385,17 @@ function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx)
     }
   }
   return { byVar, byProp, list };
+}
+
+function recordMapPropertyTimeline(statements: readonly Statement[], frame: Frame | null): void {
+  if (!frame || frame.propertyTimeline !== undefined) {
+    return;
+  }
+  for (const statement of statements) {
+    if (statement.type === 'Declaration') {
+      recordPropertyDeclaration(frame, statement, frame);
+    }
+  }
 }
 
 /** Resolve a map/namespace accessor's base to a declaration map + its frame. */
@@ -8527,6 +8547,7 @@ function expandReferenceCall(
 interface ForItem {
   value: ValueSlot;
   key: ValueNode | null;
+  valueFrame?: Frame;
   detached?: DetachedBinding;
 }
 
@@ -8712,9 +8733,9 @@ function forItemsFromMixinCall(call: MixinCall, frame: Frame, e: Emit): MaybePro
       const n = leaf.node;
       if (n.type === 'Declaration') {
         const name = typeof n.name === 'string' ? n.name : evalBytesSync(n.name, leaf.frame, e);
-        items.push({ value: n.value, key: any(name) });
+        items.push({ value: n.value, key: any(name), valueFrame: leaf.frame });
       } else if (n.type === 'VariableDeclaration' && !isMixinCallValue(n.value)) {
-        items.push({ value: n.value, key: any(n.name) });
+        items.push({ value: n.value, key: any(n.name), valueFrame: leaf.frame });
       }
     }
     return items;
@@ -8732,19 +8753,28 @@ function forItems(node: ValueSlot | MixinCall, frame: Frame | null, e: Emit): Ma
   }
   const map = resolveForRuleset(node, frame, e);
   if (map) {
+    const mapFrame: Frame = {
+      parent: map.frame,
+      mixins: collectMixins(map.body),
+      declIndex: collectDeclIndex(map.body), cells: null, reassign: null,
+      statements: map.body,
+      sourceOwner: map.detached?.sourceOwner ?? map.frame?.sourceOwner ?? null
+    };
+    recordMapPropertyTimeline(map.body, mapFrame);
     const items: ForItem[] = [];
     for (const s of map.body) {
       if (s.type === 'Declaration') {
-        const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, map.frame, e);
+        const name = typeof s.name === 'string' ? s.name : evalBytesSync(s.name, mapFrame, e);
         items.push({
           value: s.value,
           key: any(name),
+          valueFrame: mapFrame,
           ...(!isValueSlotArray(s.value) && isValueBlock(s.value) && map.detached
             ? { detached: map.detached }
             : {})
         });
       } else if (s.type === 'VariableDeclaration' && !isMixinCallValue(s.value)) {
-        items.push({ value: s.value, key: any(s.name) });
+        items.push({ value: s.value, key: any(s.name), valueFrame: mapFrame });
       }
     }
     return items;
@@ -8860,6 +8890,19 @@ function bindForDetached(frame: Frame, bindings: Map<string, ValueSlot>, item: F
   }
 }
 
+function bindingValueFramesForItem(bindings: Map<string, ValueSlot>, item: ForItem): Map<Binding, Frame> | undefined {
+  if (!item.valueFrame) {
+    return undefined;
+  }
+  let frames: Map<Binding, Frame> | undefined;
+  for (const value of bindings.values()) {
+    if (value === item.value) {
+      (frames ??= new Map()).set(value, item.valueFrame);
+    }
+  }
+  return frames;
+}
+
 /**
  * Expand a Less `each()` loop: emit the callback `rules` once per iterable item,
  * binding the loop variables (`@value`/`@key`/`@index`, or the anonymous-mixin
@@ -8888,13 +8931,15 @@ function expandFor(
         const { value, key } = item;
         const index = dimension(i + 1);
         const bindings = bindForEntry(node, value, key, index);
+        const bindingValueFrames = bindingValueFramesForItem(bindings, item);
         const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),
-          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
+          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings, bindingValueFrames), reassign: null,
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
+          ...(bindingValueFrames ? { bindingValueFrames } : {}),
           ...(extendPlacement ? { extendPlacement } : {})
         };
         bindForDetached(loopFrame, bindings, item);
@@ -12323,13 +12368,15 @@ function expandNestedFor(
         const { value, key } = item;
         const index = dimension(i + 1);
         const bindings = bindForEntry(node, value, key, index);
+        const bindingValueFrames = bindingValueFramesForItem(bindings, item);
         const extendPlacement = e.plannedForExtendPlacements?.get(node)?.[i];
         const loopFrame: Frame = {
           parent: frame,
           mixins: collectMixins(node.rules),
-          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings), reassign: null,
+          declIndex: collectDeclIndex(node.rules, bindings), cells: cellsForParams(bindings, bindingValueFrames), reassign: null,
           statements: node.rules,
           sourceOwner: frame.sourceOwner ?? null,
+          ...(bindingValueFrames ? { bindingValueFrames } : {}),
           ...(extendPlacement ? { extendPlacement } : {})
         };
         bindForDetached(loopFrame, bindings, item);
