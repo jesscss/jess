@@ -152,7 +152,7 @@ test-data unit, and Less test-data config lanes. The Less oracle fails against
 the checked-in baseline with the current integration aggregates
 `ast=8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d`
 with 116 throws and 217 moved entries, and
-`cst=c67b4c38444ecceddd48e50b1c209d12e512ce4d1fe3f43f336076ac3f58763d`
+`cst=67cf6614c3aecd4f71e5965510d556d8da0ea2591948f0681392bc0a3963eb4c`
 with 0 throws and 634 moved entries over 711 entries. Do not update the
 baseline until the AST movers are reviewed and the broad CST ownership movement
 is either projected as intended host-mode shape churn or minimized. The active

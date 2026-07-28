@@ -214,7 +214,7 @@ extending that parse-with-error shape to other migrations.
 surface baseline. Current output is 711 corpus entries, AST
 `8c9d0965e51c74a35f66c0955ce852a1279a183aa071a608dad31c29f1dedb9d` with
 116 throws and 217 moved entries, and CST
-`c67b4c38444ecceddd48e50b1c209d12e512ce4d1fe3f43f336076ac3f58763d` with
+`67cf6614c3aecd4f71e5965510d556d8da0ea2591948f0681392bc0a3963eb4c` with
 0 throws and 634 moved entries. The CST throw regression from unsupported
 legacy Less variable names is fixed; remaining movement is still broad
 AST/CST digest churn that requires named-set review before any baseline update.
@@ -222,25 +222,23 @@ The current named-set split and baseline rules are recorded in
 [`LESS-ORACLE-MOVER-CLASSIFICATION.md`](../architecture/parser/LESS-ORACLE-MOVER-CLASSIFICATION.md);
 do not move the baseline until that queue is resolved.
 
-## External Less `5.0.0-alpha.1` package audit (2026-07-27)
+## External Less `5.0.0-alpha.1` package audit (2026-07-28)
 
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
-`less-5-alpha.1` into the fork-local `alpha` branch. Remote PR checks are
-green across the GitHub Actions matrix, and CodeRabbit reports success but is
-rate-limited. The local sibling checkout is ahead of the remote PR head by
-three commits (`dded69cc`, `f09d0363`, `931cacbd`) and still has uncommitted
-Less API/test-data work, so the remote green checks do not yet prove the local
-latest state.
+`less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
+evidence: branch `less-5-alpha.1` at `35633d4b88f289ab7814afac4e06e9255df73619`,
+clean worktree, PR open/non-draft with merge state `CLEAN`. GitHub Actions are
+green, and the CodeRabbit status context is green, but the latest review still
+lists actionable comments.
 
-Local package/release gates passed before the compiler-package split against
-published Jess `2.0.0-alpha.9`: `pnpm --dir packages/less run test:alpha`,
-`pnpm run test:publish-dry-run`, `pnpm run verify:alpha:packed-consumer`,
-`DRY_RUN=true GITHUB_REF_NAME=alpha pnpm run publish`, and `git diff --check`.
-That evidence is now stale for the current local `less.js` checkout because
-`packages/less/package.json` has moved from the batteries-included `jess`
-dependency to the direct compiler/plugin closure. Re-run it after the compiler
-package is published and the external Less lockfile is refreshed.
+Current package/release gates are registry-backed against published Jess
+`2.0.0-alpha.10`: `pnpm run test:publish-dry-run` passes, and
+`pnpm run verify:alpha:packed-consumer` passes. The packed consumer installs the
+direct Jess runtime closure and does not install the batteries-included `jess`
+package. `packages/less/package.json` uses published `@jesscss/*` alpha
+dependencies, has no direct `jess` dependency, and keeps `@jesscss/plugin-js`
+as an optional peer only.
 
 Jess-side package layering now uses a generic compiler host:
 `@jesscss/compiler` owns the render pipeline, while the `jess` package supplies
@@ -257,21 +255,13 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blocker, verified 2026-07-28: the local Jess workspace has
-`@jesscss/compiler`, and `pnpm --filter @jesscss/compiler build` plus
-`pnpm run verify:package-exports` pass, but the local package version is
-`2.0.0-alpha.5` while the sibling Less PR branch depends on
-`@jesscss/compiler@2.0.0-alpha.9`. Jess release tooling now resolves the next
-registry-safe lockstep publish to `2.0.0-alpha.10`, so the sibling Less branch
-should be updated to that version after the Jess alpha refresh unless the owner
-chooses a different release path. Registry lookup still returns 404 for
-`@jesscss/compiler`, and the sibling Less lockfile is stale: frozen install
-still sees the old `jess` dependency graph rather than the direct compiler and
-plugin closure. PR #19 cannot prove a fresh consumer install until the compiler
-package is published at the intended alpha version and the Less lockfile is
-regenerated against that registry state. The compiler package does build each
-exported subpath (`.`, `./config`, and `./diagnostics`) locally rather than
-relying on a package manifest entry without matching JS output.
+Current package-flow blockers, verified 2026-07-28, are PR-review blockers, not
+Jess registry availability: CodeRabbit's actionable comments still match the
+tree. Before merge/publish, resolve or explicitly disposition the remote tag
+mismatch behavior in `scripts/bump-and-publish.js`, the missing
+`.widget.repositoriesresults` selector expansion in the container expected CSS,
+the `scroll-state (` spacing in the same fixture, and the intentional custom
+unit expectations in `variables/legacy/variable-advanced.css`.
 
 Before treating PR #19 as alpha.1-mergeable, port or consciously classify the
 upstream fixture/test-data gap from `upstream/master` after the PR's current
