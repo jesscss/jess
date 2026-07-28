@@ -191,8 +191,8 @@ are still too raw. Next source targets are
 `packages/syntax/less/less-parser/src/parse-error.ts`,
 `packages/syntax/less/less-parser/src/index.ts`, and
 `packages/core/src/error/diagnostics.ts` for better Parseman failure labeling,
-plus remaining eval helpers that still fall through `internal/unknown` outside
-the now-structured unit arithmetic path.
+plus continued auditing of unstructured eval/runtime diagnostics outside the
+now-structured unit arithmetic path.
 
 Public parser diagnostics now preserve parser-provided end ranges on diagnostic
 records. `packages/jess/test/less/parser-error-public-semantics.test.ts`
@@ -269,23 +269,52 @@ Current package-flow blockers, verified 2026-07-28, are PR-review/status
 blockers, not Jess registry availability. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
-alpha gate passes. The intentional custom-unit note in
+alpha gate passes. GitHub Actions are green on `6399232b`; the only live GitHub
+status blocker is the pending CodeRabbit context, which leaves the PR merge
+state `UNSTABLE`. Greptile did not review because the PR exceeds its file limit,
+and Bugbot is not enabled; those are bot-capability notes rather than code
+findings. The old no-control-regex review thread and both container fixture
+threads are resolved/outdated. The intentional custom-unit note in
 `variables/legacy/variable-advanced.css` remains a review disposition item
 rather than a code fix: this branch has no Stylelint config, no Stylelint script,
 and the file states that it is a historical Less 4.x output record that no test
 reads. Do not add suppression comments there unless a real lint gate appears.
 
-Before treating PR #19 as alpha.1-mergeable, port or consciously classify the
-upstream fixture/test-data gap from `upstream/master` after the PR's current
-base. The must-port fixture families are selectors, media parentheses,
-function/condition parsing, container regressions, color-calc behavior, bare
-`@var` deprecation/migration coverage, named-argument mixins, variadic default
-mixins, and CSS `var()` math. The upstream `alpha` drift is only release
-automation (`330e9d71`) and has no test-data changes. Classify CJS/browser
-export tests, debug line-number crash coverage, and version/release churn
-separately from fixture sync.
+Before treating PR #19 as alpha.1-mergeable, the upstream fixture/test-data gap
+from `upstream/master` must be replayed into the Less 5 alpha branch as v5/Jess
+fixtures or explicitly classified. Do not copy upstream expected CSS blindly:
+upstream `master` is the Less 4.x line; the Less 5 alpha branch succeeds that
+line and owns the Less 5 nesting, deprecation, parser, and output semantics. The
+current exact upstream semantic delta is:
 
-## External Less `5.0.0-alpha.1` package audit (2026-07-22)
+- **Already represented on the PR branch:** the CSS-`var()` math fixture family
+  `tests-unit/math-css-vars/*` from upstream #4479 is present; the container
+  expected-CSS review comments are fixed by `6399232b`.
+- **Still missing as named fixture families:** upstream #4462/#4469's
+  `tests-unit/at-rule-variable-deprecated/*` and upstream #4479's
+  `tests-error/eval/percentage-css-var.*`. These should either be ported to the
+  external alpha branch or documented as intentionally covered by Jess-side
+  diagnostics/tests.
+- **Port or consciously classify before alpha.1:** selectors with nested
+  `:has()` inside `:is()`/`:matches()`/`:where()` (#4422), media-query
+  parentheses (#4427), condition/function parsing for `not` and inline
+  comparisons (#4421/#4472), container query regressions including parameter
+  variables and `style()` comparison/range syntax (#4420/#4461), color `calc()`
+  behavior (#4434), named-argument mixins (#4473), and unset variadic defaults
+  (#4477). Each port needs the v5 expected output, not necessarily upstream
+  Less 4.x bytes.
+- **Classify separately from fixture sync:** upstream `alpha` drift is release
+  automation only (`330e9d71`); CJS/browser export tests (#4424/#4444), debug
+  line-number crash coverage (#4446), dependency/security churn, and release
+  version/changelog commits are not parser fixture deltas. They may be
+  alpha-release hygiene work, but they are not evidence that the Jess-powered
+  parser is missing a language fixture.
+
+## Historical External Less `5.0.0-alpha.1` package audit (2026-07-22)
+
+This section is retained as older release evidence only. It is superseded by
+the 2026-07-28 audit above for current PR #19 readiness, registry availability,
+and package-flow blockers.
 
 The sibling Less repository is on its `alpha` branch at `48c7f5bb`, exactly
 `5.0.0-alpha.1` and clean. It is four committed changes ahead of `origin/alpha`
@@ -380,7 +409,7 @@ The alpha blocks only on these advertised correctness and release-safety gates:
   smoke/compatibility tests; and
 - a release-note known-limitations section that links the complete
   [`less-v5-corpus-inventory.md`](./less-v5-corpus-inventory.md) and states the
-  unsupported or divergent behavior honestly.
+  unsupported or not-yet-matched behavior honestly.
 - `[x]` **Strict source quality.** Published `parseman@0.41.0` is the current
   parser dependency. `check:macro` and `verify:compose-integrity` pass with
   0 interpreter fallbacks, and the Less alpha verifier passes. Production ESLint
@@ -430,7 +459,7 @@ are expressly advertised for a later alpha.
   before touching stylesheet parse caching.
 - `[~]` **Advertised `lessc` CLI behavior** (alpha gate). The built Less v5
   alpha binary must run safely and correctly for its documented command/options
-  set. Unsupported Less 4.x flags or divergent advanced behavior are alpha
+  set. Unsupported Less 4.x flags or not-yet-matched advanced behavior are alpha
   limitations only when listed in the release notes with a follow-up; they do
   not create an implied drop-in-parity promise.
 - `[~]` Stabilize the public `jess` package API before the first Less alpha.
@@ -570,8 +599,8 @@ Current signal:
 - `packages/jess/test/less/all-less.test.ts` runs upstream
   `tests-unit/*/*.less` and selected `tests-config/*/*.less` through
   `Compiler.renderToResult(...)`.
-- `JESS_LESS_FIXTURE=tests-unit/ pnpm run test:less:test-data` covers 64 unit
-  fixture cases in the current readiness lane.
+- `JESS_LESS_FIXTURE=tests-unit/ pnpm run test:less:test-data` currently covers
+  79 unit fixture cases in the readiness lane.
 - `JESS_LESS_FIXTURE=tests-config/ pnpm run test:less:test-data` covers 29
   config fixture cases in the current readiness lane.
 - Browser tests are intentionally out of scope for this tracker until the
