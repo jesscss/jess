@@ -56,6 +56,8 @@ describe('JessError diagnostics', () => {
       filePath: '/tmp/input.less',
       line: 2,
       column: 10,
+      endLine: 2,
+      endColumn: 11,
       errors: [],
       lexerErrors: []
     };
@@ -67,8 +69,15 @@ describe('JessError diagnostics', () => {
     expect(error.source).toBe('.a {\n  color: ;\n}');
     expect(error.line).toBe(2);
     expect(error.column).toBe(10);
+    expect(error.endLine).toBe(2);
+    expect(error.endColumn).toBe(11);
     expect(error.errors).toBe(diagnostic.errors);
     expect(error.lexerErrors).toBe(diagnostic.lexerErrors);
+
+    expect(toDiagnostic(error)).toMatchObject({
+      endLine: 2,
+      endColumn: 11
+    });
   });
 
   it('normalizes non-finite Chevrotain parse positions before diagnostics', () => {

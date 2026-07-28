@@ -48,6 +48,8 @@ export type JessErrorInit = {
   source?: string;
   line?: number;
   column?: number;
+  endLine?: number;
+  endColumn?: number;
 
   /** Interpolation values for the selected template */
   meta?: Record<string, unknown>;
@@ -82,6 +84,8 @@ export class JessError extends Error {
   filePath?: string;
   line = 1;
   column = 1;
+  endLine?: number;
+  endColumn?: number;
   source?: string;
   node?: LocNode; // Store node to derive endLine/endColumn on demand
 
@@ -115,6 +119,8 @@ export class JessError extends Error {
     this.filePath = fileObj?.fullPath ?? init.filePath;
     this.line = derived?.line ?? init.line ?? 1;
     this.column = derived?.column ?? init.column ?? 1;
+    this.endLine = init.endLine;
+    this.endColumn = init.endColumn;
     this.source = source;
     this.node = init.node;
 

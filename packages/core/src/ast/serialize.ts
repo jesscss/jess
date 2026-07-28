@@ -125,10 +125,11 @@ import type { PlanInstruction, PlanOverlay, PlanSubject } from './extend/plan.js
 import type { Branch, Level } from './extend/ir.js';
 import { mkBranch } from './extend/ir.js';
 import type { Context } from '../context.js';
-import { ERR, WARN } from '../error/diagnostics.js';
+import { ERR, WARN, toDiagnostic } from '../error/diagnostics.js';
 import { JessError } from '../error/jess-error.js';
 import { lineColAt } from '../error/code-frame.js';
-import { sourceSpanOf, valueLayoutOf } from './provenance.js';
+import { bodySpanOf, sourceSpanOf, triviaMapOf, valueLayoutOf } from './provenance.js';
+import type { Trivia, TriviaMap } from '../types/index.js';
 
 /* ---------------------------------------------------- MaybePromise glue */
 
@@ -147,6 +148,10 @@ function isResolvedArray<T>(arr: Array<MaybePromise<T>>): arr is T[] {
 
 function combineAll<T, U>(arr: Array<MaybePromise<T>>, f: (ts: T[]) => MaybePromise<U>): MaybePromise<U> {
   return isResolvedArray(arr) ? f(arr) : Promise.all(arr).then(f);
+}
+
+function observeRejectedThenable(value: Promise<unknown>): void {
+  void value.then(undefined, () => undefined);
 }
 
 /**
@@ -184,6 +189,9 @@ export interface SerializeOptions {
 
   /** Active canonical execution session. Public rendering uses this Context directly. */
   context?: Context;
+
+  /** Parser-owned source trivia for comments/spacing that are not AST children. */
+  trivia?: TriviaMap;
 
   /** Explicit modes for context-free AST consumers (defaults to Context, then `DEFAULT_MODES`). */
   modes?: EvalModes;
@@ -299,9 +307,35 @@ function importHasOption(options: string | null, option: string): boolean {
  * `importDocument` option remains a narrow context-free test seam.
  */
 function importThroughContext(context: Context): NonNullable<SerializeOptions['importDocument']> {
+  const importError = (request: ImportDocumentRequest, error: unknown): never => {
+    if (error instanceof JessError && error.code === 'import/not-found') {
+      const file = context.sourceContext?.file;
+      const source = file?.source;
+      const span = source === undefined ? undefined : sourceSpanOf(request.node);
+      const location = source === undefined || span === undefined ? undefined : lineColAt(source, span.start);
+      throw ERR.importNotFound({
+        node: request.node,
+        filePath: file?.fullPath,
+        source,
+        line: location?.line,
+        column: location?.column,
+        meta: {
+          specifier: request.specifier,
+          from: file?.path ?? process.cwd()
+        }
+      });
+    }
+    throw error;
+  };
   return async ({ node, specifier, options, tail }) => {
+    const request = { node, specifier, options, tail };
     if (importHasOption(options, 'inline')) {
-      const bytes = await context.readBinary(specifier);
+      let bytes: Buffer;
+      try {
+        bytes = await context.readBinary(specifier);
+      } catch (error) {
+        importError(request, error);
+      }
       return { inline: bytes.toString(), media: tail };
     }
     if (!canLoadImport(node, specifier, options)) {
@@ -313,7 +347,12 @@ function importThroughContext(context: Context): NonNullable<SerializeOptions['i
      * flag asks the existing dispatcher for its `less` plugin even when the path
      * ends in `.css`; core never chooses or invokes a parser itself.
      */
-    const loaded = await context.loadImport(specifier, importHasOption(options, 'less') ? { type: 'less' } : {});
+    let loaded: Awaited<ReturnType<Context['loadImport']>>;
+    try {
+      loaded = await context.loadImport(specifier, importHasOption(options, 'less') ? { type: 'less' } : {});
+    } catch (error) {
+      importError(request, error);
+    }
     if (loaded === undefined) {
       return undefined;
     }
@@ -562,6 +601,20 @@ export interface Frame {
    */
   fns?: Map<string, Fn> | null;
 
+  /*
+   * [plugin/P1] nearest frame at-or-above this one that owns any local function
+   * registrations. This is only an accelerator for candidate frames: lookup is
+   * still nearest-frame-with-the-requested-entry, so a frame with unrelated
+   * functions does not stop a requested name from falling through to an outer
+   * scoped function or, after scoped lookup misses, the built-in registry.
+   * `fns` stays local, so scoped functions never share storage with
+   * variables/declarations and ordinary empty frames allocate no function map.
+   */
+  fnScope?: Frame | null;
+
+  /** Version of the render-local scoped-function graph that populated `fnScope`. */
+  fnScopeVersion?: number;
+
   /** Value-block (anonymous-mixin / collection) closure facts for this activation;
    * never stored on AST nodes. */
   detachedBindings?: Map<ValueBlock, DetachedBinding>;
@@ -611,10 +664,13 @@ function addScopedFns(frame: Frame, fns: readonly Fn[], e: EvalCtx): void {
   if (fns.length === 0) {
     return;
   }
+  e.fnScopeVersion = (e.fnScopeVersion ?? 0) + 1;
   const map = frame.fns ??= new Map();
   for (const fn of fns) {
     map.set(fn.name.toLowerCase(), fn);
   }
+  frame.fnScope = frame;
+  frame.fnScopeVersion = e.fnScopeVersion;
   e.anyScopedFns = true;
 }
 
@@ -685,20 +741,52 @@ function prepareBodyPlugins(statements: readonly Statement[], frame: Frame, e: E
   return run(0);
 }
 
+export interface FnScopeCacheState {
+  fnScopeVersion?: number;
+}
+
+function nearestFnScope(frame: Frame | null, state?: FnScopeCacheState): Frame | null {
+  if (!frame) {
+    return null;
+  }
+  const version = state?.fnScopeVersion ?? 0;
+  if (frame.fnScopeVersion === version) {
+    return frame.fnScope ?? null;
+  }
+  for (let current: Frame | null = frame; current; current = current.parent) {
+    if (current.fns?.size) {
+      frame.fnScope = current;
+      frame.fnScopeVersion = version;
+      return current;
+    }
+    if (current.fnScopeVersion === version) {
+      frame.fnScope = current.fnScope ?? null;
+      frame.fnScopeVersion = version;
+      return frame.fnScope ?? null;
+    }
+  }
+  frame.fnScope = null;
+  frame.fnScopeVersion = version;
+  return null;
+}
+
 /**
  * [plugin/P1] Build the {@link FnScope} a named call consults: a thin view that
- * walks `frame.fns` up the `parent` chain nearest-first, returning the first
- * registration for `name` (lower-cased, like the global registry), or `undefined`
- * so the evaluator falls back to the global built-in registry. Callers gate
- * construction on {@link EvalCtx.anyScopedFns}, so this is never even reached on the
- * idle path (no scoped fn anywhere ⇒ no `FnScope` allocated, no walk).
+ * jumps through frames that actually own function registrations, returning the
+ * first registration for `name` (lower-cased, like the global registry). A
+ * candidate frame that has functions but not this name is skipped; only the
+ * nearest frame with the requested entry wins. `undefined` lets the evaluator
+ * fall back to the global built-in registry.
+ * Callers gate construction on {@link EvalCtx.anyScopedFns}, so this is never
+ * even reached on the idle path (no scoped fn anywhere ⇒ no `FnScope` allocated,
+ * no walk).
  */
-export function makeFnScope(frame: Frame | null): FnScope {
+export function makeFnScope(frame: Frame | null, state?: FnScopeCacheState): FnScope {
   return {
     lookup(name: string): Fn | undefined {
       const lname = name.toLowerCase();
-      for (let f = frame; f; f = f.parent) {
-        const hit = f.fns?.get(lname);
+      for (let f = nearestFnScope(frame, state); f; f = nearestFnScope(f.parent, state)) {
+        const hit = f.fns!.get(lname);
         if (hit) {
           return hit;
         }
@@ -1061,6 +1149,7 @@ function frameOrderedMixins(f: Frame, e: EvalCtx): OrderedMixinIndex | null {
   }
   const built = orderedMixinsForStatements(st, f, e);
   if (isThenable(built)) {
+    observeRejectedThenable(built);
     throw ERR.asyncInSyncPosition({
       node: f.statements?.[0] ?? {},
       meta: { where: 'mixin-index build (an interpolated selector used as a mixin key)' }
@@ -1612,11 +1701,11 @@ function parentExcludes(frame: Frame | null, body: Statement[]): boolean {
  * because those callers resolve a name to a concrete ruleset binding, not a lazy
  * self-referential value. The regular value read uses `resolveVarRef` instead.
  */
-function lookupLiveCell(frame: Frame | null, name: string): { value: Binding; frame: Frame } | undefined {
+function lookupLiveCell(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
   let fb: Frame | null | undefined;
   for (let f = frame; f; f = f.parent) {
     const hit = f.cells?.get(name);
-    if (hit) {
+    if (hit && !e?.excluded.has(hit.value)) {
       return { value: hit.value, frame: f };
     }
     if (f.fallback && !fb) {
@@ -1624,9 +1713,23 @@ function lookupLiveCell(frame: Frame | null, name: string): { value: Binding; fr
     }
   }
   if (fb) {
-    return lookupLiveCell(fb, name);
+    return lookupLiveCell(fb, name, e);
   }
   return undefined;
+}
+
+function hasExcludedLiveCell(frame: Frame | null, name: string, e: EvalCtx): boolean {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const hit = f.cells?.get(name);
+    if (hit && e.excluded.has(hit.value)) {
+      return true;
+    }
+    if (f.fallback && !fb) {
+      fb = f.fallback;
+    }
+  }
+  return fb ? hasExcludedLiveCell(fb, name, e) : false;
 }
 
 function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
@@ -1649,6 +1752,20 @@ function lookupLeakedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
     return lookupLeakedBinding(fb, name, e);
   }
   return undefined;
+}
+
+function hasExcludedLeakedBinding(frame: Frame | null, name: string, e: EvalCtx): boolean {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const stack = f.leaked?.get(name);
+    if (stack?.some(value => e.excluded.has(value))) {
+      return true;
+    }
+    if (f.fallback && !fb) {
+      fb = f.fallback;
+    }
+  }
+  return fb ? hasExcludedLeakedBinding(fb, name, e) : false;
 }
 
 function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { value: Binding; frame: Frame } | undefined {
@@ -1686,6 +1803,32 @@ function lookupScopedBinding(frame: Frame | null, name: string, e?: EvalCtx): { 
   return undefined;
 }
 
+function hasExcludedScopedBinding(frame: Frame | null, name: string, e: EvalCtx): boolean {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const replacement = f.reassign?.get(name);
+    if (replacement && e.excluded.has(replacement.value)) {
+      return true;
+    }
+    const stack = (f.selectedDeclIndex ?? f.declIndex)?.byName.get(name);
+    if (stack) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const declaration = stack[i]!;
+        if (declaration.write.mode !== 'declare') {
+          continue;
+        }
+        if (e.excluded.has(declaration.value)) {
+          return true;
+        }
+      }
+    }
+    if (f.fallback && !fb) {
+      fb = f.fallback;
+    }
+  }
+  return fb ? hasExcludedScopedBinding(fb, name, e) : false;
+}
+
 /** {@link lookupVar} keeping the OWNING frame, for chain walks that must keep
  *  resolving in the scope each link came from rather than the scope they started in. */
 function lookupVarIn(frame: Frame | null, name: string): { value: Binding; frame: Frame } | undefined {
@@ -1710,11 +1853,76 @@ function lookupVar(frame: Frame | null, name: string): Binding | undefined {
  * OWNING frame so it evaluates in its declaration scope. */
 function resolveVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: EvalCtx): { value: Binding; frame: Frame } | undefined {
   return lookup === 'live'
-    ? lookupLiveCell(frame, name)
+    ? lookupLiveCell(frame, name, e)
     : lookupScopedBinding(frame, name, e) ?? lookupLeakedBinding(frame, name, e);
 }
 
+function hasExcludedVarRef(frame: Frame | null, name: string, lookup: 'live' | 'scoped', e: EvalCtx): boolean {
+  return lookup === 'live'
+    ? hasExcludedLiveCell(frame, name, e)
+    : hasExcludedScopedBinding(frame, name, e) || hasExcludedLeakedBinding(frame, name, e);
+}
+
+function callValueContainsVarRef(value: CallValue, name: string, lookup: 'live' | 'scoped'): boolean {
+  if (isValueSlotArray(value)) {
+    return value.some(item => callValueContainsVarRef(item, name, lookup));
+  }
+  if (value.type === 'MixinCall') {
+    return value.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+  }
+  switch (value.type) {
+    case 'VariableReference':
+      return value.name === name && value.lookup === lookup;
+    case 'Url':
+      return callValueContainsVarRef(value.value, name, lookup);
+    case 'SpacedValue':
+      return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
+    case 'List':
+      return value.value.some(part => callValueContainsVarRef(part, name, lookup));
+    case 'Sequence':
+      return value.parts.some(part => callValueContainsVarRef(part, name, lookup));
+    case 'Important':
+      return callValueContainsVarRef(value.inner, name, lookup);
+    case 'Operation':
+      return callValueContainsVarRef(value.left, name, lookup)
+        || callValueContainsVarRef(value.right, name, lookup);
+    case 'FunctionCall':
+      return value.args.some(arg => callValueContainsVarRef(arg, name, lookup));
+    case 'Block':
+      return callValueContainsVarRef(value.inner, name, lookup);
+    case 'Interpolation':
+      return value.parts.some(part => 'ref' in part && callValueContainsVarRef(part.ref, name, lookup));
+    case 'GeneralEnclosed':
+      return callValueContainsVarRef(value.content, name, lookup);
+    case 'VarIndirect':
+      return callValueContainsVarRef(value.nameRef, name, lookup);
+    case 'Reference':
+      return callValueContainsVarRef(value.base, name, lookup)
+        || value.steps.some(step => {
+          if (step.type === 'Call') {
+            return step.args.some(arg => callValueContainsVarRef(arg.value, name, lookup));
+          }
+          return step.type === 'BracketLookup'
+            && typeof step.key !== 'number'
+            && callValueContainsVarRef(step.key, name, lookup);
+        });
+    case 'Range':
+      return callValueContainsVarRef(value.start, name, lookup)
+        || callValueContainsVarRef(value.end, name, lookup)
+        || (value.step !== null && callValueContainsVarRef(value.step, name, lookup));
+    default:
+      return false;
+  }
+}
+
 function activateVariableDeclaration(node: VariableDeclaration, frame: Frame, e: EvalCtx): void {
+  if (
+    node.write.mode === 'declare'
+    && callValueContainsVarRef(node.value, node.name, 'scoped')
+    && withExcluded(e, node.value, () => resolveVarRef(frame, node.name, 'scoped', e)) === undefined
+  ) {
+    recursiveReference(node, `@${node.name}`, 'Variable', e);
+  }
   bindDetached(frame, node.value, frame, sourceOwnerForBody(
     'type' in node.value && isValueBlock(node.value) ? valueBlockBody(node.value) : node,
     frame,
@@ -1855,6 +2063,25 @@ function resolvePropRef(
   return undefined;
 }
 
+function hasExcludedPropRef(frame: Frame | null, name: string, e: EvalCtx): boolean {
+  let fb: Frame | null | undefined;
+  for (let f = frame; f; f = f.parent) {
+    const timeline = f.propertyTimeline;
+    if (timeline) {
+      for (let i = timeline.length - 1; i >= 0; i--) {
+        const { node } = timeline[i]!;
+        if (typeof node.name === 'string' && node.name === name && e.excluded.has(node.value)) {
+          return true;
+        }
+      }
+    }
+    if (f.fallback && !fb) {
+      fb = f.fallback;
+    }
+  }
+  return fb ? hasExcludedPropRef(fb, name, e) : false;
+}
+
 /**
  * [resolver] Evaluate a resolved variable's value node while it is EXCLUDED for
  * the sync span of the eval — added before the (possibly recursive) evaluation
@@ -1900,6 +2127,23 @@ function unresolvedSymbol(node: object, symbol: string, e: EvalCtx): never {
     line: location?.line,
     column: location?.column,
     meta: { symbol }
+  });
+}
+
+function recursiveReference(node: object, symbol: string, kind: 'Variable' | 'Property', e: EvalCtx): never {
+  const file = e.context?.sourceContext?.file;
+  const source = file?.source;
+  const span = source === undefined ? undefined : sourceSpanOf(node);
+  const location = source === undefined || span === undefined
+    ? undefined
+    : lineColAt(source, span.start);
+  throw ERR.recursiveReference({
+    node,
+    filePath: file?.fullPath,
+    source,
+    line: location?.line,
+    column: location?.column,
+    meta: { kind, symbol }
   });
 }
 
@@ -1954,6 +2198,9 @@ interface EvalCtx {
 
   /** Context supplies document source only on cold diagnostic paths. */
   context?: Context;
+
+  /** Parser-owned source trivia for comment/spacing emission. */
+  trivia?: TriviaMap;
 
   /*
    * [resolver] value nodes currently being evaluated (per-declaration cycle
@@ -2019,6 +2266,9 @@ interface EvalCtx {
    * `serialize`; threaded through the shared `EvalCtx`.
    */
   anyScopedFns?: boolean;
+
+  /** Render-local invalidation token for cached scoped-function parent links. */
+  fnScopeVersion?: number;
 
   /*
    * [io] per-render file-read capability for the IO built-ins (`data-uri`/
@@ -2314,6 +2564,9 @@ function evalTyped(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'VariableReference': {
       const hit = resolveVarRef(frame, node.name, node.lookup, e);
       if (!hit) {
+        if (hasExcludedVarRef(frame, node.name, node.lookup, e)) {
+          recursiveReference(node, `@${node.name}`, 'Variable', e);
+        }
         return force(e, unresolvedRef(node, node.name, e));
       }
       const bound = hit.value;
@@ -2566,6 +2819,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
     case 'VariableReference': {
       const hit = resolveVarRef(frame, node.name, node.lookup, e);
       if (!hit) {
+        if (hasExcludedVarRef(frame, node.name, node.lookup, e)) {
+          recursiveReference(node, `@${node.name}`, 'Variable', e);
+        }
         return unresolvedRef(node, node.name, e);
       }
       return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
@@ -2576,12 +2832,15 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
        * its value. Its declaration-level `!important` is carried through the
        * caller's existing importance sink, so `$color` of `color: red !important`
        * yields `red !important` only at a declaration emission site.
-       * A miss keeps its authored bytes. `functionMode` applies only after a
+       * A miss is a Less semantic error. `functionMode` applies only after a
        * registered function has actually been invoked and failed.
        */
       const hit = resolvePropRef(frame, node.name, e);
       if (!hit) {
-        return literal(node.raw);
+        if (hasExcludedPropRef(frame, node.name, e)) {
+          recursiveReference(node, `$${node.name}`, 'Property', e);
+        }
+        unresolvedSymbol(node, `$${node.name}`, e);
       }
       if (hit.important) {
         if (e.importantSink) {
@@ -2751,6 +3010,9 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
         const nm = stripOuterQuotes(raw);
         const hit = resolveVarRef(frame, nm, node.lookup, e);
         if (!hit) {
+          if (hasExcludedVarRef(frame, nm, node.lookup, e)) {
+            recursiveReference(node, `@${nm}`, 'Variable', e);
+          }
           return unresolvedRef(node, nm, e);
         }
         return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
@@ -3230,6 +3492,7 @@ function invokeValueLambda(
     const overlay: Frame = { parent: defFrame, mixins: null, declIndex: collectDeclIndex([], boundSoFar), cells: cellsForParams(boundSoFar), reassign: null };
     const b = evalBytes(v, overlay, e);
     if (isThenable(b)) {
+      observeRejectedThenable(b);
       throw ERR.asyncInSyncPosition({
         node: v,
         ...callSiteLocation(v, e),
@@ -3255,6 +3518,7 @@ function invokeValueLambda(
      * TODO(maybe-promise-sync-islands): a value lambda is invoked from a
      * synchronous value position; binding its arguments cannot suspend yet.
      */
+    observeRejectedThenable(boundArgs);
     throw ERR.asyncInSyncPosition({
       node: call,
       ...callSiteLocation(call, e),
@@ -3365,7 +3629,9 @@ function resolveReferenceResult(
       return null;
     }
     let matched: DeclEntry | undefined;
+    let missingSymbol = node.raw;
     if (step.type === 'DotLookup') {
+      missingSymbol = step.name;
       const prop = map.byProp.get(step.name);
       const variable = map.byVar.get(step.name) ?? lookupVarMember(map, step.name, e);
       if (prop && variable) {
@@ -3382,6 +3648,7 @@ function resolveReferenceResult(
       if (step.keyKind === 'var' && step.key.type === 'VariableReference' && (
         value.type === 'MixinCall' || !resolveVarRef(valueFrame, step.key.name, step.key.lookup, e)
       )) {
+        missingSymbol = `@${step.key.name}`;
         /*
          * A namespace/mixin-call accessor is a callee result: `#ns.m[@key]`
          * names that result's `@key` member even if the caller has an `@key`.
@@ -3400,8 +3667,10 @@ function resolveReferenceResult(
          * root/detached closure while `@name` is an each/mixin-local binding.
          */
         const name = stripOuterQuotes(evalBytesSync(step.key.nameRef, frame ?? valueFrame, e));
+        missingSymbol = `@${name}`;
         matched = map.byVar.get(name) ?? lookupVarMember(map, name, e);
       } else if (step.keyKind === 'prop' && step.key.type === 'PropertyReference') {
+        missingSymbol = `$${step.key.name}`;
         /*
          * In a map bracket, `$name` selects the property member named `name`.
          * It is not a `$name` read from the caller's declaration timeline.
@@ -3409,6 +3678,9 @@ function resolveReferenceResult(
         matched = map.byProp.get(step.key.name);
       } else {
         const key = evalBytesSync(step.key as ValueNode, valueFrame, e);
+        missingSymbol = step.keyKind === 'var'
+          ? `@${key}`
+          : step.keyKind === 'prop' ? `$${key}` : key;
         if (step.keyKind === 'member') {
           const prop = map.byProp.get(key);
           const variable = map.byVar.get(key) ?? lookupVarMember(map, key, e);
@@ -3434,9 +3706,12 @@ function resolveReferenceResult(
       const idx = step.key;
       const i = idx < 0 ? map.list.length + idx : idx - 1;
       matched = map.list[i] ?? (idx === -1 && map.list.length === 0 ? lastVarMember(map, e) : undefined);
+      if (!matched) {
+        return null;
+      }
     }
     if (!matched) {
-      return null;
+      unresolvedSymbol(node, missingSymbol, e);
     }
     if (matched.important) {
       if (e.importantSink) {
@@ -3545,6 +3820,7 @@ function evalCalc(node: FunctionCall, frame: Frame | null, e: EvalCtx): MaybePro
 
 /** CSS color constructors whose authored call is inert until a value consumer demands it. */
 const DEFERRED_COLOR_CALLS = new Set(['rgb', 'rgba', 'hsl', 'hsla']);
+const DEFERRED_CSS_AUTHORED_CALLS = new Set(['linear-gradient']);
 
 /**
  * Recognize the CSS-shaped arities that are safe to leave as authored bytes.
@@ -3565,6 +3841,15 @@ function hasCssColorCallShape(node: FunctionCall): boolean {
   }
   const slot = node.args[0]!;
   return isValueSlotArray(slot) && slot.length >= 3;
+}
+
+function shouldPreserveCssAuthoredCall(node: FunctionCall, lessDocument: boolean): boolean {
+  if (!lessDocument) {
+    return false;
+  }
+  const lname = node.name.toLowerCase();
+  return (DEFERRED_COLOR_CALLS.has(lname) && hasCssColorCallShape(node))
+    || DEFERRED_CSS_AUTHORED_CALLS.has(lname);
 }
 
 /** Re-emit a call after resolving variable/interpolation bytes, without invoking its callable. */
@@ -3733,7 +4018,11 @@ function pluginVariableHit(name: string, frame: Frame | null, e: EvalCtx): Plugi
   const resolved = projected ?? (isValueSlotArray(hit.value) || hit.value.type !== 'MixinCall'
     ? evalTypedSlot(hit.value, hit.frame, e)
     : undefined);
-  if (resolved === undefined || isThenable(resolved)) {
+  if (resolved === undefined) {
+    return null;
+  }
+  if (isThenable(resolved)) {
+    observeRejectedThenable(resolved);
     return null;
   }
   return { value: resolved, important: false };
@@ -3756,7 +4045,11 @@ function pluginFnContext(node: FunctionCall, frame: Frame | null, e: EvalCtx): P
         return undefined;
       }
       const result = e.ev.call(name, makeList([...args], ','), e.modes, null, e.io);
-      return isThenable(result) ? undefined : result;
+      if (isThenable(result)) {
+        observeRejectedThenable(result);
+        return undefined;
+      }
+      return result;
     },
     currentFileInfo: {
       filename: file?.fullPath ?? '',
@@ -3879,7 +4172,7 @@ function evalCall(
    * functionMode policy instead of leaking authored invalid output.
    */
   const lessDocument = e.context?.sourceContext?.plugin?.supportedExtensions?.includes('.less') === true;
-  if (!demanded && lessDocument && DEFERRED_COLOR_CALLS.has(lname) && hasCssColorCallShape(node)) {
+  if (!demanded && shouldPreserveCssAuthoredCall(node, lessDocument)) {
     return preserveCall(node, frame, e);
   }
   const ev = e.ev;
@@ -3889,7 +4182,7 @@ function evalCall(
    * scoped fn somewhere; otherwise pass null so `ev.call` takes its pre-P1 global
    * path unchanged. `anyScopedFns` is false for every real document today.
    */
-  const scope = e.anyScopedFns ? makeFnScope(frame) : null;
+  const scope = e.anyScopedFns ? makeFnScope(frame, e) : null;
   const selected = scope?.lookup(node.name);
   const rawInvoker = e.pluginHost?.invokeRawFunction;
 
@@ -3907,6 +4200,9 @@ function evalCall(
         const settled = isThenable(result)
           ? result.catch((error: unknown) => pluginCallFailure(node, error, frame, e))
           : result;
+        if (isThenable(settled)) {
+          observeRejectedThenable(settled);
+        }
         return mapMaybe(settled, value => value === undefined
           ? evalCall(node, frame, { ...e, pluginHost: undefined }, demanded)
           : value);
@@ -3944,11 +4240,10 @@ function evalCall(
  * built-in that merely declines an argument shape, and it must never be
  * swallowed into a verbatim re-emission with nothing said.
  *
- * Under `functionMode: 'error'` (what `breakOnError` selects) it aborts with the
- * function name, the underlying throw, and the call site. Otherwise the call is
- * preserved — but a `plugin/function-threw` warning carrying the same
- * attribution is always recorded first, so "keep compiling" never means
- * "say nothing".
+   * In fail-fast mode it aborts with the function name, the underlying throw,
+   * and the call site. Under `breakOnError: false`, `functionMode: 'error'`
+   * records the same diagnostic as a collected error and preserves the call so
+   * "keep compiling" never means "say nothing".
  */
 function pluginCallFailure(
   node: FunctionCall,
@@ -3973,8 +4268,18 @@ function pluginCallFailure(
    * and a plugin fault IS a real problem: it aborts unless the caller explicitly
    * opted into collecting failures instead (`breakOnError: false`).
    */
-  if (e.modes.functionMode === 'error' || e.context?.opts.breakOnError !== false) {
-    throw ERR.pluginFunctionThrew(attribution);
+  const diagnostic = ERR.pluginFunctionThrew(attribution);
+  if (e.context?.opts.breakOnError !== false) {
+    throw diagnostic;
+  }
+  if (e.modes.functionMode === 'error') {
+    const collected = toDiagnostic(diagnostic);
+    if ('errors' in collected) {
+      e.context.errors.push(collected);
+    } else {
+      e.context.warn(collected);
+    }
+    return preserveCall(node, frame, e);
   }
   e.context?.warn(WARN.pluginFunctionThrew(attribution));
   return preserveCall(node, frame, e);
@@ -4063,6 +4368,7 @@ function generalEnclosedBytes(node: GeneralEnclosed, content: string): string {
 function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
   const b = evalBytes(node, frame, e);
   if (isThenable(b)) {
+    observeRejectedThenable(b);
     throw ERR.asyncInSyncPosition({
       node,
       ...callSiteLocation(node, e),
@@ -4076,6 +4382,7 @@ function evalBytesSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string
 function evalQueryPreludeSync(node: ValueSlot, frame: Frame | null, e: EvalCtx): string {
   const value = evalQueryPrelude(node, frame, e);
   if (isThenable(value)) {
+    observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
       node,
       ...callSiteLocation(node, e),
@@ -4308,6 +4615,7 @@ function interpTokenSpelling(token: SimpleToken): string {
 function resolveSimpleTextSync(sim: SimpleToken, frame: Frame | null, e: EvalCtx): string {
   const value = resolveSimpleText(sim, frame, e);
   if (isThenable(value)) {
+    observeRejectedThenable(value);
     throw new AsyncSelectorInterp(sim);
   }
   return value;
@@ -4345,6 +4653,7 @@ function resolveComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): Ma
 function resolveComplexSync(c: ComplexSelector, frame: Frame | null, e: EvalCtx): string {
   const value = resolveComplex(c, frame, e);
   if (isThenable(value)) {
+    observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
       node: c,
       ...callSiteLocation(c, e),
@@ -4478,6 +4787,7 @@ function compose(parents: string[], child: SelectorList, frame: Frame | null, e:
 function composeSync(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
   const value = compose(parents, child, frame, e);
   if (isThenable(value)) {
+    observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
       node: child,
       ...callSiteLocation(child, e),
@@ -4593,6 +4903,7 @@ function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybeP
 function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
   const value = ownStrings(list, frame, e);
   if (isThenable(value)) {
+    observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
       node: list,
       ...callSiteLocation(list, e),
@@ -4703,6 +5014,9 @@ interface Emit extends EvalCtx {
 
   /** Root CSS-terminal imports already written in the required document prelude. */
   hoistedCssImports: Set<ImportAtRule> | null;
+
+  /** Block-comment trivia runs already replayed during this render. */
+  emittedBlockTrivia: Set<Trivia>;
 }
 
 /**
@@ -4714,6 +5028,7 @@ function scratchEmit(e: EvalCtx): Emit {
   return {
     ev: e.ev,
     modes: e.modes,
+    trivia: e.trivia,
     excluded: e.excluded,
     propNames: e.propNames,
     optional: e.optional,
@@ -4736,7 +5051,8 @@ function scratchEmit(e: EvalCtx): Emit {
     referenceImportDepth: 0,
     plannedImportDocuments: null,
     plannedForExtendPlacements: null,
-    hoistedCssImports: null
+    hoistedCssImports: null,
+    emittedBlockTrivia: new Set()
   };
 }
 
@@ -4826,6 +5142,475 @@ function put(e: Emit, s: string): void {
   }
 }
 
+function blockCommentsIn(run: Trivia): string[] {
+  const comments: string[] = [];
+  let pos = run.start;
+  while (pos < run.end) {
+    const start = run.src.indexOf('/*', pos);
+    if (start < 0 || start >= run.end) {
+      break;
+    }
+    const end = run.src.indexOf('*/', start + 2);
+    if (end < 0 || end + 2 > run.end) {
+      break;
+    }
+    comments.push(run.src.slice(start, end + 2));
+    pos = end + 2;
+  }
+  return comments;
+}
+
+function inlineBlockCommentText(run: Trivia, trimLeadingWhitespace = false): string {
+  let out = '';
+  let pos = run.start;
+  let first = true;
+  while (pos < run.end) {
+    const start = run.src.indexOf('/*', pos);
+    if (start < 0 || start >= run.end) {
+      break;
+    }
+    const end = run.src.indexOf('*/', start + 2);
+    if (end < 0 || end + 2 > run.end) {
+      break;
+    }
+
+    let textStart = start;
+    while (textStart > pos) {
+      const char = run.src.charCodeAt(textStart - 1);
+      if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
+        break;
+      }
+      textStart--;
+    }
+    if (first && trimLeadingWhitespace) {
+      textStart = start;
+    }
+
+    let textEnd = end + 2;
+    while (textEnd < run.end) {
+      const char = run.src.charCodeAt(textEnd);
+      if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
+        break;
+      }
+      textEnd++;
+    }
+
+    out += run.src.slice(textStart, textEnd);
+    pos = textEnd;
+    first = false;
+  }
+  return out;
+}
+
+function statementStartOf(node: Statement): number | undefined {
+  if (node.type === 'VariableDeclaration') {
+    return undefined;
+  }
+  return sourceSpanOf(node)?.start;
+}
+
+function statementEndOf(node: Statement): number | undefined {
+  if (node.type === 'VariableDeclaration') {
+    return undefined;
+  }
+  return sourceSpanOf(node)?.end;
+}
+
+interface ReplaySpan {
+  readonly start: number;
+  readonly end: number;
+}
+
+function isReplaySpan(span: ReplaySpan | undefined): span is ReplaySpan {
+  return span !== undefined;
+}
+
+function emitBlockCommentTriviaBetween(
+  e: Emit,
+  start: number | undefined,
+  end: number | undefined,
+  indent: string,
+  excludedSpans: readonly ReplaySpan[] = []
+): number {
+  const trivia = e.trivia;
+  if (trivia === undefined || start === undefined || end === undefined) {
+    return 0;
+  }
+  let emitted = 0;
+  for (const run of trivia.commentRuns()) {
+    if (run.start < start) {
+      continue;
+    }
+    if (run.start > end) {
+      break;
+    }
+    if (run.end > end || e.emittedBlockTrivia.has(run)) {
+      continue;
+    }
+    if (excludedSpans.some(span => run.start >= span.start && run.end <= span.end)) {
+      continue;
+    }
+    const comments = blockCommentsIn(run);
+    if (comments.length === 0) {
+      continue;
+    }
+    e.emittedBlockTrivia.add(run);
+    for (const text of comments) {
+      put(e, indent);
+      put(e, text);
+      put(e, '\n');
+      emitted++;
+    }
+  }
+  return emitted;
+}
+
+function emitInlineBlockCommentTriviaAfter(node: Statement, e: Emit): void {
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return;
+  }
+  const trailing = trivia.lookup(span.end, 'after');
+  if (trailing !== undefined && !e.emittedBlockTrivia.has(trailing) && blockCommentsIn(trailing).length > 0) {
+    e.emittedBlockTrivia.add(trailing);
+    put(e, inlineBlockCommentText(trailing));
+    return;
+  }
+  for (const run of trivia.commentRuns()) {
+    if (run.start < span.start) {
+      continue;
+    }
+    if (run.start > span.end) {
+      break;
+    }
+    if (run.end > span.end || e.emittedBlockTrivia.has(run) || blockCommentsIn(run).length === 0) {
+      continue;
+    }
+    let index = run.end;
+    while (index < span.end) {
+      const char = run.src.charCodeAt(index);
+      if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
+        break;
+      }
+      index++;
+    }
+    if (index !== span.end) {
+      continue;
+    }
+    e.emittedBlockTrivia.add(run);
+    put(e, inlineBlockCommentText(run));
+    return;
+  }
+  const source = trivia.commentRuns()[0]?.src;
+  if (source === undefined) {
+    return;
+  }
+  let end = span.end;
+  while (end > span.start) {
+    const char = source.charCodeAt(end - 1);
+    if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
+      break;
+    }
+    end--;
+  }
+  if (source.slice(end - 2, end) !== '*/') {
+    return;
+  }
+  const open = source.lastIndexOf('/*', end - 2);
+  if (open < span.start) {
+    return;
+  }
+  let start = open;
+  while (start > span.start) {
+    const char = source.charCodeAt(start - 1);
+    if (char !== 32 && char !== 9 && char !== 10 && char !== 13 && char !== 12) {
+      break;
+    }
+    start--;
+  }
+  put(e, source.slice(start, end));
+}
+
+function markSilentStatementBlockCommentTrivia(node: Statement, e: Emit): void {
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return;
+  }
+  for (const run of trivia.commentRuns()) {
+    if (run.start < span.start) {
+      continue;
+    }
+    if (run.start > span.end) {
+      break;
+    }
+    if (run.end <= span.end && blockCommentsIn(run).length > 0) {
+      e.emittedBlockTrivia.add(run);
+    }
+  }
+}
+
+function bodySpanForTriviaReplay(owner: object, e: Emit): ReplaySpan | undefined {
+  const body = bodySpanOf(owner);
+  if (body !== undefined) {
+    return body;
+  }
+  const trivia = e.trivia;
+  const span = sourceSpanOf(owner);
+  const source = trivia?.commentRuns()[0]?.src;
+  if (span === undefined || source === undefined) {
+    return undefined;
+  }
+  const open = source.indexOf('{', span.start);
+  const close = source.lastIndexOf('}', span.end - 1);
+  if (open < span.start || close <= open || close > span.end) {
+    return undefined;
+  }
+  return { start: open + 1, end: close };
+}
+
+function emitBodyBlockCommentTrivia(owner: object, e: Emit, indent: string): number {
+  const body = bodySpanForTriviaReplay(owner, e);
+  return emitBlockCommentTriviaBetween(e, body?.start, body?.end, indent);
+}
+
+function bodyBlockCommentTexts(owner: object, e: Emit): string[] {
+  const trivia = e.trivia;
+  const body = bodySpanForTriviaReplay(owner, e);
+  if (trivia === undefined || body === undefined) {
+    return [];
+  }
+  const out: string[] = [];
+  for (const run of trivia.commentRuns()) {
+    if (run.start < body.start) {
+      continue;
+    }
+    if (run.start > body.end) {
+      break;
+    }
+    if (run.end > body.end) {
+      continue;
+    }
+    out.push(...blockCommentsIn(run));
+  }
+  return out;
+}
+
+function emitBodyBlockCommentTriviaBefore(owner: object, before: object, e: Emit, indent: string, after: number): number {
+  const body = bodySpanForTriviaReplay(owner, e);
+  const span = sourceSpanOf(before);
+  return emitBlockCommentTriviaBetween(e, Math.max(body?.start ?? after, after), span?.start, indent);
+}
+
+function emitLeadingDocumentBlockComments(e: Emit, indent = ''): void {
+  const trivia = e.trivia;
+  if (trivia === undefined) {
+    return;
+  }
+  const run = trivia.lookup(0, 'after');
+  if (run === undefined) {
+    return;
+  }
+  if (e.emittedBlockTrivia.has(run)) {
+    return;
+  }
+  const comments = blockCommentsIn(run);
+  if (comments.length === 0) {
+    return;
+  }
+  e.emittedBlockTrivia.add(run);
+  for (const text of comments) {
+    put(e, indent);
+    put(e, text);
+    put(e, '\n');
+  }
+}
+
+function withDocumentTrivia<T>(e: Emit, document: Stylesheet, run: () => MaybePromise<T>): MaybePromise<T> {
+  const previous = e.trivia;
+  const next = triviaMapOf(document);
+  if (next === undefined) {
+    return run();
+  }
+  e.trivia = next;
+  try {
+    const result = run();
+    if (isThenable(result)) {
+      return result.finally(() => {
+        e.trivia = previous;
+      });
+    }
+    e.trivia = previous;
+    return result;
+  } catch (error) {
+    e.trivia = previous;
+    throw error;
+  }
+}
+
+function authoredStatementWithTrivia(node: AtRuleStatement, e: Emit): string | null {
+  return authoredSliceWithTrivia(node, e);
+}
+
+function authoredSliceWithTrivia(node: object, e: Emit): string | null {
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return null;
+  }
+  let source: string | undefined;
+  for (const run of trivia.commentRuns()) {
+    if (run.start >= span.start && run.end <= span.end) {
+      source = run.src;
+      break;
+    }
+  }
+  if (source === undefined) {
+    return null;
+  }
+  return source.slice(span.start, span.end).trim();
+}
+
+function firstBlockOpen(source: string, start: number, end: number): number {
+  let index = start;
+  while (index < end) {
+    const char = source[index]!;
+    if (char === '/' && source[index + 1] === '*') {
+      const close = source.indexOf('*/', index + 2);
+      index = close < 0 ? end : close + 2;
+      continue;
+    }
+    if (char === '"' || char === '\'') {
+      const quote = char;
+      index++;
+      while (index < end) {
+        const inner = source[index]!;
+        index += inner === '\\' ? 2 : 1;
+        if (inner === quote) {
+          break;
+        }
+      }
+      continue;
+    }
+    if (char === '{') {
+      return index;
+    }
+    index++;
+  }
+  return -1;
+}
+
+function keyframesPreludeWithTrivia(node: AtRuleBlock, e: Emit): string | null {
+  if (!node.name.toLowerCase().includes('keyframes')) {
+    return null;
+  }
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return null;
+  }
+
+  let source: string | undefined;
+  for (const run of trivia.commentRuns()) {
+    if (run.start >= span.start && run.end <= span.end) {
+      source = run.src;
+      break;
+    }
+  }
+  if (source === undefined) {
+    return null;
+  }
+
+  const open = firstBlockOpen(source, span.start, span.end);
+  if (open < 0) {
+    return null;
+  }
+  let hasHeaderComment = false;
+  for (const run of trivia.commentRuns()) {
+    if (run.start >= span.start && run.end <= open) {
+      hasHeaderComment = true;
+      break;
+    }
+  }
+  if (!hasHeaderComment) {
+    return null;
+  }
+
+  const header = source.slice(span.start, open).trim();
+  if (!header.toLowerCase().startsWith(node.name.toLowerCase())) {
+    return null;
+  }
+  const prelude = header.slice(node.name.length).trim();
+  return prelude.includes('/*') ? prelude : null;
+}
+
+function authoredSelectorHeaderWithTrivia(node: SelectorList, rendered: readonly string[], e: Emit): string | null {
+  if (selectorListHasAmpersand(node)) {
+    return null;
+  }
+  for (const selector of node.selectors) {
+    if (complexHasInterp(selector)) {
+      return null;
+    }
+  }
+  if (rendered.length !== node.selectors.length) {
+    return null;
+  }
+  const trivia = e.trivia;
+  const span = sourceSpanOf(node);
+  if (trivia === undefined || span === undefined) {
+    return null;
+  }
+  const branchSpans = node.selectors.map(sourceSpanOf);
+  if (branchSpans.some(branch => branch === undefined)) {
+    return null;
+  }
+
+  let sawComment = false;
+  let header = rendered[0] ?? '';
+  for (let index = 1; index < rendered.length; index++) {
+    const previous = branchSpans[index - 1]!;
+    const current = branchSpans[index]!;
+    const source = e.trivia?.commentRuns().find(run =>
+      run.start >= previous.end && run.end <= current.start && run.start >= span.start && run.end <= span.end)?.src;
+    const comma = source === undefined ? -1 : source.indexOf(',', previous.end);
+    let beforeCommaComments = '';
+    let afterCommaComments = '';
+    for (const run of trivia.commentRuns()) {
+      if (run.start >= previous.end && run.end <= current.start && run.start >= span.start && run.end <= span.end) {
+        if (comma >= 0 && run.end <= comma) {
+          beforeCommaComments += inlineBlockCommentText(run);
+        } else {
+          afterCommaComments += inlineBlockCommentText(run, true);
+        }
+      }
+    }
+    if (beforeCommaComments !== '' || afterCommaComments !== '') {
+      sawComment = true;
+      header += beforeCommaComments;
+    }
+    header += ',\n';
+    header += afterCommaComments;
+    header += rendered[index]!;
+  }
+  return sawComment ? header : null;
+}
+
+function hasBodyBlockCommentTrivia(owner: object, e: Emit): boolean {
+  const trivia = e.trivia;
+  const body = bodySpanForTriviaReplay(owner, e);
+  if (trivia === undefined || body === undefined) {
+    return false;
+  }
+  for (const run of trivia.commentRuns()) {
+    if (run.start >= body.start && run.end <= body.end && blockCommentsIn(run).length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** A grouped leaf (declaration/comment) plus the frame its values resolve in.
  * `important` is a call-level `!important` override propagated from a
  * `.m() !important` placement onto every declaration the body emits. */
@@ -4833,9 +5618,33 @@ interface Leaf {
   node: Statement;
   frame: Frame;
   important?: boolean;
+  leadingBlockComments?: readonly string[];
 
   /** Produced by the core `$apply` expansion; its repeated output stays visible. */
   fromApply?: true;
+}
+
+const pendingLeafBlockComments = new WeakMap<Leaf[], string[]>();
+
+function queueLeafBlockComments(group: Leaf[], comments: readonly string[]): void {
+  if (comments.length === 0) {
+    return;
+  }
+  const pending = pendingLeafBlockComments.get(group);
+  if (pending === undefined) {
+    pendingLeafBlockComments.set(group, [...comments]);
+  } else {
+    pending.push(...comments);
+  }
+}
+
+function attachPendingLeafBlockComments(group: Leaf[], leaf: Leaf): Leaf {
+  const pending = pendingLeafBlockComments.get(group);
+  if (pending === undefined || pending.length === 0) {
+    return leaf;
+  }
+  pendingLeafBlockComments.delete(group);
+  return { ...leaf, leadingBlockComments: pending };
 }
 
 /** The resolved property name of a declaration (interp names resolve sync). */
@@ -5342,8 +6151,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     chunks: [],
     off: 0,
     positions: options?.trackPositions ? [] : null,
-    ev: options?.evaluator ?? options?.context?.valueEvaluator ?? null, // typed value evaluator
+    ev: options?.evaluator ?? options?.context?.evaluator ?? null, // typed value evaluator
     modes: options?.modes ?? options?.context?.options ?? DEFAULT_MODES,
+    trivia: options?.trivia ?? triviaMapOf(root) ?? options?.context?.opts.trivia,
     context: options?.context,
     excluded: new Set(), // [resolver] per-declaration cycle guard
     propNames: new Set(), // [property-interp] interpolated-name re-entrancy guard
@@ -5362,7 +6172,9 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     plannedImportDocuments: importDocument ? new WeakMap() : null,
     plannedForExtendPlacements: null,
     hoistedCssImports: null,
+    emittedBlockTrivia: new Set(),
     anyScopedFns, // [plugin/P1] gate: false idle ⇒ fn-dispatch walk skipped
+    fnScopeVersion: 0,
     pluginHost, // [plugin/P2] injected plugin runtime for scope-local `@plugin`
     io: options?.io // [io] per-render file-read capability for the IO built-ins
   };
@@ -5374,6 +6186,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     fns: rootFns, // [plugin/P1] root-global scoped fns (null today)
     sourceOwner: e.context?.currentSourceOwner?.() ?? null
   };
+  if (rootFns) {
+    rootFrame.fnScope = rootFrame;
+    rootFrame.fnScopeVersion = e.fnScopeVersion;
+  }
   const continueRender = (planned: ExtendPlannerInput): SerializeReturn => {
     const plannedRoot = planned.root;
 
@@ -5402,6 +6218,7 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     if (!options?.importDocument) {
       emitHoistedCssImports(root.children, rootFrame, e);
     }
+    emitLeadingDocumentBlockComments(e);
     const emitted = emitDocumentStatements(root.children, rootFrame, e, importDocument);
     const finalize = (): SerializeResult =>
       e.positions ? { css: e.chunks.join(''), positions: e.positions } : { css: e.chunks.join('') };
@@ -5432,6 +6249,10 @@ export function serialize(root: Stylesheet, options?: SerializeOptions): Seriali
     statements: root.children,
     fns: rootFns
   };
+  if (rootFns) {
+    plannerRootFrame.fnScope = plannerRootFrame;
+    plannerRootFrame.fnScopeVersion = e.fnScopeVersion;
+  }
   const prepare = prepareBodyPlugins(root.children, rootFrame, e);
   const plan = (): SerializeReturn => {
     const planned = planImportedExtends(root, plannerRootFrame, e, importDocument);
@@ -5511,6 +6332,19 @@ function emitDocumentStatements(
    */
   const deferredImports: ImportAtRule[] = [];
   const delayedStatements: Statement[] = [];
+  let documentTriviaCursor = 0;
+  let documentTriviaSuppressedByDefinition = false;
+  const emitBeforeDocumentStatement = (child: Statement): void => {
+    if (documentTriviaSuppressedByDefinition) {
+      documentTriviaCursor = statementStartOf(child) ?? documentTriviaCursor;
+      documentTriviaSuppressedByDefinition = false;
+      return;
+    }
+    emitBlockCommentTriviaBetween(e, documentTriviaCursor, statementStartOf(child), '');
+  };
+  const markAfterDocumentStatement = (child: Statement): void => {
+    documentTriviaCursor = statementEndOf(child) ?? documentTriviaCursor;
+  };
   const run = (child: Statement, allowDefer: boolean): MaybePromise<void> => {
     try {
       return emit(child);
@@ -5536,7 +6370,10 @@ function emitDocumentStatements(
          * publish or otherwise render reference rules unconditionally.
          */
         if (e.referenceImportDepth === 0 || e.extends?.hiddenByRule.get(child)?.some(hidden => !hidden) === true) {
-          return flatten(child, null, null, frame, e);
+          emitBeforeDocumentStatement(child);
+          const emitted = flatten(child, null, null, frame, e);
+          markAfterDocumentStatement(child);
+          return emitted;
         }
         break;
       case 'MixinDef':
@@ -5550,9 +6387,14 @@ function emitDocumentStatements(
         } else {
           publishSelectedMixinDefinition(frame, child);
         }
+        documentTriviaSuppressedByDefinition = true;
         break;
       case 'VariableDeclaration':
         activateVariableDeclaration(child, frame, e);
+        markSilentStatementBlockCommentTrivia(child, e);
+        if (!isValueSlotArray(child.value) && 'type' in child.value && isValueBlock(child.value)) {
+          documentTriviaSuppressedByDefinition = true;
+        }
         break;
       case 'MixinCall': {
         const group: Leaf[] = [];
@@ -5618,19 +6460,26 @@ function emitDocumentStatements(
       case 'Declaration':
       case 'Comment':
         if (e.referenceImportDepth === 0) {
+          emitBeforeDocumentStatement(child);
           emitLeaf({ node: child, frame }, e, true);
+          markAfterDocumentStatement(child);
         }
         break;
 
       // [atrule] top-level at-rules
       case 'AtRuleBlock':
         if (e.referenceImportDepth === 0) {
-          return emitAtRuleBlock(child, frame, e);
+          emitBeforeDocumentStatement(child);
+          const emitted = emitAtRuleBlock(child, frame, e);
+          markAfterDocumentStatement(child);
+          return emitted;
         }
         break;
       case 'AtRuleStatement':
         if (e.referenceImportDepth === 0) {
+          emitBeforeDocumentStatement(child);
           emitAtRuleStatement(child, frame, e);
+          markAfterDocumentStatement(child);
         }
         break;
       case 'Plugin':
@@ -5643,25 +6492,40 @@ function emitDocumentStatements(
         if (e.hoistedCssImports?.has(child)) {
           break;
         }
-        return emitImportAtRule(child, frame, e, importDocument);
+        emitBeforeDocumentStatement(child);
+        {
+          const emitted = emitImportAtRule(child, frame, e, importDocument);
+          markAfterDocumentStatement(child);
+          return emitted;
+        }
       case 'StyleImport':
+        emitBeforeDocumentStatement(child);
         emitStyleImport(child, frame, e);
+        markAfterDocumentStatement(child);
         break;
       case 'ModuleImport':
+        emitBeforeDocumentStatement(child);
         emitModuleImport(child, frame, e);
+        markAfterDocumentStatement(child);
         break;
       case 'OpaqueAtRuleBlock':
+        emitBeforeDocumentStatement(child);
         emitOpaqueAtRuleBlock(child, e);
+        markAfterDocumentStatement(child);
         break;
 
       // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
       case 'RawInline':
+        emitBeforeDocumentStatement(child);
         emitRawInline(child, e);
+        markAfterDocumentStatement(child);
         break;
 
       // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
       case 'FunctionCall':
+        emitBeforeDocumentStatement(child);
         emitCallStatement(child, frame, e);
+        markAfterDocumentStatement(child);
         break;
     }
   };
@@ -5712,9 +6576,19 @@ function emitDocumentStatements(
     }
     return delayed;
   };
+  const emitTrailingDocumentTrivia = (): void => {
+    if (e.referenceImportDepth === 0) {
+      emitBlockCommentTriviaBetween(e, documentTriviaCursor, Number.MAX_SAFE_INTEGER, '');
+    }
+  };
   const finish = (): MaybePromise<void> => {
     const retried = retry();
-    return isThenable(retried) ? retried.then(emitDelayed) : emitDelayed();
+    const delayed = isThenable(retried) ? retried.then(emitDelayed) : emitDelayed();
+    return isThenable(delayed)
+      ? delayed.then(() => {
+          emitTrailingDocumentTrivia();
+        })
+      : emitTrailingDocumentTrivia();
   };
   return pending ? pending.then(finish) : finish();
 }
@@ -5737,6 +6611,7 @@ function emitDocumentStatements(
  */
 function settledGuard(value: MaybePromise<boolean>, where: string, node: object, e: EvalCtx): boolean {
   if (isThenable(value)) {
+    observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({ node, ...callSiteLocation(node, e), meta: { where } });
   }
   return value;
@@ -5750,6 +6625,13 @@ function settledGuard(value: MaybePromise<boolean>, where: string, node: object,
 function ruleGuardPasses(rule: Rule, frame: Frame, e: EvalCtx): MaybePromise<boolean> {
   if (!rule.guard) {
     return true;
+  }
+  if (rule.selector.selectors.length > 1) {
+    throw ERR.guardedSelectorList({
+      node: rule,
+      ...callSiteLocation(rule, e),
+      meta: { count: rule.selector.selectors.length }
+    });
   }
   if (guardUsesDefault(rule.guard)) {
     throw ERR.invalidFunction({
@@ -6006,7 +6888,7 @@ function flattenWithHeader(
        * against) keys sibling merges: two nested rulesets with the same parent ref
        * and header merge; top-level rules (`parent === null`) never do.
        */
-      return mapMaybe(flushBlock(header, group, e, rule.selector, parent), () => {
+      return mapMaybe(flushBlock(header, group, e, rule.selector, parent, rule), () => {
         group.length = 0;
       });
     }
@@ -6020,7 +6902,7 @@ function flattenWithHeader(
    */
   const emitBlock = (leaves: Leaf[]): MaybePromise<void> => {
     if (leaves.length) {
-      return flushBlock(header, leaves, e, rule.selector, parent);
+      return flushBlock(header, leaves, e, rule.selector, parent, rule);
     }
   };
   const partition: Partition = {
@@ -6039,6 +6921,9 @@ function flattenWithHeader(
       }
     };
     if (!partition.encounteredContainer) {
+      if (group.length === 0 && hasBodyBlockCommentTrivia(rule, e)) {
+        return flushBlock(header, [], e, rule.selector, parent, rule);
+      }
       return flush();
     }
     queueLeadingGroup(group, partition);
@@ -6078,10 +6963,11 @@ function flushPending(p: Partition): void {
 
 /** [partition] Buffer every ordinary leaf after an emitted collapsed child. */
 function addLeaf(group: Leaf[], partition: Partition | null, leaf: Leaf, _forceLeading: boolean): void {
+  const next = attachPendingLeafBlockComments(group, leaf);
   if (partition && partition.encounteredContainer) {
-    partition.pending.push(leaf);
+    partition.pending.push(next);
   } else {
-    group.push(leaf);
+    group.push(next);
   }
 }
 
@@ -6558,6 +7444,7 @@ function walkBody(
         break;
       case 'VariableDeclaration':
         activateVariableDeclaration(node, frame, e);
+        markSilentStatementBlockCommentTrivia(node, e);
         break;
     }
   }
@@ -6661,7 +7548,8 @@ function expandCall(
     if (candidates.length === 0) {
       return;
     }
-    return mapMaybe(dispatch(candidates, call, frame, e, homes), (selected) => {
+    const queueComments = queueCommentOnlyMixinBodies(candidates, call, frame, e, group);
+    const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
       if (selected.length === 0) {
         return;
       }
@@ -6783,7 +7671,43 @@ function expandCall(
         throw error;
       }
     });
+    return mapMaybe(queueComments, runDispatch);
   });
+}
+
+function queueCommentOnlyMixinBodies(
+  candidates: readonly MixinDef[],
+  call: MixinCall,
+  frame: Frame,
+  e: Emit,
+  group: Leaf[]
+): MaybePromise<void> {
+  const resolveCaller = makeResolver(frame, e);
+  const run = (index: number): MaybePromise<void> => {
+    for (let i = index; i < candidates.length; i++) {
+      const def = candidates[i]!;
+      if (def.guard !== undefined || def.body.length !== 0) {
+        continue;
+      }
+      const comments = bodyBlockCommentTexts(def, e);
+      if (comments.length === 0) {
+        continue;
+      }
+      const bound = bindArgs(def, call, resolveCaller);
+      if (isThenable(bound)) {
+        return bound.then((bindings) => {
+          if (bindings !== null) {
+            queueLeafBlockComments(group, comments);
+          }
+          return run(i + 1);
+        });
+      }
+      if (bound !== null) {
+        queueLeafBlockComments(group, comments);
+      }
+    }
+  };
+  return run(0);
 }
 
 /**
@@ -6861,6 +7785,7 @@ function expandApply(
 /** Candidate lookup in a probe position that cannot suspend (see {@link settledDispatch}). */
 function settledCandidates(list: MaybePromise<MixinDef[]>, call: MixinCall, e: EvalCtx): MixinDef[] {
   if (isThenable(list)) {
+    observeRejectedThenable(list);
     throw ERR.asyncInSyncPosition({
       node: call,
       ...callSiteLocation(call, e),
@@ -6880,6 +7805,7 @@ function settledCandidates(list: MaybePromise<MixinDef[]>, call: MixinCall, e: E
  */
 function settledDispatch(selected: MaybePromise<Selection[]>, call: MixinCall, e: EvalCtx): Selection[] {
   if (isThenable(selected)) {
+    observeRejectedThenable(selected);
     throw ERR.asyncInSyncPosition({
       node: call,
       ...callSiteLocation(call, e),
@@ -7228,6 +8154,9 @@ function expandReferenceCall(
   }
   const resolved = resolveReferenceResult(call, frame, e);
   if (!resolved) {
+    if (call.base.type === 'VariableReference') {
+      unresolvedSymbol(call.base, `@${call.base.name}`, e);
+    }
     return;
   }
   if (isMixinCallValue(resolved.value)) {
@@ -7533,6 +8462,15 @@ function forRangeItems(node: Range, frame: Frame | null, e: Emit): ForItem[] {
   const end = evalTyped(node.end, frame, e);
   const step = node.step === null ? null : evalTyped(node.step, frame, e);
   if (isThenable(start) || isThenable(end) || isThenable(step)) {
+    if (isThenable(start)) {
+      observeRejectedThenable(start);
+    }
+    if (isThenable(end)) {
+      observeRejectedThenable(end);
+    }
+    if (isThenable(step)) {
+      observeRejectedThenable(step);
+    }
     throw ERR.asyncInSyncPosition({
       node,
       ...callSiteLocation(node, e),
@@ -7653,7 +8591,8 @@ function dispatch(
   call: MixinCall,
   frame: Frame,
   e: EvalCtx,
-  homes?: Map<MixinDef, Frame> // [closure] def → its DEFINITION frame (guard scope)
+  homes?: Map<MixinDef, Frame>, // [closure] def → its DEFINITION frame (guard scope)
+  errorOnNoViable = false
 ): MaybePromise<Selection[]> {
   const resolveCaller = makeResolver(frame, e);
 
@@ -7736,7 +8675,17 @@ function dispatch(
       throw error;
     };
     try {
-      const selected = selectDefinitions(candidates, call2, resolveCaller, makeCalleeTyped, e.ev, e.modes, resolveDefault, resolveDefaultBlock);
+      const selected = selectDefinitions(
+        candidates,
+        call2,
+        resolveCaller,
+        makeCalleeTyped,
+        e.ev,
+        e.modes,
+        resolveDefault,
+        resolveDefaultBlock,
+        errorOnNoViable ? () => unresolvedMixinCall(call2, e) : undefined
+      );
 
       /*
        * `default()` ambiguity can now surface on either lane, so the mapping to a
@@ -7836,7 +8785,7 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
   return changed ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important } : call;
 }
 
-function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null): MaybePromise<void> {
+function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null, owner?: object): MaybePromise<void> {
   /*
    * A root-level mixin/detached-ruleset call has no selector header. Its ordinary
    * declarations are invalid Less output; custom properties remain legal at root.
@@ -7855,7 +8804,10 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
   const emit = (kept: Leaf[], merged = false): void => {
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
     const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-    const header = idt ? sel.join(',\n' + idt) : sel.join(',\n');
+    const authoredHeader = parentKey === null && selNode !== undefined && sel.length === selNode.selectors.length
+      ? authoredSelectorHeaderWithTrivia(selNode, sel, e)
+      : null;
+    const header = authoredHeader ?? (idt ? sel.join(',\n' + idt) : sel.join(',\n'));
 
     /*
      * [adjacent-merge] v5 merges consecutive same-selector SIBLING rulesets nested
@@ -7880,11 +8832,28 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
       }
       put(e, ' {\n');
     }
+    if (owner !== undefined && kept.length === 0) {
+      emitBodyBlockCommentTrivia(owner, e, e.depth > 0 ? INDENT.repeat(e.depth + 1) : INDENT);
+    }
     if (merged) {
       mergeFold(kept, e, INDENT.repeat(e.depth + 1));
     } else {
-      for (const leaf of kept) {
-        emitLeaf(leaf, e);
+      const body = owner === undefined ? undefined : bodySpanOf(owner);
+      let bodyTriviaCursor = body?.start ?? 0;
+        for (const leaf of kept) {
+          if (body !== undefined) {
+            emitBlockCommentTriviaBetween(e, bodyTriviaCursor, statementStartOf(leaf.node), INDENT.repeat(e.depth + 1));
+            bodyTriviaCursor = statementEndOf(leaf.node) ?? bodyTriviaCursor;
+          }
+          for (const comment of leaf.leadingBlockComments ?? []) {
+            put(e, INDENT.repeat(e.depth + 1));
+            put(e, comment);
+            put(e, '\n');
+          }
+          emitLeaf(leaf, e);
+        }
+      if (body !== undefined) {
+        emitBlockCommentTriviaBetween(e, bodyTriviaCursor, body.end, INDENT.repeat(e.depth + 1));
       }
     }
     if (idt) {
@@ -8243,6 +9212,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
     if (e.positions) {
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
+    emitInlineBlockCommentTriviaAfter(node, e);
     put(e, ';\n');
   } else if (node.type === 'Comment') {
     put(e, idt);
@@ -8298,6 +9268,7 @@ function emitLeaf(leaf: Leaf, e: Emit, atRoot = false): void {
  */
 function settledEmission(result: MaybePromise<void>, node: Statement, e: EvalCtx): void {
   if (isThenable(result)) {
+    observeRejectedThenable(result);
     throw ERR.asyncInSyncPosition({
       node,
       ...callSiteLocation(node, e),
@@ -8402,6 +9373,15 @@ function emitAtRuleStatementRaw(node: AtRuleStatement, frame: Frame, e: Emit): v
   const start = e.off;
   if (e.depth > 0) {
     put(e, INDENT.repeat(e.depth));
+  }
+  const authored = authoredStatementWithTrivia(node, e);
+  if (authored !== null) {
+    put(e, authored);
+    put(e, '\n');
+    if (e.positions) {
+      e.positions.push({ node, type: node.type, start, end: e.off });
+    }
+    return;
   }
   put(e, node.name);
   if (node.prelude !== null) {
@@ -8568,7 +9548,13 @@ function emitImportAtRule(
            * plugin specifier resolves against the file that wrote it.
            */
           const emitWithPlugins = (): MaybePromise<void> =>
-            mapMaybe(prepareBodyPlugins(loaded.document!.children, frame, e), emit);
+            withDocumentTrivia(e, loaded.document!, () =>
+              mapMaybe(prepareBodyPlugins(loaded.document!.children, frame, e), () => {
+                if (e.referenceImportDepth === 0 && e.depth > 0) {
+                  emitLeadingDocumentBlockComments(e, INDENT.repeat(e.depth));
+                }
+                return emit();
+              }));
           const multiple = importHasOption(request.options, 'multiple');
           const reference = e.referenceImportDepth > 0 || importHasOption(request.options, 'reference');
           if (multiple || reference) {
@@ -8839,13 +9825,37 @@ function emitCallStatement(node: FunctionCall, frame: Frame, e: Emit, precompute
    * while evaluating a known call so `rgba(0,0,0,0);` fails like Less instead
    * of leaking a color token into the root output.
    */
-  if (precomputed === undefined && e.ev) {
-    const value = evalValue(node, frame, e);
-    if (!isThenable(value) && typeof value !== 'string' && !isValueGroupArray(value) && value.type === 'Color') {
+  if (precomputed === undefined && e.ev && DEFERRED_COLOR_CALLS.has(node.name) && hasCssColorCallShape(node)) {
+    const value = evalTyped(node, frame, e);
+    if (isThenable(value)) {
+      observeRejectedThenable(value);
+      throw ERR.asyncInSyncPosition({
+        node,
+        ...callSiteLocation(node, e),
+        meta: { where: 'statement-position color validation' }
+      });
+    }
+    if (!isValueGroupArray(value) && value.type === 'Color') {
       throw ERR.invalidStatement({ node, meta: { what: 'Color' } });
     }
   }
   const bytes = precomputed ?? evalBytesSync(node, frame, e);
+  const isRoot = e.depth === 0;
+  const isAllowedVoid = node.name.toLowerCase() === 'if';
+  if (isRoot && bytes.length === 0 && !isAllowedVoid) {
+    throw ERR.rootCallWithoutRoot({
+      node,
+      ...callSiteLocation(node, e),
+      meta: { name: node.name }
+    });
+  }
+  if (isRoot && node.args.length === 0 && bytes.trim() === `${node.name}()`) {
+    throw ERR.rootCallWithoutRoot({
+      node,
+      ...callSiteLocation(node, e),
+      meta: { name: node.name }
+    });
+  }
   if (bytes.length === 0) {
     return;
   }
@@ -9291,10 +10301,11 @@ function emitAtRuleBlockResolved(
   if (idt) {
     put(e, idt);
   }
+  const renderedPrelude = keyframesPreludeWithTrivia(node, e) ?? prelude;
   put(e, node.name);
-  if (prelude.length > 0) {
+  if (renderedPrelude.length > 0) {
     put(e, ' ');
-    put(e, prelude);
+    put(e, renderedPrelude);
   }
   put(e, ' {\n');
   const afterHeader = e.chunks.length;
@@ -9307,13 +10318,17 @@ function emitAtRuleBlockResolved(
   const emitted = prepareBodyPlugins(node.body, bodyFrame, e);
   const finish = (): MaybePromise<void> => {
     if (e.chunks.length === afterHeader) {
-    // Nothing emitted: drop the whole at-rule (rewind chunks/offset/positions).
-      e.chunks.length = markChunks;
-      e.off = markOff;
-      if (e.positions) {
-        e.positions.length = markPos;
+      if (hasBodyBlockCommentTrivia(node, e)) {
+        emitBodyBlockCommentTrivia(node, e, INDENT.repeat(e.depth + 1));
+      } else {
+        // Nothing emitted: drop the whole at-rule (rewind chunks/offset/positions).
+        e.chunks.length = markChunks;
+        e.off = markOff;
+        if (e.positions) {
+          e.positions.length = markPos;
+        }
+        return;
       }
-      return;
     }
     if (idt) {
       put(e, idt);
@@ -9332,7 +10347,7 @@ function emitAtRuleBlockResolved(
        * of the body's rulesets.
        */
       ? emitBubbleBody(node.body, ctx && ctx.length > 0 ? ctx : null, bodyFrame, e)
-      : emitAtRuleBody(node.body, bodyFrame, e);
+      : emitAtRuleBody(node.body, bodyFrame, e, node);
     return mapMaybe(rendered, finish);
   });
 }
@@ -9348,6 +10363,7 @@ function emitAtRuleBlockResolved(
  */
 function settledExpansion(result: MaybePromise<void>, call: MixinCall, e: EvalCtx): void {
   if (isThenable(result)) {
+    observeRejectedThenable(result);
     throw ERR.asyncInSyncPosition({
       node: call,
       ...callSiteLocation(call, e),
@@ -9363,15 +10379,21 @@ function settledExpansion(result: MaybePromise<void>, call: MixinCall, e: EvalCt
 function emitAtRuleBody(
   statements: Statement[],
   frame: Frame,
-  e: Emit
+  e: Emit,
+  owner?: object
 ): MaybePromise<void> {
   const group: Leaf[] = [];
+  let bodyTriviaCursor = owner === undefined ? 0 : bodySpanOf(owner)?.start ?? 0;
   const flushDirect = (): void => {
     if (group.length > 0) {
       if (groupHasMerge(group)) {
         mergeFold(group, e, INDENT.repeat(e.depth + 1));
       } else {
         for (const leaf of group) {
+          if (owner !== undefined) {
+            emitBodyBlockCommentTriviaBefore(owner, leaf.node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
+            bodyTriviaCursor = sourceSpanOf(leaf.node)?.end ?? bodyTriviaCursor;
+          }
           emitLeaf(leaf, e);
         }
       }
@@ -9384,8 +10406,12 @@ function emitAtRuleBody(
    * DONE, not when the call returns, or a suspended child would leave every
    * later sibling indented one level too deep.
    */
-  const nested = (run: () => MaybePromise<void>): MaybePromise<void> => {
+  const nested = (node: Statement, run: () => MaybePromise<void>): MaybePromise<void> => {
     flushDirect();
+    if (owner !== undefined) {
+      emitBodyBlockCommentTriviaBefore(owner, node, e, INDENT.repeat(e.depth + 1), bodyTriviaCursor);
+      bodyTriviaCursor = sourceSpanOf(node)?.end ?? bodyTriviaCursor;
+    }
     e.depth++;
     let out: MaybePromise<void>;
     try {
@@ -9413,25 +10439,25 @@ function emitAtRuleBody(
         group.push({ node, frame });
         return undefined;
       case 'Rule':
-        return nested(() => flatten(node, null, null, frame, e));
+        return nested(node, () => flatten(node, null, null, frame, e));
       case 'AtRuleBlock':
-        return nested(() => emitAtRuleBlock(node, frame, e));
+        return nested(node, () => emitAtRuleBlock(node, frame, e));
       case 'AtRuleStatement':
-        return nested(() => emitAtRuleStatement(node, frame, e));
+        return nested(node, () => emitAtRuleStatement(node, frame, e));
       case 'Plugin':
         return undefined;
       case 'ImportAtRule':
-        return nested(() => emitImportAtRule(node, frame, e, e.importDocument));
+        return nested(node, () => emitImportAtRule(node, frame, e, e.importDocument));
       case 'StyleImport':
-        return nested(() => {
+        return nested(node, () => {
           emitStyleImport(node, frame, e);
         });
       case 'ModuleImport':
-        return nested(() => {
+        return nested(node, () => {
           emitModuleImport(node, frame, e);
         });
       case 'OpaqueAtRuleBlock':
-        return nested(() => {
+        return nested(node, () => {
           emitOpaqueAtRuleBlock(node, e);
         });
       case 'MixinCall':
@@ -9458,6 +10484,7 @@ function emitAtRuleBody(
         return undefined;
       case 'VariableDeclaration':
         activateVariableDeclaration(node, frame, e);
+        markSilentStatementBlockCommentTrivia(node, e);
         return undefined;
       default:
         return undefined;
@@ -9881,6 +10908,7 @@ function emitBubbleBody(
           break;
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
+          markSilentStatementBlockCommentTrivia(node, e);
           break;
       }
     }
@@ -9968,6 +10996,38 @@ function emitNestedBody(
     buf.length = 0;
   });
   const inlineLeaves: NestedLeafBuffer = sharedLeaves ?? { leaves: buf, flush: flushBuf };
+  let rootTriviaCursor = frame.parent === null && sharedLeaves === undefined ? 0 : undefined;
+  let rootTriviaSuppressedByDefinition = false;
+  const rootTriviaExclusions = rootTriviaCursor === undefined
+    ? []
+    : statements.map(statement => {
+      const start = statementStartOf(statement);
+      const end = statementEndOf(statement);
+      return start === undefined || end === undefined ? undefined : { start, end };
+    }).filter(isReplaySpan);
+  const emitBeforeRootStatement = (node: Statement): void => {
+    if (rootTriviaCursor === undefined) {
+      return;
+    }
+    if (rootTriviaSuppressedByDefinition) {
+      rootTriviaCursor = statementStartOf(node) ?? rootTriviaCursor;
+      rootTriviaSuppressedByDefinition = false;
+      return;
+    }
+    emitBlockCommentTriviaBetween(e, rootTriviaCursor, statementStartOf(node), '', rootTriviaExclusions);
+  };
+  const markAfterRootStatement = (node: Statement): void => {
+    if (rootTriviaCursor === undefined) {
+      return;
+    }
+    rootTriviaCursor = statementEndOf(node) ?? rootTriviaCursor;
+  };
+  const emitTrailingRootTrivia = (): void => {
+    if (rootTriviaCursor === undefined) {
+      return;
+    }
+    emitBlockCommentTriviaBetween(e, rootTriviaCursor, Number.MAX_SAFE_INTEGER, '', rootTriviaExclusions);
+  };
   const run = (start: number): MaybePromise<void> => {
     for (let index = start; index < statements.length; index++) {
       const node = statements[index]!;
@@ -9986,7 +11046,13 @@ function emitNestedBody(
             break;
           }
           const pushLeaf = (leafNode: Declaration | Comment): void => {
-            buf.push({ node: leafNode, frame, ...(imp ? { important: true } : {}), ...(applyExpansion ? { fromApply: true } : {}) });
+            const leaf = attachPendingLeafBlockComments(buf, {
+              node: leafNode,
+              frame,
+              ...(imp ? { important: true } : {}),
+              ...(applyExpansion ? { fromApply: true } : {})
+            });
+            buf.push(leaf);
           };
 
           /*
@@ -10009,6 +11075,7 @@ function emitNestedBody(
             break;
           }
           flushBuf();
+          emitBeforeRootStatement(node);
 
           /*
            * [extend] a rule whose extend match crosses the `&` FLATTENS: defer it to
@@ -10018,6 +11085,7 @@ function emitNestedBody(
           if (hoist && extendProjection(frame, e)?.nestedPlan.get(node)?.flatten) {
             const plan = extendProjection(frame, e)!.nestedPlan.get(node)!;
             hoist.push({ rule: node, frame, bubble: plan.hoistBubble ?? 1 });
+            markAfterRootStatement(node);
             break;
           }
 
@@ -10033,12 +11101,14 @@ function emitNestedBody(
               if (appliesPlacement) {
                 placement = null;
               }
+              markAfterRootStatement(node);
               return run(index + 1);
             });
           }
           if (appliesPlacement) {
             placement = null;
           }
+          markAfterRootStatement(node);
           break;
         }
         case 'MixinCall':
@@ -10086,19 +11156,27 @@ function emitNestedBody(
         }
         case 'AtRuleBlock':
           flushBuf();
+          emitBeforeRootStatement(node);
           {
             const emitted = emitNestedAtRuleBlock(node, frame, e, source);
             if (isThenable(emitted)) {
-              return emitted.then(() => run(index + 1));
+              return emitted.then(() => {
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
             }
           }
+          markAfterRootStatement(node);
           break;
         case 'AtRuleStatement':
           flushBuf();
+          emitBeforeRootStatement(node);
           emitAtRuleStatement(node, frame, e);
+          markAfterRootStatement(node);
           break;
         case 'ImportAtRule':
           flushBuf();
+          emitBeforeRootStatement(node);
           {
             const imported = emitImportAtRule(
               node,
@@ -10108,44 +11186,71 @@ function emitNestedBody(
               (document, importFrame) => emitNestedBody(document.children, importFrame, e, hoist, imp)
             );
             if (isThenable(imported)) {
-              return imported.then(() => run(index + 1));
+              return imported.then(() => {
+                markAfterRootStatement(node);
+                return run(index + 1);
+              });
             }
           }
+          markAfterRootStatement(node);
           break;
         case 'StyleImport':
           flushBuf();
+          emitBeforeRootStatement(node);
           emitStyleImport(node, frame, e);
+          markAfterRootStatement(node);
           break;
         case 'ModuleImport':
           flushBuf();
+          emitBeforeRootStatement(node);
           emitModuleImport(node, frame, e);
+          markAfterRootStatement(node);
           break;
         case 'OpaqueAtRuleBlock':
           flushBuf();
+          emitBeforeRootStatement(node);
           emitOpaqueAtRuleBlock(node, e);
+          markAfterRootStatement(node);
           break;
 
           // [import:inline] raw verbatim bytes spliced by `@import (inline)`.
         case 'RawInline':
           flushBuf();
+          emitBeforeRootStatement(node);
           emitRawInline(node, e);
+          markAfterRootStatement(node);
           break;
 
           // a bare value-position call statement (`e('/* … */');`): evaluate + emit.
         case 'FunctionCall':
           flushBuf();
+          emitBeforeRootStatement(node);
           emitCallStatement(node, frame, e);
+          markAfterRootStatement(node);
           break;
         case 'MixinDef':
           publishSelectedMixinDefinition(frame, node);
+          if (rootTriviaCursor !== undefined) {
+            rootTriviaSuppressedByDefinition = true;
+          }
           break;
         case 'VariableDeclaration':
           activateVariableDeclaration(node, frame, e);
+          markSilentStatementBlockCommentTrivia(node, e);
+          if (
+            rootTriviaCursor !== undefined
+            && !isValueSlotArray(node.value)
+            && 'type' in node.value
+            && isValueBlock(node.value)
+          ) {
+            rootTriviaSuppressedByDefinition = true;
+          }
           break;
       }
     }
     if (!sharedLeaves) {
       flushBuf();
+      emitTrailingRootTrivia();
     }
   };
   return run(0);
@@ -10156,6 +11261,13 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
   const { node, frame } = leaf;
   const start = e.off;
   const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
+  for (const comment of leaf.leadingBlockComments ?? []) {
+    if (idt) {
+      put(e, idt);
+    }
+    put(e, comment);
+    put(e, '\n');
+  }
   if (node.type === 'Declaration') {
     assertDeclarationValueIsNotRuleset(node, frame, e);
     if (idt) {
@@ -10173,6 +11285,7 @@ function emitNestedLeaf(leaf: Leaf, e: Emit): void {
       }
       e.positions.push({ node, type: node.type, start, end: e.off });
     }
+    emitInlineBlockCommentTriviaAfter(node, e);
     put(e, ';\n');
   } else if (node.type === 'Comment') {
     if (idt) {
@@ -10445,7 +11558,10 @@ function emitNestedRuleAuthored(
       ? ownStrings(rule.selector, frame, e)
       : compose(nestedSourceStrings(placement.source, e), rule.selector, placement.callFrame, e);
   return mapMaybe(ownMaybe, (own) => {
-    const header = idt ? own.join(',\n' + idt) : own.join(',\n');
+    const authoredHeader = plan === undefined && placement === null && source === null
+      ? authoredSelectorHeaderWithTrivia(rule.selector, own, e)
+      : null;
+    const header = authoredHeader ?? (idt ? own.join(',\n' + idt) : own.join(',\n'));
 
     /*
      * Less only coalesces this nested-output root seam after an authored header
@@ -10494,11 +11610,15 @@ function emitNestedRuleAuthored(
     const finish = (): MaybePromise<void> => {
       e.depth--;
       if (e.chunks.length === afterHeader) {
-        // Nothing emitted in the block: drop the header/braces (rewind).
-        e.chunks.length = markChunks;
-        e.off = markOff;
-        if (e.positions) {
-          e.positions.length = markPos;
+        if (hasBodyBlockCommentTrivia(rule, e)) {
+          emitBodyBlockCommentTrivia(rule, e, INDENT.repeat(e.depth + 1));
+        } else {
+          // Nothing emitted in the block: drop the header/braces (rewind).
+          e.chunks.length = markChunks;
+          e.off = markOff;
+          if (e.positions) {
+            e.positions.length = markPos;
+          }
         }
       } else {
         if (idt) {
@@ -10637,7 +11757,10 @@ function expandNestedCall(
     if (candidates.length === 0) {
       return;
     }
-    return mapMaybe(dispatch(candidates, call, frame, e, homes), (selected) => {
+    const queueComments = sharedLeaves === undefined
+      ? undefined
+      : queueCommentOnlyMixinBodies(candidates, call, frame, e, sharedLeaves.leaves);
+    const runDispatch = (): MaybePromise<void> => mapMaybe(dispatch(candidates, call, frame, e, homes, true), (selected) => {
       if (selected.length === 0) {
         return;
       }
@@ -10714,6 +11837,7 @@ function expandNestedCall(
       e.mixinDepth--;
       return emitted;
     });
+    return mapMaybe(queueComments, runDispatch);
   });
 }
 
@@ -10910,12 +12034,16 @@ function emitNestedAtRuleBlockResolved(
   const finish = (): void => {
     e.depth--;
     if (e.chunks.length === afterHeader) {
-      e.chunks.length = markChunks;
-      e.off = markOff;
-      if (e.positions) {
-        e.positions.length = markPos;
+      if (hasBodyBlockCommentTrivia(node, e)) {
+        emitBodyBlockCommentTrivia(node, e, INDENT.repeat(e.depth + 1));
+      } else {
+        e.chunks.length = markChunks;
+        e.off = markOff;
+        if (e.positions) {
+          e.positions.length = markPos;
+        }
+        return;
       }
-      return;
     }
     if (idt) {
       put(e, idt);

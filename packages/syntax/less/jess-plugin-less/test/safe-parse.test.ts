@@ -1,61 +1,118 @@
-import { describe, expect, it } from 'vitest';
-import lessPlugin from '../src/index.js';
-import { LessDynamicCharsetError, parse } from '@jesscss/less-parser';
+import { describe, expect, it } from "vitest";
+import lessPlugin from "../src/index.js";
 
-describe('@jesscss/plugin-less', () => {
-  it('returns a source-backed parser diagnostic for invalid Less', () => {
-    const source = '.entry { color: red; }\n!broken';
-    const result = lessPlugin().safeParse!('entry.less', source);
+describe("@jesscss/plugin-less", () => {
+  it("returns a source-backed parser diagnostic for invalid Less", () => {
+    const source = ".entry { color: red; }\n!broken";
+    const result = lessPlugin().safeParse!("entry.less", source);
 
     expect(result.document).toBeUndefined();
-    expect(result.errors).toMatchObject([{
-      code: 'parse/syntax-error',
-      phase: 'parse',
-      message: expect.stringMatching(/^Less parser error\./),
-      filePath: 'entry.less',
-      line: 2,
-      column: 1,
-      file: { source }
-    }]);
-    expect(result.errors[0]?.lines?.[2]).toBe('!broken');
+    expect(result.errors).toMatchObject([
+      {
+        code: "parse/syntax-error",
+        phase: "parse",
+        message: "Unexpected Less input after a complete stylesheet.",
+        reason: expect.stringContaining("complete Less stylesheet"),
+        fix: expect.stringContaining("valid Less syntax"),
+        filePath: "entry.less",
+        line: 2,
+        column: 1,
+        file: { source },
+      },
+    ]);
+    expect(result.errors[0]?.lines?.[2]).toBe("!broken");
   });
 
-  it('reports the Less 5 dynamic-charset policy at the authored statement', () => {
+  it("does not describe leading invalid input as trailing stylesheet text", () => {
+    const source = "!broken";
+    const result = lessPlugin().safeParse!("entry.less", source);
+
+    expect(result.document).toBeUndefined();
+    expect(result.errors).toMatchObject([
+      {
+        code: "parse/syntax-error",
+        phase: "parse",
+        message: "Unexpected Less syntax.",
+        reason: expect.stringContaining("start of a Less rule"),
+        fix: expect.stringContaining("valid Less syntax"),
+        filePath: "entry.less",
+        line: 1,
+        column: 1,
+        file: { source },
+      },
+    ]);
+    expect(result.errors[0]?.message).not.toContain("complete stylesheet");
+  });
+
+  it("reports the dynamic-charset policy at the authored statement", () => {
     const source = '@Eight: 8;\n@charset "UTF-@{Eight}";';
-    const result = lessPlugin().safeParse!('entry.less', source);
+    const result = lessPlugin().safeParse!("entry.less", source);
 
     expect(result.document).toBeUndefined();
-    expect(result.errors).toMatchObject([{
-      code: 'parse/dynamic-charset',
-      phase: 'parse',
-      message: 'Less 5 does not support interpolation in @charset.',
-      filePath: 'entry.less',
-      line: 2,
-      column: 1,
-      file: { source }
-    }]);
+    expect(result.errors).toMatchObject([
+      {
+        code: "parse/dynamic-charset",
+        phase: "parse",
+        message: "Interpolation is not valid in @charset.",
+        filePath: "entry.less",
+        line: 2,
+        column: 1,
+        file: { source },
+      },
+    ]);
     expect(result.errors[0]?.lines?.[2]).toBe('@charset "UTF-@{Eight}";');
-
-    expect(() => parse(source)).toThrow(LessDynamicCharsetError);
-    try {
-      parse(source);
-    } catch (error) {
-      expect(error).toMatchObject({
-        code: 'parse/dynamic-charset',
-        offset: source.indexOf('@charset'),
-        endOffset: source.length
-      });
-      expect(String(error)).not.toContain('offset');
-    }
   });
 
-  it('continues to accept a static CSS @charset statement', () => {
-    const result = lessPlugin().safeParse!('entry.less', '@charset "UTF-8";');
+  it("reports inline backtick JavaScript as recognized unsupported Less syntax", () => {
+    const source = ".entry { value: `1 + 1`; }";
+    const result = lessPlugin().safeParse!("entry.less", source);
+
+    expect(result.document).toBeUndefined();
+    expect(result.errors).toMatchObject([
+      {
+        code: "parse/unsupported-inline-javascript",
+        phase: "parse",
+        message: "Inline backtick JavaScript is not supported.",
+        reason: "Backtick JavaScript expressions are not evaluated.",
+        fix: expect.stringContaining("@from/@-from"),
+        filePath: "entry.less",
+        line: 1,
+        column: source.indexOf("`") + 1,
+        file: { source },
+      },
+    ]);
+    expect(result.errors[0]?.lines?.[1]).toBe(source);
+  });
+
+  it("reports removed bare variable interpolation with the @{name} fix", () => {
+    const source = "@media @q { .card { color: red; } }";
+    const result = lessPlugin().safeParse!("entry.less", source);
+
+    expect(result.document).toBeUndefined();
+    expect(result.errors).toMatchObject([
+      {
+        code: "parse/unsupported-bare-variable-interpolation",
+        phase: "parse",
+        message: "Bare @variable interpolation is not valid here.",
+        reason:
+          "Bare @variable references are values; syntax and prelude interpolation must use @{variable}.",
+        fix: "Use @{q} instead of @q.",
+        filePath: "entry.less",
+        line: 1,
+        column: source.indexOf("@q") + 1,
+        file: { source },
+      },
+    ]);
+    expect(result.errors[0]?.lines?.[1]).toBe(source);
+  });
+
+  it("continues to accept a static CSS @charset statement", () => {
+    const result = lessPlugin().safeParse!("entry.less", '@charset "UTF-8";');
 
     expect(result.errors).toEqual([]);
     expect(result.document).toMatchObject({
-      type: 'Stylesheet',
-      children: [{ type: 'AtRuleStatement', name: '@charset' }]
+      type: "Stylesheet",
+      children: [{ type: "AtRuleStatement", name: "@charset" }],
     });
   });
 });

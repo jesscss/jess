@@ -97,6 +97,14 @@ describe('Less built-in argument errors through the public AST route', () => {
     })).resolves.toContain('color: rgb(1, 2, 3)');
   });
 
+  it('rejects a top-level color constructor result as a statement', async () => {
+    const compiler = new Compiler({ output: { collapseNesting: true } });
+    await expect(compiler.renderString('rgba(0,0,0,0);', {
+      filePath: 'entry.less',
+      extension: '.less'
+    })).rejects.toMatchObject({ code: 'eval/invalid-statement' });
+  });
+
   it.each(invalidCalls)('reports %s in functionMode:error', async (_label, call, declarations = '') => {
     const compiler = new Compiler({
       output: { collapseNesting: true },

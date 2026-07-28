@@ -154,7 +154,7 @@ describe('Public parser diagnostic provenance', () => {
     });
   }
 
-  it('renders the Less 5 charset policy with path, source excerpt, and caret', async () => {
+  it('renders the dynamic charset policy with path, source excerpt, and caret', async () => {
     const source = '@Eight: 8;\n@charset "UTF-@{Eight}";';
     const filePath = '/proj/charset.less';
     const captured = await captureAsync(() => new Compiler().renderToResult(
@@ -171,8 +171,9 @@ describe('Public parser diagnostic provenance', () => {
     });
     expect(captured.err).toContain('charset.less');
     expect(captured.err).toContain('@charset "UTF-@{Eight}";');
-    // linecraft renders the source caret as its vertical marker glyph.
-    expect(captured.err).toContain('╿');
+    // linecraft renders either a point marker or a span marker, depending on
+    // whether the diagnostic carries an end location.
+    expect(captured.err).toMatch(/[╿┖]/u);
   });
 
   it('uses the imported file as the parse diagnostic source', async () => {

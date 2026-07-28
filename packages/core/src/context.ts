@@ -21,7 +21,7 @@ import { EqualityMode, FunctionMode, MathMode, UnitMode } from './types/modes.js
 import * as path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { shouldOperateWithMathFrames } from './tree/util/should-operate.js';
-import { type ErrorDiagnostic, type WarningDiagnostic, JessError, toDiagnostic, makeJessErrorFromDiagnostic } from './jess-error.js';
+import { type ErrorDiagnostic, type WarningDiagnostic, JessError, toDiagnostic, makeJessErrorFromDiagnostic, ERR } from './jess-error.js';
 import type { Deprecation } from './deprecation.js';
 import {
   type WarningsConfigInput,
@@ -390,12 +390,21 @@ export class Context {
    */
   options: ResolvedOptions;
 
+  private _evaluator?: ValueEvaluator;
+
   /**
-   * Canonical AST-v2 value evaluator for this render session. Its concrete
-   * registry is assembled by the application layer (`@jesscss/fns`), while
+   * Canonical AST-v2 value evaluator registered by the active dialect plugin.
+   * Its concrete registry is assembled outside core (`@jesscss/fns`), while
    * Context owns the per-render execution state and lifetime.
    */
-  valueEvaluator?: ValueEvaluator;
+  get evaluator(): ValueEvaluator | undefined {
+    return this._evaluator;
+  }
+
+  /** Register the typed value evaluator supplied by the active dialect plugin. */
+  registerValueEvaluator(evaluator: ValueEvaluator): void {
+    this._evaluator = evaluator;
+  }
 
   /** Dialect-owned function capability for canonical AST rendering. */
   pluginHost?: PluginHost;
@@ -1149,8 +1158,9 @@ export class Context {
     }
 
     if (!finalPath) {
-      /** @todo - Add messaging around tried paths */
-      throw new Error(`File not found: ${importPath} (from: ${currentDirectory})`);
+      throw ERR.importNotFound({
+        meta: { specifier: importPath, from: currentDirectory }
+      });
     }
 
     const normalizedFinalPath = finalPath.split(/[?#]/)[0]!;
