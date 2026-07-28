@@ -1,7 +1,7 @@
 [
   "@jesscss/awaitable-pipe",
   "@jesscss/compiler",
-  "@jesscss/compiler-defaults",
+  "@jesscss/compiler-preset",
   "@jesscss/core",
   "@jesscss/css-parser",
   "@jesscss/diagnostics-core",
