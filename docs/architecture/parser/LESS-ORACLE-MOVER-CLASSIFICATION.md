@@ -28,21 +28,21 @@ Resolved package versions and paths for the current report:
 | `@jesscss/plugin-less` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/syntax/less/jess-plugin-less` |
 | `jess` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/jess` |
 
-Fresh report generated from this source state:
+Latest report generated from the post-retired-name diagnostics source state:
 
 ```sh
 pnpm --filter @jesscss/parser-shared build
 pnpm run oracle:less:byte-identity
 node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs \
-  > /tmp/jess-less-oracle-current-20260727-after-error-trivia.json
+  > /tmp/jess-less-oracle-current-post-retired-names.json
 ```
 
 `pnpm run oracle:less:byte-identity` currently reports:
 
 | surface | committed baseline | current aggregate | throws | common entries moved |
 | --- | --- | --- | ---: | ---: |
-| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `59cd0a3f0c2e20faee92b2b51db4a7684338b80ac24a4338819936e69dce3dc1` | 115 | 214 |
-| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `583c845553f06ffae07e548c379a64e5c8a440aba357484475b047744d90c1c0` | 0 | 592 |
+| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `ff1bb34d9769067671f4befd5ef12fb348ebe377fc434dc89f6e84e34fd9103d` | 116 | 214 |
+| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `1f28dc8a51a428f93870884cc7d198f8fdf07691c8f00bf28eb308e8be51e3d5` | 0 | 595 |
 
 Corpus shape:
 
@@ -63,25 +63,21 @@ Raw changed-entry counts, including corpus growth:
 | subset | count | current read |
 | --- | ---: | --- |
 | changed entries on either surface | 667 | 665 common movers across either surface plus the 2 gained corpus entries. |
-| common AST movers | 214 | 141 also move on CST; 73 move only on AST. |
+| common AST movers | 214 | 144 also move on CST; 70 move only on AST. |
 | changed-or-added AST entries | 216 | Common AST movers plus the 2 gained corpus entries. |
-| AST-only movers | 73 | Mostly error-projection hash movement after parser diagnostic normalization. |
+| AST-only movers | 70 | Mostly error-projection hash movement after parser diagnostic normalization. |
 | common CST-only movers | 451 | Broad public CST owner/name/span churn from the fold, routed opener cleanup, and grammar reshaping. |
 | common AST movers containing comments | 120 | Mostly comment/trivia/source ownership plus parser-error projection; review before baseline. |
 | common AST movers without comments | 94 | Mostly syntax-error diagnostic hash movement, not newly accepted parses. |
 | changed-or-added AST entries with comments | 121 | Adds `math-css-vars.less`, which is a new upstream fixture with leading `//` comments. |
 | changed-or-added AST entries without comments | 95 | Adds `math-css-vars.css`, a new upstream expected CSS fixture. |
 
-The AST aggregate changed from the previous 2026-07-27 classification
-(`bf61fca63825da2c148c82f20fcf604bc407324ba967b94f46fedb886828fa8f`) to
-`59cd0a3f0c2e20faee92b2b51db4a7684338b80ac24a4338819936e69dce3dc1`.
-The CST aggregate changed from the stale same-day classification
-(`aee294a40cce49c7d1fb07f5438be3bd2facf21d78c6f786d28304de94c9d21d`) to
-`583c845553f06ffae07e548c379a64e5c8a440aba357484475b047744d90c1c0`.
-No previously classified AST mover resolved. The 104 added AST movers all
-currently throw `LessParseError` with code `parse/syntax-error`; this is
-diagnostic/error-projection movement from the recent parser error work, not a
-new accepted-parse surface.
+The post-retired-name diagnostics report is byte-identical to the pre-slice
+current report at `/tmp/jess-less-oracle-current-20260727.json`: same AST/CST
+aggregates, same throw counts, same 711 corpus entries, and 0 per-entry movers
+between those two current reports. Therefore the new diagnostics commit did not
+introduce additional oracle movement; the oracle remains red against the stale
+committed baseline.
 
 ## AST Mover Buckets
 
