@@ -1,13 +1,13 @@
-import { run } from "parseman";
-import { parserDiagnostic, type ISafeParseResult } from "@jesscss/core";
+import { run } from 'parseman';
+import { parserDiagnostic, type ISafeParseResult } from '@jesscss/core';
 import {
   createTriviaMapFromParseman,
   withSourceSpan,
   withTriviaMap,
-  type Stylesheet,
-} from "@jesscss/core/ast";
-import { lessAstGrammar } from "./grammar.js";
-import { LessParseError } from "./parse-error.js";
+  type Stylesheet
+} from '@jesscss/core/ast';
+import { lessAstGrammar } from './grammar.js';
+import { LessParseError } from './parse-error.js';
 
 export {
   LessBareVariableInterpolationError,
@@ -17,16 +17,16 @@ export {
   LessUnparenthesizedMixinGuardError,
   LessUnsupportedMixinNameError,
   LessUnsupportedVariableNameError
-} from "./parse-error.js";
+} from './parse-error.js';
 
 function isStylesheet(value: unknown): value is Stylesheet {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === "Stylesheet" &&
-    "children" in value &&
-    Array.isArray(value.children)
+    typeof value === 'object'
+    && value !== null
+    && 'type' in value
+    && value.type === 'Stylesheet'
+    && 'children' in value
+    && Array.isArray(value.children)
   );
 }
 
@@ -36,7 +36,7 @@ export function parse(input: string): Stylesheet {
   const trivia = lessAstGrammar.whitespace;
   if (entry === undefined || trivia === undefined) {
     throw new TypeError(
-      "Less AST grammar is missing its public document entry."
+      'Less AST grammar is missing its public document entry.'
     );
   }
   const result = run(entry, input, { trivia, state: { source: input } });
@@ -46,25 +46,25 @@ export function parse(input: string): Stylesheet {
   if (result.unconsumedFrom !== null) {
     if (result.unconsumedFrom > result.span.start) {
       throw new LessParseError(result.unconsumedFrom, [], {
-        message: "Unexpected Less input after a complete stylesheet.",
+        message: 'Unexpected Less input after a complete stylesheet.',
         reason:
-          "The parser consumed a complete Less stylesheet before this token, so the remaining text is not part of any rule, declaration, or at-rule.",
-        fix: "Remove the extra input or wrap it in valid Less syntax.",
+          'The parser consumed a complete Less stylesheet before this token, so the remaining text is not part of any rule, declaration, or at-rule.',
+        fix: 'Remove the extra input or wrap it in valid Less syntax.'
       });
     }
     throw new LessParseError(result.unconsumedFrom, [], {
-      message: "Unexpected Less syntax.",
+      message: 'Unexpected Less syntax.',
       reason:
-        "The parser could not match this token as the start of a Less rule, declaration, or at-rule.",
-      fix: "Remove the token or rewrite it as valid Less syntax.",
+        'The parser could not match this token as the start of a Less rule, declaration, or at-rule.',
+      fix: 'Remove the token or rewrite it as valid Less syntax.'
     });
   }
   if (!isStylesheet(result.value)) {
     throw new LessParseError(result.span.end, [], {
-      message: "Less parser did not produce a stylesheet.",
+      message: 'Less parser did not produce a stylesheet.',
       reason:
-        "The Less parser matched the input but returned a value that is not a stylesheet document.",
-      fix: "Report this as a parser bug with the source that triggered it.",
+        'The Less parser matched the input but returned a value that is not a stylesheet document.',
+      fix: 'Report this as a parser bug with the source that triggered it.'
     });
   }
   return withTriviaMap(
@@ -84,9 +84,9 @@ export function safeParse(filePath: string, input: string): ISafeParseResult {
   } catch (error) {
     return {
       errors: [
-        parserDiagnostic({ dialect: "Less", error, filePath, source: input }),
+        parserDiagnostic({ dialect: 'Less', error, filePath, source: input })
       ],
-      warnings: [],
+      warnings: []
     };
   }
 }

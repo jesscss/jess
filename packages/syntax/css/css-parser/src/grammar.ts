@@ -2326,7 +2326,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
           g.Value
         ),
         g.Value
-      )),
+      ))
     )),
     (children, fields) => {
       const values = valueSlotChildren(children);
