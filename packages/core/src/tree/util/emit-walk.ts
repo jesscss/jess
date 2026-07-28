@@ -2376,7 +2376,7 @@ function selectorHasInterpolatedSelector(selector: unknown): boolean {
  */
 function renderQueuedTopImports(context: Context, options: FinalPrintOptions): string {
   const topImports = context.topImports;
-  if (!topImports?.length) {
+  if (!topImports?.length || context.options.processImports === false) {
     return '';
   }
   let out = '';

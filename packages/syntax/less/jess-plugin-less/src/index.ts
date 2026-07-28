@@ -32,6 +32,7 @@ export const lessPluginDefaults = {
   equalityMode: 'less' as EqualityMode,
   leakyScope: true,
   bubbleRootAtRules: true,
+  processImports: true,
   collapseNesting: false
 } as const;
 
@@ -110,6 +111,7 @@ export class LessPlugin extends AbstractPlugin {
   equalityMode: EqualityMode;
   leakyScope: boolean;
   bubbleRootAtRules: boolean;
+  processImports: boolean;
   collapseNesting: boolean;
   private readonly pluginHosts = new WeakMap<Context, PluginHost>();
 
@@ -150,6 +152,7 @@ export class LessPlugin extends AbstractPlugin {
     this.equalityMode = opts.equalityMode ?? lessPluginDefaults.equalityMode;
     this.leakyScope = opts.leakyScope ?? lessPluginDefaults.leakyScope;
     this.bubbleRootAtRules = opts.bubbleRootAtRules ?? lessPluginDefaults.bubbleRootAtRules;
+    this.processImports = opts.processImports ?? lessPluginDefaults.processImports;
     this.collapseNesting = opts.collapseNesting ?? lessPluginDefaults.collapseNesting;
   }
 
@@ -223,6 +226,9 @@ export class LessPlugin extends AbstractPlugin {
     }
     if (context.opts.bubbleRootAtRules === undefined) {
       context.setOption('bubbleRootAtRules', this.bubbleRootAtRules);
+    }
+    if (context.opts.processImports === undefined) {
+      context.setOption('processImports', this.processImports);
     }
     context.registerValueEvaluator(lessValueEvaluator);
 

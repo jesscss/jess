@@ -95,6 +95,7 @@ export interface ContextOptions {
 
   /** See LessOptions.allowOverloadedImport. Enforcement pending its definition. */
   allowOverloadedImport?: boolean;
+  processImports?: boolean;
   disableScriptModules?: boolean;
 
   /**
@@ -201,6 +202,7 @@ export interface ResolvedOptions {
   equalityMode: EqualityMode;
   leakyScope: boolean;
   bubbleRootAtRules: boolean;
+  processImports: boolean;
 }
 
 /**
@@ -213,7 +215,8 @@ const OPTION_DEFAULTS: ResolvedOptions = {
   functionMode: 'preserve',
   equalityMode: 'less',
   leakyScope: false,
-  bubbleRootAtRules: false
+  bubbleRootAtRules: false,
+  processImports: true
 };
 
 /**
@@ -234,7 +237,8 @@ export function resolveOptions(
     functionMode: compile?.functionMode ?? tree?.functionMode ?? OPTION_DEFAULTS.functionMode,
     equalityMode: compile?.equalityMode ?? tree?.equalityMode ?? OPTION_DEFAULTS.equalityMode,
     leakyScope: compile?.leakyScope ?? tree?.leakyScope ?? OPTION_DEFAULTS.leakyScope,
-    bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules
+    bubbleRootAtRules: compile?.bubbleRootAtRules ?? tree?.bubbleRootAtRules ?? OPTION_DEFAULTS.bubbleRootAtRules,
+    processImports: compile?.processImports ?? tree?.processImports ?? OPTION_DEFAULTS.processImports
   };
 }
 
@@ -356,6 +360,7 @@ export class TreeContext extends DocumentContext {
     delete rest.equalityMode;
     delete rest.leakyScope;
     delete rest.bubbleRootAtRules;
+    delete rest.processImports;
     this.opts = rest;
   }
 }

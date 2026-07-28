@@ -162,12 +162,8 @@ const expectedFailureFixtures = new Map<string, string>([
     "namespace lookup inside media query expression differs from Less",
   ],
   [
-    "tests-unit/urls/urls.less",
-    "renders but CSS @import placement and multiline function formatting differ from Less",
-  ],
-  [
-    "tests-config/process-imports/google.less",
-    "processImports=false should leave remote CSS imports out of rendered CSS",
+    'tests-unit/urls/urls.less',
+    'renders but CSS @import placement and multiline function formatting differ from Less'
   ],
   [
     "tests-config/static-urls/urls.less",

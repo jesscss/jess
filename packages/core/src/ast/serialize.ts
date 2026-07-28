@@ -6349,7 +6349,9 @@ function planImportedExtends(
    * synchronous callable-body ownership, while actual import/extend facts opt
    * into planning.
    */
-  if (!importDocument || (!documentHasExtend(root) && !root.children.some(child => child.type === 'ImportAtRule'))) {
+  if (e.context?.options.processImports === false
+    || !importDocument
+    || (!documentHasExtend(root) && !root.children.some(child => child.type === 'ImportAtRule'))) {
     recordAstExtendProfile?.('astExtend.preflight.noFeatureBypasses');
     return { root, hiddenRules: new Set(), referenceBoundaries: new Map(), overlay: { subjects: [], instructions: [] } };
   }
@@ -9656,16 +9658,23 @@ function rootCssImportKey(node: ImportAtRule): string | null {
     return null;
   }
   const target = node.target;
-  const path = target.type === 'Quoted'
+  const emittedTarget = target.type === 'Quoted'
     ? target.src
     : target.type === 'Url' && target.value.type === 'Quoted'
       ? `url(${target.value.src})`
       : null;
-  if (path === null) {
+  const specifier = target.type === 'Quoted'
+    ? target.value
+    : target.type === 'Url' && target.value.type === 'Quoted'
+      ? target.value.value
+      : target.type === 'Url' && target.value.type === 'Any'
+        ? target.value.src
+        : null;
+  if (emittedTarget === null || specifier === null) {
     return null;
   }
-  const cssTarget = /\.css(?:[?#].*)?"?$/iu.test(path)
-    || /^(?:"|')?(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(path);
+  const cssTarget = /\.css(?:[?#].*)?$/iu.test(specifier)
+    || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(specifier);
 
   /*
    * The current typed Less route already treats a media/layer tail as CSS
@@ -9678,10 +9687,13 @@ function rootCssImportKey(node: ImportAtRule): string | null {
   if (node.tail !== null && node.tail.type !== 'Any') {
     return null;
   }
-  return `${node.name}\u0000${path}\u0000${node.tail?.src ?? ''}`;
+  return `${node.name}\u0000${emittedTarget}\u0000${node.tail?.src ?? ''}`;
 }
 
 function emitHoistedCssImports(children: Statement[], frame: Frame, e: Emit): void {
+  if (e.context?.options.processImports === false) {
+    return;
+  }
   const seen = new Set<string>();
   let hoisted: Set<ImportAtRule> | null = null;
   for (const child of children) {
@@ -9758,6 +9770,9 @@ function emitImportAtRule(
   importDocument?: SerializeOptions['importDocument'],
   emitLoaded?: (document: Stylesheet, frame: Frame) => MaybePromise<void>
 ): MaybePromise<void> {
+  if (e.context?.options.processImports === false) {
+    return;
+  }
   if (importDocument) {
     const planned = e.plannedImportDocuments;
     const plannedImport = planned?.has(node)

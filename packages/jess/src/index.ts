@@ -135,7 +135,8 @@ export class Compiler extends BaseCompiler {
       collapseNesting: lessOptions.collapseNesting,
       rootpath: lessOptions.rootpath,
       rewriteUrls: lessOptions.rewriteUrls,
-      urlArgs: lessOptions.urlArgs
+      urlArgs: lessOptions.urlArgs,
+      processImports: lessOptions.processImports
     });
     if (nativePlugins.length === 0) {
       return optionsKey;

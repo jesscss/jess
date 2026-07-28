@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { atRuleBlock, importAtRule } from '../at-rule.js';
 import { any, color, comment, complexSelector, compoundSelectorOf, decl, dimension, forNode, interpolatedSimpleSelector, interpolation, keyword, list, mixinCall, mixinDef, quoted, reference, rule, sel, selist, spaced, stylesheet, url, variableDeclaration, variableReference } from '../nodes.js';
 import { createTriviaMapFromRanges, withTriviaMap } from '../provenance.js';
@@ -515,6 +515,33 @@ describe('ImportAtRule', () => {
     await expect(serialize(document, {
       importDocument: () => Promise.resolve(undefined)
     })).resolves.toEqual({ css: '@import "theme.css";\n' });
+  });
+
+  it('suppresses imports when processImports is false', () => {
+    const document = stylesheet([
+      importAtRule('@import', url(quoted('"https://fonts.example.test/css?family=Open+Sans"', 'https://fonts.example.test/css?family=Open+Sans', '"', false))),
+      rule('.a', [decl('b', keyword('c'))])
+    ]);
+
+    expect(serialize(document, {
+      context: new Context({ processImports: false })
+    })).toEqual({ css: '.a {\n  b: c;\n}\n' });
+  });
+
+  it('does not load Less imports when processImports is false', () => {
+    const document = stylesheet([
+      importAtRule('@import', quoted('"library.less"', 'library.less', '"', false)),
+      rule('.a', [decl('b', keyword('c'))])
+    ]);
+    const importDocument = vi.fn(() => Promise.resolve({
+      document: stylesheet([rule('.from-import', [decl('color', keyword('red'))])])
+    }));
+
+    expect(serialize(document, {
+      context: new Context({ processImports: false }),
+      importDocument
+    })).toEqual({ css: '.a {\n  b: c;\n}\n' });
+    expect(importDocument).not.toHaveBeenCalled();
   });
 
   it('emits a driver-provided inline import raw, with its typed media tail', async () => {
