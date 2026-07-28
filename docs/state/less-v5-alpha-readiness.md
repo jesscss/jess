@@ -239,8 +239,8 @@ clean worktree, PR open/non-draft. That head merges `upstream/alpha`
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior. Local verification on `2271f823` passed the Less package
 alpha contract, root `pnpm run test:alpha`, and `pnpm run test:release`.
-GitHub Actions and CodeRabbit are re-running on the new head; the PR merge state
-is temporarily `UNSTABLE` while those queued contexts settle.
+GitHub Actions and CodeRabbit are green on the same head, and the PR merge state
+is `CLEAN`.
 
 Current package/release gates are registry-backed against published Jess
 `2.0.0-alpha.10`: on PR head `2271f823`, `pnpm run test:alpha` passes the
@@ -269,9 +269,9 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are owner/release decisions
-and pending remote CI on the latest pushed head, not Jess registry availability
-or an unclassified upstream fixture gap. The missing
+Current package-flow blockers, verified 2026-07-28, are owner/release decisions,
+not Jess registry availability, pending remote CI, or an unclassified upstream
+fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
 alpha gate passes. Greptile did not review because the PR exceeds its file
