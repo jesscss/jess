@@ -146,12 +146,8 @@ const expectedFailureFixtures = new Map<string, string>([
     "reference import filtering leaves extra at-rules",
   ],
   [
-    "tests-unit/import/import.less",
-    "@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)",
-  ],
-  [
-    "tests-config/namespacing/namespacing-8.less",
-    "each() custom-property value lookup inside detached map differs from Less",
+    'tests-unit/import/import.less',
+    '@jesscss/plugin-js now auto-wires and the @plugin pi() script executes; renders but still diverges from Less on @import media-query handling and @media query merging (non-plugin render gaps)'
   ],
   [
     "tests-config/namespacing/namespacing-functions.less",

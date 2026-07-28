@@ -7096,9 +7096,17 @@ describe("Less AST grammar facts", () => {
               },
             },
             {
-              type: "Declaration",
-              name: "--literal",
-              value: { type: "Any", src: "@name" },
+              type: 'Declaration',
+              name: '--literal',
+              value: {
+                type: 'Interpolation',
+                parts: [
+                  {
+                    ref: { type: 'VariableReference', name: 'name', lookup: 'scoped' },
+                    unquote: false
+                  }
+                ]
+              }
             },
             {
               type: "Declaration",

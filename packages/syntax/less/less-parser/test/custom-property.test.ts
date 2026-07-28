@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { makeLessRegistry } from '@jesscss/fns';
 import { parse } from '@jesscss/less-parser';
+import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { triviaMapOf } from '../../../../core/src/ast/provenance.js';
 
@@ -83,6 +85,75 @@ describe('Less custom properties', () => {
   it('accepts a custom-property reference in a var() consumer', () => {
     expect(parse('a { color: var(--x, blue); }')).toMatchObject({
       children: [{ type: 'Rule', body: [{ type: 'Declaration', name: 'color' }] }]
+    });
+  });
+
+  it('parses raw Less variables inside custom-property values structurally', () => {
+    const document = parse('@value: #fff; :root { --color: @value; --fallback: solid @value; }');
+
+    expect(document).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'value' },
+        {
+          type: 'Rule',
+          body: [
+            {
+              type: 'Declaration',
+              name: '--color',
+              value: {
+                type: 'Interpolation',
+                parts: [{ ref: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, unquote: false }]
+              }
+            },
+            {
+              type: 'Declaration',
+              name: '--fallback',
+              value: {
+                type: 'Interpolation',
+                parts: [
+                  { lit: 'solid ' },
+                  { ref: { type: 'VariableReference', name: 'value', lookup: 'scoped' }, unquote: false }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    });
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      ':root {\n'
+      + '  --color: #fff;\n'
+      + '  --fallback: solid #fff;\n'
+      + '}\n'
+    );
+  });
+
+  it('keeps strict custom-property interpolation unquoted while raw variables preserve quotes', () => {
+    const document = parse('@value: "red"; :root { --raw: @value; --strict: @{value}; }');
+
+    expect(document).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'value' },
+        {
+          type: 'Rule',
+          body: [
+            { type: 'Declaration', name: '--raw', value: { type: 'Interpolation', parts: [{ unquote: false }] } },
+            { type: 'Declaration', name: '--strict', value: { type: 'Interpolation', parts: [{ unquote: true }] } }
+          ]
+        }
+      ]
+    });
+    expect(serialize(document, { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
+      ':root {\n'
+      + '  --raw: "red";\n'
+      + '  --strict: red;\n'
+      + '}\n'
+    );
+  });
+
+  it('keeps known at-rule-looking custom-property bytes opaque', () => {
+    expect(parse('.card { --x:red @media all {x:y} }')).toMatchObject({
+      children: [{ type: 'Rule', body: [{ type: 'Declaration', name: '--x', value: { type: 'Any', src: 'red @media all {x:y} ' } }] }]
     });
   });
 

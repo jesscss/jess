@@ -53,7 +53,7 @@ type StaticAttributeNameFact = { readonly namespace: string; readonly name: stri
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
 type SelectorBranchFact = { readonly selector: ComplexSelector; readonly extensions: readonly ExtendInstruction[] };
 type SelectorListWithExtendsFact = { readonly selector: SelectorList; readonly extensions: readonly ExtendInstruction[] };
-type CustomValuePart = string | InterpolationFact | readonly CustomValuePart[];
+type CustomValuePart = string | InterpolationFact | VariableReference | readonly CustomValuePart[];
 type GeneralEnclosedNameFact = { readonly name: string };
 type FunctionConditionFact = {
   readonly guard: MixinGuard;
@@ -123,6 +123,7 @@ type LessRules = {
   ImportantValue: Combinator<Important>;
   ValueListWithPriority: Combinator<ValueSlot>;
   DirectLessCustomPropertyName: Combinator<string | Interpolation>;
+  CustomAtKeywordText: Combinator<string>;
   DirectLessCustomPart: Combinator<CustomValuePart>;
   DirectLessCustomInnerPart: Combinator<CustomValuePart>;
   DirectLessCustomParen: Combinator<readonly CustomValuePart[]>;
@@ -1037,6 +1038,9 @@ function customValueFromParts(parts: readonly CustomValuePart[]): ValueNode {
     } else if (isInterpolationFact(part)) {
       hasInterpolation = true;
       interpolationParts.push({ ref: part.ref, unquote: true });
+    } else if (isVarRef(part)) {
+      hasInterpolation = true;
+      interpolationParts.push({ ref: part, unquote: false });
     } else {
       throw new TypeError('Direct Less custom value retained an untyped grammar part.');
     }
@@ -1057,6 +1061,8 @@ function customPartsFromChildren(children: readonly unknown[]): CustomValuePart[
   const parts: CustomValuePart[] = [];
   for (const child of children) {
     if (isInterpolationFact(child)) {
+      parts.push(child);
+    } else if (isVarRef(child)) {
       parts.push(child);
     } else if (Array.isArray(child)) {
       parts.push(customPartsFromChildren(child));
@@ -1720,6 +1726,7 @@ const importKeyword = keywords(
   ['@-import', '@-export', '@import'],
   { caseInsensitive: true, boundary: '-_0-9A-Za-z' }
 );
+const customValueAtKeyword = regex(/@(?:-import|-export|import|media|container|supports|(?:-[a-z]+-)?keyframes)(?![-\w])/i);
 // Opaque quoted-string skippers for the grammar-level ambient `scanSkip`: a
 // `scanTo`/`balanced` with no per-call skip consults these so a sentinel (an
 // arg terminator, or a `functionConditionAhead` operator like `or`)
@@ -3077,6 +3084,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     children => customPartsFromChildren(children)
   );
+  const CustomAtKeywordText = node<string>(
+    'CustomAtKeywordText',
+    token(customValueAtKeyword),
+    children => requireToken(children[0]).value
+  );
   const DirectLessCustomInnerPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
     g.LessSyntaxCustomInnerContent,
@@ -3084,7 +3096,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.LessSyntaxCustomDoubleQuoted,
     g.DirectLessCustomParen,
     g.DirectLessCustomSquare,
-    g.DirectLessCustomCurly
+    g.DirectLessCustomCurly,
+    g.CustomAtKeywordText,
+    g.VariableReference
   );
   const DirectLessCustomPart: Combinator<CustomValuePart> = choice(
     g.Interpolation,
@@ -3093,7 +3107,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     g.LessSyntaxCustomDoubleQuoted,
     g.DirectLessCustomParen,
     g.DirectLessCustomSquare,
-    g.DirectLessCustomCurly
+    g.DirectLessCustomCurly,
+    g.CustomAtKeywordText,
+    g.VariableReference
   );
   const DirectLessCustomValue = node<ValueNode>(
     'DirectLessCustomValue',
@@ -5591,6 +5607,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ImportantValue,
     ValueListWithPriority,
     DirectLessCustomPropertyName,
+    CustomAtKeywordText,
     DirectLessCustomPart,
     DirectLessCustomInnerPart,
     DirectLessCustomParen,
