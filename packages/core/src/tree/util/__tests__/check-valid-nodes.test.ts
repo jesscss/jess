@@ -32,7 +32,7 @@ describe('checkValidNodes', () => {
     expect(() => checkValidNodes([comment, decl])).not.toThrow();
   });
 
-  it('accepts a bare Any (Less Anonymous is allowRoot) in statement position', () => {
+  it('accepts a bare Any in statement position', () => {
     /*
      * A root-position call that evaluates to a bare value produces an Any;
      * Less emits it as the final statement (e.g. `e('/* … *\/')`).

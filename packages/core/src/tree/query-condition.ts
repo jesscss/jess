@@ -5,7 +5,7 @@ import { Sequence } from './sequence.js';
 import { Paren } from './paren.js';
 import { Condition } from './condition.js';
 import { Operation } from './operation.js';
-import { Any, Anonymous, Keyword } from './any.js';
+import { Any, Keyword } from './any.js';
 import { Bool } from './bool.js';
 import { Color } from './color.js';
 import { Dimension } from './dimension.js';
@@ -39,7 +39,7 @@ function queryTermAttachesToPrev(prev: Node, node: Node): boolean {
   if (!(node instanceof Paren)) {
     return false;
   }
-  if (!(prev instanceof Keyword || prev instanceof Any || prev instanceof Anonymous)) {
+  if (!(prev instanceof Keyword || prev instanceof Any)) {
     return false;
   }
   const text = `${prev.valueOf()}`.trim().toLowerCase();
@@ -182,7 +182,6 @@ export class QueryCondition extends Sequence {
   private canWriteStaticChildDirect(node: Node): boolean {
     return (
       node.type === 'Any'
-      || node.type === 'Anonymous'
       || node.type === 'Keyword'
       || node.type === 'Dimension'
       || node.type === 'Num'
@@ -242,7 +241,6 @@ export class QueryCondition extends Sequence {
   private canTrustDynamicChildRenderText(node: Node): boolean {
     return (
       node.constructor === Any
-      || node.constructor === Anonymous
       || node.constructor === Keyword
       || node.constructor === Dimension
       || node.constructor === Num

@@ -196,7 +196,7 @@ export function evalIsolatingSpinePrintState<T>(
  * Resolve a BARE STATEMENT-POSITION built-in FUNCTION call (`if((false), {g: 7});`)
  * to its emitted bytes on the spine (see `isSpineFoldableStatementCall`). Mirrors the
  * eval call-lane: evaluate the `Call` against the live frame, then serialize the
- * result. A VOID result (`Nil` / `undefined` / an empty `Anonymous` — the false-no-else
+ * result. A VOID result (`Nil` / `undefined` / an empty `Any` — the false-no-else
  * `if` shape) serializes to `''`, which the leaf tail suppresses (no blank line); a
  * value-returning call emits its value text as its own line — byte-identical to eval.
  * The eval is wrapped in `evalIsolatingSpinePrintState` so an unknown-call value render

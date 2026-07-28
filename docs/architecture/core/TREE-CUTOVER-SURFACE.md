@@ -222,7 +222,7 @@ test — grouped by declaring file (`*` = reached through an explicit
 | declaring file | n | names |
 | --- | --- | --- |
 | `src/tree/ampersand.ts` | 3 | `Ampersand`, `AmpersandValue`, `amp` |
-| `src/tree/any.ts` | 6 | `Anonymous`, `AnyOptions`, `AnyRole`, `Keyword`, `any`, `keyword` |
+| `src/tree/any.ts` | 5 | `AnyOptions`, `AnyRole`, `Keyword`, `any`, `keyword` |
 | `src/tree/at-rule-statement.ts` | 5 | `AtRuleStatement`, `AtRuleStatementField`, `AtRuleStatementName`, `AtRuleStatementValue`, `atrulestatement` |
 | `src/tree/at-rule.ts` | 8 | `AtRule`, `AtRuleOptions`, `AtRuleParts`, `AtRulePrelude`, `AtRuleValue`, `NESTABLE_AT_RULES`, `ROOT_ONLY_AT_RULES`, `atrule` |
 | `src/tree/block.ts` | 3 | `Block`, `BlockOptions`, `block` |

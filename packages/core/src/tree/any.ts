@@ -40,9 +40,6 @@ export interface Any<
  * Sometimes that role is unspecified. Think of it as a generic,
  * and a placeholder for tokens that don't have anything special
  * to do during evaluation.
- *
- * Called "Anonymous" in Less's original tree, but "anonymous"
- * was somewhat a counter-intuitive name.
  */
 export class Any<
   Role extends AnyRole = AnyRole
@@ -66,11 +63,10 @@ export class Any<
     this.addFlag(F_STATIC);
 
     /*
-     * Less's `Anonymous` (this node's namesake) is statement-legal by type
-     * (`allowRoot = true`). A root-position call/mixin/detached-ruleset that
-     * evaluates to a bare value produces an `Any`, and Less emits it as the
-     * final statement — e.g. root-level `e('/* … *\/')`. Keyword (a subclass)
-     * is NOT root-legal in Less, so it strips this flag in its constructor.
+     * A root-position call/mixin/detached-ruleset that evaluates to a bare
+     * opaque value produces an `Any`, and Less emits it as the final statement
+     * — e.g. root-level `e('/* … *\/')`. Keyword (a subclass) is NOT
+     * root-legal in Less, so it strips this flag in its constructor.
      */
     this.addFlag(F_ALLOW_ROOT);
   }
@@ -140,12 +136,6 @@ export function any<Role extends AnyRole = AnyRole>(
 }
 defineType(Any, 'Any');
 
-/** Legacy Less compatibility alias for `Any`. */
-export class Anonymous<
-  Role extends AnyRole = AnyRole
-> extends Any<Role> {}
-defineType(Anonymous, 'Anonymous');
-
 /**
  * Keyword represents a CSS keyword value (e.g., 'auto', 'none', 'inherit', 'and', 'or').
  *
@@ -167,7 +157,7 @@ export class Keyword extends Any<'keyword'> {
 
     /*
      * Less's `Keyword` is NOT statement-legal (no `allowRoot`), unlike the
-     * `Anonymous`/`Any` base. A bare keyword in statement position stays an
+     * `Any` base. A bare keyword in statement position stays an
      * eval/invalid-statement error, matching Less.
      */
     this.removeFlag(F_ALLOW_ROOT);

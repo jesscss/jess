@@ -399,7 +399,7 @@ export function isSpineEligibleMixinCall(node: Node): boolean {
  * `variable` DR-call, which `isSpineEligibleMixinCall` already folds), with no
  * content block. Such a call is EVALUATED at its statement position and its result
  * serialized inline (the `functions` fixture's `if((false), {g: 7})` — condition
- * false with no else branch — resolves to a VOID `Anonymous` that serializes to the
+ * false with no else branch — resolves to a VOID `Any` that serializes to the
  * empty string, emitting nothing, exactly as the eval path's call-lane +
  * `applyResult(undefined)` does). A value-returning statement call (`lighten(...)`)
  * likewise reproduces the eval path (its value text is emitted as its own line) —
@@ -1381,7 +1381,7 @@ function isSimpleSpineLeaf(node: Node, allowExtend = false, allowImport = false)
   /*
    * Bare statement-position built-in FUNCTION call (`if((false), {g: 7});`):
    * evaluated + serialized inline at emit (`resolveSpineStatementCallText`), void
-   * (Nil/empty `Anonymous`) result emits nothing — byte-identical to eval's
+   * (Nil/empty `Any`) result emits nothing — byte-identical to eval's
    * call-lane. See `isSpineFoldableStatementCall`.
    */
   if (isSpineFoldableStatementCall(node)) {

@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { IToken } from 'chevrotain';
 import { Context } from '../../context.js';
 import {
-  type Any,
+  Any,
   type AnyRole,
-  Anonymous,
   Selector,
   amp,
   any,
@@ -464,7 +463,7 @@ describe('renderNodeToBuffer', () => {
       expected?: string;
       expectedParts?: string[];
     }> = [
-      { surface: 'Anonymous', node: new Anonymous('legacy-anon'), expected: 'legacy-anon' },
+      { surface: 'Any', node: new Any('opaque'), expected: 'opaque' },
       { surface: 'Keyword', node: keyword('auto'), expected: 'auto' },
       { surface: 'Num', node: num(7), expected: '7' },
       { surface: 'SpacedSequenceHelper', node: spaced([any('span'), any('2')]), expected: 'span 2' },

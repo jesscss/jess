@@ -165,7 +165,7 @@ export class AtRuleStatement extends Node<AtRuleStatementValue, NodeOptions> {
         writer.add(trimLeadingHeaderWhitespace(this.prelude), this);
       } else {
         const type = this.prelude.type;
-        if (type === 'Any' || type === 'Anonymous' || type === 'Keyword') {
+        if (type === 'Any' || type === 'Keyword') {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
           const v = (this.prelude as { value?: unknown }).value;
           writer.add(trimLeadingHeaderWhitespace(typeof v === 'string' ? v : String(this.prelude.valueOf())), this.prelude);
