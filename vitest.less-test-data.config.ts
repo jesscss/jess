@@ -87,6 +87,17 @@ function builtPackageEntry(packageName: string, subpath = 'index.js'): string {
   return path.join(meta.packageDir, 'lib', subpath);
 }
 
+function exactAliasPattern(name: string): RegExp {
+  return new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+}
+
+function builtPackageAlias(find: string, subpath = 'index.js', packageName = find) {
+  return {
+    find: exactAliasPattern(find),
+    replacement: builtPackageEntry(packageName, subpath)
+  };
+}
+
 function createWorkspaceSourceAliases() {
   const aliases: Array<{ find: string; replacement: string }> = [];
   const workspaceNames = new Set<string>(workspacePackageMetas
@@ -183,16 +194,40 @@ export default defineConfig({
     alias: [
       { find: '@jesscss/less-parser/grammar', replacement: builtPackageEntry('@jesscss/less-parser', 'grammar.js') },
       { find: '@jesscss/less-parser', replacement: builtPackageEntry('@jesscss/less-parser') },
+      builtPackageAlias('@jesscss/awaitable-pipe'),
+      builtPackageAlias('@jesscss/core/ast', 'ast.js', '@jesscss/core'),
+      builtPackageAlias('@jesscss/core/value', 'value.js', '@jesscss/core'),
+      builtPackageAlias('@jesscss/core'),
+      builtPackageAlias('@jesscss/fns/less/registry', 'less/registry.js', '@jesscss/fns'),
+      builtPackageAlias('@jesscss/fns/less', 'less/index.js', '@jesscss/fns'),
+      builtPackageAlias('@jesscss/fns'),
+      builtPackageAlias('@jesscss/plugin-less'),
+      builtPackageAlias('@jesscss/plugin-less-compat'),
+      builtPackageAlias('@jesscss/plugin-node-modules'),
+      builtPackageAlias('@jesscss/style-resolver'),
+      builtPackageAlias('styles-config'),
 
       /*
        * Compiler imports the built-in Jess plugin even for a Less document. Its
        * parser is macro-compiled too, so this integration route must not alias
        * either package back to TypeScript source inside Vite.
        */
+      builtPackageAlias('@jesscss/compiler'),
       { find: '@jesscss/plugin-jess', replacement: builtPackageEntry('@jesscss/plugin-jess') },
       { find: '@jesscss/jess-parser', replacement: builtPackageEntry('@jesscss/jess-parser') },
       ...createWorkspaceSourceAliases().filter(alias =>
         alias.find !== '@jesscss/less-parser'
+        && alias.find !== '@jesscss/awaitable-pipe'
+        && alias.find !== '@jesscss/core'
+        && !alias.find.startsWith('@jesscss/core/')
+        && alias.find !== '@jesscss/fns'
+        && !alias.find.startsWith('@jesscss/fns/')
+        && alias.find !== '@jesscss/plugin-less'
+        && alias.find !== '@jesscss/plugin-less-compat'
+        && alias.find !== '@jesscss/plugin-node-modules'
+        && alias.find !== '@jesscss/style-resolver'
+        && alias.find !== 'styles-config'
+        && alias.find !== '@jesscss/compiler'
         && alias.find !== '@jesscss/plugin-jess'
         && alias.find !== '@jesscss/jess-parser')
     ],
@@ -202,6 +237,21 @@ export default defineConfig({
     watch: false,
     globals: true,
     environment: 'node',
+    server: {
+      deps: {
+        external: [
+          '@jesscss/awaitable-pipe',
+          '@jesscss/compiler',
+          '@jesscss/core',
+          '@jesscss/fns',
+          '@jesscss/plugin-less',
+          '@jesscss/plugin-less-compat',
+          '@jesscss/plugin-node-modules',
+          '@jesscss/style-resolver',
+          'styles-config'
+        ]
+      }
+    },
     env: {
       TEST: 'true'
     },
