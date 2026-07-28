@@ -129,7 +129,7 @@ export default defineConfig({
     // Include all test files from all packages - use absolute paths relative to config file
 
     projects: [
-      'packages/**',
+      'packages/**/vitest.config.ts',
       {
         extends: true,
         test: {
@@ -144,6 +144,8 @@ export default defineConfig({
             'node_modules/**',
             'dist/**',
             'lib/**',
+            '.claude/**',
+            'tmp/**',
             'packages/syntax/css/css-parser/test/perf.test.ts',
             '**/*bench*'
           ]

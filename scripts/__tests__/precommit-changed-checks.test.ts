@@ -102,7 +102,6 @@ describe('changed package checks', () => {
       chmodSync(fakePnpm, 0o755);
 
       const coreProbe = resolve(sandbox, 'packages/core/src/prepush-dev-probe.ts');
-      const coreProbe = resolve(sandbox, 'packages/core/src/prepush-dev-probe.ts');
 
       /*
        * The clone is of origin/dev HEAD (pre-regroup), so the nested parser
