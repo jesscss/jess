@@ -59,6 +59,37 @@ export interface SpineVisitor {
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
 const SCRIPT_MODULES_DISABLED_MESSAGE = 'Script modules are disabled by disableScriptModules.';
 const EXTERNAL_IMPORT_SPECIFIER = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu;
+const IMPORT_OPTION_KEYS = [
+  'type',
+  'reference',
+  'optional',
+  'inline',
+  'multiple',
+  'mutable',
+  'forward',
+  'forwardAsPrefix',
+  'forwardShow',
+  'forwardHide',
+  'readonly',
+  '_dedupe'
+] as const satisfies readonly (keyof ImportOptions)[];
+
+type LoadedImportResult = {
+  node: ParsedDocument | null;
+  triedPaths: string[];
+  resolvedPath: string;
+} | undefined;
+
+function importOptionsCacheKey(options: ImportOptions): string {
+  let key = '';
+  for (const name of IMPORT_OPTION_KEYS) {
+    const value = options[name];
+    if (value !== undefined) {
+      key += `${name}:${JSON.stringify(value)};`;
+    }
+  }
+  return key;
+}
 
 async function importJsonModule(absoluteFilePath: string): Promise<Record<string, unknown>> {
   const parsed = JSON.parse(await readFile(absoluteFilePath, 'utf8')) as unknown;
@@ -385,6 +416,9 @@ export class Context {
 
   private _treeContext: TreeContext | undefined;
   private _documentContext: DocumentContext | undefined;
+  private readonly loadedImportCache = new Map<string, Promise<LoadedImportResult> | LoadedImportResult>();
+  private readonly pluginCacheIds = new WeakMap<PluginInterface, number>();
+  private nextPluginCacheId = 0;
 
   /**
    * Flat, fully-resolved options for the currently-active tree context — the one
@@ -465,6 +499,25 @@ export class Context {
   /** Active source facts for resolver, diagnostics, and file-reading consumers. */
   get sourceContext(): SourceContext | undefined {
     return this._documentContext ?? this._treeContext;
+  }
+
+  private pluginCacheKey(plugin: PluginInterface | undefined): string {
+    if (!plugin) {
+      return '';
+    }
+    let id = this.pluginCacheIds.get(plugin);
+    if (id === undefined) {
+      id = ++this.nextPluginCacheId;
+      this.pluginCacheIds.set(plugin, id);
+    }
+    return `${plugin.name}:${id}`;
+  }
+
+  private loadedImportCacheKey(importPath: string, importOptions: ImportOptions): string {
+    const source = this.sourceContext;
+    const file = source?.file;
+    const sourceKey = file?.fullPath ?? file?.path ?? process.cwd();
+    return `${sourceKey}\0${this.pluginCacheKey(source?.plugin)}\0${importPath}\0${importOptionsCacheKey(importOptions)}`;
   }
 
   /**
@@ -1326,6 +1379,24 @@ export class Context {
    * claiming plugin still uses the ordinary resolve/locate/source/parse path.
    */
   async loadImport(importPath: string, importOptions: ImportOptions = {}) {
+    const cacheKey = this.loadedImportCacheKey(importPath, importOptions);
+    const cached = this.loadedImportCache.get(cacheKey);
+    if (cached !== undefined || this.loadedImportCache.has(cacheKey)) {
+      return cached;
+    }
+    const loading = this.loadImportUncached(importPath, importOptions);
+    this.loadedImportCache.set(cacheKey, loading);
+    try {
+      const loaded = await loading;
+      this.loadedImportCache.set(cacheKey, loaded);
+      return loaded;
+    } catch (error) {
+      this.loadedImportCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async loadImportUncached(importPath: string, importOptions: ImportOptions = {}) {
     if (EXTERNAL_IMPORT_SPECIFIER.test(importPath)) {
       const currentDirectory = this.sourceContext?.file?.path ?? process.cwd();
       const { searchPaths = [] } = this.opts;

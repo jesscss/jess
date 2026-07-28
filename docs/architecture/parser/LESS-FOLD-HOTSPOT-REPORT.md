@@ -51,6 +51,34 @@ The next performance work should press forward on the folded grammar:
   hotspots are a parallel core/compiler lane, not a reason to undo the grammar
   fold.
 
+Sidecar investigations tightened that target:
+
+- The folded Less final AST size is roughly unchanged from the pre-fold
+  baseline, but the public CST and generated host-mode artifact are much larger.
+  The likely parser lane is successful intermediate grammar/CST volume in value,
+  selector/extend, and declaration wrappers, plus Parseman host-mode packaging,
+  not a rollback to two physical grammars.
+- A quick `collapse: true` prototype on `Value`, `TopSumMaybeDivision`,
+  `ValueList`, and `ValueListWithPriority` passed focused parser tests but made
+  Bootstrap-port parse slower. Treat blanket wrapper collapse as rejected
+  evidence; remove work at the grammar/Parseman lowering level instead of merely
+  hiding CST frames.
+- Parseman has a candidate dispatch aggregate-value elision patch on
+  `release/0.41.1-dispatch-elision`. Once published, regenerate and remeasure
+  before attributing remaining cost to Jess grammar shape.
+
+Parallel core/compiler lane:
+
+- Current `Compiler.compile()` prepares only the root document. Bootstrap's first
+  compiled-document render then loads the static import graph, while later
+  renders can reuse parsed documents from the same `Context`.
+- A context-local `loadImport(...)` memo now avoids re-resolving an already
+  loaded static import on repeated renders of the same compiled document. That
+  is useful session caching, not the Less alpha one-shot render fix.
+- The larger first-render target is for compile to prepare the static import
+  graph once, respecting Less import options and deferring dynamic import targets
+  that require render-time bindings.
+
 ## Comment-as-trivia debt audit
 
 Current decision: comments are trivia. Do not preserve grammar-level `Comment`
