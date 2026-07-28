@@ -2408,6 +2408,27 @@ describe("public Less parse()", () => {
     }
   });
 
+  it('accepts unknown CSS block at-rules as opaque blocks on the public Less route', () => {
+    const source = '@future {!!:foo > ; > ?bar}';
+    const cst = parseLessCst(source);
+    const document = parse(source);
+
+    expect(cst.errors).toHaveLength(0);
+    expect(cst.unconsumedFrom).toBeNull();
+    expect(document).toMatchObject({
+      type: 'Stylesheet',
+      children: [
+        {
+          type: 'OpaqueAtRuleBlock',
+          name: '@future',
+          prelude: null,
+          rawBody: '!!:foo > ; > ?bar'
+        }
+      ]
+    });
+    expect(serialize(document).css).toBe('@future {!!:foo > ; > ?bar}\n');
+  });
+
   it("rejects removed bare at-variable prelude interpolation with a targeted parser error", () => {
     for (const source of [
       "@media @q { .card { color: red; } }",
