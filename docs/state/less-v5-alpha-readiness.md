@@ -231,20 +231,22 @@ do not move the baseline until that queue is resolved.
 The target review PR is
 [`matthew-dean/less.js#19`](https://github.com/matthew-dean/less.js/pull/19),
 `less-5-alpha.1` into the fork-local `alpha` branch. Current sibling checkout
-evidence: branch `less-5-alpha.1` at `c06338a4734f0c9aaa2ec7f965db2ca4e6bd3505`,
-clean worktree, PR open/non-draft. That head merges `upstream/alpha`
+evidence: branch `less-5-alpha.1` at `4686065d20a553b1f1d91a39c9fa16ac5cf1aa57`,
+clean worktree, PR open/non-draft. The branch merges `upstream/alpha`
 (`330e9d71`) into the Less 5 alpha branch, resolves the release-automation
 conflicts while preserving the first unpublished `5.0.0-alpha.1` release
 candidate behavior, and routes `lessc` parse/eval failures through the generic
-Jess/Linecraft diagnostic renderer. Local verification on `c06338a4` passed the
+Jess/Linecraft diagnostic renderer. Local verification on `4686065d` passed the
 Less package alpha contract, root `pnpm run test:alpha`, publish dry-run tests,
-and packed-consumer proof. GitHub evidence on 2026-07-28 reports PR #19
-merge-state `CLEAN`; CI is green across ubuntu/macOS/windows and Node current,
-LTS, LTS-1, and LTS-2; CodeRabbit is green; release-PR automation jobs are
-skipped as expected.
+and packed-consumer proof. The Less compatibility error wrapper now forwards
+canonical Jess diagnostic messages unchanged while still exposing Less-style
+fields such as `type`, `line`, `column`, `extract`, and `jessErrors`. GitHub
+evidence on 2026-07-28 reports PR #19 merge-state `CLEAN`; CI is green across
+ubuntu/macOS/windows and Node current, LTS, LTS-1, and LTS-2; CodeRabbit is
+green; release-PR automation jobs are skipped as expected.
 
 Current package/release gates are registry-backed against published Jess
-`2.0.0-alpha.10`: on PR head `c06338a4`, `pnpm run test:alpha` passes the
+`2.0.0-alpha.10`: on PR head `4686065d`, `pnpm run test:alpha` passes the
 Less package typecheck, build, `lessc` smoke tests, alpha support contract,
 publish dry-run tests, and packed-consumer proof. The `lessc` smoke tests pin
 Linecraft-formatted colored diagnostics by default, source framing, `--silent`
@@ -256,8 +258,8 @@ uncolored text, or a non-Linecraft frame, the package is not ready to merge.
 The remaining registry caveat is that PR #19 currently consumes published Jess
 `2.0.0-alpha.10`; the single-frame renderer fix on Jess `dev` must ship in the
 next Jess alpha and be consumed by the Less PR before the external package can
-prove that it has no duplicate code frames. The alpha support contract now pins
-the upstream-sync fixture families that are green for alpha.1:
+prove that same behavior against the final registry closure. The alpha support
+contract now pins the upstream-sync fixture families that are green for alpha.1:
 `at-rule-variable-interpolation`, `color-functions/modern`, `math-css-vars`,
 `mixins-guards`, and `mixins-named-args`. The packed consumer installs the
 direct Jess runtime closure and does not install the batteries-included `jess`
@@ -287,9 +289,10 @@ is a resolver hook, not a shipped Deno runtime: both `jess` and the external
 (`peerDependencies` plus `peerDependenciesMeta.optional`), never as a runtime
 dependency or `optionalDependencies` entry.
 
-Current package-flow blockers, verified 2026-07-28, are owner/release decisions,
-not Jess registry availability, pending remote CI, or an unclassified upstream
-fixture gap. The missing
+Current package-flow blockers, verified 2026-07-28, are owner/release sequencing
+decisions: publish the next Jess alpha from `dev`, bump PR #19 to that exact
+registry version, rerun the Less package alpha proofs, and then publish Less.
+They are not an unclassified upstream fixture gap. The missing
 `.widget.repositoriesresults` selector expansion and `scroll-state (`
 spacing comments in `container.css` are fixed on the PR branch and the external
 alpha gate passes. Greptile did not review because the PR exceeds its file
@@ -718,6 +721,12 @@ earlier, before a manual publish attempt.
   the controlled alpha projection. The next Jess alpha is needed so Less PR #19
   can prove colored, single-frame Linecraft diagnostics against registry
   dependencies instead of published `2.0.0-alpha.10`.
+- 2026-07-28: Updated Less PR #19 to `4686065d`, deleting the compatibility
+  wrapper's diagnostic-message rewrite. `less.render()` now forwards canonical
+  Jess diagnostic messages while preserving Less-style wrapper fields. Local
+  `pnpm run test:alpha` passed, including typecheck/build, `lessc`, alpha
+  support, alpha fixtures, publish dry-run tests, and packed-consumer proof
+  against published Jess `2.0.0-alpha.10`.
 - 2026-07-28: Updated the external Less PR #19 audit to head `c06338a4`,
   including successful `lessc` warning routing to `stderr` and the blocker rule
   that public `lessc` errors must render through colored Linecraft diagnostics.
