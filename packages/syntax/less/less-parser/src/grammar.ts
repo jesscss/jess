@@ -4358,7 +4358,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const QueryPrelude = node<ValueNode>(
     'QueryPrelude',
-    sequence(g.QueryClause, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), g.QueryClause))),
+    oneOrMoreSep(
+      g.QueryClause,
+      field('separator', regex(/,[ \t\n\r\f]*/))
+    ),
     (children, fields, _span, _rawChildren, triviaLog, state) =>
       commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
   );
@@ -4403,7 +4406,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const MediaQueryPrelude = node<ValueNode>(
     'MediaQueryPrelude',
-    sequence(MediaQueryClause, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), MediaQueryClause))),
+    oneOrMoreSep(
+      MediaQueryClause,
+      field('separator', regex(/,[ \t\n\r\f]*/))
+    ),
     (children, fields, _span, _rawChildren, triviaLog, state) =>
       commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
   );
@@ -4484,7 +4490,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const ContainerQueryPrelude = node<ValueNode>(
     'ContainerQueryPrelude',
-    sequence(ContainerConditionItem, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), ContainerConditionItem))),
+    oneOrMoreSep(
+      ContainerConditionItem,
+      field('separator', regex(/,[ \t\n\r\f]*/))
+    ),
     (children, fields, _span, _rawChildren, triviaLog, state) =>
       commaListWithTriviaFromChildren(children, fields, triviaLog, state, isValueNode)
   );
@@ -4620,7 +4629,10 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const StaticAtRulePrelude = node<ValueNode>(
     'StaticAtRulePrelude',
-    sequence(g.StaticAtRuleTerm, many(sequence(field('separator', regex(/,[ \t\n\r\f]*/)), g.StaticAtRuleTerm))),
+    oneOrMoreSep(
+      g.StaticAtRuleTerm,
+      field('separator', regex(/,[ \t\n\r\f]*/))
+    ),
     (children, fields) => {
       const values = children.filter(isValueNode);
       if (values.length === 1) {
