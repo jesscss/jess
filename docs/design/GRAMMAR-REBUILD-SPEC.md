@@ -150,9 +150,9 @@ with exit code 0; and `pnpm run verify:less-alpha` passes its Less parser,
 Less plugin, `jess`, package-export, public-API, path-resolution, Less
 test-data unit, and Less test-data config lanes. The Less oracle fails against
 the checked-in baseline with the current integration aggregates
-`ast=ff1bb34d9769067671f4befd5ef12fb348ebe377fc434dc89f6e84e34fd9103d`
-with 116 throws and 214 moved entries, and
-`cst=84e9683bc0bfffca57e58c66292340309306ee8166e6b4c691ad51f042b0622c`
+`ast=349674c59d3fcc6ba42a4b762423761ff19c2880d2830df43ca2006aa0f4a6cb`
+with 116 throws and 217 moved entries, and
+`cst=222fc59f188db86f5e58126f4efe8ccf55a2c343a72e86b4a4b56434472189e5`
 with 0 throws and 595 moved entries over 711 entries. Do not update the
 baseline until the AST movers are reviewed and the broad CST ownership movement
 is either projected as intended host-mode shape churn or minimized. The active

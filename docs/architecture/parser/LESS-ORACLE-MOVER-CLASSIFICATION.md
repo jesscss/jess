@@ -28,22 +28,23 @@ Resolved package versions and paths for the current report:
 | `@jesscss/plugin-less` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/syntax/less/jess-plugin-less` |
 | `jess` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/jess` |
 
-Latest report generated from the post-trivia-transfer and mixin-guard diagnostic
-source state:
+Latest report generated from the post-trivia-transfer, mixin-guard diagnostic,
+`processImports: false`, Less query-prelude separator-helper, and custom-property
+variable-value source state:
 
 ```sh
 pnpm --filter @jesscss/parser-shared build
 pnpm run oracle:less:byte-identity
 node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs \
-  > /tmp/jess-less-oracle-current-20260728-after-trivia-guard.json
+  > /tmp/jess-less-oracle-current-20260728-after-custom-values.json
 ```
 
 `pnpm run oracle:less:byte-identity` currently reports:
 
 | surface | committed baseline | current aggregate | throws | common entries moved |
 | --- | --- | --- | ---: | ---: |
-| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `ff1bb34d9769067671f4befd5ef12fb348ebe377fc434dc89f6e84e34fd9103d` | 116 | 214 |
-| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `84e9683bc0bfffca57e58c66292340309306ee8166e6b4c691ad51f042b0622c` | 0 | 595 |
+| AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `349674c59d3fcc6ba42a4b762423761ff19c2880d2830df43ca2006aa0f4a6cb` | 116 | 217 |
+| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `222fc59f188db86f5e58126f4efe8ccf55a2c343a72e86b4a4b56434472189e5` | 0 | 595 |
 
 Corpus shape:
 
@@ -64,21 +65,19 @@ Raw changed-entry counts, including corpus growth:
 | subset | count | current read |
 | --- | ---: | --- |
 | changed entries on either surface | 667 | 665 common movers across either surface plus the 2 gained corpus entries. |
-| common AST movers | 214 | 144 also move on CST; 70 move only on AST. |
-| changed-or-added AST entries | 216 | Common AST movers plus the 2 gained corpus entries. |
+| common AST movers | 217 | 147 also move on CST; 70 move only on AST. |
+| changed-or-added AST entries | 219 | Common AST movers plus the 2 gained corpus entries. |
 | AST-only movers | 70 | Mostly error-projection hash movement after parser diagnostic normalization. |
-| common CST-only movers | 451 | Broad public CST owner/name/span churn from the fold, routed opener cleanup, and grammar reshaping. |
-| common AST movers containing comments | 120 | Mostly comment/trivia/source ownership plus parser-error projection; review before baseline. |
-| common AST movers without comments | 94 | Mostly syntax-error diagnostic hash movement, not newly accepted parses. |
-| changed-or-added AST entries with comments | 121 | Adds `math-css-vars.less`, which is a new upstream fixture with leading `//` comments. |
-| changed-or-added AST entries without comments | 95 | Adds `math-css-vars.css`, a new upstream expected CSS fixture. |
+| common CST-only movers | 448 | Broad public CST owner/name/span churn from the fold, routed opener cleanup, and grammar reshaping. |
+| common AST movers containing comments | 122 | Mostly comment/trivia/source ownership plus parser-error projection; review before baseline. |
+| common AST movers without comments | 95 | Mostly syntax-error diagnostic hash movement plus custom-property variable-value structural parsing. |
+| changed-or-added AST entries with comments | 123 | Adds `math-css-vars.less`, which is a new upstream fixture with leading `//` comments. |
+| changed-or-added AST entries without comments | 96 | Adds `math-css-vars.css`, a new upstream expected CSS fixture. |
 
-The post-trivia-transfer and mixin-guard diagnostic report leaves the AST
-aggregate, AST throw count, AST mover count, CST throw count, and CST mover count
-unchanged from the previous classified state. The CST aggregate hash moved after
-the later CST naming/ownership cleanup while remaining at 0 throws and 595 moved
-entries, so it still belongs to the CST projection/minimization queue rather
-than a baseline update.
+The custom-property variable-value fix keeps the AST throw count and CST mover
+count stable, while adding three AST movers from newly structural custom
+property `@name` value handling. This still belongs to the named mover review
+and CST projection/minimization queue rather than a baseline update.
 
 ## AST Mover Buckets
 
