@@ -147,4 +147,30 @@ describe('JessError diagnostics', () => {
     expect(diagnostic.reason).not.toContain('CssSyntaxNumber');
     expect(diagnostic.reason).not.toContain('not(peek)');
   });
+
+  it('deduplicates expected tokens before summarizing parser diagnostics', () => {
+    const source = '@unknown url( {\n  width: 20px;\n}';
+    const diagnostic = parserDiagnostic({
+      dialect: 'Less',
+      error: {
+        code: 'parse/syntax-error',
+        offset: source.indexOf('url'),
+        expected: ['";"', '";"']
+      },
+      filePath: 'entry.less',
+      source
+    });
+
+    expect(diagnostic).toMatchObject({
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: 'Missing semicolon.',
+      reason: 'Less expected \';\' before this token.',
+      fix: 'Add the missing \';\' or rewrite the statement.',
+      line: 1,
+      column: 10
+    });
+    expect(diagnostic.message).not.toContain('Expected:');
+    expect(diagnostic.reason).not.toContain('";", ";"');
+  });
 });

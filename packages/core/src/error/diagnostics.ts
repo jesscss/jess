@@ -95,9 +95,9 @@ function parserFailureFrom(error: unknown): ParserFailure | undefined {
       : undefined;
   const expected =
     'expected' in error && Array.isArray(error.expected)
-      ? error.expected.filter(
+      ? Array.from(new Set(error.expected.filter(
           (value): value is string => typeof value === 'string'
-        )
+        )))
       : undefined;
   const code =
     'code' in error
@@ -159,7 +159,7 @@ function expectedClosingDelimiterSummary(
   dialect: string,
   expected: readonly string[] | undefined
 ): ParserExpectedSummary | undefined {
-  if (expected === undefined || expected.length !== 1) {
+  if (expected?.length !== 1) {
     return undefined;
   }
   switch (expected[0]) {
@@ -189,6 +189,21 @@ function expectedClosingDelimiterSummary(
   }
 }
 
+function expectedSemicolonSummary(
+  dialect: string,
+  expected: readonly string[] | undefined
+): ParserExpectedSummary | undefined {
+  if (expected?.length !== 1 || expected[0] !== '";"') {
+    return undefined;
+  }
+  return {
+    code: 'parse/syntax-error',
+    message: 'Missing semicolon.',
+    reason: `${dialect} expected ';' before this token.`,
+    fix: 'Add the missing \';\' or rewrite the statement.'
+  };
+}
+
 function expectedSyntaxSummary(
   dialect: string,
   expected: readonly string[] | undefined
@@ -196,6 +211,7 @@ function expectedSyntaxSummary(
   return (
     expectedValueSummary(dialect, expected)
     ?? expectedClosingDelimiterSummary(dialect, expected)
+    ?? expectedSemicolonSummary(dialect, expected)
   );
 }
 

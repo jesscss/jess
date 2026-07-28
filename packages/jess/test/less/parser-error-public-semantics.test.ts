@@ -292,4 +292,31 @@ describe('Less parser errors through the public AST route', () => {
     expect(result.errors[0]?.message).not.toContain('Expected:');
     expect(result.errors[0]?.reason).not.toContain('The parser expected');
   });
+
+  it('summarizes duplicate semicolon expectations without raw token lists', async () => {
+    const source = [
+      '',
+      '@unknown url( {',
+      '    50% {width: 20px;}',
+      '}'
+    ].join('\n');
+    const result = await new Compiler().renderToResult(
+      { source, filePath: 'at-rules-unmatching-block.less', extension: '.less' },
+      { breakOnError: false }
+    );
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({
+      code: 'parse/syntax-error',
+      phase: 'parse',
+      message: 'Missing semicolon.',
+      reason: 'Less expected \';\' before this token.',
+      fix: 'Add the missing \';\' or rewrite the statement.',
+      line: 2,
+      column: 10,
+      file: { source }
+    });
+    expect(result.errors[0]?.message).not.toContain('Expected:');
+    expect(result.errors[0]?.reason).not.toContain('";", ";"');
+  });
 });
