@@ -143,17 +143,17 @@ parser-shared, CSS, Less, SCSS, and Jess fully compiled with 0 interpreter
 fallbacks, and `pnpm run verify:compose-integrity` passes. Less, SCSS, and Jess
 still carry naming/gating cleanup debt, but not second grammar bodies.
 
-Current 2026-07-27 registry-0.41.0 gate evidence: dependency-order parser/plugin/
+Current 2026-07-28 registry-0.41.0 gate evidence: dependency-order parser/plugin/
 jess builds pass; `pnpm run check:macro` passes with all parser packages fully
 compiled and 0 interpreter fallbacks; `pnpm run verify:compose-integrity` passes
 with exit code 0; and `pnpm run verify:less-alpha` passes its Less parser,
 Less plugin, `jess`, package-export, public-API, path-resolution, Less
 test-data unit, and Less test-data config lanes. The Less oracle fails against
-the checked-in baseline with the current dirty integration aggregates
-`ast=bf61fca63825da2c148c82f20fcf604bc407324ba967b94f46fedb886828fa8f`
-with 115 throws and 110 moved entries, and
-`cst=aee294a40cce49c7d1fb07f5438be3bd2facf21d78c6f786d28304de94c9d21d`
-with 0 throws and 592 moved entries over 711 entries. Do not update the
+the checked-in baseline with the current integration aggregates
+`ast=ff1bb34d9769067671f4befd5ef12fb348ebe377fc434dc89f6e84e34fd9103d`
+with 116 throws and 214 moved entries, and
+`cst=84e9683bc0bfffca57e58c66292340309306ee8166e6b4c691ad51f042b0622c`
+with 0 throws and 595 moved entries over 711 entries. Do not update the
 baseline until the AST movers are reviewed and the broad CST ownership movement
 is either projected as intended host-mode shape churn or minimized. The active
 named-set split is

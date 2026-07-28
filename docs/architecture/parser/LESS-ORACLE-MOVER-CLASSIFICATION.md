@@ -1,6 +1,6 @@
 # Less Oracle Mover Classification
 
-Current classification date: 2026-07-27.
+Current classification date: 2026-07-28.
 
 This file tracks the active red state of `pnpm run oracle:less:byte-identity`
 after the four-grammar fold, comment/trivia cleanup, Parseman `0.41.0`, and the
@@ -28,13 +28,14 @@ Resolved package versions and paths for the current report:
 | `@jesscss/plugin-less` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/syntax/less/jess-plugin-less` |
 | `jess` | `2.0.0-alpha.5` | `/Users/matthew/git/oss/jess/packages/jess` |
 
-Latest report generated from the post-retired-name diagnostics source state:
+Latest report generated from the post-trivia-transfer and mixin-guard diagnostic
+source state:
 
 ```sh
 pnpm --filter @jesscss/parser-shared build
 pnpm run oracle:less:byte-identity
 node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs \
-  > /tmp/jess-less-oracle-current-post-retired-names.json
+  > /tmp/jess-less-oracle-current-20260728-after-trivia-guard.json
 ```
 
 `pnpm run oracle:less:byte-identity` currently reports:
@@ -42,7 +43,7 @@ node packages/syntax/less/less-parser/test/oracle-byte-identity.mjs \
 | surface | committed baseline | current aggregate | throws | common entries moved |
 | --- | --- | --- | ---: | ---: |
 | AST | `309d91e177887c6aa3d140380cd5c78529a77360a427007146a2717c49a7e929` | `ff1bb34d9769067671f4befd5ef12fb348ebe377fc434dc89f6e84e34fd9103d` | 116 | 214 |
-| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `1f28dc8a51a428f93870884cc7d198f8fdf07691c8f00bf28eb308e8be51e3d5` | 0 | 595 |
+| CST | `7819745e6303225316b5af7d68ea9de301e5dd95603e06bca1260d65abb506c4` | `84e9683bc0bfffca57e58c66292340309306ee8166e6b4c691ad51f042b0622c` | 0 | 595 |
 
 Corpus shape:
 
@@ -72,12 +73,12 @@ Raw changed-entry counts, including corpus growth:
 | changed-or-added AST entries with comments | 121 | Adds `math-css-vars.less`, which is a new upstream fixture with leading `//` comments. |
 | changed-or-added AST entries without comments | 95 | Adds `math-css-vars.css`, a new upstream expected CSS fixture. |
 
-The post-retired-name diagnostics report is byte-identical to the pre-slice
-current report at `/tmp/jess-less-oracle-current-20260727.json`: same AST/CST
-aggregates, same throw counts, same 711 corpus entries, and 0 per-entry movers
-between those two current reports. Therefore the new diagnostics commit did not
-introduce additional oracle movement; the oracle remains red against the stale
-committed baseline.
+The post-trivia-transfer and mixin-guard diagnostic report leaves the AST
+aggregate, AST throw count, AST mover count, CST throw count, and CST mover count
+unchanged from the previous classified state. The CST aggregate hash moved after
+the later CST naming/ownership cleanup while remaining at 0 throws and 595 moved
+entries, so it still belongs to the CST projection/minimization queue rather
+than a baseline update.
 
 ## AST Mover Buckets
 
