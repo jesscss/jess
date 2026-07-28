@@ -48,7 +48,6 @@ type CallValue = ValueSlot | MixinCall;
  * MixinDef receives only the semantic Param array. */
 type MixinParameterListFact = { readonly params: readonly Param[] };
 type MixinSignatureFact = { readonly name: string; readonly params: readonly Param[]; readonly guard?: MixinGuard };
-type DeclarationHeadTriviaFact = { readonly text: string; readonly outputBearing: boolean };
 type StaticAttributeMatchFact = { readonly operator: string; readonly value: string; readonly modifier: string | null };
 type StaticAttributeNameFact = { readonly namespace: string; readonly name: string };
 type ExtendTargetFact = { readonly target: SelectorList; readonly partial: boolean };
@@ -1556,12 +1555,6 @@ function isMixinSignatureFact(value: unknown): value is MixinSignatureFact {
     && typeof value.name === 'string' && 'params' in value
     && Array.isArray(value.params) && value.params.every(isParam)
     && (!('guard' in value) || value.guard === undefined || isMixinGuard(value.guard));
-}
-
-function isDeclarationHeadTriviaFact(value: unknown): value is DeclarationHeadTriviaFact {
-  return typeof value === 'object' && value !== null && 'text' in value
-    && typeof value.text === 'string' && 'outputBearing' in value
-    && typeof value.outputBearing === 'boolean';
 }
 
 function isStaticAttributeNameFact(value: unknown): value is StaticAttributeNameFact {
@@ -3313,31 +3306,22 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     },
     { collapse: true }
   );
-  // A block comment between a property and `:` is authored declaration-name
-  // syntax. Preserve it through the existing structural Interpolation name
-  // representation; ordinary whitespace is retained only when such a comment
-  // is present, while Less `//` comments remain non-output lexical trivia.
-  const declarationHeadTrivia: Combinator<DeclarationHeadTriviaFact> = choice(
-    node<DeclarationHeadTriviaFact>('DeclarationHeadBlockComment', blockComment,
-      children => ({ text: requireToken(children[0]).value, outputBearing: true })),
-    node<DeclarationHeadTriviaFact>('DeclarationHeadWhitespace', regex(/[ \t\n\r\f]+/),
-      children => ({ text: requireToken(children[0]).value, outputBearing: false })),
-    node<DeclarationHeadTriviaFact>('DeclarationHeadLineComment', regex(/\/\/[^\n\r]*/),
-      () => ({ text: '', outputBearing: false }))
-  );
+  // Declaration-head gaps are trivia, not declaration-name syntax. The AST keeps
+  // the semantic property name clean; rendering replays output-bearing block
+  // comments from the source trivia map before writing the colon.
+  const DeclarationHead = parser({ trivia: whitespace }, sequence(
+    choice(
+      gatedInterpolatedProperty,
+      g.LessSyntaxNumericMapKey,
+      g.LessSyntaxDeclarationProperty
+    ),
+    optional(sequence(choice(literal('+_'), literal('+')))),
+    literal(':')
+  ));
   const StandardDeclaration = node<Declaration>(
     'Declaration',
     noTrivia(sequence(
-      sequence(
-        choice(
-          gatedInterpolatedProperty,
-          g.LessSyntaxNumericMapKey,
-          g.LessSyntaxDeclarationProperty
-        ),
-        many(declarationHeadTrivia),
-        optional(sequence(choice(literal('+_'), literal('+')), many(declarationHeadTrivia))),
-        literal(':')
-      ),
+      DeclarationHead,
       noTrivia(sequence(
         field('valueGap', regex(/[ \t\n\r\f]*/)),
         // Less accepts an explicit empty declaration value (`margin: ;`). Keep
@@ -3371,21 +3355,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       if (merge !== null && merge !== ',' && merge !== ' ') {
         throw new TypeError('Direct Less AST grammar produced an invalid declaration merge modifier.');
       }
-      const headTrivia = children.filter(isDeclarationHeadTriviaFact);
-      const name = headTrivia.some(trivia => trivia.outputBearing)
-        ? (() => {
-            const parts: Interpolation['parts'] = isInterp(rawName)
-              ? [...rawName.parts]
-              : [{ lit: requireTerminalText(rawName) }];
-            for (const trivia of headTrivia) {
-              appendInterpolationLiteral(parts, trivia.text);
-            }
-            return interpolation(parts);
-          })()
-        : rawName;
       const node = !Array.isArray(value) && isValueNode(value) && value.type === 'Important'
-        ? decl(isInterp(name) ? name : requireToken(name).value, valueSlot(value.inner), merge, true, valueOnNewLine)
-        : decl(isInterp(name) ? name : requireToken(name).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
+        ? decl(isInterp(rawName) ? rawName : requireToken(rawName).value, valueSlot(value.inner), merge, true, valueOnNewLine)
+        : decl(isInterp(rawName) ? rawName : requireToken(rawName).value, Array.isArray(value) ? value : valueSlot(value), merge, false, valueOnNewLine);
       return withSourceSpan(node, span);
     }
   );

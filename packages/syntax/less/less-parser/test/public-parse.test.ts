@@ -693,29 +693,26 @@ describe("public Less parse()", () => {
     );
   });
 
-  it("retains declaration-head block comments structurally in the property interpolation", () => {
-    const document = parse(".card { color/* survive */ /* me too */: grey; }");
+  it('retains declaration-head block comments as trivia, not property-name bytes', () => {
+    const document = parse('.card { color/* survive */ /* me too */: grey; }');
 
     expect(document).toMatchObject({
-      type: "Stylesheet",
+      type: 'Stylesheet',
       children: [
         {
-          type: "Rule",
+          type: 'Rule',
           body: [
             {
-              type: "Declaration",
-              name: {
-                type: "Interpolation",
-                parts: [{ lit: "color/* survive */ /* me too */" }],
-              },
-              value: { type: "Color", src: "grey" },
-            },
-          ],
-        },
-      ],
+              type: 'Declaration',
+              name: 'color',
+              value: { type: 'Color', src: 'grey' }
+            }
+          ]
+        }
+      ]
     });
     expect(serialize(document).css).toBe(
-      ".card {\n  color/* survive */ /* me too */: grey;\n}\n"
+      '.card {\n  color/* survive */ /* me too */: grey;\n}\n'
     );
   });
 
