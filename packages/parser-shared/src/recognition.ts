@@ -5,7 +5,7 @@
  * Consumers macro-fuse this compiled artifact with their local reductions. It
  * contains recognition only: no AST construction or runtime composition seam.
  */
-import { keywords, literal, noTrivia, regex, rules, sequence, word } from 'parseman' with { type: 'macro' };
+import { keywords, literal, noTrivia, optional, regex, rules, sequence, token, word } from 'parseman' with { type: 'macro' };
 
 const cssIdentifier = regex(/-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
 const propertyName = cssIdentifier;
@@ -290,7 +290,10 @@ const lessNamedColor = keywords(
   ],
   { caseInsensitive: true, boundary: '-_a-zA-Z0-9(' }
 );
-const lessDeclarationProperty = regex(/\*?-?(?:[_a-zA-Z\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))*/);
+const lessDeclarationProperty = token(noTrivia(sequence(
+  optional(literal('*')),
+  cssIdentifier
+)));
 
 /*
  * Less detached-ruleset maps admit numeric member names (`@grays: { 100: ... }`).
