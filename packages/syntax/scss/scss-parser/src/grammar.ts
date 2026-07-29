@@ -75,8 +75,8 @@ type ScssRules = {
   DirectScssCustomValue: Combinator<ValueNode>;
   DirectScssCustomDeclaration: Combinator<Declaration>;
   DirectScssDeclaration: Combinator<Declaration>;
-  DirectScssStaticNestedPropertyLeaf: Combinator<Declaration>;
-  DirectScssStaticNestedProperty: Combinator<Declaration>;
+  StaticNestedPropertyLeaf: Combinator<Declaration>;
+  StaticNestedProperty: Combinator<Declaration>;
   StaticImportRule: Combinator<ImportAtRule>;
   UseNamespace: Combinator<string>;
   UseRule: Combinator<StyleImport | ModuleImport>;
@@ -1223,7 +1223,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * reach. Closed regex/literal arms, so nothing shared is affected.
    */
   const StaticValueQuoted = node<Quoted>(
-    'DirectScssStaticValueQuoted',
+    'StaticValueQuoted',
     choice(
       noTrivia(sequence(
         literal('"'),
@@ -1979,7 +1979,7 @@ export const scssFactory = (g: ScssInputRules) => {
         return custom;
       }
       if (children.length < 3 || children.length > 6) {
-        throw new TypeError('DirectScssDeclaration produced unexpected children.');
+        throw new TypeError('SCSS declaration produced unexpected children.');
       }
       const isImportant = children.includes(true);
 
@@ -2016,8 +2016,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * nested properties and @extend are not legacy body forms, so this direct
    * grammar does not create extensions for them either.
    */
-  const DirectScssStaticNestedPropertyLeaf = node<Declaration>(
-    'DirectScssStaticNestedPropertyLeaf',
+  const StaticNestedPropertyLeaf = node<Declaration>(
+    'StaticNestedPropertyLeaf',
     sequence(
       choice(
         g.DirectScssInterpolatedProperty,
@@ -2049,9 +2049,9 @@ export const scssFactory = (g: ScssInputRules) => {
    * so the positional reducer below is unaffected.
    */
   const directNestedPropertyAhead = not(regex(/[^{};]*[;}]/));
-  const DirectScssStaticNestedProperty = node<Declaration>(
-    'DirectScssStaticNestedProperty',
-    choice(sequence(
+  const StaticNestedProperty = node<Declaration>(
+    'StaticNestedProperty',
+    sequence(
       directNestedPropertyAhead,
       choice(
         g.DirectScssInterpolatedProperty,
@@ -2060,22 +2060,22 @@ export const scssFactory = (g: ScssInputRules) => {
       literal(':'),
       optional(g.Value),
       literal('{'),
-      many(g.DirectScssStaticNestedPropertyLeaf),
+      many(g.StaticNestedPropertyLeaf),
       literal('}'),
       optional(g.Important),
       optional(literal(';'))
-    )),
+    ),
     (children) => {
       const prefix = isInterpolation(children[0]) ? children[0] : requireToken(children[0]).value;
       const open = children.findIndex(child => isToken(child) && child.value === '{');
       const close = children.findIndex((child, index) => index > open && isToken(child) && child.value === '}');
       if (open < 0 || close < 0) {
-        throw new TypeError('Direct SCSS nested property lost its block delimiters.');
+        throw new TypeError('SCSS nested property lost its block delimiters.');
       }
       const ownValue = open > 2 && isValueSlotValue(children[2]) ? children[2] : null;
       const ownImportant = children.includes(true);
       if (ownImportant && ownValue === null) {
-        throw new TypeError('Direct SCSS nested property cannot apply !important without an own declaration value.');
+        throw new TypeError('SCSS nested property cannot apply !important without an own declaration value.');
       }
 
       /*
@@ -2089,7 +2089,7 @@ export const scssFactory = (g: ScssInputRules) => {
         if (isDeclaration(child)) {
           entries.push(child);
         } else {
-          throw new TypeError('Direct SCSS nested property produced a non-declaration child.');
+          throw new TypeError('SCSS nested property produced a non-declaration child.');
         }
       }
       return decl(
@@ -2657,7 +2657,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * front of the two arms this prefix deliberately leads with.
    */
   const nestedBodyPrefix = choice(
-    g.DirectScssStaticNestedProperty,
+    g.StaticNestedProperty,
     g.DirectScssDeclaration,
     g.DirectScssComment,
     g.StaticImportRule,
@@ -3025,7 +3025,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.DirectScssComment,
         g.StaticImportRule,
         g.VariableDeclaration,
-        g.DirectScssStaticNestedProperty,
+        g.StaticNestedProperty,
         g.DirectScssDeclaration,
         g.IfStaticConditionalBlock,
         g.DirectScssDocumentBlock,
@@ -3663,9 +3663,9 @@ export const scssFactory = (g: ScssInputRules) => {
    * Statement headers need the same static nested syntax as block headers but
    * must leave their top-level semicolon to the statement production.
    */
-  const directScssStaticStatementPreludeText = regex(/(?:[^#;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
-  const DirectScssStaticStatementPrelude = node<ValueNode | null>(
-    'DirectScssStaticStatementPrelude',
+  const staticStatementPreludeText = regex(/(?:[^#;()\[\]{}'"\\/]|\\[\s\S]|#(?!\{)|\/(?![/*]))+/);
+  const StaticStatementPrelude = node<ValueNode | null>(
+    'StaticStatementPrelude',
     noTrivia(many(choice(
       g.StaticAtPreludeParen,
       g.StaticAtPreludeSquare,
@@ -3673,7 +3673,7 @@ export const scssFactory = (g: ScssInputRules) => {
       g.StaticAtPreludeSingleQuoted,
       g.CssSyntaxBlockComment,
       g.ScssSyntaxLineComment,
-      directScssStaticStatementPreludeText
+      staticStatementPreludeText
     ))),
     (children) => {
       /*
@@ -3694,7 +3694,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssAtRuleStatement',
     sequence(
       regex(/@(?:charset|namespace|layer)(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      DirectScssStaticStatementPrelude,
+      StaticStatementPrelude,
       literal(';')
     ),
     children => atRuleStatement(
@@ -4971,8 +4971,8 @@ export const scssFactory = (g: ScssInputRules) => {
     DirectScssCustomValue,
     DirectScssCustomDeclaration,
     DirectScssDeclaration,
-    DirectScssStaticNestedPropertyLeaf,
-    DirectScssStaticNestedProperty,
+    StaticNestedPropertyLeaf,
+    StaticNestedProperty,
     StaticImportRule,
     UseNamespace,
     UseRule,
