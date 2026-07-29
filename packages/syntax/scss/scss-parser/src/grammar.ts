@@ -42,16 +42,16 @@ type ScssRules = {
   SassInterpolation: Combinator<Interpolation>;
   DirectScssQuoted: Combinator<Quoted | Interpolation>;
   DirectScssStaticQuoted: Combinator<Quoted>;
-  DirectScssKeyword: Combinator<Keyword>;
+  Keyword: Combinator<Keyword>;
   DirectScssCustomPropertyValue: Combinator<Keyword>;
-  DirectScssColor: Combinator<Color>;
+  Color: Combinator<Color>;
   DirectScssUnicodeRange: Combinator<ValueNode>;
-  DirectScssDimension: Combinator<Dimension>;
+  Dimension: Combinator<Dimension>;
   DirectScssInterpolatedUrlValue: Combinator<Interpolation>;
   DirectScssInterpolatedValue: Combinator<Interpolation>;
   DirectScssParen: Combinator<ValueNode>;
-  DirectScssMapEntry: Combinator<Declaration>;
-  DirectScssMap: Combinator<Collection>;
+  MapEntry: Combinator<Declaration>;
+  Map: Combinator<Collection>;
   DirectScssReturn: Combinator<Declaration>;
   DirectScssFunction: Combinator<VariableDeclaration>;
   DirectScssSquare: Combinator<ValueNode>;
@@ -61,9 +61,9 @@ type ScssRules = {
   DirectScssMathSum: Combinator<ValueNode>;
   DirectScssMathTopProduct: Combinator<ValueNode>;
   DirectScssMathTopSum: Combinator<ValueNode>;
-  DirectScssValueTerm: Combinator<ValueSlot>;
-  DirectScssValuePair: Combinator<ScssValuePair>;
-  DirectScssValue: Combinator<ValueSlot>;
+  ValueTerm: Combinator<ValueSlot>;
+  ValuePair: Combinator<ScssValuePair>;
+  Value: Combinator<ValueSlot>;
   DirectScssImportant: Combinator<true>;
   DirectScssInterpolatedProperty: Combinator<Interpolation>;
   DirectScssCustomPropertyName: Combinator<string | Interpolation>;
@@ -1120,7 +1120,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'SassInterpolation',
     sequence(
       literal('#{'),
-      g.DirectScssValue,
+      g.Value,
       literal('}')
     ),
     children => interpolation([{ ref: requireValue(children[1]), unquote: true }])
@@ -1251,8 +1251,8 @@ export const scssFactory = (g: ScssInputRules) => {
       span
     )
   );
-  const DirectScssKeyword = node<Keyword>(
-    'DirectScssKeyword',
+  const Keyword = node<Keyword>(
+    'Keyword',
     g.CssSyntaxKeyword,
     children => keyword(requireToken(children[0]).value)
   );
@@ -1261,8 +1261,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.CssSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectScssColor = node<Color>(
-    'DirectScssColor',
+  const Color = node<Color>(
+    'Color',
     hexColor,
     children => color(requireToken(children[0]).value)
   );
@@ -1277,8 +1277,8 @@ export const scssFactory = (g: ScssInputRules) => {
     g.CssSyntaxUnicodeRange,
     children => any(requireToken(children[0]).value)
   );
-  const DirectScssDimension = node<Dimension>(
-    'DirectScssDimension',
+  const Dimension = node<Dimension>(
+    'Dimension',
     noTrivia(sequence(
       numberValue,
       optional(g.CssSyntaxDimensionUnit)
@@ -1326,7 +1326,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * Interpolation-LED value leaf: an interpolation at the value start, then any
    * mix of identifier chunks and further interpolations (`#{$x}foo#{$y}`). The
    * identifier-LED spelling (`foo#{$x}bar`) and the plain keyword are both owned
-   * by the merged `DirectScssKeywordOrInterpolatedValue` terminal below, so this
+   * by the merged `KeywordOrInterpolatedValue` terminal below, so this
    * production never speculatively scans a leading identifier for an ordinary
    * keyword value and then backtracks. Because it requires `#{` first, it also
    * cannot capture a `--name#{...}` token, which the old leading-identifier arm
@@ -1362,7 +1362,7 @@ export const scssFactory = (g: ScssInputRules) => {
       )),
       noTrivia(sequence(
         literal('('),
-        g.DirectScssValue,
+        g.Value,
         literal(')')
       ))
     ),
@@ -1377,7 +1377,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssSquare',
     noTrivia(sequence(
       literal('['),
-      g.DirectScssValue,
+      g.Value,
       literal(']')
     )),
     children => block(
@@ -1392,14 +1392,14 @@ export const scssFactory = (g: ScssInputRules) => {
    * (a space/slash list, never a comma list — commas separate entries). It lowers
    * to a Collection entry: a leaf-named Declaration.
    */
-  const DirectScssMapEntry = node<Declaration>(
-    'DirectScssMapEntry',
+  const MapEntry = node<Declaration>(
+    'MapEntry',
     noTrivia(sequence(
       g.DirectScssMathTopSum,
       optional(valueTrivia),
       literal(':'),
       optional(valueTrivia),
-      g.DirectScssValueTerm
+      g.ValueTerm
     )),
     children => decl(
       mapKeyName(requireValue(children[0])),
@@ -1415,18 +1415,18 @@ export const scssFactory = (g: ScssInputRules) => {
    * value-atom choice; when no entry carries a colon it backtracks to the paren
    * list/arithmetic form.
    */
-  const DirectScssMap = node<Collection>(
-    'DirectScssMap',
+  const Map = node<Collection>(
+    'Map',
     choice(
       noTrivia(sequence(
         literal('('),
         optional(valueTrivia),
-        g.DirectScssMapEntry,
+        g.MapEntry,
         many(noTrivia(sequence(
           optional(valueTrivia),
           literal(','),
           optional(valueTrivia),
-          g.DirectScssMapEntry
+          g.MapEntry
         ))),
         optional(noTrivia(sequence(
           optional(valueTrivia),
@@ -1484,8 +1484,8 @@ export const scssFactory = (g: ScssInputRules) => {
       routed(),
       optional(valueTrivia),
       optional(sequence(
-        g.DirectScssValueTerm,
-        many(g.DirectScssValuePair)
+        g.ValueTerm,
+        many(g.ValuePair)
       )),
       optional(valueTrivia),
       literal(')')
@@ -1493,7 +1493,7 @@ export const scssFactory = (g: ScssInputRules) => {
     children => reduceScssCall(requireToken(children[0]).value.slice(0, -1), children, 0)
   );
   const KeywordOrInterpolatedValue = node<ValueNode>(
-    'DirectScssKeywordOrInterpolatedValue',
+    'KeywordOrInterpolatedValue',
     sequence(
       routed(),
       many(choice(
@@ -1529,12 +1529,12 @@ export const scssFactory = (g: ScssInputRules) => {
       g.DirectScssQuoted,
       g.DirectScssInterpolatedValue,
       g.DirectScssVarReference,
-      g.DirectScssColor,
-      g.DirectScssDimension,
+      g.Color,
+      g.Dimension,
       g.DirectScssCustomPropertyValue,
       g.DirectScssUnicodeRange,
       IdentifierOrFunction,
-      g.DirectScssMap,
+      g.Map,
       g.DirectScssParen,
       g.DirectScssSquare
     ),
@@ -1631,8 +1631,8 @@ export const scssFactory = (g: ScssInputRules) => {
     )),
     foldOperation
   );
-  const DirectScssValueTail = node<ScssValueTail>(
-    'DirectScssValueTail',
+  const ValueTail = node<ScssValueTail>(
+    'ValueTail',
     choice(
       sequence(
         valueTrivia,
@@ -1657,11 +1657,11 @@ export const scssFactory = (g: ScssInputRules) => {
       return { kind: 'slash', value, separator: `${separators[0] ?? ''}/${separators[1] ?? ''}` };
     }
   );
-  const DirectScssValueTerm = node<ValueSlot>(
-    'DirectScssValueTerm',
+  const ValueTerm = node<ValueSlot>(
+    'ValueTerm',
     noTrivia(sequence(
       g.DirectScssMathTopSum,
-      many(DirectScssValueTail)
+      many(ValueTail)
     )),
     (children) => {
       const groups: ValueNode[][] = [[requireValue(children[0])]];
@@ -1692,19 +1692,19 @@ export const scssFactory = (g: ScssInputRules) => {
           );
     }
   );
-  const DirectScssValuePair = node<ScssValuePair>(
-    'DirectScssValuePair',
+  const ValuePair = node<ScssValuePair>(
+    'ValuePair',
     noTrivia(sequence(
       literal(','),
       optional(valueTrivia),
-      g.DirectScssValueTerm
+      g.ValueTerm
     )),
     (children) => {
       if (children.length !== 2 && children.length !== 3) {
-        throw new TypeError('DirectScssValuePair produced unexpected children.');
+        throw new TypeError('ValuePair produced unexpected children.');
       }
       if (requireToken(children[0]).value !== ',') {
-        throw new TypeError('DirectScssValuePair lost its comma.');
+        throw new TypeError('ValuePair lost its comma.');
       }
       const separator = children.length === 3
         ? `,${requireToken(children[1]).value}`
@@ -1712,11 +1712,11 @@ export const scssFactory = (g: ScssInputRules) => {
       return { separator, value: requireValueSlot(children[children.length - 1]) };
     }
   );
-  const DirectScssValue = node<ValueSlot>(
-    'DirectScssValue',
+  const Value = node<ValueSlot>(
+    'Value',
     sequence(
-      g.DirectScssValueTerm,
-      many(g.DirectScssValuePair)
+      g.ValueTerm,
+      many(g.ValuePair)
     ),
     (children) => {
       const first = requireValueSlot(children[0]);
@@ -1746,7 +1746,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       scssVarSigilName,
       literal(':'),
-      g.DirectScssValue,
+      g.Value,
       optional(choice(
         literal('!default'),
         literal('!global')
@@ -1963,7 +1963,7 @@ export const scssFactory = (g: ScssInputRules) => {
           propertyName
         ),
         literal(':'),
-        g.DirectScssValue,
+        g.Value,
         optional(g.DirectScssImportant),
         optional(literal(';'))
       )
@@ -2024,7 +2024,7 @@ export const scssFactory = (g: ScssInputRules) => {
         propertyName
       ),
       literal(':'),
-      g.DirectScssValue,
+      g.Value,
       optional(literal(';'))
     ),
     children => decl(
@@ -2058,7 +2058,7 @@ export const scssFactory = (g: ScssInputRules) => {
         propertyName
       ),
       literal(':'),
-      optional(g.DirectScssValue),
+      optional(g.Value),
       literal('{'),
       many(g.DirectScssStaticNestedPropertyLeaf),
       literal('}'),
@@ -2147,7 +2147,7 @@ export const scssFactory = (g: ScssInputRules) => {
       noTrivia(sequence(
         regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i),
         literal('('),
-        g.DirectScssKeyword,
+        g.Keyword,
         literal(')')
       )),
       noTrivia(regex(/layer(?![-_a-zA-Z0-9\u0080-\uffff])/i))
@@ -2293,7 +2293,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssStaticImportMediaNonOnlyKeyword',
     sequence(
       not(g.CssSyntaxQueryOnly),
-      g.DirectScssKeyword
+      g.Keyword
     ),
     children => requireKeyword(children.at(-1))
   );
@@ -2497,7 +2497,7 @@ export const scssFactory = (g: ScssInputRules) => {
         directMixinParamName,
         optional(sequence(
           literal(':'),
-          g.DirectScssValueTerm
+          g.ValueTerm
         )),
         optional(literal('...'))
       )
@@ -2533,13 +2533,13 @@ export const scssFactory = (g: ScssInputRules) => {
       sequence(
         directMixinParamName,
         literal(':'),
-        g.DirectScssValueTerm
+        g.ValueTerm
       ),
       sequence(
-        g.DirectScssValueTerm,
+        g.ValueTerm,
         literal('...')
       ),
-      g.DirectScssValueTerm
+      g.ValueTerm
     ),
     (children) => {
       const value = children.find(isValueSlotValue);
@@ -2761,7 +2761,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssReturn',
     sequence(
       regex(/@return(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.DirectScssValue,
+      g.Value,
       optional(literal(';'))
     ),
     children => decl(
@@ -2847,7 +2847,7 @@ export const scssFactory = (g: ScssInputRules) => {
       regex(/@each(?![-_a-zA-Z0-9\u0080-\uffff])/i),
       g.DirectScssEachBinding,
       regex(/\bin\b/),
-      g.DirectScssValue,
+      g.Value,
       literal('{'),
       directScssNestedBody,
       literal('}')
@@ -3341,7 +3341,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssQueryNonOnlyKeyword',
     sequence(
       not(g.CssSyntaxQueryOnly),
-      g.DirectScssKeyword
+      g.Keyword
     ),
     children => requireKeyword(children.at(-1))
   );
@@ -3409,10 +3409,10 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssSupportsAtom',
     choice(
       StaticValueQuoted,
-      g.DirectScssColor,
-      g.DirectScssDimension,
+      g.Color,
+      g.Dimension,
       g.DirectScssCustomPropertyValue,
-      g.DirectScssKeyword
+      g.Keyword
     ),
     children => requireValue(children[0])
   );
@@ -4127,7 +4127,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'DirectScssCounterStyle',
     sequence(
       regex(/@counter-style(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      g.DirectScssKeyword,
+      g.Keyword,
       literal('{'),
       many(choice(
         g.DirectScssComment,
@@ -4251,7 +4251,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       g.CssSyntaxKeyframesAtKeyword,
       choice(
-        g.DirectScssKeyword,
+        g.Keyword,
         StaticValueQuoted
       ),
       literal('{'),
@@ -4938,16 +4938,16 @@ export const scssFactory = (g: ScssInputRules) => {
     SassInterpolation,
     DirectScssQuoted,
     DirectScssStaticQuoted,
-    DirectScssKeyword,
+    Keyword,
     DirectScssCustomPropertyValue,
-    DirectScssColor,
+    Color,
     DirectScssUnicodeRange,
-    DirectScssDimension,
+    Dimension,
     DirectScssInterpolatedUrlValue,
     DirectScssInterpolatedValue,
     DirectScssParen,
-    DirectScssMapEntry,
-    DirectScssMap,
+    MapEntry,
+    Map,
     DirectScssReturn,
     DirectScssFunction,
     DirectScssSquare,
@@ -4957,9 +4957,9 @@ export const scssFactory = (g: ScssInputRules) => {
     DirectScssMathSum,
     DirectScssMathTopProduct,
     DirectScssMathTopSum,
-    DirectScssValueTerm,
-    DirectScssValuePair,
-    DirectScssValue,
+    ValueTerm,
+    ValuePair,
+    Value,
     DirectScssImportant,
     DirectScssInterpolatedProperty,
     DirectScssCustomPropertyName,
