@@ -89,8 +89,10 @@ the scanner is still the narrow accepted representation and a comment, quote, or
 balanced group must not terminate that specific opaque span. Do not tune a
 scanner skip list as a substitute for moving the language back into grammar
 structure. In the same pass, keep burning down false migration prefixes and use
-`dispatch(...)` only when `choice(...)` is truly re-reading one broad routed
-opener with known cases plus a same-family generic fallback.
+`dispatch(...)` when `choice(...)` is re-reading one routed opener, one
+decisive delimiter, or one same-family known/generic token. Treat `peek(...)`
+as a temporary exception: if a branch only works by looking ahead, first ask
+what shared opener or delimiter could be consumed once and routed instead.
 
 Current scanner-skip inventory, 2026-07-29: CSS custom/value scans are now mostly
 reduced to local balanced-group exceptions, with `customSlash` kept only inside
@@ -103,12 +105,29 @@ exceptions for now, but they should move toward a trivia-aware structured
 unknown-at-rule helper before adding more scanner policy there. Less
 `lessOpaqueBodyBrace`, `lessOpaqueBodyCapture`, and `atPreludeGroup` now inherit
 the root ambient `scanSkip`; the remaining Less scanner debt is the
-function-condition lookahead scan and the larger opaque-helper design, not local
-string/comment skip duplication. SCSS `QueryFunction` and Jess generic pseudo
-raw arguments are separate follow-ups: SCSS has ambient scan skips but also
-routes through composed quoted syntax, while Jess currently lacks a root
-`scanSkip` policy and must decide that grammar shape before shrinking the pseudo
-scanner.
+function-condition branch probe, statement-position mixin/ruleset/property
+ambiguity, and the larger opaque-helper design, not local string/comment skip
+duplication. The function-condition probe must not settle as "peek instead of
+not-not"; it needs a structural condition-argument boundary or value-sensitive
+combinator shape. SCSS `QueryFunction` and Jess generic pseudo raw arguments are
+separate follow-ups: SCSS has ambient scan skips but also routes through
+composed quoted syntax, while Jess currently lacks a root `scanSkip` policy and
+must decide that grammar shape before shrinking the pseudo scanner.
+Less mixin-reference routing, 2026-07-29: the value-position
+`mixinReferenceAhead` probe was replaced by a typed shared mixin-reference base
+plus `dispatch(...)` on the first accessor delimiter (`[]`, `[`, `.`, or `(`).
+Patch-only evidence versus clean `HEAD`: AST aggregate unchanged
+(`c00bbb90...`, 117 throws), CST moved 14 named entries because the routed base
+is now explicit, and `check:macro` / `verify:compose-integrity` still report 0
+interpreter fallbacks. The next related cut is not another `peek(...)` rewrite:
+statement-position Less selectors should parse the opening selector shape once
+and route by early syntax. Class/id starts split into qualified rule versus a
+mixin dispatcher; that mixin dispatcher then decides definition versus call
+from the parsed continuation and should preserve the original branch error once
+the branch is known. Plain identifiers split into qualified rule versus property
+dispatch. Other selector starts remain qualified-rule parsing. This mirrors the
+old Chevrotain "parse wide once, store the losing-side error, then throw the
+selected original error" strategy without backtracking or broad lookahead.
 
 Live alpha evidence, 2026-07-27: registry `parseman@0.41.0` is installed;
 dependency-order parser/plugin/jess builds pass; `pnpm run check:macro` and
@@ -567,7 +586,9 @@ state.
    delete `DirectLess*` migration names as each family is reviewed, replace broad
    known/generic `choice(...)` arms with Parseman 0.41
    `dispatch(...)`/`routed()` routes, keep selector and value regions parsed
-   once, document Less-specific deviations from CSS placement rules, and resolve
+   once, replace statement-position class/id and identifier lookahead with
+   parse-once routing, document Less-specific deviations from CSS placement
+   rules, and resolve
    the current folded at-rule/prelude CST oracle delta before claiming a clean
    byte-identity baseline.
    SCSS-only seams have already been cut from Less; do not restore them to make
