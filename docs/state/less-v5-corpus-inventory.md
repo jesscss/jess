@@ -60,11 +60,9 @@ These are the 16 cases exercised by the alpha fixture command today:
 
 The named reason beside every entry remains in
 `expectedFailureFixtures`; update that reason and this classification together.
-`import/import` also has a fixture-specific timeout because first-use JS
-plugin/import setup can exceed the default 5s hang sentinel before settling as a
-diagnostic-bearing expected failure. That timeout is not parity evidence; it
-exists so the underlying failure remains visible, and the harness asserts the
-settled `resolve/name-not-found` diagnostic code.
+`import/import` must settle under the normal short hang sentinel and surface the
+expected `resolve/name-not-found` diagnostic code. A timeout is a harness failure,
+not parity evidence.
 `process-imports/google`, `namespacing/namespacing-8`,
 `namespacing/namespacing-functions`, and `namespacing/namespacing-media` are now
 ordinary passes; `functions/functions` is active in the alpha lane and remains
