@@ -318,9 +318,12 @@ external branch at `packages/test-data/UPSTREAM-FIXTURE-SYNC.md`. Replay upstrea
 changes into the Less 5 alpha branch as v5/Jess fixtures; do not copy upstream
 expected CSS blindly. Upstream `master` is the Less 4.x line; the Less 5 alpha
 branch succeeds that line and owns the Less 5 nesting, deprecation, parser, and
-output semantics. Verification on 2026-07-28 showed the PR branch is caught up
-with `upstream/alpha`; `upstream/master` is 40 commits ahead in total, and its
-fixture-affecting commits are the scout entries below. Current classification:
+output semantics. Verification on 2026-07-29 after fetching `origin` and
+`upstream` showed the PR branch remains caught up with `upstream/alpha`
+(`less-5-alpha.1...upstream/alpha` = `125 0`), while `upstream/master` remains
+40 commits ahead of the PR branch on the upstream side. The scoped
+`packages/test-data` / test-harness diff is 40 files, and its fixture-affecting
+commits are the scout entries below. Current classification:
 
 - **Ported or represented for alpha.1:** selector regressions (#4422),
   media-query parentheses (#4427), `not`/condition regressions (#4421),
