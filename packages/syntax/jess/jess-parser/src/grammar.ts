@@ -82,16 +82,16 @@ type JessRules = {
   ValueTerm: Combinator<ValueSlot>;
   Value: Combinator<ValueSlot>;
   Important: Combinator<true>;
-  DirectJessCustomPropertyValue: Combinator<Keyword>;
-  DirectJessCustomPropertyName: Combinator<string | Interpolation>;
-  DirectJessCustomPart: Combinator<unknown>;
-  DirectJessCustomInnerPart: Combinator<unknown>;
-  DirectJessCustomParen: Combinator<readonly unknown[]>;
-  DirectJessCustomSquare: Combinator<readonly unknown[]>;
-  DirectJessCustomCurly: Combinator<readonly unknown[]>;
-  DirectJessCustomValue: Combinator<ValueNode>;
-  DirectJessCustomDeclaration: Combinator<Declaration>;
-  DirectJessDeclaration: Combinator<Declaration>;
+  CustomPropertyValue: Combinator<Keyword>;
+  CustomPropertyName: Combinator<string | Interpolation>;
+  CustomPart: Combinator<unknown>;
+  CustomInnerPart: Combinator<unknown>;
+  CustomParen: Combinator<readonly unknown[]>;
+  CustomSquare: Combinator<readonly unknown[]>;
+  CustomCurly: Combinator<readonly unknown[]>;
+  CustomValue: Combinator<ValueNode>;
+  CustomDeclaration: Combinator<Declaration>;
+  Declaration: Combinator<Declaration>;
   MixinParam: Combinator<Param>;
   MixinParams: Combinator<Param[]>;
   MixinCallArgument: Combinator<JessMixinCallArgument>;
@@ -3140,7 +3140,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Keyword leaf; give it its own arm just ahead of Keyword, which shares the
    * leading `-` but can never match a second one.
    */
-  const DirectJessCustomPropertyValue = node<Keyword>(
+  const CustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
     g.CssSyntaxCustomProperty,
     children => keyword(requireToken(children[0]).value)
@@ -3149,7 +3149,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     token(g.CssSyntaxCustomProperty),
     token(g.CssSyntaxKeyword)
   );
-  const CustomPropertyValue = node<Keyword>(
+  const RoutedCustomPropertyValue = node<Keyword>(
     'CustomPropertyValue',
     routed(),
     children => keyword(requireToken(children[0]).value)
@@ -3169,7 +3169,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     keywordToken,
     when(
       startsWith('--'),
-      CustomPropertyValue
+      RoutedCustomPropertyValue
     ),
     otherwise(KeywordValue)
   );
@@ -3349,7 +3349,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.StaticQuoted,
       g.Color,
       g.Dimension,
-      g.DirectJessCustomPropertyValue,
+      g.CustomPropertyValue,
       g.Keyword
     ),
     children => requireValueNode(children[0])
@@ -4158,7 +4158,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.MixinCall,
     g.ValueBlockDeclaration,
     g.VariableDeclaration,
-    g.DirectJessDeclaration,
+    g.Declaration,
     g.MixinDef,
     g.ReferenceCall,
     g.Apply,
@@ -4184,7 +4184,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.MixinCall,
     g.ValueBlockDeclaration,
     g.VariableDeclaration,
-    g.DirectJessDeclaration,
+    g.Declaration,
     g.MixinDef,
     g.For,
     g.If,
@@ -4295,7 +4295,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       )),
       literal('{'),
       many(choice(
-        g.DirectJessDeclaration,
+        g.Declaration,
         literal(';')
       )),
       literal('}')
@@ -4381,7 +4381,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   /*
    * A variable assignment IS a declaration, so `;` separates it from the next
    * declaration rather than terminating it (css-syntax-3 §5.4.7) — exactly the
-   * rule `DirectJessDeclaration` already follows. The last declaration in a list
+   * rule `Declaration` already follows. The last declaration in a list
    * needs no `;`, so the terminator is optional here too; there is no separate
    * "variable assignment" termination category.
    */
@@ -4452,7 +4452,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * real interpolated property is never skipped.
    */
   const directInterpPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
-  const DirectJessInterpolatedProperty = node<Interpolation>(
+  const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     noTrivia(sequence(
       directInterpPropertyAhead,
@@ -4492,7 +4492,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * the custom-property leaf, or that leaf's `--` prefix followed by `$[…]`
    * segments.
    */
-  const DirectJessCustomPropertyName = node<string | Interpolation>(
+  const CustomPropertyName = node<string | Interpolation>(
     'CustomPropertyName',
     choice(
       noTrivia(sequence(
@@ -4528,59 +4528,59 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * reference. Delimiters recurse as grammar children rather than being captured
    * as one opaque span, so an inner `;` or `}` cannot end the declaration.
    */
-  const DirectJessCustomParen = node<readonly unknown[]>(
+  const CustomParen = node<readonly unknown[]>(
     'CustomParen',
     noTrivia(sequence(
       literal('('),
-      many(g.DirectJessCustomInnerPart),
+      many(g.CustomInnerPart),
       literal(')')
     )),
     children => children.slice()
   );
-  const DirectJessCustomSquare = node<readonly unknown[]>(
+  const CustomSquare = node<readonly unknown[]>(
     'CustomSquare',
     noTrivia(sequence(
       literal('['),
-      many(g.DirectJessCustomInnerPart),
+      many(g.CustomInnerPart),
       literal(']')
     )),
     children => children.slice()
   );
-  const DirectJessCustomCurly = node<readonly unknown[]>(
+  const CustomCurly = node<readonly unknown[]>(
     'CustomCurly',
     noTrivia(sequence(
       literal('{'),
-      many(g.DirectJessCustomInnerPart),
+      many(g.CustomInnerPart),
       literal('}')
     )),
     children => children.slice()
   );
-  const DirectJessCustomInnerPart: Combinator<unknown> = choice(
+  const CustomInnerPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CssSyntaxCustomInnerContent,
     blockComment,
     g.CssSyntaxCustomSingleQuoted,
     g.CssSyntaxCustomDoubleQuoted,
-    g.DirectJessCustomParen,
-    g.DirectJessCustomSquare,
-    g.DirectJessCustomCurly
+    g.CustomParen,
+    g.CustomSquare,
+    g.CustomCurly
   );
-  const DirectJessCustomPart: Combinator<unknown> = choice(
+  const CustomPart: Combinator<unknown> = choice(
     g.DollarBrace,
     g.CssSyntaxCustomOuterContent,
     blockComment,
     g.CssSyntaxCustomSingleQuoted,
     g.CssSyntaxCustomDoubleQuoted,
-    g.DirectJessCustomParen,
-    g.DirectJessCustomSquare,
-    g.DirectJessCustomCurly
+    g.CustomParen,
+    g.CustomSquare,
+    g.CustomCurly
   );
-  const DirectJessCustomValue = node<ValueNode>(
+  const CustomValue = node<ValueNode>(
     'CustomValue',
-    noTrivia(many(g.DirectJessCustomPart)),
+    noTrivia(many(g.CustomPart)),
     children => customValueFromChildren(children)
   );
-  const DirectJessCustomDeclaration = node<Declaration>(
+  const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
 
     /*
@@ -4591,16 +4591,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      * declaration tail below.
      */
     sequence(
-      g.DirectJessCustomPropertyName,
+      g.CustomPropertyName,
       literal(':'),
-      g.DirectJessCustomValue,
+      g.CustomValue,
       optional(g.Important),
       optional(literal(';'))
     ),
     (children) => {
       const name = children[0];
       if (typeof name !== 'string' && !isInterpolation(name)) {
-        throw new TypeError('Direct Jess AST grammar produced a custom declaration without a name.');
+        throw new TypeError('Jess grammar produced a custom declaration without a name.');
       }
 
       /*
@@ -4609,7 +4609,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        */
       const value = children[2];
       if (!isValueNode(value)) {
-        throw new TypeError('Direct Jess AST grammar produced an incomplete custom declaration.');
+        throw new TypeError('Jess grammar produced an incomplete custom declaration.');
       }
       return decl(
         name,
@@ -4619,13 +4619,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessDeclaration = node<Declaration>(
+  const Declaration = node<Declaration>(
     'Declaration',
     choice(
-      g.DirectJessCustomDeclaration,
+      g.CustomDeclaration,
       sequence(
         choice(
-          DirectJessInterpolatedProperty,
+          InterpolatedProperty,
           g.CssSyntaxProperty
         ),
         literal(':'),
@@ -5419,7 +5419,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.MixinCall,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
-        g.DirectJessDeclaration,
+        g.Declaration,
         g.MixinDef,
         g.For,
         g.If,
@@ -5601,16 +5601,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ValueTerm,
     Value,
     Important,
-    DirectJessCustomPropertyValue,
-    DirectJessCustomPropertyName,
-    DirectJessCustomPart,
-    DirectJessCustomInnerPart,
-    DirectJessCustomParen,
-    DirectJessCustomSquare,
-    DirectJessCustomCurly,
-    DirectJessCustomValue,
-    DirectJessCustomDeclaration,
-    DirectJessDeclaration,
+    CustomPropertyValue,
+    CustomPropertyName,
+    CustomPart,
+    CustomInnerPart,
+    CustomParen,
+    CustomSquare,
+    CustomCurly,
+    CustomValue,
+    CustomDeclaration,
+    Declaration,
     MixinParam,
     MixinParams,
     MixinCallArgument,

@@ -4189,6 +4189,24 @@ parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
 passed.
 
+Jess custom/declaration rule name cleanup, 2026-07-29: the Jess custom-property
+and ordinary declaration grammar keys now use semantic AST/CST-aligned labels
+(`CustomPropertyValue`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,
+`CustomParen`, `CustomSquare`, `CustomCurly`, `CustomValue`,
+`CustomDeclaration`, `InterpolatedProperty`, and `Declaration`) instead of
+`DirectJess*` mode labels. This is a naming-only alignment. The custom-property
+value capture remains the same bounded grammar recursion through balanced
+groups, strings, comments, and Jess interpolation; the local routed
+`RoutedCustomPropertyValue` helper is private to the existing keyword dispatch.
+
+Evidence for the Jess custom/declaration rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed with 3 files and 117
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
