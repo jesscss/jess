@@ -4155,6 +4155,24 @@ fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
 passed. Existing selector/pseudo gating debt now reports under
 `Pseudo#0/#1/#2` without the old selector-owner prefix.
 
+Jess if/guard rule name cleanup, 2026-07-29: the Jess `$if` condition, guard,
+body, and branch grammar keys now use their semantic node labels
+(`IfGuardValue`, `IfGuardCompare`, `IfGuardPrimary`, `IfGuardAnd`, `IfGuardOr`,
+`IfGuard`, `IfCondition`, `IfBody`, `ElseIfBranch`, `ElseBranch`, and `If`)
+instead of `DirectJess*` mode labels. This is a naming-only alignment. `$if`
+still owns the stricter historical control-condition grammar and does not reuse
+the broader mixin guard language.
+
+Evidence for the Jess if/guard rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. Existing `$if` guard gating debt now reports under `IfGuard` and
+`IfGuardPrimary` without the old dialect-owner prefix.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

@@ -126,17 +126,17 @@ type JessRules = {
   ForRange: Combinator<Range>;
   ForSource: Combinator<ValueNode>;
   For: Combinator<For>;
-  DirectJessIfCondition: Combinator<GuardNode>;
-  DirectJessIfGuardValue: Combinator<GuardNode>;
-  DirectJessIfGuardCompare: Combinator<GuardNode>;
-  DirectJessIfGuardPrimary: Combinator<GuardNode>;
-  DirectJessIfGuardAnd: Combinator<GuardNode>;
-  DirectJessIfGuardOr: Combinator<GuardNode>;
-  DirectJessIfGuard: Combinator<GuardNode>;
-  DirectJessIfBody: Combinator<Statement[]>;
-  DirectJessElseIfBranch: Combinator<IfBranch>;
-  DirectJessElseBranch: Combinator<IfBranch>;
-  DirectJessIf: Combinator<If>;
+  IfCondition: Combinator<GuardNode>;
+  IfGuardValue: Combinator<GuardNode>;
+  IfGuardCompare: Combinator<GuardNode>;
+  IfGuardPrimary: Combinator<GuardNode>;
+  IfGuardAnd: Combinator<GuardNode>;
+  IfGuardOr: Combinator<GuardNode>;
+  IfGuard: Combinator<GuardNode>;
+  IfBody: Combinator<Statement[]>;
+  ElseIfBranch: Combinator<IfBranch>;
+  ElseBranch: Combinator<IfBranch>;
+  If: Combinator<If>;
   DirectJessStyleImport: Combinator<StyleImport>;
   DirectJessModuleSpecifier: Combinator<ModuleImportSpecifier>;
   DirectJessModuleImport: Combinator<ModuleImport>;
@@ -4164,7 +4164,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.Apply,
     g.Extend,
     g.For,
-    g.DirectJessIf,
+    g.If,
     g.Rule,
     g.DirectJessSupportsAtRuleBlock,
     g.DirectJessKeyframes,
@@ -4187,7 +4187,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.DirectJessDeclaration,
     g.MixinDef,
     g.For,
-    g.DirectJessIf,
+    g.If,
     g.ReferenceCall,
     g.Apply,
     g.Rule,
@@ -5179,12 +5179,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * dispatch syntax, not `$if` syntax. A comparison in an `and`/`or` chain
    * must be parenthesized and mixed chains must group explicitly.
    */
-  const DirectJessIfGuardValue = node<GuardNode>(
+  const IfGuardValue = node<GuardNode>(
     'IfGuardValue',
     g.ExpressionSum,
     reduceGuardTruth
   );
-  const DirectJessIfGuardCompare = node<GuardNode>(
+  const IfGuardCompare = node<GuardNode>(
     'IfGuardCompare',
     noTrivia(sequence(
       g.ExpressionSum,
@@ -5193,21 +5193,21 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     )),
     reduceGuardCompare
   );
-  const DirectJessIfGuardPrimary = node<GuardNode>(
+  const IfGuardPrimary = node<GuardNode>(
     'IfGuardPrimary',
     choice(
       sequence(
         regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
         literal('('),
-        g.DirectJessIfGuard,
+        g.IfGuard,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.DirectJessIfGuard,
+        g.IfGuard,
         literal(')')
       ),
-      g.DirectJessIfGuardValue
+      g.IfGuardValue
     ),
     (children) => {
       if (children.length === 1) {
@@ -5218,29 +5218,29 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         : requireGuardNode(children[1]);
     }
   );
-  const DirectJessIfGuardAnd = node<GuardNode>(
+  const IfGuardAnd = node<GuardNode>(
     'IfGuardAnd',
     sequence(
-      g.DirectJessIfGuardPrimary,
+      g.IfGuardPrimary,
       oneOrMore(sequence(
         regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessIfGuardPrimary
+        g.IfGuardPrimary
       ))
     ),
     reduceGuardAnd
   );
-  const DirectJessIfGuardOr = node<GuardNode>(
+  const IfGuardOr = node<GuardNode>(
     'IfGuardOr',
     sequence(
-      g.DirectJessIfGuardPrimary,
+      g.IfGuardPrimary,
       oneOrMore(sequence(
         regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessIfGuardPrimary
+        g.IfGuardPrimary
       ))
     ),
     reduceGuardOr
   );
-  const DirectJessIfGuard = node<GuardNode>(
+  const IfGuard = node<GuardNode>(
     'IfGuard',
 
     /*
@@ -5249,23 +5249,23 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      * comparison operator returns recognition to the primary truth reduction.
      */
     choice(
-      attempt(g.DirectJessIfGuardCompare),
-      g.DirectJessIfGuardAnd,
-      g.DirectJessIfGuardOr,
-      g.DirectJessIfGuardPrimary
+      attempt(g.IfGuardCompare),
+      g.IfGuardAnd,
+      g.IfGuardOr,
+      g.IfGuardPrimary
     ),
     children => requireGuardNode(children[0])
   );
-  const DirectJessIfCondition = node<GuardNode>(
+  const IfCondition = node<GuardNode>(
     'IfCondition',
     sequence(
       literal('('),
-      g.DirectJessIfGuard,
+      g.IfGuard,
       literal(')')
     ),
     children => requireGuardNode(children[1])
   );
-  const DirectJessIfBody = node<Statement[]>(
+  const IfBody = node<Statement[]>(
     'IfBody',
     sequence(
       literal('{'),
@@ -5284,32 +5284,32 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       1
     )
   );
-  const DirectJessElseIfBranch = node<IfBranch>(
+  const ElseIfBranch = node<IfBranch>(
     'ElseIfBranch',
     sequence(
       regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/),
       regex(/if(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      g.DirectJessIfCondition,
-      g.DirectJessIfBody
+      g.IfCondition,
+      g.IfBody
     ),
     children => ({ guard: requireGuardNode(children[2]), body: requireStatementList(children[3]) })
   );
-  const DirectJessElseBranch = node<IfBranch>(
+  const ElseBranch = node<IfBranch>(
     'ElseBranch',
     sequence(
       regex(/\$else(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      g.DirectJessIfBody
+      g.IfBody
     ),
     children => ({ guard: null, body: requireStatementList(children[1]) })
   );
-  const DirectJessIf = node<If>(
+  const If = node<If>(
     'If',
     sequence(
       regex(/\$if(?![-_a-zA-Z0-9\u0080-\uffff])/),
-      g.DirectJessIfCondition,
-      g.DirectJessIfBody,
-      many(g.DirectJessElseIfBranch),
-      optional(g.DirectJessElseBranch)
+      g.IfCondition,
+      g.IfBody,
+      many(g.ElseIfBranch),
+      optional(g.ElseBranch)
     ),
     (children) => {
       const branches: IfBranch[] = [{ guard: requireGuardNode(children[1]), body: requireStatementList(children[2]) }];
@@ -5422,7 +5422,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.DirectJessDeclaration,
         g.MixinDef,
         g.For,
-        g.DirectJessIf,
+        g.If,
         g.ReferenceCall,
         g.Apply,
         g.Extend,
@@ -5480,7 +5480,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.VariableDeclaration,
         g.MixinDef,
         g.For,
-        g.DirectJessIf,
+        g.If,
         g.ReferenceCall,
         g.Apply,
         g.Rule,
@@ -5645,17 +5645,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ForRange,
     ForSource,
     For,
-    DirectJessIfGuardValue,
-    DirectJessIfGuardCompare,
-    DirectJessIfGuardPrimary,
-    DirectJessIfGuardAnd,
-    DirectJessIfGuardOr,
-    DirectJessIfGuard,
-    DirectJessIfCondition,
-    DirectJessIfBody,
-    DirectJessElseIfBranch,
-    DirectJessElseBranch,
-    DirectJessIf,
+    IfGuardValue,
+    IfGuardCompare,
+    IfGuardPrimary,
+    IfGuardAnd,
+    IfGuardOr,
+    IfGuard,
+    IfCondition,
+    IfBody,
+    ElseIfBranch,
+    ElseBranch,
+    If,
     rw: whitespace,
     whitespace
   };
