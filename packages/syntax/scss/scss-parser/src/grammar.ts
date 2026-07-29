@@ -65,16 +65,16 @@ type ScssRules = {
   ValuePair: Combinator<ScssValuePair>;
   Value: Combinator<ValueSlot>;
   Important: Combinator<true>;
-  DirectScssInterpolatedProperty: Combinator<Interpolation>;
-  DirectScssCustomPropertyName: Combinator<string | Interpolation>;
-  DirectScssCustomPart: Combinator<unknown>;
-  DirectScssCustomInnerPart: Combinator<unknown>;
-  DirectScssCustomParen: Combinator<readonly unknown[]>;
-  DirectScssCustomSquare: Combinator<readonly unknown[]>;
-  DirectScssCustomCurly: Combinator<readonly unknown[]>;
-  DirectScssCustomValue: Combinator<ValueNode>;
-  DirectScssCustomDeclaration: Combinator<Declaration>;
-  DirectScssDeclaration: Combinator<Declaration>;
+  InterpolatedProperty: Combinator<Interpolation>;
+  CustomPropertyName: Combinator<string | Interpolation>;
+  CustomPart: Combinator<unknown>;
+  CustomInnerPart: Combinator<unknown>;
+  CustomParen: Combinator<readonly unknown[]>;
+  CustomSquare: Combinator<readonly unknown[]>;
+  CustomCurly: Combinator<readonly unknown[]>;
+  CustomValue: Combinator<ValueNode>;
+  CustomDeclaration: Combinator<Declaration>;
+  Declaration: Combinator<Declaration>;
   StaticNestedPropertyLeaf: Combinator<Declaration>;
   StaticNestedProperty: Combinator<Declaration>;
   StaticImportRule: Combinator<ImportAtRule>;
@@ -1792,7 +1792,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * remain on the compact shared CSS terminal below.
    */
   const directScssPropertyChunk = regex(/(?:[-_a-zA-Z0-9\u0080-\uffff]|\\(?:[0-9a-fA-F]{1,6}[ \t\n\r\f]?|[^\n\r\f]))+/);
-  const DirectScssInterpolatedProperty = node<Interpolation>(
+  const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     sequence(
       optional(literal('*')),
@@ -1826,7 +1826,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * is the shared custom-property leaf, or that leaf's `--` prefix followed by
    * SCSS `#{…}` segments.
    */
-  const DirectScssCustomPropertyName = node<string | Interpolation>(
+  const CustomPropertyName = node<string | Interpolation>(
     'CustomPropertyName',
     choice(
       noTrivia(sequence(
@@ -1862,59 +1862,59 @@ export const scssFactory = (g: ScssInputRules) => {
    * captured as one opaque span, so an inner `;` or `}` cannot end the
    * declaration and an inner `#{…}` still reduces to a typed segment.
    */
-  const DirectScssCustomParen = node<readonly unknown[]>(
+  const CustomParen = node<readonly unknown[]>(
     'CustomParen',
     noTrivia(sequence(
       literal('('),
-      many(g.DirectScssCustomInnerPart),
+      many(g.CustomInnerPart),
       literal(')')
     )),
     children => children.slice()
   );
-  const DirectScssCustomSquare = node<readonly unknown[]>(
+  const CustomSquare = node<readonly unknown[]>(
     'CustomSquare',
     noTrivia(sequence(
       literal('['),
-      many(g.DirectScssCustomInnerPart),
+      many(g.CustomInnerPart),
       literal(']')
     )),
     children => children.slice()
   );
-  const DirectScssCustomCurly = node<readonly unknown[]>(
+  const CustomCurly = node<readonly unknown[]>(
     'CustomCurly',
     noTrivia(sequence(
       literal('{'),
-      many(g.DirectScssCustomInnerPart),
+      many(g.CustomInnerPart),
       literal('}')
     )),
     children => children.slice()
   );
-  const DirectScssCustomInnerPart: Combinator<unknown> = choice(
+  const CustomInnerPart: Combinator<unknown> = choice(
     g.SassInterpolation,
     g.CssSyntaxCustomInnerContent,
     blockComment,
     g.CssSyntaxCustomSingleQuoted,
     g.CssSyntaxCustomDoubleQuoted,
-    g.DirectScssCustomParen,
-    g.DirectScssCustomSquare,
-    g.DirectScssCustomCurly
+    g.CustomParen,
+    g.CustomSquare,
+    g.CustomCurly
   );
-  const DirectScssCustomPart: Combinator<unknown> = choice(
+  const CustomPart: Combinator<unknown> = choice(
     g.SassInterpolation,
     g.CssSyntaxCustomOuterContent,
     blockComment,
     g.CssSyntaxCustomSingleQuoted,
     g.CssSyntaxCustomDoubleQuoted,
-    g.DirectScssCustomParen,
-    g.DirectScssCustomSquare,
-    g.DirectScssCustomCurly
+    g.CustomParen,
+    g.CustomSquare,
+    g.CustomCurly
   );
-  const DirectScssCustomValue = node<ValueNode>(
+  const CustomValue = node<ValueNode>(
     'CustomValue',
-    noTrivia(many(g.DirectScssCustomPart)),
+    noTrivia(many(g.CustomPart)),
     children => customValue(children)
   );
-  const DirectScssCustomDeclaration = node<Declaration>(
+  const CustomDeclaration = node<Declaration>(
     'CustomDeclaration',
 
     /*
@@ -1925,9 +1925,9 @@ export const scssFactory = (g: ScssInputRules) => {
      * declaration tail below.
      */
     sequence(
-      g.DirectScssCustomPropertyName,
+      g.CustomPropertyName,
       literal(':'),
-      g.DirectScssCustomValue,
+      g.CustomValue,
       optional(g.Important),
       optional(literal(';'))
     ),
@@ -1953,13 +1953,13 @@ export const scssFactory = (g: ScssInputRules) => {
       );
     }
   );
-  const DirectScssDeclaration = node<Declaration>(
+  const Declaration = node<Declaration>(
     'Declaration',
     choice(
-      g.DirectScssCustomDeclaration,
+      g.CustomDeclaration,
       sequence(
         choice(
-          g.DirectScssInterpolatedProperty,
+          g.InterpolatedProperty,
           propertyName
         ),
         literal(':'),
@@ -2020,7 +2020,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'StaticNestedPropertyLeaf',
     sequence(
       choice(
-        g.DirectScssInterpolatedProperty,
+        g.InterpolatedProperty,
         propertyName
       ),
       literal(':'),
@@ -2039,7 +2039,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * Cheap zero-width gate so an ordinary declaration (`color: red;`) does not
    * speculatively parse its full value as a nested-property own-value, fail the
    * required block `{`, and backtrack a whole value re-parse before
-   * `DirectScssDeclaration` re-parses it. A nested property always opens a block
+   * `Declaration` re-parses it. A nested property always opens a block
    * `{` before the statement terminates; this single `not` fails (skipping the
    * arm) only when a `;`/`}` is reachable through non-brace bytes first, i.e.
    * the statement ends before any `{`. `[^{};]` halts at an interpolation's `{`
@@ -2054,7 +2054,7 @@ export const scssFactory = (g: ScssInputRules) => {
     sequence(
       directNestedPropertyAhead,
       choice(
-        g.DirectScssInterpolatedProperty,
+        g.InterpolatedProperty,
         propertyName
       ),
       literal(':'),
@@ -2658,7 +2658,7 @@ export const scssFactory = (g: ScssInputRules) => {
    */
   const nestedBodyPrefix = choice(
     g.StaticNestedProperty,
-    g.DirectScssDeclaration,
+    g.Declaration,
     g.DirectScssComment,
     g.StaticImportRule,
     g.VariableDeclaration,
@@ -3026,7 +3026,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.StaticImportRule,
         g.VariableDeclaration,
         g.StaticNestedProperty,
-        g.DirectScssDeclaration,
+        g.Declaration,
         g.IfStaticConditionalBlock,
         g.DirectScssDocumentBlock,
         g.DirectScssPageBlock,
@@ -3914,7 +3914,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.DirectScssDeclaration,
+        g.Declaration,
         literal(';')
       )),
       literal('}')
@@ -3942,7 +3942,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.DirectScssDeclaration,
+        g.Declaration,
         g.DirectScssPageMarginBox,
         literal(';')
       )),
@@ -3974,7 +3974,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.DirectScssDeclaration,
+        g.Declaration,
         literal(';')
       )),
       literal('}')
@@ -4107,7 +4107,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.DirectScssDeclaration
+        g.Declaration
       )),
       literal('}')
     ),
@@ -4131,7 +4131,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.DirectScssDeclaration
+        g.Declaration
       )),
       literal('}')
     ),
@@ -4170,7 +4170,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.DirectScssDeclaration
+        g.Declaration
       )),
       literal('}')
     ),
@@ -4222,7 +4222,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal('{'),
       many(choice(
         g.DirectScssComment,
-        g.DirectScssDeclaration,
+        g.Declaration,
         literal(';')
       )),
       literal('}')
@@ -4961,16 +4961,16 @@ export const scssFactory = (g: ScssInputRules) => {
     ValuePair,
     Value,
     Important,
-    DirectScssInterpolatedProperty,
-    DirectScssCustomPropertyName,
-    DirectScssCustomPart,
-    DirectScssCustomInnerPart,
-    DirectScssCustomParen,
-    DirectScssCustomSquare,
-    DirectScssCustomCurly,
-    DirectScssCustomValue,
-    DirectScssCustomDeclaration,
-    DirectScssDeclaration,
+    InterpolatedProperty,
+    CustomPropertyName,
+    CustomPart,
+    CustomInnerPart,
+    CustomParen,
+    CustomSquare,
+    CustomCurly,
+    CustomValue,
+    CustomDeclaration,
+    Declaration,
     StaticNestedPropertyLeaf,
     StaticNestedProperty,
     StaticImportRule,

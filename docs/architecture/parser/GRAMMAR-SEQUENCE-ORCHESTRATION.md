@@ -4207,6 +4207,24 @@ tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
 parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; and `pnpm run verify:compose-integrity` passed.
 
+SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
+custom-property grammar keys now use semantic AST/CST-aligned labels
+(`InterpolatedProperty`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,
+`CustomParen`, `CustomSquare`, `CustomCurly`, `CustomValue`,
+`CustomDeclaration`, and `Declaration`) instead of `DirectScss*` mode labels.
+This is a naming-only alignment. The custom-property value capture still owns
+the same bounded CSS declaration-value stream with nested groups, quoted
+strings, comments, and SCSS interpolation.
+
+Evidence for the SCSS custom/declaration rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
