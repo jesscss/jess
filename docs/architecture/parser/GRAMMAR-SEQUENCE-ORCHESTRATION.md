@@ -239,7 +239,14 @@ known-or-generic choices with current Parseman `dispatch(...)`, `makeWhen(...)`,
 `routed()`, matcher cases, `word(...)`, `keywords(...)`, and separated-list
 helpers where they are the better shape. Parse shared openers once; do not
 reparse selectors, values, at-rules, functions, pseudos, variables, or
-interpolation after recognition.
+interpolation after recognition. Treat every explicit `scanTo(..., { skip })`
+or `balanced(..., { skip })` as a small design review: first ask whether the
+region can become structured grammar or rely on trivia / ambient `scanSkip`,
+then keep only scanner-local exceptions needed by a still-deliberate opaque
+span. Dispatch is not a blanket replacement for `choice(...)`; use it where a
+shared already-consumed token can be refined and routed, and keep `choice(...)`
+for truly disjoint constructs, closed spelling tables, lists, and context
+decisions whose delimiter has not been consumed yet.
 
 Current priority order: finish CSS value/at-rule/pseudo cleanup, aggressively
 simplify Less value/function/selector/at-rule families on the single grammar
@@ -4526,6 +4533,27 @@ passed. A narrow A/B parser workload over generic at-rule statements with
 grouped preludes measured the old local-skip shape at 50.324 ms median and the
 ambient-skip shape at 48.141 ms median for 160 parses on the same dirty
 worktree; treat this only as route sanity, not a general parser speed claim.
+
+CSS query-function scanner-skip cleanup, 2026-07-29: CSS `QueryFunction` and
+`RoutedQueryFunction` now keep only the local nested-parenthesis exception in
+their raw argument `scanTo(...)` skip lists. Comment, escape, and quoted-string
+protection comes from grammar-level trivia / ambient `scanSkip`, which
+`scanTo(...)` already resolves before explicit skips. This is a scanner-policy
+deletion inside the existing structured query route, not a dispatch rewrite:
+the routed function opener is already owned by `queryIdentOrFunctionTerm` /
+`RoutedQueryFunction`, and the raw argument span remains the narrow accepted
+representation for general-enclosed query functions.
+
+Evidence for the CSS query-function scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. Existing parseman gating warnings remain visible for broader queue
+items such as balanced groups, opaque prelude capture, and several CSS construct
+choices; this slice makes no broad speed claim.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or

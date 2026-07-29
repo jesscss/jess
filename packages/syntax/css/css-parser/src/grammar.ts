@@ -2934,15 +2934,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       routed(),
       scanTo(
         literal(')'),
-        {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedParens
-          ]
-        }
+        { skip: [balancedParens] }
       ),
       expect(
         literal(')'),
@@ -3181,15 +3173,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       queryFunctionOpen,
       scanTo(
         literal(')'),
-        {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedParens
-          ]
-        }
+        { skip: [balancedParens] }
       ),
       expect(
         literal(')'),
