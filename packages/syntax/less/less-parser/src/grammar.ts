@@ -2897,7 +2897,29 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const mixinReferenceAhead = not(not(regex(/[.#][^;{}]*[([]/)));
   const Value = node<ValueNode>(
     'Value',
-    choice(sequence(mixinReferenceAhead, attempt(g.MixinReference)), g.InterpolatedValue, g.EscapedQuoted, g.Quoted, BacktickJavaScript, g.IndirectVariableReference, g.VariableReferenceChain, g.PropertyReference, g.CssCustomPropertyValue, g.Dimension, g.Color, g.NamedColor, g.FormatFunction, IdentifierOrFunction, g.SelectorCapture, g.EscapedParen, g.QueryColonFeature, g.Paren, gridLineName, g.EscapeValue, PercentEscape),
+    choice(
+      sequence(mixinReferenceAhead, attempt(g.MixinReference)),
+      g.InterpolatedValue,
+      g.EscapedQuoted,
+      g.Quoted,
+      BacktickJavaScript,
+      g.IndirectVariableReference,
+      g.VariableReferenceChain,
+      g.PropertyReference,
+      g.CssCustomPropertyValue,
+      g.Dimension,
+      g.Color,
+      g.NamedColor,
+      g.FormatFunction,
+      IdentifierOrFunction,
+      g.SelectorCapture,
+      g.EscapedParen,
+      g.QueryColonFeature,
+      g.Paren,
+      gridLineName,
+      g.EscapeValue,
+      PercentEscape
+    ),
     children => requireValueNode(children.find(isValueNode))
   );
   // Signed numerics are already one Dimension leaf (`-2px`).  Less unary minus
