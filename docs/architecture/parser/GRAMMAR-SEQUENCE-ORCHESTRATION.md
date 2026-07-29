@@ -4283,6 +4283,29 @@ check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+Jess parser-local interpolation-guard vocabulary follow-up, 2026-07-29: the
+remaining generic lowercase `direct*` helper names in the Jess grammar were
+renamed to semantic guard names (`interpolatedSimpleAhead`,
+`interpolatedParentSuffixAhead`, and `interpolatedPropertyAhead`), and nearby
+comments now describe host-mode grammar construction / AST reduction rather
+than a direct parser mode. This is a source-only naming alignment: no grammar
+branch, CST/AST node label, regex body, reducer shape, or comment trivia
+behavior changed. The touched sites were not dispatch candidates; they are
+zero-width context predicates that keep ordinary selector/property arms from
+entering interpolation-only productions unless a `$[` or `${` opener appears
+in the same syntactic span.
+
+Evidence for the Jess parser-local interpolation-guard vocabulary follow-up:
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 118
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed. `rg` now finds no
+lowercase direct-mode helper names in
+`packages/syntax/jess/jess-parser/src/grammar.ts`.
+
 Jess parser-local fact-name cleanup, 2026-07-29: Jess reducer-only fact types
 and guards now use semantic local names (`OperatorFact`, `ReferenceTailFact`,
 `ComplexTailFact`, `StaticAtQueryPropertyFact`, `AtRuleHeaderFact`, and
