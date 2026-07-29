@@ -4173,6 +4173,22 @@ fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
 passed. Existing `$if` guard gating debt now reports under `IfGuard` and
 `IfGuardPrimary` without the old dialect-owner prefix.
 
+Jess quoted/import rule name cleanup, 2026-07-29: the Jess quoted value and
+style/module import grammar keys now use semantic AST/CST-aligned labels
+(`Quoted`, `StyleImport`, `ModuleSpecifier`, and `ModuleImport`) instead of
+`DirectJess*` mode labels. This is a naming-only alignment. Import recognition
+still parses static authored paths/specifiers only; plugin/context dispatch
+continues to own loading and execution after parse.
+
+Evidence for the Jess quoted/import rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

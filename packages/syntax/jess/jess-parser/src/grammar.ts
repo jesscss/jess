@@ -65,7 +65,7 @@ type JessRules = {
   GuardOr: Combinator<GuardNode>;
   MixinGuard: Combinator<GuardNode>;
   Keyword: Combinator<Keyword>;
-  DirectJessQuoted: Combinator<Quoted | Interpolation>;
+  Quoted: Combinator<Quoted | Interpolation>;
   StaticQuoted: Combinator<Quoted>;
   Dimension: Combinator<Dimension>;
   Color: Combinator<Color>;
@@ -137,9 +137,9 @@ type JessRules = {
   ElseIfBranch: Combinator<IfBranch>;
   ElseBranch: Combinator<IfBranch>;
   If: Combinator<If>;
-  DirectJessStyleImport: Combinator<StyleImport>;
-  DirectJessModuleSpecifier: Combinator<ModuleImportSpecifier>;
-  DirectJessModuleImport: Combinator<ModuleImport>;
+  StyleImport: Combinator<StyleImport>;
+  ModuleSpecifier: Combinator<ModuleImportSpecifier>;
+  ModuleImport: Combinator<ModuleImport>;
   StaticValueAtom: Combinator<ValueNode>;
   StaticValue: Combinator<ValueSlot>;
   StaticCallArgument: Combinator<ValueSlot>;
@@ -1925,7 +1925,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     plainSingleQuotedText,
     literal('\'')
   ));
-  const DirectJessQuoted = node<Quoted | Interpolation>(
+  const Quoted = node<Quoted | Interpolation>(
     'Quoted',
     choice(
       directJessEscapedStaticQuoted,
@@ -2047,23 +2047,23 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       directJessImportName
     )
   );
-  const DirectJessStyleImport = node<StyleImport>(
+  const StyleImport = node<StyleImport>(
     'StyleImport',
     choice(
       sequence(
         regex(/@-compose(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
+        g.Quoted,
         optional(directJessStyleAsClause),
         optional(literal(';'))
       ),
       sequence(
         regex(/@-export(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
+        g.Quoted,
         optional(literal(';'))
       ),
       sequence(
         regex(/@-import(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
+        g.Quoted,
         optional(literal(';'))
       )
     ),
@@ -2094,10 +2094,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           'import'
         );
       }
-      throw new TypeError('Direct Jess AST grammar produced an unknown style import form.');
+      throw new TypeError('Jess grammar produced an unknown style import form.');
     }
   );
-  const DirectJessModuleSpecifier = node<ModuleImportSpecifier>(
+  const ModuleSpecifier = node<ModuleImportSpecifier>(
     'ModuleSpecifier',
     sequence(
       directJessImportName,
@@ -2108,18 +2108,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       alias: children.length === 3 ? requireToken(children[2]).value : null
     })
   );
-  const DirectJessModuleImport = node<ModuleImport>(
+  const ModuleImport = node<ModuleImport>(
     'ModuleImport',
     choice(
       sequence(
         regex(/@-use(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
+        g.Quoted,
         optional(directJessStyleAsClause),
         optional(literal(';'))
       ),
       sequence(
         regex(/@-from(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessQuoted,
+        g.Quoted,
         regex(/import(?![-_a-zA-Z0-9\u0080-\uffff])/),
         choice(
           sequence(
@@ -2127,23 +2127,23 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
             directJessAsClause
           ),
           sequence(
-            g.DirectJessModuleSpecifier,
+            g.ModuleSpecifier,
             literal(','),
             literal('('),
-            g.DirectJessModuleSpecifier,
+            g.ModuleSpecifier,
             many(sequence(
               literal(','),
-              g.DirectJessModuleSpecifier
+              g.ModuleSpecifier
             )),
             literal(')')
           ),
-          g.DirectJessModuleSpecifier,
+          g.ModuleSpecifier,
           sequence(
             literal('('),
-            g.DirectJessModuleSpecifier,
+            g.ModuleSpecifier,
             many(sequence(
               literal(','),
-              g.DirectJessModuleSpecifier
+              g.ModuleSpecifier
             )),
             literal(')')
           )
@@ -2333,7 +2333,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     sequence(
       g.CssSyntaxUrlOpen,
       choice(
-        g.DirectJessQuoted,
+        g.Quoted,
         g.UrlInterpolatedValue
       ),
       literal(')')
@@ -2982,7 +2982,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('['),
         choice(
           g.VariableReference,
-          g.DirectJessQuoted,
+          g.Quoted,
           regex(/[+-]?\d+(?:\.\d+)?/),
           g.Keyword
         ),
@@ -3232,7 +3232,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.Url,
     g.InterpolatedUrl,
     g.Call,
-    g.DirectJessQuoted,
+    g.Quoted,
     g.Color,
     g.Dimension,
     KeywordLikeValue
@@ -4048,7 +4048,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       sequence(
         g.CssSyntaxUrlOpen,
         choice(
-          g.DirectJessQuoted,
+          g.Quoted,
           g.UrlInterpolatedValue,
           g.CssSyntaxStaticUrlInner
         ),
@@ -5466,16 +5466,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * activated in source order. CSS imports still cannot appear after a rule.
        */
       many(choice(
-        g.DirectJessStyleImport,
-        g.DirectJessModuleImport,
+        g.StyleImport,
+        g.ModuleImport,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
         g.DirectJessCssImport
       )),
       many(choice(
         g.MixinCall,
-        g.DirectJessStyleImport,
-        g.DirectJessModuleImport,
+        g.StyleImport,
+        g.ModuleImport,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
         g.MixinDef,
@@ -5530,11 +5530,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     GuardOr,
     MixinGuard,
     Keyword,
-    DirectJessQuoted,
+    Quoted,
     StaticQuoted,
-    DirectJessStyleImport,
-    DirectJessModuleSpecifier,
-    DirectJessModuleImport,
+    StyleImport,
+    ModuleSpecifier,
+    ModuleImport,
     StaticValueAtom,
     StaticValue,
     StaticCallArgument,
