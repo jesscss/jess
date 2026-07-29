@@ -4188,6 +4188,105 @@ parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
 passed.
 
+Jess custom/declaration rule name cleanup, 2026-07-29: the Jess custom-property
+and ordinary declaration grammar keys now use semantic AST/CST-aligned labels
+(`CustomPropertyValue`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,
+`CustomParen`, `CustomSquare`, `CustomCurly`, `CustomValue`,
+`CustomDeclaration`, `InterpolatedProperty`, and `Declaration`) instead of
+`DirectJess*` mode labels. This is a naming-only alignment. The custom-property
+value capture remains the same bounded grammar recursion through balanced
+groups, strings, comments, and Jess interpolation; the local routed
+`RoutedCustomPropertyValue` helper is private to the existing keyword dispatch.
+
+Evidence for the Jess custom/declaration rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed with 3 files and 117
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed.
+
+SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
+custom-property grammar keys now use semantic AST/CST-aligned labels
+(`InterpolatedProperty`, `CustomPropertyName`, `CustomPart`, `CustomInnerPart`,
+`CustomParen`, `CustomSquare`, `CustomCurly`, `CustomValue`,
+`CustomDeclaration`, and `Declaration`) instead of `DirectScss*` mode labels.
+This is a naming-only alignment. The custom-property value capture still owns
+the same bounded CSS declaration-value stream with nested groups, quoted
+strings, comments, and SCSS interpolation.
+
+Evidence for the SCSS custom/declaration rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS selector/rule name cleanup, 2026-07-29: the SCSS selector-family grammar
+keys now use their semantic AST/CST-aligned labels (`Simple`,
+`InterpolatedSimple`, `Placeholder`, `Attribute`, `PseudoArgument`, `Pseudo`,
+`NestingSelector`, `Compound`, `ComplexTail`, `Complex`, `SelectorTail`,
+`Selector`, `Extend`, and `Rule`) instead of `DirectScss*` mode labels. The
+selector-private routed pseudo helpers were renamed too. This is a naming-only
+alignment; the pseudo dispatch table remains the same routed-token-family shape
+over the glued `:name` / `:name(` opener, and selector body choices remain
+construct-family choices.
+
+Evidence for the SCSS selector/rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. The previous selector compound gating warning now reports under the
+semantic `Compound` rule name.
+
+SCSS at-rule/keyframe name cleanup, 2026-07-29: the SCSS CSS-compatible
+at-rule and keyframe grammar keys now use their semantic AST/CST-aligned labels
+(`AtRuleStatement`, `ScopeBlock`, `NestedScopeBlock`, `ConditionalBlock`,
+`StartingStyleBlock`, `LayerBlock`, `DocumentBlock`, `PageMarginBox`,
+`PageBlock`, `FontFeatureValueBlock`, `FontFeatureValuesBlock`,
+`NestedConditionalBlock`, `NestedStartingStyleBlock`, `NestedLayerBlock`,
+`FontFace`, `CounterStyle`, `PropertyName`, `PropertyAtRule`,
+`KeyframeSelector`, `KeyframeBlock`, and `Keyframes`) instead of
+`DirectScss*` mode labels. This intentionally lets SCSS override the shared CSS
+semantic names where the same concept needs an SCSS body/header policy. The body
+lists stay as `choice(...)` construct-family choices because the decision is a
+statement/body item family, not one already-consumed routed token. The
+comment-as-trivia and opaque/raw-capture names remain separate cleanup queues.
+
+Evidence for the SCSS at-rule/keyframe name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+SCSS opaque at-rule name cleanup, 2026-07-29: the remaining SCSS opaque/raw
+capture grammar keys now use their semantic AST/CST-aligned labels
+(`OpaquePrelude`, `OpaqueBody`, `OpaqueAtRuleBlock`, and
+`OpaqueAtRuleStatement`) instead of `DirectScss*` mode labels. This is a
+naming-only alignment: the shared recognition artifact still owns the bounded
+balanced/string/comment capture, and the statement-vs-block split remains a
+construct-family `choice(...)` at each body position because `{` vs `;` is the
+local tail decision after the generic at-keyword. After this pass, the only
+remaining SCSS `DirectScss*` grammar key is `DirectScssComment`; that is the
+separate comments-as-trivia migration, not a label-only cleanup.
+
+Evidence for the SCSS opaque at-rule name cleanup: `pnpm --filter
+@jesscss/scss-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/ast-macro-compiled.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 104 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/scss-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
