@@ -26,3 +26,28 @@ Overrides whether Jess files compile as modules globally. By default, files name
 ## compile.plugins
 
 Add compile-time plugins used by the compiler (for language/runtime extensions). This is separate from bundler plugins such as `rollup-plugin-jess`.
+
+## lint
+
+Configure `jess lint` and the `@jesscss/lint` API.
+
+```js
+// styles.config.js
+export default {
+  lint: {
+    files: ['src/**/*.{css,less,scss,jess}'],
+    ignoreFiles: ['dist/**'],
+    reportSyntax: true,
+    diagnostics: {
+      'lint/unknown-property': 'error',
+      'lint/zero-units': 'warn'
+    }
+  }
+}
+```
+
+`files` supplies the default glob set when `jess lint` is run without positional
+patterns. `ignoreFiles` excludes generated or vendored stylesheets.
+
+`reportSyntax` controls whether parser diagnostics are surfaced through lint.
+Per-code `diagnostics` values are `off`, `warn`, and `error`.

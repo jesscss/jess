@@ -11,7 +11,8 @@
 **The current public alpha CLI for Jess.**
 
 `jess` is the main entry point right now. In this alpha, the `jess`
-command-line tool compiles `.less` to CSS on the Jess engine.
+command-line tool compiles stylesheets to CSS and can lint CSS-family
+stylesheets through Jess diagnostics.
 
 That is the first step, not the whole story: the alpha starts with familiar
 Less workflows while the broader Jess language surface settles.
@@ -37,16 +38,30 @@ jess input.less
 # Choose the output file, or an output directory
 jess input.less output.css
 jess input.less -o dist
+
+# Lint CSS, Less, SCSS, and Jess files
+jess lint
+jess lint "src/**/*.{css,less,scss,jess}"
+jess lint src/app.scss --format json
 ```
+
+Jess follows the common CLI pattern where the default command compiles a file and
+`jess lint` is a separate workflow. Use `jess <input> [output]` when you want CSS
+output; use `jess lint` when you want diagnostics without writing CSS.
 
 By default, Jess preserves nesting instead of flattening it. If you want
 flattened selector output, opt in with `--collapse-nesting`.
+
+`jess lint` prints compact per-file diagnostic rows by default. It supports
+`--format json`, `--max-warnings 0`, `--syntax-only`, `--quiet`, `--config`, and
+`--no-color`.
 
 ## What works today
 
 The current public alpha entry point is:
 
 - `.less` compilation through `jess`
+- linting `.css`, `.less`, `.scss`, and `.jess` through `jess lint`
 - variables, mixins, guards, nesting, `extend`, maps, operations, and built-in
   functions
 - the Jess compiler engine under the hood

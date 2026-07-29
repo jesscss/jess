@@ -31,8 +31,9 @@ subset **Sass+**), so nothing forces you to rewrite it. When you do want native
 
 :::caution Migration is manual today
 There is **no `jess convert` command**. An automated `.less`/`.scss` → `.jess`
-converter is planned but not implemented, and the `jess` CLI has no subcommands
-at all — it compiles a single file to CSS (`jess input.less -o dist`).
+converter is planned but not implemented. The `jess` CLI compiles a single file
+to CSS by default (`jess input.less -o dist`) and exposes `jess lint` as a
+separate diagnostics workflow.
 
 You do not have to migrate to use Jess: the compiler reads `.less` and `.scss`
 sources directly. Port files to `.jess` by hand, using the mappings below, only
