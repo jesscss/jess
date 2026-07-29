@@ -2403,11 +2403,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * simple selector and a sibling selector's interpolation never falsely admits
    * a plain one.
    */
-  const directInterpSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedSimpleAhead = not(not(regex(/[.#]?[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
   const InterpolatedSimple = node<SimpleSelector>(
     'InterpolatedSimple',
     noTrivia(sequence(
-      directInterpSimpleAhead,
+      interpolatedSimpleAhead,
       optional(regex(/[.#]/)),
       many(jessSelectorTextRun),
       g.DollarBrace,
@@ -2458,11 +2458,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * the same fast reject `InterpolatedSimple` uses, so an ordinary `&`
    * compound member never pays a failed template scan.
    */
-  const directInterpParentAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
+  const interpolatedParentSuffixAhead = not(not(regex(/&[-_a-zA-Z0-9\u0080-\uffff]*\$[[{]/)));
   const InterpolatedParentSuffix = node<SimpleSelector>(
     'InterpolatedParentSuffix',
     noTrivia(sequence(
-      directInterpParentAhead,
+      interpolatedParentSuffixAhead,
       literal('&'),
       many(jessSelectorTextRun),
       g.DollarBrace,
@@ -4439,7 +4439,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   /*
    * Priority is a Declaration field in the canonical AST, so this is ordinary
-   * direct grammar construction rather than a Jess-specific compatibility path.
+   * host-mode grammar construction rather than a Jess-specific compatibility path.
    * Comments around the marker/name are ambient trivia, not value children.
    */
   const Important = node<true>(
@@ -4464,7 +4464,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   /*
    * A property interpolation is an existing Declaration.name Interpolation, never a
    * raw name string. Static identifier segments come from shared CSS syntax;
-   * Jess owns only its `$[…]` segment grammar and direct AST reduction.
+   * Jess owns only its `$[…]` segment grammar and AST reduction.
    * Cheap superset lookahead so an ordinary `color: …` declaration does not
    * enter the interpolated-property arm, consume the whole property name via
    * the optional literal start, fail the required interpolation, and backtrack a
@@ -4473,11 +4473,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * contains `:`, `;`, `{`, or `}`, so the predicate is a strict superset: a
    * real interpolated property is never skipped.
    */
-  const directInterpPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
+  const interpolatedPropertyAhead = not(not(regex(/[^{};:]*\$[[{]/)));
   const InterpolatedProperty = node<Interpolation>(
     'InterpolatedProperty',
     noTrivia(sequence(
-      directInterpPropertyAhead,
+      interpolatedPropertyAhead,
       optional(g.CssSyntaxInterpolatedPropertyStart),
       g.DollarBrace,
       many(choice(

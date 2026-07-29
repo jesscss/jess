@@ -1878,12 +1878,11 @@ const scanSkipDoubleString = noTrivia(sequence(literal('"'), regex(/(?:[^"\\]|\\
 const scanSkipSingleString = noTrivia(sequence(literal('\''), regex(/(?:[^'\\]|\\.)*/), literal('\'')));
 const lessOpaqueBodyBrace = balanced(
   '{',
-  '}',
-  { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }
+  '}'
 );
 const lessOpaqueBodyCapture = noTrivia(scanTo(
   literal('}'),
-  { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment, lessOpaqueBodyBrace] }
+  { skip: [lessOpaqueBodyBrace] }
 ));
 // Trivia that may surround an UNAMBIGUOUS product operator (`*`/`/`/`%`):
 // whitespace, `//` line comments, or `/* */` block comments. This matches CSS,
@@ -4834,13 +4833,11 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   const atPreludeGroup = noTrivia(choice(
     balanced(
       '(',
-      ')',
-      { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }
+      ')'
     ),
     balanced(
       '[',
-      ']',
-      { skip: [scanSkipDoubleString, scanSkipSingleString, blockComment] }
+      ']'
     )
   ));
   const atPreludeQuoted = noTrivia(choice(

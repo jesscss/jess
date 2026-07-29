@@ -81,6 +81,35 @@ Parseman 0.41+ idioms such as `dispatch(...)`, `routed()`, `makeWhen(...)`,
 `word(...)`, separated-list helpers, and composition should be used where they
 remove real duplicated recognition or make the grammar clearer.
 
+Scanner cleanup priority, 2026-07-29: treat `scanTo(..., { skip })` and
+`balanced(..., { skip })` as review findings, not neutral plumbing. The first
+question is whether the bytes can be parsed as structured grammar or handled by
+the grammar's trivia / ambient `scanSkip`; only keep a scanner-local skip when
+the scanner is still the narrow accepted representation and a comment, quote, or
+balanced group must not terminate that specific opaque span. Do not tune a
+scanner skip list as a substitute for moving the language back into grammar
+structure. In the same pass, keep burning down false migration prefixes and use
+`dispatch(...)` only when `choice(...)` is truly re-reading one broad routed
+opener with known cases plus a same-family generic fallback.
+
+Current scanner-skip inventory, 2026-07-29: CSS custom/value scans are now mostly
+reduced to local balanced-group exceptions, with `customSlash` kept only inside
+the reusable balanced helpers. The remaining CSS pseudo raw-argument scan still
+uses a local quote/balanced/comment policy and should be reviewed separately
+against the pseudo argument grammar, not swept together with custom values.
+`packages/parser-shared/src/opaque-at-rule.ts` remains the shared opaque
+at-rule capture hotspot: its CSS and preprocessor bodies are accepted opaque
+exceptions for now, but they should move toward a trivia-aware structured
+unknown-at-rule helper before adding more scanner policy there. Less
+`lessOpaqueBodyBrace`, `lessOpaqueBodyCapture`, and `atPreludeGroup` now inherit
+the root ambient `scanSkip`; the remaining Less scanner debt is the
+function-condition lookahead scan and the larger opaque-helper design, not local
+string/comment skip duplication. SCSS `QueryFunction` and Jess generic pseudo
+raw arguments are separate follow-ups: SCSS has ambient scan skips but also
+routes through composed quoted syntax, while Jess currently lacks a root
+`scanSkip` policy and must decide that grammar shape before shrinking the pseudo
+scanner.
+
 Live alpha evidence, 2026-07-27: registry `parseman@0.41.0` is installed;
 dependency-order parser/plugin/jess builds pass; `pnpm run check:macro` and
 `pnpm run verify:compose-integrity` both pass with 0 interpreter fallbacks.
@@ -228,7 +257,14 @@ known-or-generic choices with current Parseman `dispatch(...)`, `makeWhen(...)`,
 `routed()`, matcher cases, `word(...)`, `keywords(...)`, and separated-list
 helpers where they are the better shape. Parse shared openers once; do not
 reparse selectors, values, at-rules, functions, pseudos, variables, or
-interpolation after recognition.
+interpolation after recognition. Treat every explicit `scanTo(..., { skip })`
+or `balanced(..., { skip })` as a small design review: first ask whether the
+region can become structured grammar or rely on trivia / ambient `scanSkip`,
+then keep only scanner-local exceptions needed by a still-deliberate opaque
+span. Dispatch is not a blanket replacement for `choice(...)`; use it where a
+shared already-consumed token can be refined and routed, and keep `choice(...)`
+for truly disjoint constructs, closed spelling tables, lists, and context
+decisions whose delimiter has not been consumed yet.
 
 Current priority order: finish CSS value/at-rule/pseudo cleanup, aggressively
 simplify Less value/function/selector/at-rule families on the single grammar
@@ -4282,6 +4318,29 @@ check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+Jess parser-local interpolation-guard vocabulary follow-up, 2026-07-29: the
+remaining generic lowercase `direct*` helper names in the Jess grammar were
+renamed to semantic guard names (`interpolatedSimpleAhead`,
+`interpolatedParentSuffixAhead`, and `interpolatedPropertyAhead`), and nearby
+comments now describe host-mode grammar construction / AST reduction rather
+than a direct parser mode. This is a source-only naming alignment: no grammar
+branch, CST/AST node label, regex body, reducer shape, or comment trivia
+behavior changed. The touched sites were not dispatch candidates; they are
+zero-width context predicates that keep ordinary selector/property arms from
+entering interpolation-only productions unless a `$[` or `${` opener appears
+in the same syntactic span.
+
+Evidence for the Jess parser-local interpolation-guard vocabulary follow-up:
+`pnpm --filter @jesscss/jess-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 4 files and 118
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed. `rg` now finds no
+lowercase direct-mode helper names in
+`packages/syntax/jess/jess-parser/src/grammar.ts`.
+
 Jess parser-local fact-name cleanup, 2026-07-29: Jess reducer-only fact types
 and guards now use semantic local names (`OperatorFact`, `ReferenceTailFact`,
 `ComplexTailFact`, `StaticAtQueryPropertyFact`, `AtRuleHeaderFact`, and
@@ -4469,6 +4528,98 @@ parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; and `pnpm run verify:compose-integrity` passed. The previous
 `ScssMixinCallArg` gating warning now reports under semantic
 `MixinCallArgument`.
+
+CSS at-rule prelude scanner-skip cleanup, 2026-07-29: CSS `AtPreludeGroup`
+now relies on the grammar-level ambient `scanSkip` / trivia policy for balanced
+paren and square groups instead of restating local
+`balanced(..., { skip: [...] })` lists. This keeps the structured unknown
+at-rule prelude route as the model: comments and quoted strings are not
+semantic prelude children, but they also do not terminate a balanced group. The
+touched `choice(...)` remains a delimiter-family choice between `(...)` and
+`[...]`; it is not a dispatch candidate because no routed known/generic token
+family is involved.
+
+Evidence for the CSS at-rule prelude scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. A narrow A/B parser workload over generic at-rule statements with
+grouped preludes measured the old local-skip shape at 50.324 ms median and the
+ambient-skip shape at 48.141 ms median for 160 parses on the same dirty
+worktree; treat this only as route sanity, not a general parser speed claim.
+
+CSS query-function scanner-skip cleanup, 2026-07-29: CSS `QueryFunction` and
+`RoutedQueryFunction` now keep only the local nested-parenthesis exception in
+their raw argument `scanTo(...)` skip lists. Comment, escape, and quoted-string
+protection comes from grammar-level trivia / ambient `scanSkip`, which
+`scanTo(...)` already resolves before explicit skips. This is a scanner-policy
+deletion inside the existing structured query route, not a dispatch rewrite:
+the routed function opener is already owned by `queryIdentOrFunctionTerm` /
+`RoutedQueryFunction`, and the raw argument span remains the narrow accepted
+representation for general-enclosed query functions.
+
+Evidence for the CSS query-function scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. Existing parseman gating warnings remain visible for broader queue
+items such as balanced groups, opaque prelude capture, and several CSS construct
+choices; this slice makes no broad speed claim.
+
+CSS custom/value scanner-skip cleanup, 2026-07-29: the shared CSS
+`balancedParens`, `balancedBrackets`, and `balancedBraces` helpers now keep only
+their local `customSlash` exception and inherit comment, escape, and quoted
+string protection from grammar-level `scanSkip`. The custom-property value,
+import-tail group, var()-fallback, and raw parenthesized-value scans now list
+only the nested balanced groups that are local to those opaque spans, or no
+explicit skip at all when ambient `scanSkip` is sufficient. This relies on
+Parseman 0.41.0's documented scanner contract: `scanTo(...)` merges grammar
+trivia plus ambient `scanSkip`, and `balanced(...)` merges ambient `scanSkip`
+unless the combinator is raw. It is still scanner-local cleanup for accepted
+opaque CSS component text, not a replacement for future structured parsing
+where a value family can be grammar-owned instead.
+
+Evidence for the CSS custom/value scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. This slice makes no broad speed claim.
+
+Less ambient scanner-skip cleanup, 2026-07-29: Less `lessOpaqueBodyBrace`,
+`lessOpaqueBodyCapture`, and `atPreludeGroup` now inherit comment and quoted
+string protection from the grammar-level `scanSkip` declared on every Less AST,
+line, and CST artifact. `lessOpaqueBodyCapture` keeps only the nested
+`lessOpaqueBodyBrace` scanner-local exception; `atPreludeGroup` keeps no local
+skip list because the balanced group combinators can inherit ambient scan
+skips. This is the Less version of the CSS ambient-skip cleanup: scanner-local
+cleanup for still-accepted opaque/prelude spans, not a claim that those spans
+are the final structured grammar target.
+
+Evidence for the Less ambient scanner-skip cleanup: `pnpm --filter
+@jesscss/less-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 261 tests; dependency-order `pnpm --filter
+@jesscss/parser-shared build`, `pnpm --filter @jesscss/css-parser build`, and
+`pnpm --filter @jesscss/less-parser build` passed; `pnpm run check:macro`
+reported parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0
+interpreter fallbacks; and `pnpm run verify:compose-integrity` passed. The Less
+byte-identity oracle remains red on the current dirty integration surface, but
+an A/B check that temporarily restored only the old local skip lists produced
+the same aggregates as the cleaned shape:
+`ast=c00bbb9033f8b99fd8f6a280fb264c017f7601dce96e914035e75c46bb514a37`
+with 117 throws and
+`cst=591d44a6f0c4608459903c221c210684bac332161b0d901b0c1fc3caa5cee714`
+with 0 throws. Treat the oracle red as pre-existing dirty-surface movement, not
+movement from this scanner-skip slice. This slice makes no broad speed claim.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
