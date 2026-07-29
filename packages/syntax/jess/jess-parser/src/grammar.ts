@@ -37,10 +37,10 @@ type JessRules = {
   DirectJessBlockLambda: Combinator<AnonymousMixin>;
   DirectJessExprLambda: Combinator<AnonymousMixin>;
   DirectJessValueBlock: Combinator<ValueNode>;
-  DirectJessVarReference: Combinator<VariableReference>;
-  DirectJessDeclarationReference: Combinator<DeclarationReference>;
-  DirectJessReferenceTail: Combinator<JessReferenceTail>;
-  DirectJessReferenceCallTail: Combinator<JessReferenceTail>;
+  VariableReference: Combinator<VariableReference>;
+  DeclarationReference: Combinator<DeclarationReference>;
+  ReferenceTail: Combinator<JessReferenceTail>;
+  ReferenceCallTail: Combinator<JessReferenceTail>;
   DollarValue: Combinator<ValueNode>;
   DollarBrace: Combinator<Interpolation>;
   ExpressionDollarBrace: Combinator<ExpressionFact>;
@@ -1418,7 +1418,7 @@ const jessKeyframePercent = regex(/[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)%/);
 export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const jessCase = makeWhen({ caseInsensitive: true });
 
-  const DirectJessVarReference = node<VariableReference>(
+  const VariableReference = node<VariableReference>(
     'VariableReference',
     choice(
       noTrivia(sequence(
@@ -1438,7 +1438,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       span
     )
   );
-  const DirectJessDeclarationReference = node<DeclarationReference>(
+  const DeclarationReference = node<DeclarationReference>(
     'DeclarationReference',
     noTrivia(literal('$')),
     (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
@@ -1513,12 +1513,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'ExpressionDeclarationReference',
     noTrivia(choice(
       sequence(
-        g.DirectJessDeclarationReference,
+        g.DeclarationReference,
         literal('.'),
         jessDollarName,
         many(choice(
           g.ExpressionReferenceCallTail,
-          g.DirectJessReferenceTail
+          g.ReferenceTail
         ))
       ),
       sequence(
@@ -1526,7 +1526,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         jessDollarName,
         many(choice(
           g.ExpressionReferenceCallTail,
-          g.DirectJessReferenceTail
+          g.ReferenceTail
         ))
       )
     )),
@@ -1616,15 +1616,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     choice(
       noTrivia(sequence(
         not(jessTypeNamespace),
-        g.DirectJessVarReference,
+        g.VariableReference,
         many(choice(
           g.ExpressionReferenceCallTail,
-          g.DirectJessReferenceTail
+          g.ReferenceTail
         ))
       )),
       noTrivia(sequence(
-        g.DirectJessVarReference,
-        many(g.DirectJessReferenceTail)
+        g.VariableReference,
+        many(g.ReferenceTail)
       )),
       g.ExpressionDeclarationReference,
       g.ExpressionDollarInterp,
@@ -2964,7 +2964,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * plain `$name` retains the existing VariableReference reduction, while the
    * authored chain stays one typed Reference without a post-parse walk.
    */
-  const DirectJessReferenceTail = choice(
+  const ReferenceTail = choice(
     node<JessReferenceTail>(
       'ReferenceDotTail',
       noTrivia(sequence(
@@ -2981,7 +2981,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       noTrivia(sequence(
         literal('['),
         choice(
-          g.DirectJessVarReference,
+          g.VariableReference,
           g.DirectJessQuoted,
           regex(/[+-]?\d+(?:\.\d+)?/),
           g.Keyword
@@ -3012,13 +3012,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * It reuses the mixin argument production verbatim, so a lambda call binds
    * positionally, by name, and against defaults through the ONE binder a named
    * mixin call already uses. It is deliberately NOT folded INTO the shared
-   * `DirectJessReferenceTail`, which stays access-only: `$type.*()` must keep
+   * `ReferenceTail`, which stays access-only: `$type.*()` must keep
    * reducing through the dedicated `GuardCall` mixin-guard syntax
    * instead of collapsing into an ordinary member-call chain. Expression and
    * condition positions opt in to dispatch by listing this tail alongside the
    * access tail (see `ExpressionAtom`, `DollarValue`).
    */
-  const DirectJessReferenceCallTail = node<JessReferenceTail>(
+  const ReferenceCallTail = node<JessReferenceTail>(
     'ReferenceCallTail',
     noTrivia(sequence(
       literal('('),
@@ -3046,7 +3046,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   /*
    * Left-factored `$`/`$$`+name so the ubiquitous dollar value is parsed ONCE.
-   * The leading `DirectJessVarReference` is shared across plain references,
+   * The leading `VariableReference` is shared across plain references,
    * accessor-tail chains, and unwrapped `/` slash lists. Arithmetic and
    * comparison stay in the explicit `$(...)` expression grammar so normal value
    * position cannot admit expression-only forms like leading-dot declaration
@@ -3056,16 +3056,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     'DollarValue',
     noTrivia(choice(
       attempt(sequence(
-        g.DirectJessDeclarationReference,
+        g.DeclarationReference,
         literal('.'),
         jessDollarName,
         many(choice(
-          g.DirectJessReferenceCallTail,
-          g.DirectJessReferenceTail
+          g.ReferenceCallTail,
+          g.ReferenceTail
         ))
       )),
       sequence(
-        g.DirectJessVarReference,
+        g.VariableReference,
         optional(choice(
 
           /*
@@ -3082,8 +3082,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
           /* Accessor-tail chain (`.name`, `[key]`). */
           oneOrMore(choice(
-            g.DirectJessReferenceCallTail,
-            g.DirectJessReferenceTail
+            g.ReferenceCallTail,
+            g.ReferenceTail
           ))
         ))
       )
@@ -5083,7 +5083,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const ForRangeBound = node<ValueNode>(
     'ForRangeBound',
     choice(
-      g.DirectJessVarReference,
+      g.VariableReference,
       g.Dimension
     ),
     children => requireValueNode(children[0])
@@ -5503,10 +5503,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessBlockLambda,
     DirectJessExprLambda,
     DirectJessValueBlock,
-    DirectJessVarReference,
-    DirectJessDeclarationReference,
-    DirectJessReferenceTail,
-    DirectJessReferenceCallTail,
+    VariableReference,
+    DeclarationReference,
+    ReferenceTail,
+    ReferenceCallTail,
     DollarValue,
     DollarBrace,
     ExpressionDollarBrace,

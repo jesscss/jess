@@ -4073,6 +4073,26 @@ test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+Jess reference rule name cleanup, 2026-07-29: the Jess lookup/reference grammar
+keys now use the same semantic names as the public AST/CST nodes:
+`VariableReference`, `DeclarationReference`, `ReferenceTail`, and
+`ReferenceCallTail` instead of `DirectJess*` mode labels. This aligns the
+grammar object surface with the declaration/property/member lookup semantics the
+AST already exposes: `$name` remains a variable reference unless the
+declaration/member ambiguity rules convert it, `$name.member` and `$.member`
+remain declaration/member lookup forms, and expression-only leading-dot lookup
+continues to live behind the explicit `$()` expression boundary.
+
+Evidence for the Jess reference rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/parser-shared build && pnpm --filter
+@jesscss/jess-parser build` passed; `pnpm run check:macro` passed with
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; `pnpm run verify:compose-integrity` passed; and `git diff --check`
+passed. The old `ReferenceTail#1` gating debt now reports under the semantic
+rule name instead of `DirectJessReferenceTail#1`.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman
