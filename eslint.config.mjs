@@ -73,6 +73,51 @@ const TEST_FILES = [
   'packages/**/perf/**/*.{mjs,cjs,js,ts}'
 ];
 
+export const grammarSourcePlugins = { grammar: grammarRules, '@stylistic': stylistic };
+
+export const grammarSourceRules = {
+  /*
+   * Block comments only. Grammar rules are documented productions, and a
+   * `//` cannot carry a `@see` link to the spec paragraph a rule
+   * implements. Directive comments remain exempt.
+   */
+  'grammar/no-line-comments': 'error',
+  'grammar/no-multiline-line-comments': 'off',
+
+  /*
+   * A raw non-ASCII character in a regex cannot be reviewed: U+0080 and
+   * U+00A0 are the same glyph on screen, and neither announces itself as a
+   * range endpoint. Escapes also survive re-encoding and copy-paste. The
+   * fix is byte-preserving for the compiled pattern.
+   */
+  'grammar/no-literal-non-ascii-in-regex': 'error',
+
+  /*
+   * A grammar recognises input through combinators. An ad-hoc regex is
+   * invisible to the macro compiler and to first-set computation.
+   */
+  'grammar/no-regex-outside-combinator': 'error',
+
+  /*
+   * Keeps the file macro-buildable: no factories, no spreads into
+   * combinator argument lists, no patterns assembled from variables.
+   * `check-macro-buildable` catches these at build time; catching them at
+   * write time is strictly better.
+   */
+  'grammar/no-macro-hazards': 'error',
+
+  /*
+   * Grammar readability is mostly semantic: use the combinator shape that
+   * makes the production obvious. Tiny calls such as `choice(foo, bar)` and
+   * `sequence(literal('{'), body, literal('}'))` should stay compact when
+   * they read better that way. Larger calls can expand around the parts
+   * that need documentation or visual grouping without forcing every short
+   * argument onto its own line.
+   */
+  '@stylistic/function-paren-newline': 'off',
+  '@stylistic/function-call-argument-newline': 'off'
+};
+
 const compat = new FlatCompat({
   baseDirectory: __dirname,
   recommendedConfig: js.configs.recommended,
@@ -404,48 +449,9 @@ export default tseslint.config([
   {
     files: GRAMMAR_FILES,
     ignores: ['**/__tests__/**', '**/*.test.ts'],
-    plugins: { grammar: grammarRules, '@stylistic': stylistic },
+    plugins: grammarSourcePlugins,
     rules: {
-      /*
-       * Block comments only. Grammar rules are documented productions, and a
-       * `//` cannot carry a `@see` link to the spec paragraph a rule
-       * implements. Directive comments remain exempt.
-       */
-      'grammar/no-line-comments': 'error',
-      'grammar/no-multiline-line-comments': 'off',
-
-      /*
-       * A raw non-ASCII character in a regex cannot be reviewed: U+0080 and
-       * U+00A0 are the same glyph on screen, and neither announces itself as a
-       * range endpoint. Escapes also survive re-encoding and copy-paste. The
-       * fix is byte-preserving for the compiled pattern.
-       */
-      'grammar/no-literal-non-ascii-in-regex': 'error',
-
-      /*
-       * A grammar recognises input through combinators. An ad-hoc regex is
-       * invisible to the macro compiler and to first-set computation.
-       */
-      'grammar/no-regex-outside-combinator': 'error',
-
-      /*
-       * Keeps the file macro-buildable: no factories, no spreads into
-       * combinator argument lists, no patterns assembled from variables.
-       * `check-macro-buildable` catches these at build time; catching them at
-       * write time is strictly better.
-       */
-      'grammar/no-macro-hazards': 'error',
-
-      /*
-       * Grammar readability is mostly semantic: use the combinator shape that
-       * makes the production obvious. Tiny calls such as `choice(foo, bar)` and
-       * `sequence(literal('{'), body, literal('}'))` should stay compact when
-       * they read better that way. Larger calls can expand around the parts
-       * that need documentation or visual grouping without forcing every short
-       * argument onto its own line.
-       */
-      '@stylistic/function-paren-newline': 'off',
-      '@stylistic/function-call-argument-newline': 'off'
+      ...grammarSourceRules
 
       /*
        * Deliberately NOT re-declaring `@stylistic/indent` here. The base config

@@ -1,4 +1,4 @@
-import rootConfig from '../../../../eslint.config.mjs';
+import rootConfig, { grammarSourcePlugins, grammarSourceRules } from '../../../../eslint.config.mjs';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config([
@@ -12,5 +12,11 @@ export default tseslint.config([
         tsconfigRootDir: import.meta.dirname
       }
     }
+  },
+  {
+    files: ['src/**/*.ts'],
+    ignores: ['**/__tests__/**', '**/*.test.ts'],
+    plugins: grammarSourcePlugins,
+    rules: grammarSourceRules
   }
 ]);
