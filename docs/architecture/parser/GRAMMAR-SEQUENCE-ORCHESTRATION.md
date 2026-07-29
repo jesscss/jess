@@ -262,18 +262,21 @@ base and summarize their local deltas. The obsolete Less
 `lessFoldProbeCstGrammar` export is gone; tests and public CST parsing use
 `lessCstGrammar` directly.
 
-Current prefix inventory, 2026-07-27: CSS is clean for `CssAst*` in
-`packages/syntax/css/css-parser/src/grammar.ts`. The dialect grammar sources
-still carry the migration namespaces and should burn them down by reviewed
-families, not by blind whole-file replacement. Current counts are: Less has
-801 `DirectLess*`/`directLess*` references across 184 distinct names after the
-import, value-leaf, interpolation/reference, value-family, query/supports, and
-glued function-opener cleanup; SCSS has 1160 `DirectScss*`/`directScss*`
-references across 195 distinct names after the first public-name cleanup; and
-Jess has 1074 `DirectJess*`/`directJess*` references across 178 distinct names.
-Use these as a progress inventory, not an acceptance metric; a name may remain
-only when the rule really recognizes a dialect-specific language shape and that
-divergence is documented near the rule.
+Current prefix inventory, 2026-07-29: CSS is clean for `CssAst*` in
+`packages/syntax/css/css-parser/src/grammar.ts`, and Less is clean for
+`DirectLess*` / `directLess*` in
+`packages/syntax/less/less-parser/src/grammar.ts`. The remaining dialect
+grammar source prefix debt should burn down by reviewed families, not by blind
+whole-file replacement. Current counts are: SCSS has 34
+`DirectScss*` / `directScss*` references across 4 distinct names
+(`DirectScssComment`, `directScssKeyframeSelectorList`,
+`directScssPropertyChunk`, and `directScssUrlInterpolatedChunk`), and Jess has
+49 lowercase `directJess*` parser-local helper references across 15 distinct
+names, with no uppercase `DirectJess*` grammar keys left in
+`packages/syntax/jess/jess-parser/src/grammar.ts`. Use these as a progress
+inventory, not an acceptance metric; a name may remain only when the rule really
+recognizes a dialect-specific language shape and that divergence is documented
+near the rule.
 
 Less naming/composition rule, 2026-07-27: `DirectLess*` is migration scaffolding,
 not grammar vocabulary. When a Less rule is the dialect version of a CSS
@@ -2830,13 +2833,16 @@ host-mode artifact. The full Jess parser suite passes:
 `pnpm --filter @jesscss/jess-parser test` (6 files / 249 tests), and
 `pnpm --filter @jesscss/jess-parser build` passes. The old CST-only acceptance
 of invalid slash-function forms has been removed. Later naming cleanup passes
-have moved the selector, control, declaration, import, and at-rule families
-toward semantic CST/AST-aligned labels; remaining `DirectJess*` source names are
-quality cleanup on the surviving grammar, not a second grammar contract. Continue
-to classify each touched `choice(...)`, use current Parseman `dispatch(...)`
-only for routed token families with a deciding opener and same-family generic
-fallback, keep construct/context choices as `choice(...)` or left-factor helpers,
-and replace broad keyword regexes with the shared word helper policy.
+have moved the selector, control, declaration, import, at-rule, and
+general-enclosed template families toward semantic CST/AST-aligned labels; the
+uppercase `DirectJess*` grammar-key pass is drained in `src/grammar.ts`.
+Remaining Jess work is grammar-shape, trivia, dispatch/choice, lowercase
+parser-local helper naming, and cross-dialect naming quality cleanup on the
+surviving grammar, not a second grammar contract. Continue to classify each
+touched `choice(...)`, use current Parseman `dispatch(...)` only for routed
+token families with a deciding opener and same-family generic fallback, keep
+construct/context choices as `choice(...)` or left-factor helpers, and replace
+broad keyword regexes with the shared word helper policy.
 
 Quality bar for the surviving Less grammar: simplify aggressively after the
 fold, using the folded CSS grammar as the model. Every significant rule should
@@ -4233,6 +4239,29 @@ compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed. The previous at-rule/supports/import gating warnings now report under
 semantic rule names such as `AtRuleHeader`, `MediaPrelude`,
 `SupportsCondition`, and `CssImportPrelude`.
+
+Jess general-enclosed template name cleanup, 2026-07-29: the final Jess
+`DirectJess*` grammar keys now use semantic AST/CST-aligned labels
+(`GeneralTemplate`, `GeneralTemplateParen`, `GeneralTemplateSquare`,
+`GeneralTemplateBrace`, `GeneralTemplateDoubleQuoted`,
+`GeneralTemplateSingleQuoted`, `GeneralQuotedTemplate`,
+`GeneralQuotedTemplateParen`, `GeneralQuotedTemplateSquare`,
+`GeneralQuotedTemplateBrace`, `GeneralQuotedTemplateDoubleQuoted`,
+`GeneralQuotedTemplateSingleQuoted`, and `GeneralEnclosed`). This is a
+naming-only alignment. The strict general-enclosed chain still excludes Jess
+`Expression`; the quoted permissive chain still includes it. The local
+`choice(...)` clusters remain literal delimiter wrappers and token-template
+segment families, not dispatch candidates, because no single already-consumed
+token routes known cases plus a same-family generic fallback.
+
+Evidence for the Jess general-enclosed template name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
 
 SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
 custom-property grammar keys now use semantic AST/CST-aligned labels
