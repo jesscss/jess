@@ -34,7 +34,7 @@ describe('SCSS grammar compose integrity', () => {
       /compose\b|missing rule|references missing|falling back to runtime/i.test(message));
     expect(issues, `compose() emitted missing-rule / runtime-fallback diagnostics:\n${issues.join('\n')}`).toEqual([]);
 
-    for (const rule of ['Stylesheet', 'ScssAstDocument', 'ScssValueAtom', 'ScssMixinCallArg']) {
+    for (const rule of ['Stylesheet', 'Stylesheet', 'ScssValueAtom', 'ScssMixinCallArg']) {
       expect(Object.hasOwn(grammar, rule), `folded SCSS grammar is missing rule "${rule}"`).toBe(true);
     }
     for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VarCall', 'VariableCall']) {
@@ -51,7 +51,7 @@ describe('SCSS grammar compose integrity', () => {
       '.a { &:extend(.b all); }'
     ]) {
       const cst = parseScssCst(source);
-      const ast = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      const ast = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
 
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       expect(ast.ok && ast.unconsumedFrom === null, source).toBe(false);

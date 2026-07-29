@@ -36,7 +36,6 @@ function isScriptModulePath(path: string): boolean {
 
 type ScssRules = {
   Stylesheet: Combinator<Stylesheet>;
-  ScssAstDocument: Combinator<Stylesheet>;
   VariableDeclaration: Combinator<VariableDeclaration>;
   DirectScssComment: Combinator<Comment>;
   DirectScssVarReference: Combinator<VariableReference>;
@@ -4933,7 +4932,6 @@ export const scssFactory = (g: ScssInputRules) => {
 
   return {
     Stylesheet,
-    ScssAstDocument: Stylesheet,
     VariableDeclaration,
     DirectScssComment,
     DirectScssVarReference,
