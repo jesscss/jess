@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { collectPlan } from '../extend/plan.js';
 import { composePath } from '../extend/compose.js';
 import { classifyMatchBoundary } from '../extend/match.js';
-import { branchFromComplex, branchText } from '../extend/ir.js';
+import { branchFromSelector, branchText } from '../extend/ir.js';
 import {
   compoundSelectorOf, complexSelector, rule, sel, selist, simpleSelector, stylesheet, type ComplexSelector
 } from '../nodes.js';
@@ -31,7 +31,7 @@ describe('classifyMatchBoundary (bnd origin reader)', () => {
     // `.box { & .leaf {} }` -> `.box .leaf` (origins 1,0); target `.leaf` hits own-local.
     const doc = stylesheet([rule('.box', [rule(complex('&', '.leaf'), [])])]);
     const b = composedChild(doc, '& .leaf');
-    const target = branchFromComplex(selist(sel('.leaf')).selectors[0]!);
+    const target = branchFromSelector(selist(sel('.leaf')).selectors[0]!);
     expect(classifyMatchBoundary(b, target, true)).toBe('local');
   });
 
@@ -39,7 +39,7 @@ describe('classifyMatchBoundary (bnd origin reader)', () => {
     // `.box { .item & {} }` -> `.item .box` (origins 0,1); target `.box` hits the ancestor slot.
     const doc = stylesheet([rule('.box', [rule(complex('.item', '&'), [])])]);
     const b = composedChild(doc, '.item &');
-    const target = branchFromComplex(selist(sel('.box')).selectors[0]!);
+    const target = branchFromSelector(selist(sel('.box')).selectors[0]!);
     expect(classifyMatchBoundary(b, target, true)).toBe('within');
   });
 
@@ -50,21 +50,21 @@ describe('classifyMatchBoundary (bnd origin reader)', () => {
      */
     const doc = stylesheet([rule('.outer', [rule('.mid', [rule(complex('&', '.leaf'), [])])])]);
     const b = composedChild(doc, '& .leaf');
-    const target = branchFromComplex(complex('.mid', '.leaf'));
+    const target = branchFromSelector(complex('.mid', '.leaf'));
     expect(classifyMatchBoundary(b, target, true)).toBe('crossing');
   });
 
   it('returns NONE when the target does not match the branch', () => {
     const doc = stylesheet([rule('.box', [rule(complex('&', '.leaf'), [])])]);
     const b = composedChild(doc, '& .leaf');
-    const target = branchFromComplex(selist(sel('.absent')).selectors[0]!);
+    const target = branchFromSelector(selist(sel('.absent')).selectors[0]!);
     expect(classifyMatchBoundary(b, target, true)).toBe('none');
   });
 
   it('reads a boundary-free branch (no bnd) as all own-local (LOCAL)', () => {
     // A raw target branch never went through an &-compose, so bnd is undefined.
-    const b = branchFromComplex(selist(sel('.a')).selectors[0]!);
-    const target = branchFromComplex(selist(sel('.a')).selectors[0]!);
+    const b = branchFromSelector(selist(sel('.a')).selectors[0]!);
+    const target = branchFromSelector(selist(sel('.a')).selectors[0]!);
     expect(classifyMatchBoundary(b, target, false)).toBe('local');
   });
 });

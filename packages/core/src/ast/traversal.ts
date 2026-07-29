@@ -13,6 +13,7 @@ import type {
   Param,
   PseudoSelector,
   Reference,
+  RelativeSelector,
   Ruleset,
   SelectorList,
   SimpleSelector,
@@ -35,6 +36,7 @@ export type AstVisitNode =
   | CollectionEntry
   | SelectorList
   | ComplexSelector
+  | RelativeSelector
   | CompoundSelector
   | SimpleToken;
 
@@ -297,6 +299,17 @@ function walkComplexSelector(node: ComplexSelector, hooks: AstVisitHooks, depth:
   }
 }
 
+function walkRelativeSelector(node: RelativeSelector, hooks: AstVisitHooks, depth: number): void {
+  let visitIndex = 0;
+  for (let i = 1; i < node.value.length; i++) {
+    const part = node.value[i]!;
+    if (typeof part !== 'string') {
+      walkNode(part, hooks, 'selector.value', node, visitIndex, depth + 1);
+      visitIndex++;
+    }
+  }
+}
+
 function walkCompoundSelector(node: CompoundSelector, hooks: AstVisitHooks, depth: number): void {
   for (let i = 0; i < node.value.length; i++) {
     walkNode(node.value[i]!, hooks, 'selector.simple', node, i, depth + 1);
@@ -525,6 +538,9 @@ function walkNode(
       break;
     case 'ComplexSelector':
       walkComplexSelector(node, hooks, depth);
+      break;
+    case 'RelativeSelector':
+      walkRelativeSelector(node, hooks, depth);
       break;
     case 'CompoundSelector':
       walkCompoundSelector(node, hooks, depth);

@@ -55,7 +55,7 @@ discriminant styles for one conceptual model.
 | 2 Declaration | `Declaration` | `name: string \| Interp`, `value`, `merge`, `important` | `'Declaration'` |
 | 3 Comment | `Comment` | `text` | `'Comment'` |
 | 4 SelectorList | `SelectorList` | `selectors: Complex[]` | `'SelectorList'` |
-| 5 Complex | `Complex` | `head`, `tail`, `leadingComb` **+ methods** | `'Complex'` |
+| 5 Complex | `Complex` | selector/combinator `value` with no leading-combinator side field **+ methods** | `'Complex'` |
 | 6 Compound | `Compound` | `simples` **+ methods** | `'Compound'` |
 | 7 Simple | `Simple` | `text: string \| null`, `interp` | `'Simple'` |
 | 8 Word | `Word` | `text`, `tag?: LiteralTag` | `'Word'` |

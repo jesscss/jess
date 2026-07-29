@@ -5,7 +5,7 @@
  * scope, document order).
  */
 
-import { branchFromComplex, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
+import { branchFromSelector, branchSharesAtom, collectBranchAtoms, levelFromSelectorList } from './ir.js';
 import type { Branch, Level } from './ir.js';
 import type { ExtendInstruction, Stylesheet, Ruleset, Statement } from '../nodes.js';
 
@@ -95,7 +95,7 @@ export interface PlanOverlay {
 }
 
 function instructionTargets(inst: ExtendInstruction): Branch[] {
-  return inst.target.selectors.map(branchFromComplex);
+  return inst.target.selectors.map(branchFromSelector);
 }
 
 export function collectPlan(

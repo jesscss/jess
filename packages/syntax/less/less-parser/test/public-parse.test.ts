@@ -25,12 +25,8 @@ const compoundSelector = (...value: object[]) => ({
   type: 'CompoundSelector',
   value
 });
-const complexSelector = (...value: object[]) => ({
-  type: 'ComplexSelector',
-  value
-});
-const simpleComplex = (text: string) => complexSelector(simpleSelector(text));
-const compoundComplex = (...value: object[]) => complexSelector(compoundSelector(...value));
+const simpleComplex = (text: string) => simpleSelector(text);
+const compoundComplex = (...value: object[]) => compoundSelector(...value);
 
 describe('public Less parse()', () => {
   it('constructs boundary-complete CSS named colors as Color values', () => {
@@ -1573,10 +1569,7 @@ describe('public Less parse()', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                value: [simpleSelector('.card')]
-              }
+              simpleSelector('.card')
             ]
           },
           rules: [
@@ -1618,8 +1611,8 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } })),
-              complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } }))
+              simpleSelector(null, { interp: { type: 'Interpolation' } }),
+              simpleSelector(null, { interp: { type: 'Interpolation' } })
             ]
           }
         }
@@ -1654,7 +1647,7 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              complexSelector(simpleSelector(null, {
+              simpleSelector(null, {
                 interp: {
                   type: 'Interpolation',
                   parts: [
@@ -1668,8 +1661,8 @@ describe('public Less parse()', () => {
                     }
                   ]
                 }
-              })),
-              complexSelector(simpleSelector(null, {
+              }),
+              simpleSelector(null, {
                 interp: {
                   type: 'Interpolation',
                   parts: [
@@ -1689,7 +1682,7 @@ describe('public Less parse()', () => {
                     }
                   ]
                 }
-              }))
+              })
             ]
           }
         }
@@ -1719,8 +1712,8 @@ describe('public Less parse()', () => {
               type: 'Ruleset',
               selector: {
                 selectors: [
-                  complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } })),
-                  complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } }))
+                  simpleSelector(null, { interp: { type: 'Interpolation' } }),
+                  simpleSelector(null, { interp: { type: 'Interpolation' } })
                 ]
               }
             }
@@ -2585,7 +2578,7 @@ describe('public Less parse()', () => {
               target: {
                 type: 'SelectorList',
                 selectors: [
-                  complexSelector(simpleSelector(null, {
+                  simpleSelector(null, {
                     interp: {
                       type: 'Interpolation',
                       parts: [
@@ -2600,7 +2593,7 @@ describe('public Less parse()', () => {
                         }
                       ]
                     }
-                  }))
+                  })
                 ]
               }
             }

@@ -9,11 +9,7 @@ const simpleSelector = (text: string | null, extra: object = {}) => ({
   interp: null,
   ...extra
 });
-const complexSelector = (...value: object[]) => ({
-  type: 'ComplexSelector',
-  value
-});
-const simpleComplex = (text: string) => complexSelector(simpleSelector(text));
+const simpleComplex = (text: string) => simpleSelector(text);
 
 function containsNode(value: unknown, predicate: (value: Record<string, unknown>) => boolean): boolean {
   if (Array.isArray(value)) {

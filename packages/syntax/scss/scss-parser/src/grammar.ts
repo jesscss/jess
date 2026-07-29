@@ -18,14 +18,15 @@ import type { Combinator, FusedRule } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
-import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, complexSelector, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AtRuleBlock, AtRuleStatement, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
+import { anonymousMixin, any, atRuleBlock, atRuleStatement, block, collection, collectionEntry, color, comment, selectorBranchOf, decl, dimension, forNode, funcCall, generalEnclosed, ifNode, importAtRule, interpolation, interpolatedSimpleSelector, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, pseudoSelector, quoted, range, reference, relativeSelector, selectorTermOf, stylesheet, rule, selist, simpleSelector, spaced, styleImport, url, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AtRuleBlock, AtRuleStatement, Collection, CollectionEntry, Color, Comment, ComplexSelector, CompoundSelector, Declaration, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, GuardNode, If, IfBranch, ImportAtRule, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, OpaqueAtRuleBlock, Param, Quoted, Reference, ReferenceStep, SelectorBranch, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
 type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
 type ScssComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
+type ScssSegmentCombinator = ' ' | '>' | '+' | '~' | '|' | '||';
 
 const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
 
@@ -184,15 +185,19 @@ type ScssRules = {
   NestingSelector: Combinator<SimpleSelector>;
   Compound: Combinator<SelectorTerm>;
   ComplexTail: Combinator<ScssComplexTail>;
-  Complex: Combinator<ComplexSelector>;
-  SelectorTail: Combinator<ComplexSelector>;
+  Complex: Combinator<SelectorBranch>;
+  RelativeComplex: Combinator<SelectorBranch>;
+  SelectorTail: Combinator<SelectorBranch>;
   Selector: Combinator<SelectorList>;
+  NestedSelectorTail: Combinator<SelectorBranch>;
+  NestedSelector: Combinator<SelectorList>;
   Extend: Combinator<ExtendInstruction>;
   OpaquePrelude: Combinator<string | null>;
   OpaqueBody: Combinator<string>;
   OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
   OpaqueAtRuleStatement: Combinator<AtRuleStatement>;
   Ruleset: Combinator<Ruleset>;
+  NestedRuleset: Combinator<Ruleset>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
 };
@@ -301,11 +306,21 @@ function isComplexSelector(value: unknown): value is ComplexSelector {
     && 'value' in value && Array.isArray(value.value);
 }
 
+function isRelativeSelector(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'RelativeSelector'
+    && 'value' in value && Array.isArray(value.value);
+}
+
+function isSelectorBranch(value: unknown): value is SelectorBranch {
+  return isSelectorTerm(value) || isComplexSelector(value) || isRelativeSelector(value);
+}
+
 function isSelectorList(value: unknown): value is SelectorList {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'SelectorList'
     && 'selectors' in value && Array.isArray(value.selectors)
-    && value.selectors.every(isComplexSelector);
+    && value.selectors.every(isSelectorBranch);
 }
 
 function requireSelectorList(value: unknown): SelectorList {
@@ -361,11 +376,34 @@ function requireSimpleToken(value: unknown): SimpleToken {
   return value;
 }
 
-function requireComplexSelector(value: unknown): ComplexSelector {
-  if (!isComplexSelector(value)) {
-    throw new TypeError('SCSS grammar produced a non-complex selector child.');
+function requireSelectorBranch(value: unknown): SelectorBranch {
+  if (!isSelectorBranch(value)) {
+    throw new TypeError('SCSS grammar produced a non-selector branch child.');
   }
   return value;
+}
+
+function branchSegments(branch: SelectorBranch): [{ combinator?: ScssSegmentCombinator; term: SelectorTerm }, ...Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }>] {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [{ term: branch }];
+  }
+  const segments: Array<{ combinator?: ScssSegmentCombinator; term: SelectorTerm }> = [];
+  let combinator: ScssSegmentCombinator = ' ';
+  const start = branch.type === 'RelativeSelector' ? 1 : 0;
+  for (let index = start; index < branch.value.length; index++) {
+    const part = branch.value[index]!;
+    if (typeof part === 'string') {
+      combinator = part;
+    } else {
+      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
+      combinator = ' ';
+    }
+  }
+  const [first, ...rest] = segments;
+  if (first === undefined) {
+    throw new TypeError('SCSS selector branch produced no selector terms.');
+  }
+  return [first, ...rest];
 }
 
 function isImportTarget(value: unknown): value is Quoted | Url | Interpolation {
@@ -949,8 +987,7 @@ function requireStatementList(value: unknown): Statement[] {
 
 function keyframeSelectorListFromChildren(children: readonly unknown[]): SelectorList {
   const selectors = children
-    .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
-    .map(selector => complexSelector([{ term: selector }]));
+    .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector');
   if (selectors.length === 0) {
     throw new TypeError('SCSS keyframe block requires a selector.');
   }
@@ -2702,7 +2739,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /* Nested body ending in `Ruleset` (mixin/each/for/nested-scope bodies). */
   const nestedBody = many(choice(
     nestedBodyPrefix,
-    g.Ruleset,
+    g.NestedRuleset,
     nestedAtStatement
   ));
 
@@ -2710,7 +2747,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const nestedKeyframesBody = many(choice(
     nestedBodyPrefix,
     g.Keyframes,
-    g.Ruleset,
+    g.NestedRuleset,
     nestedAtStatement
   ));
 
@@ -2718,7 +2755,7 @@ export const scssFactory = (g: ScssInputRules) => {
   const ruleBody = many(choice(
     nestedBodyPrefix,
     g.Extend,
-    g.Ruleset,
+    g.NestedRuleset,
     nestedAtStatement
   ));
 
@@ -2747,7 +2784,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.Keyframes,
     g.OpaqueAtRuleBlock,
     g.OpaqueAtRuleStatement,
-    g.Ruleset
+    g.NestedRuleset
   ));
   const startingLayerBlockBody = many(choice(
     g.Comment,
@@ -2768,7 +2805,7 @@ export const scssFactory = (g: ScssInputRules) => {
     g.Keyframes,
     g.OpaqueAtRuleBlock,
     g.OpaqueAtRuleStatement,
-    g.Ruleset
+    g.NestedRuleset
   ));
   const MixinDefinitionRule = node<MixinDefinition>(
     'MixinDefinitionRule',
@@ -4594,8 +4631,8 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * A relative selector (a `:has()` argument) may open with a child/sibling
    * combinator (`:has(> .b)`). The outer selector grammar forbids a leading
-   * combinator, so this pseudo-private complex admits an optional relative one and
-   * rides it on the ComplexSelector's `leadingComb`. A leading `||`/`|` is
+   * combinator, so this pseudo-private branch admits an optional relative one and
+   * emits a `RelativeSelector`. A leading `||`/`|` is
    * namespace syntax, not a relative combinator, so it is excluded (mirrors the
    * css/less landings).
    */
@@ -4604,7 +4641,7 @@ export const scssFactory = (g: ScssInputRules) => {
     literal('+'),
     literal('~')
   );
-  const RelativeComplex = node<ComplexSelector>(
+  const RelativeComplex = node<SelectorBranch>(
     'RelativeComplex',
     parser(
       { trivia: whitespace },
@@ -4614,18 +4651,18 @@ export const scssFactory = (g: ScssInputRules) => {
       )
     ),
     (children) => {
-      const complex = children.find(isComplexSelector);
-      if (complex === undefined) {
-        throw new TypeError('SCSS relative complex selector requires a complex selector.');
+      const branch = children.find(isSelectorBranch);
+      if (branch === undefined) {
+        throw new TypeError('SCSS relative complex selector requires a selector branch.');
       }
       if (children.length === 1) {
-        return complex;
+        return branch;
       }
       const lead = requireToken(children[0]).value;
       if (lead !== '>' && lead !== '+' && lead !== '~') {
         throw new TypeError('SCSS relative complex selector produced an invalid leading combinator.');
       }
-      return { ...complex, leadingComb: lead };
+      return relativeSelector(lead, branchSegments(branch));
     }
   );
 
@@ -4648,7 +4685,7 @@ export const scssFactory = (g: ScssInputRules) => {
         ))
       )
     ),
-    children => selist(...children.filter(isComplexSelector))
+    children => selist(...children.filter(isSelectorBranch))
   );
   const NthPseudo = node<SimpleSelector>(
     'NthPseudo',
@@ -4845,24 +4882,24 @@ export const scssFactory = (g: ScssInputRules) => {
       return { combinator, term };
     }
   );
-  const Complex = node<ComplexSelector>(
+  const Complex = node<SelectorBranch>(
     'Complex',
     sequence(
       g.Compound,
       many(g.ComplexTail)
     ),
-    children => complexSelector([
+    children => selectorBranchOf([
       { term: requireSelectorTerm(children[0]) },
       ...children.slice(1).map(requireScssComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
-  const SelectorTail = node<ComplexSelector>(
+  const SelectorTail = node<SelectorBranch>(
     'SelectorTail',
     sequence(
       literal(','),
       g.Complex
     ),
-    children => requireComplexSelector(children[1])
+    children => requireSelectorBranch(children[1])
   );
   const Selector = node<SelectorList>(
     'Selector',
@@ -4874,7 +4911,27 @@ export const scssFactory = (g: ScssInputRules) => {
       g.Complex,
       many(g.SelectorTail)
     ),
-    children => selist(...children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector'))
+    children => selist(...children.filter(isSelectorBranch))
+  );
+  const NestedSelectorTail = node<SelectorBranch>(
+    'NestedSelectorTail',
+    sequence(
+      literal(','),
+      g.RelativeComplex
+    ),
+    children => requireSelectorBranch(children[1])
+  );
+  const NestedSelector = node<SelectorList>(
+    'NestedSelector',
+    sequence(
+      not(sequence(
+        g.Placeholder,
+        literal(',')
+      )),
+      g.RelativeComplex,
+      many(g.NestedSelectorTail)
+    ),
+    children => selist(...children.filter(isSelectorBranch))
   );
 
   /*
@@ -4977,6 +5034,32 @@ export const scssFactory = (g: ScssInputRules) => {
     (children) => {
       if (children.length < 3 || requireToken(children[1]).value !== '{' || requireToken(children[children.length - 1]).value !== '}') {
         throw new TypeError('SCSS rule produced unexpected children.');
+      }
+      const extendInstructions = children.filter(isExtendInstruction);
+      return rule(
+        requireSelectorList(children[0]),
+        statementChildren(
+          children.slice(
+            2,
+            -1
+          ),
+          true
+        ),
+        extendInstructions.length > 0 ? extendInstructions : undefined
+      );
+    }
+  );
+  const NestedRuleset = node<Ruleset>(
+    'NestedRuleset',
+    sequence(
+      g.NestedSelector,
+      literal('{'),
+      ruleBody,
+      literal('}')
+    ),
+    (children) => {
+      if (children.length < 3 || requireToken(children[1]).value !== '{' || requireToken(children[children.length - 1]).value !== '}') {
+        throw new TypeError('SCSS nested rule produced unexpected children.');
       }
       const extendInstructions = children.filter(isExtendInstruction);
       return rule(
@@ -5191,10 +5274,14 @@ export const scssFactory = (g: ScssInputRules) => {
     Compound,
     ComplexTail,
     Complex,
+    RelativeComplex,
     SelectorTail,
     Selector,
+    NestedSelectorTail,
+    NestedSelector,
     Extend,
     Ruleset,
+    NestedRuleset,
     rw: whitespace,
     whitespace
   };

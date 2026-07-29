@@ -9,8 +9,8 @@
 
 import { renderCombinator } from '../node.js';
 import type { Combinator } from '../node.js';
-import { complexHasInterp, simpleTokenText } from '../nodes.js';
-import type { ComplexSelector, SelectorList, SelectorTerm, SimpleToken } from '../nodes.js';
+import { selectorBranchHasInterp, simpleTokenText } from '../nodes.js';
+import type { ComplexSelectorPart, SelectorBranch, SelectorList, SelectorTerm, SimpleToken } from '../nodes.js';
 
 /* --------------------------------------------------------------------- types */
 
@@ -220,7 +220,7 @@ function simpleFromToken(sim: SimpleToken): Simple {
     && sim.crossable
     && sim.args !== null
     && sim.interp === null
-    && !sim.args.selectors.some(complexHasInterp)
+    && !sim.args.selectors.some(selectorBranchHasInterp)
   ) {
     return { t: 'is', branches: levelFromSelectorList(sim.args) };
   }
@@ -237,26 +237,34 @@ function termFromSelector(term: SelectorTerm): Compound {
     : compoundFromTokens([term]);
 }
 
-export function branchFromComplex(c: ComplexSelector): Branch {
+function branchParts(c: SelectorBranch): readonly ComplexSelectorPart[] {
+  return c.type === 'ComplexSelector'
+    ? c.value
+    : c.type === 'RelativeSelector'
+      ? c.value
+      : [c];
+}
+
+export function branchFromSelector(c: SelectorBranch): Branch {
   const segs: Seg[] = [];
   let first = true;
-  let pendingComb: Combinator = c.leadingComb ?? ' ';
-  for (const part of c.value) {
+  let pendingComb: Combinator = c.type === 'RelativeSelector' ? c.value[0] : ' ';
+  for (const part of branchParts(c)) {
     if (typeof part === 'string') {
       pendingComb = part;
       continue;
     }
     segs.push({
-      comb: first ? (c.leadingComb ?? ' ') : pendingComb,
+      comb: first ? pendingComb : pendingComb,
       compound: termFromSelector(part)
     });
     first = false;
   }
-  return segs.length === 0 ? mkBranch([{ comb: ' ', compound: { simples: [] } }]) : mkBranch(segs);
+  return mkBranch(segs);
 }
 
 export function levelFromSelectorList(list: SelectorList): Level {
-  return list.selectors.map(branchFromComplex);
+  return list.selectors.map(branchFromSelector);
 }
 
 /* --------------------------------------------------------------------- atoms */
@@ -279,7 +287,7 @@ export function textSimples(c: Compound): string[] {
  * exactly like `textSimples`/`multisetSubset`), grafts are walked so simples that
  * only appear inside an `:is()` (`:is(.p1, .p2) .c` → `.p1`, `.p2`, `.c`) are
  * captured — never dropped the way `textSimples` drops grafts. Text is taken RAW
- * (case-sensitive, no trim/fold), the same `branchFromComplex` → `s.text ?? ''`
+ * (case-sensitive, no trim/fold), the same `branchFromSelector` → `s.text ?? ''`
  * value both sides carry.
  */
 export function collectBranchAtoms(b: Branch, out: Set<string>): void {

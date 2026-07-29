@@ -10,11 +10,12 @@
  * conveniences, not a construction boundary. Narrow a node with
  * `node.type === '…'` (or `isNode`).
  *
- * Selector model: a selector is a `SelectorList` of `ComplexSelector`
- * selectors; a `ComplexSelector.value` is a flat sequence of selector term,
- * combinator string, selector term, ...; a `CompoundSelector.value` is a run of
- * `SimpleSelector` tokens concatenated with no separator (`.a` + `.b` => `.a.b`).
- * The `&` parent-reference is just a
+ * Selector model: a selector is a `SelectorList` of selector branches. A branch
+ * with no combinator is a direct `SelectorTerm`; a `ComplexSelector.value` is a
+ * flat sequence of selector term, combinator string, selector term, ...; a
+ * `RelativeSelector.value` is the same sequence with a leading combinator
+ * string; a `CompoundSelector.value` is a run of `SimpleSelector` tokens
+ * concatenated with no separator (`.a` + `.b` => `.a.b`). The `&` parent-reference is just a
  * `SimpleSelector` whose text is `'&'`. Canonical selector text is computed once and
  * cached (in an optional memo field) via the free `compoundCanonical` /
  * `complexCanonical` helpers — composition (nesting) then works on these cached
@@ -582,15 +583,13 @@ export type SelectorTerm = SimpleToken | CompoundSelector;
 export type ComplexSelectorPart = SelectorTerm | Combinator;
 
 /**
- * A flat selector-term / combinator sequence. `leadingComb` is an
- * optional leading combinator so an authored child selector like `> .b` (in
- * `.a { > .b {} }`) keeps its leading `>` verbatim in both flatten and nested
- * emit — the combinator prefixes the head compoundSelector (`> .b`).
+ * A flat selector-term / combinator sequence. A `ComplexSelector` is only for
+ * selector branches with at least one authored combinator; a no-combinator
+ * branch is a `SelectorTerm` directly.
  */
 export interface ComplexSelector {
   readonly type: 'ComplexSelector';
   readonly value: [SelectorTerm, ...ComplexSelectorPart[]];
-  readonly leadingComb?: Combinator;
 
   /** Serializer-owned memo of the canonical join (lazy). */
   _canon?: string;
@@ -602,19 +601,30 @@ export interface ComplexSelector {
   _hasInterp?: boolean;
 }
 
-/** Canonical text of a complex selector (head + tail, leading combinator), memoised. */
+/**
+ * A combinator-leading relative selector branch. These are admitted only in
+ * grammar contexts that allow relative selectors.
+ */
+export interface RelativeSelector {
+  readonly type: 'RelativeSelector';
+  readonly value: [Combinator, SelectorTerm, ...ComplexSelectorPart[]];
+
+  /** Serializer-owned memo of the canonical join (lazy). */
+  _canon?: string;
+
+  /** Serializer-owned memo of the has-ampersand flag (lazy). */
+  _hasAmp?: boolean;
+
+  /** Serializer-owned memo of the has-interp flag (lazy). */
+  _hasInterp?: boolean;
+}
+
+export type SelectorBranch = SelectorTerm | ComplexSelector | RelativeSelector;
+
+/** Canonical text of a complex selector, memoised. */
 export const complexCanonical = (c: ComplexSelector): string => {
   if (c._canon === undefined) {
     let s = selectorTermCanonical(c.value[0]);
-
-    /*
-     * A leading combinator (e.g. `> .b`) is rendered surrounded on the right
-     * only: `renderCombinator` yields ` > `; the head has no left context, so
-     * trim the leading space to emit `> .b`.
-     */
-    if (c.leadingComb !== undefined && c.leadingComb !== ' ') {
-      s = renderCombinator(c.leadingComb).trimStart() + s;
-    }
     for (let index = 1; index < c.value.length; index += 2) {
       const comb = c.value[index];
       const term = c.value[index + 1];
@@ -627,16 +637,39 @@ export const complexCanonical = (c: ComplexSelector): string => {
   return c._canon;
 };
 
+/** Canonical text of a relative selector, memoised. */
+export const relativeCanonical = (c: RelativeSelector): string => {
+  if (c._canon === undefined) {
+    let s = renderCombinator(c.value[0]).trimStart() + selectorTermCanonical(c.value[1]);
+    for (let index = 2; index < c.value.length; index += 2) {
+      const comb = c.value[index];
+      const term = c.value[index + 1];
+      if (typeof comb === 'string' && term !== undefined && typeof term !== 'string') {
+        s += renderCombinator(comb) + selectorTermCanonical(term);
+      }
+    }
+    c._canon = s;
+  }
+  return c._canon;
+};
+
+export const selectorBranchCanonical = (branch: SelectorBranch): string =>
+  branch.type === 'ComplexSelector'
+    ? complexCanonical(branch)
+    : branch.type === 'RelativeSelector'
+      ? relativeCanonical(branch)
+      : selectorTermCanonical(branch);
+
 /**
  * The inline canonical spelling of a structured pseudo, e.g. `:is(.a, .b)`. This
  * is the SINGLE core serialization site for the pseudo-arg join: branches join
- * with `, ` (normalized WS, one line) via the core-owned `complexCanonical`. The
+ * with `, ` (normalized WS, one line) via the core-owned branch canonicalizer. The
  * grammar NEVER computes this — it only supplies `args` (structure) + trivia. The
  * degrade-to-opaque case (`args: null`) falls back to the retained `text`.
  */
 export const pseudoCanonical = (p: PseudoSelector): string =>
   p.args !== null
-    ? `${p.name}(${p.args.selectors.map(complexCanonical).join(', ')})`
+    ? `${p.name}(${p.args.selectors.map(selectorBranchCanonical).join(', ')})`
     : p.text ?? '';
 
 /** The canonical contributed text of one simple token: a structured pseudo emits
@@ -688,10 +721,54 @@ export const complexHasInterp = (c: ComplexSelector): boolean => {
   return c._hasInterp;
 };
 
-/** A comma-separated list of complex selectors, e.g. `.a, .b`. */
+export const relativeHasAmpersand = (c: RelativeSelector): boolean => {
+  if (c._hasAmp === undefined) {
+    let has = false;
+    for (let index = 1; index < c.value.length; index += 1) {
+      const part = c.value[index]!;
+      if (typeof part !== 'string' && selectorTermHasAmpersand(part)) {
+        has = true;
+        break;
+      }
+    }
+    c._hasAmp = has;
+  }
+  return c._hasAmp;
+};
+
+export const relativeHasInterp = (c: RelativeSelector): boolean => {
+  if (c._hasInterp === undefined) {
+    let has = false;
+    for (let index = 1; index < c.value.length; index += 1) {
+      const part = c.value[index]!;
+      if (typeof part !== 'string' && selectorTermHasInterp(part)) {
+        has = true;
+        break;
+      }
+    }
+    c._hasInterp = has;
+  }
+  return c._hasInterp;
+};
+
+export const selectorBranchHasAmpersand = (branch: SelectorBranch): boolean =>
+  branch.type === 'ComplexSelector'
+    ? complexHasAmpersand(branch)
+    : branch.type === 'RelativeSelector'
+      ? relativeHasAmpersand(branch)
+      : selectorTermHasAmpersand(branch);
+
+export const selectorBranchHasInterp = (branch: SelectorBranch): boolean =>
+  branch.type === 'ComplexSelector'
+    ? complexHasInterp(branch)
+    : branch.type === 'RelativeSelector'
+      ? relativeHasInterp(branch)
+      : selectorTermHasInterp(branch);
+
+/** A comma-separated list of selector branches, e.g. `.a, .b`. */
 export interface SelectorList {
   readonly type: 'SelectorList';
-  readonly selectors: ComplexSelector[];
+  readonly selectors: SelectorBranch[];
 }
 
 /* -------------------------------------------------------------- statements */
@@ -1061,12 +1138,18 @@ export const anonymousMixin = (rules: Statement[], params?: Param[]): AnonymousM
  * helper; Less keeps its legacy heuristic where variable-only blocks are data
  * maps and every other statement body is an executable anonymous mixin.
  */
+type CollectionVariableDeclaration = VariableDeclaration & { readonly value: ValueSlot };
+
+const isCollectionVariableDeclaration = (statement: Statement): statement is CollectionVariableDeclaration =>
+  statement.type === 'VariableDeclaration'
+  && (!('type' in statement.value) || statement.value.type !== 'MixinCall');
+
 export const classifyValueBlock = (rules: Statement[]): AnonymousMixin | Collection => {
-  if (rules.length === 0 || !rules.every((s): s is VariableDeclaration => s.type === 'VariableDeclaration')) {
+  if (rules.length === 0 || !rules.every(isCollectionVariableDeclaration)) {
     return anonymousMixin(rules);
   }
   return collection(rules.map(entry =>
-    collectionEntry(keyword(entry.name), entry.value, null, entry.important, entry.valueOnNewLine === true)
+    collectionEntry(keyword(entry.name), entry.value)
   ));
 };
 export const forNode = (
@@ -1090,35 +1173,54 @@ export const reference = (
 export const propertyReference = (name: string, raw: string = `$${name}`): PropertyReference => ({ type: 'PropertyReference', name, raw });
 
 /** A compound from an already-built list of simple tokens. */
-export const compoundSelectorOf = (value: SimpleToken[]): CompoundSelector => ({ type: 'CompoundSelector', value });
+export const compoundSelectorOf = (value: [SimpleToken, SimpleToken, ...SimpleToken[]]): CompoundSelector => ({ type: 'CompoundSelector', value });
 
 /** A selector term: a lone simple token stays direct; adjacent tokens form a compound. */
-export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm =>
-  value.length === 1 ? value[0]! : compoundSelectorOf([...value]);
+export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]): SelectorTerm => {
+  const [first, second, ...rest] = value;
+  return second === undefined ? first : compoundSelectorOf([first, second, ...rest]);
+};
 
 /** `compoundSelector('.a', '.b')` => `.a.b`. */
-export const compoundSelector = (...texts: string[]): CompoundSelector => compoundSelectorOf(texts.map(simpleSelector));
+export const compoundSelector = (first: string, second: string, ...rest: string[]): CompoundSelector =>
+  compoundSelectorOf([simpleSelector(first), simpleSelector(second), ...rest.map(simpleSelector)]);
 
-/** `complexSelector([{ term: compoundSelector('.a') }, { combinator: '>', term: compoundSelector('.b') }])` => `.a > .b`. */
+type ComplexSelectorSegment = { combinator?: Combinator; term: SelectorTerm };
+
+/** `complexSelector([{ term: simpleSelector('.a') }, { combinator: '>', term: simpleSelector('.b') }])` => `.a > .b`. */
 export const complexSelector = (
-  segments: Array<{ combinator?: Combinator; term: SelectorTerm }>,
-  leadingComb?: Combinator
+  segments: [ComplexSelectorSegment, ComplexSelectorSegment, ...ComplexSelectorSegment[]]
 ): ComplexSelector => {
   const [head, ...tail] = segments;
-  if (!head) {
-    throw new Error('complexSelector() needs at least one segment');
-  }
   const value: ComplexSelector['value'] = [
     head.term,
     ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
   ];
   return {
     type: 'ComplexSelector',
-    value,
-    ...(leadingComb !== undefined ? { leadingComb } : {})
+    value
   };
 };
-export const selist = (...selectors: ComplexSelector[]): SelectorList => ({ type: 'SelectorList', selectors });
+export const relativeSelector = (
+  combinator: Combinator,
+  segments: [ComplexSelectorSegment, ...ComplexSelectorSegment[]]
+): RelativeSelector => {
+  const [head, ...tail] = segments;
+  const value: RelativeSelector['value'] = [
+    combinator,
+    head.term,
+    ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
+  ];
+  return {
+    type: 'RelativeSelector',
+    value
+  };
+};
+export const selectorBranchOf = (segments: readonly [ComplexSelectorSegment, ...ComplexSelectorSegment[]]): SelectorBranch => {
+  const [first, second, ...rest] = segments;
+  return second === undefined ? first.term : complexSelector([first, second, ...rest]);
+};
+export const selist = (...selectors: SelectorBranch[]): SelectorList => ({ type: 'SelectorList', selectors });
 
 export const decl = (
   name: string | Interpolation,
@@ -1194,13 +1296,13 @@ export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): 
 });
 export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });
 
-/** A single simple-string complex selector, e.g. `sel('.test')`. */
-export const sel = (text: string): ComplexSelector => complexSelector([{ term: compoundSelector(text) }]);
+/** A single simple-string selector branch, e.g. `sel('.test')`. */
+export const sel = (text: string): SelectorBranch => simpleSelector(text);
 
 /** `rule('.test', [...])`, `rule(sel('.a > .b'), ...)`, or `rule(selist(...), ...)`.
  *  `extendInstructions` (optional) carries hoisted `:extend()` instructions. */
 export const rule = (
-  selector: string | ComplexSelector | SelectorList,
+  selector: string | SelectorBranch | SelectorList,
   rules: Statement[],
   extendInstructions?: ExtendInstruction[],
   guard?: GuardNode

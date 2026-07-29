@@ -18,8 +18,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, complexCanonical, complexSelector, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, Declaration, Collection, CollectionEntry, DeclarationReference, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, selectorBranchCanonical, selectorBranchOf, condition, decl, collection, collectionEntry, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, selectorTermOf, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, Declaration, Collection, CollectionEntry, DeclarationReference, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDefinition, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorBranch, SelectorCapture, SelectorTerm, Stylesheet, Ruleset, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -111,13 +111,13 @@ type JessRules = {
   Compound: Combinator<SelectorTerm>;
   StaticCompound: Combinator<SelectorTerm>;
   StaticComplexTail: Combinator<JessComplexTail>;
-  StaticComplex: Combinator<ComplexSelector>;
-  StaticSelectorTail: Combinator<ComplexSelector>;
+  StaticComplex: Combinator<SelectorBranch>;
+  StaticSelectorTail: Combinator<SelectorBranch>;
   StaticSelector: Combinator<SelectorList>;
   SelectorCapture: Combinator<SelectorCapture>;
   ComplexTail: Combinator<JessComplexTail>;
-  Complex: Combinator<ComplexSelector>;
-  SelectorTail: Combinator<ComplexSelector>;
+  Complex: Combinator<SelectorBranch>;
+  SelectorTail: Combinator<SelectorBranch>;
   Selector: Combinator<SelectorList>;
   Ruleset: Combinator<Ruleset>;
   ForName: Combinator<string>;
@@ -302,11 +302,21 @@ function isComplexSelector(value: unknown): value is ComplexSelector {
     && 'value' in value && Array.isArray(value.value);
 }
 
+function isRelativeSelector(value: unknown): value is Extract<SelectorBranch, { readonly type: 'RelativeSelector' }> {
+  return typeof value === 'object' && value !== null
+    && 'type' in value && value.type === 'RelativeSelector'
+    && 'value' in value && Array.isArray(value.value);
+}
+
+function isSelectorBranch(value: unknown): value is SelectorBranch {
+  return isCompound(value) || isComplexSelector(value) || isRelativeSelector(value);
+}
+
 function isSelectorList(value: unknown): value is SelectorList {
   return typeof value === 'object' && value !== null
     && 'type' in value && value.type === 'SelectorList'
     && 'selectors' in value && Array.isArray(value.selectors)
-    && value.selectors.every(isComplexSelector);
+    && value.selectors.every(isSelectorBranch);
 }
 
 function isJessComplexTail(value: unknown): value is JessComplexTail {
@@ -351,9 +361,9 @@ function selectorTermFromTokens(tokens: SimpleToken[]): SelectorTerm {
   return selectorTermOf([first, ...rest]);
 }
 
-function requireComplexSelector(value: unknown): ComplexSelector {
-  if (!isComplexSelector(value)) {
-    throw new TypeError('Jess grammar produced a non-complex selector child.');
+function requireSelectorBranch(value: unknown): SelectorBranch {
+  if (!isSelectorBranch(value)) {
+    throw new TypeError('Jess grammar produced a non-selector branch child.');
   }
   return value;
 }
@@ -401,7 +411,7 @@ function requireKeyword(value: unknown): Keyword {
 }
 
 function staticSelectorText(selector: SelectorList): string {
-  return selector.selectors.map(complexCanonical).join(', ');
+  return selector.selectors.map(selectorBranchCanonical).join(', ');
 }
 
 /*
@@ -1199,17 +1209,11 @@ function reduceLambda(children: readonly unknown[]): AnonymousMixin {
 function reduceCompound(children: readonly unknown[]): SelectorTerm {
   return selectorTermFromTokens(children.map(requireSimpleToken));
 }
-function reduceComplex(children: readonly unknown[]): ComplexSelector {
-  return complexSelector([
-    { term: requireCompound(children[0]) },
-    ...children.slice(1).map(requireJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
-  ]);
-}
-function reduceSelectorTail(children: readonly unknown[]): ComplexSelector {
-  return requireComplexSelector(children[1]);
+function reduceSelectorTail(children: readonly unknown[]): SelectorBranch {
+  return requireSelectorBranch(children[1]);
 }
 function reduceSelectorList(children: readonly unknown[]): SelectorList {
-  return selist(...children.map(requireComplexSelector));
+  return selist(...children.map(requireSelectorBranch));
 }
 
 const rawWhitespace = regex(/[ \t\n\r\f]+/);
@@ -2715,15 +2719,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { combinator, term };
     }
   );
-  const StaticComplex = node<ComplexSelector>(
+  const StaticComplex = node<SelectorBranch>(
     'StaticComplex',
     sequence(
       g.StaticCompound,
       many(g.StaticComplexTail)
     ),
-    reduceComplex
+    children => selectorBranchOf([
+      { term: requireCompound(children[0]) },
+      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
+    ])
   );
-  const StaticSelectorTail = node<ComplexSelector>(
+  const StaticSelectorTail = node<SelectorBranch>(
     'StaticSelectorTail',
     parser(
       { trivia: whitespace },
@@ -2842,7 +2849,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       literal(']')
     ),
     (children) => {
-      const branches = requireSelectorList(children[1]).selectors.map(complexCanonical);
+      const branches = requireSelectorList(children[1]).selectors.map(selectorBranchCanonical);
       return selectorCapture(
         branches,
         `*[${branches.join(', ')}]`
@@ -4324,7 +4331,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       const selectors = children.filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
-        .map(selector => complexSelector([{ term: selector }]));
+        .map(selector => selector);
       const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
         throw new TypeError('Jess keyframe block lost its body boundary.');
@@ -5379,15 +5386,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { combinator, term };
     }
   );
-  const Complex = node<ComplexSelector>(
+  const Complex = node<SelectorBranch>(
     'Complex',
     sequence(
       g.Compound,
       many(g.ComplexTail)
     ),
-    reduceComplex
+    children => selectorBranchOf([
+      { term: requireCompound(children[0]) },
+      ...children.slice(1).map(requireJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
+    ])
   );
-  const SelectorTail = node<ComplexSelector>(
+  const SelectorTail = node<SelectorBranch>(
     'SelectorTail',
     sequence(
       literal(','),
@@ -5428,7 +5438,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       optional(regex(/!exact(?![-\w])/)),
       optional(literal(';'))
     ),
-    children => children.filter((child): child is ComplexSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'ComplexSelector')
+    children => children.filter(isSelectorBranch)
       .map(target => ({ target: selist(target), partial: !children.some(child => isToken(child) && child.value === '!exact') }))
   );
   const Ruleset = node<Ruleset>(

@@ -581,7 +581,8 @@ function cssAstLintDiagnostics(
     if (!isAstRecord(node)) {
       return;
     }
-    if (RULESET_TYPES.has(node.type)) {
+    const type = typeof node.type === 'string' ? node.type : '';
+    if (RULESET_TYPES.has(type)) {
       const bodySpan = bodySpanOf(node);
       const body = astChildrenOf(node, 'rules');
       if (body.length === 0 && bodySpan && isWhitespaceOnly(source, bodySpan.start, bodySpan.end)) {

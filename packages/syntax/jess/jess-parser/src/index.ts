@@ -10,8 +10,8 @@ import {
   withSourceSpan,
   withTriviaMap,
   type Apply,
-  type ComplexSelector,
   type Ruleset,
+  type SelectorBranch,
   type SelectorList,
   type SelectorTerm,
   type SimpleSelector,
@@ -52,10 +52,12 @@ function isStylesheet(value: unknown): value is Stylesheet {
     && value !== null
     && 'type' in value
     && value.type === 'Stylesheet'
+    && 'rules' in value
     && Array.isArray(value.rules);
 }
 
 const DEFAULT_APPLY_SELECTOR_KINDS: readonly ApplySelectorKind[] = ['class'];
+const DEFAULT_EXTEND_SELECTOR_KINDS: readonly ExtendSelectorKind[] = ['class'];
 
 function selectorPolicyError(message: string): JessParseError {
   return new JessParseError(0, [message]);
@@ -85,17 +87,15 @@ function isSimpleAllowed(simple: SimpleToken, allowed: ReadonlySet<ApplySelector
     || allowed.has('basic');
 }
 
-function isComplexAllowed(complex: ComplexSelector, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
-  if (allowed.has('complex')) {
-    return true;
-  }
-  const only = complex.value.length === 1 ? complex.value[0] : undefined;
-  return typeof only === 'object' && only !== null && isTermAllowed(only, allowed);
+function isBranchAllowed(branch: SelectorBranch, allowed: ReadonlySet<ApplySelectorKind | ExtendSelectorKind>): boolean {
+  return branch.type === 'ComplexSelector' || branch.type === 'RelativeSelector'
+    ? allowed.has('complex')
+    : isTermAllowed(branch, allowed);
 }
 
 function validateSelectorList(label: string, selector: SelectorList, allowedKinds: readonly ExtendSelectorKind[]): void {
   const allowed = new Set(allowedKinds);
-  if (!selector.selectors.every(item => isComplexAllowed(item, allowed))) {
+  if (!selector.selectors.every(item => isBranchAllowed(item, allowed))) {
     throw selectorPolicyError(`${label} selector is not allowed by allowExtendSelectors.`);
   }
 }
@@ -107,16 +107,14 @@ function validateApply(node: Apply, allowedKinds: readonly ApplySelectorKind[]):
   }
 }
 
-function validateRuleset(node: Ruleset, options: Required<Pick<JessParseOptions, 'allowApplySelectors'>> & Pick<JessParseOptions, 'allowExtendSelectors'>): void {
-  if (options.allowExtendSelectors !== undefined) {
-    for (const instruction of node.extendInstructions ?? []) {
-      validateSelectorList('$extend', instruction.target, options.allowExtendSelectors);
-    }
+function validateRuleset(node: Ruleset, options: Required<Pick<JessParseOptions, 'allowApplySelectors' | 'allowExtendSelectors'>>): void {
+  for (const instruction of node.extendInstructions ?? []) {
+    validateSelectorList('$extend', instruction.target, options.allowExtendSelectors);
   }
   validateStatements(node.rules, options);
 }
 
-function validateStatements(rules: readonly Statement[], options: Required<Pick<JessParseOptions, 'allowApplySelectors'>> & Pick<JessParseOptions, 'allowExtendSelectors'>): void {
+function validateStatements(rules: readonly Statement[], options: Required<Pick<JessParseOptions, 'allowApplySelectors' | 'allowExtendSelectors'>>): void {
   for (const node of rules) {
     switch (node.type) {
       case 'Ruleset':
@@ -144,7 +142,7 @@ function validateStatements(rules: readonly Statement[], options: Required<Pick<
 function validateJessOptions(document: Stylesheet, options: JessParseOptions = {}): void {
   validateStatements(document.rules, {
     allowApplySelectors: options.allowApplySelectors ?? DEFAULT_APPLY_SELECTOR_KINDS,
-    allowExtendSelectors: options.allowExtendSelectors
+    allowExtendSelectors: options.allowExtendSelectors ?? DEFAULT_EXTEND_SELECTOR_KINDS
   });
 }
 

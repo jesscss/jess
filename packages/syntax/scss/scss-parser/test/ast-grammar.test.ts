@@ -544,7 +544,7 @@ describe('SCSS canonical-AST grammar', () => {
           type: 'Ruleset',
           selector: {
             type: 'SelectorList',
-            selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.card', interp: null }] }]
+            selectors: [{ type: 'SimpleSelector', text: '.card', interp: null }]
           },
           rules: [
             { type: 'Declaration', name: 'color', value: { type: 'Color', src: '#00f' }, merge: null, important: false },
@@ -909,7 +909,7 @@ describe('SCSS canonical-AST grammar', () => {
         type: 'Ruleset',
         selector: {
           type: 'SelectorList',
-          selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.card', interp: null }] }]
+          selectors: [{ type: 'SimpleSelector', text: '.card', interp: null }]
         },
         rules: [
           { type: 'VariableDeclaration', name: 'accent', value: { type: 'Color', src: '#00f' }, write: { mode: 'declare' } },
@@ -918,7 +918,7 @@ describe('SCSS canonical-AST grammar', () => {
             type: 'Ruleset',
             selector: {
               type: 'SelectorList',
-              selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.title', interp: null }] }]
+              selectors: [{ type: 'SimpleSelector', text: '.title', interp: null }]
             },
             rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' }, merge: null, important: false }]
           }
@@ -1011,7 +1011,7 @@ describe('SCSS canonical-AST grammar', () => {
     // Disabling trivia on those arms must not cost them their literal spacing.
     expect(parse('@use " sp ";')).toMatchObject({ rules: [{ path: { type: 'Quoted', value: ' sp ' } }] });
     expect(parse('.a[href=" sp "] { color: red; }')).toMatchObject({
-      rules: [{ selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [{ text: '.a' }, { text: '[href=" sp "]' }] }] }] } }]
+      rules: [{ selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: '.a' }, { text: '[href=" sp "]' }] }] } }]
     });
   });
 
@@ -1439,7 +1439,7 @@ describe('SCSS canonical-AST grammar', () => {
   it('constructs static SCSS selector lists, compounds, pseudos, and nesting selectors directly', () => {
     const result = run(
       scssAstGrammar.Stylesheet,
-      '.card.featured:hover, #hero::before { color: blue; &.active { color: red; } }',
+      '.card.featured:hover, #hero::before { color: blue; &.active { color: red; } > .child { color: green; } }',
       { trivia: scssAstGrammar.whitespace }
     );
 
@@ -1452,16 +1452,26 @@ describe('SCSS canonical-AST grammar', () => {
         selector: {
           type: 'SelectorList',
           selectors: [
-            { type: 'ComplexSelector', value: [{ type: 'CompoundSelector', value: [{ text: '.card' }, { text: '.featured' }, { text: ':hover' }] }] },
-            { type: 'ComplexSelector', value: [{ type: 'CompoundSelector', value: [{ text: '#hero' }, { text: '::before' }] }] }
+            { type: 'CompoundSelector', value: [{ text: '.card' }, { text: '.featured' }, { text: ':hover' }] },
+            { type: 'CompoundSelector', value: [{ text: '#hero' }, { text: '::before' }] }
           ]
         },
         rules: [{ type: 'Declaration', name: 'color' }, {
           type: 'Ruleset',
-          selector: { type: 'SelectorList', selectors: [{ value: [{ type: 'CompoundSelector', value: [{ text: '&' }, { text: '.active' }] }] }] }
+          selector: { type: 'SelectorList', selectors: [{ type: 'CompoundSelector', value: [{ text: '&' }, { text: '.active' }] }] }
+        }, {
+          type: 'Ruleset',
+          selector: { type: 'SelectorList', selectors: [{ type: 'RelativeSelector', value: ['>', { text: '.child' }] }] }
         }]
       }]
     });
+
+    const rootRelative = run(
+      scssAstGrammar.Stylesheet,
+      '> .child { color: green; }',
+      { trivia: scssAstGrammar.whitespace }
+    );
+    expect(rootRelative.ok && rootRelative.unconsumedFrom === null && isStylesheet(rootRelative.value)).toBe(false);
   });
 
   it('rejects whitespace-separated static pseudo colons on the direct AST path', () => {
@@ -1511,11 +1521,11 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
         { type: 'SimpleSelector', text: '[data-state="open"i]' },
         { type: 'SimpleSelector', text: '[lang|=en]' }
-      ] }] }] } }]
+      ] }] } }]
     });
   });
 
@@ -1544,16 +1554,16 @@ describe('SCSS canonical-AST grammar', () => {
      * sealed (crossable:false).
      */
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
         {
           type: 'PseudoSelector', name: ':not', text: null, crossable: false, interp: null,
           args: { type: 'SelectorList', selectors: [
-            { value: [{ type: 'SimpleSelector', text: '.disabled' }] },
-            { value: [{ type: 'SimpleSelector', text: '[aria-hidden=true]' }] }
+            { type: 'SimpleSelector', text: '.disabled' },
+            { type: 'SimpleSelector', text: '[aria-hidden=true]' }
           ] }
         }
-      ] }] }] } }]
+      ] }] } }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
       '.card:not(.disabled, [aria-hidden=true]) {\n  color: blue;\n}\n'
@@ -1570,16 +1580,16 @@ describe('SCSS canonical-AST grammar', () => {
     const structured = run(scssAstGrammar.Stylesheet, '.x:is(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
     expect(structured.ok && structured.unconsumedFrom === null).toBe(true);
     expect(structured.value).toMatchObject({
-      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
         {
           type: 'PseudoSelector', name: ':is', text: null, crossable: true, interp: null,
           args: { type: 'SelectorList', selectors: [
-            { value: [{ type: 'SimpleSelector', text: '.a' }] },
-            { value: [{ type: 'SimpleSelector', text: '.b' }] }
+            { type: 'SimpleSelector', text: '.a' },
+            { type: 'SimpleSelector', text: '.b' }
           ] }
         }
-      ] }] }] } }]
+      ] }] } }]
     });
 
     /*
@@ -1606,10 +1616,10 @@ describe('SCSS canonical-AST grammar', () => {
     // (2) `:where` structures too, but is SEALED (crossable:false).
     const sealed = run(scssAstGrammar.Stylesheet, '.x:where(.a, .b) { color: red; }', { trivia: scssAstGrammar.whitespace });
     expect(sealed.value).toMatchObject({
-      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'PseudoSelector', name: ':where', text: null, crossable: false }
-      ] }] }] } }]
+      ] }] } }]
     });
 
     /*
@@ -1622,10 +1632,10 @@ describe('SCSS canonical-AST grammar', () => {
     expect(interp.ok && interp.unconsumedFrom === null && isStylesheet(interp.value)).toBe(false);
     const opaque = run(scssAstGrammar.Stylesheet, '.x:global(.a) { color: red; }', { trivia: scssAstGrammar.whitespace });
     expect(opaque.value).toMatchObject({
-      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'SimpleSelector', text: ':global(.a)' }
-      ] }] }] } }]
+      ] }] } }]
     });
   });
 
@@ -1659,6 +1669,8 @@ describe('SCSS canonical-AST grammar', () => {
       '.card:not(.a) { color: blue; }',
       '.card:is(.a, .b) { color: blue; }',
       '.card:has(> .b) { color: blue; }',
+      '.card:has(+ .b) { color: blue; }',
+      '.card:has(~ .b) { color: blue; }',
       '.card:lang(en) { color: blue; }'
     ]) {
       expect(accepted(source), source).toBe(true);
@@ -1703,12 +1715,12 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.ok).toBe(true);
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
-      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [
+      type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [
         { type: 'SimpleSelector', text: '.card' },
         { type: 'SimpleSelector', text: ':lang(en-US)' },
         { type: 'SimpleSelector', text: ':nth-child(-n+2 of .item)' },
         { type: 'SimpleSelector', text: '::part(icon)' }
-      ] }] }] } }]
+      ] }] } }]
     });
     expect(isStylesheet(result.value) ? serialize(result.value).css : undefined).toBe(
       '.card:lang(en-US):nth-child(-n+2 of .item)::part(icon) {\n  color: blue;\n}\n'
@@ -1755,13 +1767,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, {
         type: 'Ruleset', selector: { selectors: [
-          { value: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
             { lit: '.' }, { ref: { type: 'VariableReference', name: 'name', lookup: 'live' }, unquote: true },
             { lit: '-' }, { ref: { type: 'VariableReference', name: 'state', lookup: 'live' }, unquote: true }
-          ] } }] },
-          { value: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+          ] } },
+          { type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
             { lit: '#item-' }, { ref: { type: 'VariableReference', name: 'name', lookup: 'live' }, unquote: true }
-          ] } }] }
+          ] } }
         ] }
       }]
     });
@@ -1790,7 +1802,7 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.unconsumedFrom).toBeNull();
     expect(result.value).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'Ruleset', selector: { selectors: [
-        { value: [{ type: 'SimpleSelector', text: '%notice' }] }
+        { type: 'SimpleSelector', text: '%notice' }
       ] } }]
     });
   });
@@ -1831,7 +1843,7 @@ describe('SCSS canonical-AST grammar', () => {
         type: 'Ruleset',
         selector: {
           type: 'SelectorList',
-          selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.card', interp: null }] }]
+          selectors: [{ type: 'SimpleSelector', text: '.card', interp: null }]
         },
         rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'blue' }, merge: null, important: true }]
       }]
@@ -1850,13 +1862,13 @@ describe('SCSS canonical-AST grammar', () => {
     expect(result.value).toMatchObject({
       type: 'Stylesheet',
       rules: [
-        { type: 'Ruleset', selector: { selectors: [{ value: [{ text: '.base' }] }] } },
+        { type: 'Ruleset', selector: { selectors: [{ type: 'SimpleSelector', text: '.base' }] } },
         {
           type: 'Ruleset',
-          selector: { selectors: [{ value: [{ text: '.button' }] }] },
+          selector: { selectors: [{ type: 'SimpleSelector', text: '.button' }] },
           extendInstructions: [{
             partial: false,
-            target: { type: 'SelectorList', selectors: [{ value: [{ text: '.base' }] }] }
+            target: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.base' }] }
           }],
           rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
         }

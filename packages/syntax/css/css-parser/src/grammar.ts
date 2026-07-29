@@ -20,8 +20,9 @@ import {
   atRuleBlock,
   atRuleStatement,
   color,
-  complexSelector,
-  complexCanonical,
+  selectorBranchCanonical,
+  selectorBranchOf,
+  relativeSelector,
   selectorTermOf,
   decl,
   dimension,
@@ -48,7 +49,6 @@ import {
 import type {
   AtRuleBlock,
   OpaqueAtRuleBlock,
-  ComplexSelector as AstComplexSelector,
   CompoundSelector as AstCompoundSelector,
   Color as AstColor,
   Declaration as AstDeclaration,
@@ -56,7 +56,8 @@ import type {
   Interpolation,
   Keyword,
   Quoted as AstQuoted,
-  Ruleset,
+  Ruleset as AstRuleset,
+  SelectorBranch as AstSelectorBranch,
   SelectorList as AstSelectorList,
   SelectorTerm as AstSelectorTerm,
   SimpleSelector,
@@ -389,11 +390,22 @@ function selectorTermFromTokens(tokens: SimpleToken[]): AstSelectorTerm {
   return selectorTermOf([first, ...rest]);
 }
 
-function isComplex(value: unknown): value is AstComplexSelector {
+function isComplex(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'ComplexSelector' }> {
   return isNodeType(
     value,
     'ComplexSelector'
   );
+}
+
+function isRelative(value: unknown): value is Extract<AstSelectorBranch, { readonly type: 'RelativeSelector' }> {
+  return isNodeType(
+    value,
+    'RelativeSelector'
+  );
+}
+
+function isSelectorBranch(value: unknown): value is AstSelectorBranch {
+  return isSelectorTerm(value) || isComplex(value) || isRelative(value);
 }
 
 function isSelectorList(value: unknown): value is AstSelectorList {
@@ -424,7 +436,7 @@ function isDeclaration(value: unknown): value is AstDeclaration {
   );
 }
 
-function isRuleset(value: unknown): value is Ruleset {
+function isRuleset(value: unknown): value is AstRuleset {
   return isNodeType(
     value,
     'Ruleset'
@@ -554,17 +566,17 @@ function isDocumentStatement(value: unknown): value is Statement {
     || isOpaqueAtRuleBlock(value);
 }
 
-function selectorComplexes(children: readonly unknown[]): AstComplexSelector[] {
-  const selectors = children.filter(isComplex);
+function selectorBranches(children: readonly unknown[]): AstSelectorBranch[] {
+  const selectors = children.filter(isSelectorBranch);
   if (selectors.length === 0) {
-    throw new Error('SelectorList requires a complex selector');
+    throw new Error('SelectorList requires a selector branch');
   }
   return selectors;
 }
 
 function selectorArgumentText(value: unknown): string {
   if (isSelectorList(value)) {
-    return value.selectors.map(complexCanonical).join(',');
+    return value.selectors.map(selectorBranchCanonical).join(',');
   }
   return tokenText(value);
 }
@@ -588,6 +600,29 @@ function complexSegments(children: readonly unknown[]): Array<{ combinator?: ' '
     throw new Error('ComplexSelector requires a compound selector');
   }
   return segments;
+}
+
+function branchSegments(branch: AstSelectorBranch): [{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }, ...Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }>] {
+  if (branch.type !== 'ComplexSelector' && branch.type !== 'RelativeSelector') {
+    return [{ term: branch }];
+  }
+  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
+  let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
+  const start = branch.type === 'RelativeSelector' ? 1 : 0;
+  for (let index = start; index < branch.value.length; index++) {
+    const part = branch.value[index]!;
+    if (typeof part === 'string') {
+      combinator = part;
+    } else {
+      segments.push(segments.length === 0 ? { term: part } : { combinator, term: part });
+      combinator = ' ';
+    }
+  }
+  const [first, ...rest] = segments;
+  if (first === undefined) {
+    throw new TypeError('CSS selector branch produced no selector terms.');
+  }
+  return [first, ...rest];
 }
 
 function valueChildren(children: readonly unknown[]): ValueNode[] {
@@ -684,7 +719,7 @@ function blockStatements(children: readonly unknown[]): Statement[] {
 }
 
 function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
-  const selectors = children.filter(isSimple).map(selector => complexSelector([{ term: selector }]));
+  const selectors = children.filter(isSimple);
   if (selectors.length === 0) {
     throw new Error('KeyframeBlock requires a keyframe selector');
   }
@@ -1263,10 +1298,10 @@ export const cssFactory = (g: CssGrammarSelf) => {
   );
 
   /*
-   * A `:has()` argument is a relative selector, so an individual complex may open
+   * A `:has()` argument is a relative selector, so an individual branch may open
    * with a combinator (`:has(> .b)`). The outer selector grammar forbids a leading
-   * combinator, so this pseudo-private complex admits an optional relative one and
-   * rides it on the ComplexSelector's `leadingComb`. A leading `|` is namespace
+   * combinator, so this pseudo-private branch admits an optional relative one and
+   * emits a `RelativeSelector`. A leading `|` is namespace
    * syntax, not a relative combinator, so it is excluded (mirrors Less's
    * `relativeSelectorCombinator`).
    */
@@ -1277,18 +1312,18 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ComplexSelector
     ),
     (children) => {
-      const complex = children.find(isComplex);
-      if (complex === undefined) {
-        throw new Error('RelativeComplexSelector requires a complex selector');
+      const branch = children.find(isSelectorBranch);
+      if (branch === undefined) {
+        throw new Error('RelativeComplexSelector requires a selector branch');
       }
       if (children.length === 1) {
-        return complex;
+        return branch;
       }
       const lead = tokenText(children[0]);
       if (lead !== '>' && lead !== '+' && lead !== '~') {
         throw new Error('RelativeComplexSelector produced an invalid leading combinator');
       }
-      return { ...complex, leadingComb: lead };
+      return relativeSelector(lead, branchSegments(branch));
     }
   );
 
@@ -1297,7 +1332,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
    * selector-ONLY argument: a (relative) selector list with no general-any text
    * fallback, so `:not(2n+1)` fails the selector and rejects the whole pseudo. The
    * non-relative shape reduces byte-identically to `SelectorList` (both assemble
-   * `selist(...selectorComplexes(children))`); the retained `SelectorList` becomes
+   * `selist(...selectorBranches(children))`); the retained `SelectorList` becomes
    * structured `PseudoSelector.args` in `PseudoSelector`, never joined at parse.
    */
   const SelectorOnlyPseudoArgument = node(
@@ -1309,7 +1344,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(',')
       )
     ),
-    children => selist(...selectorComplexes(children))
+    children => selist(...selectorBranches(children))
   );
 
   /*
@@ -1471,7 +1506,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.CompoundSelector
       ))
     ),
-    children => complexSelector(complexSegments(children))
+    children => selectorBranchOf(complexSegments(children))
   );
   const TopLevelComplexSelector = node(
     'TopLevelComplexSelector',
@@ -1482,7 +1517,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         g.TopLevelCompoundSelector
       ))
     ),
-    children => complexSelector(complexSegments(children))
+    children => selectorBranchOf(complexSegments(children))
   );
   const SelectorList = node(
     'SelectorList',
@@ -1490,7 +1525,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.ComplexSelector,
       literal(',')
     ),
-    children => selist(...selectorComplexes(children))
+    children => selist(...selectorBranches(children))
   );
   const TopLevelSelectorList = node(
     'TopLevelSelectorList',
@@ -1498,7 +1533,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       g.TopLevelComplexSelector,
       literal(',')
     ),
-    children => selist(...selectorComplexes(children))
+    children => selist(...selectorBranches(children))
   );
   const Property = node(
     'Property',

@@ -45,6 +45,9 @@ import {
   complexHasInterp,
   complexHasAmpersand,
   pseudoCanonical,
+  selectorBranchCanonical,
+  selectorBranchHasAmpersand,
+  selectorBranchHasInterp,
   selectorTermCanonical,
   selectorTermHasInterp,
   simpleSelector
@@ -77,9 +80,11 @@ import type {
   Quoted,
   RawInline,
   Range,
+  RelativeSelector,
   Stylesheet,
   Ruleset,
   SpacedValue,
+  SelectorBranch,
   SimpleSelector,
   SimpleToken,
   SelectorTerm,
@@ -974,7 +979,7 @@ function collectRulesets(statements: Statement[]): Map<string, Ruleset[]> | null
   for (const s of statements) {
     if (s.type === 'Ruleset') {
       for (const c of s.selector.selectors) {
-        const key = complexCanonical(c);
+        const key = selectorBranchCanonical(c);
         add(key, s);
 
         /*
@@ -1129,7 +1134,7 @@ function orderedMixinsForStatements(
       }
       let interpolated = false;
       for (const c of s.selector.selectors) {
-        if (complexHasInterp(c)) {
+        if (selectorBranchHasInterp(c)) {
           interpolated = true;
           break;
         }
@@ -1137,7 +1142,7 @@ function orderedMixinsForStatements(
       if (!interpolated) {
         scratchKeys.length = 0;
         for (const c of s.selector.selectors) {
-          scratchKeys.push(complexCanonical(c));
+          scratchKeys.push(selectorBranchCanonical(c));
         }
         addRuleKeys(s, index, scratchKeys);
         continue;
@@ -1148,7 +1153,7 @@ function orderedMixinsForStatements(
        * allocate: resolve its keys, then continue the fold from the next statement.
        */
       const parts = s.selector.selectors.map(c =>
-        (complexHasInterp(c) ? resolveComplex(c, f, e) : complexCanonical(c)));
+        (selectorBranchHasInterp(c) ? resolveSelectorBranch(c, f, e) : selectorBranchCanonical(c)));
       let pending = false;
       for (const part of parts) {
         if (isThenable(part)) {
@@ -1517,6 +1522,27 @@ function complexTerms(c: ComplexSelector): SelectorTerm[] {
   return out;
 }
 
+function relativeTerms(c: RelativeSelector): SelectorTerm[] {
+  const out: SelectorTerm[] = [];
+  for (let index = 1; index < c.value.length; index++) {
+    const part = c.value[index]!;
+    if (typeof part !== 'string') {
+      out.push(part);
+    }
+  }
+  return out;
+}
+
+function selectorBranchTerms(branch: SelectorBranch): SelectorTerm[] {
+  if (branch.type === 'ComplexSelector') {
+    return complexTerms(branch);
+  }
+  if (branch.type === 'RelativeSelector') {
+    return relativeTerms(branch);
+  }
+  return [branch];
+}
+
 function complexCombinators(c: ComplexSelector): Combinator[] {
   const out: Combinator[] = [];
   for (const part of c.value) {
@@ -1525,6 +1551,26 @@ function complexCombinators(c: ComplexSelector): Combinator[] {
     }
   }
   return out;
+}
+
+function relativeCombinators(c: RelativeSelector): Combinator[] {
+  const out: Combinator[] = [];
+  for (const part of c.value) {
+    if (typeof part === 'string') {
+      out.push(part);
+    }
+  }
+  return out;
+}
+
+function selectorBranchCombinators(branch: SelectorBranch): Combinator[] {
+  if (branch.type === 'ComplexSelector') {
+    return complexCombinators(branch);
+  }
+  if (branch.type === 'RelativeSelector') {
+    return relativeCombinators(branch);
+  }
+  return [];
 }
 
 function termTokens(term: SelectorTerm): readonly SimpleToken[] {
@@ -1540,11 +1586,11 @@ function termIsBareAmp(term: SelectorTerm): boolean {
   return only.type === 'SimpleSelector' && only.interp === null && only.text === '&';
 }
 
-/** [mixin-match] The element-value atom list of a `ComplexSelector` selector (head +
- * each tail compound), used to match a namespaced/compound mixin call. */
-function complexAtoms(c: ComplexSelector): string[] {
+/** [mixin-match] The element-value atom list of a selector branch, used to match
+ * a namespaced/compound mixin call. */
+function selectorBranchAtoms(c: SelectorBranch): string[] {
   const out: string[] = [];
-  for (const term of complexTerms(c)) {
+  for (const term of selectorBranchTerms(c)) {
     for (const a of selectorAtoms(selectorTermCanonical(term))) {
       out.push(a);
     }
@@ -1637,14 +1683,14 @@ function findPathInScope(
          * explicit mixin activation which supplied its parameters.
          */
         const selectorFrame = placement?.parent ?? scope;
-        const el = complexHasInterp(c) ? selectorAtoms(resolveComplexSync(c, selectorFrame, e)) : complexAtoms(c);
+        const el = selectorBranchHasInterp(c) ? selectorAtoms(resolveSelectorBranchSync(c, selectorFrame, e)) : selectorBranchAtoms(c);
         if (el.length === 0 || !atomsArePrefix(el, remaining)) {
           continue;
         }
         if (el.length === remaining.length) {
           const rm: MixinDefinition = {
             type: 'MixinDefinition',
-            name: complexHasInterp(c) ? resolveComplexSync(c, selectorFrame, e) : complexCanonical(c),
+            name: selectorBranchHasInterp(c) ? resolveSelectorBranchSync(c, selectorFrame, e) : selectorBranchCanonical(c),
             params: [], rules: s.rules, ruleMixin: true,
             ...(s.guard !== undefined ? { guard: s.guard } : {})
           };
@@ -2967,6 +3013,8 @@ function evalValue(node: ValueNode, frame: Frame | null, e: EvalCtx): MaybePromi
       }
       return withExcluded(e, hit.value, () => evalBinding(hit.value, hit.frame, e));
     }
+    case 'DeclarationReference':
+      return literal(node.raw);
     case 'PropertyReference': {
       /*
        * A `$name` property accessor resolves the winning declaration and folds
@@ -3754,7 +3802,7 @@ function resolveReferenceResult(
   let value: ValueSlot | MixinCall = node.base;
   let valueFrame = frame;
   let sourceOwner = frame?.sourceOwner ?? null;
-  if (value.type === 'VariableReference') {
+  if (!isValueSlotArray(value) && value.type === 'VariableReference') {
     const resolved = resolveVarRef(valueFrame, value.name, value.lookup, e);
     if (!resolved) {
       return null;
@@ -3765,7 +3813,7 @@ function resolveReferenceResult(
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
   for (const step of node.steps) {
-    if (value.type === 'DeclarationReference') {
+    if (!isValueSlotArray(value) && value.type === 'DeclarationReference') {
       if (step.type !== 'DotLookup') {
         return null;
       }
@@ -4715,12 +4763,12 @@ function simpleGroupInterp(sim: SimpleToken, frame: Frame | null, e: EvalCtx): G
  *  a `@{name}` that is the ENTIRE selector (no leading combinator, no tail, a
  *  single-simple head). This is the whole-selector position, where a capture
  *  expands to header branches rather than compacting to `:is(…)`. */
-function loneGroupInterp(c: ComplexSelector, frame: Frame | null, e: EvalCtx): GroupInterp | null {
-  if (c.leadingComb !== undefined && c.leadingComb !== ' ') {
+function loneGroupInterp(c: SelectorBranch, frame: Frame | null, e: EvalCtx): GroupInterp | null {
+  if (c.type === 'RelativeSelector') {
     return null;
   }
-  const terms = complexTerms(c);
-  if (terms.length !== 1 || complexCombinators(c).length > 0) {
+  const terms = selectorBranchTerms(c);
+  if (terms.length !== 1 || selectorBranchCombinators(c).length > 0) {
     return null;
   }
   const tokens = termTokens(terms[0]!);
@@ -4744,12 +4792,12 @@ function resolveRefBytes(part: { ref: ValueNode; unquote: boolean }, frame: Fram
  *  selector; a lone quoted group stays a single verbatim branch. Every other
  *  complex resolves to exactly one string (a compound-embedded group compacts to
  *  `:is(…)` inside `resolveComplex`). */
-function expandComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+function expandSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const g = loneGroupInterp(c, frame, e);
   if (g !== null) {
     return g.capture ? g.branches : [g.branches.join(', ')];
   }
-  return mapMaybe(resolveComplex(c, frame, e), value => [value]);
+  return mapMaybe(resolveSelectorBranch(c, frame, e), value => [value]);
 }
 
 /** Resolve one interpolated simple token's text in `frame`. Each interpolation ref
@@ -4881,18 +4929,20 @@ function resolveSelectorTerm(term: SelectorTerm, frame: Frame | null, e: EvalCtx
 
 /** The concrete canonical string of a (possibly interpolated) complex, in
  * the entering frame. Static selectors keep the cached `canonical()` fast path. */
-function resolveComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
-  if (!complexHasInterp(c)) {
-    return complexCanonical(c);
+function resolveSelectorBranch(c: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string> {
+  if (!selectorBranchHasInterp(c)) {
+    return selectorBranchCanonical(c);
   }
-  const terms = complexTerms(c);
-  const combinators = complexCombinators(c);
+  const terms = selectorBranchTerms(c);
+  const combinators = selectorBranchCombinators(c);
   return combineAll(terms.map(term => resolveSelectorTerm(term, frame, e)), (values) => {
-    let out = c.leadingComb !== undefined && c.leadingComb !== ' '
-      ? renderCombinator(c.leadingComb).trimStart() + values[0]!
+    const start = c.type === 'RelativeSelector' ? 1 : 0;
+    let out = c.type === 'RelativeSelector'
+      ? renderCombinator(combinators[0]!).trimStart() + values[0]!
       : values[0]!;
-    for (let i = 0; i < combinators.length; i++) {
-      out += renderCombinator(combinators[i]!) + values[i + 1]!;
+    for (let i = start; i < combinators.length; i++) {
+      const valueIndex = c.type === 'RelativeSelector' ? i : i + 1;
+      out += renderCombinator(combinators[i]!) + values[valueIndex]!;
     }
     return out;
   });
@@ -4901,8 +4951,8 @@ function resolveComplex(c: ComplexSelector, frame: Frame | null, e: EvalCtx): Ma
 /** Synchronous-only selector consumers (mixin-key indexing and nested-mode
  * header probes) retain their existing contract. Public emitted selectors use
  * the MaybePromise path above. */
-function resolveComplexSync(c: ComplexSelector, frame: Frame | null, e: EvalCtx): string {
-  const value = resolveComplex(c, frame, e);
+function resolveSelectorBranchSync(c: SelectorBranch, frame: Frame | null, e: EvalCtx): string {
+  const value = resolveSelectorBranch(c, frame, e);
   if (isThenable(value)) {
     observeRejectedThenable(value);
     throw ERR.asyncInSyncPosition({
@@ -4980,25 +5030,27 @@ function resolveTermAmp(term: SelectorTerm, parents: string[], sub: string, fram
  *  that replaces the old context-blind cartesian odometer. A whole selector branch
  *  that is a bare `&` expands to the parent list itself (branch-multiplying); every
  *  interior `&` resolves by role in `resolveCompoundAmp`. */
-function resolveComplexAmp(c: ComplexSelector, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const terms = complexTerms(c);
-  const combinators = complexCombinators(c);
-  if ((c.leadingComb === undefined || c.leadingComb === ' ') && terms.length === 1 && combinators.length === 0) {
+function resolveSelectorBranchAmp(c: SelectorBranch, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  const terms = selectorBranchTerms(c);
+  const combinators = selectorBranchCombinators(c);
+  if (c.type !== 'RelativeSelector' && terms.length === 1 && combinators.length === 0) {
     if (termIsBareAmp(terms[0]!)) {
       return parents.slice();
     }
   }
   const sub = ampSub(parents);
   return combineAll(terms.map(term => resolveTermAmp(term, parents, sub, frame, e)), (variants) => {
-    const lead = c.leadingComb !== undefined && c.leadingComb !== ' '
-      ? renderCombinator(c.leadingComb).trimStart()
+    const start = c.type === 'RelativeSelector' ? 1 : 0;
+    const lead = c.type === 'RelativeSelector'
+      ? renderCombinator(combinators[0]!).trimStart()
       : '';
     let acc = variants[0]!.map(v => lead + v);
-    for (let i = 0; i < combinators.length; i++) {
+    for (let i = start; i < combinators.length; i++) {
       const comb = renderCombinator(combinators[i]!);
+      const valueIndex = c.type === 'RelativeSelector' ? i : i + 1;
       const next: string[] = [];
       for (const head of acc) {
-        for (const t of variants[i + 1]!) {
+        for (const t of variants[valueIndex]!) {
           next.push(head + comb + t);
         }
       }
@@ -5011,7 +5063,7 @@ function resolveComplexAmp(c: ComplexSelector, parents: string[], frame: Frame |
 /** [nesting] Resolve a selector list against `parents`, flattening each complex's
  *  branch variants. Reused for a list-accepting pseudo's args. */
 function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  return combineAll(list.selectors.map(c => resolveComplexAmp(c, parents, frame, e)), values => values.flat());
+  return combineAll(list.selectors.map(c => resolveSelectorBranchAmp(c, parents, frame, e)), values => values.flat());
 }
 
 /** Compose ONE child complex over ALL `parents`. A MULTI-parent `&`-bearing child
@@ -5020,14 +5072,14 @@ function resolveSelectorListAmp(list: SelectorList, parents: string[], frame: Fr
  * common BEM/`&:hover` nesting — keeps the fast `joinAmpersand` string splice (byte-
  * identical to the structural walk for one parent), which also carries the legacy
  * quoted-comma-parent path plus its non-leading-`&` rejection (`.fruit-&`). */
-function composeOne(parents: string[], child: ComplexSelector, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  if (!complexHasAmpersand(child)) {
-    return mapMaybe(resolveComplex(child, frame, e), text => parents.map(p => p + ' ' + text));
+function composeOne(parents: string[], child: SelectorBranch, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
+  if (!selectorBranchHasAmpersand(child)) {
+    return mapMaybe(resolveSelectorBranch(child, frame, e), text => parents.map(p => p + ' ' + text));
   }
   if (parents.length >= 2 && !parents.some(hasTopLevelComma)) {
-    return resolveComplexAmp(child, parents, frame, e);
+    return resolveSelectorBranchAmp(child, parents, frame, e);
   }
-  return mapMaybe(resolveComplex(child, frame, e), (text) => {
+  return mapMaybe(resolveSelectorBranch(child, frame, e), (text) => {
     if (parents.some(hasTopLevelComma) && !text.startsWith('&')) {
       throw ERR.commaListInterpolation({
         node: child,
@@ -5067,11 +5119,11 @@ function composeSync(parents: string[], child: SelectorList, frame: Frame | null
 function composeHeader(parents: string[], child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
   const isPrefix = `:is(${parents.join(', ')}) `;
   const parts = child.selectors.map((c) => {
-    if (!complexHasAmpersand(c)) {
-      return mapMaybe(resolveComplex(c, frame, e), canon => [isPrefix + canon]);
+    if (!selectorBranchHasAmpersand(c)) {
+      return mapMaybe(resolveSelectorBranch(c, frame, e), canon => [isPrefix + canon]);
     }
     if (parents.some(hasTopLevelComma)) {
-      return mapMaybe(resolveComplex(c, frame, e), (canon) => {
+      return mapMaybe(resolveSelectorBranch(c, frame, e), (canon) => {
         if (!canon.startsWith('&')) {
           throw ERR.commaListInterpolation({
             node: c,
@@ -5082,7 +5134,7 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
         return joinAmpersand(canon, parents);
       });
     }
-    return resolveComplexAmp(c, parents, frame, e);
+    return resolveSelectorBranchAmp(c, parents, frame, e);
   });
   return combineAll(parts, values => values.flat());
 }
@@ -5091,7 +5143,7 @@ function composeHeader(parents: string[], child: SelectorList, frame: Frame | nu
  * `&`-substitution header instead of the compact `&`-less join). */
 function selectorListHasAmpersand(list: SelectorList): boolean {
   for (const c of list.selectors) {
-    if (complexHasAmpersand(c)) {
+    if (selectorBranchHasAmpersand(c)) {
       return true;
     }
   }
@@ -5110,8 +5162,8 @@ function wrapIsList(branches: string[]): string {
  * relative branch is invalid there and every browser drops it — the compacted group
  * then matches nothing. Such a branch must join the ancestor directly. The namespace
  * pipe (`|h1`) is part of the compound, not a combinator, so it stays groupable. */
-function leadsWithCombinator(c: ComplexSelector): boolean {
-  const comb = c.leadingComb;
+function leadsWithCombinator(c: SelectorBranch): boolean {
+  const comb = c.type === 'RelativeSelector' ? c.value[0] : undefined;
   return comb !== undefined && comb !== ' ' && comb !== '|';
 }
 
@@ -5129,7 +5181,7 @@ function leadsWithCombinator(c: ComplexSelector): boolean {
  * `.nav-fill` + `> .nav-link, .nav-item` → `.nav-fill > .nav-link, .nav-fill .nav-item`.
  * Consecutive descendant branches stay one group, preserving authored order. */
 function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  const canons = child.selectors.map(c => resolveComplex(c, frame, e));
+  const canons = child.selectors.map(c => resolveSelectorBranch(c, frame, e));
   return combineAll(canons, (values) => {
     if (values.length === 1) {
       return [a + ' ' + values[0]!];
@@ -5161,7 +5213,7 @@ function opaqueJoin(a: string, child: SelectorList, frame: Frame | null, e: Eval
 }
 
 function ownStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): MaybePromise<string[]> {
-  return combineAll(list.selectors.map(c => expandComplex(c, frame, e)), values => values.flat());
+  return combineAll(list.selectors.map(c => expandSelectorBranch(c, frame, e)), values => values.flat());
 }
 
 function ownStringsSync(list: SelectorList, frame: Frame | null, e: EvalCtx): string[] {
@@ -5189,7 +5241,7 @@ function rootStrings(list: SelectorList, frame: Frame | null, e: EvalCtx): Maybe
       parts.push(g.capture ? g.branches : [g.branches.join(', ')]);
       continue;
     }
-    parts.push(mapMaybe(resolveComplex(c, frame, e), value => [complexHasAmpersand(c) ? value.split('&').join('').trim() : value]));
+    parts.push(mapMaybe(resolveSelectorBranch(c, frame, e), value => [selectorBranchHasAmpersand(c) ? value.split('&').join('').trim() : value]));
   }
   return combineAll(parts, values => values.flat());
 }
@@ -6168,7 +6220,7 @@ function authoredSelectorHeaderWithTrivia(node: SelectorList, rendered: readonly
     return null;
   }
   for (const selector of node.selectors) {
-    if (complexHasInterp(selector)) {
+    if (selectorBranchHasInterp(selector)) {
       return null;
     }
   }
@@ -6340,29 +6392,37 @@ function resolveCompoundInterpInPlace(comp: CompoundSelector, frame: Frame | nul
   comp._canon = undefined;
 }
 
-function resolveComplexInterpInPlace(c: ComplexSelector, frame: Frame | null, e: EvalCtx): void {
-  if (!complexHasInterp(c)) {
-    return;
+function resolveSelectorTermInterpInPlace(term: SelectorTerm, frame: Frame | null, e: EvalCtx): SelectorTerm {
+  if (term.type === 'CompoundSelector') {
+    resolveCompoundInterpInPlace(term, frame, e);
+    return term;
   }
-  const hasLiteralAmpersand = complexHasAmpersand(c);
-  const resolvedTerms: Array<{ index: number; text: string }> = [];
-  for (let index = 0; index < c.value.length; index += 1) {
+  return term.interp !== null ? simpleSelector(resolveSimpleTextSync(term, frame, e)) : term;
+}
+
+function resolveSelectorBranchInterpInPlace(c: SelectorBranch, frame: Frame | null, e: EvalCtx): SelectorBranch {
+  if (!selectorBranchHasInterp(c)) {
+    return c;
+  }
+  if (c.type !== 'ComplexSelector' && c.type !== 'RelativeSelector') {
+    return resolveSelectorTermInterpInPlace(c, frame, e);
+  }
+  const hasLiteralAmpersand = selectorBranchHasAmpersand(c);
+  const start = c.type === 'RelativeSelector' ? 1 : 0;
+  const resolvedTerms: Array<{ index: number; term: SelectorTerm }> = [];
+  for (let index = start; index < c.value.length; index += 1) {
     const term = c.value[index];
-    if (typeof term === 'string') {
-      continue;
-    }
-    if (term.type === 'CompoundSelector') {
-      resolveCompoundInterpInPlace(term, frame, e);
-    } else if (term.interp !== null) {
-      resolvedTerms.push({ index, text: resolveSimpleTextSync(term, frame, e) });
+    if (term !== undefined && typeof term !== 'string') {
+      resolvedTerms.push({ index, term: resolveSelectorTermInterpInPlace(term, frame, e) });
     }
   }
-  for (const { index, text } of resolvedTerms) {
-    c.value[index] = simpleSelector(text);
+  for (const { index, term } of resolvedTerms) {
+    c.value[index] = term;
   }
   c._hasInterp = false;
   c._hasAmp = hasLiteralAmpersand;
   c._canon = undefined;
+  return c;
 }
 
 /**
@@ -6399,12 +6459,13 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
       recordPropertyDeclaration(frame, st, frame);
     } else if (st.type === 'Ruleset') {
       const list = st.selector;
-      for (const c of list.selectors) {
-        if (!complexHasInterp(c)) {
+      for (let index = 0; index < list.selectors.length; index++) {
+        const c = list.selectors[index]!;
+        if (!selectorBranchHasInterp(c)) {
           continue;
         }
         try {
-          resolveComplexInterpInPlace(c, frame, e);
+          list.selectors[index] = resolveSelectorBranchInterpInPlace(c, frame, e);
         } catch (error) {
           /*
            * An AWAITABLE interp is a capability gap, not an unresolvable branch:
@@ -6423,12 +6484,13 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
        * traversal is introduced.
        */
       for (const inst of st.extendInstructions ?? []) {
-        for (const c of inst.target.selectors) {
-          if (!complexHasInterp(c)) {
+        for (let index = 0; index < inst.target.selectors.length; index++) {
+          const c = inst.target.selectors[index]!;
+          if (!selectorBranchHasInterp(c)) {
             continue;
           }
           try {
-            resolveComplexInterpInPlace(c, frame, e);
+            inst.target.selectors[index] = resolveSelectorBranchInterpInPlace(c, frame, e);
           } catch (error) {
             /*
              * As above: an awaitable target is reported; a genuinely unresolvable
@@ -6458,7 +6520,7 @@ function resolveSelectorInterpForExtend(statements: Statement[], frame: Frame, e
 /** Build extend IR from selector structure in the current render frame. Unlike the
  * old static prepass this never rewrites selector nodes: loop bodies are shared
  * canonical AST and can resolve differently on every iteration. */
-function resolvedExtendBranch(node: ComplexSelector, frame: Frame, e: EvalCtx): MaybePromise<Branch> {
+function resolvedExtendBranch(node: SelectorBranch, frame: Frame, e: EvalCtx): MaybePromise<Branch> {
   const compound = (part: CompoundSelector): MaybePromise<{ simples: Branch['segs'][number]['compound']['simples'] }> =>
     combineAll(part.value.map(simple => resolveSimpleText(simple, frame, e)), texts => ({
       simples: texts.map(text => ({ t: 'text' as const, text }))
@@ -6467,13 +6529,18 @@ function resolvedExtendBranch(node: ComplexSelector, frame: Frame, e: EvalCtx): 
     part.type === 'CompoundSelector'
       ? compound(part)
       : mapMaybe(resolveSimpleText(part, frame, e), text => ({ simples: [{ t: 'text' as const, text }] }));
-  const terms = complexTerms(node);
-  const combinators = complexCombinators(node);
+  const terms = selectorBranchTerms(node);
+  const combinators = selectorBranchCombinators(node);
   const parts = terms.map(part => term(part));
-  return combineAll(parts, compounds => mkBranch([
-    { comb: node.leadingComb ?? ' ', compound: compounds[0]! },
-    ...combinators.map((comb, index) => ({ comb, compound: compounds[index + 1]! }))
-  ]));
+  return combineAll(parts, (compounds) => {
+    const start = node.type === 'RelativeSelector' ? 1 : 0;
+    const segs: Branch['segs'] = [{ comb: node.type === 'RelativeSelector' ? combinators[0]! : ' ', compound: compounds[0]! }];
+    for (let index = start; index < combinators.length; index++) {
+      const valueIndex = node.type === 'RelativeSelector' ? index : index + 1;
+      segs.push({ comb: combinators[index]!, compound: compounds[valueIndex]! });
+    }
+    return mkBranch(segs);
+  });
 }
 
 function resolvedExtendLevel(node: SelectorList, frame: Frame, e: EvalCtx): MaybePromise<Level> {
@@ -12520,7 +12587,7 @@ function emitNestedRuleAuthored(
      * has been evaluated. Static same-selector root rules remain distinct.
      */
     const rootSibling = frame.parent === null && e.depth === 0
-      && rule.selector.selectors.some(complexHasInterp);
+      && rule.selector.selectors.some(selectorBranchHasInterp);
     const lb = e.lastBlock;
     const reopen = rootSibling && lb.parentKey === frame && lb.depth === e.depth
       && lb.header === header && lb.endChunks === e.chunks.length;

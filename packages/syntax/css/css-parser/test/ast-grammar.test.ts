@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { run } from 'parseman';
 import { createTriviaMapFromParseman, triviaMapOf, valueLayoutOf, withSourceSpan, withTriviaMap } from '@jesscss/core/ast';
-import type { ComplexSelector, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
+import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { simpleTokenText } from '../../../../core/src/ast/nodes.js';
 import { cssAstGrammar } from '../src/grammar.js';
@@ -66,8 +66,14 @@ function termTexts(term: SelectorTerm): string[] {
     : [simpleTokenText(term)];
 }
 
-function leadingSelectorTexts(selector: ComplexSelector): string[] {
-  return termTexts(selector.value[0]);
+function leadingSelectorTexts(selector: SelectorBranch): string[] {
+  if (selector.type === 'ComplexSelector') {
+    return termTexts(selector.value[0]);
+  }
+  if (selector.type === 'RelativeSelector') {
+    return termTexts(selector.value[1]);
+  }
+  return termTexts(selector);
 }
 
 describe('CSS canonical-AST grammar', () => {
@@ -126,15 +132,12 @@ describe('CSS canonical-AST grammar', () => {
       selector: {
         type: 'SelectorList',
         selectors: [{
-          type: 'ComplexSelector',
-          value: [{
-            type: 'CompoundSelector',
-            value: [
-              { type: 'SimpleSelector', text: '.card' },
-              { type: 'SimpleSelector', text: ':hover' },
-              { type: 'SimpleSelector', text: '::before' }
-            ]
-          }]
+          type: 'CompoundSelector',
+          value: [
+            { type: 'SimpleSelector', text: '.card' },
+            { type: 'SimpleSelector', text: ':hover' },
+            { type: 'SimpleSelector', text: '::before' }
+          ]
         }]
       }
     });
@@ -142,7 +145,7 @@ describe('CSS canonical-AST grammar', () => {
       css: '.card:hover::before {\n  color: red;\n}\n'
     });
     expect(parseAst('.card:nth-child(2) { color: red; }').rules[0]).toMatchObject({
-      type: 'Ruleset', selector: { selectors: [{ value: [{ value: [{ text: '.card' }, { text: ':nth-child(2)' }] }] }] }
+      type: 'Ruleset', selector: { selectors: [{ value: [{ text: '.card' }, { text: ':nth-child(2)' }] }] }
     });
   });
 
@@ -190,7 +193,7 @@ describe('CSS canonical-AST grammar', () => {
      */
     expect(document.rules[0]).toMatchObject({
       type: 'Ruleset', selector: {
-        selectors: [{ value: [{ type: 'PseudoSelector', name: ':is', text: null }] }]
+        selectors: [{ type: 'PseudoSelector', name: ':is', text: null }]
       }
     });
     expect(serialize(document).css).toEqual(':is(.card, [data-kind=primary]) {\n  color: red;\n}\n');
@@ -208,26 +211,24 @@ describe('CSS canonical-AST grammar', () => {
       type: 'Ruleset',
       selector: {
         selectors: [{
-          value: [{
-            type: 'CompoundSelector',
-            value: [
-              { type: 'SimpleSelector', text: '.x' },
-              {
-                type: 'PseudoSelector',
-                name: ':is',
-                text: null,
-                crossable: true,
-                interp: null,
-                args: {
-                  type: 'SelectorList',
-                  selectors: [
-                    { value: [{ type: 'SimpleSelector', text: '.a' }] },
-                    { value: [{ type: 'SimpleSelector', text: '.b' }] }
-                  ]
-                }
+          type: 'CompoundSelector',
+          value: [
+            { type: 'SimpleSelector', text: '.x' },
+            {
+              type: 'PseudoSelector',
+              name: ':is',
+              text: null,
+              crossable: true,
+              interp: null,
+              args: {
+                type: 'SelectorList',
+                selectors: [
+                  { type: 'SimpleSelector', text: '.a' },
+                  { type: 'SimpleSelector', text: '.b' }
+                ]
               }
-            ]
-          }]
+            }
+          ]
         }]
       }
     });
@@ -236,21 +237,21 @@ describe('CSS canonical-AST grammar', () => {
     const sealed = parseAst('.x:not(.a, .b) { color: red; }');
     expect(sealed.rules[0]).toMatchObject({
       type: 'Ruleset',
-      selector: { selectors: [{ value: [{ value: [
+      selector: { selectors: [{ value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'PseudoSelector', name: ':not', text: null, crossable: false }
-      ] }] }] }
+      ] }] }
     });
 
     // Non-whitelist pseudos (`::before`, `:hover`) stay opaque SimpleSelector text.
     const opaque = parseAst('.x::before:hover { color: red; }');
     expect(opaque.rules[0]).toMatchObject({
       type: 'Ruleset',
-      selector: { selectors: [{ value: [{ value: [
+      selector: { selectors: [{ value: [
         { type: 'SimpleSelector', text: '.x' },
         { type: 'SimpleSelector', text: '::before' },
         { type: 'SimpleSelector', text: ':hover' }
-      ] }] }] }
+      ] }] }
     });
 
     /*
@@ -474,7 +475,7 @@ describe('CSS canonical-AST grammar', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'Ruleset',
-        selector: { selectors: [{ value: [{ text: 'a' }] }] },
+        selector: { selectors: [{ type: 'SimpleSelector', text: 'a' }] },
         rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
       }]
     });
@@ -485,7 +486,7 @@ describe('CSS canonical-AST grammar', () => {
      */
     expect(parseAst('a/**/.card { color: red; }').rules[0]).toMatchObject({
       type: 'Ruleset',
-      selector: { selectors: [{ value: [{ value: [{ text: 'a' }, { text: '.card' }] }] }] }
+      selector: { selectors: [{ value: [{ text: 'a' }, { text: '.card' }] }] }
     });
   });
 
@@ -567,11 +568,8 @@ describe('CSS canonical-AST grammar', () => {
         selector: {
           type: 'SelectorList',
           selectors: [{
-            type: 'ComplexSelector',
-            value: [{
-              type: 'CompoundSelector',
-              value: [{ type: 'SimpleSelector', text: '&' }, { type: 'SimpleSelector', text: '.featured' }]
-            }]
+            type: 'CompoundSelector',
+            value: [{ type: 'SimpleSelector', text: '&' }, { type: 'SimpleSelector', text: '.featured' }]
           }]
         }
       }]
@@ -1201,15 +1199,15 @@ describe('CSS canonical-AST grammar', () => {
             selector: {
               type: 'SelectorList',
               selectors: [
-                { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: 'from' }] },
-                { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '50%' }] }
+                { type: 'SimpleSelector', text: 'from' },
+                { type: 'SimpleSelector', text: '50%' }
               ]
             },
             rules: [{ type: 'Declaration', name: 'opacity' }]
           },
           {
             type: 'Ruleset',
-            selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: 'to' }] }] }
+            selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'to' }] }
           }
         ]
       },
@@ -1243,9 +1241,9 @@ describe('CSS canonical-AST grammar', () => {
             selector: {
               type: 'SelectorList',
               selectors: [
-                { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: 'from' }] },
-                { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '50%' }] },
-                { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: 'to' }] }
+                { type: 'SimpleSelector', text: 'from' },
+                { type: 'SimpleSelector', text: '50%' },
+                { type: 'SimpleSelector', text: 'to' }
               ]
             },
             rules: [

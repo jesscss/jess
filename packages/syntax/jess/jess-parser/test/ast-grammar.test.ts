@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import { sourceSpanOf, type InterpPart, type Stylesheet, type Ruleset, type SimpleToken } from '@jesscss/core/ast';
+import { sourceSpanOf, type InterpPart, type SelectorBranch, type SelectorTerm, type Stylesheet, type Ruleset, type SimpleToken } from '@jesscss/core/ast';
 import { JessError } from '@jesscss/core';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../../../../core/src/ast/evaluator.js';
@@ -21,6 +21,19 @@ function stylesheet(value: unknown): Stylesheet {
     throw new TypeError('Expected the Jess grammar to produce a Stylesheet');
   }
   return value;
+}
+
+function firstSelectorTerm(branch: SelectorBranch | undefined): SelectorTerm | undefined {
+  if (branch === undefined) {
+    return undefined;
+  }
+  if (branch.type === 'ComplexSelector') {
+    return branch.value[0];
+  }
+  if (branch.type === 'RelativeSelector') {
+    return branch.value[1];
+  }
+  return branch;
 }
 
 function expectExplicitListSeparators(value: unknown): void {
@@ -322,6 +335,8 @@ describe('Jess AST grammar facts', () => {
   });
 
   it('applies allowExtendSelectors to Jess $extend targets', () => {
+    expect(() => parse('.source { $extend .target; }')).not.toThrow();
+    expect(() => parse('.source { $extend #target; }')).toThrow(SyntaxError);
     expect(() => parse('.source { $extend .target; }', { allowExtendSelectors: ['class'] })).not.toThrow();
     expect(() => parse('.source { $extend #target; }', { allowExtendSelectors: ['class'] })).toThrow(SyntaxError);
     expect(() => parse('.source { $extend #target; }', { allowExtendSelectors: ['basic'] })).not.toThrow();
@@ -872,7 +887,7 @@ describe('Jess AST grammar facts', () => {
       expect(result.ok && result.unconsumedFrom === null, source).toBe(true);
       const rule = stylesheet(result.value).rules.find((child): child is Ruleset => isRecord(child) && child.type === 'Ruleset');
       expect(rule, source).toBeDefined();
-      const term = rule!.selector.selectors[0]!.value[0];
+      const term = firstSelectorTerm(rule!.selector.selectors[0]);
       if (term.type !== 'CompoundSelector') {
         throw new TypeError('Expected a compound selector');
       }
@@ -889,7 +904,7 @@ describe('Jess AST grammar facts', () => {
       name: ':is',
       text: null,
       crossable: true,
-      args: { type: 'SelectorList', selectors: [{ value: [{}] }, { value: [{}] }] }
+      args: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.a' }, { type: 'SimpleSelector', text: '.b' }] }
     });
 
     /*
@@ -899,8 +914,8 @@ describe('Jess AST grammar facts', () => {
     expect(isPseudo.type).toBe('PseudoSelector');
     if (isPseudo.type === 'PseudoSelector') {
       expect(isPseudo.args).not.toBeNull();
-      for (const complex of isPseudo.args!.selectors) {
-        expect(complex._canon).toBeUndefined();
+      for (const branch of isPseudo.args!.selectors) {
+        expect(branch._canon).toBeUndefined();
       }
     }
 
@@ -995,7 +1010,7 @@ describe('Jess AST grammar facts', () => {
       ['.x:future-thing([d]) { color: red; }', ':future-thing([d])']
     ] as const) {
       expect(parse(source), source).toMatchObject({
-        rules: [{ type: 'Ruleset', selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [{ text: '.x' }, { text }] }] }] } }]
+        rules: [{ type: 'Ruleset', selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: '.x' }, { text }] }] } }]
       });
     }
 
@@ -1732,7 +1747,7 @@ describe('Jess AST grammar facts', () => {
       rules: [
         {
           type: 'AtRuleBlock', name: '@KEYFRAMES', prelude: { type: 'Keyword', src: 'fade' },
-          rules: [{ type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ value: [{ text: 'from' }] }, { value: [{ text: '50%' }] }] } }, { type: 'Ruleset' }]
+          rules: [{ type: 'Ruleset', selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: 'from' }, { type: 'SimpleSelector', text: '50%' }] } }, { type: 'Ruleset' }]
         },
         { type: 'AtRuleBlock', name: '@-MOZ-KEYFRAMES', prelude: { type: 'Quoted', value: 'zoom' }, rules: [{ type: 'Ruleset' }] }
       ]
@@ -1861,7 +1876,7 @@ describe('Jess AST grammar facts', () => {
           type: 'Ruleset',
           selector: {
             type: 'SelectorList',
-            selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.card', interp: null }] }]
+            selectors: [{ type: 'SimpleSelector', text: '.card', interp: null }]
           },
           rules: [
             { type: 'Declaration', name: 'color', value: { type: 'VariableReference', name: 'tone', lookup: 'live' }, merge: null, important: false },
@@ -2109,9 +2124,9 @@ describe('Jess AST grammar facts', () => {
         selector: {
           type: 'SelectorList',
           selectors: [
-            { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '[role]' }] },
-            { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '[data-kind="primary"i]' }] },
-            { type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '[lang|=en]' }] }
+            { type: 'SimpleSelector', text: '[role]' },
+            { type: 'SimpleSelector', text: '[data-kind="primary"i]' },
+            { type: 'SimpleSelector', text: '[lang|=en]' }
           ]
         }
       }]
@@ -2136,10 +2151,10 @@ describe('Jess AST grammar facts', () => {
     expect(stylesheet(direct.value).rules[0]).toMatchObject({
       type: 'Ruleset',
       rules: [
-        { selector: { selectors: [{ value: [{ type: 'SimpleSelector', text: '&', interp: null }] }] } },
-        { selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [{ text: '&' }, { type: 'SimpleSelector', text: ':hover' }] }] }] } },
+        { selector: { selectors: [{ type: 'SimpleSelector', text: '&', interp: null }] } },
+        { selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: '&' }, { type: 'SimpleSelector', text: ':hover' }] }] } },
         { selector: { selectors: [{ value: [{ text: '&' }, '+', { text: '&' }] }] } },
-        { selector: { selectors: [{ value: [{ type: 'CompoundSelector', value: [{ text: '[foo]' }, { text: '&' }] }] }] } }
+        { selector: { selectors: [{ type: 'CompoundSelector', value: [{ text: '[foo]' }, { text: '&' }] }] } }
       ]
     });
   });
@@ -2162,10 +2177,10 @@ describe('Jess AST grammar facts', () => {
     expect(stylesheet(direct.value).rules[0]).toMatchObject({
       type: 'Ruleset',
       rules: [
-        { selector: { selectors: [{ value: [{ text: '&__el', interp: null }] }] } },
-        { selector: { selectors: [{ value: [{ text: '&--mod', interp: null }] }] } },
-        { selector: { selectors: [{ value: [{ text: '&-suffix', interp: null }] }] } },
-        { selector: { selectors: [{ value: [{ text: '&-1', interp: null }] }] } }
+        { selector: { selectors: [{ type: 'SimpleSelector', text: '&__el', interp: null }] } },
+        { selector: { selectors: [{ type: 'SimpleSelector', text: '&--mod', interp: null }] } },
+        { selector: { selectors: [{ type: 'SimpleSelector', text: '&-suffix', interp: null }] } },
+        { selector: { selectors: [{ type: 'SimpleSelector', text: '&-1', interp: null }] } }
       ]
     });
   });
@@ -2186,14 +2201,12 @@ describe('Jess AST grammar facts', () => {
         type: 'Ruleset',
         selector: {
           selectors: [{
-            value: [{
-              type: 'SimpleSelector',
-              text: null,
-              interp: {
-                type: 'Interpolation',
-                parts: [{ lit: '&-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }]
-              }
-            }]
+            type: 'SimpleSelector',
+            text: null,
+            interp: {
+              type: 'Interpolation',
+              parts: [{ lit: '&-' }, { ref: { type: 'VariableReference', name: 'tone' }, unquote: true }]
+            }
           }]
         }
       }]
@@ -2215,7 +2228,7 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('accepts `&` in $extend while keeping $apply class-only by default', () => {
+  it('parses `&` in $extend while public parse keeps $extend and $apply class-only by default', () => {
     const source = '.a { color: blue; } .b { .c { $extend &; $apply .a-1; } }';
     const legacy = parseJessCst(source);
     const direct = run(jessAstGrammar.Stylesheet, source, { trivia: jessAstGrammar.whitespace });
@@ -2229,10 +2242,12 @@ describe('Jess AST grammar facts', () => {
       type: 'Ruleset',
       rules: [{
         type: 'Ruleset',
-        extendInstructions: [{ target: { selectors: [{ value: [{ text: '&' }] }] }, partial: true }],
+        extendInstructions: [{ target: { selectors: [{ type: 'SimpleSelector', text: '&' }] }, partial: true }],
         rules: [{ type: 'Apply', selectors: [{ text: '.a-1' }] }]
       }]
     });
+    expect(() => parse(source)).toThrow(SyntaxError);
+    expect(() => parse(source, { allowExtendSelectors: ['basic'] })).not.toThrow();
     expect(() => parse('.a { .b { $apply &(-1); } }')).toThrow(SyntaxError);
   });
 
@@ -2253,18 +2268,16 @@ describe('Jess AST grammar facts', () => {
           type: 'Ruleset',
           selector: {
             selectors: [{
-              value: [{
-                type: 'SimpleSelector', text: null,
-                interp: {
-                  type: 'Interpolation',
-                  parts: [
-                    { lit: '.widget-' },
-                    { ref: { type: 'VariableReference', name: 'side' }, unquote: true },
-                    { lit: '-' },
-                    { ref: { type: 'PropertyReference', name: 'tone', raw: '${[tone]}' }, unquote: true }
-                  ]
-                }
-              }]
+              type: 'SimpleSelector', text: null,
+              interp: {
+                type: 'Interpolation',
+                parts: [
+                  { lit: '.widget-' },
+                  { ref: { type: 'VariableReference', name: 'side' }, unquote: true },
+                  { lit: '-' },
+                  { ref: { type: 'PropertyReference', name: 'tone', raw: '${[tone]}' }, unquote: true }
+                ]
+              }
             }]
           }
         }
@@ -2380,7 +2393,7 @@ describe('Jess AST grammar facts', () => {
           iterable: { type: 'VariableReference', name: 'items', lookup: 'live' },
           rules: [{
             type: 'Ruleset',
-            selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.single', interp: null }] }] },
+            selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.single', interp: null }] },
             rules: [{ type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'item', lookup: 'live' }, merge: null, important: false }]
           }]
         },
@@ -2390,7 +2403,7 @@ describe('Jess AST grammar facts', () => {
           iterable: { type: 'VariableReference', name: 'items', lookup: 'live' },
           rules: [{
             type: 'Ruleset',
-            selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.comma', interp: null }] }] },
+            selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.comma', interp: null }] },
             rules: [
               { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'item', lookup: 'live' }, merge: null, important: false },
               { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'live' }, merge: null, important: false },
@@ -2404,7 +2417,7 @@ describe('Jess AST grammar facts', () => {
           iterable: { type: 'VariableReference', name: 'collection', lookup: 'live' },
           rules: [{
             type: 'Ruleset',
-            selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.bracket', interp: null }] }] },
+            selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.bracket', interp: null }] },
             rules: [
               { type: 'Declaration', name: 'key', value: { type: 'VariableReference', name: 'key', lookup: 'live' }, merge: null, important: false },
               { type: 'Declaration', name: 'value', value: { type: 'VariableReference', name: 'value', lookup: 'live' }, merge: null, important: false }
@@ -2572,7 +2585,7 @@ describe('Jess AST grammar facts', () => {
         },
         {
           type: 'Ruleset',
-          selector: { type: 'SelectorList', selectors: [{ type: 'ComplexSelector', value: [{ type: 'SimpleSelector', text: '.button', interp: null }] }] },
+          selector: { type: 'SelectorList', selectors: [{ type: 'SimpleSelector', text: '.button', interp: null }] },
           rules: [
             { type: 'MixinCall', name: 'button-base', args: [], path: [], important: false },
             { type: 'MixinCall', name: '.inner', args: [], path: [{ combinator: '>', selector: '#ns' }], important: false }
@@ -2772,7 +2785,7 @@ describe('Jess AST grammar facts', () => {
       if (rule?.type !== 'Ruleset') {
         throw new TypeError('Expected a Ruleset');
       }
-      const term = rule.selector.selectors[0]?.value[0];
+      const term = firstSelectorTerm(rule.selector.selectors[0]);
       const simple = term?.type === 'CompoundSelector' ? term.value[0] : term;
       const interp = simple?.interp;
       const part = interp?.parts[1];

@@ -91,11 +91,11 @@ Output shapes (byte-exact, from the reference):
    `parentToken` `:is()` path, an extended multi-branch parent groups automatically. Add the
    zero-cost gate: no Extend instructions in the whole document → skip all extend work (pure
    streaming, byte-identical to today).
-4. LEADING-COMBINATOR model fix (flagged by R0): give `Complex` an optional leading combinator so
-   `.a { > .b { … } }` / `#ns { > .mixin }` emit `> .b` verbatim in BOTH modes. Add
-   `leadingComb?: Combinator` to `Complex` (nodes.ts), thread it through `canonical()`
-   (prefix `renderCombinator(leadingComb)` when present) and the bridge `toComplex` (when a
-   ComplexSelector's first item is a combinator). Corpus example: `rulesets/rulesets.less`.
+4. LEADING-COMBINATOR model fix (flagged by R0): nested `.a { > .b { … } }` /
+   `#ns { > .mixin }` must parse as `RelativeSelector`, not as `ComplexSelector`
+   plus a leading-combinator side field. `ComplexSelector` requires internal
+   combinators; a leading combinator belongs in the branch shape. Corpus example:
+   `rulesets/rulesets.less`.
 
 ## PROVE
 - Add `packages/core/src/tree2-frontend/__tests__/extend-byte-identity.test.ts`: for each of the 7

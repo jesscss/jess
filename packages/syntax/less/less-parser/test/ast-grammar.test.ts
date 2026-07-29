@@ -1,5 +1,5 @@
 import { run } from 'parseman';
-import type { SelectorTerm, Stylesheet } from '@jesscss/core/ast';
+import type { SelectorBranch, SelectorTerm, Stylesheet } from '@jesscss/core/ast';
 import { serialize } from '../../../../core/src/ast/serialize.js';
 import { parseLessCst, type LessCstChild } from '../src/cst.js';
 import { lessAstGrammar } from '../src/grammar.js';
@@ -63,6 +63,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function selectorTermTokens(term: SelectorTerm): unknown[] {
   return term.type === 'CompoundSelector' ? term.value : [term];
+}
+
+function firstSelectorTerm(branch: SelectorBranch): SelectorTerm {
+  if (branch.type === 'ComplexSelector') {
+    return branch.value[0];
+  }
+  if (branch.type === 'RelativeSelector') {
+    return branch.value[1];
+  }
+  return branch;
 }
 
 function findCstNodes(
@@ -145,6 +155,13 @@ describe('Less AST grammar facts', () => {
         }
       ]
     });
+
+    const rootRelative = run(
+      lessAstGrammar.Document,
+      '> .second { color: purple; }',
+      { trivia: lessAstGrammar.whitespace }
+    );
+    expect(rootRelative.ok && rootRelative.unconsumedFrom === null && isStylesheet(rootRelative.value)).toBe(false);
   });
 
   it('completes a document with final Less line-comment trivia', () => {
@@ -728,7 +745,9 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'SimpleSelector', text: ':lang(en)', interp: null }]
+                type: 'SimpleSelector',
+                text: ':lang(en)',
+                interp: null
               }
             ]
           }
@@ -1126,7 +1145,7 @@ describe('Less AST grammar facts', () => {
         {
           type: 'Ruleset',
           selector: {
-            selectors: [{ value: [{ text: '.library' }] }]
+            selectors: [{ type: 'SimpleSelector', text: '.library' }]
           },
           rules: [{ type: 'MixinDefinition', name: '.values' }]
         },
@@ -1303,10 +1322,7 @@ describe('Less AST grammar facts', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: '.a', interp: null }]
-              }
+              { type: 'SimpleSelector', text: '.a', interp: null }
             ]
           },
           rules: [
@@ -2075,9 +2091,9 @@ describe('Less AST grammar facts', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              { type: 'ComplexSelector' },
-              { type: 'ComplexSelector' },
-              { type: 'ComplexSelector' }
+              { type: 'SimpleSelector', text: '.first' },
+              { type: 'SimpleSelector', text: '.inline' },
+              { type: 'SimpleSelector', text: '.sibling' }
             ]
           },
           extendInstructions: [
@@ -2086,7 +2102,7 @@ describe('Less AST grammar facts', () => {
               partial: true,
               subject: {
                 type: 'SelectorList',
-                selectors: [{ type: 'ComplexSelector' }]
+                selectors: [{ type: 'SimpleSelector', text: '.inline' }]
               }
             }
           ]
@@ -2115,28 +2131,19 @@ describe('Less AST grammar facts', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                value: [{ text: '.first' }]
-              },
-              {
-                type: 'ComplexSelector',
-                value: [{ text: '.inline' }]
-              },
-              {
-                type: 'ComplexSelector',
-                value: [{ text: '.sibling' }]
-              }
+              { type: 'SimpleSelector', text: '.first' },
+              { type: 'SimpleSelector', text: '.inline' },
+              { type: 'SimpleSelector', text: '.sibling' }
             ]
           },
           extendInstructions: [
             {
               partial: true,
               subject: {
-                selectors: [{ value: [{ text: '.inline' }] }]
+                selectors: [{ type: 'SimpleSelector', text: '.inline' }]
               },
               target: {
-                selectors: [{ value: [{ text: '.target' }] }]
+                selectors: [{ type: 'SimpleSelector', text: '.target' }]
               }
             }
           ]
@@ -2182,20 +2189,17 @@ describe('Less AST grammar facts', () => {
                 value: [{ text: '.ext3' }, '>', { text: '.leaf' }]
               },
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'CompoundSelector', value: [{ text: '.ext4' }, { text: ':hover' }] }]
+                type: 'CompoundSelector',
+                value: [{ text: '.ext4' }, { text: ':hover' }]
               },
-              {
-                type: 'ComplexSelector',
-                value: [{ text: '.plain' }]
-              }
+              { type: 'SimpleSelector', text: '.plain' }
             ]
           },
           extendInstructions: [
             {
               partial: true,
               target: {
-                selectors: [{ value: [{ text: '.foo' }] }]
+                selectors: [{ type: 'SimpleSelector', text: '.foo' }]
               },
               subject: {
                 selectors: [
@@ -2208,12 +2212,13 @@ describe('Less AST grammar facts', () => {
             {
               partial: true,
               target: {
-                selectors: [{ value: [{ text: '.bar' }] }]
+                selectors: [{ type: 'SimpleSelector', text: '.bar' }]
               },
               subject: {
                 selectors: [
                   {
-                    value: [{ type: 'CompoundSelector', value: [{ text: '.ext4' }, { text: ':hover' }] }]
+                    type: 'CompoundSelector',
+                    value: [{ text: '.ext4' }, { text: ':hover' }]
                   }
                 ]
               }
@@ -2251,7 +2256,7 @@ describe('Less AST grammar facts', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              { value: [{ type: 'CompoundSelector', value: [{ text: '.active' }, { text: '&' }] }] },
+              { type: 'CompoundSelector', value: [{ text: '.active' }, { text: '&' }] },
               {
                 value: [{ text: '.ext1' }, ' ', { text: '.ext2' }]
               }
@@ -2262,11 +2267,11 @@ describe('Less AST grammar facts', () => {
               partial: false,
               subject: {
                 selectors: [
-                  { value: [{ type: 'CompoundSelector', value: [{ text: '.active' }, { text: '&' }] }] }
+                  { type: 'CompoundSelector', value: [{ text: '.active' }, { text: '&' }] }
                 ]
               },
               target: {
-                selectors: [{ value: [{ text: '.target' }] }]
+                selectors: [{ type: 'SimpleSelector', text: '.target' }]
               }
             },
             {
@@ -2279,7 +2284,7 @@ describe('Less AST grammar facts', () => {
                 ]
               },
               target: {
-                selectors: [{ value: [{ text: '.foo' }] }]
+                selectors: [{ type: 'SimpleSelector', text: '.foo' }]
               }
             }
           ]
@@ -3136,10 +3141,7 @@ describe('Less AST grammar facts', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: '.a', interp: null }]
-              }
+              { type: 'SimpleSelector', text: '.a', interp: null }
             ]
           },
           rules: [
@@ -3242,10 +3244,7 @@ describe('Less AST grammar facts', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: '.a', interp: null }]
-              }
+              { type: 'SimpleSelector', text: '.a', interp: null }
             ]
           },
           rules: [
@@ -3909,10 +3908,7 @@ describe('Less AST grammar facts', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: '.card', interp: null }]
-              }
+              { type: 'SimpleSelector', text: '.card', interp: null }
             ]
           },
           rules: [
@@ -4357,14 +4353,8 @@ describe('Less AST grammar facts', () => {
               selector: {
                 type: 'SelectorList',
                 selectors: [
-                  {
-                    type: 'ComplexSelector',
-                    value: [{ type: 'SimpleSelector', text: 'from' }]
-                  },
-                  {
-                    type: 'ComplexSelector',
-                    value: [{ type: 'SimpleSelector', text: '50%' }]
-                  }
+                  { type: 'SimpleSelector', text: 'from' },
+                  { type: 'SimpleSelector', text: '50%' }
                 ]
               },
               rules: [{ type: 'Declaration', name: 'opacity' }]
@@ -4382,8 +4372,8 @@ describe('Less AST grammar facts', () => {
               selector: {
                 type: 'SelectorList',
                 selectors: [
-                  { type: 'ComplexSelector' },
-                  { type: 'ComplexSelector' }
+                  { type: 'SimpleSelector' },
+                  { type: 'SimpleSelector' }
                 ]
               }
             }
@@ -4403,7 +4393,7 @@ describe('Less AST grammar facts', () => {
               type: 'Ruleset',
               selector: {
                 type: 'SelectorList',
-                selectors: [{ type: 'ComplexSelector' }]
+                selectors: [{ type: 'SimpleSelector' }]
               }
             }
           ]
@@ -4903,7 +4893,7 @@ describe('Less AST grammar facts', () => {
          */
         {
           type: 'Ruleset',
-          selector: { selectors: [{ value: [{ text: '#ns' }] }] },
+          selector: { selectors: [{ type: 'SimpleSelector', text: '#ns' }] },
           rules: [
             { type: 'MixinDefinition', name: '.sizes' },
             { type: 'MixinDefinition', name: '.breakpoint' }
@@ -4911,7 +4901,7 @@ describe('Less AST grammar facts', () => {
         },
         {
           type: 'Ruleset',
-          selector: { selectors: [{ value: [{ text: '#ns' }] }] },
+          selector: { selectors: [{ type: 'SimpleSelector', text: '#ns' }] },
           rules: [{ type: 'MixinDefinition', name: '.sizes' }]
         },
         { type: 'MixinDefinition', name: '.valToGet' },
@@ -7709,10 +7699,7 @@ describe('Less AST grammar facts', () => {
                 type: 'ComplexSelector',
                 value: [{ type: 'SimpleSelector', text: '.a', interp: null }, '>', { type: 'SimpleSelector', text: '.b', interp: null }]
               },
-              {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: '#c', interp: null }]
-              }
+              { type: 'SimpleSelector', text: '#c', interp: null }
             ]
           },
           rules: [
@@ -7746,8 +7733,8 @@ describe('Less AST grammar facts', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              { value: [{ text: '#a' }] },
-              { value: [{ text: '.b' }] }
+              { type: 'SimpleSelector', text: '#a' },
+              { type: 'SimpleSelector', text: '.b' }
             ]
           }
         }
@@ -7821,19 +7808,19 @@ describe('Less AST grammar facts', () => {
         type: 'SelectorList',
         selectors: [
           {
-            type: 'ComplexSelector',
-            value: [{ type: 'CompoundSelector', value: [
+            type: 'CompoundSelector',
+            value: [
               { type: 'SimpleSelector', text: 'button', interp: null },
               { type: 'SimpleSelector', text: '.primary', interp: null },
               { type: 'SimpleSelector', text: '#submit', interp: null }
-            ] }]
+            ]
           },
           {
-            type: 'ComplexSelector',
-            value: [{ type: 'CompoundSelector', value: [
+            type: 'CompoundSelector',
+            value: [
               { type: 'SimpleSelector', text: '&', interp: null },
               { type: 'SimpleSelector', text: '.is-open', interp: null }
-            ] }]
+            ]
           }
         ]
       },
@@ -7871,8 +7858,9 @@ describe('Less AST grammar facts', () => {
       selector: {
         type: 'SelectorList',
         selectors: ['&', '&-active', '&1'].map(text => ({
-          type: 'ComplexSelector',
-          value: [{ type: 'SimpleSelector', text, interp: null }]
+          type: 'SimpleSelector',
+          text,
+          interp: null
         }))
       },
       rules: [
@@ -7901,7 +7889,7 @@ describe('Less AST grammar facts', () => {
     }
   });
 
-  it('constructs nested Less relative selectors through the existing leading-combinator field', () => {
+  it('constructs nested Less relative selectors directly', () => {
     const result = run(
       lessAstGrammar.Document,
       '#first { > .second { + #third { color: purple; } } }',
@@ -7921,8 +7909,8 @@ describe('Less AST grammar facts', () => {
               selector: {
                 selectors: [
                   {
-                    leadingComb: '>',
-                    value: [{ text: '.second' }]
+                    type: 'RelativeSelector',
+                    value: ['>', { type: 'SimpleSelector', text: '.second', interp: null }]
                   }
                 ]
               },
@@ -7932,8 +7920,8 @@ describe('Less AST grammar facts', () => {
                   selector: {
                     selectors: [
                       {
-                        leadingComb: '+',
-                        value: [{ text: '#third' }]
+                        type: 'RelativeSelector',
+                        value: ['+', { type: 'SimpleSelector', text: '#third', interp: null }]
                       }
                     ]
                   }
@@ -8004,37 +7992,33 @@ describe('Less AST grammar facts', () => {
             type: 'SelectorList',
             selectors: [
               {
-                value: [{
-                  type: 'SimpleSelector',
-                  text: null,
-                  interp: {
-                    type: 'Interpolation',
-                    parts: [
-                      { lit: '.' },
-                      {
-                        ref: { type: 'VariableReference', name: 'name' },
-                        unquote: true
-                      },
-                      { lit: '-item' }
-                    ]
-                  }
-                }]
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: '.' },
+                    {
+                      ref: { type: 'VariableReference', name: 'name' },
+                      unquote: true
+                    },
+                    { lit: '-item' }
+                  ]
+                }
               },
               {
-                value: [{
-                  type: 'SimpleSelector',
-                  text: null,
-                  interp: {
-                    type: 'Interpolation',
-                    parts: [
-                      { lit: '#tone-' },
-                      {
-                        ref: { type: 'VariableReference', name: 'state' },
-                        unquote: true
-                      }
-                    ]
-                  }
-                }]
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    { lit: '#tone-' },
+                    {
+                      ref: { type: 'VariableReference', name: 'state' },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             ]
           },
@@ -8045,7 +8029,8 @@ describe('Less AST grammar facts', () => {
               selector: {
                 selectors: [
                   {
-                    value: [{ type: 'CompoundSelector', value: [
+                    type: 'CompoundSelector',
+                    value: [
                       { text: '&' },
                       {
                         type: 'SimpleSelector',
@@ -8064,7 +8049,7 @@ describe('Less AST grammar facts', () => {
                           ]
                         }
                       }
-                    ] }]
+                    ]
                   }
                 ]
               }
@@ -8153,58 +8138,54 @@ describe('Less AST grammar facts', () => {
             type: 'SelectorList',
             selectors: [
               {
-                value: [{
-                  type: 'SimpleSelector',
-                  text: null,
-                  interp: {
-                    type: 'Interpolation',
-                    parts: [
-                      {
-                        ref: {
-                          type: 'VariableReference',
-                          name: 'cap-a',
-                          lookup: 'scoped'
-                        },
-                        unquote: true
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    {
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'cap-a',
+                        lookup: 'scoped'
                       },
-                      {
-                        ref: {
-                          type: 'VariableReference',
-                          name: 'cap-b',
-                          lookup: 'scoped'
-                        },
-                        unquote: true
-                      }
-                    ]
-                  }
-                }]
+                      unquote: true
+                    },
+                    {
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'cap-b',
+                        lookup: 'scoped'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               },
               {
-                value: [{
-                  type: 'SimpleSelector',
-                  text: null,
-                  interp: {
-                    type: 'Interpolation',
-                    parts: [
-                      {
-                        ref: {
-                          type: 'VariableReference',
-                          name: 'quoted-a',
-                          lookup: 'scoped'
-                        },
-                        unquote: true
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
+                    {
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'quoted-a',
+                        lookup: 'scoped'
                       },
-                      {
-                        ref: {
-                          type: 'VariableReference',
-                          name: 'quoted-b',
-                          lookup: 'scoped'
-                        },
-                        unquote: true
-                      }
-                    ]
-                  }
-                }]
+                      unquote: true
+                    },
+                    {
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'quoted-b',
+                        lookup: 'scoped'
+                      },
+                      unquote: true
+                    }
+                  ]
+                }
               }
             ]
           }
@@ -8239,47 +8220,43 @@ describe('Less AST grammar facts', () => {
               selector: {
                 selectors: [
                   {
-                    value: [{
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '&-' },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'suffix'
-                            }
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: {
+                      type: 'Interpolation',
+                      parts: [
+                        { lit: '&-' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'suffix'
                           }
-                        ]
-                      }
-                    }]
+                        }
+                      ]
+                    }
                   },
                   {
-                    value: [{
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '&' },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'left'
-                            }
-                          },
-                          { lit: '-' },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'right'
-                            }
+                    type: 'SimpleSelector',
+                    text: null,
+                    interp: {
+                      type: 'Interpolation',
+                      parts: [
+                        { lit: '&' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'left'
                           }
-                        ]
-                      }
-                    }]
+                        },
+                        { lit: '-' },
+                        {
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'right'
+                          }
+                        }
+                      ]
+                    }
                   }
                 ]
               }
@@ -8334,7 +8311,8 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   {
                     type: 'SimpleSelector',
@@ -8348,7 +8326,7 @@ describe('Less AST grammar facts', () => {
                       ]
                     }
                   }
-                ] }]
+                ]
               }
             ]
           }
@@ -8377,19 +8355,19 @@ describe('Less AST grammar facts', () => {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   { type: 'SimpleSelector', text: ':hover' },
                   { type: 'SimpleSelector', text: '::before' }
-                ] }]
+                ]
               },
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.note' },
                   { type: 'SimpleSelector', text: ':focus' }
-                ] }]
+                ]
               }
             ]
           }
@@ -8427,7 +8405,8 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   { type: 'SimpleSelector', text: ':hover' },
                   {
@@ -8437,7 +8416,7 @@ describe('Less AST grammar facts', () => {
                     crossable: false
                   },
                   { type: 'SimpleSelector', text: ':lang(en)' }
-                ] }]
+                ]
               }
             ]
           }
@@ -8480,19 +8459,19 @@ describe('Less AST grammar facts', () => {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   { type: 'SimpleSelector', text: ':nth-child(odd)' },
                   { type: 'SimpleSelector', text: ':nth-last-child(2n + 1)' }
-                ] }]
+                ]
               },
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.note' },
                   { type: 'SimpleSelector', text: ':nth-child(even)' }
-                ] }]
+                ]
               }
             ]
           }
@@ -8569,7 +8548,8 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   {
                     type: 'PseudoSelector',
@@ -8583,10 +8563,11 @@ describe('Less AST grammar facts', () => {
                     text: null,
                     crossable: false
                   }
-                ] }]
+                ]
               },
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.note' },
                   {
                     type: 'PseudoSelector',
@@ -8594,7 +8575,7 @@ describe('Less AST grammar facts', () => {
                     text: null,
                     crossable: true
                   }
-                ] }]
+                ]
               }
             ]
           }
@@ -8618,7 +8599,7 @@ describe('Less AST grammar facts', () => {
       const selector = stylesheet(parsed.value).rules.flatMap(child =>
         child.type === 'Ruleset' ? [child] : []
       )[0].selector.selectors[0];
-      return selectorTermTokens(selector.value[0]);
+      return selectorTermTokens(firstSelectorTerm(selector));
     };
 
     /*
@@ -8637,8 +8618,8 @@ describe('Less AST grammar facts', () => {
         args: {
           type: 'SelectorList',
           selectors: [
-            { value: [{ type: 'SimpleSelector', text: '.a' }] },
-            { value: [{ type: 'SimpleSelector', text: '.b' }] }
+            { type: 'SimpleSelector', text: '.a' },
+            { type: 'SimpleSelector', text: '.b' }
           ]
         }
       }
@@ -8723,12 +8704,10 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{
-                  type: 'PseudoSelector',
-                  name: ':is',
-                  text: null,
-                  crossable: true
-                }]
+                type: 'PseudoSelector',
+                name: ':is',
+                text: null,
+                crossable: true
               }
             ]
           }
@@ -8767,12 +8746,13 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   { type: 'SimpleSelector', text: ':lang(en-US)' },
                   { type: 'SimpleSelector', text: '::part(icon)' },
                   { type: 'SimpleSelector', text: ':state(foo [bar])' }
-                ] }]
+                ]
               }
             ]
           }
@@ -8852,18 +8832,20 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { text: '.child' },
                   { text: ':nth-child(-n+2 of .item)' },
                   { text: ':nth-last-child(2n + 1)' }
-                ] }]
+                ]
               },
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { text: '.type' },
                   { text: ':nth-of-type(odd)' },
                   { text: ':nth-last-of-type(3n)' }
-                ] }]
+                ]
               }
             ]
           }
@@ -8934,14 +8916,15 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: 'a' },
                   {
                     type: 'SimpleSelector',
                     text: null,
                     interp: { type: 'Interpolation' }
                   }
-                ] }]
+                ]
               }
             ]
           }
@@ -8970,7 +8953,8 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   {
                     type: 'PseudoSelector',
@@ -8979,7 +8963,7 @@ describe('Less AST grammar facts', () => {
                     crossable: false
                   },
                   { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
-                ] }]
+                ]
               }
             ]
           }
@@ -9031,13 +9015,13 @@ describe('Less AST grammar facts', () => {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   { type: 'SimpleSelector', text: '[data-state]' },
                   { type: 'SimpleSelector', text: '[role=button]' },
                   { type: 'SimpleSelector', text: '[title="Save" i]' }
-                ] }]
+                ]
               }
             ]
           }
@@ -9061,8 +9045,8 @@ describe('Less AST grammar facts', () => {
         {
           selector: {
             selectors: [
-              { value: [{ text: '[ng\\:cloak]' }] },
-              { value: [{ text: 'ng\\:form' }] }
+              { type: 'SimpleSelector', text: '[ng\\:cloak]' },
+              { type: 'SimpleSelector', text: 'ng\\:form' }
             ]
           }
         }
@@ -9091,13 +9075,13 @@ describe('Less AST grammar facts', () => {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   { type: 'SimpleSelector', text: '[svg|role=button]' },
                   { type: 'SimpleSelector', text: '[*|data-state]' },
                   { type: 'SimpleSelector', text: '[|title="Save" i]' }
-                ] }]
+                ]
               }
             ]
           }
@@ -9126,20 +9110,20 @@ describe('Less AST grammar facts', () => {
             type: 'SelectorList',
             selectors: [
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: 'svg|a' }]
+                type: 'SimpleSelector',
+                text: 'svg|a'
               },
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: '*|a' }]
+                type: 'SimpleSelector',
+                text: '*|a'
               },
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: '|a' }]
+                type: 'SimpleSelector',
+                text: '|a'
               },
               {
-                type: 'ComplexSelector',
-                value: [{ type: 'SimpleSelector', text: 'svg|*' }]
+                type: 'SimpleSelector',
+                text: 'svg|*'
               }
             ]
           }
@@ -9200,7 +9184,8 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{ type: 'CompoundSelector', value: [
+                type: 'CompoundSelector',
+                value: [
                   { type: 'SimpleSelector', text: '.card' },
                   {
                     type: 'SimpleSelector',
@@ -9258,7 +9243,7 @@ describe('Less AST grammar facts', () => {
                       ]
                     }
                   }
-                ] }]
+                ]
               }
             ]
           }
@@ -9322,20 +9307,18 @@ describe('Less AST grammar facts', () => {
           selector: {
             selectors: [
               {
-                value: [{
-                  type: 'SimpleSelector',
-                  text: null,
-                  interp: {
-                    parts: [
-                      { lit: '[prop|="value' },
-                      {
-                        ref: { type: 'VariableReference', name: 'num' },
-                        unquote: true
-                      },
-                      { lit: '"]' }
-                    ]
-                  }
-                }]
+                type: 'SimpleSelector',
+                text: null,
+                interp: {
+                  parts: [
+                    { lit: '[prop|="value' },
+                    {
+                      ref: { type: 'VariableReference', name: 'num' },
+                      unquote: true
+                    },
+                    { lit: '"]' }
+                  ]
+                }
               }
             ]
           }

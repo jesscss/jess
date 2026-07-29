@@ -30,12 +30,8 @@ const compoundSelector = (...value: object[]) => ({
   type: 'CompoundSelector',
   value
 });
-const complexSelector = (...value: object[]) => ({
-  type: 'ComplexSelector',
-  value
-});
-const simpleComplex = (text: string) => complexSelector(simpleSelector(text));
-const compoundComplex = (...value: object[]) => complexSelector(compoundSelector(...value));
+const simpleComplex = (text: string) => simpleSelector(text);
+const compoundComplex = (...value: object[]) => compoundSelector(...value);
 
 describe('@jesscss/scss-parser public parse API', () => {
   it('exposes @supports general-enclosed facts without evaluating their contents', () => {
@@ -178,12 +174,12 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet',
       rules: [{ type: 'VariableDeclaration' }, {
         type: 'Ruleset', selector: { selectors: [
-          complexSelector(simpleSelector(null, { interp: { type: 'Interpolation', parts: [
+          simpleSelector(null, { interp: { type: 'Interpolation', parts: [
             { lit: '.' }, { ref: { type: 'VariableReference', name: 'kind', lookup: 'live' }, unquote: true }, { lit: '-header' }
-          ] } })),
-          complexSelector(simpleSelector(null, { interp: { type: 'Interpolation', parts: [
+          ] } }),
+          simpleSelector(null, { interp: { type: 'Interpolation', parts: [
             { lit: '#main-' }, { ref: { type: 'VariableReference', name: 'kind', lookup: 'live' }, unquote: true }
-          ] } }))
+          ] } })
         ] }
       }]
     });

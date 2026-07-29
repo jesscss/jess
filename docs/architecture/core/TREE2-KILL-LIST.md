@@ -165,8 +165,8 @@ Multiple sites route a decision through rebuilt Less source when the built node 
 - Four near-identical ~6-line bodies → `hslAdjust(channel, sign)`. PLAUSIBLE (small, individually readable) — legitimate DRY, no correctness impact. Also `hsl.ts:24` double hue-wrap (normalizeHue already wraps) — pick one owner of the wrap.
 - **Size:** small. **Risk:** LOW. **Ordering:** independent.
 
-### A3.12 — `resolveComplex`/`resolveCompound` vs `Compound.canonical()` (`serialize.ts:566`)
-- Re-implements the head + leadingComb-trimStart + tail/renderCombinator walk of `canonical()` (nodes.ts:295-309); only delta is frame-aware interp resolution. Unify via an optional token-resolver arg on `canonical()` (static path passes none, keeps `_canon` cache). **Ties into A4.1** (moving canonical off the node).
+### A3.12 — selector canonical helpers (`serialize.ts`)
+- Re-implements selector-term and combinator joining around static canonicalization; only delta is frame-aware interp resolution. Keep the canonical selector shape split: direct selector terms for single branches, `CompoundSelector` for multi-simple adjacency, `ComplexSelector` for internal combinators, and `RelativeSelector` for leading combinators. No leading-combinator side field belongs on `ComplexSelector`. **Ties into A4.1** (moving canonical off the node).
 - **Size:** medium. **Risk:** MEDIUM. **Ordering:** after A4.1 decision.
 
 ---
