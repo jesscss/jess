@@ -100,15 +100,15 @@ against the pseudo argument grammar, not swept together with custom values.
 `packages/parser-shared/src/opaque-at-rule.ts` remains the shared opaque
 at-rule capture hotspot: its CSS and preprocessor bodies are accepted opaque
 exceptions for now, but they should move toward a trivia-aware structured
-unknown-at-rule helper before adding more scanner policy there. Less still has
-local string/comment skip lists in `lessOpaqueBodyBrace`,
-`lessOpaqueBodyCapture`, and `atPreludeGroup` even though the Less root already
-declares the same ambient `scanSkip`; those are next-tier deletion candidates
-and require Less parser gates plus the named Less oracle if behavior can move.
-SCSS `QueryFunction` and Jess generic pseudo raw arguments are separate
-follow-ups: SCSS has ambient scan skips but also routes through composed quoted
-syntax, while Jess currently lacks a root `scanSkip` policy and must decide that
-grammar shape before shrinking the pseudo scanner.
+unknown-at-rule helper before adding more scanner policy there. Less
+`lessOpaqueBodyBrace`, `lessOpaqueBodyCapture`, and `atPreludeGroup` now inherit
+the root ambient `scanSkip`; the remaining Less scanner debt is the
+function-condition lookahead scan and the larger opaque-helper design, not local
+string/comment skip duplication. SCSS `QueryFunction` and Jess generic pseudo
+raw arguments are separate follow-ups: SCSS has ambient scan skips but also
+routes through composed quoted syntax, while Jess currently lacks a root
+`scanSkip` policy and must decide that grammar shape before shrinking the pseudo
+scanner.
 
 Live alpha evidence, 2026-07-27: registry `parseman@0.41.0` is installed;
 dependency-order parser/plugin/jess builds pass; `pnpm run check:macro` and
@@ -4594,6 +4594,33 @@ build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
 check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed. This slice makes no broad speed claim.
+
+Less ambient scanner-skip cleanup, 2026-07-29: Less `lessOpaqueBodyBrace`,
+`lessOpaqueBodyCapture`, and `atPreludeGroup` now inherit comment and quoted
+string protection from the grammar-level `scanSkip` declared on every Less AST,
+line, and CST artifact. `lessOpaqueBodyCapture` keeps only the nested
+`lessOpaqueBodyBrace` scanner-local exception; `atPreludeGroup` keeps no local
+skip list because the balanced group combinators can inherit ambient scan
+skips. This is the Less version of the CSS ambient-skip cleanup: scanner-local
+cleanup for still-accepted opaque/prelude spans, not a claim that those spans
+are the final structured grammar target.
+
+Evidence for the Less ambient scanner-skip cleanup: `pnpm --filter
+@jesscss/less-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 261 tests; dependency-order `pnpm --filter
+@jesscss/parser-shared build`, `pnpm --filter @jesscss/css-parser build`, and
+`pnpm --filter @jesscss/less-parser build` passed; `pnpm run check:macro`
+reported parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0
+interpreter fallbacks; and `pnpm run verify:compose-integrity` passed. The Less
+byte-identity oracle remains red on the current dirty integration surface, but
+an A/B check that temporarily restored only the old local skip lists produced
+the same aggregates as the cleaned shape:
+`ast=c00bbb9033f8b99fd8f6a280fb264c017f7601dce96e914035e75c46bb514a37`
+with 117 throws and
+`cst=591d44a6f0c4608459903c221c210684bac332161b0d901b0c1fc3caa5cee714`
+with 0 throws. Treat the oracle red as pre-existing dirty-surface movement, not
+movement from this scanner-skip slice. This slice makes no broad speed claim.
 
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
