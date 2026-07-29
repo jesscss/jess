@@ -4419,6 +4419,32 @@ check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
 compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
 passed.
 
+SCSS parser-local direct-mode vocabulary follow-up, 2026-07-29: the remaining
+generic lowercase `direct*` helper names in the SCSS grammar were renamed to
+semantic local names (`doubleQuotedText`, `singleQuotedText`,
+`staticDoubleQuotedPath`, `staticSingleQuotedPath`,
+`nestedPropertyBlockAhead`, `mixinNameToken`, and
+`mixinParamSigilName`), and neighboring comments now describe host-mode AST
+facts, public parse behavior, or the actual syntax slice instead of a direct
+parser mode. This is a source-only naming alignment: no grammar branch,
+CST/AST node label, regex body, reducer shape, or comment trivia behavior
+changed. The touched `choice(...)` sites were not rewritten; quoted/static
+path arms remain delimiter-family choices, the nested-property gate remains a
+zero-width context predicate, and mixin arguments still depend on later `:` /
+`...` facts rather than one routed opener token.
+
+Evidence for the SCSS parser-local direct-mode vocabulary follow-up:
+`pnpm --filter @jesscss/scss-parser test -- test/cst-public.test.ts
+test/ast-grammar.test.ts test/macro-compiled-ast.test.ts
+test/compose-integrity.test.ts --reporter=dot` passed with 3 files and 102
+tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
+@jesscss/scss-parser build` passed; `pnpm run check:macro` reported
+parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
+fallbacks; and `pnpm run verify:compose-integrity` passed. `rg` now finds no
+lowercase direct-mode helper names in
+`packages/syntax/scss/scss-parser/src/grammar.ts`; remaining matches are
+ordinary Sass module "directive(s)" wording.
+
 SCSS value/mixin argument semantic-name cleanup, 2026-07-29: the SCSS value atom
 and mixin call argument grammar keys now use the cross-dialect semantic labels
 `ValueAtom` and `MixinCallArgument` instead of the temporary

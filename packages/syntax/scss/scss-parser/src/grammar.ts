@@ -958,7 +958,7 @@ function scssPseudoName(opener: string): string {
 
 /*
  * Sass `//` comments are trivia, not CSS comments: they must be recognized
- * between direct AST facts but must never become a renderable `Comment` node,
+ * between host-mode AST facts but must never become a renderable `Comment` node,
  * because `//` is silent in Sass and is not valid CSS. Same shape as Less.
  * URL bodies and quoted strings run under `noTrivia`, so `url(//host/path)`
  * stays URL content and `"//u"` stays string content.
@@ -988,7 +988,7 @@ const keyframeEndpoint = regex(/(?:from|to)(?![-_a-zA-Z0-9\u0080-\uffff])/i);
 const keyframePercent = regex(/[-+]?(?:\d+\.?\d*|\.\d+)%/);
 
 /*
- * The direct counterpart of the CST grammar's `InterpolatedSelector`: static
+ * The AST counterpart of the CST grammar's `InterpolatedSelector`: static
  * identifier chunks and structural `#{…}` atoms only. Attribute, pseudo, and
  * namespace interpolation each need a different AST shape and stay outside
  * this simple-token fact.
@@ -1098,7 +1098,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * A closed static value must not split an unsupported escaped `$` reference
    * into a valid short reference plus a following keyword in a space sequence.
    * The legacy scanner accepts no backslash in this token either; the boundary
-   * makes that rejection atomic in this direct grammar.
+   * makes that rejection atomic in this host-mode grammar.
    */
   const scssVarName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*(?![-_a-zA-Z0-9\u0080-\uffff\\])/);
 
@@ -1117,8 +1117,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * production below owns that form. Ordinary `#foo` stays literal text and
    * escapes remain grammar-recognized.
    */
-  const directDoubleQuotedText = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))*/);
-  const directSingleQuotedText = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))*/);
+  const doubleQuotedText = regex(/(?:[^"\\#]|\\[\s\S]|#(?!\{))*/);
+  const singleQuotedText = regex(/(?:[^'\\#]|\\[\s\S]|#(?!\{))*/);
   const VariableReference = node<VariableReference>(
     'VariableReference',
     scssVarSigilName,
@@ -1141,12 +1141,12 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       sequence(
         literal('"'),
-        directDoubleQuotedText,
+        doubleQuotedText,
         literal('"')
       ),
       sequence(
         literal('\''),
-        directSingleQuotedText,
+        singleQuotedText,
         literal('\'')
       ),
       sequence(
@@ -1199,8 +1199,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * or escape-bearing path has no decoded parser-time target class and must not
    * be guessed or resolved here.
    */
-  const directStaticDoubleQuotedPath = regex(/(?:[^"\\#]|#(?!\{))*/);
-  const directStaticSingleQuotedPath = regex(/(?:[^'\\#]|#(?!\{))*/);
+  const staticDoubleQuotedPath = regex(/(?:[^"\\#]|#(?!\{))*/);
+  const staticSingleQuotedPath = regex(/(?:[^'\\#]|#(?!\{))*/);
 
   /*
    * `noTrivia`: a module path is literal bytes, so the ambient `//` trivia arm
@@ -1213,12 +1213,12 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       noTrivia(sequence(
         literal('"'),
-        directStaticDoubleQuotedPath,
+        staticDoubleQuotedPath,
         literal('"')
       )),
       noTrivia(sequence(
         literal('\''),
-        directStaticSingleQuotedPath,
+        staticSingleQuotedPath,
         literal('\'')
       ))
     ),
@@ -1238,12 +1238,12 @@ export const scssFactory = (g: ScssInputRules) => {
     choice(
       noTrivia(sequence(
         literal('"'),
-        directDoubleQuotedText,
+        doubleQuotedText,
         literal('"')
       )),
       noTrivia(sequence(
         literal('\''),
-        directSingleQuotedText,
+        singleQuotedText,
         literal('\'')
       ))
     ),
@@ -2024,7 +2024,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * this block.
    * Those are deliberately held here: lowering them needs a typed delayed
    * property-prefix placement fact, not a synthetic container. Recursive
-   * nested properties and @extend are not legacy body forms, so this direct
+   * nested properties and @extend are not legacy body forms, so this
    * grammar does not create extensions for them either.
    */
   const NestedPropertyMember = node<CollectionEntry>(
@@ -2211,7 +2211,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * CSS import tails share the media-query *shape* used by conditional groups,
    * but not their recovery branch: a query function there lowers an arbitrary
-   * payload to `Any`, which is not a direct AST import fact. This local family
+   * payload to `Any`, which is not an AST import fact. This local family
    * admits only the static values and boolean/query forms the canonical nodes
    * already represent.
    */
@@ -2495,17 +2495,17 @@ export const scssFactory = (g: ScssInputRules) => {
    * bodies made from the statements already available below. `@content`,
    * module-qualified calls, and interpolated names remain separate families.
    */
-  const directMixinName = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
-  const directMixinParamName = scssVarSigilName;
+  const mixinNameToken = regex(/-?[_a-zA-Z\u0080-\uffff][-_a-zA-Z0-9\u0080-\uffff]*/);
+  const mixinParamSigilName = scssVarSigilName;
   const MixinParameter = node<Param>(
     'MixinParameter',
     choice(
       sequence(
         literal('...'),
-        directMixinParamName
+        mixinParamSigilName
       ),
       sequence(
-        directMixinParamName,
+        mixinParamSigilName,
         optional(sequence(
           literal(':'),
           g.ValueTerm
@@ -2542,7 +2542,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'MixinCallArgument',
     choice(
       sequence(
-        directMixinParamName,
+        mixinParamSigilName,
         literal(':'),
         g.ValueTerm
       ),
@@ -2570,7 +2570,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'MixinCallRule',
     sequence(
       regex(/@include(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      directMixinName,
+      mixinNameToken,
       optional(sequence(
         literal('('),
         optional(sequence(
@@ -2747,7 +2747,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'MixinDefinitionRule',
     sequence(
       regex(/@mixin(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      directMixinName,
+      mixinNameToken,
       optional(g.MixinParameters),
       literal('{'),
       nestedBody,
@@ -2793,7 +2793,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'FunctionRule',
     sequence(
       regex(/@function(?![-_a-zA-Z0-9\u0080-\uffff])/i),
-      directMixinName,
+      mixinNameToken,
       optional(g.MixinParameters),
       literal('{'),
       many(choice(
@@ -3169,7 +3169,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * Static conditional-group preludes are structured in the grammar. The public
    * SCSS CST also accepts `#{...}` query preludes for language-service recovery,
-   * but direct `parse() -> Stylesheet` intentionally rejects that CST-only form
+   * but public `parse() -> Stylesheet` intentionally rejects that CST-only form
    * until the AST owns typed query-prelude interpolation. Never lower it to raw
    * prelude text merely to erase that deliberate acceptance mismatch.
    *
@@ -3413,7 +3413,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * `@supports` is not the media/container query grammar: a general-enclosed
    * function would otherwise reach QueryFunction and be lowered to
-   * FunctionCall(Any).  Keep this public direct route to facts the canonical
+   * FunctionCall(Any). Keep this public parse route to facts the canonical
    * AST actually owns; dynamic SCSS values require their own semantic model.
    */
   const SupportsAtom = node<ValueNode>(
@@ -3604,7 +3604,7 @@ export const scssFactory = (g: ScssInputRules) => {
   );
 
   /*
-   * CSS's direct grammar retains a known block at-rule's static header as a
+   * CSS's host-mode grammar retains a known block at-rule's static header as a
    * grammar-owned `Any` when no more specific value model applies. SCSS needs
    * the same lossless fact for `@layer` and `@starting-style`, but must not
    * flatten its `#{…}` form: every atom below reserves that opener, including
@@ -3616,7 +3616,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'StaticAtPreludeDoubleQuoted',
     sequence(
       literal('"'),
-      directDoubleQuotedText,
+      doubleQuotedText,
       literal('"')
     ),
     joinTokenValue
@@ -3625,7 +3625,7 @@ export const scssFactory = (g: ScssInputRules) => {
     'StaticAtPreludeSingleQuoted',
     sequence(
       literal('\''),
-      directSingleQuotedText,
+      singleQuotedText,
       literal('\'')
     ),
     joinTokenValue
@@ -3942,7 +3942,7 @@ export const scssFactory = (g: ScssInputRules) => {
 
   /*
    * The shared AST deliberately retains a static page selector as an existing
-   * grammar-owned Any, just as the direct CSS route does. `#{...}` remains
+   * grammar-owned Any, just as the CSS route does. `#{...}` remains
    * excluded by StaticAtPrelude rather than being flattened.
    */
   const PageBlock = node<AtRuleBlock>(
@@ -4221,7 +4221,7 @@ export const scssFactory = (g: ScssInputRules) => {
       /*
        * Comments are valid selector-list delimiters.  Keep them as grammar
        * facts (and statement comments only when they are actual body items),
-       * matching the direct CSS keyframe list without source recovery.
+       * matching the CSS keyframe list without source recovery.
        */
       many(sequence(
         many(g.Comment),
@@ -4335,7 +4335,7 @@ export const scssFactory = (g: ScssInputRules) => {
   /*
    * This is the static CSS-compatible attribute-selector family. The canonical
    * selector tree represents an attribute as one source-faithful SimpleSelector, just
-   * as the CSS direct grammar does. Namespaced and interpolation-bearing
+   * as the CSS grammar does. Namespaced and interpolation-bearing
    * attributes stay outside this closed slice because their segments need
    * their own typed representation rather than text flattening.
    */
@@ -4356,12 +4356,12 @@ export const scssFactory = (g: ScssInputRules) => {
            */
           noTrivia(sequence(
             literal('"'),
-            directDoubleQuotedText,
+            doubleQuotedText,
             literal('"')
           )),
           noTrivia(sequence(
             literal('\''),
-            directSingleQuotedText,
+            singleQuotedText,
             literal('\'')
           )),
           g.CssSyntaxKeyword
@@ -4785,7 +4785,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * Its target stays a typed selector list and is hoisted onto the carrying Ruleset
    * through the existing canonical extendInstructions field. `!optional` has
    * missing-target diagnostic semantics that the canonical instruction does not
-   * yet model, so this direct slice rejects it rather than silently dropping it.
+   * yet model, so this slice rejects it rather than silently dropping it.
    */
   const Extend = node<ExtendInstruction>(
     'Extend',
