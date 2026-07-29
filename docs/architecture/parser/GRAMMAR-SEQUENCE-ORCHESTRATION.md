@@ -4555,6 +4555,28 @@ passed. Existing parseman gating warnings remain visible for broader queue
 items such as balanced groups, opaque prelude capture, and several CSS construct
 choices; this slice makes no broad speed claim.
 
+CSS custom/value scanner-skip cleanup, 2026-07-29: the shared CSS
+`balancedParens`, `balancedBrackets`, and `balancedBraces` helpers now keep only
+their local `customSlash` exception and inherit comment, escape, and quoted
+string protection from grammar-level `scanSkip`. The custom-property value,
+import-tail group, var()-fallback, and raw parenthesized-value scans now list
+only the nested balanced groups that are local to those opaque spans, or no
+explicit skip at all when ambient `scanSkip` is sufficient. This relies on
+Parseman 0.41.0's documented scanner contract: `scanTo(...)` merges grammar
+trivia plus ambient `scanSkip`, and `balanced(...)` merges ambient `scanSkip`
+unless the combinator is raw. It is still scanner-local cleanup for accepted
+opaque CSS component text, not a replacement for future structured parsing
+where a value family can be grammar-owned instead.
+
+Evidence for the CSS custom/value scanner-skip cleanup: `pnpm --filter
+@jesscss/css-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 2 files and 102 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/css-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. This slice makes no broad speed claim.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

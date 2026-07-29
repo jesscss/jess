@@ -875,17 +875,17 @@ const customSlash = regex(/\/(?!\*)/);
 const balancedParens = balanced(
   '(',
   ')',
-  { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] }
+  { skip: [customSlash] }
 );
 const balancedBrackets = balanced(
   '[',
   ']',
-  { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] }
+  { skip: [customSlash] }
 );
 const balancedBraces = balanced(
   '{',
   '}',
-  { skip: [blockComment, customSlash, customEscape, customDoubleQuoted, customSingleQuoted] }
+  { skip: [customSlash] }
 );
 
 /*
@@ -920,10 +920,6 @@ const customValue = scanTo(
   ),
   {
     skip: [
-      blockComment,
-      customEscape,
-      customDoubleQuoted,
-      customSingleQuoted,
       balancedParens,
       balancedBrackets,
       balancedBraces
@@ -935,7 +931,7 @@ const importTailGroup = sequence(
   scanTo(
     literal(')'),
     {
-      skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedParens]
+      skip: [balancedParens]
     }
   ),
   expect(
@@ -948,7 +944,7 @@ const importTailSquareGroup = sequence(
   scanTo(
     literal(']'),
     {
-      skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets]
+      skip: [balancedBrackets]
     }
   ),
   expect(
@@ -1704,7 +1700,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('['),
     scanTo(
       literal('('),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal('('),
     scanTo(
@@ -1712,7 +1708,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(')'),
         literal(']')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal(']')
   );
@@ -1720,7 +1716,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('['),
     scanTo(
       literal('{'),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal('{'),
     scanTo(
@@ -1728,7 +1724,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal('}'),
         literal(']')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBrackets] }
+      { skip: [balancedBrackets] }
     ),
     literal(']')
   );
@@ -1736,7 +1732,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('{'),
     scanTo(
       literal('('),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('('),
     scanTo(
@@ -1744,7 +1740,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(')'),
         literal('}')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('}')
   );
@@ -1752,7 +1748,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
     literal('{'),
     scanTo(
       literal('['),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('['),
     scanTo(
@@ -1760,7 +1756,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
         literal(']'),
         literal('}')
       ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedBraces] }
+      { skip: [balancedBraces] }
     ),
     literal('}')
   );
@@ -1775,32 +1771,28 @@ export const cssFactory = (g: CssGrammarSelf) => {
   const varFallbackParenCrossBracket = sequence(
     literal('('),
     scanTo(
-      literal('['),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      literal('[')
     ),
     literal('['),
     scanTo(
       choice(
         literal(']'),
         literal(')')
-      ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      )
     ),
     literal(')')
   );
   const varFallbackParenCrossBrace = sequence(
     literal('('),
     scanTo(
-      literal('{'),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      literal('{')
     ),
     literal('{'),
     scanTo(
       choice(
         literal('}'),
         literal(')')
-      ),
-      { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted] }
+      )
     ),
     literal(')')
   );
@@ -1835,13 +1827,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       scanTo(
         literal(']'),
         {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedBrackets
-          ]
+          skip: [balancedBrackets]
         }
       ),
       literal(']')
@@ -1859,13 +1845,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       scanTo(
         literal('}'),
         {
-          skip: [
-            blockComment,
-            customEscape,
-            customDoubleQuoted,
-            customSingleQuoted,
-            balancedBraces
-          ]
+          skip: [balancedBraces]
         }
       ),
       literal('}')
@@ -2052,7 +2032,7 @@ export const cssFactory = (g: CssGrammarSelf) => {
       literal('('),
       scanTo(
         literal(')'),
-        { skip: [blockComment, customEscape, customDoubleQuoted, customSingleQuoted, balancedParens, balancedBrackets, balancedBraces] }
+        { skip: [balancedParens, balancedBrackets, balancedBraces] }
       ),
       literal(')')
     ),
