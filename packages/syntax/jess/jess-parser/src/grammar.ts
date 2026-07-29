@@ -150,10 +150,10 @@ type JessRules = {
   StaticAtDashedIdent: Combinator<Keyword>;
   StaticAtPreludeTerm: Combinator<ValueNode>;
   StaticAtPrelude: Combinator<ValueNode | null>;
-  DirectJessMediaPrelude: Combinator<ValueNode | null>;
+  MediaPrelude: Combinator<ValueNode | null>;
   StaticAtRuleHeader: Combinator<JessAtRuleHeader>;
-  DirectJessAtRuleHeader: Combinator<JessAtRuleHeader>;
-  DirectJessSupportsAtom: Combinator<ValueNode>;
+  AtRuleHeader: Combinator<JessAtRuleHeader>;
+  SupportsAtom: Combinator<ValueNode>;
   DirectJessGeneralTemplate: Combinator<Interpolation>;
   DirectJessGeneralTemplateParen: Combinator<Interpolation>;
   DirectJessGeneralTemplateSquare: Combinator<Interpolation>;
@@ -167,29 +167,29 @@ type JessRules = {
   DirectJessGeneralQuotedTemplateDoubleQuoted: Combinator<Interpolation>;
   DirectJessGeneralQuotedTemplateSingleQuoted: Combinator<Interpolation>;
   DirectJessGeneralEnclosed: Combinator<GeneralEnclosed>;
-  DirectJessSupportsNot: Combinator<Keyword>;
-  DirectJessSupportsLogical: Combinator<Keyword>;
-  DirectJessSupportsFeature: Combinator<ValueNode>;
-  DirectJessSupportsInParens: Combinator<ValueNode>;
-  DirectJessSupportsCondition: Combinator<ValueNode>;
+  SupportsNot: Combinator<Keyword>;
+  SupportsLogical: Combinator<Keyword>;
+  SupportsFeature: Combinator<ValueNode>;
+  SupportsInParens: Combinator<ValueNode>;
+  SupportsCondition: Combinator<ValueNode>;
   CssImportTarget: Combinator<Quoted | Url>;
-  DirectJessImportTailFunction: Combinator<FunctionCall>;
-  DirectJessCssImportPrelude: Combinator<ValueNode>;
-  DirectJessCharset: Combinator<AtRuleStatement>;
-  DirectJessCssImport: Combinator<AtRuleStatement>;
-  DirectJessSupportsAtRuleBlock: Combinator<AtRuleBlock>;
-  DirectJessPropertyName: Combinator<Keyword>;
+  ImportTailFunction: Combinator<FunctionCall>;
+  CssImportPrelude: Combinator<ValueNode>;
+  Charset: Combinator<AtRuleStatement>;
+  CssImport: Combinator<AtRuleStatement>;
+  SupportsAtRuleBlock: Combinator<AtRuleBlock>;
+  PropertyName: Combinator<Keyword>;
   StaticPropertyDescriptor: Combinator<Declaration>;
-  DirectJessPropertyAtRule: Combinator<AtRuleBlock>;
-  DirectJessKeyframeSelector: Combinator<SimpleSelector>;
-  DirectJessKeyframeBlock: Combinator<Ruleset>;
-  DirectJessKeyframes: Combinator<AtRuleBlock>;
-  DirectJessOpaquePrelude: Combinator<string | null>;
-  DirectJessOpaqueBody: Combinator<string>;
-  DirectJessOpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
-  DirectJessScopeBlock: Combinator<AtRuleBlock>;
-  DirectJessAtRuleBlock: Combinator<AtRuleBlock>;
-  DirectJessAtRuleStatement: Combinator<AtRuleStatement>;
+  PropertyAtRule: Combinator<AtRuleBlock>;
+  KeyframeSelector: Combinator<SimpleSelector>;
+  KeyframeBlock: Combinator<Ruleset>;
+  Keyframes: Combinator<AtRuleBlock>;
+  OpaquePrelude: Combinator<string | null>;
+  OpaqueBody: Combinator<string>;
+  OpaqueAtRuleBlock: Combinator<OpaqueAtRuleBlock>;
+  ScopeBlock: Combinator<AtRuleBlock>;
+  AtRuleBlock: Combinator<AtRuleBlock>;
+  AtRuleStatement: Combinator<AtRuleStatement>;
   rw: Combinator<unknown>;
   whitespace: Combinator<unknown>;
 };
@@ -3698,7 +3698,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * its bare-identifier semantics differ from a name splice, which is exactly
    * the confusion one form per position removes.
    */
-  const DirectJessMediaPrelude = node<ValueNode | null>(
+  const MediaPrelude = node<ValueNode | null>(
     'MediaPrelude',
     choice(
       g.DollarBrace,
@@ -3711,7 +3711,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Statement headers remain fully static. The documented deferred media form
    * is a block-only construct, so it cannot silently become `@media $(x);`.
    * Every arm leads with a concrete `@`-first recognizer (no leading `not(...)`),
-   * so the whole header — and the `DirectJessAtRuleStatement`/`AtRuleBlock` that
+   * so the whole header — and the `AtRuleStatement`/`AtRuleBlock` that
    * wrap it — keeps a `{@}` first-set. That lets parseman fast-reject non-`@`
    * statements at the leading char instead of entering this node frame and
    * running the media/container lookaheads at every rule. The former arm-2
@@ -3752,13 +3752,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Every other header, including `@container`, stays on the static grammar;
    * mixing the deferred form with query terms remains rejected.
    */
-  const DirectJessAtRuleHeader = node<JessAtRuleHeader>(
+  const AtRuleHeader = node<JessAtRuleHeader>(
     'AtRuleHeader',
     choice(
       sequence(
         g.CssSyntaxMediaAtKeyword,
         not(literal('{')),
-        g.DirectJessMediaPrelude
+        g.MediaPrelude
       ),
       g.StaticAtRuleHeader
     ),
@@ -3783,7 +3783,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * `@supports (background: url(a.png))` are ordinary CSS. A third private copy
    * of the leaf set is what let those degrade to opaque GeneralEnclosed text.
    */
-  const DirectJessSupportsAtom = node<ValueNode>(
+  const SupportsAtom = node<ValueNode>(
     'SupportsAtom',
     g.StaticValueAtom,
     children => requireValueNode(children[0])
@@ -3968,17 +3968,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           requireInterpolation(children[1])
         )
   );
-  const DirectJessSupportsNot = node<Keyword>(
+  const SupportsNot = node<Keyword>(
     'SupportsNot',
     g.CssSyntaxQueryNot,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectJessSupportsLogical = node<Keyword>(
+  const SupportsLogical = node<Keyword>(
     'SupportsLogical',
     g.CssSyntaxQueryAndOr,
     children => keyword(requireToken(children[0]).value)
   );
-  const DirectJessSupportsFeature = node<ValueNode>(
+  const SupportsFeature = node<ValueNode>(
     'SupportsFeature',
     noTrivia(choice(
       sequence(
@@ -3988,7 +3988,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         optional(rawWhitespace),
         literal(':'),
         optional(rawWhitespace),
-        g.DirectJessSupportsAtom,
+        g.SupportsAtom,
         optional(rawWhitespace),
         literal(')')
       ),
@@ -4005,15 +4005,15 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       'Jess supports feature lost its property name.'
     )
   );
-  const DirectJessSupportsInParens = node<ValueNode>(
+  const SupportsInParens = node<ValueNode>(
     'SupportsInParens',
     choice(
       sequence(
         literal('('),
-        g.DirectJessSupportsCondition,
+        g.SupportsCondition,
         literal(')')
       ),
-      g.DirectJessSupportsFeature,
+      g.SupportsFeature,
       g.DirectJessGeneralEnclosed
     ),
     (children) => {
@@ -4024,18 +4024,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return isValueNode(children[0]) ? value : block(value);
     }
   );
-  const DirectJessSupportsCondition = node<ValueNode>(
+  const SupportsCondition = node<ValueNode>(
     'SupportsCondition',
     choice(
       sequence(
-        g.DirectJessSupportsNot,
-        g.DirectJessSupportsInParens
+        g.SupportsNot,
+        g.SupportsInParens
       ),
       sequence(
-        g.DirectJessSupportsInParens,
+        g.SupportsInParens,
         many(sequence(
-          g.DirectJessSupportsLogical,
-          g.DirectJessSupportsInParens
+          g.SupportsLogical,
+          g.SupportsInParens
         ))
       )
     ),
@@ -4047,7 +4047,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectJessCharset = node<AtRuleStatement>(
+  const Charset = node<AtRuleStatement>(
     'Charset',
     sequence(
       jessCharsetAtRuleName,
@@ -4103,7 +4103,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.CssSyntaxKeyword,
     not(not(literal('(')))
   )));
-  const DirectJessImportTailFunction = node<FunctionCall>(
+  const ImportTailFunction = node<FunctionCall>(
     'ImportTailFunction',
     dispatch(
       importTailFunctionName,
@@ -4116,7 +4116,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         'supports',
         sequence(
           routed(),
-          g.DirectJessSupportsCondition
+          g.SupportsCondition
         )
       ),
       jessCase(
@@ -4134,14 +4134,14 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       [requireValueNode(children.find(isValueNode))]
     )
   );
-  const DirectJessCssImportPrelude = node<ValueNode>(
+  const CssImportPrelude = node<ValueNode>(
     'CssImportPrelude',
     noTrivia(sequence(
       g.CssImportTarget,
       many(sequence(
         regex(/[ \t\n\r\f]+/),
         choice(
-          g.DirectJessImportTailFunction,
+          g.ImportTailFunction,
           g.StaticAtPreludeTerm
         )
       ))
@@ -4151,11 +4151,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return values.length === 1 ? values[0]! : spaced(values);
     }
   );
-  const DirectJessCssImport = node<AtRuleStatement>(
+  const CssImport = node<AtRuleStatement>(
     'CssImport',
     sequence(
       jessImportAtRuleName,
-      g.DirectJessCssImportPrelude,
+      g.CssImportPrelude,
       literal(';')
     ),
     children => atRuleStatement(
@@ -4176,7 +4176,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * trying Ruleset first means a non-`@` statement never enters (and rolls back) the
    * at-rule recognizers — only genuine `@` statements reach the cluster.
     */
-  const directJessAtBlockStatement = choice(
+  const atBlockStatement = choice(
     g.MixinCall,
     g.ValueBlockDeclaration,
     g.VariableDeclaration,
@@ -4188,12 +4188,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.For,
     g.If,
     g.Rule,
-    g.DirectJessSupportsAtRuleBlock,
-    g.DirectJessKeyframes,
-    g.DirectJessOpaqueAtRuleBlock,
-    g.DirectJessScopeBlock,
-    g.DirectJessAtRuleBlock,
-    g.DirectJessAtRuleStatement,
+    g.SupportsAtRuleBlock,
+    g.Keyframes,
+    g.OpaqueAtRuleBlock,
+    g.ScopeBlock,
+    g.AtRuleBlock,
+    g.AtRuleStatement,
     literal(';')
   );
 
@@ -4201,7 +4201,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Shared nested-scope statement set for `$mixin`/`$for`/`$if` bodies: identical
    * 15-rule choice with no bare `;` or `$extend` arm.
     */
-  const directJessNestedBodyStatement = choice(
+  const nestedBodyStatement = choice(
     literal(';'),
     g.MixinCall,
     g.ValueBlockDeclaration,
@@ -4213,20 +4213,20 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.ReferenceCall,
     g.Apply,
     g.Rule,
-    g.DirectJessSupportsAtRuleBlock,
-    g.DirectJessKeyframes,
-    g.DirectJessOpaqueAtRuleBlock,
-    g.DirectJessScopeBlock,
-    g.DirectJessAtRuleBlock,
-    g.DirectJessAtRuleStatement
+    g.SupportsAtRuleBlock,
+    g.Keyframes,
+    g.OpaqueAtRuleBlock,
+    g.ScopeBlock,
+    g.AtRuleBlock,
+    g.AtRuleStatement
   );
-  const DirectJessSupportsAtRuleBlock = node<AtRuleBlock>(
+  const SupportsAtRuleBlock = node<AtRuleBlock>(
     'SupportsAtRuleBlock',
     sequence(
       jessSupportsAtRuleName,
-      g.DirectJessSupportsCondition,
+      g.SupportsCondition,
       literal('{'),
-      many(directJessAtBlockStatement),
+      many(atBlockStatement),
       literal('}')
     ),
     children => atRuleBlock(
@@ -4244,7 +4244,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * prelude. Retaining the contiguous `--` prefix as grammar structure blocks
    * a dynamic or malformed header from falling through the generic at-rule arm.
    */
-  const DirectJessPropertyName = node<Keyword>(
+  const PropertyName = node<Keyword>(
     'PropertyName',
     noTrivia(sequence(
       literal('--'),
@@ -4275,11 +4275,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessPropertyAtRule = node<AtRuleBlock>(
+  const PropertyAtRule = node<AtRuleBlock>(
     'PropertyAtRule',
     sequence(
       jessPropertyAtRuleName,
-      g.DirectJessPropertyName,
+      g.PropertyName,
       literal('{'),
       many(g.StaticPropertyDescriptor),
       literal('}')
@@ -4299,7 +4299,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * header and selector boundary static until Jess has typed interpolation for
    * those positions; never turn either into a source-text prelude.
    */
-  const DirectJessKeyframeSelector = node<SimpleSelector>(
+  const KeyframeSelector = node<SimpleSelector>(
     'KeyframeSelector',
     choice(
       jessKeyframeEndpoint,
@@ -4307,13 +4307,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     children => simpleSelector(requireToken(children[0]).value)
   );
-  const DirectJessKeyframeBlock = node<Ruleset>(
+  const KeyframeBlock = node<Ruleset>(
     'KeyframeBlock',
     sequence(
-      g.DirectJessKeyframeSelector,
+      g.KeyframeSelector,
       many(sequence(
         literal(','),
-        g.DirectJessKeyframeSelector
+        g.KeyframeSelector
       )),
       literal('{'),
       many(choice(
@@ -4338,7 +4338,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessKeyframes = node<AtRuleBlock>(
+  const Keyframes = node<AtRuleBlock>(
     'Keyframes',
     sequence(
       g.CssSyntaxKeyframesAtKeyword,
@@ -4347,7 +4347,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.StaticQuoted
       ),
       literal('{'),
-      many(g.DirectJessKeyframeBlock),
+      many(g.KeyframeBlock),
       literal('}')
     ),
     children => atRuleBlock(
@@ -4684,18 +4684,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * declaration-list body; Jess reduces to the byte-identical shape by reusing
    * the shared static prelude capture — which stops at a top-level `$`, so a
    * dynamic `@scope ($sel)` still rejects instead of being hidden in raw bytes.
-   * Ordered ahead of `DirectJessAtRuleBlock`, whose generic name also admits
+   * Ordered ahead of `AtRuleBlock`, whose generic name also admits
    * `@scope`; the statement form (`@scope;`) has no `{` and still falls through.
    */
-  const DirectJessScopeBlock = node<AtRuleBlock>(
+  const ScopeBlock = node<AtRuleBlock>(
     'ScopeBlock',
     sequence(
       jessScopeAtRuleName,
       noTrivia(sequence(
-        g.DirectJessOpaquePrelude,
+        g.OpaquePrelude,
         literal('{')
       )),
-      many(directJessAtBlockStatement),
+      many(atBlockStatement),
       literal('}')
     ),
     (children) => {
@@ -4713,12 +4713,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       );
     }
   );
-  const DirectJessAtRuleBlock = node<AtRuleBlock>(
+  const AtRuleBlock = node<AtRuleBlock>(
     'AtRuleBlock',
     sequence(
-      g.DirectJessAtRuleHeader,
+      g.AtRuleHeader,
       literal('{'),
-      many(directJessAtBlockStatement),
+      many(atBlockStatement),
       literal('}')
     ),
     children => atRuleBlock(
@@ -4730,7 +4730,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       )
     )
   );
-  const DirectJessAtRuleStatement = node<AtRuleStatement>(
+  const AtRuleStatement = node<AtRuleStatement>(
     'AtRuleStatement',
     sequence(
       g.StaticAtRuleHeader,
@@ -4756,7 +4756,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * one child, matching the explicit wrapper shape the other dialects use for
    * optional opaque captures.
    */
-  const DirectJessOpaquePrelude = node<string | null>(
+  const OpaquePrelude = node<string | null>(
     'OpaquePrelude',
     g.JessOpaqueStaticPrelude,
     (children) => {
@@ -4764,20 +4764,20 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return text === '' ? null : text;
     }
   );
-  const DirectJessOpaqueBody = node<string>(
+  const OpaqueBody = node<string>(
     'OpaqueBody',
     g.JessOpaqueBody,
     children => children.length === 0 ? '' : requireToken(children[0]).value
   );
-  const DirectJessOpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
+  const OpaqueAtRuleBlock = node<OpaqueAtRuleBlock>(
     'OpaqueAtRuleBlock',
     sequence(
       not(jessCompilerAtRuleName),
       g.CssSyntaxGenericAtRuleName,
       noTrivia(sequence(
-        g.DirectJessOpaquePrelude,
+        g.OpaquePrelude,
         literal('{'),
-        g.DirectJessOpaqueBody,
+        g.OpaqueBody,
         literal('}')
       ))
     ),
@@ -4934,7 +4934,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal(')')
       )),
       literal('{'),
-      many(directJessNestedBodyStatement),
+      many(nestedBodyStatement),
       literal('}')
     ),
     (children) => {
@@ -4991,12 +4991,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           directJessLambdaParams,
           optional(literal('>')),
           literal('{'),
-          many(directJessNestedBodyStatement),
+          many(nestedBodyStatement),
           literal('}')
         ),
         sequence(
           literal('{'),
-          many(directJessNestedBodyStatement),
+          many(nestedBodyStatement),
           literal('}')
         )
       )
@@ -5180,7 +5180,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       ),
       literal(')'),
       literal('{'),
-      many(directJessNestedBodyStatement),
+      many(nestedBodyStatement),
       literal('}')
     ),
     children => forNode(
@@ -5298,7 +5298,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
        * execute calls and loops here; imports and placement-sensitive extends
        * remain held until their respective models are available.
        */
-      many(directJessNestedBodyStatement),
+      many(nestedBodyStatement),
       literal('}')
     ),
     children => collectBodyStatements(
@@ -5449,11 +5449,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.Apply,
         g.Extend,
         g.Rule,
-        g.DirectJessSupportsAtRuleBlock,
-        g.DirectJessOpaqueAtRuleBlock,
-        g.DirectJessScopeBlock,
-        g.DirectJessAtRuleBlock,
-        g.DirectJessAtRuleStatement
+        g.SupportsAtRuleBlock,
+        g.OpaqueAtRuleBlock,
+        g.ScopeBlock,
+        g.AtRuleBlock,
+        g.AtRuleStatement
       )),
       literal('}')
     ),
@@ -5480,7 +5480,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const Stylesheet = node<Stylesheet>(
     'Stylesheet',
     sequence(
-      optional(g.DirectJessCharset),
+      optional(g.Charset),
 
       /*
        * Compiler directives and variable declarations may precede a CSS import:
@@ -5492,7 +5492,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.ModuleImport,
         g.ValueBlockDeclaration,
         g.VariableDeclaration,
-        g.DirectJessCssImport
+        g.CssImport
       )),
       many(choice(
         g.MixinCall,
@@ -5506,13 +5506,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.ReferenceCall,
         g.Apply,
         g.Rule,
-        g.DirectJessSupportsAtRuleBlock,
-        g.DirectJessPropertyAtRule,
-        g.DirectJessKeyframes,
-        g.DirectJessOpaqueAtRuleBlock,
-        g.DirectJessScopeBlock,
-        g.DirectJessAtRuleBlock,
-        g.DirectJessAtRuleStatement
+        g.SupportsAtRuleBlock,
+        g.PropertyAtRule,
+        g.Keyframes,
+        g.OpaqueAtRuleBlock,
+        g.ScopeBlock,
+        g.AtRuleBlock,
+        g.AtRuleStatement
       ))
     ),
     children => stylesheet(requireStatements(children.flatMap(child => isMixinCallArray(child) ? child : Array.isArray(child) ? [] : [child])))
@@ -5567,10 +5567,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     StaticAtDashedIdent,
     StaticAtPreludeTerm,
     StaticAtPrelude,
-    DirectJessMediaPrelude,
+    MediaPrelude,
     StaticAtRuleHeader,
-    DirectJessAtRuleHeader,
-    DirectJessSupportsAtom,
+    AtRuleHeader,
+    SupportsAtom,
     DirectJessGeneralTemplate,
     DirectJessGeneralTemplateParen,
     DirectJessGeneralTemplateSquare,
@@ -5584,30 +5584,30 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessGeneralQuotedTemplateDoubleQuoted,
     DirectJessGeneralQuotedTemplateSingleQuoted,
     DirectJessGeneralEnclosed,
-    DirectJessSupportsNot,
-    DirectJessSupportsLogical,
-    DirectJessSupportsFeature,
-    DirectJessSupportsInParens,
-    DirectJessSupportsCondition,
+    SupportsNot,
+    SupportsLogical,
+    SupportsFeature,
+    SupportsInParens,
+    SupportsCondition,
     CssImportTarget,
-    DirectJessImportTailFunction,
-    DirectJessCssImportPrelude,
+    ImportTailFunction,
+    CssImportPrelude,
     UrlInterpolatedValue,
-    DirectJessCharset,
-    DirectJessCssImport,
-    DirectJessSupportsAtRuleBlock,
-    DirectJessPropertyName,
+    Charset,
+    CssImport,
+    SupportsAtRuleBlock,
+    PropertyName,
     StaticPropertyDescriptor,
-    DirectJessPropertyAtRule,
-    DirectJessKeyframeSelector,
-    DirectJessKeyframeBlock,
-    DirectJessKeyframes,
-    DirectJessOpaquePrelude,
-    DirectJessOpaqueBody,
-    DirectJessOpaqueAtRuleBlock,
-    DirectJessScopeBlock,
-    DirectJessAtRuleBlock,
-    DirectJessAtRuleStatement,
+    PropertyAtRule,
+    KeyframeSelector,
+    KeyframeBlock,
+    Keyframes,
+    OpaquePrelude,
+    OpaqueBody,
+    OpaqueAtRuleBlock,
+    ScopeBlock,
+    AtRuleBlock,
+    AtRuleStatement,
     Dimension,
     Color,
     Url,

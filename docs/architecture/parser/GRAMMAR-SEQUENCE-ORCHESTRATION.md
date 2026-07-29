@@ -2828,12 +2828,12 @@ Latest Jess fold status, 2026-07-27: Jess is now one host-mode grammar source.
 `jessGrammar` / `jessAstGrammar`, and `jessCstGrammar`, and public CST uses the
 host-mode artifact. The full Jess parser suite passes:
 `pnpm --filter @jesscss/jess-parser test` (6 files / 249 tests), and
-`pnpm --filter @jesscss/jess-parser build` passes. The tests now assert folded
-CST grammar labels such as `SelectorCapture`,
-`DirectJessAtRuleBlock`, and `DirectJessDollarBrace`, and the old CST-only
-acceptance of invalid slash-function forms has been removed. Remaining Jess work
-is quality cleanup on the surviving grammar: remove `DirectJess*` migration
-names, classify each touched `choice(...)`, use current Parseman `dispatch(...)`
+`pnpm --filter @jesscss/jess-parser build` passes. The old CST-only acceptance
+of invalid slash-function forms has been removed. Later naming cleanup passes
+have moved the selector, control, declaration, import, and at-rule families
+toward semantic CST/AST-aligned labels; remaining `DirectJess*` source names are
+quality cleanup on the surviving grammar, not a second grammar contract. Continue
+to classify each touched `choice(...)`, use current Parseman `dispatch(...)`
 only for routed token families with a deciding opener and same-family generic
 fallback, keep construct/context choices as `choice(...)` or left-factor helpers,
 and replace broad keyword regexes with the shared word helper policy.
@@ -4205,6 +4205,33 @@ tests; `pnpm --filter @jesscss/parser-shared build` passed; `pnpm --filter
 @jesscss/jess-parser build` passed; `pnpm run check:macro` reported
 parser-shared, CSS, Less, SCSS, and Jess all fully compiled and 0 interpreter
 fallbacks; and `pnpm run verify:compose-integrity` passed.
+
+Jess at-rule/keyframe name cleanup, 2026-07-29: the Jess CSS-compatible
+at-rule, supports, import, registered-property, keyframe, scope, and opaque
+grammar keys now use semantic AST/CST-aligned labels (`MediaPrelude`,
+`AtRuleHeader`, `SupportsAtom`, `SupportsNot`, `SupportsLogical`,
+`SupportsFeature`, `SupportsInParens`, `SupportsCondition`,
+`ImportTailFunction`, `CssImportPrelude`, `Charset`, `CssImport`,
+`SupportsAtRuleBlock`, `PropertyName`, `PropertyAtRule`, `KeyframeSelector`,
+`KeyframeBlock`, `Keyframes`, `OpaquePrelude`, `OpaqueBody`,
+`OpaqueAtRuleBlock`, `ScopeBlock`, `AtRuleBlock`, and `AtRuleStatement`)
+instead of `DirectJess*` mode labels. The shared body helpers were renamed to
+`atBlockStatement` and `nestedBodyStatement`. This is a naming-only alignment:
+statement/body arms remain construct-family `choice(...)` clusters, while the
+CSS import tail keeps its existing `dispatch(...)` over the `supports`/`layer`
+function-name family. The `GeneralTemplate` / `GeneralQuotedTemplate` chains
+remain a separate, documented strict-vs-permissive cleanup surface.
+
+Evidence for the Jess at-rule/keyframe name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed. The previous at-rule/supports/import gating warnings now report under
+semantic rule names such as `AtRuleHeader`, `MediaPrelude`,
+`SupportsCondition`, and `CssImportPrelude`.
 
 SCSS custom/declaration rule name cleanup, 2026-07-29: the SCSS declaration and
 custom-property grammar keys now use semantic AST/CST-aligned labels
