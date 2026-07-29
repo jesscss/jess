@@ -46,10 +46,10 @@ describe('direct canonical extend', () => {
      * sibling. The base header serializes byte-identically (`:is(.a, .b)`).
      */
     const base = complexSelector([{
-      compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))])
+      term: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))])
     }]);
     const find = complexSelector([{
-      compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')])
+      term: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')])
     }]);
     const document = stylesheet([
       rule(base, [decl('c', keyword('d'))]),
@@ -68,10 +68,10 @@ describe('direct canonical extend', () => {
      * the `.a` arm while `.x`/`.c` match the bare simples on either side of the graft.
      */
     const base = complexSelector([{
-      compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b'))), simpleSelector('.c')])
+      term: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b'))), simpleSelector('.c')])
     }]);
     const find = complexSelector([{
-      compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a'), simpleSelector('.c')])
+      term: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a'), simpleSelector('.c')])
     }]);
     const document = stylesheet([
       rule(base, [decl('c', keyword('d'))]),
@@ -92,12 +92,12 @@ describe('direct canonical extend', () => {
      * excluded this (a descendant selector carrying an inline graft), so `.z` was dropped.
      */
     const base = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.y')]) }
+      { term: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.y')]) }
     ]);
     const find = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.y')]) }
+      { term: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.y')]) }
     ]);
     const document = stylesheet([
       rule(base, [decl('c', keyword('d'))]),
@@ -116,12 +116,12 @@ describe('direct canonical extend', () => {
      * segment, reached across a `>` combinator that must align; `.z` appends as a sibling.
      */
     const base = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.p')]) },
-      { comb: '>', compound: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) }
+      { term: compoundSelectorOf([simpleSelector('.p')]) },
+      { combinator: '>', term: compoundSelectorOf([simpleSelector('.x'), pseudoSelector(':is', selist(sel('.a'), sel('.b')))]) }
     ]);
     const find = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.p')]) },
-      { comb: '>', compound: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) }
+      { term: compoundSelectorOf([simpleSelector('.p')]) },
+      { combinator: '>', term: compoundSelectorOf([simpleSelector('.x'), simpleSelector('.a')]) }
     ]);
     const document = stylesheet([
       rule(base, [decl('c', keyword('d'))]),
@@ -140,8 +140,8 @@ describe('direct canonical extend', () => {
      * the base `.b.c` (order of simple selectors is irrelevant, EXTEND_RULES §0), so
      * it is a WHOLE-branch exact match and `.a` appends as a sibling.
      */
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('.b'), simpleSelector('.c')]) }]);
-    const find = complexSelector([{ compound: compoundSelectorOf([simpleSelector('.c'), simpleSelector('.b')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('.b'), simpleSelector('.c')]) }]);
+    const find = complexSelector([{ term: compoundSelectorOf([simpleSelector('.c'), simpleSelector('.b')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule('.a', [], [{ target: selist(find), partial: false }])
@@ -173,7 +173,7 @@ describe('direct canonical extend', () => {
 
   it('grafts a partial match without any parser or host-built selector state', () => {
     const document = stylesheet([
-      rule(complexSelector([{ compound: compoundSelectorOf([simpleSelector('.error'), simpleSelector('.intrusion')]) }]), [decl('color', keyword('red'))]),
+      rule(complexSelector([{ term: compoundSelectorOf([simpleSelector('.error'), simpleSelector('.intrusion')]) }]), [decl('color', keyword('red'))]),
       rule('.bad-error', [], [{ target: selist(sel('.error')), partial: true }])
     ]);
 
@@ -223,7 +223,7 @@ describe('direct canonical extend', () => {
   });
 
   it('activates a prior live declaration before resolving an interpolated extender', () => {
-    const interpolated = complexSelector([{ compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([{ ref: variableReference('name', 'live'), unquote: false }]))]) }]);
+    const interpolated = complexSelector([{ term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([{ ref: variableReference('name', 'live'), unquote: false }]))]) }]);
     const document = stylesheet([
       variableDeclaration('name', keyword('.replacement'), { mode: 'declare' }),
       rule('.target', [decl('color', keyword('red'))]),
@@ -238,7 +238,7 @@ describe('direct canonical extend', () => {
 
   it('composes literal ampersands inside an interpolated selector token over every parent', () => {
     const child = complexSelector([{
-      compound: compoundSelectorOf([
+      term: compoundSelectorOf([
         interpolatedSimpleSelector(interpolation([
           { lit: '&-' },
           { ref: variableReference('suffix', 'scoped'), unquote: true }
@@ -259,7 +259,7 @@ describe('direct canonical extend', () => {
 
   it('preserves a literal interpolated parent marker through the extend prepass', () => {
     const child = complexSelector([{
-      compound: compoundSelectorOf([
+      term: compoundSelectorOf([
         interpolatedSimpleSelector(interpolation([
           { lit: '&-' },
           { ref: variableReference('suffix', 'scoped'), unquote: true }
@@ -286,7 +286,7 @@ describe('direct canonical extend', () => {
 
   it('keeps a resolved ampersand reference as an ordinary selector with or without the extend prepass', () => {
     const child = complexSelector([{
-      compound: compoundSelectorOf([
+      term: compoundSelectorOf([
         interpolatedSimpleSelector(interpolation([{ ref: variableReference('selector', 'scoped'), unquote: true }]))
       ])
     }]);
@@ -300,7 +300,7 @@ describe('direct canonical extend', () => {
       + '}\n');
 
     const prepassChild = complexSelector([{
-      compound: compoundSelectorOf([
+      term: compoundSelectorOf([
         interpolatedSimpleSelector(interpolation([{ ref: variableReference('selector', 'scoped'), unquote: true }]))
       ])
     }]);
@@ -328,8 +328,8 @@ describe('direct canonical extend', () => {
  * multi-part string into ONE embedded-space compound. */
 const descendant = (a: string, b: string) =>
   complexSelector([
-    { compound: compoundSelectorOf([simpleSelector(a)]) },
-    { comb: ' ', compound: compoundSelectorOf([simpleSelector(b)]) }
+    { term: compoundSelectorOf([simpleSelector(a)]) },
+    { combinator: ' ', term: compoundSelectorOf([simpleSelector(b)]) }
   ]);
 
 describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
@@ -349,8 +349,8 @@ describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
      * `.z` was dropped; now it grafts in place.
      */
     const leaf = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('&')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.leaf')]) }
+      { term: compoundSelectorOf([simpleSelector('&')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.leaf')]) }
     ]);
     const document = stylesheet([
       rule('.outer', [rule('.mid', [rule(leaf, [decl('c', keyword('d'))])])]),
@@ -368,15 +368,15 @@ describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
      * `.z:extend(.p .b .p all)` matches the `.p`(anc) `.b`(own) `.p`(anc) sub-span.
      */
     const inner = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.a')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.b')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+      { term: compoundSelectorOf([simpleSelector('.a')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('&')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.b')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('&')]) }
     ]);
     const target = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.p')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.b')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.p')]) }
+      { term: compoundSelectorOf([simpleSelector('.p')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.b')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.p')]) }
     ]);
     const document = stylesheet([
       rule('.p', [rule(inner, [decl('c', keyword('d'))])]),
@@ -396,8 +396,8 @@ describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
      * `:is(.box, .z)` — `.item :is(.box, .z)`, correct under the boundary model.
      */
     const child = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('.item')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('&')]) }
+      { term: compoundSelectorOf([simpleSelector('.item')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('&')]) }
     ]);
     const document = stylesheet([
       rule('.box', [decl('color', keyword('red')), rule(child, [decl('c', keyword('d'))])]),
@@ -419,8 +419,8 @@ describe('ampersand-boundary (RUNG P-amp): structural &-compose', () => {
      * all)` matches `.leaf`(own-local) — a LOCAL match, substituted in place.
      */
     const child = complexSelector([
-      { compound: compoundSelectorOf([simpleSelector('&')]) },
-      { comb: ' ', compound: compoundSelectorOf([simpleSelector('.leaf')]) }
+      { term: compoundSelectorOf([simpleSelector('&')]) },
+      { combinator: ' ', term: compoundSelectorOf([simpleSelector('.leaf')]) }
     ]);
     const document = stylesheet([
       rule('.box', [rule(child, [decl('c', keyword('d'))])]),

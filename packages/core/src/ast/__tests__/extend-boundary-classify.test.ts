@@ -14,9 +14,9 @@ import {
  * carried in `Branch.bnd` (own-local / inside an ancestor `&` / straddling it).
  */
 
-const seg = (name: string) => ({ compound: compoundSelectorOf([simpleSelector(name)]) });
+const seg = (name: string) => ({ term: compoundSelectorOf([simpleSelector(name)]) });
 const complex = (...names: string[]): ComplexSelector =>
-  complexSelector(names.map((n, i) => (i === 0 ? seg(n) : { comb: ' ' as const, ...seg(n) })));
+  complexSelector(names.map((n, i) => (i === 0 ? seg(n) : { combinator: ' ' as const, ...seg(n) })));
 
 /** Compose the single nested child of a one-child ancestor chain and return its
  * composed branch (carrying `bnd`). */

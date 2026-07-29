@@ -151,7 +151,7 @@ describe('direct canonical value access', () => {
     const namespaceCall = mixinCall('#ns1');
     const libraryCall = {
       type: 'MixinCall' as const,
-      name: '.m', args: [], path: [{ comb: ' ' as const, sel: '#library' }], important: false
+      name: '.m', args: [], path: [{ combinator: ' ' as const, selector: '#library' }], important: false
     };
     const document = stylesheet([
       variableDeclaration('foo', keyword('caller-foo'), { mode: 'declare' }),

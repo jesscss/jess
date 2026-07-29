@@ -15,6 +15,23 @@ import {
 } from '@jesscss/less-parser';
 import { parseLessCst, parseLessDoc } from '@jesscss/less-parser/cst';
 
+const simpleSelector = (text: string | null, extra: object = {}) => ({
+  type: 'SimpleSelector',
+  text,
+  interp: null,
+  ...extra
+});
+const compoundSelector = (...value: object[]) => ({
+  type: 'CompoundSelector',
+  value
+});
+const complexSelector = (...value: object[]) => ({
+  type: 'ComplexSelector',
+  value
+});
+const simpleComplex = (text: string) => complexSelector(simpleSelector(text));
+const compoundComplex = (...value: object[]) => complexSelector(compoundSelector(...value));
+
 describe('public Less parse()', () => {
   it('constructs boundary-complete CSS named colors as Color values', () => {
     const document = parse(
@@ -1270,7 +1287,7 @@ describe('public Less parse()', () => {
             type: 'MixinCall',
             name: '.values',
             args: [],
-            path: [{ comb: ' ', sel: '.library' }]
+            path: [{ combinator: ' ', selector: '.library' }]
           },
           binding: { kind: 'comma', names: ['value', 'key', undefined] }
         }
@@ -1361,7 +1378,7 @@ describe('public Less parse()', () => {
         type: 'MixinCall',
         name: '.make-map',
         args: [],
-        path: [{ comb: ' ', sel: '.library' }],
+        path: [{ combinator: ' ', selector: '.library' }],
         important: false
       }
     });
@@ -1392,7 +1409,7 @@ describe('public Less parse()', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.answer',
-                  path: [{ comb: ' ', sel: '.library' }],
+                  path: [{ combinator: ' ', selector: '.library' }],
                   args: []
                 },
                 steps: [{ type: 'BracketLookup', keyKind: 'index', key: -1 }],
@@ -1558,13 +1575,7 @@ describe('public Less parse()', () => {
             selectors: [
               {
                 type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card', interp: null }
-                  ]
-                },
-                tail: []
+                value: [simpleSelector('.card')]
               }
             ]
           },
@@ -1607,28 +1618,8 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: { type: 'Interpolation' }
-                    }
-                  ]
-                }
-              },
-              {
-                head: {
-                  simples: [
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: { type: 'Interpolation' }
-                    }
-                  ]
-                }
-              }
+              complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } })),
+              complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } }))
             ]
           }
         }
@@ -1663,58 +1654,42 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
+              complexSelector(simpleSelector(null, {
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
                     {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          {
-                            ref: { type: 'VariableReference', name: 'cap-a' },
-                            unquote: true
-                          },
-                          {
-                            ref: { type: 'VariableReference', name: 'cap-b' },
-                            unquote: true
-                          }
-                        ]
-                      }
+                      ref: { type: 'VariableReference', name: 'cap-a' },
+                      unquote: true
+                    },
+                    {
+                      ref: { type: 'VariableReference', name: 'cap-b' },
+                      unquote: true
                     }
                   ]
                 }
-              },
-              {
-                head: {
-                  simples: [
+              })),
+              complexSelector(simpleSelector(null, {
+                interp: {
+                  type: 'Interpolation',
+                  parts: [
                     {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'quoted-a'
-                            },
-                            unquote: true
-                          },
-                          {
-                            ref: {
-                              type: 'VariableReference',
-                              name: 'quoted-b'
-                            },
-                            unquote: true
-                          }
-                        ]
-                      }
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'quoted-a'
+                      },
+                      unquote: true
+                    },
+                    {
+                      ref: {
+                        type: 'VariableReference',
+                        name: 'quoted-b'
+                      },
+                      unquote: true
                     }
                   ]
                 }
-              }
+              }))
             ]
           }
         }
@@ -1744,28 +1719,8 @@ describe('public Less parse()', () => {
               type: 'Ruleset',
               selector: {
                 selectors: [
-                  {
-                    head: {
-                      simples: [
-                        {
-                          type: 'SimpleSelector',
-                          text: null,
-                          interp: { type: 'Interpolation' }
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    head: {
-                      simples: [
-                        {
-                          type: 'SimpleSelector',
-                          text: null,
-                          interp: { type: 'Interpolation' }
-                        }
-                      ]
-                    }
-                  }
+                  complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } })),
+                  complexSelector(simpleSelector(null, { interp: { type: 'Interpolation' } }))
                 ]
               }
             }
@@ -2046,18 +2001,12 @@ describe('public Less parse()', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: '[data-state]' },
-                    { type: 'SimpleSelector', text: '[role=button]' },
-                    { type: 'SimpleSelector', text: '[title="Save" i]' }
-                  ]
-                }
-              }
+              compoundComplex(
+                simpleSelector('.card'),
+                simpleSelector('[data-state]'),
+                simpleSelector('[role=button]'),
+                simpleSelector('[title="Save" i]')
+              )
             ]
           }
         }
@@ -2078,18 +2027,12 @@ describe('public Less parse()', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    { type: 'SimpleSelector', text: '[svg|role=button]' },
-                    { type: 'SimpleSelector', text: '[*|data-state]' },
-                    { type: 'SimpleSelector', text: '[|title="Save" i]' }
-                  ]
-                }
-              }
+              compoundComplex(
+                simpleSelector('.card'),
+                simpleSelector('[svg|role=button]'),
+                simpleSelector('[*|data-state]'),
+                simpleSelector('[|title="Save" i]')
+              )
             ]
           }
         }
@@ -2113,43 +2056,35 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '[data-' },
-                          { ref: { type: 'VariableReference', name: 'field' } },
-                          { lit: '=' },
-                          { ref: { type: 'VariableReference', name: 'value' } },
-                          { lit: ']' }
-                        ]
-                      }
-                    },
-                    {
-                      type: 'SimpleSelector',
-                      text: null,
-                      interp: {
-                        type: 'Interpolation',
-                        parts: [
-                          { lit: '[svg|' },
-                          { ref: { type: 'VariableReference', name: 'name' } },
-                          { lit: '="' },
-                          {
-                            ref: { type: 'VariableReference', name: 'quoted' }
-                          },
-                          { lit: '"]' }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              }
+              compoundComplex(
+                simpleSelector('.card'),
+                simpleSelector(null, {
+                  interp: {
+                    type: 'Interpolation',
+                    parts: [
+                      { lit: '[data-' },
+                      { ref: { type: 'VariableReference', name: 'field' } },
+                      { lit: '=' },
+                      { ref: { type: 'VariableReference', name: 'value' } },
+                      { lit: ']' }
+                    ]
+                  }
+                }),
+                simpleSelector(null, {
+                  interp: {
+                    type: 'Interpolation',
+                    parts: [
+                      { lit: '[svg|' },
+                      { ref: { type: 'VariableReference', name: 'name' } },
+                      { lit: '="' },
+                      {
+                        ref: { type: 'VariableReference', name: 'quoted' }
+                      },
+                      { lit: '"]' }
+                    ]
+                  }
+                })
+              )
             ]
           }
         }
@@ -2178,38 +2113,10 @@ describe('public Less parse()', () => {
           selector: {
             type: 'SelectorList',
             selectors: [
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: 'svg|a' }]
-                },
-                tail: []
-              },
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: '*|a' }]
-                },
-                tail: []
-              },
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: '|a' }]
-                },
-                tail: []
-              },
-              {
-                type: 'ComplexSelector',
-                head: {
-                  type: 'CompoundSelector',
-                  simples: [{ type: 'SimpleSelector', text: 'svg|*' }]
-                },
-                tail: []
-              }
+              simpleComplex('svg|a'),
+              simpleComplex('*|a'),
+              simpleComplex('|a'),
+              simpleComplex('svg|*')
             ]
           }
         }
@@ -2229,25 +2136,21 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':not',
-                      text: null,
-                      crossable: false
-                    },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':has',
-                      text: null,
-                      crossable: false
-                    }
-                  ]
+              compoundComplex(
+                simpleSelector('.card'),
+                {
+                  type: 'PseudoSelector',
+                  name: ':not',
+                  text: null,
+                  crossable: false
+                },
+                {
+                  type: 'PseudoSelector',
+                  name: ':has',
+                  text: null,
+                  crossable: false
                 }
-              }
+              )
             ]
           }
         }
@@ -2272,16 +2175,12 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
-                    { text: '.card' },
-                    { text: ':lang(en-US)' },
-                    { text: '::part(icon)' },
-                    { text: ':state(foo[bar])' }
-                  ]
-                }
-              }
+              compoundComplex(
+                simpleSelector('.card'),
+                simpleSelector(':lang(en-US)'),
+                simpleSelector('::part(icon)'),
+                simpleSelector(':state(foo[bar])')
+              )
             ]
           }
         }
@@ -2316,23 +2215,18 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
-                    { text: '.card' },
-                    {
-                      text: null,
-                      interp: {
-                        parts: [
-                          { lit: ':lang(' },
-                          { ref: { name: 'locale' } },
-                          { lit: ')' }
-                        ]
-                      }
-                    }
-                  ]
-                }
-              }
+              compoundComplex(
+                simpleSelector('.card'),
+                simpleSelector(null, {
+                  interp: {
+                    parts: [
+                      { lit: ':lang(' },
+                      { ref: { name: 'locale' } },
+                      { lit: ')' }
+                    ]
+                  }
+                })
+              )
             ]
           }
         }
@@ -2557,20 +2451,16 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':not',
-                      text: null,
-                      crossable: false
-                    },
-                    { type: 'SimpleSelector', text: ':nth-child(2n + 1)' }
-                  ]
-                }
-              }
+              compoundComplex(
+                simpleSelector('.card'),
+                {
+                  type: 'PseudoSelector',
+                  name: ':not',
+                  text: null,
+                  crossable: false
+                },
+                simpleSelector(':nth-child(2n + 1)')
+              )
             ]
           }
         }
@@ -2595,19 +2485,15 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              {
-                head: {
-                  simples: [
-                    { type: 'SimpleSelector', text: '.card' },
-                    {
-                      type: 'PseudoSelector',
-                      name: ':not',
-                      text: null,
-                      crossable: false
-                    }
-                  ]
+              compoundComplex(
+                simpleSelector('.card'),
+                {
+                  type: 'PseudoSelector',
+                  name: ':not',
+                  text: null,
+                  crossable: false
                 }
-              }
+              )
             ]
           }
         }
@@ -2635,9 +2521,9 @@ describe('public Less parse()', () => {
           type: 'Ruleset',
           selector: {
             selectors: [
-              { head: { simples: [{ text: '#planadvisor' }] }, tail: [] },
-              { head: { simples: [{ text: '.first' }] }, tail: [] },
-              { head: { simples: [{ text: '.planning' }] }, tail: [] }
+              simpleComplex('#planadvisor'),
+              simpleComplex('.first'),
+              simpleComplex('.planning')
             ]
           }
         }
@@ -2662,7 +2548,7 @@ describe('public Less parse()', () => {
     expect(inline.extendInstructions).toMatchObject([
       {
         partial: true,
-        subject: { selectors: [{ head: { simples: [{ text: '.inline' }] } }] }
+        subject: { selectors: [simpleComplex('.inline')] }
       }
     ]);
     expect(inline.selector.selectors).toHaveLength(3);
@@ -2699,28 +2585,22 @@ describe('public Less parse()', () => {
               target: {
                 type: 'SelectorList',
                 selectors: [
-                  {
-                    head: {
-                      simples: [
+                  complexSelector(simpleSelector(null, {
+                    interp: {
+                      type: 'Interpolation',
+                      parts: [
+                        { lit: '.' },
                         {
-                          interp: {
-                            type: 'Interpolation',
-                            parts: [
-                              { lit: '.' },
-                              {
-                                ref: {
-                                  type: 'VariableReference',
-                                  name: 'name',
-                                  lookup: 'scoped'
-                                },
-                                unquote: true
-                              }
-                            ]
-                          }
+                          ref: {
+                            type: 'VariableReference',
+                            name: 'name',
+                            lookup: 'scoped'
+                          },
+                          unquote: true
                         }
                       ]
                     }
-                  }
+                  }))
                 ]
               }
             }
@@ -2780,7 +2660,7 @@ describe('public Less parse()', () => {
               type: 'MixinCall',
               name: '.mixin',
               args: [],
-              path: [{ comb: ' ', sel: '#theme' }]
+              path: [{ combinator: ' ', selector: '#theme' }]
             }
           ]
         },
@@ -2791,7 +2671,7 @@ describe('public Less parse()', () => {
               type: 'MixinCall',
               name: '.mixin',
               args: [],
-              path: [{ comb: ' ', sel: '#theme' }],
+              path: [{ combinator: ' ', selector: '#theme' }],
               important: true
             }
           ]

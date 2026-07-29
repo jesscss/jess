@@ -20,6 +20,23 @@ function serialize(...args: Parameters<typeof serializeMaybeAsync>): SerializeRe
   return result;
 }
 
+const simpleSelector = (text: string | null, extra: object = {}) => ({
+  type: 'SimpleSelector',
+  text,
+  interp: null,
+  ...extra
+});
+const compoundSelector = (...value: object[]) => ({
+  type: 'CompoundSelector',
+  value
+});
+const complexSelector = (...value: object[]) => ({
+  type: 'ComplexSelector',
+  value
+});
+const simpleComplex = (text: string) => complexSelector(simpleSelector(text));
+const compoundComplex = (...value: object[]) => complexSelector(compoundSelector(...value));
+
 describe('@jesscss/scss-parser public parse API', () => {
   it('exposes @supports general-enclosed facts without evaluating their contents', () => {
     const source = '@supports selector(.card-#{$tone}:has([data-x="#{$state}"])) { .card { color: blue; } }';
@@ -147,9 +164,10 @@ describe('@jesscss/scss-parser public parse API', () => {
   it('parses static attribute selectors through the public Stylesheet route', () => {
     expect(parse('.card[data-state="open" i] { color: blue; }')).toMatchObject({
       type: 'Stylesheet',
-      rules: [{ type: 'Ruleset', selector: { selectors: [{ head: { simples: [
-        { text: '.card' }, { text: '[data-state="open"i]' }
-      ] } }] } }]
+      rules: [{ type: 'Ruleset', selector: { selectors: [compoundComplex(
+        simpleSelector('.card'),
+        simpleSelector('[data-state="open"i]')
+      )] } }]
     });
   });
 
@@ -160,12 +178,12 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet',
       rules: [{ type: 'VariableDeclaration' }, {
         type: 'Ruleset', selector: { selectors: [
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+          complexSelector(simpleSelector(null, { interp: { type: 'Interpolation', parts: [
             { lit: '.' }, { ref: { type: 'VariableReference', name: 'kind', lookup: 'live' }, unquote: true }, { lit: '-header' }
-          ] } }] } },
-          { head: { simples: [{ type: 'SimpleSelector', text: null, interp: { type: 'Interpolation', parts: [
+          ] } })),
+          complexSelector(simpleSelector(null, { interp: { type: 'Interpolation', parts: [
             { lit: '#main-' }, { ref: { type: 'VariableReference', name: 'kind', lookup: 'live' }, unquote: true }
-          ] } }] } }
+          ] } }))
         ] }
       }]
     });
@@ -175,7 +193,7 @@ describe('@jesscss/scss-parser public parse API', () => {
   it('parses static placeholder selectors through the public Stylesheet route', () => {
     expect(parse('%notice { color: blue; }')).toMatchObject({
       type: 'Stylesheet',
-      rules: [{ type: 'Ruleset', selector: { selectors: [{ head: { simples: [{ text: '%notice' }] } }] } }]
+      rules: [{ type: 'Ruleset', selector: { selectors: [simpleComplex('%notice')] } }]
     });
   });
 
@@ -189,7 +207,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(cst.unconsumedFrom).toBeNull();
     expect(rule).toMatchObject({
       type: 'Ruleset',
-      selector: { selectors: [{ head: { simples: [{ text: '.a' }, { text: ':extend(.b)' }] } }] },
+      selector: { selectors: [compoundComplex(simpleSelector('.a'), simpleSelector(':extend(.b)'))] },
       rules: [{ type: 'Declaration', name: 'color', value: { type: 'Keyword', src: 'red' } }]
     });
     expect(rule).not.toMatchObject({
@@ -640,7 +658,7 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet', rules: [
         { type: 'AtRuleBlock', name: '@-MOZ-DOCUMENT', prelude: { type: 'Any', src: 'url-prefix("https://example.test/"), domain("example.test")' }, rules: [
           { type: 'AtRuleBlock', name: '@font-face', rules: [{ type: 'Declaration', name: 'font-family' }] },
-          { type: 'Ruleset', selector: { selectors: [{ head: { simples: [{ text: '.card' }] } }] } },
+          { type: 'Ruleset', selector: { selectors: [simpleComplex('.card')] } },
           { type: 'AtRuleBlock', name: '@document', prelude: { type: 'Any', src: 'regexp("nested")' }, rules: [{ type: 'Ruleset' }] }
         ] },
         { type: 'AtRuleBlock', name: '@media', rules: [{ type: 'AtRuleBlock', name: '@document', rules: [{ type: 'Ruleset' }] }] },
@@ -726,8 +744,8 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(root).toMatchObject({
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@keyframes', prelude: { type: 'Keyword', src: 'fade' }, rules: [
-          { type: 'Ruleset', selector: { selectors: [{ head: { simples: [{ text: 'from' }] } }, { head: { simples: [{ text: '25%' }] } }] }, rules: [{ type: 'Declaration', name: 'opacity' }] },
-          { type: 'Ruleset', selector: { selectors: [{ head: { simples: [{ text: 'to' }] } }] }, rules: [{ type: 'Declaration', name: 'opacity' }] }
+          { type: 'Ruleset', selector: { selectors: [simpleComplex('from'), simpleComplex('25%')] }, rules: [{ type: 'Declaration', name: 'opacity' }] },
+          { type: 'Ruleset', selector: { selectors: [simpleComplex('to')] }, rules: [{ type: 'Declaration', name: 'opacity' }] }
         ]
       }]
     });
@@ -760,8 +778,8 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', rules: [{
           type: 'Ruleset', selector: { selectors: [
-            { head: { simples: [{ text: 'from' }] } },
-            { head: { simples: [{ text: '50%' }] } }
+            simpleComplex('from'),
+            simpleComplex('50%')
           ] }
         }]
       }]
@@ -772,7 +790,7 @@ describe('@jesscss/scss-parser public parse API', () => {
     expect(parse('@media screen { @-webkit-keyframes fade { 50% { opacity: .5; } } }')).toMatchObject({
       type: 'Stylesheet', rules: [{ type: 'AtRuleBlock', name: '@media', rules: [
         { type: 'AtRuleBlock', name: '@-webkit-keyframes', prelude: { src: 'fade' }, rules: [
-          { type: 'Ruleset', selector: { selectors: [{ head: { simples: [{ text: '50%' }] } }] } }
+          { type: 'Ruleset', selector: { selectors: [simpleComplex('50%')] } }
         ] }
       ] }]
     });
@@ -783,9 +801,9 @@ describe('@jesscss/scss-parser public parse API', () => {
       type: 'Stylesheet', rules: [{
         type: 'AtRuleBlock', name: '@-moz-keyframes', rules: [{
           type: 'Ruleset', selector: { selectors: [
-            { head: { simples: [{ text: '+50%' }] } },
-            { head: { simples: [{ text: '-0.5%' }] } },
-            { head: { simples: [{ text: '100.%' }] } }
+            simpleComplex('+50%'),
+            simpleComplex('-0.5%'),
+            simpleComplex('100.%')
           ] }
         }]
       }]

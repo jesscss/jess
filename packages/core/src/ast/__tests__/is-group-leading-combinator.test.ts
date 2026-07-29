@@ -19,8 +19,8 @@ const nest = (parents: string[], rules: ComplexSelector[]): string =>
   ])) ?? '').split('{')[0]!.trim().replace(/,\s+/g, ', ');
 
 /** A single-compound branch opening with `comb` — `> .col`. */
-const relative = (comb: Combinator, text: string): ComplexSelector =>
-  complexSelector([{ compound: compoundSelector(text) }], comb);
+const relative = (combinator: Combinator, text: string): ComplexSelector =>
+  complexSelector([{ term: compoundSelector(text) }], combinator);
 
 describe('a leading combinator is hoisted OUT of the `:is()` group', () => {
   it('an all-relative child list expands, one header branch per child', () => {

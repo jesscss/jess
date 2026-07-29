@@ -38,8 +38,8 @@ type InterpolationFact = { readonly ref: ValueNode; readonly src: string };
 type InterpolationAccessorFact = { readonly key: ValueNode | number; readonly keyKind: 'var' | 'prop' | 'index'; readonly src: string };
 /** A typed continuation of a left-associated public Reference chain. */
 type ReferenceTailFact = { readonly step: Reference['steps'][number]; readonly src: string };
-type ComplexTailFact = { readonly comb: ' ' | '>' | '+' | '~' | '|' | '||'; readonly compound: SelectorTerm };
-type MixinPathTailFact = { readonly comb: ' ' | '>'; readonly sel: string };
+type ComplexTailFact = { readonly combinator: ' ' | '>' | '+' | '~' | '|' | '||'; readonly term: SelectorTerm };
+type MixinPathTailFact = { readonly combinator: ' ' | '>'; readonly selector: string };
 type LessEachCallback = { readonly binding: ForBinding; readonly rules: Statement[] };
 type MixinGuard = NonNullable<MixinDefinition['guard']>;
 type MixinCallArgument = MixinCall['args'][number];
@@ -633,7 +633,7 @@ function referenceWithBracketLookups(base: ValueNode, raw: string, accessors: re
  * reduced facts; it never inspects or re-parses source bytes. */
 function mixinArgumentSource(value: CallValue): string {
   if (isMixinCall(value)) {
-    const path = value.path.map((segment, index) => index === 0 ? segment.sel : `${segment.comb}${segment.sel}`).join('');
+    const path = value.path.map((segment, index) => index === 0 ? segment.selector : `${segment.combinator}${segment.selector}`).join('');
     const args = value.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ');
     return `${path}${value.name}(${args})${value.important ? ' !important' : ''}`;
   }
@@ -1072,19 +1072,19 @@ function spacedFromValueChildren(
 }
 
 function isComplexTailFact(value: unknown): value is ComplexTailFact {
-  return typeof value === 'object' && value !== null && 'comb' in value && 'compound' in value;
+  return typeof value === 'object' && value !== null && 'combinator' in value && 'term' in value;
 }
 
-/** Shared `optional(combinator) compound` selector-tail reduction: the compound
+/** Shared `optional(combinator) term` selector-tail reduction: the term
  * and combinator sub-rules vary by selector family, but the fold to a
- * `{ comb, compound }` fact is identical. */
+ * `{ combinator, term }` fact is identical. */
 function combinatorTailReducer(children: readonly unknown[]): ComplexTailFact {
-  const compound = children.find(isCompound);
-  if (compound === undefined) {
+  const term = children.find(isCompound);
+  if (term === undefined) {
     throw new TypeError('Less grammar produced a selector tail without a compound.');
   }
   const token = children.find(child => !isCompound(child));
-  return { comb: token === undefined ? ' ' : requireCombinator(token), compound };
+  return { combinator: token === undefined ? ' ' : requireCombinator(token), term };
 }
 
 /** Space-separated query clause reduction: keyword/value children join into a
@@ -1607,8 +1607,8 @@ function requireSelectorListWithExtendsFact(value: unknown): SelectorListWithExt
 }
 
 function isMixinPathTail(value: unknown): value is MixinPathTailFact {
-  return typeof value === 'object' && value !== null && 'comb' in value
-    && (value.comb === ' ' || value.comb === '>') && 'sel' in value && typeof value.sel === 'string';
+  return typeof value === 'object' && value !== null && 'combinator' in value
+    && (value.combinator === ' ' || value.combinator === '>') && 'selector' in value && typeof value.selector === 'string';
 }
 
 function isMixinCallArgument(value: unknown): value is MixinCallArgument {
@@ -2206,8 +2206,8 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     (children) => {
       const combToken = children.find(child => isTerminalText(child, '>'));
       return {
-        comb: combToken === undefined ? ' ' : '>',
-        sel: requireToken(children.at(-1)).value
+        combinator: combToken === undefined ? ' ' : '>',
+        selector: requireToken(children.at(-1)).value
       };
     }
   );
@@ -3608,13 +3608,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
-      const call = mixinCall(last?.sel ?? head, mixinArgumentsFromChildren(children));
+      const call = mixinCall(last?.selector ?? head, mixinArgumentsFromChildren(children));
       return withSourceSpan({
         ...call,
         ...(tails.length > 0
           ? {
               path: [
-                { comb: ' ', sel: head },
+                { combinator: ' ', selector: head },
                 ...tails.slice(0, -1)
               ]
             }
@@ -3633,9 +3633,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const last = tails.at(-1);
-      const call = mixinCall(last?.sel ?? head, []);
+      const call = mixinCall(last?.selector ?? head, []);
       const path: MixinCall['path'] = [
-        { comb: ' ', sel: head },
+        { combinator: ' ', selector: head },
         ...tails.slice(0, -1)
       ];
       const withPath = tails.length === 0
@@ -3684,9 +3684,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       if (last === undefined) {
         throw new TypeError('Less namespaced iterable lost its final mixin name.');
       }
-      const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
+      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
       return {
-        ...mixinCall(last.sel, mixinArgumentsFromChildren(children)),
+        ...mixinCall(last.selector, mixinArgumentsFromChildren(children)),
         path
       };
     }
@@ -3712,9 +3712,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       if (last === undefined) {
         throw new TypeError('Less namespaced variable value lost its final mixin name.');
       }
-      const path: MixinCall['path'] = [{ comb: ' ', sel: head }, ...tails.slice(0, -1)];
+      const path: MixinCall['path'] = [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)];
       const call = {
-        ...mixinCall(last.sel, mixinArgumentsFromChildren(children)),
+        ...mixinCall(last.selector, mixinArgumentsFromChildren(children)),
         path
       };
       return children.some(child => isTerminalText(child, '!important')) ? { ...call, important: true } : call;
@@ -3743,12 +3743,12 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const head = requireToken(children[0]).value;
       const tails = children.filter(isMixinPathTail);
       const terminal = tails.at(-1);
-      const call = mixinCall(terminal?.sel ?? head, mixinArgumentsFromChildren(children));
+      const call = mixinCall(terminal?.selector ?? head, mixinArgumentsFromChildren(children));
       const base = tails.length === 0
         ? call
-        : { ...call, path: [{ comb: ' ', sel: head }, ...tails.slice(0, -1)] as MixinCall['path'] };
+        : { ...call, path: [{ combinator: ' ', selector: head }, ...tails.slice(0, -1)] as MixinCall['path'] };
       const hasCall = children.some(child => isTerminalText(child, '('));
-      const baseRaw = `${head}${tails.map(tail => `${tail.comb}${tail.sel}`).join('')}${hasCall ? `(${base.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
+      const baseRaw = `${head}${tails.map(tail => `${tail.combinator}${tail.selector}`).join('')}${hasCall ? `(${base.args.map(argument => `${argument.name === undefined ? '' : `@${argument.name}: `}${mixinArgumentSource(argument.value)}${argument.spread ? '...' : ''}`).join(', ')})` : ''}`;
       return withSourceSpan(referenceWithTails(base, baseRaw, children.filter(isReferenceTailFact)), span);
     }
   );
@@ -4714,7 +4714,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     ),
     (children, _fields, span, rawChildren) => {
       const selectors = children.filter(isSimpleSelector)
-        .map(selector => complexSelector([{ compound: selector }]));
+        .map(selector => complexSelector([{ term: selector }]));
       if (selectors.length === 0) {
         throw new TypeError('Less keyframe block requires a selector.');
       }
@@ -5198,7 +5198,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       const head = requireCompound(children.find(isCompound));
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
       return complexSelector([
-        { compound: head },
+        { term: head },
         ...children.filter(isComplexTailFact)
       ], leading === undefined ? undefined : requireCombinator(leading));
     }
@@ -5557,13 +5557,13 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       }
       const leading = children.find(child => isTerminalText(child, '>') || isTerminalText(child, '+') || isTerminalText(child, '~'));
       const tails = children.filter(isComplexTailFact).map((tail): ComplexTailFact => {
-        if (typeof tail !== 'object' || tail === null || !('comb' in tail) || !('compound' in tail)) {
+        if (typeof tail !== 'object' || tail === null || !('combinator' in tail) || !('term' in tail)) {
           throw new TypeError('Less grammar produced an invalid selector tail.');
         }
         return tail as ComplexTailFact;
       });
       return withSourceSpan(complexSelector([
-        { compound: head },
+        { term: head },
         ...tails
       ], leading === undefined ? undefined : requireCombinator(leading)), span);
     }
@@ -5604,7 +5604,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), StaticExtendComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(complexSelector([
-      { compound: requireCompound(children[0]) },
+      { term: requireCompound(children[0]) },
       // The terminal-flag lookahead is a recognition-only child. Keep only
       // actual tail facts: otherwise the successful stop check is emitted as
       // a fake descendant tail with no compound.
@@ -5625,7 +5625,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       many(sequence(not(regex(/[ \t\n\r\f]*!?all(?=[ \t\n\r\f]*(?:,|\)))/i)), ExtendTargetComplexTail))
     ),
     (children, _fields, span) => withSourceSpan(complexSelector([
-      { compound: requireCompound(children[0]) },
+      { term: requireCompound(children[0]) },
       ...children.slice(1).filter(isComplexTailFact)
     ]), span)
   );

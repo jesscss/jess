@@ -569,20 +569,20 @@ function selectorArgumentText(value: unknown): string {
   return tokenText(value);
 }
 
-function complexSegments(children: readonly unknown[]): Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstSelectorTerm }> {
-  const segments: Array<{ comb?: ' ' | '>' | '+' | '~' | '|' | '||'; compound: AstSelectorTerm }> = [];
-  let comb: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
+function complexSegments(children: readonly unknown[]): Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> {
+  const segments: Array<{ combinator?: ' ' | '>' | '+' | '~' | '|' | '||'; term: AstSelectorTerm }> = [];
+  let combinator: ' ' | '>' | '+' | '~' | '|' | '||' = ' ';
   for (const child of children) {
     if (isSelectorTerm(child)) {
-      segments.push(segments.length === 0 ? { compound: child } : { comb, compound: child });
-      comb = ' ';
+      segments.push(segments.length === 0 ? { term: child } : { combinator, term: child });
+      combinator = ' ';
       continue;
     }
     const token = tokenText(child);
     if (token !== '>' && token !== '+' && token !== '~' && token !== '|' && token !== '||') {
       throw new Error('ComplexSelector has an invalid combinator');
     }
-    comb = token;
+    combinator = token;
   }
   if (segments.length === 0) {
     throw new Error('ComplexSelector requires a compound selector');
@@ -684,7 +684,7 @@ function blockStatements(children: readonly unknown[]): Statement[] {
 }
 
 function keyframeSelectorList(children: readonly unknown[]): AstSelectorList {
-  const selectors = children.filter(isSimple).map(selector => complexSelector([{ compound: selector }]));
+  const selectors = children.filter(isSimple).map(selector => complexSelector([{ term: selector }]));
   if (selectors.length === 0) {
     throw new Error('KeyframeBlock requires a keyframe selector');
   }

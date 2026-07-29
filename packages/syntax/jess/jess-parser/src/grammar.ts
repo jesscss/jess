@@ -25,7 +25,7 @@ type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
 type JessOperatorFact = { readonly value: string; readonly src: string };
 type JessReferenceTail = { readonly step: Reference['steps'][number]; readonly src: string };
-type JessComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: SelectorTerm };
+type JessComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
 type JessStaticAtQueryProperty = { readonly property: Keyword };
 type JessAtRuleHeader = { readonly name: string; readonly prelude: ValueNode | null };
 type JessMixinCallArgument = MixinCall['args'][number];
@@ -311,8 +311,8 @@ function isSelectorList(value: unknown): value is SelectorList {
 
 function isJessComplexTail(value: unknown): value is JessComplexTail {
   return typeof value === 'object' && value !== null
-    && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
-    && 'compound' in value && isCompound(value.compound);
+    && 'combinator' in value && (value.combinator === ' ' || value.combinator === '>' || value.combinator === '+' || value.combinator === '~' || value.combinator === '||')
+    && 'term' in value && isCompound(value.term);
 }
 
 function isJessReferenceTail(value: unknown): value is JessReferenceTail {
@@ -1201,8 +1201,8 @@ function reduceCompound(children: readonly unknown[]): SelectorTerm {
 }
 function reduceComplex(children: readonly unknown[]): ComplexSelector {
   return complexSelector([
-    { compound: requireCompound(children[0]) },
-    ...children.slice(1).map(requireJessComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+    { term: requireCompound(children[0]) },
+    ...children.slice(1).map(requireJessComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
   ]);
 }
 function reduceSelectorTail(children: readonly unknown[]): ComplexSelector {
@@ -2703,16 +2703,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.StaticCompound
     ),
     (children) => {
-      const compound = children.find(isCompound);
-      if (compound === undefined) {
+      const term = children.find(isCompound);
+      if (term === undefined) {
         throw new TypeError('Jess static selector requires a compound tail.');
       }
       const token = children.find(isToken);
-      const comb = token?.value ?? ' ';
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
+      const combinator = token?.value ?? ' ';
+      if (combinator !== ' ' && combinator !== '>' && combinator !== '+' && combinator !== '~' && combinator !== '||') {
         throw new TypeError('Jess static selector produced an invalid combinator.');
       }
-      return { comb, compound };
+      return { combinator, term };
     }
   );
   const StaticComplex = node<ComplexSelector>(
@@ -4324,7 +4324,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     (children) => {
       const selectors = children.filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
-        .map(selector => complexSelector([{ compound: selector }]));
+        .map(selector => complexSelector([{ term: selector }]));
       const bodyOpen = children.findIndex(child => isToken(child) && child.value === '{');
       if (bodyOpen < 0) {
         throw new TypeError('Jess keyframe block lost its body boundary.');
@@ -4893,7 +4893,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         : { ...call, path: names.slice(
             0,
             -1
-          ).map(sel => ({ comb: '>' as const, sel })) };
+          ).map(selector => ({ combinator: '>' as const, selector })) };
     }
   );
 
@@ -5367,16 +5367,16 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       g.Compound
     ),
     (children) => {
-      const compound = children.find(isCompound);
-      if (compound === undefined) {
+      const term = children.find(isCompound);
+      if (term === undefined) {
         throw new TypeError('Jess selector tail requires a compound.');
       }
-      const combinator = children.find(isToken);
-      const comb = combinator?.value ?? ' ';
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
+      const token = children.find(isToken);
+      const combinator = token?.value ?? ' ';
+      if (combinator !== ' ' && combinator !== '>' && combinator !== '+' && combinator !== '~' && combinator !== '||') {
         throw new TypeError('Jess selector tail produced an invalid combinator.');
       }
-      return { comb, compound };
+      return { combinator, term };
     }
   );
   const Complex = node<ComplexSelector>(

@@ -1,6 +1,6 @@
 # AST v2 and `@jesscss/fns` naming/DX audit
 
-Status: audit/recommendations plus first implementation tranche.
+Status: audit/recommendations plus implementation tranche.
 
 Implemented in `codex/ast-v2-dx-fns`:
 
@@ -10,11 +10,24 @@ Implemented in `codex/ast-v2-dx-fns`:
 - SCSS map keys preserve typed authored shape instead of squeezing through
   declaration names.
 - Sass map functions in `packages/fns` use the value-domain map API.
+- Literal colors use `Color.src` for authored source spelling instead of the old
+  misleading `Color.node` name.
+- Single-payload wrappers use `.value` for `Block`, `Important`,
+  `CompoundSelector`, and `ComplexSelector`.
+- Canonical selector construction uses `term`/`combinator` at construction
+  boundaries and emits flat `ComplexSelector.value` sequences.
+- The canonical AST uses `Ruleset` and `MixinDefinition`; no compatibility alias
+  is being preserved for older accidental names.
+- SCSS nested-property grammar labels are internal construction labels, now
+  `NestedPropertyDeclaration` / `NestedPropertyMember`, not public
+  `Static...Leaf`-style names.
+- `@jesscss/core` no longer re-exports old tree helpers/utilities from its root
+  package entrypoint.
 
-Still recommendations, not implemented here: `Color.node` -> `Color.src`,
-single-payload `.value` cleanups, `MixinDefinition` -> `MixinDefinition`, statement
-container `.rules` alignment, `Ruleset` -> `Ruleset`, selector payload naming,
-and the broader visitor/facade work.
+Still recommendations, not implemented here: finish statement-container `.rules`
+alignment where mixed container names remain, introduce a reviewed canonical
+visitor/facade shape, and continue deleting old tree internals rather than
+treating them as protected API.
 
 Context: this audit compares the current canonical AST v2 and `packages/fns`
 usage against Less 4.x tree naming, the public CSS/Less CST surface, and the
@@ -35,12 +48,9 @@ materialization. Those fields mostly have good DX:
 - `List.value` follows the repo rule that a single payload should be `.value`.
 - `Collection.entries` in the value domain is the right map model.
 
-The remaining problematic parts are the straddling surfaces:
-
-1. A few AST/value field names are unnecessarily awkward for visitors and
-   function authors: `MixinDefinition`, mixed `body`/`rules` container fields,
-   `Block.inner`, `Important.inner`, `Color.node`, selector payload fields that
-   should be `.value`, and abbreviated `comb`.
+The remaining problematic parts are the straddling/runtime surfaces: mixed
+statement-container names, old tree internals, and future visitor/facade needs.
+Accidental labels are not protected API during the AST v2 cutover.
 
 ## What should intentionally deviate from Less 4.x
 
@@ -133,39 +143,41 @@ Use `Collection.entries`, `makeCollection`, `makeList`, `makeBool`, a shared
 string-key declaration shim and make map functions naturally line up with Sass
 semantics.
 
-### `Color.node` is bad field DX
+### `Color.node` was bad field DX
 
-Value-domain `Color.node` means "original literal/source spelling"; it is not a
-node. Fns read it in color helpers, for example Less alpha/hex preservation and
-named-color handling.
+Former value-domain `Color.node` meant "original literal/source spelling"; it
+was not a node. Fns read it in color helpers, for example Less alpha/hex
+preservation and named-color handling.
 
-Recommendation: rename to `src`.
+Implemented recommendation: rename to `src`.
 
 `src` lines up with AST authored leaves and makes the old meaning honest: this
 field is the optional authored source spelling. It was historically able to hold
 an actual AST node, but the current value-domain field should not imply that.
-Prefer one field and migrate callers; avoid keeping long-lived aliases.
+Prefer one field and migrate callers; do not keep a compatibility alias solely
+because the old name existed.
 
-### Single-payload wrappers use `inner`
+### Single-payload wrappers use `.value`
 
-AST and value-domain `Block` use `inner`; AST `Important` uses `inner`. Less
+AST and value-domain `Block` use `.value`; AST `Important` uses `.value`. Less
 4.x `Paren` uses `value`, and the repo's AST contract says single-payload nodes
 should expose that payload as `.value`.
 
-Recommendation: rename:
+Implemented recommendation:
 
-- `Block.inner` -> `Block.value`
-- `Important.inner` -> `Important.value`
+- `Block.value`
+- `Important.value`
 
 The delimiter/importance fields already carry the extra metadata. The payload
 should be `.value` for visitor and function-author DX.
 
-### `MixinDefinition` is an unnecessary abbreviation
+### `MixinDefinition` is the right canonical name
 
-Less 4.x and the Less grammar use `MixinDefinition`; AST v2 uses `MixinDefinition`.
-The abbreviation saves little and leaks into visitor hook names.
+Less 4.x and the Less grammar use `MixinDefinition`; AST v2 should use the same
+clear name. Shorter construction helpers can exist for ergonomics, but the node
+type should not abbreviate the concept.
 
-Recommendation: rename `MixinDefinition` -> `MixinDefinition`.
+Current state: the canonical node is `MixinDefinition`.
 
 The factory can stay `mixinDef()` if desired, but the node type should be the
 clear public shape. A Less bridge can then map it directly.
@@ -181,34 +193,36 @@ This is not a new convention: AST v1 already established it. `For.rules` is
 already the preferred direction. Other block-like canonical nodes should move
 toward `.rules` rather than renaming `For.rules` to `body`.
 
-### `Ruleset` is ambiguous
+### `Ruleset` is the right canonical name
 
-AST v2 `Ruleset` means a selector-qualified CSS rule. It deviates from:
+The canonical AST node for a selector-qualified CSS rule should be `Ruleset`.
+That matches Less 4.x and legitimate CSS terminology better than a generic
+`Rule` name, while `QualifiedRule` can remain the CST-facing CSS term.
 
-- Less 4.x `Ruleset`
-- CSS/Less CST public `QualifiedRule`
+Current state: the canonical node is `Ruleset`.
 
-Recommendation: rename canonical AST `Ruleset` to `Ruleset`.
-
-`Ruleset` is legitimate CSS terminology and is more intuitive than `QualifiedRule`
-for the canonical AST. `QualifiedRule` can remain the CST-facing CSS term. The
-important part is removing generic `Ruleset`, which gets confusing around lint
-rules, `rules` arrays, rule bodies, and visitor hook names.
+The important part is avoiding a generic `Rule` node name, which gets confusing
+around lint rules, `rules` arrays, rule bodies, and visitor hook names.
 
 ### Selector payloads should use `.value`
 
-Current shapes:
+Prior shapes:
 
 - `CompoundSelector.simples`
-- `ComplexSegment.comb`
 - `PathSeg.comb`
 - `ComplexSelector.head` / `tail`
 - no explicit `RelativeSelector` node in AST v2, though the shape is distinct
 
-Recommendation:
+Implemented recommendation:
 
-- `CompoundSelector.simples` -> `CompoundSelector.value`
-- `ComplexSelector.head` / `tail` -> `ComplexSelector.value`
+- `CompoundSelector.value`
+- `ComplexSelector.value`
+- `PathSeg.combinator` / `PathSeg.selector`
+- construction helpers accept `term` and `combinator`, then emit flat canonical
+  selector values
+
+Remaining recommendation:
+
 - add/keep `RelativeSelector` as the relative-selector counterpart when that
   authored shape matters
 - keep combinators as primitive string values inside the selector sequence; do
@@ -216,9 +230,9 @@ Recommendation:
 
 The stronger rule is the repo's existing single-payload convention: when a node
 has one semantic payload, that field should be `.value`. Selector nodes should
-not invent local payload names per type. `comb` is also just an avoidable
-abbreviation in the current implementation; the canonical sequence should carry
-the combinator string directly.
+not invent local payload names per type. `comb` was also just an avoidable
+abbreviation; construction boundaries now spell it `combinator`, while the
+canonical selector sequence carries the combinator string directly.
 
 The intended selector shapes are sequence-shaped:
 
@@ -278,30 +292,27 @@ shape fixes are pending.
 4. Update traversal edge ownership so collection entries expose key and value
    edges, not a fake declaration node.
 
-### P1: Clean node and field names that affect visitation
+### P1: Clean remaining node and field names that affect visitation
 
-1. Rename `MixinDefinition` to `MixinDefinition`.
-2. Align statement-container payload fields on `.rules`.
-3. Rename `Block.inner` and `Important.inner` to `.value`.
-4. Rename AST `Ruleset` to `Ruleset`.
-5. Rename selector single-payload fields to `.value`; do not keep
-   `CompoundSelector.simples`.
-6. Model `ComplexSelector.value` as alternating selector-term/combinator-string
+1. Align statement-container payload fields on `.rules`.
+2. Model `ComplexSelector.value` as alternating selector-term/combinator-string
    pieces and `RelativeSelector.value` as the same sequence starting with a
-   combinator string.
-7. Keep combinators as primitive strings, not `{ combinator }` wrapper objects.
-8. Preserve simple selector terms directly: `.a > .b` should have
+   combinator string where relative selectors become first-class.
+3. Keep combinators as primitive strings, not `{ combinator }` wrapper objects.
+4. Preserve simple selector terms directly: `.a > .b` should have
    `BasicSelector` terms on each side of the combinator, not synthetic one-item
    compounds.
-9. Apply the no-aggressive-wrapping rule generally: do not introduce
+5. Apply the no-aggressive-wrapping rule generally: do not introduce
    single-element arrays or one-child wrapper nodes without authored structure
    that justifies them.
 
-### P1: Rename misleading value fields
+### P1: Finish deleting protected old-tree assumptions
 
-1. Rename value-domain `Color.node` to `src`.
-2. Audit docs/tests for "node" meaning "source spelling".
-3. Keep `bytes` as canonical emitted bytes and avoid overloading it with source.
+1. Keep old tree utilities off `@jesscss/core` root exports.
+2. Move remaining tests that need old tree internals to direct internal imports
+   until that test surface is deleted.
+3. Delete old tree classes/helpers in coherent follow-up batches instead of
+   preserving bridges.
 
 ### P2: Public function-author ergonomics
 

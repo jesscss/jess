@@ -1,5 +1,4 @@
 import { type ILexingResult, type IRecognitionException, type IToken } from 'chevrotain';
-import type { Node } from '../tree/index.js';
 
 export * from './modes.js';
 export * from './config.js';
@@ -48,7 +47,7 @@ export interface TriviaMap {
   commentRuns(): readonly Trivia[];
 }
 
-export interface IParseResult<T extends Node = Node> {
+export interface IParseResult<T = unknown> {
   lexerResult: ILexingResult;
   errors: IRecognitionException[];
   tree: T;

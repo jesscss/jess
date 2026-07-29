@@ -27,8 +27,8 @@ describe('extend element/id conflict guard', () => {
      * as `a:is(.info, div.foo)` would expand to `adiv.foo`, an invalid two-element
      * compound. Reject: `a.info` stays exactly as authored.
      */
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('a'), simpleSelector('.info')]) }]);
-    const extender = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.foo')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('a'), simpleSelector('.info')]) }]);
+    const extender = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.foo')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule(selist(extender), [], [{ target: selist(sel('.info')), partial: true }])
@@ -40,8 +40,8 @@ describe('extend element/id conflict guard', () => {
   });
 
   it('rejects extending div.class with span.other (element conflict → unchanged)', () => {
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.class')]) }]);
-    const extender = complexSelector([{ compound: compoundSelectorOf([simpleSelector('span'), simpleSelector('.other')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.class')]) }]);
+    const extender = complexSelector([{ term: compoundSelectorOf([simpleSelector('span'), simpleSelector('.other')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule(selist(extender), [], [{ target: selist(sel('.class')), partial: true }])
@@ -53,8 +53,8 @@ describe('extend element/id conflict guard', () => {
   });
 
   it('rejects extending #main.info with #other.foo (id conflict → unchanged)', () => {
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('#main'), simpleSelector('.info')]) }]);
-    const extender = complexSelector([{ compound: compoundSelectorOf([simpleSelector('#other'), simpleSelector('.foo')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('#main'), simpleSelector('.info')]) }]);
+    const extender = complexSelector([{ term: compoundSelectorOf([simpleSelector('#other'), simpleSelector('.foo')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule(selist(extender), [], [{ target: selist(sel('.info')), partial: true }])
@@ -66,7 +66,7 @@ describe('extend element/id conflict guard', () => {
   });
 
   it('allows extending div.a with .b (no element/id in extender → :is wrap)', () => {
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.a')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.a')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule('.b', [], [{ target: selist(sel('.a')), partial: true }])
@@ -78,8 +78,8 @@ describe('extend element/id conflict guard', () => {
   });
 
   it('allows extending div.a with div.b (same element type → no conflict)', () => {
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.a')]) }]);
-    const extender = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.b')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.a')]) }]);
+    const extender = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.b')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule(selist(extender), [], [{ target: selist(sel('.a')), partial: true }])
@@ -99,8 +99,8 @@ describe('extend element/id conflict guard', () => {
      * invalid `div ∧ span`. The span extend must be REJECTED,
      * exactly as the non-transitive top-level guard already does.
      */
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.a')]) }]);
-    const spanExtender = complexSelector([{ compound: compoundSelectorOf([simpleSelector('span')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.a')]) }]);
+    const spanExtender = complexSelector([{ term: compoundSelectorOf([simpleSelector('span')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule('.b', [], [{ target: selist(sel('.a')), partial: true }]),
@@ -119,8 +119,8 @@ describe('extend element/id conflict guard', () => {
      * #y:extend(.a all)      → #y is an ID; `#x…` already carries id `#x`, so wrapping
      * #y into the `#x`-rooted graft would carry two ids. Reject.
      */
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('#x'), simpleSelector('.a')]) }]);
-    const idExtender = complexSelector([{ compound: compoundSelectorOf([simpleSelector('#y')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('#x'), simpleSelector('.a')]) }]);
+    const idExtender = complexSelector([{ term: compoundSelectorOf([simpleSelector('#y')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule('.b', [], [{ target: selist(sel('.a')), partial: true }]),
@@ -142,8 +142,8 @@ describe('extend element/id conflict guard', () => {
      * only threading the enclosing `div` into the graft recursion
      * exposes the `div ∧ span` conflict. Reject: `div:is(.y, .a)`.
      */
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.y')]) }]);
-    const spanExtender = complexSelector([{ compound: compoundSelectorOf([simpleSelector('span')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.y')]) }]);
+    const spanExtender = complexSelector([{ term: compoundSelectorOf([simpleSelector('span')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule('.a', [], [{ target: selist(sel('.y')), partial: true }]),
@@ -162,7 +162,7 @@ describe('extend element/id conflict guard', () => {
      * so `.z` appends as a sibling arm: `div:is(.y, .a, .z)`. (Guard proven to reject the
      * conflicting `span` in the prior test while leaving this benign path untouched.)
      */
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('div'), simpleSelector('.y')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('div'), simpleSelector('.y')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule('.a', [], [{ target: selist(sel('.y')), partial: true }]),
@@ -175,7 +175,7 @@ describe('extend element/id conflict guard', () => {
   });
 
   it('allows extending #foo#foo.class with .bar (single distinct id → no conflict)', () => {
-    const base = complexSelector([{ compound: compoundSelectorOf([simpleSelector('#foo'), simpleSelector('#foo'), simpleSelector('.class')]) }]);
+    const base = complexSelector([{ term: compoundSelectorOf([simpleSelector('#foo'), simpleSelector('#foo'), simpleSelector('.class')]) }]);
     const document = stylesheet([
       rule(base, [decl('color', keyword('red'))]),
       rule('.bar', [], [{ target: selist(sel('.class')), partial: true }])

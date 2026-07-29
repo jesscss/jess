@@ -25,7 +25,7 @@ type Token = { readonly value: string };
 type ScssValuePair = { readonly separator: string; readonly value: ValueSlot };
 type ScssValueTail = { readonly kind: 'space' | 'slash'; readonly value: ValueNode; readonly separator: string };
 type ScssCallArg = { readonly value: ValueSlot; readonly name?: string; readonly spread?: boolean };
-type ScssComplexTail = { readonly comb: ' ' | '>' | '+' | '~' | '||'; readonly compound: SelectorTerm };
+type ScssComplexTail = { readonly combinator: ' ' | '>' | '+' | '~' | '||'; readonly term: SelectorTerm };
 
 const scriptModuleExtensions = ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts', '.json'] as const;
 
@@ -75,8 +75,8 @@ type ScssRules = {
   CustomValue: Combinator<ValueNode>;
   CustomDeclaration: Combinator<Declaration>;
   Declaration: Combinator<Declaration>;
-  NestedPropertyEntry: Combinator<CollectionEntry>;
-  NestedProperty: Combinator<Declaration>;
+  NestedPropertyMember: Combinator<CollectionEntry>;
+  NestedPropertyDeclaration: Combinator<Declaration>;
   StaticImportRule: Combinator<ImportAtRule>;
   UseNamespace: Combinator<string>;
   UseRule: Combinator<StyleImport | ModuleImport>;
@@ -312,8 +312,8 @@ function requireSelectorList(value: unknown): SelectorList {
 
 function isScssComplexTail(value: unknown): value is ScssComplexTail {
   return typeof value === 'object' && value !== null
-    && 'comb' in value && (value.comb === ' ' || value.comb === '>' || value.comb === '+' || value.comb === '~' || value.comb === '||')
-    && 'compound' in value && isSelectorTerm(value.compound);
+    && 'combinator' in value && (value.combinator === ' ' || value.combinator === '>' || value.combinator === '+' || value.combinator === '~' || value.combinator === '||')
+    && 'term' in value && isSelectorTerm(value.term);
 }
 
 function requireScssComplexTail(value: unknown): ScssComplexTail {
@@ -945,7 +945,7 @@ function requireStatementList(value: unknown): Statement[] {
 function directScssKeyframeSelectorList(children: readonly unknown[]): SelectorList {
   const selectors = children
     .filter((child): child is SimpleSelector => typeof child === 'object' && child !== null && 'type' in child && child.type === 'SimpleSelector')
-    .map(selector => complexSelector([{ compound: selector }]));
+    .map(selector => complexSelector([{ term: selector }]));
   if (selectors.length === 0) {
     throw new TypeError('SCSS keyframe block requires a selector.');
   }
@@ -1080,7 +1080,7 @@ const scssGenericAtRuleName = regex(/@(?!(?:use|forward|import|mixin|include|fun
 
 /*
  * Grammar-local property-name recognizer (byte-identical to CssSyntaxProperty).
- * Declaration and NestedProperty lead their arm with a `choice(interpolated
+ * Declaration and NestedPropertyDeclaration lead their arm with a `choice(interpolated
  * property, property)`; spelling the plain property locally resolves that arm's
  * first-set to the property opener class (`*`, `-`, an identifier char) so the
  * declaration arms first-char-gate — an ordinary rule (`.x`, `&…`) or block-close
@@ -2027,8 +2027,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * nested properties and @extend are not legacy body forms, so this direct
    * grammar does not create extensions for them either.
    */
-  const NestedPropertyEntry = node<CollectionEntry>(
-    'NestedPropertyEntry',
+  const NestedPropertyMember = node<CollectionEntry>(
+    'NestedPropertyMember',
     sequence(
       choice(
         g.InterpolatedProperty,
@@ -2060,8 +2060,8 @@ export const scssFactory = (g: ScssInputRules) => {
    * so the positional reducer below is unaffected.
    */
   const directNestedPropertyAhead = not(regex(/[^{};]*[;}]/));
-  const NestedProperty = node<Declaration>(
-    'NestedProperty',
+  const NestedPropertyDeclaration = node<Declaration>(
+    'NestedPropertyDeclaration',
     sequence(
       directNestedPropertyAhead,
       choice(
@@ -2071,7 +2071,7 @@ export const scssFactory = (g: ScssInputRules) => {
       literal(':'),
       optional(g.Value),
       literal('{'),
-      many(g.NestedPropertyEntry),
+      many(g.NestedPropertyMember),
       literal('}'),
       optional(g.Important),
       optional(literal(';'))
@@ -2638,7 +2638,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * arm opens with a literal `@` at-keyword, so it is disjoint from `Ruleset` (a
    * selector never opens with `@`), from `@keyframes`/`@extend` (distinct
    * at-keywords with no cluster arm), and from every prefix arm (`Declaration`,
-   * `NestedProperty`, `VarDeclaration`, `Comment` never open with `@`, and
+   * `NestedPropertyDeclaration`, `VarDeclaration`, `Comment` never open with `@`, and
    * `Import`'s `@use`/`@forward`/`@import` are distinct at-keywords). Because no
    * input can match both the cluster and any arm ahead of it, moving it last is
    * firstMatch-order-preserving (byte-identical) while letting the common
@@ -2650,7 +2650,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * on a property token (an identifier, `--custom`, or `#{…}`) that is first-char
    * disjoint from `Comment` (`/`), `Import` (`@`) and `VarDeclaration` (`$`), so
    * no input matches both a leading arm and a following one — the reorder is
-   * firstMatch-order-preserving (byte-identical). `NestedProperty` keeps
+   * firstMatch-order-preserving (byte-identical). `NestedPropertyDeclaration` keeps
    * its own cheap `not([^{};]*[;}])` block-ahead gate and stays ahead of
    * `Declaration` (the two share the `prop:` prefix). Leading with them means an
    * ordinary declaration no longer enters and rolls back the Comment/Import/
@@ -2668,7 +2668,7 @@ export const scssFactory = (g: ScssInputRules) => {
    * front of the two arms this prefix deliberately leads with.
    */
   const nestedBodyPrefix = choice(
-    g.NestedProperty,
+    g.NestedPropertyDeclaration,
     g.Declaration,
     g.DirectScssComment,
     g.StaticImportRule,
@@ -3036,7 +3036,7 @@ export const scssFactory = (g: ScssInputRules) => {
         g.DirectScssComment,
         g.StaticImportRule,
         g.VariableDeclaration,
-        g.NestedProperty,
+        g.NestedPropertyDeclaration,
         g.Declaration,
         g.IfStaticConditionalBlock,
         g.DocumentBlock,
@@ -4736,16 +4736,16 @@ export const scssFactory = (g: ScssInputRules) => {
       g.Compound
     ),
     (children) => {
-      const compound = children.find(isSelectorTerm);
-      if (compound === undefined) {
+      const term = children.find(isSelectorTerm);
+      if (term === undefined) {
         throw new TypeError('SCSS complex selector tail requires a compound.');
       }
-      const combinator = children.find(isToken);
-      const comb = combinator?.value ?? ' ';
-      if (comb !== ' ' && comb !== '>' && comb !== '+' && comb !== '~' && comb !== '||') {
+      const token = children.find(isToken);
+      const combinator = token?.value ?? ' ';
+      if (combinator !== ' ' && combinator !== '>' && combinator !== '+' && combinator !== '~' && combinator !== '||') {
         throw new TypeError('SCSS complex selector tail produced an invalid combinator.');
       }
-      return { comb, compound };
+      return { combinator, term };
     }
   );
   const Complex = node<ComplexSelector>(
@@ -4755,8 +4755,8 @@ export const scssFactory = (g: ScssInputRules) => {
       many(g.ComplexTail)
     ),
     children => complexSelector([
-      { compound: requireSelectorTerm(children[0]) },
-      ...children.slice(1).map(requireScssComplexTail).map(tail => ({ comb: tail.comb, compound: tail.compound }))
+      { term: requireSelectorTerm(children[0]) },
+      ...children.slice(1).map(requireScssComplexTail).map(tail => ({ combinator: tail.combinator, term: tail.term }))
     ])
   );
   const SelectorTail = node<ComplexSelector>(
@@ -4982,8 +4982,8 @@ export const scssFactory = (g: ScssInputRules) => {
     CustomValue,
     CustomDeclaration,
     Declaration,
-    NestedPropertyEntry,
-    NestedProperty,
+    NestedPropertyMember,
+    NestedPropertyDeclaration,
     StaticImportRule,
     UseNamespace,
     UseRule,

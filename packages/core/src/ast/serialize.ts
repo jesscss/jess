@@ -1557,7 +1557,7 @@ function complexAtoms(c: ComplexSelector): string[] {
 function callAtoms(call: MixinCall): string[] {
   const out: string[] = [];
   for (const p of call.path) {
-    for (const a of selectorAtoms(p.sel)) {
+    for (const a of selectorAtoms(p.selector)) {
       out.push(a);
     }
   }
@@ -2241,7 +2241,7 @@ function unresolvedRef(node: VariableReference | VarIndirect, name: string, e: E
  * after a function was actually resolved and invoked.
  */
 function unresolvedMixinCall(call: MixinCall, e: EvalCtx): never {
-  const path = call.path.map(segment => segment.sel).join(' ');
+  const path = call.path.map(segment => segment.selector).join(' ');
   return unresolvedSymbol(call, `${path ? `${path} ` : ''}${call.name}()`, e);
 }
 
@@ -8613,7 +8613,7 @@ function descendNamespacePath(path: MixinCall['path'], frame: Frame): Frame | nu
     let rules: Ruleset[] | undefined;
     let owner: Frame | null = null;
     for (let f: Frame | null = scope; f; f = f.parent) {
-      const hit = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(seg.sel) : undefined;
+      const hit = f.rulesets !== undefined || f.statements ? frameRulesets(f)?.get(seg.selector) : undefined;
       if (hit?.length) {
         rules = hit;
         owner = f;
@@ -9622,12 +9622,12 @@ function substituteClosureVarArgs(call: MixinCall, frame: Frame): MixinCall {
   return changed ? { type: 'MixinCall', name: call.name, args, path: call.path, important: call.important } : call;
 }
 
-function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null, owner?: object): MaybePromise<void> {
+function flushBlock(selector: string[], group: Leaf[], e: Emit, selNode?: SelectorList, parentKey?: object | null, owner?: object): MaybePromise<void> {
   /*
    * A root-level mixin/detached-ruleset call has no selector header. Its ordinary
    * declarations are invalid Less output; custom properties remain legal at root.
    */
-  if (sel.length === 0) {
+  if (selector.length === 0) {
     for (const leaf of group) {
       if (leaf.node.type !== 'Declaration') {
         continue;
@@ -9645,10 +9645,10 @@ function flushBlock(sel: string[], group: Leaf[], e: Emit, selNode?: SelectorLis
   const emit = (kept: Leaf[], merged = false): void => {
     // [atrule] indent by the current block depth (0 at top level == prior behavior).
     const idt = e.depth > 0 ? INDENT.repeat(e.depth) : '';
-    const authoredHeader = parentKey === null && sel.length === selNode?.selectors.length
-      ? authoredSelectorHeaderWithTrivia(selNode, sel, e)
+    const authoredHeader = parentKey === null && selector.length === selNode?.selectors.length
+      ? authoredSelectorHeaderWithTrivia(selNode, selector, e)
       : null;
-    const header = authoredHeader ?? (idt ? sel.join(',\n' + idt) : sel.join(',\n'));
+    const header = authoredHeader ?? (idt ? selector.join(',\n' + idt) : selector.join(',\n'));
 
     /*
      * [adjacent-merge] v5 merges consecutive same-selector SIBLING rulesets nested

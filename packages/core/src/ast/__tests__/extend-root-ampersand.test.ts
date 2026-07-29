@@ -34,8 +34,8 @@ const ampBlock = (rules: Parameters<typeof rule>[1]) => rule('&', rules);
  * which no `all`-extend can match through). */
 const descendant = (...parts: string[]) =>
   complexSelector(parts.map((p, i) => (i === 0
-    ? { compound: compoundSelectorOf([simpleSelector(p)]) }
-    : { comb: ' ' as const, compound: compoundSelectorOf([simpleSelector(p)]) })));
+    ? { term: compoundSelectorOf([simpleSelector(p)]) }
+    : { combinator: ' ' as const, term: compoundSelectorOf([simpleSelector(p)]) })));
 
 describe('root parentless ampersand', () => {
   it('does not leak `&` into an extender folded into its target header', () => {

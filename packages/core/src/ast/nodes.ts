@@ -856,8 +856,8 @@ export interface MixinDefinition {
  * `'>'` child) and a selector string (`#namespace`, `.borders`).
  */
 export interface PathSeg {
-  comb: Combinator;
-  sel: string;
+  combinator: Combinator;
+  selector: string;
 }
 
 /**
@@ -1099,9 +1099,9 @@ export const selectorTermOf = (value: readonly [SimpleToken, ...SimpleToken[]]):
 /** `compoundSelector('.a', '.b')` => `.a.b`. */
 export const compoundSelector = (...texts: string[]): CompoundSelector => compoundSelectorOf(texts.map(simpleSelector));
 
-/** `complexSelector([{ compound: compoundSelector('.a') }, { comb: '>', compound: compoundSelector('.b') }])` => `.a > .b`. */
+/** `complexSelector([{ term: compoundSelector('.a') }, { combinator: '>', term: compoundSelector('.b') }])` => `.a > .b`. */
 export const complexSelector = (
-  segments: Array<{ comb?: Combinator; compound: SelectorTerm }>,
+  segments: Array<{ combinator?: Combinator; term: SelectorTerm }>,
   leadingComb?: Combinator
 ): ComplexSelector => {
   const [head, ...tail] = segments;
@@ -1109,8 +1109,8 @@ export const complexSelector = (
     throw new Error('complexSelector() needs at least one segment');
   }
   const value: ComplexSelector['value'] = [
-    head.compound,
-    ...tail.flatMap(s => [s.comb ?? ' ', s.compound] as const)
+    head.term,
+    ...tail.flatMap(s => [s.combinator ?? ' ', s.term] as const)
   ];
   return {
     type: 'ComplexSelector',
@@ -1195,7 +1195,7 @@ export const mixinCall = (name: string, args: Array<ValueNode | CallArg> = []): 
 export const apply = (selectors: readonly SelectorTerm[]): Apply => ({ type: 'Apply', selectors });
 
 /** A single simple-string complex selector, e.g. `sel('.test')`. */
-export const sel = (text: string): ComplexSelector => complexSelector([{ compound: compoundSelector(text) }]);
+export const sel = (text: string): ComplexSelector => complexSelector([{ term: compoundSelector(text) }]);
 
 /** `rule('.test', [...])`, `rule(sel('.a > .b'), ...)`, or `rule(selist(...), ...)`.
  *  `extendInstructions` (optional) carries hoisted `:extend()` instructions. */

@@ -3,6 +3,18 @@ import { parse, parseCssCst } from '@jesscss/css-parser';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const simpleSelector = (text: string | null, extra: object = {}) => ({
+  type: 'SimpleSelector',
+  text,
+  interp: null,
+  ...extra
+});
+const complexSelector = (...value: object[]) => ({
+  type: 'ComplexSelector',
+  value
+});
+const simpleComplex = (text: string) => complexSelector(simpleSelector(text));
+
 function containsNode(value: unknown, predicate: (value: Record<string, unknown>) => boolean): boolean {
   if (Array.isArray(value)) {
     return value.some(child => containsNode(child, predicate));
@@ -135,7 +147,7 @@ describe('public CSS parse()', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'Ruleset',
-        selector: { selectors: [{ head: { simples: [{ text: ':nth-child(-n+2 of .item)' }] } }] }
+        selector: { selectors: [simpleComplex(':nth-child(-n+2 of .item)')] }
       }]
     });
   });
@@ -145,7 +157,7 @@ describe('public CSS parse()', () => {
       type: 'Stylesheet',
       rules: [{
         type: 'Ruleset',
-        selector: { selectors: [{ head: { simples: [{ text: 'a' }] } }] },
+        selector: { selectors: [simpleComplex('a')] },
         rules: [{ type: 'Declaration', name: 'color' }]
       }]
     });

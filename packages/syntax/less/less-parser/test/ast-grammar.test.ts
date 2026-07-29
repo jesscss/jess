@@ -1136,7 +1136,7 @@ describe('Less AST grammar facts', () => {
             type: 'MixinCall',
             name: '.values',
             args: [],
-            path: [{ comb: ' ', sel: '.library' }]
+            path: [{ combinator: ' ', selector: '.library' }]
           },
           binding: { kind: 'comma', names: ['value', 'key', undefined] },
           rules: [{ type: 'Ruleset' }]
@@ -4923,7 +4923,7 @@ describe('Less AST grammar facts', () => {
             base: {
               type: 'MixinCall',
               name: '.breakpoint',
-              path: [{ comb: ' ', sel: '#ns' }]
+              path: [{ combinator: ' ', selector: '#ns' }]
             },
             steps: [
               {
@@ -5892,8 +5892,8 @@ describe('Less AST grammar facts', () => {
               name: '.tone',
               important: false,
               path: [
-                { comb: ' ', sel: '.library' },
-                { comb: '>', sel: '.colors' }
+                { combinator: ' ', selector: '.library' },
+                { combinator: '>', selector: '.colors' }
               ],
               args: [{ value: { type: 'Color', src: 'red' } }]
             }
@@ -5994,7 +5994,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.vars',
-                  path: [{ comb: ' ', sel: '#ns1' }],
+                  path: [{ combinator: ' ', selector: '#ns1' }],
                   args: []
                 },
                 steps: [
@@ -6015,7 +6015,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.colors',
-                  path: [{ comb: ' ', sel: '#DEF' }],
+                  path: [{ combinator: ' ', selector: '#DEF' }],
                   args: []
                 },
                 steps: [
@@ -6036,7 +6036,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.add-one',
-                  path: [{ comb: ' ', sel: '#library' }],
+                  path: [{ combinator: ' ', selector: '#library' }],
                   args: [{ value: { type: 'Dimension', src: '1px' } }]
                 },
                 steps: [
@@ -6084,7 +6084,7 @@ describe('Less AST grammar facts', () => {
                 base: {
                   type: 'MixinCall',
                   name: '.seed',
-                  path: [{ comb: ' ', sel: '#library' }],
+                  path: [{ combinator: ' ', selector: '#library' }],
                   args: []
                 },
                 steps: [
@@ -6215,9 +6215,9 @@ describe('Less AST grammar facts', () => {
             args: [],
             important: true,
             path: [
-              { comb: ' ', sel: '#theme' },
-              { comb: ' ', sel: '.dark' },
-              { comb: ' ', sel: '.navbar' }
+              { combinator: ' ', selector: '#theme' },
+              { combinator: ' ', selector: '.dark' },
+              { combinator: ' ', selector: '.navbar' }
             ]
           }
         }
@@ -6259,7 +6259,7 @@ describe('Less AST grammar facts', () => {
                     base: {
                       type: 'MixinCall',
                       name: '.options',
-                      path: [{ comb: ' ', sel: '#ns' }],
+                      path: [{ combinator: ' ', selector: '#ns' }],
                       args: []
                     },
                     steps: [
@@ -6461,7 +6461,7 @@ describe('Less AST grammar facts', () => {
               type: 'MixinCall',
               name: '.mixin',
               args: [],
-              path: [{ comb: ' ', sel: '#theme' }]
+              path: [{ combinator: ' ', selector: '#theme' }]
             }
           ]
         },
@@ -6472,7 +6472,7 @@ describe('Less AST grammar facts', () => {
               type: 'MixinCall',
               name: '.mixin',
               args: [],
-              path: [{ comb: ' ', sel: '#theme' }],
+              path: [{ combinator: ' ', selector: '#theme' }],
               important: true
             }
           ]
@@ -6555,8 +6555,8 @@ describe('Less AST grammar facts', () => {
               name: '.tone',
               important: false,
               path: [
-                { comb: ' ', sel: '.library' },
-                { comb: '>', sel: '.colors' }
+                { combinator: ' ', selector: '.library' },
+                { combinator: '>', selector: '.colors' }
               ],
               args: [
                 { name: 'shade', value: { type: 'Color', src: 'red' } },
@@ -6659,7 +6659,7 @@ describe('Less AST grammar facts', () => {
             base: {
               type: 'MixinCall',
               name: '.options',
-              path: [{ comb: ' ', sel: '#ns' }],
+              path: [{ combinator: ' ', selector: '#ns' }],
               args: []
             },
             steps: [
@@ -6683,7 +6683,7 @@ describe('Less AST grammar facts', () => {
             base: {
               type: 'MixinCall',
               name: '.options',
-              path: [{ comb: ' ', sel: '#ns' }],
+              path: [{ combinator: ' ', selector: '#ns' }],
               args: []
             },
             steps: [

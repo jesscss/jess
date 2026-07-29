@@ -237,11 +237,11 @@ describe('Mixin canonical AST emission', () => {
     ]);
     const guardedCall: MixinCall = {
       type: 'MixinCall', name: '.mixin', args: [],
-      path: [{ comb: '>' as const, sel: '#guarded' }], important: false
+      path: [{ combinator: '>' as const, selector: '#guarded' }], important: false
     };
     const deeperCall: MixinCall = {
       type: 'MixinCall', name: '.mixin', args: [{ value: dimension(1) }],
-      path: [{ comb: '>' as const, sel: '#top' }, { comb: '>' as const, sel: '#deeper' }], important: false
+      path: [{ combinator: '>' as const, selector: '#top' }, { combinator: '>' as const, selector: '#deeper' }], important: false
     };
     const document = stylesheet([
       variableDeclaration('namespaceGuard', dimension(1), { mode: 'declare' }),
@@ -322,7 +322,7 @@ describe('Mixin canonical AST emission', () => {
 
   it('groups only adjacent equal evaluated root headers in nested output', () => {
     const evaluatedSame = selist(complexSelector([{
-      compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
         { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true }
       ]))])
     }]));
@@ -342,7 +342,7 @@ describe('Mixin canonical AST emission', () => {
 
   it('publishes an explicit mixin ruleset placement for a later namespaced call', () => {
     const namedPerson = rule(selist(complexSelector([{
-      compound: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
+      term: compoundSelectorOf([interpolatedSimpleSelector(interpolation([
         { lit: '.' }, { ref: variableReference('name', 'scoped'), unquote: true }
       ]))])
     }])), [
@@ -352,7 +352,7 @@ describe('Mixin canonical AST emission', () => {
     const person = mixin('.Person', [{ name: 'name' }, { name: 'gender' }], [namedPerson]);
     const sayGender: MixinCall = {
       type: 'MixinCall', name: '.sayGender', args: [],
-      path: [{ comb: ' ' as const, sel: '.person' }], important: false
+      path: [{ combinator: ' ' as const, selector: '.person' }], important: false
     };
     const document = stylesheet([
       person,
