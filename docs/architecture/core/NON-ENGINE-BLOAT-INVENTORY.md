@@ -141,7 +141,7 @@ Concerns:
 4. **Import / module loading** — `getTree`, `resolveImportPath`, `readBinary`, `parseString`,
    `getModule`, `findParserPlugin` (953–1179). File I/O + parser dispatch, a distinct
    subsystem.
-5. **Misc eval helpers** — `hashClass`, `shouldOperate`, `registerSpineVisitor`,
+5. **Misc eval helpers** — `hashClass`, `shouldOperate`, `registerEmitVisitor`,
    `generateId`/`idChars` (1179+, 250, 635).
 
 **Lean target:** lift warnings finalization (#2) into `warnings.ts`/a `warning-sink.ts`; move

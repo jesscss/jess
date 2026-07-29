@@ -888,8 +888,8 @@ workspace search found no production or test consumer after the
 `jess-plugin-less-compat` bridge cutover. Core no longer exports
 `visitor/index.ts`, and `tree/Node` no longer carries the Less-style
 `accept()`/`ABORT`/`REMOVE` machinery. This is distinct from the retained
-Context-owned `SpineVisitor` hook, which is a separate render lifecycle seam
-and does not expose legacy per-node visitor dispatch. The separate
+Context-owned emit hook, which is a separate internal render lifecycle seam and
+does not expose legacy per-node visitor dispatch. The separate
 `packages/jess/src/visitor/index.ts` identity wrapper was likewise unimported,
 unexported, and deleted; it was not a second valid visitor implementation.
 

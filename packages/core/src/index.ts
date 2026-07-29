@@ -13,10 +13,7 @@ export {
   DocumentContext,
   type ContextOptions,
   type DocumentContextOptions,
-  type SourceContext,
-  type SpineVisitor,
-  type SpineVisitorEnter,
-  type SpineVisitorExit
+  type SourceContext
 } from './context.js';
 export { logger, type Logger } from './logger.js';
 export {

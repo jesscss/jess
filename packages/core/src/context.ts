@@ -41,19 +41,19 @@ import { selectorAnalysisFor, type SelectorAnalysis } from './tree/util/selector
 import type { PrintOptions } from './tree/util/print.js';
 
 /**
- * The single-pass EMIT visitor contract (design §6.1/§6.6). `enter` receives the
- * RESOLVED output node and either returns VOID (inspect / invisibly-annotate — the
- * node is emitted unchanged) or returns a NEW node (an output-affecting REPLACE —
+ * The single-pass emit visitor contract (design §6.1/§6.6). `enter` receives the
+ * resolved output node and either returns void (inspect / invisibly annotate: the
+ * node is emitted unchanged) or returns a new node (an output-affecting replace:
  * a fresh transient serialized in place, never mutating the shared canonical node
- * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame — the node is already
+ * in a byte-/reuse-affecting way, §6.4). No `ctx`, no frame: the node is already
  * resolved. `exit` (optional) fires after the node's children, kept solely for the
  * `inline-urls` enter/exit proof (§6.6).
  */
-export type SpineVisitorEnter = (node: Node) => Node | void;
-export type SpineVisitorExit = (node: Node) => void;
-export interface SpineVisitor {
-  enter: SpineVisitorEnter;
-  exit?: SpineVisitorExit;
+export type EmitVisitorEnter = (node: Node) => Node | void;
+export type EmitVisitorExit = (node: Node) => void;
+export interface EmitVisitor {
+  enter: EmitVisitorEnter;
+  exit?: EmitVisitorExit;
 }
 
 const SCRIPT_MODULE_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts']);
@@ -806,19 +806,19 @@ export class Context {
   extendRoots!: ExtendRootRegistry;
 
   /**
-   * Generic single-pass EMIT visitors (design §6). An ordered, initially-EMPTY
-   * list of `(node) => Node | void` hooks (with an optional `exit`) the spine
-   * fires at each resolved output node's emit moment. The list being empty is
-   * the ZERO-COST common case (§6.5 / §4.0-style gate): the spine checks
-   * `spineVisitors === undefined` and skips all hook machinery. `node` is the
-   * RESOLVED output node — no ctx, no frame (§6, decision table). Native Jess
-   * visitors and the less-compat bridge (registered only when ≥1 real Less
-   * visitor exists — NOT built here) coexist as plain list entries; core owns no
-   * chaining / REMOVE / ABORT / per-type dispatch.
+   * Generic single-pass emit visitors (design §6). An ordered, initially-empty
+   * list of `(node) => Node | void` hooks (with an optional `exit`) fired at each
+   * resolved output node's emit moment. The list being empty is the zero-cost
+   * common case (§6.5 / §4.0-style gate): emit checks `emitVisitors === undefined`
+   * and skips all hook machinery. `node` is the resolved output node: no ctx, no
+   * frame (§6, decision table). Native Jess visitors and the less-compat bridge
+   * (registered only when at least one real Less visitor exists, not built here)
+   * coexist as plain list entries; core owns no chaining / remove / abort /
+   * per-type dispatch.
    *
    * @see docs/architecture/core/UNIFIED-EVAL-EMIT-DESIGN.md §6.
    */
-  spineVisitors?: SpineVisitor[];
+  emitVisitors?: EmitVisitor[];
 
   /**
    * The active single-pass spine `+:`/`+_:` merge plan for the body currently
@@ -835,14 +835,14 @@ export class Context {
   spineMergePlan?: import('./tree/util/spine-merge.js').SpineMergePlan;
 
   /**
-   * Append a generic EMIT visitor (design §6.5). Deterministic registration
+   * Append a generic emit visitor (design §6.5). Deterministic registration
    * order; the pass threads each node through `enter` (`shape = enter(shape) ??
    * shape`) and fires `exit` (if registered) after the node's children. No
    * auto-registration — the list stays undefined (zero-cost) until a caller
    * registers.
    */
-  registerSpineVisitor(enter: SpineVisitorEnter, options?: { exit?: SpineVisitorExit }): void {
-    (this.spineVisitors ??= []).push({ enter, exit: options?.exit });
+  registerEmitVisitor(enter: EmitVisitorEnter, options?: { exit?: EmitVisitorExit }): void {
+    (this.emitVisitors ??= []).push({ enter, exit: options?.exit });
   }
 
   /**

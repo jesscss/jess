@@ -392,7 +392,7 @@ The 33, with the tree symbols in their declared types:
 | `spineMixinSurfaceSink` :668 · `spineRootCallEmitFrame` :691 · `rulesEvalStack` :919 · `evaldTrees` :958 | `Rules` |
 | `extendRoots` :709 | `ExtendRootRegistry` |
 | `spineMergePlan` :738 | `SpineMergePlan`, `Node` |
-| `registerSpineVisitor` :747 | `Node` |
+| `registerEmitVisitor` :747 | `Node` |
 | `documentOrderByRuleset` :755 · `rulesetFrames` :809 | `Ruleset` |
 | `extends` :761 | `Selector`, `Rules`, `Node` |
 | `_searchScope` :770 · `searchScope` :771 | `Node` |

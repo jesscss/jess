@@ -355,7 +355,7 @@ a blanket optimization exemption or a new active architecture queue.
     "files": ["packages/core/src/tree/node-base.ts"],
     "neutralRefactor": {
       "costDelta": "neutral",
-      "why": "The Less-style Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate SpineVisitor lifecycle hook remains, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
+      "why": "The Less-style Visitor and Node.accept ABI had no production or test consumers after the compat bridge cutover. Removing the dead per-node dispatch surface deletes only unreachable methods, probes, symbols, and the visitor module; Context's separate emit lifecycle hook remains internal, and no parser, import resolver, plugin dispatcher, or canonical AST serializer path enters this deleted boundary.",
       "byteIdentity": {"fixture": "benchmark.less", "collapseNesting": true, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390}
     },
     "benchmark": {"fixture": "benchmark.less", "phase": "render", "medianMs": 80.056, "outputSha256": "ea918f2d9ab4512b401cf6fd0bf96e9aab025357dd92c35f23e14b878a5891c6", "outputBytes": 122390},
