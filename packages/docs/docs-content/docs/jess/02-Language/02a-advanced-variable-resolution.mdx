@@ -6,25 +6,21 @@ audiences:
 origin: jess
 ---
 
-Jess makes the resolution model visible in the reference spelling:
+Jess has two variable-reference forms:
 
 | Reference | Resolution model |
 | --- | --- |
 | `$foo` | Live: reads the current binding at evaluation time. |
 | `$$foo` | Scoped/final lookup. |
 
-The old `$!foo` spelling is retired. It is not a compatibility recommendation.
+## `$foo`: live
 
-## Live references
+Use `$foo` when the value should follow the current binding at the point where it
+is evaluated.
 
-`$foo` is the live form. It reads the current value at the evaluation point,
-rather than selecting a declaration from a hoisted scoped declaration stack.
+## `$$foo`: scoped/final
 
-## Scoped/final lookup
-
-`$$foo` requests the scoped/final lookup model. Its resolver walks the
-relevant scope surface and evaluates the chosen declaration lazily. This is the
-mode to use when preserving scoped lookup behavior explicitly.
+Use `$$foo` when you want the scoped/final lookup explicitly.
 
 ## Missing names
 
@@ -33,11 +29,10 @@ performing an explicit optional/existence operation.
 
 ## Declaration and assignment lookup
 
-Both `$foo: value` and `$$foo: value` create or update both bindings. `$foo?:`
-tests the live map and creates/updates both only if absent; `$$foo?:` tests the
-scoped/final map and creates/updates both only if absent. `$foo :=` updates the
-live/current binding; `$$foo :=` updates the scoped/final binding.
-
-For implementation detail, see
-`docs/architecture/core/RESOLVER-SHAPE-SPEC.md`; that active spec must
-follow the same public sigil direction.
+| Form | Behavior |
+| --- | --- |
+| `$foo: value` / `$$foo: value` | Create or update both bindings. |
+| `$foo?: value` | Check the live binding; create/update both if absent. |
+| `$$foo?: value` | Check the scoped/final binding; create/update both if absent. |
+| `$foo := value` | Update the live/current binding. |
+| `$$foo := value` | Update the scoped/final binding. |

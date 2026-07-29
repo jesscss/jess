@@ -28,7 +28,7 @@ $my-function: @() > {
 }
 ```
 
-Because the definition is a block-valued assignment, it **auto-terminates at its closing brace** — the `;` above is optional. See [block-valued assignments](./variables#block-valued-assignments-auto-terminate).
+Because the definition is a block-valued assignment, it **auto-terminates at its closing brace** — the `;` above is optional. See [block-valued assignments](./variables#block-valued-assignments).
 
 ## Expression bodies
 
@@ -50,7 +50,7 @@ $my-function: @() > $(1 + 2);
 
 This is exactly sugar for a body whose only statement is `result: <expression>`; nothing downstream can tell the two spellings apart.
 
-An expression body is **not** a block, so it does not get the block exception: it still needs a `;` to separate it from a **following declaration**. Like any declaration, it needs no `;` when it is the last one — before `}`, before the end of the file, or before a rule or at-rule. See [how `;` separates declarations](./variables#semicolons-separate-declarations).
+An expression body is **not** a block, so it does not get the block exception: it still needs a `;` to separate it from a following declaration. See [block-valued assignments](./variables#block-valued-assignments).
 
 ## Parameters, defaults, and named arguments
 

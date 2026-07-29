@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { globSync } from 'glob';
@@ -81,6 +81,54 @@ describe('repository ESLint scope', () => {
       assert.notEqual(direct.status, 0, `${direct.stdout}\n${direct.stderr}`);
     } finally {
       rmSync(dirname(fixture), { recursive: true, force: true });
+    }
+  });
+
+  it('applies grammar formatting rules from parser package lint configs', () => {
+    const packageRoot = join(ROOT, 'packages', 'syntax', 'css', 'css-parser');
+    const fixtureDir = mkdtempSync(join(packageRoot, 'src', 'grammar-format-proof-'));
+    const fixture = join(fixtureDir, 'proof.ts');
+    const fixtureRelative = relative(packageRoot, fixture);
+    const compact = [
+      'import { choice, literal, sequence } from \'parseman\' with { type: \'macro\' };',
+      '',
+      'const Rule = sequence(literal(\'{\'), choice(literal(\'a\'), literal(\'b\')), literal(\'}\'));',
+      ''
+    ].join('\n');
+    writeFileSync(fixture, compact);
+
+    try {
+      const printed = spawnSync(process.execPath, [ESLINT_BIN, '--print-config', fixtureRelative], {
+        cwd: packageRoot,
+        encoding: 'utf8'
+      });
+      assert.equal(printed.error, undefined);
+      assert.equal(printed.status, 0, `${printed.stdout}\n${printed.stderr}`);
+      const config = JSON.parse(printed.stdout);
+      assert.deepEqual(config.rules['@stylistic/function-paren-newline'], [0]);
+      assert.deepEqual(config.rules['@stylistic/function-call-argument-newline'], [0]);
+      assert.deepEqual(config.rules['grammar/no-line-comments'], [2]);
+
+      const fixed = spawnSync(process.execPath, [
+        ESLINT_BIN,
+        '--fix-dry-run',
+        '--format',
+        'json',
+        fixtureRelative
+      ], {
+        cwd: packageRoot,
+        encoding: 'utf8'
+      });
+      assert.equal(fixed.error, undefined);
+      assert.equal(fixed.status, 0, `${fixed.stdout}\n${fixed.stderr}`);
+      const [result] = JSON.parse(fixed.stdout);
+      const output = result.output ?? compact;
+      assert.match(
+        output,
+        /const Rule = sequence\(literal\('\{'\), choice\(literal\('a'\), literal\('b'\)\), literal\('}'\)\);/
+      );
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true });
     }
   });
 });

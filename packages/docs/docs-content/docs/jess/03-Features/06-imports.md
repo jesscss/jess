@@ -60,13 +60,7 @@ namespace is inferred from the file name; `as *` composes it without a namespace
 See [Modules & imports](/docs/language/modules-and-imports) for namespaces,
 `with { … }` configuration, and the `(reference)` / `(mutable)` / `(export)` flags.
 
-## Importing into JS Components
-
-:::caution
-
-Historically this section described an older runtime/module shape. The current `rollup-plugin-jess` behavior is intentionally minimal.
-
-:::
+## Importing into JS components
 
 ### Using with React
 

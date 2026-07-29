@@ -5,7 +5,7 @@
     "access": "public"
   },
   "description": "Generic compiler host for Jess-compatible stylesheet language plugins",
-  "version": "2.0.0-alpha.12",
+  "version": "2.0.0-alpha.13",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },

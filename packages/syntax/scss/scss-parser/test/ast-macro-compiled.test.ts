@@ -22,7 +22,7 @@ test('canonical SCSS grammar macro-fuses recognition leaves with no runtime impo
     }
     const grammarModule = loaded;
     const property = run(
-      grammarModule.scssAstGrammar.ScssAstDocument,
+      grammarModule.scssAstGrammar.Stylesheet,
       '@property --accent { syntax: "<color>"; inherits: false; }',
       { trivia: grammarModule.scssAstGrammar.whitespace }
     );

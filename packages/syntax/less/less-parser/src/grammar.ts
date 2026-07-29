@@ -5083,9 +5083,9 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
       ]));
     }
   );
-  const extendPseudoOpen = parser(
+  const extendPseudoNameOpen = parser(
     { trivia: staticSelectorTrivia },
-    token(noTrivia(sequence(regex(/extend(?![-_a-zA-Z0-9\u0080-\uffff])/i), literal('('))))
+    token(noTrivia(sequence(lessCaseWord('extend'), literal('('))))
   );
   // A functional pseudo's ARGUMENT may be interpolated (`:lang(@{lang})`,
   // `:dir(@{d})`), which no static argument grammar can recognize because the
@@ -5100,7 +5100,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
     parser({ trivia: staticSelectorTrivia }, sequence(
       token(noTrivia(sequence(
         pseudoDelimiter,
-        not(extendPseudoOpen),
+        not(extendPseudoNameOpen),
         g.LessSyntaxIdentifier,
         literal('(')
       ))),
@@ -5218,7 +5218,7 @@ const lessAstFactory = (g: LessInputRules & SharedCssSyntax) => {
   );
   const pseudoOpen = token(noTrivia(sequence(
     regex(/::?(?![ \t\n\r\f])/),
-    not(extendPseudoOpen),
+    not(extendPseudoNameOpen),
     not(g.CssSyntaxNthName),
     g.LessSyntaxIdentifier,
     optional(literal('('))

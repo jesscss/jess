@@ -4,14 +4,14 @@ audiences:
   - jess
 origin: jess
 ---
-Jess supports expressions, which are used to evaluate values, perform calculations, and more.
+Expressions let Jess evaluate values explicitly.
 
-In Jess, an `Expression` is always written as `$(`...`)`.
+Write an expression as `$(`...`)`.
 
 - `$var` is a variable `Reference` (not an `Expression`).
 - `$(...)` is an `Expression`.
 
-If you need to evaluate a variable inside an expression, use `$($var)`.
+Inside an expression, keep variable references explicit: `$($var)`.
 
 ## Examples
 
@@ -45,7 +45,8 @@ $height: $($width + 10px);
 
 ## References vs expressions
 
-Inside an expression, plain identifiers are treated as normal values/keywords when possible.
+Inside an expression, a plain identifier is a value or keyword. A variable still
+uses its `$` sigil.
 
 ```less
 $color: red;
@@ -59,25 +60,14 @@ $num: 10;
 value: $($num + 1); // 11
 ```
 
-## Current public contract
+## Arithmetic is explicit
 
-Use the wrapper for arithmetic. Unwrapped arithmetic such as `$w + 1` is not part
-of the public language contract; write `$($w + 1)`.
+Keep arithmetic inside the expression wrapper:
 
-Reference-chain arithmetic such as `$(.w + 1)` is also not public syntax yet.
-Resolve the reference first, or keep the operation around a supported variable
-reference.
+```less
+$w: 10px;
+width: $($w + 1px);
+```
 
-String concatenation with `+`, comparison expressions as output values, and
-optional `?` / `??` operators are not documented as supported until they have
-parser and evaluator tests.
-
-{/*
-Future docs candidates, intentionally hidden until tested:
-
-- string concatenation: $("Hello, " + "world!")
-- expression comparisons: $(1 < 2), $(1 >= 2)
-- reference expressions: $(.w + 1)
-- optional operators: $missing?, rgb?(...)
-- any `??`-style operator
-*/}
+Use a variable reference inside the expression. Do not write unwrapped arithmetic
+such as `$w + 1px`.

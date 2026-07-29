@@ -92,31 +92,32 @@ By design, a collection sits in a perfect syntax space between a JS object and a
 
 ### General
 
-In Jess, this is a catch-all type for any value that just has a string representation. It's used for values that don't have a specific type, or for values that are not yet supported by the compiler.
+General values keep source-like value text when Jess does not need a more
+specific node type.
 
 - Type: `<general>`
 
 
-## Additional types (Experimental)
+## Type modifiers
 
-### Exact number of items in a list 
+### Exact list length
 
-A space-separated list of exactly 2 types.
+A space-separated list of exactly 2 numbers.
 - Type: `<number>+{2}`
 - Example: `1 2`
 
-A comma-separated list of exactly 2 types.
+A comma-separated list of exactly 2 numbers.
 - Type: `<number>#{2}`
 - Example: `1, 2`
 
-### Range of items in a list 
+### List length range
 
-A space-separated list of 2 to 4 types.
-- Type: `<number>+{2..4}`
+A space-separated list of 2 to 4 numbers.
+- Type: `<number>+{2, 4}`
 - Example: `1 2 3`
 
-A comma-separated list of 2 to 4 types.
-- Type: `<number>#{2..4}`
+A comma-separated list of 2 to 4 numbers.
+- Type: `<number>#{2, 4}`
 - Example: `1, 2, 3`
 
 ### A value within a range of values

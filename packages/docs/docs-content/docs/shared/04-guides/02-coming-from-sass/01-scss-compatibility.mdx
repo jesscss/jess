@@ -6,9 +6,11 @@ audiences:
   - sass
 origin: jess
 ---
-This doc explains how Jess parses and compiles **SCSS** (Sass’s CSS-like syntax), and how Sass-only constructs are mapped into Jess’s AST and (when possible) into Jess-native semantics.
+Jess can parse SCSS input and move supported Sass constructs into Jess's native
+model.
 
-Jess’s goal is to make **Sass input parseable**, while preferring **Jess-native output semantics** where they’re strictly better (for example, maps). In native Jess, `$name` is a live/current reference and `$$name` is the scoped/final lookup; `$!` is retired.
+Native Jess uses `$name` for live/current references and `$$name` for
+scoped/final lookup.
 
 ## What SCSS adds beyond CSS
 
@@ -44,11 +46,14 @@ Jess equivalent:
 .box { color: $theme.primary-color; }
 ```
 
-Jess’s module import node is `StyleImport` (see `packages/core/src/tree/import-style.ts`). It supports namespaces, configuration, and export/protection flags.
+Jess stylesheet imports support namespaces, configuration, and export/protection
+flags.
 
 ### `@use` (scripts) → `@-use` / `@-from`
 
-In Jess, `@-use` is the Sass-module-style namespace form for JS/TS/JSON modules. Like Sass, it can infer the namespace from the module name when `as` is omitted. `@-from` is the ESM-style form for named imports or `import * as ns` namespace imports (see `packages/core/src/tree/import-js.ts`).
+In Jess, `@-use` is the namespace form for JS/TS/JSON modules. Like Sass, it can
+infer the namespace from the module name when `as` is omitted. `@-from` is the
+ESM-style form for named imports or `import * as ns` namespace imports.
 
 When parsing SCSS, Jess will treat `@use` as a stylesheet import by default, but if the `@use` path clearly targets a script module (for example `./tokens.js`, `./tokens.ts`, `./tokens.json`), it will parse to a JS import node instead.
 
@@ -58,7 +63,7 @@ Jess models Sass forwarding semantics with `@-export` (see [At-rules](/docs/Lang
 
 ## Sass maps → Jess collections
 
-Sass maps are syntactically awkward compared to CSS rules. Jess maps them into the `Collection` node, which is a “map-like Rules” structure.
+Sass maps become Jess collections.
 
 Sass:
 
@@ -66,7 +71,7 @@ Sass:
 $font-weights: ("regular": 400, "medium": 500, "bold": 700);
 ```
 
-Jess AST shape (conceptual):
+Jess shape:
 
 ```scss
 $font-weights: {
@@ -114,14 +119,12 @@ This is the same core mechanism Jess uses for `$theme.colors.primary` and array/
 
 ## Slash division and arithmetic
 
-Historically, Sass treated `/` as either:
+Sass treats `/` as either:
 
 - division
 - or a plain slash separator in a value
 
-The old Sass rules were heuristic and inconsistent because Sass also overloaded `()` for grouping, lists, and maps.
-
-Jess does **not** try to preserve that whole ambiguity set when importing SCSS.
+Jess does **not** try to preserve the whole ambiguity set when importing SCSS.
 
 Jess supports the clear arithmetic forms:
 

@@ -34,10 +34,10 @@ describe('SCSS grammar compose integrity', () => {
       /compose\b|missing rule|references missing|falling back to runtime/i.test(message));
     expect(issues, `compose() emitted missing-rule / runtime-fallback diagnostics:\n${issues.join('\n')}`).toEqual([]);
 
-    for (const rule of ['Stylesheet', 'ScssAstDocument', 'ScssValueAtom', 'ScssMixinCallArg']) {
+    for (const rule of ['Stylesheet', 'ScssValueAtom', 'ScssMixinCallArg']) {
       expect(Object.hasOwn(grammar, rule), `folded SCSS grammar is missing rule "${rule}"`).toBe(true);
     }
-    for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VarCall', 'VariableCall']) {
+    for (const rule of ['DetachedRuleset', 'AnonymousMixinDefinition', 'ExtendStatement', 'EachFor', 'VarCall', 'VariableCall', 'ImportOption', 'ImportOptions']) {
       expect(Object.hasOwn(grammar, rule), `Less-only rule "${rule}" leaked into SCSS grammar`).toBe(false);
     }
   });
@@ -48,13 +48,44 @@ describe('SCSS grammar compose integrity', () => {
       '.a { font+_: Arial; }',
       '.a { .mixin(); }',
       '.a { .mixin(1, 2); }',
-      '.a { &:extend(.b all); }'
+      '.a { &:extend(.b all); }',
+      '.mixin() { color: red; }',
+      '.a { #ns.mixin(); }',
+      '@detached: { color: red; };'
     ]) {
       const cst = parseScssCst(source);
-      const ast = run(scssAstGrammar.ScssAstDocument, source, { trivia: scssAstGrammar.whitespace });
+      const ast = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
 
       expect(cst.errors.length > 0 || cst.unconsumedFrom !== null, source).toBe(true);
       expect(ast.ok && ast.unconsumedFrom === null, source).toBe(false);
+    }
+  });
+
+  it('keeps Less-looking at-rules on the generic at-rule path, not Less routes', () => {
+    for (const [source, shape] of [
+      ['@color: red;', {
+        children: [{ type: 'AtRuleStatement', name: '@color', prelude: { type: 'Any', src: ': red' } }]
+      }],
+      ['.a { @color: red; }', {
+        children: [{ type: 'Rule', body: [{ type: 'AtRuleStatement', name: '@color', prelude: { type: 'Any', src: ': red' } }] }]
+      }],
+      ['@plugin "x";', {
+        children: [{ type: 'AtRuleStatement', name: '@plugin', prelude: { type: 'Any', src: '"x"' } }]
+      }],
+      ['.a { @detached(); }', {
+        children: [{ type: 'Rule', body: [{ type: 'AtRuleStatement', name: '@detached', prelude: { type: 'Any', src: '()' } }] }]
+      }]
+    ] as const) {
+      const ast = run(scssAstGrammar.Stylesheet, source, { trivia: scssAstGrammar.whitespace });
+
+      expect(ast.ok && ast.unconsumedFrom === null, source).toBe(true);
+      if (!ast.ok || ast.unconsumedFrom !== null) {
+        continue;
+      }
+      expect(ast.value, source).toMatchObject(shape);
+      expect(JSON.stringify(ast.value), source).not.toContain('VariableDeclaration');
+      expect(JSON.stringify(ast.value), source).not.toContain('VariableCall');
+      expect(JSON.stringify(ast.value), source).not.toContain('DetachedRuleset');
     }
   });
 });

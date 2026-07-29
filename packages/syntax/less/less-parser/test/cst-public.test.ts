@@ -361,6 +361,10 @@ describe('Less direct-AST closure CST contract', () => {
   it('keeps Less function-like openers glued in public CST owners', () => {
     const cases: readonly [source: string, grammarType: string, leaves: readonly string[]][] = [
       ['e("x");', 'Call', ['e(', '"', 'x', '"', ')']],
+      ['.x { color: var(--accent); }', 'Call', ['var(', '--accent', ')']],
+      ['.x { color: feature(1px, 2px); }', 'Call', ['feature(', '1', 'px', ', ', '2', 'px', ')']],
+      ['.x { color: calc(1px + 2px); }', 'CalcCall', ['calc(', '1', 'px', ' + ', '2', 'px', ')']],
+      ['.x { color: url(foo); }', 'Url', ['url(', 'foo', ')']],
       ['@supports selector(a:hover) { a { color: red; } }', 'GeneralEnclosedFunctionName', ['selector(']],
       ['@container style(--responsive: true) { .card { color: red; } }', 'ContainerStyleQuery', ['style(', '--responsive', ':', 'true', ')']]
     ];
@@ -371,6 +375,17 @@ describe('Less direct-AST closure CST contract', () => {
       expect(cstIssueCount(result), source).toBe(0);
       expect(findNodes(result.tree, grammarType).map(leafValues), source).toContainEqual([...leaves]);
     }
+  });
+
+  it('keeps Less extend reserved for the glued inline-extend opener', () => {
+    const valid = parseLessCstResult('.x:extend(.target) { color: red; }');
+    const invalid = parseLessCstResult('.x:extend /* not glued */ (.target) { color: red; }');
+    const uppercase = parseLessCstResult('.x:EXTEND(.target) { color: red; }');
+
+    expect(cstIssueCount(valid)).toBe(0);
+    expect(findNodes(valid.tree, 'ExtendPseudo').map(leafValues)).toContainEqual([':', 'extend', '(', '.target', ')']);
+    expect(cstIssueCount(invalid)).toBeGreaterThan(0);
+    expect(cstIssueCount(uppercase)).toBeGreaterThan(0);
   });
 
   it('preserves public CST owners for each structural query feature form', () => {
