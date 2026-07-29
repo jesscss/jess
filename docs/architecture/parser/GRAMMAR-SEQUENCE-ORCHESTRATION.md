@@ -269,9 +269,8 @@ Current prefix inventory, 2026-07-29: CSS is clean for `CssAst*` in
 grammar source prefix debt should burn down by reviewed families, not by blind
 whole-file replacement. Current counts are: SCSS is clean for
 `DirectScss*` / `directScss*` in
-`packages/syntax/scss/scss-parser/src/grammar.ts`; Jess has 49 lowercase
-`directJess*` parser-local helper references across 15 distinct names, with no
-uppercase `DirectJess*` grammar keys left in
+`packages/syntax/scss/scss-parser/src/grammar.ts`, and Jess is clean for
+`DirectJess*` / `directJess*` in
 `packages/syntax/jess/jess-parser/src/grammar.ts`. Use these as a progress
 inventory, not an acceptance metric; a name may remain only when the rule really
 recognizes a dialect-specific language shape and that divergence is documented
@@ -2834,11 +2833,11 @@ host-mode artifact. The full Jess parser suite passes:
 of invalid slash-function forms has been removed. Later naming cleanup passes
 have moved the selector, control, declaration, import, at-rule, and
 general-enclosed template families toward semantic CST/AST-aligned labels; the
-uppercase `DirectJess*` grammar-key pass is drained in `src/grammar.ts`.
-Remaining Jess work is grammar-shape, trivia, dispatch/choice, lowercase
-parser-local helper naming, and cross-dialect naming quality cleanup on the
-surviving grammar, not a second grammar contract. Continue to classify each
-touched `choice(...)`, use current Parseman `dispatch(...)` only for routed
+uppercase `DirectJess*` grammar-key pass and lowercase `directJess*`
+parser-local helper pass are drained in `src/grammar.ts`. Remaining Jess work is
+grammar-shape, trivia, dispatch/choice, and cross-dialect naming quality cleanup
+on the surviving grammar, not a second grammar contract. Continue to classify
+each touched `choice(...)`, use current Parseman `dispatch(...)` only for routed
 token families with a deciding opener and same-family generic fallback, keep
 construct/context choices as `choice(...)` or left-factor helpers, and replace
 broad keyword regexes with the shared word helper policy.
@@ -4254,6 +4253,26 @@ segment families, not dispatch candidates, because no single already-consumed
 token routes known cases plus a same-family generic fallback.
 
 Evidence for the Jess general-enclosed template name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
+passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
+build` passed; `pnpm --filter @jesscss/jess-parser build` passed; `pnpm run
+check:macro` reported parser-shared, CSS, Less, SCSS, and Jess all fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
+Jess parser-local source vocabulary cleanup, 2026-07-29: the remaining
+lowercase `directJess*` helper names were renamed to semantic local names
+(`quotedExpressionParser`, `quotedExpressionInterpolationParser`,
+`escapedStaticQuoted`, `plainDoubleQuoted`, `plainSingleQuoted`,
+`moduleBindingName`, `moduleAsClause`, `styleImportAsClause`,
+`attributeDoubleQuoted`, `attributeSingleQuoted`, `selectorCombinator`,
+`nonBlockValueAtom`, `assignHead`, `mixinNameToken`, and
+`lambdaParamsParser`), and stale "Direct Jess" reducer diagnostics now use
+plain Jess wording. This is a naming-only alignment: no grammar branch,
+CST/AST node label, reducer shape, or comment trivia behavior changed.
+
+Evidence for the Jess parser-local source vocabulary cleanup: `pnpm --filter
 @jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
 test/macro-compiled-ast.test.ts test/compose-integrity.test.ts --reporter=dot`
 passed with 4 files and 118 tests; `pnpm --filter @jesscss/parser-shared
