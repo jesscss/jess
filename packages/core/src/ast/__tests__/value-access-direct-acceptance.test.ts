@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeLessRegistry } from '@jesscss/fns';
 import { buildEvaluator } from '../evaluator.js';
 import {
-  decl, collection, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
+  decl, collection, declarationReference, dimension, keyword, list, mixinCall, mixinDef, propertyReference, reference, stylesheet, rule,
   variableDeclaration, varIndirect, variableReference, type Stylesheet
 } from '../nodes.js';
 import { serialize } from '../serialize.js';
@@ -72,6 +72,42 @@ describe('direct canonical value access', () => {
     ]);
 
     expect(render(document)).toBe('.card {\n  color: teal;\n}\n');
+  });
+
+  it('resolves declaration-member references across property and variable namespaces', () => {
+    const document = stylesheet([
+      variableDeclaration('tokens', collection([decl('tone', keyword('blue'))]), { mode: 'declare' }),
+      rule('.card', [
+        variableDeclaration('local', keyword('green'), { mode: 'declare' }),
+        decl('tone', keyword('red')),
+        decl('from-ns', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], '$tokens.tone')),
+        decl('from-root', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], '$.tokens.tone')),
+        decl('from-var', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'local' }], '$.local')),
+        decl('from-prop', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tone' }], '$.tone'))
+      ])
+    ]);
+
+    expect(render(document)).toBe('.card {\n'
+      + '  tone: red;\n'
+      + '  from-ns: blue;\n'
+      + '  from-root: blue;\n'
+      + '  from-var: green;\n'
+      + '  from-prop: red;\n'
+      + '}\n');
+    expect(() => render(stylesheet([
+      rule('.card', [
+        variableDeclaration('same', keyword('blue'), { mode: 'declare' }),
+        decl('same', keyword('red')),
+        decl('value', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'same' }], '$.same'))
+      ])
+    ]))).toThrow(/Ambiguous reference member: same/);
+    expect(() => render(stylesheet([
+      rule('.card', [
+        variableDeclaration('same', collection([decl('tone', keyword('blue'))]), { mode: 'declare' }),
+        decl('same', keyword('red')),
+        decl('value', reference(declarationReference('$'), [{ type: 'DotLookup', name: 'same' }, { type: 'DotLookup', name: 'tone' }], '$same.tone'))
+      ])
+    ]))).toThrow(/Ambiguous reference member: same/);
   });
 
   it('resolves an indirect map-member name in the accessor frame, not the map owner', () => {

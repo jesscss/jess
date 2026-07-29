@@ -18,8 +18,8 @@ import type { Combinator, FieldCapture, FieldMap } from 'parseman';
 import { cssSyntax } from '@jesscss/parser-shared/recognition';
 import { opaqueAtRuleRecognition } from '@jesscss/parser-shared/opaque-at-rule';
 import { cssPseudoSyntax } from '@jesscss/parser-shared/pseudo-consts';
-import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
-import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, CompoundSelector, Declaration, Collection, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
+import { any, anonymousMixin, apply, atRuleBlock, atRuleStatement, block, boundaryBlock, color, complexCanonical, complexSelector, compoundSelectorOf, condition, decl, collection, declarationReference, dimension, forNode, funcCall, generalEnclosed, ifNode, interpolation, keyword, list, mixinCall, mixinDef, moduleImport, opaqueAtRuleBlock, operation, propertyReference, pseudoSelector, quoted, range, reference, selectorCapture, styleImport, stylesheet, rule, selist, simpleSelector, interpolatedSimpleSelector, spaced, url, varIndirect, variableDeclaration, variableReference, withSourceSpan, withValueLayout } from '@jesscss/core/ast';
+import type { AnonymousMixin, Apply, AtRuleBlock, AtRuleStatement, Color, ComplexSelector, CompoundSelector, Declaration, Collection, DeclarationReference, Dimension, ExtendInstruction, For, ForBinding, FunctionCall, GeneralEnclosed, If, IfBranch, InterpPart, Interpolation, Keyword, MixinCall, MixinDef, ModuleImport, ModuleImportSpecifier, OpaqueAtRuleBlock, Param, Quoted, Range, PseudoSelector, Reference, SelectorCapture, Stylesheet, Rule, SelectorList, SimpleSelector, SimpleToken, SpacedValue, Statement, StyleImport, Url, ValueNode, ValueSlot, VariableDeclaration, VariableReference, GuardNode } from '@jesscss/core/ast';
 
 type Token = { readonly value: string };
 type ExpressionFact = { readonly value: ValueNode; readonly src: string };
@@ -39,6 +39,7 @@ type JessRules = {
   DirectJessExprLambda: Combinator<AnonymousMixin>;
   DirectJessValueBlock: Combinator<ValueNode>;
   DirectJessVarReference: Combinator<VariableReference>;
+  DirectJessDeclarationReference: Combinator<DeclarationReference>;
   DirectJessReferenceTail: Combinator<JessReferenceTail>;
   DirectJessReferenceCallTail: Combinator<JessReferenceTail>;
   DirectJessDollarValue: Combinator<ValueNode>;
@@ -50,11 +51,13 @@ type JessRules = {
   DirectJessExpression: Combinator<Interpolation>;
   DirectJessExpressionInterpolation: Combinator<ExpressionFact>;
   DirectJessExpressionQuoted: Combinator<ExpressionFact>;
+  DirectJessExpressionDeclarationReference: Combinator<ExpressionFact>;
+  DirectJessExpressionCallArg: Combinator<JessMixinCallArgument>;
+  DirectJessExpressionReferenceCallTail: Combinator<JessReferenceTail>;
   DirectJessExpressionAtom: Combinator<ExpressionFact>;
   DirectJessExpressionProduct: Combinator<ExpressionFact>;
   DirectJessExpressionSum: Combinator<ExpressionFact>;
   DirectJessExpressionCompare: Combinator<ExpressionFact>;
-  DirectJessUnwrappedProductRest: Combinator<ExpressionFact>;
   DirectJessGuardValue: Combinator<GuardNode>;
   DirectJessGuardCompare: Combinator<GuardNode>;
   DirectJessGuardCall: Combinator<GuardNode>;
@@ -431,6 +434,7 @@ function isValueNode(value: unknown): value is ValueNode {
       || value.type === 'Quoted'
       || value.type === 'VariableReference'
       || value.type === 'Reference'
+      || value.type === 'DeclarationReference'
       || value.type === 'PropertyReference'
       || value.type === 'Color'
       || value.type === 'Dimension'
@@ -667,12 +671,38 @@ function expressionSource(value: ValueNode): string {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
     case 'VariableReference': return `$${value.name}`;
     case 'Reference': return value.raw;
+    case 'DeclarationReference': return value.raw;
     case 'PropertyReference': return value.raw;
     case 'Operation': return `${expressionSource(value.left)} ${value.operator} ${expressionSource(value.right)}`;
     case 'Condition': return value.src;
     case 'Interpolation': return value.parts.map(part => 'lit' in part ? part.lit : expressionSource(part.ref)).join('');
     default: throw new TypeError(`Direct Jess expression cannot preserve source for ${value.type}.`);
   }
+}
+
+function referenceBaseSource(value: ValueNode): string {
+  switch (value.type) {
+    case 'VariableReference': return `${value.lookup === 'scoped' ? '$$' : '$'}${value.name}`;
+    case 'DeclarationReference': return value.raw;
+    default: throw new TypeError(`Direct Jess expression reference cannot start from ${value.type}.`);
+  }
+}
+
+function declarationMemberReferenceFromVariableBase(
+  base: VariableReference,
+  tails: readonly JessReferenceTail[]
+): Reference | null {
+  if (base.lookup !== 'live' || base.name === 'type' || tails[0]?.step.type !== 'DotLookup') {
+    return null;
+  }
+  return reference(
+    declarationReference('$'),
+    [
+      { type: 'DotLookup', name: base.name },
+      ...tails.map(tail => tail.step)
+    ],
+    `$${base.name}${tails.map(tail => tail.src).join('')}`
+  );
 }
 
 function interpolationFromChildren(
@@ -784,7 +814,8 @@ function referenceArgSource(value: JessMixinCallArgument['value']): string {
   switch (value.type) {
     case 'Keyword': case 'Color': case 'Dimension': case 'Quoted': case 'Any': return value.src;
     case 'VariableReference': return `$${value.name}`;
-    case 'Reference': case 'PropertyReference': return value.raw;
+    case 'Reference': case 'DeclarationReference': case 'PropertyReference': return value.raw;
+    case 'Operation': case 'Condition': case 'Interpolation': return expressionSource(value);
     default: return '';
   }
 }
@@ -1208,14 +1239,6 @@ const jessExprCompareSymbol = regex(/>=|<=|>|<|=/);
 const jessIfGuardCompareOperator = regex(/[ \t\n\r\f]*(?:>=|<=|>|<|=)[ \t\n\r\f]*/);
 
 /*
- * The unwrapped value form deliberately excludes `/` and `%`: `/` remains a
- * structured slash list in value position, and `%` has no documented unwrapped
- * spelling. Wrapped `$(...)` remains the complete arithmetic syntax.
- */
-const jessUnwrappedProductOperator = regex(/[ \t\n\r\f]+\*[ \t\n\r\f]+/);
-const jessUnwrappedSumOperator = regex(/[ \t\n\r\f]+[-+][ \t\n\r\f]+/);
-
-/*
  * This is intentionally the type-predicate namespace, not general function
  * syntax in a guard. The existing GuardNode evaluator accepts these names;
  * recognition retains a typed argument list and never routes through source.
@@ -1416,6 +1439,11 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       span
     )
   );
+  const DirectJessDeclarationReference = node<DeclarationReference>(
+    'DirectJessDeclarationReference',
+    noTrivia(literal('$')),
+    (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
+  );
   const DirectJessDollarBrace = node<Interpolation>(
     'DirectJessDollarBrace',
     jessDollarBraceStructure,
@@ -1482,6 +1510,89 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     )),
     children => ({ value: requireToken(children[1]).value, src: tokenSource(children) })
   );
+  const DirectJessExpressionDeclarationReference = node<ExpressionFact>(
+    'DirectJessExpressionDeclarationReference',
+    noTrivia(choice(
+      sequence(
+        g.DirectJessDeclarationReference,
+        literal('.'),
+        jessDollarName,
+        many(choice(
+          g.DirectJessExpressionReferenceCallTail,
+          g.DirectJessReferenceTail
+        ))
+      ),
+      sequence(
+        literal('.'),
+        jessDollarName,
+        many(choice(
+          g.DirectJessExpressionReferenceCallTail,
+          g.DirectJessReferenceTail
+        ))
+      )
+    )),
+    (children, _fields, span) => {
+      const rooted = isValueNode(children[0]) && children[0].type === 'DeclarationReference';
+      const name = requireToken(children[rooted ? 2 : 1]).value;
+      const baseRaw = rooted ? '$' : '';
+      const base = withSourceSpan(declarationReference(baseRaw), span);
+      const tails = children.slice(rooted ? 3 : 2).map(requireJessReferenceTail);
+      const raw = `${baseRaw}.${name}${tails.map(tail => tail.src).join('')}`;
+      return { value: reference(
+        base,
+        [
+          { type: 'DotLookup', name },
+          ...tails.map(tail => tail.step)
+        ],
+        raw
+      ), src: raw };
+    }
+  );
+  const DirectJessExpressionCallArg = node<JessMixinCallArgument>(
+    'DirectJessExpressionCallArg',
+    choice(
+      sequence(
+        literal('$'),
+        jessDollarName,
+        literal(':'),
+        g.DirectJessExpressionCompare
+      ),
+      g.DirectJessExpressionCompare
+    ),
+    (children) => {
+      const fact = children.find(isExpressionFact);
+      if (fact === undefined) {
+        throw new TypeError('Direct Jess expression call argument lost its value.');
+      }
+      const name = children.find((child): child is Token => isToken(child) && child.value !== '$' && child.value !== ':');
+      return name === undefined ? { value: fact.value } : { name: name.value, value: fact.value };
+    }
+  );
+  const DirectJessExpressionReferenceCallTail = node<JessReferenceTail>(
+    'DirectJessExpressionReferenceCallTail',
+    noTrivia(sequence(
+      literal('('),
+      parser(
+        { trivia: whitespace },
+        optional(sequence(
+          g.DirectJessExpressionCallArg,
+          many(sequence(
+            literal(','),
+            g.DirectJessExpressionCallArg
+          ))
+        ))
+      ),
+      optional(rawWhitespace),
+      literal(')')
+    )),
+    (children) => {
+      const args = children.filter(isJessMixinCallArgument);
+      return {
+        step: { type: 'Call', args },
+        src: `(${args.map(arg => (arg.name === undefined ? '' : `$${arg.name}: `) + referenceArgSource(arg.value)).join(', ')})`
+      };
+    }
+  );
   const DirectJessExpressionAtom = node<ExpressionFact>(
     'DirectJessExpressionAtom',
 
@@ -1508,7 +1619,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         not(jessTypeNamespace),
         g.DirectJessVarReference,
         many(choice(
-          g.DirectJessReferenceCallTail,
+          g.DirectJessExpressionReferenceCallTail,
           g.DirectJessReferenceTail
         ))
       )),
@@ -1516,6 +1627,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         g.DirectJessVarReference,
         many(g.DirectJessReferenceTail)
       )),
+      g.DirectJessExpressionDeclarationReference,
       g.DirectJessExpressionDollarInterp,
       g.DirectJessDimension,
       g.DirectJessColor,
@@ -1542,11 +1654,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       }
       if (isJessReferenceTail(children[1])) {
         const base = requireValueNode(children[0]);
-        if (base.type !== 'VariableReference') {
-          throw new TypeError('Direct Jess expression reference base must be a variable reference.');
+        if (base.type !== 'VariableReference' && base.type !== 'DeclarationReference') {
+          throw new TypeError('Direct Jess expression reference base must be a variable or declaration reference.');
         }
         const tails = children.slice(1).map(requireJessReferenceTail);
-        const raw = `${base.lookup === 'scoped' ? '$$' : '$'}${base.name}${tails.map(tail => tail.src).join('')}`;
+        if (base.type === 'VariableReference') {
+          const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
+          if (memberReference) {
+            return { value: memberReference, src: memberReference.raw };
+          }
+        }
+        const raw = `${referenceBaseSource(base)}${tails.map(tail => tail.src).join('')}`;
         return { value: reference(
           base,
           tails.map(tail => tail.step),
@@ -1604,24 +1722,6 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         src
       ), src };
     }
-  );
-
-  /*
-   * Shared sum-level operand for unwrapped arithmetic: an ExpressionAtom folded
-   * with any `*` product operators. `DirectJessDollarValue` reuses this for the
-   * products that follow the first (whitespace-flanked) sum operator; the first
-   * product is rebuilt there from the already-parsed leading reference.
-   */
-  const DirectJessUnwrappedProductRest = node<ExpressionFact>(
-    'DirectJessUnwrappedProductRest',
-    noTrivia(sequence(
-      g.DirectJessExpressionAtom,
-      many(sequence(
-        jessUnwrappedProductOperator,
-        g.DirectJessExpressionAtom
-      ))
-    )),
-    foldExpression
   );
 
   /*
@@ -2947,79 +3047,78 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
 
   /*
    * Left-factored `$`/`$$`+name so the ubiquitous dollar value is parsed ONCE.
-   * The leading `DirectJessVarReference` is shared across all four continuations
-   * — plain reference, accessor-tail chain, unwrapped `/` slash list, and
-   * unwrapped `+ - *` arithmetic — which are disjoint by their next token
-   * (`.`/`[` tails, `/` slash, whitespace-flanked operators). Previously each
-   * arm re-parsed `$name` (up to four VariableReference builds per plain ref,
-   * each allocating a discarded source-spanned node); this reduction preserves
-   * every prior AST shape while recognizing the reference exactly once.
+   * The leading `DirectJessVarReference` is shared across plain references,
+   * accessor-tail chains, and unwrapped `/` slash lists. Arithmetic and
+   * comparison stay in the explicit `$(...)` expression grammar so normal value
+   * position cannot admit expression-only forms like leading-dot declaration
+   * lookup.
    */
   const DirectJessDollarValue = node<ValueNode>(
     'DirectJessDollarValue',
-    noTrivia(sequence(
-      g.DirectJessVarReference,
-      optional(choice(
-
-        /*
-         * Slash list: `/` is intentionally not an unwrapped Operation. Preserve
-         * the authored value boundary as an explicit slash List; `$( $w / 2 )`
-         * is the arithmetic spelling.
-         */
-        sequence(
-          optional(rawWhitespace),
-          literal('/'),
-          optional(rawWhitespace),
-          g.DirectJessValueAtom
-        ),
-
-        /*
-         * Unwrapped arithmetic. The documented `$var + 1` form folds with the
-         * same left-associative product-before-sum grouping as `$(...)`: at
-         * least one operator is required (else this is a plain reference), and
-         * `*` binds tighter than `+`/`-`.
-         */
-        choice(
-          sequence(
-            oneOrMore(sequence(
-              jessUnwrappedProductOperator,
-              g.DirectJessExpressionAtom
-            )),
-            many(sequence(
-              jessUnwrappedSumOperator,
-              g.DirectJessUnwrappedProductRest
-            ))
-          ),
-          sequence(
-            many(sequence(
-              jessUnwrappedProductOperator,
-              g.DirectJessExpressionAtom
-            )),
-            oneOrMore(sequence(
-              jessUnwrappedSumOperator,
-              g.DirectJessUnwrappedProductRest
-            ))
-          )
-        ),
-
-        /* Accessor-tail chain (`.name`, `[key]`). */
-        oneOrMore(choice(
+    noTrivia(choice(
+      attempt(sequence(
+        g.DirectJessDeclarationReference,
+        literal('.'),
+        jessDollarName,
+        many(choice(
           g.DirectJessReferenceCallTail,
           g.DirectJessReferenceTail
         ))
-      ))
+      )),
+      sequence(
+        g.DirectJessVarReference,
+        optional(choice(
+
+          /*
+           * Slash list: `/` is intentionally not an unwrapped Operation. Preserve
+           * the authored value boundary as an explicit slash List; `$( $w / 2 )`
+           * is the arithmetic spelling.
+           */
+          sequence(
+            optional(rawWhitespace),
+            literal('/'),
+            optional(rawWhitespace),
+            g.DirectJessValueAtom
+          ),
+
+          /* Accessor-tail chain (`.name`, `[key]`). */
+          oneOrMore(choice(
+            g.DirectJessReferenceCallTail,
+            g.DirectJessReferenceTail
+          ))
+        ))
+      )
     )),
     (children) => {
       const base = requireValueNode(children[0]);
-      if (base.type !== 'VariableReference') {
-        throw new TypeError('Direct Jess reference base must be a variable reference.');
-      }
       if (children.length === 1) {
+        if (base.type !== 'VariableReference') {
+          throw new TypeError('Direct Jess reference base must be a variable reference.');
+        }
         return base;
       }
       const rest = children.slice(1);
+      if (base.type === 'DeclarationReference') {
+        const name = requireToken(rest[1]).value;
+        const tails = rest.slice(2).map(requireJessReferenceTail);
+        return reference(
+          base,
+          [
+            { type: 'DotLookup', name },
+            ...tails.map(tail => tail.step)
+          ],
+          `${base.raw}.${name}${tails.map(tail => tail.src).join('')}`
+        );
+      }
+      if (base.type !== 'VariableReference') {
+        throw new TypeError('Direct Jess reference base must be a variable reference.');
+      }
       if (isJessReferenceTail(rest[0])) {
         const tails = rest.map(requireJessReferenceTail);
+        const memberReference = declarationMemberReferenceFromVariableBase(base, tails);
+        if (memberReference) {
+          return memberReference;
+        }
         return reference(
           base,
           tails.map(tail => tail.step),
@@ -3032,30 +3131,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
           '/'
         );
       }
-
-      /*
-       * Arithmetic: rebuild the first product (leading reference plus its `*`
-       * operators), then fold the whitespace-flanked sum operators over the
-       * remaining pre-folded products.
-       */
-      const firstProduct: unknown[] = [{ value: base, src: expressionSource(base) }];
-      let index = 0;
-      while (index < rest.length && isToken(rest[index]) && requireToken(rest[index]).value.trim() === '*') {
-        firstProduct.push(
-          rest[index],
-          rest[index + 1]
-        );
-        index += 2;
-      }
-      const sumParts: unknown[] = [foldExpression(firstProduct)];
-      while (index < rest.length) {
-        sumParts.push(
-          rest[index],
-          rest[index + 1]
-        );
-        index += 2;
-      }
-      return requireExpressionFact(foldExpression(sumParts)).value;
+      throw new TypeError('Direct Jess dollar value matched an unknown continuation.');
     }
   );
 
@@ -5430,6 +5506,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessExprLambda,
     DirectJessValueBlock,
     DirectJessVarReference,
+    DirectJessDeclarationReference,
     DirectJessReferenceTail,
     DirectJessReferenceCallTail,
     DirectJessDollarValue,
@@ -5440,11 +5517,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessExpression,
     DirectJessExpressionInterpolation,
     DirectJessExpressionQuoted,
+    DirectJessExpressionDeclarationReference,
+    DirectJessExpressionCallArg,
+    DirectJessExpressionReferenceCallTail,
     DirectJessExpressionAtom,
     DirectJessExpressionProduct,
     DirectJessExpressionSum,
     DirectJessExpressionCompare,
-    DirectJessUnwrappedProductRest,
     DirectJessGuardValue,
     DirectJessGuardCompare,
     DirectJessGuardCall,

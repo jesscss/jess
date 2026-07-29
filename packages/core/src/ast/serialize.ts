@@ -3398,6 +3398,24 @@ function lastVarMember(map: DeclMap, e: EvalCtx): DeclEntry | undefined {
   return hit;
 }
 
+function resolveDeclarationMember(
+  frame: Frame | null,
+  name: string,
+  e: EvalCtx
+): DeclEntry | undefined {
+  const prop = resolvePropRef(frame, name, e);
+  const variable = resolveVarRef(frame, name, 'scoped', e);
+  if (prop && variable) {
+    throw new Error(`Ambiguous reference member: ${name}`);
+  }
+  if (prop) {
+    return { name, value: prop.value, frame: prop.frame, important: prop.important };
+  }
+  return variable === undefined
+    ? undefined
+    : { name, value: variable.value, frame: variable.frame, important: false };
+}
+
 /** Collect a body's declarations into name→value maps (+ ordered list). */
 function evalToDeclMap(statements: Statement[], frame: Frame | null, e: EvalCtx): DeclMap {
   recordMapPropertyTimeline(statements, frame);
@@ -3697,6 +3715,25 @@ function resolveReferenceResult(
       ?? sourceOwnerForBody(!isValueSlotArray(value) && isValueBlock(value) ? valueBlockBody(value) : value, valueFrame, e);
   }
   for (const step of node.steps) {
+    if (value.type === 'DeclarationReference') {
+      if (step.type !== 'DotLookup') {
+        return null;
+      }
+      const matched = resolveDeclarationMember(valueFrame, step.name, e);
+      if (!matched) {
+        unresolvedSymbol(node, step.name, e);
+      }
+      if (matched.important) {
+        if (e.importantSink) {
+          e.importantSink.hit = true;
+        } else if (e.mergeImportant !== undefined) {
+          e.mergeImportant = true;
+        }
+      }
+      value = matched.value;
+      valueFrame = matched.frame;
+      continue;
+    }
     if (step.type === 'Call') {
       if (isMixinCallValue(value)) {
         value = step.args.length === 0 ? value : { ...value, args: step.args };

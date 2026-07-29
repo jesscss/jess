@@ -365,8 +365,8 @@ describe('Jess AST grammar facts', () => {
     expect(direct.value).toMatchObject({
       type: 'Stylesheet', children: [{ type: 'Rule', body: [
         { type: 'Declaration', name: 'member', value: {
-          type: 'Reference', base: { type: 'VariableReference', name: 'theme', lookup: 'live' },
-          steps: [{ type: 'DotLookup', name: 'colors' }, { type: 'DotLookup', name: 'primary' }], raw: '$theme.colors.primary'
+          type: 'Reference', base: { type: 'DeclarationReference', raw: '$' },
+          steps: [{ type: 'DotLookup', name: 'theme' }, { type: 'DotLookup', name: 'colors' }, { type: 'DotLookup', name: 'primary' }], raw: '$theme.colors.primary'
         } },
         { type: 'Declaration', name: 'last', value: {
           type: 'Reference', base: { type: 'VariableReference', name: 'sizes', lookup: 'live' },
@@ -383,6 +383,121 @@ describe('Jess AST grammar facts', () => {
     expect(parse('.card { name: $[key]; }').children[0]).toMatchObject({
       type: 'Rule', body: [{ type: 'Declaration', value: { type: 'Interpolation' } }]
     });
+  });
+
+  it('parses declaration-member lookups without treating them as property-only accessors', () => {
+    const source = '$tokens: { tone: blue; }; .card { value: $(.type.isnumber(.math.e)); namespaced: $tokens.tone; normal: $.tokens.tone; decimal: $(.1); }';
+    const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
+
+    expect(direct.ok).toBe(true);
+    expect(direct.unconsumedFrom).toBeNull();
+    const rule = parse(source).children[1];
+    expect(rule).toMatchObject({
+      type: 'Rule',
+      body: [
+        {
+          type: 'Declaration',
+          name: 'value',
+          value: {
+            type: 'Interpolation',
+            parts: [{
+              ref: {
+                type: 'Block',
+                boundary: true,
+                inner: {
+                  type: 'Reference',
+                  base: { type: 'DeclarationReference', raw: '' },
+                  steps: [
+                    { type: 'DotLookup', name: 'type' },
+                    { type: 'DotLookup', name: 'isnumber' },
+                    {
+                      type: 'Call',
+                      args: [{
+                        value: {
+                          type: 'Reference',
+                          base: { type: 'DeclarationReference', raw: '' },
+                          steps: [{ type: 'DotLookup', name: 'math' }, { type: 'DotLookup', name: 'e' }],
+                          raw: '.math.e'
+                        }
+                      }]
+                    }
+                  ],
+                  raw: '.type.isnumber(.math.e)'
+                }
+              },
+              unquote: true
+            }]
+          }
+        },
+        {
+          type: 'Declaration',
+          name: 'namespaced',
+          value: {
+            type: 'Reference',
+            base: { type: 'DeclarationReference', raw: '$' },
+            steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }],
+            raw: '$tokens.tone'
+          }
+        },
+        {
+          type: 'Declaration',
+          name: 'normal',
+          value: {
+            type: 'Reference',
+            base: { type: 'DeclarationReference', raw: '$' },
+            steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }],
+            raw: '$.tokens.tone'
+          }
+        },
+        {
+          type: 'Declaration',
+          name: 'decimal',
+          value: {
+            type: 'Interpolation',
+            parts: [{
+              ref: {
+                type: 'Block',
+                boundary: true,
+                inner: { type: 'Dimension', number: 0.1, unit: '', src: '.1' }
+              },
+              unquote: true
+            }]
+          }
+        }
+      ]
+    });
+
+    for (const invalid of [
+      '.card { value: .type; }',
+      '.card { value: .type.isnumber(.math.e); }',
+      '.card { $w: 1px; value: $w + 1px; }',
+      '.card { $w: 1px; base: 2px; value: $w + .base; }',
+      '.card { value: $.1; }'
+    ]) {
+      expect(() => parse(invalid), invalid).toThrow(SyntaxError);
+    }
+    expect(parse('.card { value: .1; }')).toMatchObject({
+      children: [{ type: 'Rule', body: [{ value: { type: 'Dimension', number: 0.1, src: '.1' } }] }]
+    });
+    expect(parse('$tokens: { tone: blue; }; .card { root: $($.tokens.tone); ns: $($tokens.tone); }')).toMatchObject({
+      children: [
+        { type: 'VariableDeclaration', name: 'tokens' },
+        { type: 'Rule', body: [
+          { name: 'root', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', inner: { type: 'Reference', base: { type: 'DeclarationReference', raw: '$' }, steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], raw: '$.tokens.tone' } } }] } },
+          { name: 'ns', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', inner: { type: 'Reference', base: { type: 'DeclarationReference', raw: '$' }, steps: [{ type: 'DotLookup', name: 'tokens' }, { type: 'DotLookup', name: 'tone' }], raw: '$tokens.tone' } } }] } }
+        ] }
+      ]
+    });
+
+    const evaluator = buildEvaluator(makeLessRegistry());
+    const render = (text: string): string | undefined => serialize(parse(text), { evaluator }).css;
+    expect(render('$tokens: { tone: blue; }; .card { $local: blue; tone: red; $w: 3px; base: 2px; from-ns: $tokens.tone; from-root: $.tokens.tone; expr-ns: $($tokens.tone); expr-root: $($.tokens.tone); from-var: $.local; from-prop: $.tone; width: $(.w + .base); decimal: $(.1); }')).toBe(
+      '.card {\n  tone: red;\n  base: 2px;\n  from-ns: blue;\n  from-root: blue;\n  expr-ns: blue;\n  expr-root: blue;\n  from-var: blue;\n  from-prop: red;\n  width: 5px;\n  decimal: 0.1;\n}\n'
+    );
+    expect(() => render('.card { $same: blue; same: red; value: $.same; }'))
+      .toThrow(/Ambiguous reference member: same/);
+    expect(() => render('.card { $same: { tone: blue; }; same: red; value: $same.tone; }'))
+      .toThrow(/Ambiguous reference member: same/);
   });
 
   it('lowers Jess live/scoped references and lookup-bearing writes directly', () => {
@@ -635,8 +750,8 @@ describe('Jess AST grammar facts', () => {
     }
   });
 
-  it('constructs documented unwrapped variable-led arithmetic directly, while keeping slash a structured value boundary', () => {
-    const source = '$w: 2px; $h: 3; .card { plus: $w + 1px; product: $w * 2 + $h; signed: $w -1; slash: $w / 2; wrapped: $($w / 2); }';
+  it('keeps arithmetic expression-only while preserving slash and signed value boundaries', () => {
+    const source = '$w: 2px; .card { signed: $w -1; slash: $w / 2; wrapped: $($w / 2); }';
     const cst = parseJessCst(source);
     const direct = run(jessAstGrammar.JessAstDocument, source, { trivia: jessAstGrammar.whitespace });
 
@@ -648,10 +763,7 @@ describe('Jess AST grammar facts', () => {
       type: 'Stylesheet',
       children: [
         { type: 'VariableDeclaration', name: 'w' },
-        { type: 'VariableDeclaration', name: 'h' },
         { type: 'Rule', body: [
-          { type: 'Declaration', name: 'plus', value: { type: 'Operation', operator: '+', left: { type: 'VariableReference', name: 'w' }, right: { type: 'Dimension', src: '1px' } } },
-          { type: 'Declaration', name: 'product', value: { type: 'Operation', operator: '+', left: { type: 'Operation', operator: '*' }, right: { type: 'VariableReference', name: 'h' } } },
           { type: 'Declaration', name: 'signed', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
           { type: 'Declaration', name: 'slash', value: { type: 'List', sep: '/', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '2' }] } },
           { type: 'Declaration', name: 'wrapped', value: { type: 'Interpolation', parts: [{ ref: { type: 'Block', delimiter: 'paren', inner: { type: 'Operation', operator: '/' } }, unquote: true }] } }
@@ -659,32 +771,35 @@ describe('Jess AST grammar facts', () => {
       ]
     });
     expect(parse(source)).toMatchObject({
-      children: [{ type: 'VariableDeclaration' }, { type: 'VariableDeclaration' }, { type: 'Rule', body: [
-        { value: { type: 'Operation', operator: '+' } },
-        { value: { type: 'Operation', operator: '+' } },
+      children: [{ type: 'VariableDeclaration' }, { type: 'Rule', body: [
         { value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '-1' }] },
         { value: { type: 'List', sep: '/' } },
         { value: { type: 'Interpolation' } }
       ] }]
     });
     expect(serialize(parse(source), { evaluator: buildEvaluator(makeLessRegistry()) }).css).toBe(
-      '.card {\n  plus: 3px;\n  product: 7px;\n  signed: 2px -1;\n  slash: 2px / 2;\n  wrapped: 1px;\n}\n'
+      '.card {\n  signed: 2px -1;\n  slash: 2px / 2;\n  wrapped: 1px;\n}\n'
     );
 
     /*
-     * Standalone operators are syntax, not a later string heuristic. The
-     * right-side product binds first; glued signs remain ordinary value items.
+     * Arithmetic and comparison operators belong to the explicit `$(...)`
+     * expression grammar. Glued signs remain ordinary value items.
      */
-    expect(parse('$w: 2; .card { precedence: $w + 1 * 2; glued-plus: $w +1; }')).toMatchObject({
+    expect(parse('$w: 2; .card { glued-plus: $w +1; }')).toMatchObject({
       children: [
         { type: 'VariableDeclaration' },
         { type: 'Rule', body: [
-          { name: 'precedence', value: { type: 'Operation', operator: '+', right: { type: 'Operation', operator: '*' } } },
           { name: 'glued-plus', value: [{ type: 'VariableReference', name: 'w' }, { type: 'Dimension', src: '+1' }] }
         ] }
       ]
     });
-    for (const invalid of ['$w: 2px; .card { x: $w / 2 + 1; }', '$w: 2px; .card { x: $w % 2; }']) {
+    for (const invalid of [
+      '$w: 2px; .card { x: $w + 1px; }',
+      '$w: 2px; .card { x: $w * 2; }',
+      '$w: 2px; .card { x: $w / 2 + 1; }',
+      '$w: 2px; .card { x: $w % 2; }',
+      '$w: 2px; .card { x: $w = 2px; }'
+    ]) {
       const rejected = run(jessAstGrammar.JessAstDocument, invalid, { trivia: jessAstGrammar.whitespace });
       expect(rejected.ok && rejected.unconsumedFrom === null, invalid).toBe(false);
       expect(() => parse(invalid), invalid).toThrow(SyntaxError);
@@ -1786,12 +1901,12 @@ describe('Jess AST grammar facts', () => {
     });
     expect(serialize(parse(source))).toEqual({ css: '.card {\n  box-shadow: rgb(15 23 42 / 0.22);\n}\n' });
 
-    const variableCall = parse('$channel: 15; .card { color: rgb($channel + 8 23 42 / 0.22); }');
+    const variableCall = parse('$channel: 15; .card { color: rgb($($channel + 8) 23 42 / 0.22); }');
     expect(variableCall.children[1]).toMatchObject({
       type: 'Rule', body: [{
         type: 'Declaration', value: {
           type: 'FunctionCall', args: [{
-            type: 'List', sep: '/', value: [[{ type: 'Operation', operator: '+', left: { type: 'VariableReference', name: 'channel' }, right: { type: 'Dimension', src: '8' } }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
+            type: 'List', sep: '/', value: [[{ type: 'Interpolation', parts: [{ ref: { type: 'Block', inner: { type: 'Operation', operator: '+' } }, unquote: true }] }, { type: 'Dimension', src: '23' }, { type: 'Dimension', src: '42' }], { type: 'Dimension', src: '0.22' }]
           }]
         }
       }]

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isNode, type Node } from '../node.js';
 import {
   collection,
+  declarationReference,
   generalEnclosed,
   important,
   interpolation,
@@ -61,6 +62,19 @@ describe('AST node contract', () => {
       raw: '@content()'
     });
     expect(isNode(call)).toBe(true);
+  });
+
+  it('publishes declaration-member references as public AST facts', () => {
+    const member: Node = reference(declarationReference('$'), [{ type: 'DotLookup', name: 'tone' }], '$.tone');
+
+    expect(member).toEqual({
+      type: 'Reference',
+      base: { type: 'DeclarationReference', raw: '$' },
+      steps: [{ type: 'DotLookup', name: 'tone' }],
+      raw: '$.tone'
+    });
+    expect(isNode(declarationReference('$'))).toBe(true);
+    expect(isNode(member)).toBe(true);
   });
 
   it('retains variable lookup and write operations as public AST facts', () => {

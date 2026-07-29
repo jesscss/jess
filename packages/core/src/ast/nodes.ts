@@ -152,6 +152,16 @@ export interface VariableReference {
 }
 
 /**
+ * A reference to the current declaration-entry surface. Dot steps on this base
+ * resolve a member name against both CSS property declarations and variable
+ * declarations; a same-name hit in both namespaces is ambiguous.
+ */
+export interface DeclarationReference {
+  readonly type: 'DeclarationReference';
+  readonly raw: string;
+}
+
+/**
  * A property accessor `$name` (Less "property accessors"): reads the CURRENT value
  * of the CSS property `name` from the enclosing declaration scope — last-wins, and
  * cascading up the ruleset chain (`$color` inside a nested rule reads the parent
@@ -434,6 +444,7 @@ export type ValueNode =
   | SpacedValue
   | List
   | VariableReference
+  | DeclarationReference
   | PropertyReference
   | Sequence
   | Important
@@ -1111,6 +1122,7 @@ export const rawInline = (text: string, media?: string | null): RawInline =>
   media != null ? { type: 'RawInline', text, media } : { type: 'RawInline', text };
 export const variableReference = (name: string, lookup: VariableLookup): VariableReference =>
   ({ type: 'VariableReference', name, lookup });
+export const declarationReference = (raw: string = '$'): DeclarationReference => ({ type: 'DeclarationReference', raw });
 export const sequence = (parts: ValueNode[]): Sequence => ({ type: 'Sequence', parts });
 export const important = (inner: ValueSlot): Important => ({ type: 'Important', inner });
 
