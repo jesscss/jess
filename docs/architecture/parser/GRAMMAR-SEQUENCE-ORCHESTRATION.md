@@ -4056,6 +4056,23 @@ test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
 with all parser packages fully compiled and 0 interpreter fallbacks; and
 `pnpm run verify:compose-integrity` passed.
 
+Jess guard/dollar rule name cleanup, 2026-07-29: the Jess mixin-guard and dollar
+interpolation/value grammar keys now use semantic names (`GuardValue`,
+`GuardCompare`, `GuardCall`, `GuardPrimary`, `GuardAnd`, `GuardOr`,
+`MixinGuard`, `DollarValue`, `DollarBrace`, `DollarInterp`, and
+`InterpolatedValue`) instead of `DirectJess*` mode labels. This is a naming-only
+alignment with the existing semantic node labels; the remaining guard/value
+gating warnings now report those semantic names where the underlying grammar
+debt still exists.
+
+Evidence for the Jess guard/dollar rule name cleanup: `pnpm --filter
+@jesscss/jess-parser test -- test/cst-public.test.ts test/ast-grammar.test.ts
+test/macro-compiled-ast.test.ts --reporter=dot` passed 3 files / 117 tests;
+`pnpm --filter @jesscss/jess-parser build` passed after rebuilding
+`parser-shared`; `pnpm run check:macro` passed with all parser packages fully
+compiled and 0 interpreter fallbacks; and `pnpm run verify:compose-integrity`
+passed.
+
 Grammar lint layout update, 2026-07-27: the grammar ESLint floor no longer
 enforces `@stylistic/function-paren-newline` or
 `@stylistic/function-call-argument-newline` in grammar sources. Short Parseman

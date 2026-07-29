@@ -41,11 +41,11 @@ type JessRules = {
   DirectJessDeclarationReference: Combinator<DeclarationReference>;
   DirectJessReferenceTail: Combinator<JessReferenceTail>;
   DirectJessReferenceCallTail: Combinator<JessReferenceTail>;
-  DirectJessDollarValue: Combinator<ValueNode>;
-  DirectJessDollarBrace: Combinator<Interpolation>;
+  DollarValue: Combinator<ValueNode>;
+  DollarBrace: Combinator<Interpolation>;
   ExpressionDollarBrace: Combinator<ExpressionFact>;
-  DirectJessDollarInterp: Combinator<Interpolation>;
-  DirectJessInterpolatedValue: Combinator<Interpolation>;
+  DollarInterp: Combinator<Interpolation>;
+  InterpolatedValue: Combinator<Interpolation>;
   ExpressionDollarInterp: Combinator<ExpressionFact>;
   Expression: Combinator<Interpolation>;
   ExpressionInterpolation: Combinator<ExpressionFact>;
@@ -57,13 +57,13 @@ type JessRules = {
   ExpressionProduct: Combinator<ExpressionFact>;
   ExpressionSum: Combinator<ExpressionFact>;
   ExpressionCompare: Combinator<ExpressionFact>;
-  DirectJessGuardValue: Combinator<GuardNode>;
-  DirectJessGuardCompare: Combinator<GuardNode>;
-  DirectJessGuardCall: Combinator<GuardNode>;
-  DirectJessGuardPrimary: Combinator<GuardNode>;
-  DirectJessGuardAnd: Combinator<GuardNode>;
-  DirectJessGuardOr: Combinator<GuardNode>;
-  DirectJessMixinGuard: Combinator<GuardNode>;
+  GuardValue: Combinator<GuardNode>;
+  GuardCompare: Combinator<GuardNode>;
+  GuardCall: Combinator<GuardNode>;
+  GuardPrimary: Combinator<GuardNode>;
+  GuardAnd: Combinator<GuardNode>;
+  GuardOr: Combinator<GuardNode>;
+  MixinGuard: Combinator<GuardNode>;
   Keyword: Combinator<Keyword>;
   DirectJessQuoted: Combinator<Quoted | Interpolation>;
   StaticQuoted: Combinator<Quoted>;
@@ -1443,7 +1443,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(literal('$')),
     (_children, _fields, span) => withSourceSpan(declarationReference('$'), span)
   );
-  const DirectJessDollarBrace = node<Interpolation>(
+  const DollarBrace = node<Interpolation>(
     'DollarBrace',
     jessDollarBraceStructure,
     (children, _fields, span) => dollarBraceInterpolation(
@@ -1451,7 +1451,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       span
     )
   );
-  const DirectJessDollarInterp = node<Interpolation>(
+  const DollarInterp = node<Interpolation>(
     'DollarInterp',
     jessDollarInterpStructure,
     (children, _fields, span) => interpolationFromChildren(
@@ -1607,7 +1607,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
      *
      * The `$type.` namespace is the one exception, and it gets the second arm:
      * this atom is shared with `$if`/`when`, where `$type.isnumber($x)` must
-     * keep reducing through the arity-checked `DirectJessGuardCall` predicate
+     * keep reducing through the arity-checked `GuardCall` predicate
      * syntax. Letting it take a generic call tail would silently admit
      * `$type.unknown($x)` and every wrong-arity spelling the guard grammar
      * exists to reject. Bare-name calls stay out of the atom entirely for the
@@ -1729,12 +1729,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * and/or chain must be parenthesized; mixed chains must group explicitly.
    * No source string is retained or reparsed after recognition.
    */
-  const DirectJessGuardValue = node<GuardNode>(
+  const GuardValue = node<GuardNode>(
     'GuardValue',
     g.ExpressionSum,
     reduceGuardTruth
   );
-  const DirectJessGuardCompare = node<GuardNode>(
+  const GuardCompare = node<GuardNode>(
     'GuardCompare',
     sequence(
       g.ExpressionSum,
@@ -1743,7 +1743,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ),
     reduceGuardCompare
   );
-  const DirectJessGuardCall = node<GuardNode>(
+  const GuardCall = node<GuardNode>(
     'GuardCall',
     choice(
       sequence(
@@ -1769,18 +1769,18 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       args: children.filter(isValueNode)
     })
   );
-  const DirectJessGuardPrimary = node<GuardNode>(
+  const GuardPrimary = node<GuardNode>(
     'GuardPrimary',
     choice(
       sequence(
         regex(/not(?![-_a-zA-Z0-9\u0080-\uffff])/),
         literal('('),
-        g.DirectJessMixinGuard,
+        g.MixinGuard,
         literal(')')
       ),
       sequence(
         literal('('),
-        g.DirectJessMixinGuard,
+        g.MixinGuard,
         literal(')')
       ),
       sequence(
@@ -1788,8 +1788,8 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('('),
         literal(')')
       ),
-      g.DirectJessGuardCall,
-      g.DirectJessGuardValue
+      g.GuardCall,
+      g.GuardValue
     ),
     (children) => {
       if (children.length === 1) {
@@ -1804,35 +1804,35 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       return { g: 'default' };
     }
   );
-  const DirectJessGuardAnd = node<GuardNode>(
+  const GuardAnd = node<GuardNode>(
     'GuardAnd',
     sequence(
-      g.DirectJessGuardPrimary,
+      g.GuardPrimary,
       oneOrMore(sequence(
         regex(/and(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessGuardPrimary
+        g.GuardPrimary
       ))
     ),
     reduceGuardAnd
   );
-  const DirectJessGuardOr = node<GuardNode>(
+  const GuardOr = node<GuardNode>(
     'GuardOr',
     sequence(
-      g.DirectJessGuardPrimary,
+      g.GuardPrimary,
       oneOrMore(sequence(
         regex(/or(?![-_a-zA-Z0-9\u0080-\uffff])/),
-        g.DirectJessGuardPrimary
+        g.GuardPrimary
       ))
     ),
     reduceGuardOr
   );
-  const DirectJessMixinGuard = node<GuardNode>(
+  const MixinGuard = node<GuardNode>(
     'MixinGuard',
     choice(
-      g.DirectJessGuardAnd,
-      g.DirectJessGuardOr,
-      g.DirectJessGuardCompare,
-      g.DirectJessGuardPrimary
+      g.GuardAnd,
+      g.GuardOr,
+      g.GuardCompare,
+      g.GuardPrimary
     ),
     children => requireGuardNode(children[0])
   );
@@ -1942,7 +1942,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('~'),
         literal('"'),
         many(choice(
-          g.DirectJessDollarBrace,
+          g.DollarBrace,
           directJessQuotedExpression,
           interpolatedDoubleQuotedText
         )),
@@ -1952,7 +1952,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
         literal('~'),
         literal('\''),
         many(choice(
-          g.DirectJessDollarBrace,
+          g.DollarBrace,
           directJessQuotedExpression,
           interpolatedSingleQuotedText
         )),
@@ -1961,7 +1961,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       noTrivia(sequence(
         literal('"'),
         many(choice(
-          g.DirectJessDollarBrace,
+          g.DollarBrace,
           directJessQuotedExpression,
           interpolatedDoubleQuotedText
         )),
@@ -1970,7 +1970,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       noTrivia(sequence(
         literal('\''),
         many(choice(
-          g.DirectJessDollarBrace,
+          g.DollarBrace,
           directJessQuotedExpression,
           interpolatedSingleQuotedText
         )),
@@ -2279,12 +2279,12 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       optional(jessUrlInterpolatedText),
       choice(
-        g.DirectJessDollarBrace,
+        g.DollarBrace,
         g.Expression
       ),
       many(choice(
         jessUrlInterpolatedText,
-        g.DirectJessDollarBrace,
+        g.DollarBrace,
         g.Expression
       ))
     )),
@@ -2391,9 +2391,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       directInterpSimpleAhead,
       optional(regex(/[.#]/)),
       many(jessSelectorTextRun),
-      g.DirectJessDollarBrace,
+      g.DollarBrace,
       many(choice(
-        g.DirectJessDollarBrace,
+        g.DollarBrace,
         jessSelectorTextRun
       ))
     )),
@@ -2446,9 +2446,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       directInterpParentAhead,
       literal('&'),
       many(jessSelectorTextRun),
-      g.DirectJessDollarBrace,
+      g.DollarBrace,
       many(choice(
-        g.DirectJessDollarBrace,
+        g.DollarBrace,
         jessSelectorTextRun
       ))
     )),
@@ -3013,10 +3013,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * positionally, by name, and against defaults through the ONE binder a named
    * mixin call already uses. It is deliberately NOT folded INTO the shared
    * `DirectJessReferenceTail`, which stays access-only: `$type.*()` must keep
-   * reducing through the dedicated `DirectJessGuardCall` mixin-guard syntax
+   * reducing through the dedicated `GuardCall` mixin-guard syntax
    * instead of collapsing into an ordinary member-call chain. Expression and
    * condition positions opt in to dispatch by listing this tail alongside the
-   * access tail (see `ExpressionAtom`, `DirectJessDollarValue`).
+   * access tail (see `ExpressionAtom`, `DollarValue`).
    */
   const DirectJessReferenceCallTail = node<JessReferenceTail>(
     'ReferenceCallTail',
@@ -3052,7 +3052,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * position cannot admit expression-only forms like leading-dot declaration
    * lookup.
    */
-  const DirectJessDollarValue = node<ValueNode>(
+  const DollarValue = node<ValueNode>(
     'DollarValue',
     noTrivia(choice(
       attempt(sequence(
@@ -3181,17 +3181,17 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * Recognizing the `$(`/`$[` head ONCE and folding the optional tail here keeps
    * the plain (tail-free) form a single parse with its existing Interpolation.
    */
-  const DirectJessInterpolatedValue = node<Interpolation>(
+  const InterpolatedValue = node<Interpolation>(
     'InterpolatedValue',
     noTrivia(sequence(
       choice(
         g.Expression,
-        g.DirectJessDollarInterp
+        g.DollarInterp
       ),
       many(choice(
         jessInterpolatedValueTail,
         g.Expression,
-        g.DirectJessDollarInterp
+        g.DollarInterp
       ))
     )),
     (children) => {
@@ -3225,9 +3225,9 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
    * `$foo: bar { … }` a positioned parse error instead of a silent two-value read.
    */
   const directJessNonBlockValueAtom = choice(
-    g.DirectJessDollarValue,
+    g.DollarValue,
     g.DirectJessExprLambda,
-    g.DirectJessInterpolatedValue,
+    g.InterpolatedValue,
     g.DirectJessSelectorCapture,
     g.Url,
     g.InterpolatedUrl,
@@ -3679,7 +3679,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const DirectJessMediaPrelude = node<ValueNode | null>(
     'MediaPrelude',
     choice(
-      g.DirectJessDollarBrace,
+      g.DollarBrace,
       g.StaticAtPrelude
     ),
     children => children[0] === null ? null : requireValueNode(children[0])
@@ -3844,7 +3844,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const DirectJessGeneralTemplate = node<Interpolation>(
     'GeneralTemplate',
     many(choice(
-      g.DirectJessDollarBrace,
+      g.DollarBrace,
       g.DirectJessGeneralTemplateParen,
       g.DirectJessGeneralTemplateSquare,
       g.DirectJessGeneralTemplateBrace,
@@ -3908,7 +3908,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
   const DirectJessGeneralQuotedTemplate = node<Interpolation>(
     'GeneralQuotedTemplate',
     many(choice(
-      g.DirectJessDollarBrace,
+      g.DollarBrace,
       g.Expression,
       g.DirectJessGeneralQuotedTemplateParen,
       g.DirectJessGeneralQuotedTemplateSquare,
@@ -4457,10 +4457,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     noTrivia(sequence(
       directInterpPropertyAhead,
       optional(g.CssSyntaxInterpolatedPropertyStart),
-      g.DirectJessDollarBrace,
+      g.DollarBrace,
       many(choice(
         g.CssSyntaxInterpolatedPropertyTail,
-        g.DirectJessDollarBrace
+        g.DollarBrace
       ))
     )),
     (children) => {
@@ -4498,10 +4498,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       noTrivia(sequence(
         literal('--'),
         many(jessCustomPropertyChunk),
-        g.DirectJessDollarBrace,
+        g.DollarBrace,
         many(choice(
           jessCustomPropertyChunk,
-          g.DirectJessDollarBrace
+          g.DollarBrace
         ))
       )),
       g.CssSyntaxCustomProperty
@@ -4556,7 +4556,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     children => children.slice()
   );
   const DirectJessCustomInnerPart: Combinator<unknown> = choice(
-    g.DirectJessDollarBrace,
+    g.DollarBrace,
     g.CssSyntaxCustomInnerContent,
     blockComment,
     g.CssSyntaxCustomSingleQuoted,
@@ -4566,7 +4566,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     g.DirectJessCustomCurly
   );
   const DirectJessCustomPart: Combinator<unknown> = choice(
-    g.DirectJessDollarBrace,
+    g.DollarBrace,
     g.CssSyntaxCustomOuterContent,
     blockComment,
     g.CssSyntaxCustomSingleQuoted,
@@ -4908,7 +4908,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
       optional(sequence(
         regex(/when(?![-_a-zA-Z0-9\u0080-\uffff])/),
         literal('('),
-        g.DirectJessMixinGuard,
+        g.MixinGuard,
         literal(')')
       )),
       literal('{'),
@@ -5507,10 +5507,10 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     DirectJessDeclarationReference,
     DirectJessReferenceTail,
     DirectJessReferenceCallTail,
-    DirectJessDollarValue,
-    DirectJessDollarBrace,
+    DollarValue,
+    DollarBrace,
     ExpressionDollarBrace,
-    DirectJessDollarInterp,
+    DollarInterp,
     ExpressionDollarInterp,
     Expression,
     ExpressionInterpolation,
@@ -5522,13 +5522,13 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     ExpressionProduct,
     ExpressionSum,
     ExpressionCompare,
-    DirectJessGuardValue,
-    DirectJessGuardCompare,
-    DirectJessGuardCall,
-    DirectJessGuardPrimary,
-    DirectJessGuardAnd,
-    DirectJessGuardOr,
-    DirectJessMixinGuard,
+    GuardValue,
+    GuardCompare,
+    GuardCall,
+    GuardPrimary,
+    GuardAnd,
+    GuardOr,
+    MixinGuard,
     Keyword,
     DirectJessQuoted,
     StaticQuoted,
@@ -5595,7 +5595,7 @@ export const jessFactory = (g: JessRules & SharedCssSyntax) => {
     Call,
     DirectJessCollectionEntry,
     DirectJessCollection,
-    DirectJessInterpolatedValue,
+    InterpolatedValue,
     DirectJessValueAtom,
     DirectJessValueSpaceGroup,
     DirectJessValueTerm,
